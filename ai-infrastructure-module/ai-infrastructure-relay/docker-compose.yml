@@ -1,0 +1,43 @@
+services:
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "no"]
+    ports:
+      - "6379:6379"
+
+  internal-dispatcher:
+    image: wiremock/wiremock:3.5.2
+    ports:
+      - "9090:8080"
+    volumes:
+      - ./dev/wiremock/mappings:/home/wiremock/mappings:ro
+
+  relay:
+    build:
+      context: ../..
+      dockerfile: ai-infrastructure-module/ai-infrastructure-relay/Dockerfile
+    ports:
+      - "8081:8081"
+    environment:
+      SPRING_APPLICATION_JSON: >
+        {
+          "server": { "port": 8081 },
+          "relay": {
+            "auth": {
+              "apiKey": { "enabled": true, "header": "X-AIFABRIC-API-KEY", "value": "dev-relay-key" }
+            },
+            "store": {
+              "backend": "REDIS",
+              "redis": { "uri": "redis://redis:6379/0" }
+            },
+            "routing": {
+              "mode": "DISPATCHER",
+              "dispatcher": { "url": "http://internal-dispatcher:8080/actions/execute" },
+              "retrieval": { "url": "http://internal-dispatcher:8080/retrieval/search" }
+            }
+          }
+        }
+    depends_on:
+      - redis
+      - internal-dispatcher
+

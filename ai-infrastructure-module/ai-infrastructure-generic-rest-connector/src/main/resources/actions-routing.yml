@@ -1,0 +1,44 @@
+connector:
+  inbound-auth:
+    allow-unauthenticated: ${CONNECTOR_ALLOW_UNAUTHENTICATED:false}
+    api-key:
+      enabled: ${CONNECTOR_API_KEY_ENABLED:true}
+      header: ${CONNECTOR_API_KEY_HEADER:X-AIFABRIC-API-KEY}
+      # Safe neutral default so the connector can boot without exposing actions publicly.
+      value: ${CONNECTOR_API_KEY:${random.uuid}}
+
+  upstream:
+    base-url: ${UPSTREAM_BASE_URL:}
+    auth:
+      type: ${UPSTREAM_AUTH_TYPE:NONE}
+      header: ${UPSTREAM_AUTH_HEADER:Authorization}
+      value: ${UPSTREAM_AUTH_VALUE:}
+
+  http:
+    connect-timeout-ms: ${CONNECTOR_CONNECT_TIMEOUT_MS:2000}
+    timeout-ms: ${CONNECTOR_TIMEOUT_MS:8000}
+    retry:
+      enabled: ${CONNECTOR_RETRY_ENABLED:false}
+      max-attempts: ${CONNECTOR_RETRY_MAX_ATTEMPTS:2}
+      backoff-ms: ${CONNECTOR_RETRY_BACKOFF_MS:200}
+      retry-on: [429, 502, 503, 504]
+
+  idempotency:
+    enabled: ${CONNECTOR_IDEMPOTENCY_ENABLED:true}
+    ttl-seconds: ${CONNECTOR_IDEMPOTENCY_TTL_SECONDS:300}
+    in-progress-max-wait-ms: ${CONNECTOR_IDEMPOTENCY_IN_PROGRESS_MAX_WAIT_MS:2000}
+
+authz:
+  enabled: ${AUTHZ_ENABLED:false}
+  path: ${AUTHZ_PATH:/api/authz/check}
+  upstream:
+    base-url: ${AUTHZ_UPSTREAM_BASE_URL:}
+    auth:
+      type: ${AUTHZ_UPSTREAM_AUTH_TYPE:NONE}
+      header: ${AUTHZ_UPSTREAM_AUTH_HEADER:Authorization}
+      value: ${AUTHZ_UPSTREAM_AUTH_VALUE:}
+  http:
+    connect-timeout-ms: ${AUTHZ_CONNECT_TIMEOUT_MS:500}
+    timeout-ms: ${AUTHZ_TIMEOUT_MS:1500}
+
+actions: {}

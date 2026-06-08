@@ -1,0 +1,13 @@
+spring:
+  scheduling:
+    enabled: false
+  task:
+    scheduling:
+      enabled: false
+
+ai:
+  indexing:
+    enabled: false
+  pii-detection:
+    enabled: true
+    detection-direction: INPUT_OUTPUT

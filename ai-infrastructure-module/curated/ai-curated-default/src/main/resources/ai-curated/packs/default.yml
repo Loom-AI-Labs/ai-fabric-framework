@@ -1,0 +1,63 @@
+ai:
+  orchestration:
+    profile: PRODUCTION_CHAT
+    always-generate-information: true
+    default-mode: thinker
+    modes:
+      thinker:
+        information-mode: LLM_DRIVEN
+        actions-enabled: false
+        retrieval-enabled: true
+        deep-retrieval-enabled: true
+        force-retrieval-when-targets-present: true
+        force-retrieval-consider-stored-targets: true
+        force-grounding-eligible-read-action-post-generation: true
+        minimize-rag-when-pinned-targets-cover-request: false
+        rag-target-hint-enabled: true
+        rag:
+          fanout-enabled: true
+          max-spaces: 6
+          top-k-per-space: 8
+          max-documents-returned-to-client: 30
+          max-documents-used-for-context: 8
+          max-context-chars: 6000
+        read-action-resolution:
+          enabled: true
+          planning-mode: ITERATIVE
+          require-allowlist: true
+          max-iterations: 2
+          max-actions-per-iteration: 2
+          max-total-actions: 3
+          max-parallel-actions: 1
+          rag-cooperation-mode: PARALLEL_ACTIONS_AND_RAG
+          require-grounding-eligible: true
+      executor:
+        information-mode: LLM_DRIVEN
+        actions-enabled: true
+        retrieval-enabled: true
+        deep-retrieval-enabled: false
+        suggestions-enabled: false
+        actions-preferred: true
+        knowledge-base-overview-enabled: false
+        retrieval-allowlist-required: true
+        rag:
+          max-documents-returned-to-client: 10
+          max-documents-used-for-context: 5
+          max-context-chars: 4000
+        read-action-resolution:
+          enabled: true
+          planning-mode: SINGLE_PASS
+          require-allowlist: true
+          max-actions-per-iteration: 2
+          max-total-actions: 2
+          max-parallel-actions: 1
+          rag-cooperation-mode: RAG_IF_ACTIONS_INSUFFICIENT
+          require-grounding-eligible: true
+    position-routing:
+      landing: thinker
+      docs: thinker
+      support: thinker
+      troubleshooting: thinker
+      analysis: thinker
+      operations: executor
+      action: executor

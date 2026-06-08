@@ -1,0 +1,37 @@
+services:
+  ai-fabric-runtime:
+    build:
+      context: ../..
+      dockerfile: ai-infrastructure-module/ai-fabric-runtime/Dockerfile
+    image: ai-fabric-runtime:local
+    container_name: ai-fabric-runtime
+    restart: unless-stopped
+    ports:
+      - "8097:8097"
+    environment:
+      PORT: 8097
+
+      # Demo convenience: enable permissive policy hooks (do not use in production).
+      AI_FABRIC_RUNTIME_DEV_DEFAULTS_ENABLED: "true"
+
+      # LLM/embeddings provider (OpenAI is opt-in)
+      OPENAI_ENABLED: "false"
+      OPENAI_API_KEY: ""
+      OPENAI_BASE_URL: "https://api.openai.com/v1"
+      OPENAI_MODEL: "gpt-4o-mini"
+      OPENAI_EMBEDDING_MODEL: "text-embedding-3-small"
+      OPENAI_EMBEDDING_DIMENSIONS: "512"
+
+      # CORS (for hosted UIs)
+      CORS_ALLOWED_ORIGINS: ""
+      CORS_ALLOWED_ORIGIN_PATTERNS: ""
+
+      # Optional: connector-backed actions (Relay base URL)
+      ACTIONS_CONNECTOR_BASE_URL: ""
+      ACTIONS_CONNECTOR_API_KEY: ""
+
+    volumes:
+      - ./deploy/docker/customer-template/config:/config:ro
+      - ./deploy/docker/customer-template/data:/data
+    command:
+      - "--spring.config.additional-location=file:/config/"

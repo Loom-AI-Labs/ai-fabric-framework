@@ -1,0 +1,17 @@
+spring:
+  application:
+    name: ai-fabric-minimal-example
+
+ai:
+  providers:
+    llm-provider: openai
+    embedding-provider: onnx
+    openai:
+      api-key: ${OPENAI_API_KEY:}
+      base-url: https://api.openai.com/v1
+      model: gpt-4o-mini
+    onnx:
+      model-path: ${AI_FABRIC_ONNX_MODEL_PATH:./models/embeddings/all-MiniLM-L6-v2.onnx}
+      tokenizer-path: ${AI_FABRIC_ONNX_TOKENIZER_PATH:./models/embeddings/tokenizer.json}
+  vector-db:
+    type: lucene

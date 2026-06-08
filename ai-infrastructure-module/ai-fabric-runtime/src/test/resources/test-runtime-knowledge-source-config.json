@@ -1,0 +1,12 @@
+{
+  "contractVersion": "KNOWLEDGE_SOURCE_CONFIG_V1",
+  "sources": [
+    {
+      "id": "shared-policies",
+      "type": "policy",
+      "adapterType": "shared-index",
+      "attributionLabel": "Shared policy knowledge",
+      "handleRef": "shared/policies"
+    }
+  ]
+}

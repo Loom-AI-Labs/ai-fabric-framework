@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.ai.fabric</groupId>
+        <artifactId>ai-fabric-bom</artifactId>
+        <version>0.1.0-preview</version>
+        <relativePath>../pom.xml</relativePath>
+    </parent>
+
+    <artifactId>ai-fabric-provider-starter</artifactId>
+    <packaging>jar</packaging>
+
+    <name>AI Fabric Provider Starter</name>
+    <description>Convenience starter for provider-only (core) AI Fabric scenarios without indexing.</description>
+
+    <dependencies>
+        <dependency>
+            <groupId>com.ai.fabric</groupId>
+            <artifactId>ai-fabric-core</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+    </dependencies>
+</project>
+

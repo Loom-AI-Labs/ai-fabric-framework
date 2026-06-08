@@ -1,0 +1,43 @@
+actions:
+  - name: create_purchase_order
+    displayName: "Create Purchase Order"
+    description: "Create a purchase order"
+    category: "test"
+    accessMode: WRITE_ONLY
+    requiresConfirmation: true
+    anonymousAllowed: true
+    groundingEligible: false
+    resultPresentationHint: STATUS
+    builtInModuleId: purchase-orders
+    builtInCardId: purchase-order-status
+    postPolicies:
+      - type: webhook
+        targetRef: zapier_purchase_orders
+        eventType: purchase_order.created
+    provenance:
+      contributionType: ACTION
+      sourceType: ACTION_CATALOG
+      sourceId: create_purchase_order
+      sourceLocation: classpath:actions/valid-actions.yml
+      publisher: internal-test
+      version: v1
+    confirmationMessage: "Create purchase order for {{quantity|1}} × {{sku}}?"
+    params:
+      - name: sku
+        type: STRING
+        description: "Product SKU"
+        required: true
+        pattern: "^[A-Z0-9_-]{3,64}$"
+      - name: quantity
+        type: INTEGER
+        description: "Quantity"
+        required: true
+        min: 1
+        max: 100
+
+webhookTargets:
+  - id: zapier_purchase_orders
+    urlSecretRef: ZAPIER_PURCHASE_ORDERS_URL
+    signingSecretRef: ZAPIER_PURCHASE_ORDERS_SIGNING_SECRET
+    timeoutMs: 3000
+    maxAttempts: 5

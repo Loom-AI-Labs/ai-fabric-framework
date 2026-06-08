@@ -1,0 +1,31 @@
+spring:
+  task:
+    scheduling:
+      enabled: false
+
+ai:
+  intent-extraction:
+    progressive:
+      enabled: false
+
+  vector-db:
+    type: memory
+
+  pii-detection:
+    enabled: true
+    detection-direction: INPUT_OUTPUT
+
+  providers:
+    enabled: true
+    llm-provider: openai
+    embedding-provider: onnx
+
+    # Tests do not require a live LLM provider
+    openai:
+      enabled: false
+
+    # Keep ONNX configured so embedding-provider=onnx is valid
+    onnx:
+      enabled: true
+      model-path: classpath:/models/embeddings/all-MiniLM-L6-v2.onnx
+      tokenizer-path: classpath:/models/embeddings/tokenizer.json

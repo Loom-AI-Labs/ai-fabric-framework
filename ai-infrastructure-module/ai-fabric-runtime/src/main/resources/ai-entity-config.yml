@@ -1,0 +1,23 @@
+ai-entities:
+  document:
+    # Generic, domain-agnostic vector space intended for customer-provided content (docs/chunks).
+    features: ["embedding", "search"]
+    auto-process: true
+    enable-search: true
+    auto-embedding: true
+    indexable: true
+
+    crud-operations:
+      create:
+        generate-embedding: true
+        index-for-search: true
+        enable-analysis: false
+      update:
+        generate-embedding: true
+        index-for-search: true
+        enable-analysis: false
+      delete:
+        index-for-search: false
+        remove-from-search: true
+        cleanup-embeddings: false
+

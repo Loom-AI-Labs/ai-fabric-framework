@@ -1,0 +1,162 @@
+# Provider Registry
+# Single source of truth for all AI providers (LLM and Embedding)
+# This file defines provider metadata, configuration requirements, and validation rules
+
+providers:
+  llm:
+    openai:
+      name: "openai"
+      displayName: "OpenAI (GPT-4, GPT-3.5)"
+      apiKeyEnvVar: "OPENAI_API_KEY"
+      required: true
+      defaultModel: "gpt-4o-mini"
+      baseUrl: "https://api.openai.com/v1"
+      enabled: true
+      description: "OpenAI GPT models"
+      supportedFeatures:
+        - "chat_completions"
+        - "streaming"
+        - "function_calling"
+      
+    anthropic:
+      name: "anthropic"
+      displayName: "Anthropic (Claude)"
+      apiKeyEnvVar: "ANTHROPIC_API_KEY"
+      required: true
+      defaultModel: "claude-3-haiku-20240307"
+      baseUrl: "https://api.anthropic.com"
+      enabled: true
+      description: "Anthropic Claude models"
+      supportedFeatures:
+        - "chat_completions"
+        - "streaming"
+        
+    gemini:
+      name: "gemini"
+      displayName: "Google Gemini"
+      apiKeyEnvVar: "GEMINI_API_KEY"
+      required: true
+      defaultModel: "gemini-2.5-flash"
+      baseUrl: "https://generativelanguage.googleapis.com/v1beta"
+      enabled: true
+      description: "Google Gemini models"
+      supportedFeatures:
+        - "chat_completions"
+        - "streaming"
+        
+    cohere:
+      name: "cohere"
+      displayName: "Cohere (Command)"
+      apiKeyEnvVar: "COHERE_API_KEY"
+      required: true
+      defaultModel: "command-r7b-12-2024"
+      baseUrl: "https://api.cohere.com"
+      enabled: true
+      description: "Cohere Command models"
+      supportedFeatures:
+        - "chat_completions"
+        
+    azure:
+      name: "azure"
+      displayName: "Azure AI Services"
+      apiKeyEnvVar: "AZURE_API_KEY"
+      endpointEnvVar: "AZURE_ENDPOINT"
+      deploymentNameEnvVar: "AZURE_DEPLOYMENT_NAME"
+      required: true
+      defaultModel: "gpt-4"
+      baseUrl: "${AZURE_ENDPOINT}"
+      enabled: true
+      description: "Azure OpenAI / AI Services (supports OpenAI-compatible and Foundry formats)"
+      supportedFeatures:
+        - "chat_completions"
+        - "openai_compatible"
+        - "foundry_format"
+      additionalEnvVars:
+        - "AZURE_API_VERSION"
+        - "AZURE_EMBEDDING_DEPLOYMENT_NAME"
+      notes: "Supports both /openai/v1/ and /models/ endpoint formats"
+        
+  embedding:
+    onnx:
+      name: "onnx"
+      displayName: "ONNX (Local)"
+      apiKeyEnvVar: null
+      required: false
+      enabled: true
+      description: "Local ONNX embedding model"
+      defaultModel: "all-MiniLM-L6-v2"
+      dimensions: 384
+      supportedFeatures:
+        - "local_execution"
+        - "no_api_key"
+      
+    openai:
+      name: "openai"
+      displayName: "OpenAI Embeddings"
+      apiKeyEnvVar: "OPENAI_API_KEY"
+      required: true
+      defaultModel: "text-embedding-3-small"
+      baseUrl: "https://api.openai.com/v1"
+      enabled: true
+      description: "OpenAI text embeddings"
+      dimensions: 1536
+      supportedFeatures:
+        - "text_embeddings"
+        - "multiple_dimensions"
+      
+    anthropic:
+      name: "anthropic"
+      displayName: "Anthropic Embeddings"
+      apiKeyEnvVar: "ANTHROPIC_API_KEY"
+      required: true
+      enabled: true
+      description: "Anthropic embeddings (via OpenAI-compatible)"
+      supportedFeatures:
+        - "openai_compatible"
+      
+    gemini:
+      name: "gemini"
+      displayName: "Google Gemini Embeddings"
+      apiKeyEnvVar: "GEMINI_API_KEY"
+      required: true
+      defaultModel: "text-embedding-004"
+      baseUrl: "https://generativelanguage.googleapis.com/v1beta"
+      enabled: true
+      description: "Google Gemini embeddings"
+      dimensions: 768
+      supportedFeatures:
+        - "text_embeddings"
+      
+    cohere:
+      name: "cohere"
+      displayName: "Cohere Embeddings"
+      apiKeyEnvVar: "COHERE_API_KEY"
+      required: true
+      defaultModel: "embed-english-v3.0"
+      baseUrl: "https://api.cohere.com"
+      enabled: true
+      description: "Cohere embeddings"
+      dimensions: 1024
+      supportedFeatures:
+        - "text_embeddings"
+        - "multiple_languages"
+      
+    azure:
+      name: "azure"
+      displayName: "Azure Embeddings"
+      apiKeyEnvVar: "AZURE_API_KEY"
+      endpointEnvVar: "AZURE_ENDPOINT"
+      embeddingDeploymentNameEnvVar: "AZURE_EMBEDDING_DEPLOYMENT_NAME"
+      required: true
+      defaultModel: "text-embedding-ada-002"
+      baseUrl: "${AZURE_ENDPOINT}"
+      enabled: true
+      description: "Azure OpenAI / AI Services embeddings"
+      dimensions: 1536
+      supportedFeatures:
+        - "text_embeddings"
+        - "openai_compatible"
+        - "foundry_format"
+      additionalEnvVars:
+        - "AZURE_API_VERSION"
+      notes: "Supports both /openai/deployments/ and /models/ endpoint formats"

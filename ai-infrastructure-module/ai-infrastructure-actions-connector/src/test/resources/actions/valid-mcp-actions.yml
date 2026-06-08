@@ -1,0 +1,57 @@
+actions:
+  - name: inventory_search
+    displayName: Inventory Search
+    description: Search inventory through MCP.
+    category: inventory
+    adapterType: mcp-tool
+    accessMode: READ
+    execution:
+      adapterType: mcp-tool
+      mcp:
+        serverRef: inventory-mcp
+        toolName: inventory.search
+        argumentTemplate:
+          query: "{{params.query}}"
+        responseMapping:
+          resultPath: "$.structuredContent.products"
+    params:
+      - name: query
+        type: STRING
+        required: true
+      - name: shopperSessionId
+        type: STRING
+        required: true
+        visibility: INTERNAL
+        askUser: false
+        resolveFrom:
+          source: RUNTIME_CONTEXT
+          field: sessionId
+      - name: selected_items
+        type: ARRAY
+        required: false
+        batchTargets: true
+        items:
+          type: OBJECT
+          requiredProperties:
+            - product_variant_id
+            - quantity
+          properties:
+            product_variant_id:
+              type: STRING
+              required: true
+              evidenceBound: true
+              evidenceKeys:
+                - product_variant_id
+                - firstAvailableVariantId
+              evidenceFallbackPolicy: CLARIFY
+            quantity:
+              type: INTEGER
+              required: true
+              min: 1
+              defaultValue: 1
+mcpServers:
+  - serverRef: inventory-mcp
+    transport: STREAMABLE_HTTP
+    endpointUrl: https://inventory.example/mcp
+    auth:
+      mode: NONE

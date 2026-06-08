@@ -1,0 +1,6 @@
+actions:
+  - name: broken_action
+    displayName: Broken Action
+    accessMode: READ
+    builtInModuleId: custom-module
+    builtInCardId: product-list

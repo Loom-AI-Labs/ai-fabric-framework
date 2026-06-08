@@ -1,0 +1,16 @@
+{
+  "sources": [
+    {
+      "id": "shared-catalog",
+      "type": "shared-vector",
+      "entityType": "product",
+      "handleRef": "marketplace/catalog"
+    },
+    {
+      "id": "private-policy",
+      "type": "private-vector",
+      "entityType": "policy",
+      "enabled": false
+    }
+  ]
+}

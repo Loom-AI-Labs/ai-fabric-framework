@@ -1,0 +1,32 @@
+ai:
+  entities:
+    - name: "ai_profile"
+      features: ["embedding", "search", "analysis", "behavioral"]
+      enableSearch: true
+      enableRecommendations: false
+      autoEmbedding: true
+      indexable: true
+    - name: "behavior"
+      features: ["embedding", "search", "analysis", "behavioral"]
+      enableSearch: true
+      enableRecommendations: false
+      autoEmbedding: true
+      indexable: true
+    - name: "product"
+      features: ["embedding", "search", "analysis", "recommendations"]
+      enableSearch: true
+      enableRecommendations: true
+      autoEmbedding: true
+      indexable: true
+    - name: "order"
+      features: ["embedding", "search", "analysis", "behavioral"]
+      enableSearch: true
+      enableRecommendations: false
+      autoEmbedding: true
+      indexable: true
+    - name: "user"
+      features: ["embedding", "search", "analysis", "behavioral"]
+      enableSearch: true
+      enableRecommendations: false
+      autoEmbedding: true
+      indexable: true

@@ -1,0 +1,77 @@
+# Production Configuration - Vector Database
+ai:
+  pii-detection:
+    enabled: true
+    mode: REDACT
+    store-encrypted-original: true
+    encryption-secret: ${PII_ENCRYPTION_SECRET:}
+
+  smart-suggestions:
+    enabled: true
+    min-confidence: ${AI_SMART_SUGGESTIONS_MIN_CONFIDENCE:0.70}
+    primary-confidence: ${AI_SMART_SUGGESTIONS_PRIMARY_CONFIDENCE:0.85}
+    retrieval-limit: ${AI_SMART_SUGGESTIONS_LIMIT:3}
+    retrieval-threshold: ${AI_SMART_SUGGESTIONS_THRESHOLD:0.55}
+
+  response-sanitization:
+    enabled: true
+    force-redaction: true
+    high-risk-warning-message: ${AI_RESPONSE_SANITIZATION_WARNING:SENSITIVE INFORMATION REMOVED.}
+    medium-risk-warning-message: ${AI_RESPONSE_SANITIZATION_MEDIUM_WARNING:PERSONAL INFORMATION REDACTED BEFORE DELIVERY.}
+    warning-enabled: ${AI_RESPONSE_SANITIZATION_WARNING_ENABLED:true}
+    warning-level-high-risk: ${AI_RESPONSE_SANITIZATION_WARNING_LEVEL_HIGH:BLOCK}
+    warning-level-medium-risk: ${AI_RESPONSE_SANITIZATION_WARNING_LEVEL_MEDIUM:WARN}
+    guidance-enabled: ${AI_RESPONSE_SANITIZATION_GUIDANCE_ENABLED:true}
+    guidance-message: ${AI_RESPONSE_SANITIZATION_GUIDANCE:Please route sensitive requests through secure support.}
+    suggestion-limit: ${AI_RESPONSE_SANITIZATION_SUGGESTION_LIMIT:3}
+    include-suggestion-metadata: ${AI_RESPONSE_SANITIZATION_SUGGESTION_METADATA:true}
+    publish-events: ${AI_RESPONSE_SANITIZATION_PUBLISH_EVENTS:true}
+
+  intent-history:
+    enabled: true
+    retention-days: ${AI_INTENT_HISTORY_RETENTION_DAYS:90}
+    cleanup-cron: ${AI_INTENT_HISTORY_CLEANUP_CRON:0 0 * * * *}
+    store-encrypted-query: ${AI_INTENT_HISTORY_STORE_ENCRYPTED_QUERY:true}
+
+  providers:
+    llm-provider: ${LLM_PROVIDER:openai}
+    embedding-provider: ${EMBEDDING_PROVIDER:openai}
+    enable-fallback: true
+
+    onnx:
+      enabled: ${ONNX_ENABLED:false}
+      model-path: ${ONNX_MODEL_PATH:classpath:/models/embeddings/all-MiniLM-L6-v2.onnx}
+      tokenizer-path: ${ONNX_TOKENIZER_PATH:classpath:/models/embeddings/tokenizer.json}
+      max-sequence-length: 512
+      use-gpu: ${ONNX_USE_GPU:false}
+      model-alias: all-MiniLM-L6-v2
+
+    openai:
+      enabled: ${OPENAI_ENABLED:true}
+      api-key: ${OPENAI_API_KEY:}
+      base-url: ${OPENAI_BASE_URL:https://api.openai.com/v1}
+      model: gpt-4o-mini
+      embedding-model: text-embedding-3-small
+      max-tokens: 2000
+      temperature: 0.3
+      timeout: 60
+      priority: 100
+  
+  vector-db:
+    type: pinecone
+    pinecone:
+      apiKey: ${PINECONE_API_KEY:}
+      environment: "us-east-1-aws"
+      indexName: "ai-infrastructure-prod"
+      dimensions: 1536
+      metric: "cosine"
+      pods: 2
+      podType: "p1"
+      enableMetadataFiltering: true
+
+# Logging configuration for production
+logging:
+  level:
+    com.ai.infrastructure.rag: INFO
+    com.ai.infrastructure.service.VectorManagementService: INFO
+    com.ai.infrastructure.service.AICapabilityService: INFO

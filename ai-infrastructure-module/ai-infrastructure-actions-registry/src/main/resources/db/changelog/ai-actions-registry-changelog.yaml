@@ -1,0 +1,180 @@
+databaseChangeLog:
+  - changeSet:
+      id: 2026-02-13-01-ai-actions-registry
+      author: ai-fabric
+      changes:
+        - createTable:
+            tableName: ai_connector_action
+            columns:
+              - column:
+                  name: id
+                  type: uuid
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: name
+                  type: varchar(128)
+                  constraints:
+                    nullable: false
+                    unique: true
+              - column:
+                  name: description
+                  type: varchar(1024)
+              - column:
+                  name: category
+                  type: varchar(128)
+              - column:
+                  name: access_mode
+                  type: varchar(32)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: requires_confirmation
+                  type: boolean
+                  constraints:
+                    nullable: false
+              - column:
+                  name: confirmation_message
+                  type: varchar(1024)
+              - column:
+                  name: created_at
+                  type: timestamp
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_at
+                  type: timestamp
+                  constraints:
+                    nullable: false
+
+        - createTable:
+            tableName: ai_connector_action_param
+            columns:
+              - column:
+                  name: id
+                  type: uuid
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: action_id
+                  type: uuid
+                  constraints:
+                    nullable: false
+              - column:
+                  name: sort_order
+                  type: int
+                  constraints:
+                    nullable: false
+              - column:
+                  name: name
+                  type: varchar(128)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: description
+                  type: varchar(1024)
+              - column:
+                  name: type
+                  type: varchar(64)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: required
+                  type: boolean
+                  constraints:
+                    nullable: false
+              - column:
+                  name: batch_targets
+                  type: boolean
+                  constraints:
+                    nullable: false
+              - column:
+                  name: pattern
+                  type: varchar(512)
+              - column:
+                  name: min_value
+                  type: bigint
+              - column:
+                  name: max_value
+                  type: bigint
+              - column:
+                  name: sensitive
+                  type: boolean
+                  constraints:
+                    nullable: false
+
+        - addForeignKeyConstraint:
+            baseTableName: ai_connector_action_param
+            baseColumnNames: action_id
+            referencedTableName: ai_connector_action
+            referencedColumnNames: id
+            constraintName: fk_ai_connector_action_param_action
+            onDelete: CASCADE
+
+        - createIndex:
+            tableName: ai_connector_action_param
+            indexName: idx_ai_connector_action_param_action_id
+            columns:
+              - column:
+                  name: action_id
+
+        - createTable:
+            tableName: ai_connector_action_param_allowed_values
+            columns:
+              - column:
+                  name: param_id
+                  type: uuid
+                  constraints:
+                    nullable: false
+              - column:
+                  name: value
+                  type: varchar(256)
+                  constraints:
+                    nullable: false
+
+        - addPrimaryKey:
+            tableName: ai_connector_action_param_allowed_values
+            columnNames: param_id, value
+            constraintName: pk_ai_connector_action_param_allowed_values
+
+        - addForeignKeyConstraint:
+            baseTableName: ai_connector_action_param_allowed_values
+            baseColumnNames: param_id
+            referencedTableName: ai_connector_action_param
+            referencedColumnNames: id
+            constraintName: fk_ai_connector_action_param_allowed_values_param
+            onDelete: CASCADE
+
+        - createIndex:
+            tableName: ai_connector_action_param_allowed_values
+            indexName: idx_ai_connector_action_param_allowed_values_param_id
+            columns:
+              - column:
+                  name: param_id
+
+  - changeSet:
+      id: 2026-04-11-02-ai-actions-registry-anonymous-allowed
+      author: ai-fabric
+      changes:
+        - addColumn:
+            tableName: ai_connector_action
+            columns:
+              - column:
+                  name: anonymous_allowed
+                  type: boolean
+                  defaultValueBoolean: false
+                  constraints:
+                    nullable: false
+
+  - changeSet:
+      id: 2026-05-16-01-ai-action-param-default-value
+      author: ai-fabric
+      changes:
+        - addColumn:
+            tableName: ai_connector_action_param
+            columns:
+              - column:
+                  name: default_value
+                  type: varchar(512)

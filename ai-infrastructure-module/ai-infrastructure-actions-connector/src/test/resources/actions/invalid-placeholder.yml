@@ -1,0 +1,12 @@
+actions:
+  - name: cancel_order
+    description: "Cancel order"
+    category: "test"
+    accessMode: WRITE_ONLY
+    requiresConfirmation: true
+    confirmationMessage: "Cancel {{orderRef}} for {{unknownParam}}?"
+    params:
+      - name: orderRef
+        type: STRING
+        required: true
+

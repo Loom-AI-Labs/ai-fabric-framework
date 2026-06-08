@@ -1,0 +1,40 @@
+package com.ai.infrastructure.intent.retrieval.connector.config;
+
+import com.ai.infrastructure.config.AIInfrastructureAutoConfiguration;
+import com.ai.infrastructure.intent.retrieval.connector.AIRetrievalConnectorProperties;
+import com.ai.infrastructure.intent.retrieval.connector.RetrievalConnectorRAGProvider;
+import com.ai.infrastructure.http.AIHttpClientFactory;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.boot.autoconfigure.AutoConfiguration;
+import org.springframework.boot.autoconfigure.AutoConfigureAfter;
+import org.springframework.boot.autoconfigure.AutoConfigureBefore;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Primary;
+
+import java.time.Clock;
+
+/**
+ * Auto-configuration for documents-only external retrieval via the Customer Connector API.
+ *
+ * <p>When enabled, this provides a {@link com.ai.infrastructure.spi.RAGProvider} implementation that calls
+ * {@code POST /retrieval/search} and returns documents/chunks only.</p>
+ */
+@AutoConfiguration
+@AutoConfigureAfter(AIInfrastructureAutoConfiguration.class)
+@AutoConfigureBefore(name = "com.ai.infrastructure.rag.config.RAGAutoConfiguration")
+@EnableConfigurationProperties(AIRetrievalConnectorProperties.class)
+@ConditionalOnProperty(prefix = "ai.retrieval.connector", name = "enabled", havingValue = "true")
+public class AIRetrievalConnectorAutoConfiguration {
+
+    @Bean
+    @Primary
+    public RetrievalConnectorRAGProvider retrievalConnectorRAGProvider(AIRetrievalConnectorProperties properties,
+                                                                       AIHttpClientFactory httpClientFactory,
+                                                                       ObjectProvider<ObjectMapper> objectMapperProvider,
+                                                                       Clock clock) {
+        return new RetrievalConnectorRAGProvider(properties, httpClientFactory, objectMapperProvider, clock);
+    }
+}

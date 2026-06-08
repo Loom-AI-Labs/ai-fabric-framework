@@ -1,0 +1,56 @@
+actions:
+  - name: get_policy
+    displayName: "Get Policy"
+    description: "Lookup policy text"
+    category: "test"
+    accessMode: READ
+    requiresConfirmation: false
+    anonymousAllowed: true
+    groundingEligible: true
+    readActionResolutionEligible: true
+    llmFacts:
+      rootPath: data
+      copyFields:
+        - query
+        - totalResults
+      lists:
+        - sourcePath: records
+          target: records
+          maxItems: 4
+          includeFields:
+            - name
+            - metadata.scoreValue
+          rankRules:
+            - type: PARAM_NUMERIC_UPPER_BOUND
+              field: scoreValue
+              paramPath: maxScore
+              scoreMatch: 100
+          constraints:
+            target: recordsConstraintMatches
+            countTarget: recordsConstraintMatchCount
+            includeFields:
+              - name
+              - scoreValue
+            rules:
+              - type: PARAM_NUMERIC_UPPER_BOUND
+                field: scoreValue
+                paramPath: maxScore
+          summaries:
+            - target: recordsScoreSummary
+              source: ALL
+              field: scoreValue
+              recordCountKey: scoredRecords
+              lowestValueKey: lowestScore
+              highestValueKey: highestScore
+              labelField: name
+              lowestLabelKey: lowestScoreName
+              highestLabelKey: highestScoreName
+    params:
+      - name: query
+        type: STRING
+        description: "Policy query"
+        required: true
+      - name: maxScore
+        type: NUMBER
+        description: "Maximum score filter"
+        required: false

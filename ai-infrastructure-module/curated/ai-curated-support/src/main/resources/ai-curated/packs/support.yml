@@ -1,0 +1,43 @@
+ai:
+  orchestration:
+    profile: PRODUCTION_CHAT
+    default-mode: support_assistant
+    modes:
+      support_assistant:
+        information-mode: DETERMINISTIC_RAG_GENERATE
+        actions-enabled: true
+        retrieval-enabled: true
+        deep-retrieval-enabled: false
+        suggestions-enabled: false
+        actions-preferred: true
+      support_deep:
+        information-mode: DETERMINISTIC_RAG_GENERATE
+        actions-enabled: false
+        retrieval-enabled: true
+        deep-retrieval-enabled: true
+        force-retrieval-when-targets-present: true
+        force-retrieval-consider-stored-targets: true
+        minimize-rag-when-pinned-targets-cover-request: false
+        rag-target-hint-enabled: true
+        rag:
+          fanout-enabled: true
+          max-spaces: 6
+          top-k-per-space: 8
+          max-documents-returned-to-client: 30
+          max-documents-used-for-context: 8
+          max-context-chars: 6000
+      support_operator:
+        information-mode: LLM_DRIVEN
+        actions-enabled: true
+        retrieval-enabled: true
+        deep-retrieval-enabled: false
+        suggestions-enabled: false
+        actions-preferred: true
+        knowledge-base-overview-enabled: false
+        retrieval-allowlist-required: false
+    position-routing:
+      landing: support_assistant
+      docs: support_assistant
+      support: support_assistant
+      troubleshooting: support_deep
+      operations: support_operator

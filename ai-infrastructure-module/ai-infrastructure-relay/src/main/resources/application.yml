@@ -1,0 +1,16 @@
+server:
+  port: 8081
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+
+relay:
+  auth:
+    hmac:
+      enabled: false
+    apiKey:
+      enabled: false
+

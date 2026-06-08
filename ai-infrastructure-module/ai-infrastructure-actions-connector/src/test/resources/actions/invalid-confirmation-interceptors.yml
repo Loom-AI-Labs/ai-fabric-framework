@@ -1,0 +1,30 @@
+actions:
+  - name: cancel_purchase_order
+    description: "Cancel a purchase order"
+    category: "test"
+    accessMode: WRITE_ONLY
+    requiresConfirmation: true
+    confirmationMessage: "Cancel this order?"
+    params:
+      - name: orderNumber
+        type: STRING
+        required: false
+
+  - name: list_orders
+    description: "List my orders"
+    category: "test"
+    accessMode: READ
+    requiresConfirmation: false
+    params:
+      - name: limit
+        type: INTEGER
+        required: false
+
+confirmationInterceptors:
+  - name: cancel_to_list_orders
+    trigger:
+      pendingActions: [cancel_purchase_order]
+      confirmation: CONFIRMATION_POSITIVE
+    decision:
+      type: PROMPT_ACTION
+      action: list_orders

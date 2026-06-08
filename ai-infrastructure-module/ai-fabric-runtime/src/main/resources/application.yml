@@ -1,0 +1,147 @@
+server:
+  port: ${PORT:8097}
+  forward-headers-strategy: framework
+
+spring:
+  application:
+    name: ai-fabric-runtime
+  datasource:
+    url: jdbc:h2:file:./data/ai-fabric-runtime.db
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+  jpa:
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
+
+ai:
+  enabled: true
+
+  # Demos/tests can opt in to allow-all policy hooks (do not use in production).
+  fabric:
+    runtime:
+      auth:
+        ingress:
+          mode: ${AI_FABRIC_RUNTIME_AUTH_INGRESS_MODE:VERIFIED_CONTEXT_REQUIRED}
+          reject-conflicting-request-identity: ${AI_FABRIC_RUNTIME_REJECT_CONFLICTING_REQUEST_IDENTITY:true}
+          reject-request-identity-when-verified-context-present: ${AI_FABRIC_RUNTIME_REJECT_REQUEST_IDENTITY_WHEN_VERIFIED_CONTEXT_PRESENT:true}
+          accepted-issuers: ${AI_FABRIC_RUNTIME_AUTH_ACCEPTED_ISSUERS:}
+          accepted-audiences: ${AI_FABRIC_RUNTIME_AUTH_ACCEPTED_AUDIENCES:}
+          trusted-backend:
+            api-key-header: ${AI_FABRIC_RUNTIME_TRUSTED_BACKEND_API_KEY_HEADER:X-AIFABRIC-RUNTIME-API-KEY}
+            api-key-value: ${AI_FABRIC_RUNTIME_TRUSTED_BACKEND_API_KEY:}
+          private-assertions:
+            authorization-header: ${AI_FABRIC_RUNTIME_PRIVATE_AUTHORIZATION_HEADER:X-AIFABRIC-RUNTIME-AUTHORIZATION}
+            token-scheme: ${AI_FABRIC_RUNTIME_PRIVATE_TOKEN_SCHEME:Bearer}
+            signing-key: ${AI_FABRIC_RUNTIME_PRIVATE_ASSERTION_SIGNING_KEY:}
+        public-tokens:
+          authorization-header: ${AI_FABRIC_RUNTIME_PUBLIC_AUTHORIZATION_HEADER:Authorization}
+          token-scheme: ${AI_FABRIC_RUNTIME_PUBLIC_TOKEN_SCHEME:Bearer}
+          signing-key: ${AI_FABRIC_RUNTIME_PUBLIC_TOKEN_SIGNING_KEY:}
+          issuer: ${AI_FABRIC_RUNTIME_PUBLIC_TOKEN_ISSUER:runtime-public-bootstrap}
+          accepted-issuers: ${AI_FABRIC_RUNTIME_PUBLIC_TOKEN_ACCEPTED_ISSUERS:}
+          accepted-audiences: ${AI_FABRIC_RUNTIME_PUBLIC_TOKEN_ACCEPTED_AUDIENCES:}
+          default-audience: ${AI_FABRIC_RUNTIME_PUBLIC_TOKEN_DEFAULT_AUDIENCE:}
+          ttl-seconds: ${AI_FABRIC_RUNTIME_PUBLIC_TOKEN_TTL_SECONDS:900}
+          bootstrap:
+            enabled: ${AI_FABRIC_RUNTIME_PUBLIC_BOOTSTRAP_ENABLED:false}
+            allow-missing-origin: ${AI_FABRIC_RUNTIME_PUBLIC_BOOTSTRAP_ALLOW_MISSING_ORIGIN:false}
+            allowed-origins: ${AI_FABRIC_RUNTIME_PUBLIC_BOOTSTRAP_ALLOWED_ORIGINS:}
+            max-requests-per-window: ${AI_FABRIC_RUNTIME_PUBLIC_BOOTSTRAP_MAX_REQUESTS_PER_WINDOW:30}
+            rate-limit-window-seconds: ${AI_FABRIC_RUNTIME_PUBLIC_BOOTSTRAP_RATE_LIMIT_WINDOW_SECONDS:60}
+          defaults:
+            deployment-id: ${AI_FABRIC_RUNTIME_DEPLOYMENT_ID:}
+            customer-id: ${AI_FABRIC_RUNTIME_CUSTOMER_ID:}
+            tenant-id: ${AI_FABRIC_RUNTIME_TENANT_ID:}
+      authz:
+        # Remote access control for runtime product deployments.
+        # Default base URL inherits ACTIONS_CONNECTOR_BASE_URL so runtime -> REST connector -> customer authz is easy to wire.
+        mode: ${AI_FABRIC_RUNTIME_AUTHZ_MODE:REMOTE_HTTP} # REMOTE_HTTP | ALLOW_VERIFIED | DENY_ALL
+        remote:
+          base-url: ${AUTHZ_BASE_URL:${ACTIONS_CONNECTOR_BASE_URL:}}
+          path: ${AUTHZ_PATH:/api/authz/check}
+          connect-timeout-ms: ${AUTHZ_CONNECT_TIMEOUT_MS:500}
+          timeout-ms: ${AUTHZ_TIMEOUT_MS:1500}
+          outbound-auth:
+            type: ${AUTHZ_OUTBOUND_AUTH_TYPE:INHERIT_ACTIONS_API_KEY} # NONE | API_KEY | INHERIT_ACTIONS_API_KEY
+            api-key-header: ${AUTHZ_API_KEY_HEADER:${ACTIONS_CONNECTOR_API_KEY_HEADER:X-AIFABRIC-API-KEY}}
+            api-key-value: ${AUTHZ_API_KEY:${ACTIONS_CONNECTOR_API_KEY:}}
+  config:
+    default-file: ai-entity-config.yml
+
+  chat:
+    enabled: true
+    window-size: 12
+    max-context-chars: 8000
+    auto-create-sessions: true
+
+  # Default OFF for privacy/noise in dev. Enable if you want analytics/auditing.
+  intent-history:
+    enabled: false
+
+  providers:
+    llm-provider: ${AI_PROVIDERS_LLM_PROVIDER:openai}
+    embedding-provider: ${AI_PROVIDERS_EMBEDDING_PROVIDER:openai}
+    openai:
+      enabled: ${OPENAI_ENABLED:false}
+      api-key: ${OPENAI_API_KEY:}
+      base-url: ${OPENAI_BASE_URL:https://api.openai.com/v1}
+      model: ${OPENAI_MODEL:gpt-4o-mini}
+      embedding-model: ${OPENAI_EMBEDDING_MODEL:text-embedding-3-small}
+      # Lucene supports up to 1024 dimensions.
+      embedding-dimensions: ${OPENAI_EMBEDDING_DIMENSIONS:512}
+      timeout: 45
+
+  service:
+    features:
+      enable-generation: ${AI_SERVICE_FEATURES_ENABLE_GENERATION:${OPENAI_ENABLED:false}}
+      enable-embeddings: ${AI_SERVICE_FEATURES_ENABLE_EMBEDDINGS:${OPENAI_ENABLED:false}}
+      enable-search: true
+      enable-rag: true
+
+  vector-db:
+    type: ${AI_VECTOR_DB_TYPE:lucene}
+    lucene:
+      # Include embedding dimensions in the path to avoid mixing different vector sizes in one Lucene index.
+      index-path: ./data/lucene-vector-index-${AI_VECTOR_DB_LUCENE_VECTOR_DIMENSION:${OPENAI_EMBEDDING_DIMENSIONS:512}}
+      vector-dimension: ${AI_VECTOR_DB_LUCENE_VECTOR_DIMENSION:${OPENAI_EMBEDDING_DIMENSIONS:512}}
+
+  # Push ingestion into the managed vector DB (requires embeddings enabled + vector DB configured).
+  data-sync:
+    enabled: true
+
+  # External retrieval connector is opt-in (documents-only).
+  retrieval:
+    connector:
+      enabled: false
+
+  # Connector-backed actions are opt-in: mount an action contract file or override AI_ACTIONS_CATALOG_PATH.
+  actions:
+    sources:
+      - path: ${AI_ACTIONS_CATALOG_PATH:file:/config/ai-actions.yml}
+        optional: true
+    connector:
+      base-url: ${ACTIONS_CONNECTOR_BASE_URL:}
+      api-key:
+        value: ${ACTIONS_CONNECTOR_API_KEY:}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+logging:
+  level:
+    com.ai.fabric.runtime: INFO
+    com.ai.infrastructure: INFO
+
+app:
+  cors:
+    # Example: CORS_ALLOWED_ORIGINS=https://my-ui.example.com
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:}
+    # Example: CORS_ALLOWED_ORIGIN_PATTERNS=https://*.my-ui.example.com
+    allowed-origin-patterns: ${CORS_ALLOWED_ORIGIN_PATTERNS:}
+    # Example: CORS_ALLOW_CREDENTIALS=true (only if you need cookies/session auth from the browser)
+    allow-credentials: ${CORS_ALLOW_CREDENTIALS:false}

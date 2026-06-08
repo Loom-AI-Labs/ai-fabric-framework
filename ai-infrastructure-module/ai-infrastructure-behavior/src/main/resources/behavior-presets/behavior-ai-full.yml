@@ -1,0 +1,21 @@
+ai-entities:
+  behavior-insight:
+    auto-embedding: true
+    indexable: true
+    features: ["embedding", "search", "analysis"]
+    searchable-fields:
+      - name: segment
+        weight: 2.0
+      - name: patterns
+        weight: 1.5
+    metadata-fields:
+      - name: segment
+        type: string
+        include-in-search: true
+      - name: confidence
+        type: double
+        include-in-search: true
+    crud-operations:
+      create:
+        generate-embedding: true
+        index-for-search: true

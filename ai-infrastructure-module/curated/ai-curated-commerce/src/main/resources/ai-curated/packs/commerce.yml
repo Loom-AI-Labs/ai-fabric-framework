@@ -1,0 +1,167 @@
+ai:
+  prompts:
+    bundle:
+      overlays:
+        - v1-commerce
+  orchestration:
+    profile: PRODUCTION_CHAT
+    always-generate-information: true
+    default-mode: navigator
+    modes:
+      navigator:
+        information-mode: DETERMINISTIC_RAG_GENERATE
+        actions-preferred: true
+        force-grounding-eligible-read-action-post-generation: true
+      navigator_deep:
+        information-mode: DETERMINISTIC_RAG_GENERATE
+        use-advanced-rag: true
+        actions-enabled: false
+        retrieval-enabled: true
+        deep-retrieval-enabled: true
+        # Deep mode should retrieve across spaces even when targets are pinned (reviews/policies).
+        force-retrieval-when-targets-present: true
+        force-retrieval-consider-stored-targets: true
+        # Disable the deterministic "minimize RAG" skip heuristic in deep mode.
+        minimize-rag-when-pinned-targets-cover-request: false
+        # Enable bounded pinned-target evidence expansion for embedding queries in deep mode.
+        # See: Final_Documentation/Development_Guides/RAG_EMBEDDING_QUERY_COMPOSITION_GUIDE.md
+        rag-target-hint-enabled: true
+        force-grounding-eligible-read-action-post-generation: true
+        rag:
+          fanout-enabled: true
+          max-spaces: 6
+          top-k-per-space: 8
+          max-documents-returned-to-client: 30
+          max-documents-used-for-context: 8
+          max-context-chars: 6000
+        read-action-resolution:
+          enabled: true
+          planning-mode: SINGLE_PASS
+          require-allowlist: true
+          allowed-read-actions:
+            - commerce_search_catalog
+            - commerce_get_product_details
+            - commerce_search_policies
+            - commerce_get_cart
+            - commerce_get_customer_context_summary
+            - commerce_get_most_recent_order_status
+            - commerce_get_order_status
+            - commerce_get_store_credit_balances
+          max-actions-per-iteration: 2
+          max-total-actions: 2
+          max-parallel-actions: 1
+          rag-cooperation-mode: RAG_IF_ACTIONS_INSUFFICIENT
+          require-grounding-eligible: true
+      executor:
+        information-mode: LLM_DRIVEN
+        actions-enabled: true
+        retrieval-enabled: true
+        deep-retrieval-enabled: false
+        suggestions-enabled: false
+        actions-preferred: true
+        force-grounding-eligible-read-action-post-generation: true
+        knowledge-base-overview-enabled: false
+        retrieval-allowlist-required: true
+        rag:
+          max-documents-returned-to-client: 10
+          max-documents-used-for-context: 5
+          max-context-chars: 4000
+          retrieval-vector-spaces-allowlist:
+            - policy
+        read-action-resolution:
+          enabled: true
+          planning-mode: SINGLE_PASS
+          require-allowlist: true
+          allowed-read-actions:
+            - commerce_search_catalog
+            - commerce_get_cart
+            - commerce_get_customer_context_summary
+            - commerce_get_most_recent_order_status
+            - commerce_get_order_status
+            - commerce_get_store_credit_balances
+          max-actions-per-iteration: 2
+          max-total-actions: 2
+          max-parallel-actions: 1
+          rag-cooperation-mode: RAG_IF_ACTIONS_INSUFFICIENT
+          require-grounding-eligible: true
+      cart_assistant:
+        information-mode: LLM_DRIVEN
+        # In cart flows, prefer ACTION intents (e.g., list_orders) over generic RAG answers.
+        actions-preferred: true
+        force-grounding-eligible-read-action-post-generation: true
+        read-action-resolution:
+          enabled: true
+          planning-mode: SINGLE_PASS
+          require-allowlist: true
+          allowed-read-actions:
+            - commerce_search_catalog
+            - commerce_get_cart
+            - commerce_get_customer_context_summary
+            - commerce_get_most_recent_order_status
+            - commerce_get_order_status
+            - commerce_get_store_credit_balances
+          max-actions-per-iteration: 2
+          max-total-actions: 2
+          max-parallel-actions: 1
+          rag-cooperation-mode: RAG_IF_ACTIONS_INSUFFICIENT
+          require-grounding-eligible: true
+      resolver_assistant:
+        information-mode: LLM_DRIVEN
+        actions-enabled: false
+        retrieval-enabled: true
+        suggestions-enabled: false
+        actions-preferred: false
+        force-grounding-eligible-read-action-post-generation: true
+        knowledge-base-overview-enabled: true
+        read-action-resolution:
+          enabled: true
+          planning-mode: SINGLE_PASS
+          require-allowlist: true
+          allowed-read-actions:
+            - commerce_search_catalog
+            - commerce_get_product_details
+            - commerce_search_policies
+            - commerce_get_cart
+            - commerce_get_customer_context_summary
+            - commerce_get_most_recent_order_status
+            - commerce_get_order_status
+            - commerce_get_store_credit_balances
+          max-actions-per-iteration: 2
+          max-total-actions: 2
+          max-parallel-actions: 1
+          rag-cooperation-mode: RAG_IF_ACTIONS_INSUFFICIENT
+          require-grounding-eligible: true
+      thinker:
+        information-mode: LLM_DRIVEN
+        actions-enabled: false
+        retrieval-enabled: true
+        deep-retrieval-enabled: true
+        force-retrieval-when-targets-present: true
+        force-retrieval-consider-stored-targets: true
+        minimize-rag-when-pinned-targets-cover-request: false
+        rag-target-hint-enabled: true
+        force-grounding-eligible-read-action-post-generation: true
+        read-action-resolution:
+          enabled: true
+          planning-mode: ITERATIVE
+          require-allowlist: true
+          allowed-read-actions:
+            - commerce_search_catalog
+            - commerce_get_product_details
+            - commerce_search_policies
+            - commerce_get_cart
+            - commerce_get_customer_context_summary
+            - commerce_get_most_recent_order_status
+            - commerce_get_order_status
+            - commerce_get_store_credit_balances
+          max-iterations: 2
+          max-actions-per-iteration: 2
+          max-total-actions: 3
+          max-parallel-actions: 1
+          rag-cooperation-mode: PARALLEL_ACTIONS_AND_RAG
+          require-grounding-eligible: true
+    position-routing:
+      landing: navigator
+      catalog: navigator
+      search: navigator
+      cart: cart_assistant

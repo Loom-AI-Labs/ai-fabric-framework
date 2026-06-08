@@ -1,0 +1,60 @@
+# Maven target directory
+target/
+**/target/
+
+# IDE files
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+.settings/
+.project
+.classpath
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+*.tmp
+*.temp
+
+# Lucene Vector Database Index Files (generated at runtime)
+data/
+**/data/lucene-vector-index/
+**/data/test-lucene-index/
+**/data/test-lucene-vector-index/
+*.cfe
+*.cfs
+*.si
+*.fdm
+*.fdt
+*.fdx
+*.fnm
+*.nvd
+*.nvm
+*.doc
+*.pos
+*.tim
+*.tip
+*.tmd
+segments_*
+write.lock
+*.lock
+
+# Local model/download caches and runtime assets
+models/
+**/models/embeddings/*.onnx
+**/models/embeddings/tokenizer.json
+**/models/**/.cache/
+**/.cache/

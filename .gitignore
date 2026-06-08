@@ -1,0 +1,60 @@
+# Maven
+target/
+**/target/
+
+# IDE
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+.settings/
+.project
+.classpath
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment and secrets
+.env
+.env.*
+*.secret
+*.key
+*.pem
+
+# Logs and temp files
+*.log
+logs/
+*.tmp
+*.temp
+tmp/
+
+# Runtime data and vector indexes
+data/
+**/data/
+*.cfe
+*.cfs
+*.si
+*.fdm
+*.fdt
+*.fdx
+*.fnm
+*.nvd
+*.nvm
+*.doc
+*.pos
+*.tim
+*.tip
+*.tmd
+segments_*
+write.lock
+*.lock
+
+# Local model/download caches and runtime assets
+/models/
+ai-infrastructure-module/models/
+**/models/embeddings/*.onnx
+**/models/embeddings/tokenizer.json
+**/models/**/.cache/
+**/.cache/

@@ -1,0 +1,26 @@
+ai-config:
+  default-embedding-model: text-embedding-3-small
+  default-search-limit: 10
+
+ai-entities:
+  document:
+    features:
+      - embedding
+      - search
+    searchable-fields:
+      - name: title
+        include-in-rag: true
+  product:
+    features:
+      - embedding
+      - search
+    searchable-fields:
+      - name: name
+        include-in-rag: true
+  transaction:
+    features:
+      - embedding
+      - search
+    searchable-fields:
+      - name: title
+        include-in-rag: true

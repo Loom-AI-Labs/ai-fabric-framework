@@ -1,0 +1,9 @@
+ai-entities:
+  behavior-insight:
+    auto-embedding: false
+    indexable: false
+    features: ["analysis"]
+    crud-operations:
+      create:
+        generate-embedding: false
+        index-for-search: false

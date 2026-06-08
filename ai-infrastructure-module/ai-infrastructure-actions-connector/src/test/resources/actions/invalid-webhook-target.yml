@@ -1,0 +1,8 @@
+actions:
+  - name: create_purchase_order
+    description: "Create a purchase order"
+    accessMode: WRITE_ONLY
+    postPolicies:
+      - type: webhook
+        targetRef: missing_target
+        eventType: purchase_order.created
