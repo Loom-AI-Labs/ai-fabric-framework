@@ -1,0 +1,103 @@
+server:
+  port: ${PORT:8096}
+  forward-headers-strategy: framework
+
+spring:
+  application:
+    name: chat-capabilities-demo
+  datasource:
+    url: jdbc:h2:file:./data/chat-capabilities.db
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+  jpa:
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
+
+ai:
+  enabled: true
+  config:
+    default-file: ai-entity-config.yml
+
+  curated:
+    pack: commerce
+
+  orchestration:
+    rag:
+      target-hint:
+        enabled: false # keep global OFF; enable per-mode below
+        metadata-keys-allowlist: # optional (explicit domain choice)
+          - sku
+          - name
+          - title
+          - category
+          - brand
+    modes:
+      navigator:
+        rag-target-hint-enabled: true
+      cart_assistant:
+        # If a READ action returns an empty successful payload and the orchestrator falls back to RAG,
+        # include a structured `metadata.readProbe` block to make the attempted action visible to the UI/logs.
+        expose-read-probe-fallback-attempt: true
+      executor:
+        expose-read-probe-fallback-attempt: true
+
+  chat:
+    enabled: true
+    window-size: 12
+    max-context-chars: 8000
+    auto-create-sessions: true
+
+  providers:
+    llm-provider: openai
+    embedding-provider: openai
+    openai:
+      enabled: ${OPENAI_ENABLED:false}
+      api-key: ${OPENAI_API_KEY:}
+      base-url: ${OPENAI_BASE_URL:https://api.openai.com/v1}
+      model: ${OPENAI_MODEL:gpt-4o-mini}
+      embedding-model: ${OPENAI_EMBEDDING_MODEL:text-embedding-3-small}
+      # Lucene supports max 1024 dimensions; OpenAI defaults to 1536 for text-embedding-3-small.
+      embedding-dimensions: ${OPENAI_EMBEDDING_DIMENSIONS:512}
+      timeout: 45
+
+  vector-db:
+    type: lucene
+    lucene:
+      # Include embedding dimensions in the path to avoid mixing different vector sizes in one Lucene index.
+      index-path: ./data/lucene-vector-index-${OPENAI_EMBEDDING_DIMENSIONS:512}
+
+  indexing:
+    enabled: true
+    async-worker:
+      enabled: true
+      fixed-delay: PT0.5S
+      batch-size: 25
+
+  service:
+    features:
+      enable-generation: ${OPENAI_ENABLED:false}
+      enable-embeddings: ${OPENAI_ENABLED:false}
+      enable-search: true
+      enable-rag: true
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+logging:
+  level:
+    com.ai.fabric.realapps.chat: INFO
+    com.ai.infrastructure: INFO
+
+app:
+  cors:
+    # Example: CORS_ALLOWED_ORIGINS=https://ai-fabric.dev
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:}
+    # Example: CORS_ALLOWED_ORIGIN_PATTERNS=https://ai-fabric.dev,https://*.lovable.app
+    allowed-origin-patterns: ${CORS_ALLOWED_ORIGIN_PATTERNS:}
+    # Example: CORS_ALLOW_CREDENTIALS=true (only if you need cookies/session auth from the browser)
+    allow-credentials: ${CORS_ALLOW_CREDENTIALS:false}

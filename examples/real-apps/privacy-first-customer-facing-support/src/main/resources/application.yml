@@ -1,0 +1,40 @@
+server:
+  port: ${PORT:8093}
+
+spring:
+  application:
+    name: privacy-first-customer-facing-support
+  datasource:
+    url: jdbc:h2:mem:privacy_support;DB_CLOSE_DELAY=-1;MODE=PostgreSQL
+    driverClassName: org.h2.Driver
+    username: sa
+    password:
+  jpa:
+    hibernate:
+      ddl-auto: update
+    properties:
+      hibernate:
+        format_sql: false
+    open-in-view: false
+
+ai:
+  vector-db:
+    type: false
+  service:
+    features:
+      enable-embeddings: false
+      enable-search: false
+      enable-rag: false
+      enable-generation: false
+  pii-detection:
+    enabled: true
+    mode: ${AI_PII_MODE:REDACT}
+    detection-direction: ${AI_PII_DETECTION_DIRECTION:INPUT_OUTPUT}
+    store-encrypted-original: ${AI_PII_STORE_ENCRYPTED_ORIGINAL:true}
+    encryption-secret: ${AI_PII_ENCRYPTION_SECRET:}
+    audit-logging-enabled: ${AI_PII_AUDIT_LOGGING_ENABLED:true}
+
+logging:
+  level:
+    root: INFO
+    com.ai.infrastructure.privacy.pii: INFO

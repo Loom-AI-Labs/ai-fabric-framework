@@ -1,0 +1,40 @@
+@baseUrl = http://localhost:8080
+
+### Health
+GET {{baseUrl}}/actuator/health
+
+### Swagger UI
+GET {{baseUrl}}/swagger-ui.html
+
+### List seeded plans
+GET {{baseUrl}}/api/subscriptions/plans
+
+### Re-index plans (config-first, explicit trigger)
+POST {{baseUrl}}/api/demo/indexing/reindex/plans
+
+### AI plan recommendation (returns scores + hydrated plans)
+GET {{baseUrl}}/api/subscriptions/plans/ai/search?q=team%20collaboration%20api%20access%20analytics&limit=3
+
+### App-level plan search endpoint (returns only plans)
+POST {{baseUrl}}/api/subscriptions/plans/search?query=priority%20support%20large%20organization&limit=3
+
+### Debug: show which AI/indexing beans are active
+GET {{baseUrl}}/api/ai/debug/indexing/components
+
+### Debug: mutate + index + search end-to-end
+POST {{baseUrl}}/api/ai/debug/indexing/demo?mode=sync
+
+### Guest login (returns numeric userId + UUID)
+POST {{baseUrl}}/api/auth/guest/login
+
+### Natural language orchestration (position-aware: support)
+POST {{baseUrl}}/api/subscriptions/query
+Content-Type: application/json
+
+{
+  "userId": "1",
+  "sessionId": "subhub-session-1",
+  "conversationId": "chat-subhub-1",
+  "position": "support",
+  "query": "Which subscription plan is best for a small team that needs API access and analytics?"
+}

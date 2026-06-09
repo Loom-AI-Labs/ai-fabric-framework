@@ -71,3 +71,9 @@ jobs:
           mvn ${MAVEN_ARGS} -f examples/minimal-spring-boot/pom.xml \
             -DskipTests \
             compile
+
+      - name: Compile real apps suite
+        run: |
+          mvn ${MAVEN_ARGS} -f examples/real-apps/pom.xml \
+            -DskipTests \
+            compile

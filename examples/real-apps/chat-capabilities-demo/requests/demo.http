@@ -1,0 +1,118 @@
+@baseUrl = http://localhost:8096
+
+### Health
+GET {{baseUrl}}/actuator/health
+
+### Swagger UI
+GET {{baseUrl}}/swagger-ui/index.html
+
+### Create a product (sync indexing on create when OPENAI_ENABLED=true)
+POST {{baseUrl}}/api/products
+Content-Type: application/json
+
+{
+  "sku": "SKU-0001",
+  "name": "Premium Wireless Headphones",
+  "description": "Noise-cancelling over-ear headphones with 30h battery life. Great for travel and office use.",
+  "category": "Headphones",
+  "tags": "wireless,noise-cancelling,audio",
+  "price": 199.99,
+  "currency": "USD",
+  "inStockQty": 25
+}
+
+### Create another product
+POST {{baseUrl}}/api/products
+Content-Type: application/json
+
+{
+  "sku": "SKU-0002",
+  "name": "Compact Mechanical Keyboard",
+  "description": "65% mechanical keyboard with hot-swappable switches and Bluetooth connectivity.",
+  "category": "Keyboards",
+  "tags": "mechanical,compact,bluetooth",
+  "price": 129.00,
+  "currency": "USD",
+  "inStockQty": 40
+}
+
+### Search products (vector search)
+GET {{baseUrl}}/api/products/search?q=wireless%20headphones&limit=5&threshold=0.3
+
+### Chat (RAG) - requires OPENAI_ENABLED=true + OPENAI_API_KEY
+POST {{baseUrl}}/api/chat/query
+Content-Type: application/json
+
+{
+  "userId": "user-1",
+  "sessionId": "user-1-session",
+  "conversationId": "chat-user-1",
+  "position": "landing",
+  "query": "I'm looking for wireless headphones under $250. Recommend options from the catalog and explain briefly."
+}
+
+### Chat (RAG deep) - forces navigator_deep (ignore position routing)
+POST {{baseUrl}}/api/chat/query
+Content-Type: application/json
+
+{
+  "userId": "user-1",
+  "sessionId": "user-1-session",
+  "conversationId": "chat-user-1",
+  "mode": "navigator_deep",
+  "query": "I need deep info: show alternatives, common complaints, and any related policies for returns."
+}
+
+### Chat (ACTION) create purchase order - requires OPENAI_ENABLED=true + OPENAI_API_KEY
+POST {{baseUrl}}/api/chat/query
+Content-Type: application/json
+
+{
+  "userId": "user-1",
+  "sessionId": "user-1-session",
+  "conversationId": "chat-user-1",
+  "position": "cart",
+  "query": "Create a purchase order for sku SKU-0001 quantity 2, ship to 1 Market St, San Francisco, CA 94105, email alice@example.com."
+}
+
+### Chat (EXECUTOR) policy lookup - executor restricts retrieval to allowlisted vectorSpace(s)
+POST {{baseUrl}}/api/chat/query
+Content-Type: application/json
+
+{
+  "userId": "user-1",
+  "sessionId": "user-1-session",
+  "conversationId": "chat-user-1",
+  "mode": "executor",
+  "query": "What is the refund policy?"
+}
+
+### Chat (ACTION) add to cart using attachments (deterministic target resolution)
+POST {{baseUrl}}/api/chat/query
+Content-Type: application/json
+
+{
+  "userId": "user-1",
+  "sessionId": "user-1-session",
+  "conversationId": "chat-user-1",
+  "position": "cart",
+  "query": "Add it to my cart",
+  "attachments": [
+    {
+      "id": "SKU-0002",
+      "vectorSpace": "product",
+      "contentText": "Compact Mechanical Keyboard - 65% mechanical keyboard with Bluetooth connectivity.",
+      "metadata": {
+        "sku": "SKU-0002",
+        "category": "Keyboards"
+      },
+      "source": "ui-card"
+    }
+  ]
+}
+
+### List orders for the user
+GET {{baseUrl}}/api/orders?userId=user-1
+
+### Inspect stored conversation (ownerId = userId when authenticated)
+GET {{baseUrl}}/api/chat/conversations/chat-user-1?ownerId=user-1

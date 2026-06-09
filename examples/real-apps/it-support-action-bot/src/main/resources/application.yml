@@ -1,0 +1,56 @@
+server:
+  port: ${PORT:8082}
+
+spring:
+  application:
+    name: it-support-action-bot
+  datasource:
+    url: jdbc:h2:file:./data/it-support.db
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: false
+
+ai:
+  enabled: true
+
+  # Provider-only scenario:
+  # - No vector DB, no embeddings, no search, no indexing.
+  vector-db:
+    type: false
+  service:
+    features:
+      enable-embeddings: false
+      enable-search: false
+
+  infrastructure:
+    rag:
+      enabled: false
+      advanced:
+        enabled: false
+
+  providers:
+    llm-provider: openai
+    openai:
+      enabled: ${OPENAI_ENABLED:false}
+      api-key: ${OPENAI_API_KEY:}
+      base-url: ${OPENAI_BASE_URL:https://api.openai.com/v1}
+      model: ${OPENAI_MODEL:gpt-4o-mini}
+      timeout: 45
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+logging:
+  level:
+    com.ai.fabric.realapps.itsupport: INFO
+    com.ai.infrastructure: INFO

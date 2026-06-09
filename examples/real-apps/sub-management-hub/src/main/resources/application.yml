@@ -1,0 +1,54 @@
+spring:
+  application:
+    name: subscription-management-hub
+  datasource:
+    url: jdbc:h2:file:./data/subscriptiondb
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+
+  h2:
+    console:
+      enabled: true
+      path: /h2-console
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+
+server:
+  port: ${PORT:8081}
+
+ai:
+  config:
+    default-file: ai-entity-config.yml
+
+  providers:
+    llm-provider: cohere
+    embedding-provider: simple
+
+    cohere:
+      enabled: ${COHERE_ENABLED:false}
+      api-key: ${COHERE_API_KEY:}
+      base-url: https://api.cohere.ai/v1
+      model: command-r-plus
+
+  vector-db:
+    type: lucene
+
+  behavior:
+    enabled: false
+    mode: LIGHT
+
+  pii-detection:
+    enabled: false
+    mode: DETECT_ONLY
+
+logging:
+  level:
+    com.subscription.hub: DEBUG
+    com.ai.infrastructure: INFO

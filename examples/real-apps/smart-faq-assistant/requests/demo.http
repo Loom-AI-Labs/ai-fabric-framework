@@ -1,0 +1,23 @@
+### 1) Seed sample FAQ articles + index them
+POST http://localhost:8094/api/demo/seed
+Content-Type: application/json
+
+{}
+
+### 2) Semantic search (offline: deterministic local embeddings + Lucene)
+GET http://localhost:8094/api/faq/search?q=cancel%20subscription&limit=5
+
+### 3) Ask (defaults to SEARCH_ONLY unless generation is enabled + provider configured)
+POST http://localhost:8094/api/faq/ask
+Content-Type: application/json
+
+{
+  "question": "How can I cancel my subscription and will I get a refund?",
+  "limit": 5
+}
+
+### 4) Reindex everything (useful after manual edits)
+POST http://localhost:8094/api/demo/indexing/reindex/articles
+Content-Type: application/json
+
+{}

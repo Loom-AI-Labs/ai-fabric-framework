@@ -1,0 +1,41 @@
+server:
+  port: ${PORT:8097}
+
+spring:
+  application:
+    name: behavior-churn-signals
+  datasource:
+    url: jdbc:h2:mem:behavior_signals;MODE=PostgreSQL;DATABASE_TO_UPPER=false;DEFAULT_NULL_ORDERING=HIGH;DB_CLOSE_DELAY=-1
+    driverClassName: org.h2.Driver
+    username: sa
+    password:
+  jpa:
+    hibernate:
+      ddl-auto: none
+    open-in-view: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+  sql:
+    init:
+      mode: always
+
+ai:
+  vector-db:
+    type: false
+  service:
+    features:
+      enable-embeddings: false
+      enable-search: false
+      enable-generation: true
+  providers:
+    llm-provider: behavior-stub
+  behavior:
+    enabled: true
+    mode: LIGHT
+
+logging:
+  level:
+    com.ai.fabric.realapps.behavior: INFO
+    com.ai.infrastructure.behavior: INFO
+    com.ai.infrastructure: INFO

@@ -1,0 +1,86 @@
+### Domain API — local smoke requests
+@baseUrl = http://localhost:8096
+@userId = user-1
+@sessionId = user-1-session
+@conversationId = chat-user-1
+
+### Health
+GET {{baseUrl}}/actuator/health
+
+### Swagger UI (open in browser)
+# {{baseUrl}}/swagger-ui/index.html
+
+### Create a product
+POST {{baseUrl}}/api/products
+Content-Type: application/json
+
+{
+  "sku": "SKU-0001",
+  "name": "Premium Wireless Headphones",
+  "description": "Noise-cancelling over-ear headphones with 30h battery life. Great for travel and office use.",
+  "category": "Headphones",
+  "tags": "wireless,noise-cancelling,audio",
+  "price": 199.99,
+  "currency": "USD",
+  "inStockQty": 25
+}
+
+### Create another product
+POST {{baseUrl}}/api/products
+Content-Type: application/json
+
+{
+  "sku": "SKU-0002",
+  "name": "Compact Mechanical Keyboard",
+  "description": "65% mechanical keyboard with hot-swappable switches and Bluetooth connectivity.",
+  "category": "Keyboards",
+  "tags": "mechanical,compact,bluetooth",
+  "price": 129.00,
+  "currency": "USD",
+  "inStockQty": 40
+}
+
+### Search products (deterministic; runtime owns vector search)
+GET {{baseUrl}}/api/products/search?q=wireless%20headphones&limit=5&threshold=0.3
+
+### Create a policy (domain data; runtime owns RAG)
+POST {{baseUrl}}/api/policies
+Content-Type: application/json
+
+{
+  "title": "Refund Policy",
+  "text": "Returns accepted within 30 days of delivery with receipt. Items must be in original condition. Refunds issued to original payment method within 5-10 business days after inspection.",
+  "classification": "refund"
+}
+
+### Create a review (domain data; runtime owns vector indexing)
+POST {{baseUrl}}/api/reviews
+Content-Type: application/json
+
+{
+  "userId": "{{userId}}",
+  "sku": "SKU-0001",
+  "rating": 4,
+  "text": "Great sound and ANC. Very comfortable for long flights."
+}
+
+### List orders for the user (domain API)
+GET {{baseUrl}}/api/orders?userId=user-1
+
+### Reset demo data (UI maintenance)
+POST {{baseUrl}}/api/admin/demo/reset
+Content-Type: application/json
+
+{
+  "confirm": true,
+  "clearConnectorData": true,
+  "clearRuntimeVectors": true
+}
+
+### Clear demo data (eventful; relies on delete-index events)
+POST {{baseUrl}}/api/admin/demo/clear
+Content-Type: application/json
+
+{
+  "confirm": true
+}

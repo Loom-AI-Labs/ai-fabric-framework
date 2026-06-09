@@ -1,0 +1,164 @@
+### AI Fabric Runtime + Customer Connector — local demo requests
+@runtimeBaseUrl = http://localhost:8097
+@connectorBaseUrl = http://localhost:8096
+@userId = user-1
+@sessionId = user-1-session
+@conversationId = chat-user-1
+
+### Health (Runtime)
+GET {{runtimeBaseUrl}}/actuator/health
+
+### Swagger UI (open in browser)
+# Runtime: {{runtimeBaseUrl}}/swagger-ui/index.html
+# Connector: {{connectorBaseUrl}}/swagger-ui/index.html
+
+### Data Sync: list vector spaces
+GET {{runtimeBaseUrl}}/api/ai/data-sync/vector-spaces
+
+### NOTE
+# Data Sync + Chat require an embeddings/LLM provider (e.g. OpenAI).
+# For Docker Compose, set:
+#   export OPENAI_ENABLED=true
+#   export OPENAI_API_KEY="..."
+# Then restart the stack.
+
+### Data Sync: upsert product SKU-0001 into vector space "product"
+POST {{runtimeBaseUrl}}/api/ai/data-sync/upsert
+Content-Type: application/json
+
+{
+  "vectorSpace": "product",
+  "id": "SKU-0001",
+  "entity": {
+    "sku": "SKU-0001",
+    "name": "Premium Wireless Headphones",
+    "description": "Noise-cancelling over-ear headphones with 30h battery life. Great for travel and office use.",
+    "category": "Headphones",
+    "tags": "wireless,noise-cancelling,audio",
+    "price": 199.99,
+    "currency": "USD",
+    "inStockQty": 25
+  },
+  "trace": { "requestId": "seed-1", "userId": "seed-service", "sessionId": "seed-session" }
+}
+
+### Data Sync: upsert product SKU-0002 into vector space "product"
+POST {{runtimeBaseUrl}}/api/ai/data-sync/upsert
+Content-Type: application/json
+
+{
+  "vectorSpace": "product",
+  "id": "SKU-0002",
+  "entity": {
+    "sku": "SKU-0002",
+    "name": "Compact Mechanical Keyboard",
+    "description": "65% mechanical keyboard with hot-swappable switches and Bluetooth connectivity.",
+    "category": "Keyboards",
+    "tags": "mechanical,compact,bluetooth",
+    "price": 129.00,
+    "currency": "USD",
+    "inStockQty": 40
+  },
+  "trace": { "requestId": "seed-2", "userId": "seed-service", "sessionId": "seed-session" }
+}
+
+### Data Sync: upsert a refund policy into vector space "policy"
+POST {{runtimeBaseUrl}}/api/ai/data-sync/upsert
+Content-Type: application/json
+
+{
+  "vectorSpace": "policy",
+  "id": "policy-1",
+  "entity": {
+    "title": "Refund Policy",
+    "text": "Returns accepted within 30 days of delivery with receipt. Items must be in original condition. Refunds issued to original payment method within 5-10 business days after inspection.",
+    "classification": "refund"
+  },
+  "trace": { "requestId": "seed-3", "userId": "seed-service", "sessionId": "seed-session" }
+}
+
+### Data Sync: upsert a review into vector space "review"
+POST {{runtimeBaseUrl}}/api/ai/data-sync/upsert
+Content-Type: application/json
+
+{
+  "vectorSpace": "review",
+  "id": "review-1",
+  "entity": {
+    "userId": "{{userId}}",
+    "sku": "SKU-0001",
+    "rating": 4,
+    "text": "Great sound and ANC. Very comfortable for long flights."
+  },
+  "trace": { "requestId": "seed-4", "userId": "seed-service", "sessionId": "seed-session" }
+}
+
+### Chat: RAG + actions (catalog recommendation)
+POST {{runtimeBaseUrl}}/api/chat/query
+Content-Type: application/json
+
+{
+  "userId": "{{userId}}",
+  "sessionId": "{{sessionId}}",
+  "conversationId": "{{conversationId}}",
+  "position": "landing",
+  "query": "I'm looking for wireless headphones under $250. Recommend options from the catalog and explain briefly."
+}
+
+### Chat: policy lookup (executor mode)
+POST {{runtimeBaseUrl}}/api/chat/query
+Content-Type: application/json
+
+{
+  "userId": "{{userId}}",
+  "sessionId": "{{sessionId}}",
+  "conversationId": "{{conversationId}}",
+  "mode": "executor",
+  "query": "What is the refund policy?"
+}
+
+### Chat: action using attachment (deterministic target resolution)
+POST {{runtimeBaseUrl}}/api/chat/query
+Content-Type: application/json
+
+{
+  "userId": "{{userId}}",
+  "sessionId": "{{sessionId}}",
+  "conversationId": "{{conversationId}}",
+  "position": "cart",
+  "query": "Add it to my cart",
+  "attachments": [
+    {
+      "id": "SKU-0001",
+      "vectorSpace": "product",
+      "contentText": "Premium Wireless Headphones",
+      "metadata": { "sku": "SKU-0001", "category": "Headphones" },
+      "source": "ui-card"
+    }
+  ]
+}
+
+### Chat: confirm (when the runtime asks for confirmation for a write action)
+POST {{runtimeBaseUrl}}/api/chat/query
+Content-Type: application/json
+
+{
+  "userId": "{{userId}}",
+  "sessionId": "{{sessionId}}",
+  "conversationId": "{{conversationId}}",
+  "position": "cart",
+  "query": "Yes, confirm"
+}
+
+### Chat: suggestions (UI helper)
+POST {{runtimeBaseUrl}}/api/chat/suggestions
+Content-Type: application/json
+
+{
+  "userId": "{{userId}}",
+  "content": "I want to buy headphones",
+  "maxSuggestions": 5
+}
+
+### Conversations (runtime persistence)
+GET {{runtimeBaseUrl}}/api/chat/conversations?ownerId={{userId}}

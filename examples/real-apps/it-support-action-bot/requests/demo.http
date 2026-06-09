@@ -1,0 +1,64 @@
+@baseUrl = http://localhost:8082
+
+### Health
+GET {{baseUrl}}/actuator/health
+
+### Seed demo data (idempotent)
+POST {{baseUrl}}/api/demo/seed
+
+### List tickets
+GET {{baseUrl}}/api/tickets
+
+### List actions exposed to the orchestrator
+GET {{baseUrl}}/api/bot/actions
+
+### Bot: create a ticket
+POST {{baseUrl}}/api/bot/query
+Content-Type: application/json
+
+{
+  "userId": "agent_alex",
+  "sessionId": "agent-alex-session",
+  "conversationId": "chat-agent-alex",
+  "position": "support",
+  "query": "Create a new ticket for Outlook not syncing email on Windows 11. Priority HIGH."
+}
+
+### Bot: assign a ticket (uses ticketNumber)
+POST {{baseUrl}}/api/bot/query
+Content-Type: application/json
+
+{
+  "userId": "agent_alex",
+  "sessionId": "agent-alex-session",
+  "conversationId": "chat-agent-alex",
+  "position": "support",
+  "query": "Assign ticket 1001 to agent_maya"
+}
+
+### Bot: escalate a ticket
+POST {{baseUrl}}/api/bot/query
+Content-Type: application/json
+
+{
+  "userId": "agent_alex",
+  "sessionId": "agent-alex-session",
+  "conversationId": "chat-agent-alex",
+  "position": "support",
+  "query": "Escalate ticket 1002 because the customer is blocked and the issue is impacting production."
+}
+
+### Bot: close a ticket
+POST {{baseUrl}}/api/bot/query
+Content-Type: application/json
+
+{
+  "userId": "agent_alex",
+  "sessionId": "agent-alex-session",
+  "conversationId": "chat-agent-alex",
+  "position": "support",
+  "query": "Close ticket 1003. Resolution: restarted the print spooler service and reinstalled the driver."
+}
+
+### Inspect a ticket by number
+GET {{baseUrl}}/api/tickets/1001

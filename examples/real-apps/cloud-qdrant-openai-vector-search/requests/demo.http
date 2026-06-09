@@ -1,0 +1,28 @@
+### 0) Health
+GET http://localhost:8098/actuator/health
+
+### 1) Seed sample knowledge base articles (creates + indexes)
+POST http://localhost:8098/api/demo/seed
+Content-Type: application/json
+
+{}
+
+### 2) Search (semantic)
+GET http://localhost:8098/api/search?q=reset%20my%20password&limit=5
+
+### 3) Create a new article (creates + indexes)
+POST http://localhost:8098/api/articles
+Content-Type: application/json
+
+{
+  "title": "How to rotate API keys safely",
+  "content": "Rotate keys monthly. Use dual-key rollout. Keep audit logs. Never paste secrets in tickets.",
+  "category": "security",
+  "tags": ["api", "security", "keys"]
+}
+
+### 4) Search again
+GET http://localhost:8098/api/search?q=rotate%20keys&limit=5
+
+### 5) List articles
+GET http://localhost:8098/api/articles

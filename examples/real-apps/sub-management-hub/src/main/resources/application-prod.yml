@@ -1,0 +1,73 @@
+spring:
+  application:
+    name: subscription-management-hub
+
+  datasource:
+    url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/subscriptiondb}
+    driver-class-name: org.postgresql.Driver
+    username: ${DB_USERNAME:postgres}
+    password: ${DB_PASSWORD:}
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 5
+      connection-timeout: 30000
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: false
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+
+ai:
+  config:
+    default-file: ai-entity-config.yml
+
+  providers:
+    llm-provider: cohere
+    embedding-provider: simple
+
+    cohere:
+      enabled: ${COHERE_ENABLED:true}
+      model: command-r-plus
+      api-key: ${COHERE_API_KEY:}
+      base-url: https://api.cohere.ai/v1
+
+  vector-db:
+    type: ${AI_VECTOR_DB_TYPE:lucene}
+    lucene:
+      index-path: ${VECTOR_INDEX_PATH:./data/lucene-vector-index}
+
+  behavior:
+    enabled: true
+    mode: LIGHT
+
+  pii-detection:
+    enabled: true
+    mode: DETECT_ONLY
+
+server:
+  port: ${PORT:8080}
+  error:
+    include-message: always
+    include-stacktrace: never
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: when-authorized
+
+logging:
+  level:
+    com.subscription.hub: INFO
+    com.ai.infrastructure: WARN
+    org.springframework: WARN
+    root: INFO
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} - %msg%n"

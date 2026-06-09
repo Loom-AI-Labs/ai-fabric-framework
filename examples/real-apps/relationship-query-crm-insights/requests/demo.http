@@ -1,0 +1,44 @@
+### 1) Seed CRM data
+POST http://localhost:8096/api/demo/seed
+Content-Type: application/json
+
+{}
+
+### 2) Inspect discovered schema (what the planner sees)
+GET http://localhost:8096/api/crm/schema
+
+### 3) Query: OPEN deals for Acme
+POST http://localhost:8096/api/crm/query
+Content-Type: application/json
+
+{
+  "query": "Show open deals for account Acme",
+  "entityTypes": ["deal", "account"]
+}
+
+### 4) Query: HIGH priority OPEN tickets for Globex
+POST http://localhost:8096/api/crm/query
+Content-Type: application/json
+
+{
+  "query": "List high priority open tickets for account Globex",
+  "entityTypes": ["support-ticket", "account"]
+}
+
+### 5) Query: Contacts for Initech
+POST http://localhost:8096/api/crm/query
+Content-Type: application/json
+
+{
+  "query": "List contacts for account Initech",
+  "entityTypes": ["contact", "account"]
+}
+
+### 6) Query: Accounts in EMEA with revenue over 1000000
+POST http://localhost:8096/api/crm/query
+Content-Type: application/json
+
+{
+  "query": "Show accounts in EMEA with annual revenue over 1000000",
+  "entityTypes": ["account"]
+}

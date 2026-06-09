@@ -1,0 +1,24 @@
+### 1) Seed products (DB-only; nothing indexed yet)
+POST http://localhost:8095/api/demo/seed?count=5000
+
+### 2) Start a migration job (async backfill indexing)
+POST http://localhost:8095/api/migration/jobs/products/start?batchSize=500&rateLimit=600&reindexExisting=false&createdBy=demo
+Content-Type: application/json
+
+{}
+
+### 3) List jobs (grab the `id`)
+GET http://localhost:8095/api/migration/jobs
+
+### 4) Poll progress (replace {jobId})
+GET http://localhost:8095/api/migration/jobs/{jobId}/progress
+
+### 5) Semantic search after the job is complete
+GET http://localhost:8095/api/products/search?q=wireless%20router&limit=10&threshold=0.3
+
+### 6) Pause / resume / cancel examples
+POST http://localhost:8095/api/migration/jobs/{jobId}/pause
+
+POST http://localhost:8095/api/migration/jobs/{jobId}/resume
+
+POST http://localhost:8095/api/migration/jobs/{jobId}/cancel

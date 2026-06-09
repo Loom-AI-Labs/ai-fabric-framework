@@ -1,0 +1,49 @@
+server:
+  port: ${PORT:8095}
+
+spring:
+  application:
+    name: migration-enabled-product-catalog
+  datasource:
+    url: jdbc:h2:mem:product_catalog;DB_CLOSE_DELAY=-1;MODE=PostgreSQL
+    driverClassName: org.h2.Driver
+    username: sa
+    password:
+  jpa:
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
+
+ai:
+  enabled: true
+  config:
+    default-file: ai-entity-config.yml
+  providers:
+    llm-provider: none
+    embedding-provider: simple
+  vector-db:
+    type: lucene
+  service:
+    features:
+      enable-generation: false
+  indexing:
+    enabled: true
+    async-worker:
+      enabled: true
+      fixed-delay: PT0.5S
+      batch-size: 25
+  migration:
+    enabled: true
+    default-batch-size: 500
+    default-rate-limit: 600
+    max-concurrent-jobs: 1
+    entity-fields:
+      product:
+        created-at-field: "createdAt"
+
+logging:
+  level:
+    com.ai.fabric.realapps.migrationcatalog: INFO
+    com.ai.infrastructure.migration: INFO
+    com.ai.infrastructure.indexing: INFO
+    com.ai.infrastructure: INFO

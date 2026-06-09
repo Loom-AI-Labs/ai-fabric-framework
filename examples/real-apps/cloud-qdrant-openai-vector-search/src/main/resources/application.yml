@@ -1,0 +1,45 @@
+server:
+  port: ${PORT:8098}
+
+spring:
+  application:
+    name: cloud-qdrant-openai-vector-search
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5435/cloud_vector_search}
+    username: ${DB_USER:postgres}
+    password: ${DB_PASSWORD:postgres}
+  jpa:
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
+
+ai:
+  enabled: true
+  config:
+    default-file: ai-entity-config.yml
+  service:
+    features:
+      enable-embeddings: true
+      enable-search: true
+      enable-generation: false
+  providers:
+    embedding-provider: openai
+    llm-provider: openai
+    openai:
+      api-key: ${AI_PROVIDERS_OPENAI_API_KEY:}
+      base-url: ${AI_PROVIDERS_OPENAI_BASE_URL:https://api.openai.com/v1}
+      embedding-model: ${AI_PROVIDERS_OPENAI_EMBEDDING_MODEL:text-embedding-3-small}
+      timeout: ${AI_PROVIDERS_OPENAI_TIMEOUT:30}
+    qdrant:
+      enabled: true
+      host: ${AI_PROVIDERS_QDRANT_HOST:localhost}
+      grpc-port: ${AI_PROVIDERS_QDRANT_GRPC_PORT:6334}
+      api-key: ${AI_PROVIDERS_QDRANT_API_KEY:}
+      timeout: ${AI_PROVIDERS_QDRANT_TIMEOUT:30}
+  vector-db:
+    type: qdrant
+
+logging:
+  level:
+    com.ai.fabric.realapps.cloudvector: INFO
+    com.ai.infrastructure: INFO

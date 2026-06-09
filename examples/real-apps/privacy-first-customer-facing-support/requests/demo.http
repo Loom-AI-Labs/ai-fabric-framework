@@ -1,0 +1,36 @@
+### 1) List sample payloads
+GET http://localhost:8093/api/demo/samples
+
+### 2) Seed example messages (creates multiple stored records)
+POST http://localhost:8093/api/demo/seed
+Content-Type: application/json
+
+{}
+
+### 3) Create a support message (contains PII)
+POST http://localhost:8093/api/support/messages
+Content-Type: application/json
+
+{
+  "customerId": "cust-1001",
+  "channel": "webchat",
+  "subject": "Billing update request",
+  "message": "Hi, my email is sara.ahmed@example.com and my phone is +1 (555) 123-4567. Please update my subscription."
+}
+
+### 4) Create a support message (no PII)
+POST http://localhost:8093/api/support/messages
+Content-Type: application/json
+
+{
+  "customerId": "cust-1002",
+  "channel": "email",
+  "subject": "Feature question",
+  "message": "Do you support downgrading from Pro to Starter mid-cycle?"
+}
+
+### 5) List stored messages (only redacted content is stored)
+GET http://localhost:8093/api/support/messages
+
+### 6) Read one message by id
+GET http://localhost:8093/api/support/messages/1

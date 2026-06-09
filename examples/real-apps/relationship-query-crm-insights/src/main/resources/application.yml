@@ -1,0 +1,40 @@
+server:
+  port: ${PORT:8096}
+
+spring:
+  application:
+    name: relationship-query-crm-insights
+  datasource:
+    url: jdbc:h2:mem:crm_insights;DB_CLOSE_DELAY=-1;MODE=PostgreSQL
+    driverClassName: org.h2.Driver
+    username: sa
+    password:
+  jpa:
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
+
+ai:
+  vector-db:
+    type: false
+  service:
+    features:
+      enable-embeddings: false
+      enable-search: false
+      enable-generation: true
+  providers:
+    llm-provider: crm-stub
+  infrastructure:
+    relationship:
+      enabled: true
+      enable-vector-search: false
+      fallback-to-vector-search: false
+      fallback-to-simple-search: false
+      schema:
+        log-schema: false
+
+logging:
+  level:
+    com.ai.fabric.realapps.crm: INFO
+    com.ai.infrastructure.relationship: INFO
+    com.ai.infrastructure: INFO

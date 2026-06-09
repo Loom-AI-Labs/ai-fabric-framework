@@ -1,0 +1,17 @@
+### 1) Seed demo events for multiple users
+POST http://localhost:8097/api/demo/seed
+Content-Type: application/json
+
+{}
+
+### 2) Analyze a specific user (targeted)
+POST http://localhost:8097/api/behavior/analyze/user-1001
+
+### 3) Analyze next user in queue (discovery)
+POST http://localhost:8097/api/behavior/process-next
+
+### 4) List all insights
+GET http://localhost:8097/api/behavior/insights
+
+### 5) Built-in analytics: rapidly declining users
+GET http://localhost:8097/api/behavior/analytics/rapid-decline
