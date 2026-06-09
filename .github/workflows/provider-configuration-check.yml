@@ -1,0 +1,58 @@
+name: Provider Configuration Check
+
+on:
+  workflow_dispatch:
+    inputs:
+      llm_provider:
+        description: LLM provider to validate.
+        required: true
+        default: openai
+        type: choice
+        options:
+          - anthropic
+          - azure
+          - cohere
+          - gemini
+          - openai
+      embedding_provider:
+        description: Embedding provider to validate.
+        required: true
+        default: onnx
+        type: choice
+        options:
+          - anthropic
+          - azure
+          - cohere
+          - gemini
+          - onnx
+          - openai
+
+permissions:
+  contents: read
+
+jobs:
+  provider-configuration:
+    name: Provider Configuration
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure providers
+        uses: ./.github/actions/configure-providers
+        with:
+          llm_provider: ${{ inputs.llm_provider }}
+          embedding_provider: ${{ inputs.embedding_provider }}
+          openai_api_key: ${{ secrets.OPENAI_API_KEY }}
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          gemini_api_key: ${{ secrets.GEMINI_API_KEY }}
+          cohere_api_key: ${{ secrets.COHERE_API_KEY }}
+          azure_api_key: ${{ secrets.AZURE_API_KEY }}
+          azure_endpoint: ${{ vars.AZURE_ENDPOINT }}
+          azure_deployment_name: ${{ vars.AZURE_DEPLOYMENT_NAME }}
+          azure_embedding_deployment_name: ${{ vars.AZURE_EMBEDDING_DEPLOYMENT_NAME }}
+          azure_api_version: ${{ vars.AZURE_API_VERSION }}
+
+      - name: Validate provider availability
+        run: .github/scripts/validate-provider-availability.sh "${{ inputs.llm_provider }}" "${{ inputs.embedding_provider }}"

@@ -1,0 +1,176 @@
+name: Configure Providers
+description: Configure AI provider environment variables from workflow inputs and secrets.
+
+inputs:
+  llm_provider:
+    description: LLM provider name.
+    required: true
+  embedding_provider:
+    description: Embedding provider name.
+    required: true
+  openai_api_key:
+    description: OpenAI API key.
+    required: false
+  anthropic_api_key:
+    description: Anthropic API key.
+    required: false
+  gemini_api_key:
+    description: Gemini API key.
+    required: false
+  cohere_api_key:
+    description: Cohere API key.
+    required: false
+  azure_api_key:
+    description: Azure API key.
+    required: false
+  azure_endpoint:
+    description: Azure endpoint URL.
+    required: false
+  azure_deployment_name:
+    description: Azure LLM deployment name.
+    required: false
+  azure_embedding_deployment_name:
+    description: Azure embedding deployment name.
+    required: false
+  azure_api_version:
+    description: Azure API version.
+    required: false
+
+outputs:
+  llm_provider:
+    description: Configured LLM provider.
+    value: ${{ inputs.llm_provider }}
+  embedding_provider:
+    description: Configured embedding provider.
+    value: ${{ inputs.embedding_provider }}
+
+runs:
+  using: composite
+  steps:
+    - name: Configure provider selectors
+      shell: bash
+      run: |
+        set -euo pipefail
+        {
+          echo "LLM_PROVIDER=${{ inputs.llm_provider }}"
+          echo "EMBEDDING_PROVIDER=${{ inputs.embedding_provider }}"
+          echo "AI_PROVIDERS_LLM_PROVIDER=${{ inputs.llm_provider }}"
+          echo "AI_PROVIDERS_EMBEDDING_PROVIDER=${{ inputs.embedding_provider }}"
+        } >> "$GITHUB_ENV"
+
+    - name: Configure OpenAI
+      if: inputs.llm_provider == 'openai' || inputs.embedding_provider == 'openai'
+      shell: bash
+      run: |
+        set -euo pipefail
+        {
+          echo "OPENAI_ENABLED=true"
+          echo "AI_PROVIDERS_OPENAI_ENABLED=true"
+        } >> "$GITHUB_ENV"
+        if [ -n "${{ inputs.openai_api_key }}" ]; then
+          {
+            echo "OPENAI_API_KEY=${{ inputs.openai_api_key }}"
+            echo "AI_PROVIDERS_OPENAI_API_KEY=${{ inputs.openai_api_key }}"
+          } >> "$GITHUB_ENV"
+        fi
+
+    - name: Configure Anthropic
+      if: inputs.llm_provider == 'anthropic' || inputs.embedding_provider == 'anthropic'
+      shell: bash
+      run: |
+        set -euo pipefail
+        {
+          echo "ANTHROPIC_ENABLED=true"
+          echo "AI_PROVIDERS_ANTHROPIC_ENABLED=true"
+        } >> "$GITHUB_ENV"
+        if [ -n "${{ inputs.anthropic_api_key }}" ]; then
+          {
+            echo "ANTHROPIC_API_KEY=${{ inputs.anthropic_api_key }}"
+            echo "AI_PROVIDERS_ANTHROPIC_API_KEY=${{ inputs.anthropic_api_key }}"
+          } >> "$GITHUB_ENV"
+        fi
+
+    - name: Configure Gemini
+      if: inputs.llm_provider == 'gemini' || inputs.embedding_provider == 'gemini'
+      shell: bash
+      run: |
+        set -euo pipefail
+        {
+          echo "GEMINI_ENABLED=true"
+          echo "AI_PROVIDERS_GEMINI_ENABLED=true"
+        } >> "$GITHUB_ENV"
+        if [ -n "${{ inputs.gemini_api_key }}" ]; then
+          {
+            echo "GEMINI_API_KEY=${{ inputs.gemini_api_key }}"
+            echo "AI_PROVIDERS_GEMINI_API_KEY=${{ inputs.gemini_api_key }}"
+          } >> "$GITHUB_ENV"
+        fi
+
+    - name: Configure Cohere
+      if: inputs.llm_provider == 'cohere' || inputs.embedding_provider == 'cohere'
+      shell: bash
+      run: |
+        set -euo pipefail
+        {
+          echo "COHERE_ENABLED=true"
+          echo "AI_PROVIDERS_COHERE_ENABLED=true"
+        } >> "$GITHUB_ENV"
+        if [ -n "${{ inputs.cohere_api_key }}" ]; then
+          {
+            echo "COHERE_API_KEY=${{ inputs.cohere_api_key }}"
+            echo "AI_PROVIDERS_COHERE_API_KEY=${{ inputs.cohere_api_key }}"
+          } >> "$GITHUB_ENV"
+        fi
+
+    - name: Configure Azure
+      if: inputs.llm_provider == 'azure' || inputs.embedding_provider == 'azure'
+      shell: bash
+      run: |
+        set -euo pipefail
+        {
+          echo "AZURE_ENABLED=true"
+          echo "AI_PROVIDERS_AZURE_ENABLED=true"
+        } >> "$GITHUB_ENV"
+        if [ -n "${{ inputs.azure_api_key }}" ]; then
+          {
+            echo "AZURE_API_KEY=${{ inputs.azure_api_key }}"
+            echo "AI_PROVIDERS_AZURE_API_KEY=${{ inputs.azure_api_key }}"
+          } >> "$GITHUB_ENV"
+        fi
+        if [ -n "${{ inputs.azure_endpoint }}" ]; then
+          {
+            echo "AZURE_ENDPOINT=${{ inputs.azure_endpoint }}"
+            echo "AI_PROVIDERS_AZURE_ENDPOINT=${{ inputs.azure_endpoint }}"
+          } >> "$GITHUB_ENV"
+        fi
+        if [ -n "${{ inputs.azure_deployment_name }}" ]; then
+          {
+            echo "AZURE_DEPLOYMENT_NAME=${{ inputs.azure_deployment_name }}"
+            echo "AI_PROVIDERS_AZURE_DEPLOYMENT_NAME=${{ inputs.azure_deployment_name }}"
+          } >> "$GITHUB_ENV"
+        fi
+        if [ -n "${{ inputs.azure_embedding_deployment_name }}" ]; then
+          {
+            echo "AZURE_EMBEDDING_DEPLOYMENT_NAME=${{ inputs.azure_embedding_deployment_name }}"
+            echo "AI_PROVIDERS_AZURE_EMBEDDING_DEPLOYMENT_NAME=${{ inputs.azure_embedding_deployment_name }}"
+          } >> "$GITHUB_ENV"
+        fi
+        if [ -n "${{ inputs.azure_api_version }}" ]; then
+          {
+            echo "AZURE_API_VERSION=${{ inputs.azure_api_version }}"
+            echo "AI_PROVIDERS_AZURE_API_VERSION=${{ inputs.azure_api_version }}"
+          } >> "$GITHUB_ENV"
+        fi
+
+    - name: Report provider configuration
+      shell: bash
+      run: |
+        set -euo pipefail
+        echo "Provider configuration:"
+        echo "  LLM provider: ${{ inputs.llm_provider }}"
+        echo "  Embedding provider: ${{ inputs.embedding_provider }}"
+        [ -n "${OPENAI_ENABLED:-}" ] && echo "  OpenAI: enabled"
+        [ -n "${ANTHROPIC_ENABLED:-}" ] && echo "  Anthropic: enabled"
+        [ -n "${GEMINI_ENABLED:-}" ] && echo "  Gemini: enabled"
+        [ -n "${COHERE_ENABLED:-}" ] && echo "  Cohere: enabled"
+        [ -n "${AZURE_ENABLED:-}" ] && echo "  Azure: enabled"
