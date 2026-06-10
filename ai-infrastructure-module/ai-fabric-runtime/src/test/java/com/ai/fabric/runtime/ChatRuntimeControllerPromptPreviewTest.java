@@ -443,6 +443,37 @@ class ChatRuntimeControllerPromptPreviewTest {
     }
 
     @Test
+    void queryMapsVectorSpaceHintsFromRequestContextIntoOrchestrationMetadata() {
+        RAGOrchestrator orchestrator = mock(RAGOrchestrator.class);
+        when(orchestrator.orchestrate(eq("Find the onboarding checklist"), org.mockito.ArgumentMatchers.<OrchestrationContext>any()))
+            .thenReturn(OrchestrationResult.builder()
+                .type(OrchestrationResultType.INFORMATION_PROVIDED)
+                .success(true)
+                .message("Ready")
+                .build());
+        ChatRuntimeController controller = controllerFor(orchestrator, null, strictAuthResolver());
+
+        ChatQueryRequest request = new ChatQueryRequest();
+        request.setQuery("Find the onboarding checklist");
+        request.setContext(Map.of(
+            "vectorSpace", "primary-docs",
+            "entityType", "primary-docs",
+            "preferredVectorSpaces", List.of("primary-docs", "reference-docs")
+        ));
+
+        MockHttpServletRequest servletRequest = new MockHttpServletRequest();
+        addVerifiedAuthHeaders(servletRequest, "platform-user-1", "platform-session-1", BASE_QUERY_SCOPES);
+
+        controller.queryOnce(request, servletRequest);
+
+        ArgumentCaptor<OrchestrationContext> context = ArgumentCaptor.forClass(OrchestrationContext.class);
+        verify(orchestrator).orchestrate(eq("Find the onboarding checklist"), context.capture());
+        assertThat(context.getValue().getMetadata())
+            .containsEntry(OrchestrationContextMetadataKeys.RAG_VECTOR_SPACE_HINT, "primary-docs")
+            .containsEntry(OrchestrationContextMetadataKeys.RAG_PREFERRED_VECTOR_SPACES, List.of("primary-docs", "reference-docs"));
+    }
+
+    @Test
     void meQueryPreservesActionErrorCodeInCanonicalActionEvidence() {
         RAGOrchestrator orchestrator = mock(RAGOrchestrator.class);
         when(orchestrator.orchestrate(eq("I want to return my last order"), org.mockito.ArgumentMatchers.<OrchestrationContext>any()))

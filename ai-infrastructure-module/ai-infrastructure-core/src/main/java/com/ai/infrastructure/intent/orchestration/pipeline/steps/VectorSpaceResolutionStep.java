@@ -6,6 +6,7 @@ import com.ai.infrastructure.dto.IntentType;
 import com.ai.infrastructure.dto.MultiIntentResponse;
 import com.ai.infrastructure.intent.KnowledgeBaseOverview;
 import com.ai.infrastructure.intent.KnowledgeBaseOverviewService;
+import com.ai.infrastructure.intent.orchestration.OrchestrationContextMetadataKeys;
 import com.ai.infrastructure.intent.orchestration.OrchestrationResult;
 import com.ai.infrastructure.intent.orchestration.OrchestrationResultType;
 import com.ai.infrastructure.intent.orchestration.pipeline.PipelineContext;
@@ -96,6 +97,30 @@ public class VectorSpaceResolutionStep implements PipelineStep {
             }
             if (!Boolean.TRUE.equals(intent.getRequiresRetrieval())) {
                 continue;
+            }
+
+            List<String> requestHintSpaces = resolveRequestVectorSpaceHints(context);
+            if (!requestHintSpaces.isEmpty()) {
+                if (availableVectorSpaces == null) {
+                    availableVectorSpaces = resolveAllVectorSpaces();
+                    canonicalByLower = buildCanonicalByLower(availableVectorSpaces);
+                }
+                VectorSpaceNormalization normalization = canonicalByLower != null && !canonicalByLower.isEmpty()
+                    ? normalizeVectorSpaces(String.join(",", requestHintSpaces), canonicalByLower)
+                    : new VectorSpaceNormalization(requestHintSpaces, List.of(), false);
+                if (normalization != null && !normalization.normalizedValid().isEmpty()) {
+                    String prior = intent.getVectorSpace();
+                    String resolved = String.join(",", normalization.normalizedValid());
+                    intent.setVectorSpace(resolved);
+                    routingEvents.add(toNormalizationEvent(i, "REQUEST_CONTEXT_HINT", prior, resolved,
+                        normalization.invalidTokens(), availableVectorSpaces));
+                    anyUpdate = true;
+                    continue;
+                }
+                if (normalization != null && !normalization.invalidTokens().isEmpty()) {
+                    routingEvents.add(toNormalizationEvent(i, "REQUEST_CONTEXT_HINT_INVALID", intent.getVectorSpace(), null,
+                        normalization.invalidTokens(), availableVectorSpaces));
+                }
             }
 
             // Validate LLM-provided vectorSpace against currently available knowledge base spaces.
@@ -299,8 +324,55 @@ public class VectorSpaceResolutionStep implements PipelineStep {
 	        if (out.size() > effectiveMax) {
 	            out = out.subList(0, effectiveMax);
 	        }
-	        return out;
-	    }
+        return out;
+    }
+
+    private List<String> resolveRequestVectorSpaceHints(PipelineContext context) {
+        Map<String, Object> metadata = context != null
+            && context.getOrchestrationContext() != null
+            && context.getOrchestrationContext().getMetadata() != null
+            ? context.getOrchestrationContext().getMetadata()
+            : Map.of();
+        if (metadata.isEmpty()) {
+            return List.of();
+        }
+
+        LinkedHashSet<String> hints = new LinkedHashSet<>();
+        collectHintValues(hints, metadata.get(OrchestrationContextMetadataKeys.RAG_PREFERRED_VECTOR_SPACES));
+        collectHintValues(hints, metadata.get(OrchestrationContextMetadataKeys.RAG_VECTOR_SPACE_HINT));
+
+        Object requestContext = metadata.get("requestContext");
+        if (requestContext instanceof Map<?, ?> map) {
+            collectHintValues(hints, map.get("preferredVectorSpaces"));
+            collectHintValues(hints, map.get("vectorSpace"));
+            collectHintValues(hints, map.get("entityType"));
+            collectHintValues(hints, map.get("preferred_vector_spaces"));
+            collectHintValues(hints, map.get("vector_space"));
+            collectHintValues(hints, map.get("entity_type"));
+        }
+
+        return hints.stream().toList();
+    }
+
+    private void collectHintValues(LinkedHashSet<String> hints, Object raw) {
+        if (hints == null || raw == null) {
+            return;
+        }
+        if (raw instanceof List<?> list) {
+            for (Object item : list) {
+                collectHintValues(hints, item);
+            }
+            return;
+        }
+        if (raw instanceof String text) {
+            for (String part : text.split(",")) {
+                String trimmed = part != null ? part.trim() : null;
+                if (hasText(trimmed)) {
+                    hints.add(trimmed);
+                }
+            }
+        }
+    }
 
 	    private Map<String, Object> toDeepFallbackEvent(int intentIndex,
 	                                                    String resolvedVectorSpace,

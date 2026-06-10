@@ -94,6 +94,8 @@ public class ChatRuntimeController {
     private static final int MAX_SUGGESTION_ATTACHMENT_TEXT_CHARS = 1_200;
     private static final int MAX_SUGGESTION_METADATA_VALUE_CHARS = 300;
     private static final int MAX_SUGGESTION_METADATA_ENTRIES = 12;
+    private static final int MAX_VECTOR_SPACE_HINTS = 12;
+    private static final int MAX_VECTOR_SPACE_HINT_CHARS = 96;
     private static final int MAX_TRANSIENT_FILE_URL_INPUTS = 8;
     private static final long MAX_TRANSIENT_FILE_URL_DECLARED_SIZE_BYTES = 50L * 1024L * 1024L;
     private static final Duration MAX_TRANSIENT_FILE_URL_TTL = Duration.ofHours(24);
@@ -830,8 +832,10 @@ public class ChatRuntimeController {
         Integer responseGenerationMaxTokensStandard = deploymentResponseGenerationMaxTokensStandard();
         Integer responseGenerationMaxTokensDeep = deploymentResponseGenerationMaxTokensDeep();
         Map<String, Object> requestContext = sanitizeRequestContext(request.getContext());
+        List<String> vectorSpaceHints = extractVectorSpaceHints(requestContext);
         if (!promptPreview.isEmpty()
             || !requestContext.isEmpty()
+            || !vectorSpaceHints.isEmpty()
             || identity != null
             || ragSimilarityThreshold != null
             || ragMaxDocumentsUsedForContext != null
@@ -849,6 +853,10 @@ public class ChatRuntimeController {
             }
             if (!requestContext.isEmpty()) {
                 metadata.put("requestContext", requestContext);
+            }
+            if (!vectorSpaceHints.isEmpty()) {
+                metadata.put(OrchestrationContextMetadataKeys.RAG_VECTOR_SPACE_HINT, vectorSpaceHints.get(0));
+                metadata.put(OrchestrationContextMetadataKeys.RAG_PREFERRED_VECTOR_SPACES, List.copyOf(vectorSpaceHints));
             }
             if (ragSimilarityThreshold != null) {
                 metadata.put(OrchestrationContextMetadataKeys.RAG_SIMILARITY_THRESHOLD, ragSimilarityThreshold);
@@ -928,6 +936,60 @@ public class ChatRuntimeController {
             }
         }
         return sanitized.isEmpty() ? Map.of() : Map.copyOf(sanitized);
+    }
+
+    private List<String> extractVectorSpaceHints(Map<String, Object> requestContext) {
+        if (requestContext == null || requestContext.isEmpty()) {
+            return List.of();
+        }
+        List<String> hints = new ArrayList<>();
+        collectVectorSpaceHints(hints, requestContext.get("preferredVectorSpaces"));
+        collectVectorSpaceHints(hints, requestContext.get("vectorSpace"));
+        collectVectorSpaceHints(hints, requestContext.get("entityType"));
+        collectVectorSpaceHints(hints, requestContext.get("preferred_vector_spaces"));
+        collectVectorSpaceHints(hints, requestContext.get("vector_space"));
+        collectVectorSpaceHints(hints, requestContext.get("entity_type"));
+        return hints.isEmpty() ? List.of() : List.copyOf(hints);
+    }
+
+    private void collectVectorSpaceHints(List<String> hints, Object raw) {
+        if (hints == null || hints.size() >= MAX_VECTOR_SPACE_HINTS || raw == null) {
+            return;
+        }
+        if (raw instanceof List<?> list) {
+            for (Object item : list) {
+                collectVectorSpaceHints(hints, item);
+                if (hints.size() >= MAX_VECTOR_SPACE_HINTS) {
+                    return;
+                }
+            }
+            return;
+        }
+        if (raw instanceof String text) {
+            for (String part : text.split(",")) {
+                String normalized = normalizeVectorSpaceHint(part);
+                if (normalized != null && !hints.contains(normalized)) {
+                    hints.add(normalized);
+                    if (hints.size() >= MAX_VECTOR_SPACE_HINTS) {
+                        return;
+                    }
+                }
+            }
+        }
+    }
+
+    private String normalizeVectorSpaceHint(String raw) {
+        String trimmed = trimToNull(raw);
+        if (trimmed == null || trimmed.length() > MAX_VECTOR_SPACE_HINT_CHARS) {
+            return null;
+        }
+        for (int i = 0; i < trimmed.length(); i++) {
+            char ch = trimmed.charAt(i);
+            if (!(Character.isLetterOrDigit(ch) || ch == '-' || ch == '_' || ch == '.' || ch == ':')) {
+                return null;
+            }
+        }
+        return trimmed;
     }
 
     private Object sanitizeContextValue(String key, Object value) {

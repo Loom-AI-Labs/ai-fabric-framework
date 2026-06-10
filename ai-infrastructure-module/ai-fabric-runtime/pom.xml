@@ -55,6 +55,11 @@
         </dependency>
         <dependency>
             <groupId>com.ai.fabric</groupId>
+            <artifactId>ai-curated-default</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.ai.fabric</groupId>
             <artifactId>ai-curated-commerce</artifactId>
             <version>${project.version}</version>
         </dependency>

@@ -8,6 +8,7 @@ import com.ai.infrastructure.dto.MultiIntentResponse;
 import com.ai.infrastructure.intent.KnowledgeBaseOverview;
 import com.ai.infrastructure.intent.KnowledgeBaseOverviewService;
 import com.ai.infrastructure.intent.orchestration.OrchestrationContext;
+import com.ai.infrastructure.intent.orchestration.OrchestrationContextMetadataKeys;
 import com.ai.infrastructure.intent.orchestration.OrchestrationResultType;
 import com.ai.infrastructure.intent.orchestration.attachment.NormalizedAttachment;
 import com.ai.infrastructure.intent.orchestration.pipeline.PipelineContext;
@@ -140,6 +141,49 @@ class VectorSpaceResolutionStepTest {
 
         assertThat(updated.isShouldTerminate()).isFalse();
         assertThat(updated.getIntentResponse().getIntents().getFirst().getVectorSpace()).isEqualTo("policy");
+        assertThat(updated.getMetadata()).containsKey("vectorSpaceRouting");
+        verify(router, never()).route(any(), anyString());
+    }
+
+    @Test
+    void shouldPreferRequestContextVectorSpaceHintOverInvalidExtractedVectorSpace() {
+        VectorSpaceRouter router = mock(VectorSpaceRouter.class);
+
+        KnowledgeBaseOverviewService overviewService = mock(KnowledgeBaseOverviewService.class);
+        when(overviewService.getOverview()).thenReturn(KnowledgeBaseOverview.builder()
+            .entityTypes(List.of("primary-docs", "reference-docs"))
+            .build());
+
+        VectorSpaceResolutionStep step = new VectorSpaceResolutionStep(
+            router,
+            new OrchestrationProperties(),
+            new VectorSpaceRoutingProperties(),
+            providerOf(overviewService)
+        );
+
+        Intent intent = Intent.builder()
+            .type(IntentType.INFORMATION)
+            .intent("find_onboarding_checklist")
+            .requiresRetrieval(true)
+            .vectorSpace("wrong-space")
+            .build();
+
+        OrchestrationContext orchestrationContext = OrchestrationContext.builder()
+            .userId("user")
+            .metadata(Map.of(
+                OrchestrationContextMetadataKeys.RAG_PREFERRED_VECTOR_SPACES,
+                List.of("primary-docs")
+            ))
+            .build();
+        PipelineContext context = PipelineContext.from("Find the onboarding checklist", orchestrationContext)
+            .toBuilder()
+            .intentResponse(MultiIntentResponse.builder().intents(List.of(intent)).build())
+            .build();
+
+        PipelineContext updated = step.process(context);
+
+        assertThat(updated.isShouldTerminate()).isFalse();
+        assertThat(updated.getIntentResponse().getIntents().getFirst().getVectorSpace()).isEqualTo("primary-docs");
         assertThat(updated.getMetadata()).containsKey("vectorSpaceRouting");
         verify(router, never()).route(any(), anyString());
     }

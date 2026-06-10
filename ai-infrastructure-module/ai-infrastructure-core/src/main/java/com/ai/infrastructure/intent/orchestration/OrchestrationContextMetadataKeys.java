@@ -37,6 +37,16 @@ public final class OrchestrationContextMetadataKeys {
     public static final String RAG_MAX_CONTEXT_CHARS = "ragMaxContextChars";
 
     /**
+     * Request-scoped preferred RAG vector space/entity type.
+     */
+    public static final String RAG_VECTOR_SPACE_HINT = "ragVectorSpaceHint";
+
+    /**
+     * Request-scoped ordered list of preferred RAG vector spaces/entity types.
+     */
+    public static final String RAG_PREFERRED_VECTOR_SPACES = "ragPreferredVectorSpaces";
+
+    /**
      * Deployment-managed override for smart suggestions enablement.
      */
     public static final String SMART_SUGGESTIONS_ENABLED = "smartSuggestionsEnabled";
