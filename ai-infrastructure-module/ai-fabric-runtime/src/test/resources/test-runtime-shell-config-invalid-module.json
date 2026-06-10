@@ -1,6 +1,0 @@
-{
-  "contractVersion": "SHELL_CONFIG_V1",
-  "modules": [
-    { "id": "custom-module" }
-  ]
-}

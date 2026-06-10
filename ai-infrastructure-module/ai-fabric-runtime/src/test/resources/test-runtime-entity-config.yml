@@ -1,8 +1,0 @@
-ai-entities:
-  product:
-    features:
-      - embedding
-      - search
-    searchable-fields:
-      - name: name
-        include-in-rag: true

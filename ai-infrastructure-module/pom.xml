@@ -37,8 +37,6 @@
         <module>ai-infrastructure-retrieval-connector</module>
         <module>ai-infrastructure-data-sync</module>
         <module>ai-infrastructure-relay</module>
-        <module>ai-infrastructure-generic-rest-connector</module>
-        <module>ai-fabric-runtime</module>
         <module>ai-infrastructure-indexing</module>
         <module>ai-infrastructure-pii</module>
         <module>ai-infrastructure-governance</module>
@@ -123,11 +121,6 @@
                 <artifactId>ai-fabric-starter</artifactId>
                 <version>${project.version}</version>
             </dependency>
-            <dependency>
-                <groupId>com.ai.fabric</groupId>
-                <artifactId>ai-fabric-runtime</artifactId>
-                <version>${project.version}</version>
-            </dependency>
 	            <!-- Optional: connector-backed actions module -->
 	            <dependency>
 	                <groupId>com.ai.fabric</groupId>
@@ -161,11 +154,6 @@
 		                <artifactId>ai-fabric-provider-starter</artifactId>
 		                <version>${project.version}</version>
 		            </dependency>
-            <dependency>
-                <groupId>com.ai.fabric</groupId>
-                <artifactId>ai-infrastructure-generic-rest-connector</artifactId>
-                <version>${project.version}</version>
-            </dependency>
             <dependency>
                 <groupId>com.ai.fabric</groupId>
                 <artifactId>ai-infrastructure-relay</artifactId>
