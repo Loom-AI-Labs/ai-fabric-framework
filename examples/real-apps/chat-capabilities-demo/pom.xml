@@ -23,7 +23,7 @@
         <maven.compiler.source>21</maven.compiler.source>
         <maven.compiler.target>21</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <ai-fabric.version>0.1.0-preview</ai-fabric.version>
+        <ai-fabric.version>0.1.0</ai-fabric.version>
         <lombok.version>1.18.38</lombok.version>
         <springdoc.version>2.3.0</springdoc.version>
     </properties>
@@ -56,42 +56,42 @@
 
         <!-- AI Fabric -->
         <dependency>
-            <groupId>com.ai.fabric</groupId>
+            <groupId>io.github.loom-ai-labs</groupId>
             <artifactId>ai-fabric-starter</artifactId>
             <version>${ai-fabric.version}</version>
         </dependency>
         <dependency>
-            <groupId>com.ai.fabric</groupId>
+            <groupId>io.github.loom-ai-labs</groupId>
             <artifactId>ai-curated-commerce</artifactId>
             <version>${ai-fabric.version}</version>
         </dependency>
         <dependency>
-            <groupId>com.ai.fabric</groupId>
+            <groupId>io.github.loom-ai-labs</groupId>
             <artifactId>ai-fabric-provider-openai</artifactId>
             <version>${ai-fabric.version}</version>
         </dependency>
         <dependency>
-            <groupId>com.ai.fabric</groupId>
+            <groupId>io.github.loom-ai-labs</groupId>
             <artifactId>ai-infrastructure-chat-session</artifactId>
             <version>${ai-fabric.version}</version>
         </dependency>
         <dependency>
-            <groupId>com.ai.fabric</groupId>
+            <groupId>io.github.loom-ai-labs</groupId>
             <artifactId>ai-infrastructure-governance</artifactId>
             <version>${ai-fabric.version}</version>
         </dependency>
         <dependency>
-            <groupId>com.ai.fabric</groupId>
+            <groupId>io.github.loom-ai-labs</groupId>
             <artifactId>ai-infrastructure-indexing</artifactId>
             <version>${ai-fabric.version}</version>
         </dependency>
         <dependency>
-            <groupId>com.ai.fabric</groupId>
+            <groupId>io.github.loom-ai-labs</groupId>
             <artifactId>ai-infrastructure-rag</artifactId>
             <version>${ai-fabric.version}</version>
         </dependency>
         <dependency>
-            <groupId>com.ai.fabric</groupId>
+            <groupId>io.github.loom-ai-labs</groupId>
             <artifactId>ai-infrastructure-vector-lucene</artifactId>
             <version>${ai-fabric.version}</version>
         </dependency>

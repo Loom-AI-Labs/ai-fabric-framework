@@ -1,10 +1,11 @@
 # AI Fabric Framework — Release Readiness & Cleanup Plan
 
 - **Date:** 2026-06-15
-- **Version under review:** `0.1.0-preview`
+- **First release version:** `0.1.0`
+- **groupId:** `io.github.loom-ai-labs`
 - **Target repository:** `loom-ai-labs/ai-fabric-framework`
 - **Reviewed branch:** `claude/framework-release-check-3tma5g`
-- **Release channel:** GitHub Packages (Maven), plus a framework-only source archive on the GitHub Release
+- **Release channel:** Maven Central (Sonatype Central Portal) — see `docs/MAVEN_CENTRAL_RELEASE_GUIDE.md`
 
 ---
 
@@ -213,19 +214,22 @@ SECURITY.md says "report privately to the repository owner" but gives no mechani
 6. ✅ Enabled tests in `framework-verify.yml` (**C3**).
 7. ✅ POM hygiene (**C4**) and SECURITY contact (**C5**).
 
-**Phase 3 — Release**
-8. Merge to `main`. Confirm `framework-verify.yml` is green.
-9. Pre-flight per `docs/GITHUB_PACKAGES_RELEASE_GUIDE.md`:
-   ```bash
-   mvn -B -V --no-transfer-progress -f ai-infrastructure-module/pom.xml validate
-   mvn -B -V --no-transfer-progress -f ai-infrastructure-module/pom.xml -DskipTests compile
-   ```
-10. Tag and push: `git tag ai-fabric-framework-v0.1.0-preview && git push origin ai-fabric-framework-v0.1.0-preview`.
-11. Create the GitHub Release from the tag → triggers
-    `ai-fabric-framework-github-packages-release.yml`, which verifies, deploys Maven
-    artifacts to GitHub Packages, and uploads the source archive + SHA-256.
-12. Validate consumption: from a clean machine, import the `ai-fabric-bom` and build
-    `examples/minimal-spring-boot` against the published `0.1.0-preview` artifacts.
+**Phase 3 — Release to Maven Central** (publish target chosen: Maven Central, groupId
+`io.github.loom-ai-labs`, version `0.1.0`). Repo-side prep is **done** (see §8); the remaining
+steps need maintainer credentials.
+
+8. **Maintainer provides credentials** (one-time, as GitHub Actions repo secrets):
+   - `CENTRAL_TOKEN_USERNAME`, `CENTRAL_TOKEN_PASSWORD` — Sonatype Central Portal user token
+     (after registering and verifying the `io.github.loom-ai-labs` namespace).
+   - `MAVEN_GPG_PRIVATE_KEY`, `MAVEN_GPG_PASSPHRASE` — a GPG key for artifact signing.
+   - Full steps in `docs/MAVEN_CENTRAL_RELEASE_GUIDE.md`.
+9. Merge this branch to `main`. Confirm `framework-verify.yml` (build + tests) is green.
+10. Tag and push: `git tag ai-fabric-framework-v0.1.0 && git push origin ai-fabric-framework-v0.1.0`.
+11. Create a GitHub Release from the tag → triggers `maven-central-release.yml`, which GPG-signs
+    and deploys all modules (with `-sources`/`-javadoc` jars) to Maven Central via the
+    `central-publishing-maven-plugin` (`autoPublish` releases automatically).
+12. Validate consumption: from a clean machine with no extra repo config, import `ai-fabric-bom`
+    `0.1.0` and build `examples/minimal-spring-boot`.
 
 **Phase 4 — Post-release polish**
 13. Add CHANGELOG (**O1**), issue/PR templates (**O2**), and decide on the
@@ -248,8 +252,36 @@ SECURITY.md says "report privately to the repository owner" but gives no mechani
 | O2 | Issue / PR templates | P3 | Low | Open (post-release) |
 | O3 | Rename `victor-databases/` → `vector-databases/` | P3 | Med | Open (post-release) |
 | O4 | Example `TODO`s | — | — | Leave |
+| R1 | Set version → `0.1.0` and groupId → `io.github.loom-ai-labs` | P0 | Med | ✅ Done |
+| R2 | Add `<developers>`, `central` profile (GPG + central-publishing) | P0 | Med | ✅ Done |
+| R3 | `maven-central-release.yml`; remove GitHub Packages workflow/guide | P0 | Low | ✅ Done |
+| R4 | Provide Sonatype + GPG secrets, tag, release | P0 | Low | ⏳ Needs maintainer creds |
 
-**Bottom line:** **B1 and B2 are fixed and all C-items are applied.** The full reactor build
-with tests (`mvn clean install`, all 33 modules) is green, CI now runs tests, and the release
-profile attaches source + javadoc jars. The framework is releasable as `0.1.0-preview`; only
-the optional O-items remain for after the first release.
+**Bottom line:** **B1, B2, all C-items, and the Maven Central prep (R1–R3) are done.** The full
+reactor builds and tests green at groupId `io.github.loom-ai-labs` / version `0.1.0`, and the
+`release,central` profiles resolve and validate. The **only** remaining step is **R4**: you add
+the four Sonatype/GPG secrets, then tag + release — the workflow publishes to Central
+automatically. I cannot perform R4 because it requires your credentials.
+
+---
+
+## 8. Release execution — prepared vs. pending
+
+**Prepared in this branch (no credentials needed):**
+- Coordinates: groupId `io.github.loom-ai-labs`, version `0.1.0` across all 47 POMs + README/docs.
+- POM: `<developers>` block; `release` profile (source+javadoc); `central` profile (GPG sign +
+  `central-publishing-maven-plugin`, `autoPublish`). GitHub Packages `distributionManagement` removed.
+- CI/CD: `maven-central-release.yml` (signs + deploys to Central on a GitHub Release); obsolete
+  `ai-fabric-framework-github-packages-release.yml` and its guide removed to prevent double-publish.
+- Docs: `docs/MAVEN_CENTRAL_RELEASE_GUIDE.md` (consume + one-time setup + release steps).
+- Verified: full `mvn clean install` (tests) green; `mvn -Prelease,central validate` green.
+
+**Pending — requires the maintainer (you):**
+- Register/verify the `io.github.loom-ai-labs` namespace on https://central.sonatype.com and
+  generate a user token → add secrets `CENTRAL_TOKEN_USERNAME`, `CENTRAL_TOKEN_PASSWORD`.
+- Create a GPG key, publish the public key, export the private key → add secrets
+  `MAVEN_GPG_PRIVATE_KEY`, `MAVEN_GPG_PASSPHRASE`.
+- Merge to `main`, then `git tag ai-fabric-framework-v0.1.0` + create the GitHub Release.
+
+I can drive the tag/release once the secrets exist (I can dispatch the workflow); I cannot
+create the Sonatype account, the GPG key, or add repository secrets.

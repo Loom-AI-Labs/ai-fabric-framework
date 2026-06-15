@@ -6,7 +6,7 @@
 
     <groupId>com.ai.fabric.examples</groupId>
     <artifactId>minimal-spring-boot</artifactId>
-    <version>0.1.0-preview</version>
+    <version>0.1.0</version>
     <packaging>jar</packaging>
 
     <name>AI Fabric Minimal Spring Boot Example</name>
@@ -16,7 +16,7 @@
         <maven.compiler.source>${java.version}</maven.compiler.source>
         <maven.compiler.target>${java.version}</maven.compiler.target>
         <spring-boot.version>3.2.0</spring-boot.version>
-        <ai-fabric.version>0.1.0-preview</ai-fabric.version>
+        <ai-fabric.version>0.1.0</ai-fabric.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     </properties>
 
@@ -30,7 +30,7 @@
                 <scope>import</scope>
             </dependency>
             <dependency>
-                <groupId>com.ai.fabric</groupId>
+                <groupId>io.github.loom-ai-labs</groupId>
                 <artifactId>ai-fabric-bom</artifactId>
                 <version>${ai-fabric.version}</version>
                 <type>pom</type>
@@ -45,19 +45,19 @@
             <artifactId>spring-boot-starter-web</artifactId>
         </dependency>
         <dependency>
-            <groupId>com.ai.fabric</groupId>
+            <groupId>io.github.loom-ai-labs</groupId>
             <artifactId>ai-fabric-starter</artifactId>
         </dependency>
         <dependency>
-            <groupId>com.ai.fabric</groupId>
+            <groupId>io.github.loom-ai-labs</groupId>
             <artifactId>ai-fabric-provider-openai</artifactId>
         </dependency>
         <dependency>
-            <groupId>com.ai.fabric</groupId>
+            <groupId>io.github.loom-ai-labs</groupId>
             <artifactId>ai-infrastructure-onnx-starter</artifactId>
         </dependency>
         <dependency>
-            <groupId>com.ai.fabric</groupId>
+            <groupId>io.github.loom-ai-labs</groupId>
             <artifactId>ai-infrastructure-vector-lucene</artifactId>
         </dependency>
     </dependencies>

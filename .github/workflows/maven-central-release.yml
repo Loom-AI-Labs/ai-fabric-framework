@@ -1,0 +1,65 @@
+name: Maven Central Release
+
+on:
+  release:
+    types:
+      - published
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Existing tag or ref to publish from, for example ai-fabric-framework-v0.1.0.
+        required: true
+
+permissions:
+  contents: read
+
+env:
+  MAVEN_ARGS: -B -V --no-transfer-progress
+
+jobs:
+  publish-central:
+    name: Publish Framework to Maven Central
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.event.release.tag_name, 'ai-fabric-framework-v')
+
+    steps:
+      - name: Checkout release ref
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name || inputs.ref }}
+
+      - name: Set up JDK 21 and Central credentials
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: temurin
+          cache: maven
+          server-id: central
+          server-username: CENTRAL_TOKEN_USERNAME
+          server-password: CENTRAL_TOKEN_PASSWORD
+          gpg-private-key: ${{ secrets.MAVEN_GPG_PRIVATE_KEY }}
+          gpg-passphrase: MAVEN_GPG_PASSPHRASE
+
+      - name: Verify release tag matches Maven version
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(mvn -q -f ai-infrastructure-module/pom.xml help:evaluate -Dexpression=project.version -DforceStdout)"
+          ref="${{ github.event.release.tag_name || inputs.ref }}"
+          expected_tag="ai-fabric-framework-v${version}"
+          if [[ "${ref}" == ai-fabric-framework-v* && "${ref}" != "${expected_tag}" ]]; then
+            echo "Release ref '${ref}' does not match Maven version '${version}'. Expected '${expected_tag}'." >&2
+            exit 1
+          fi
+
+      - name: Deploy signed artifacts to Maven Central
+        env:
+          CENTRAL_TOKEN_USERNAME: ${{ secrets.CENTRAL_TOKEN_USERNAME }}
+          CENTRAL_TOKEN_PASSWORD: ${{ secrets.CENTRAL_TOKEN_PASSWORD }}
+          MAVEN_GPG_PASSPHRASE: ${{ secrets.MAVEN_GPG_PASSPHRASE }}
+        run: |
+          mvn ${MAVEN_ARGS} -f ai-infrastructure-module/pom.xml \
+            -Prelease,central \
+            -DskipTests \
+            deploy

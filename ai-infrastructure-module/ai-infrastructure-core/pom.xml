@@ -6,9 +6,9 @@
     <modelVersion>4.0.0</modelVersion>
 
     <parent>
-        <groupId>com.ai.fabric</groupId>
+        <groupId>io.github.loom-ai-labs</groupId>
         <artifactId>ai-fabric-bom</artifactId>
-        <version>0.1.0-preview</version>
+        <version>0.1.0</version>
     </parent>
 
     <artifactId>ai-fabric-core</artifactId>
@@ -20,7 +20,7 @@
     <dependencies>
         <!-- Default prompt bundle (complete base templates). -->
         <dependency>
-            <groupId>com.ai.fabric</groupId>
+            <groupId>io.github.loom-ai-labs</groupId>
             <artifactId>ai-curated-default</artifactId>
             <version>${project.version}</version>
         </dependency>
