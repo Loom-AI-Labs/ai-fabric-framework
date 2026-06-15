@@ -2,7 +2,9 @@
 
 ## Reporting Vulnerabilities
 
-Please report suspected vulnerabilities privately to the repository owner. Do not open a public issue containing exploit details, credentials, customer data, or private deployment information.
+Please report suspected vulnerabilities privately using GitHub's [Private Vulnerability Reporting](https://github.com/loom-ai-labs/ai-fabric-framework/security/advisories/new) for this repository (Security tab → "Report a vulnerability"). Do not open a public issue containing exploit details, credentials, customer data, or private deployment information.
+
+We aim to acknowledge new reports within a few business days.
 
 When reporting, include:
 

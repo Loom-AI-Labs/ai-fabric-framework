@@ -5,19 +5,19 @@
          http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
-    <groupId>com.ai.fabric</groupId>
+    <groupId>io.github.loom-ai-labs</groupId>
     <artifactId>ai-fabric-bom</artifactId>
-    <version>0.1.0-preview</version>
+    <version>0.1.0</version>
     <packaging>pom</packaging>
 
     <name>AI Fabric Framework BOM</name>
     <description>Open-source AI Fabric Framework for Spring Boot applications with orchestration, RAG, actions, providers, and vector integration</description>
-    <url>https://github.com/mahmoudashraf/ai-fabric-framework</url>
+    <url>https://github.com/loom-ai-labs/ai-fabric-framework</url>
 
     <scm>
-        <connection>scm:git:https://github.com/mahmoudashraf/ai-fabric-framework.git</connection>
-        <developerConnection>scm:git:https://github.com/mahmoudashraf/ai-fabric-framework.git</developerConnection>
-        <url>https://github.com/mahmoudashraf/ai-fabric-framework</url>
+        <connection>scm:git:https://github.com/loom-ai-labs/ai-fabric-framework.git</connection>
+        <developerConnection>scm:git:https://github.com/loom-ai-labs/ai-fabric-framework.git</developerConnection>
+        <url>https://github.com/loom-ai-labs/ai-fabric-framework</url>
         <tag>HEAD</tag>
     </scm>
 
@@ -28,6 +28,15 @@
             <distribution>repo</distribution>
         </license>
     </licenses>
+
+    <developers>
+        <developer>
+            <id>loom-ai-labs</id>
+            <name>Loom AI Labs</name>
+            <organization>Loom AI Labs</organization>
+            <organizationUrl>https://github.com/loom-ai-labs</organizationUrl>
+        </developer>
+    </developers>
 
     <modules>
         <module>ai-infrastructure-core</module>
@@ -70,17 +79,26 @@
         <maven.compiler.target>21</maven.compiler.target>
         <maven.compiler.proc>full</maven.compiler.proc>
         <maven-compiler-plugin.version>3.13.0</maven-compiler-plugin.version>
+        <maven-surefire-plugin.version>3.0.0</maven-surefire-plugin.version>
+        <maven-failsafe-plugin.version>3.0.0</maven-failsafe-plugin.version>
+        <maven-source-plugin.version>3.3.1</maven-source-plugin.version>
+        <maven-javadoc-plugin.version>3.6.3</maven-javadoc-plugin.version>
+        <maven-gpg-plugin.version>3.2.4</maven-gpg-plugin.version>
+        <central-publishing-maven-plugin.version>0.7.0</central-publishing-maven-plugin.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <spring-boot.version>3.2.0</spring-boot.version>
+        <spring-cloud-context.version>4.0.4</spring-cloud-context.version>
         <openai.version>0.18.2</openai.version>
         <lucene.version>9.10.0</lucene.version>
         <lombok.version>1.18.38</lombok.version>
         <mapstruct.version>1.5.5.Final</mapstruct.version>
+        <jsr305.version>3.0.2</jsr305.version>
         <testcontainers.version>1.19.3</testcontainers.version>
         <awaitility.version>4.2.0</awaitility.version>
         <mockito.version>5.8.0</mockito.version>
         <jmh.version>1.37</jmh.version>
         <javafaker.version>1.0.2</javafaker.version>
+        <swagger-request-validator.version>2.40.0</swagger-request-validator.version>
         <!-- Align gRPC versions across vector DB SDKs (Qdrant/Pinecone/Weaviate/Milvus). -->
         <grpc.version>1.68.2</grpc.version>
         <!-- Align protobuf across SDKs (Pinecone/Milvus/Qdrant/Weaviate) to avoid runtime CNF errors. -->
@@ -109,178 +127,193 @@
                 <artifactId>protobuf-java</artifactId>
                 <version>${protobuf.version}</version>
             </dependency>
-            
+            <dependency>
+                <groupId>com.google.code.findbugs</groupId>
+                <artifactId>jsr305</artifactId>
+                <version>${jsr305.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.springframework.cloud</groupId>
+                <artifactId>spring-cloud-context</artifactId>
+                <version>${spring-cloud-context.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.atlassian.oai</groupId>
+                <artifactId>swagger-request-validator-mockmvc</artifactId>
+                <version>${swagger-request-validator.version}</version>
+            </dependency>
+
 	            <!-- AI Infrastructure Core Module -->
 	            <dependency>
-	                <groupId>com.ai.fabric</groupId>
+	                <groupId>io.github.loom-ai-labs</groupId>
 	                <artifactId>ai-fabric-core</artifactId>
 	                <version>${project.version}</version>
 	            </dependency>
             <dependency>
-                <groupId>com.ai.fabric</groupId>
+                <groupId>io.github.loom-ai-labs</groupId>
                 <artifactId>ai-fabric-starter</artifactId>
                 <version>${project.version}</version>
             </dependency>
 	            <!-- Optional: connector-backed actions module -->
 	            <dependency>
-	                <groupId>com.ai.fabric</groupId>
+	                <groupId>io.github.loom-ai-labs</groupId>
 	                <artifactId>ai-infrastructure-actions-connector</artifactId>
 	                <version>${project.version}</version>
 	            </dependency>
             <dependency>
-                <groupId>com.ai.fabric</groupId>
+                <groupId>io.github.loom-ai-labs</groupId>
                 <artifactId>ai-infrastructure-actions-registry</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>com.ai.fabric</groupId>
+                <groupId>io.github.loom-ai-labs</groupId>
                 <artifactId>ai-infrastructure-actions-registry-liquibase</artifactId>
                 <version>${project.version}</version>
             </dependency>
 		            <!-- Optional: documents-only retrieval connector module -->
 		            <dependency>
-		                <groupId>com.ai.fabric</groupId>
+		                <groupId>io.github.loom-ai-labs</groupId>
 		                <artifactId>ai-infrastructure-retrieval-connector</artifactId>
 		                <version>${project.version}</version>
 		            </dependency>
 		            <!-- Optional: push-based data sync (ingestion) API for managed vector DB -->
 		            <dependency>
-		                <groupId>com.ai.fabric</groupId>
+		                <groupId>io.github.loom-ai-labs</groupId>
 		                <artifactId>ai-infrastructure-data-sync</artifactId>
 		                <version>${project.version}</version>
 		            </dependency>
 		            <dependency>
-		                <groupId>com.ai.fabric</groupId>
+		                <groupId>io.github.loom-ai-labs</groupId>
 		                <artifactId>ai-fabric-provider-starter</artifactId>
 		                <version>${project.version}</version>
 		            </dependency>
             <dependency>
-                <groupId>com.ai.fabric</groupId>
+                <groupId>io.github.loom-ai-labs</groupId>
                 <artifactId>ai-infrastructure-relay</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>com.ai.fabric</groupId>
+                <groupId>io.github.loom-ai-labs</groupId>
                 <artifactId>ai-fabric-web</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>com.ai.fabric</groupId>
+                <groupId>io.github.loom-ai-labs</groupId>
                 <artifactId>ai-infrastructure-relationship-query</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>com.ai.fabric</groupId>
+                <groupId>io.github.loom-ai-labs</groupId>
                 <artifactId>ai-fabric-migration-core</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>com.ai.fabric</groupId>
+                <groupId>io.github.loom-ai-labs</groupId>
                 <artifactId>ai-infrastructure-rag</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>com.ai.fabric</groupId>
+                <groupId>io.github.loom-ai-labs</groupId>
                 <artifactId>ai-infrastructure-pii</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>com.ai.fabric</groupId>
+                <groupId>io.github.loom-ai-labs</groupId>
                 <artifactId>ai-infrastructure-governance</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>com.ai.fabric</groupId>
+                <groupId>io.github.loom-ai-labs</groupId>
                 <artifactId>ai-infrastructure-indexing</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>com.ai.fabric</groupId>
+                <groupId>io.github.loom-ai-labs</groupId>
                 <artifactId>ai-infrastructure-chat-session</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>com.ai.fabric</groupId>
+                <groupId>io.github.loom-ai-labs</groupId>
                 <artifactId>ai-infrastructure-behavior</artifactId>
                 <version>${project.version}</version>
             </dependency>
 
             <!-- Curated Packs (optional) -->
             <dependency>
-                <groupId>com.ai.fabric</groupId>
+                <groupId>io.github.loom-ai-labs</groupId>
                 <artifactId>ai-curated-default</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>com.ai.fabric</groupId>
+                <groupId>io.github.loom-ai-labs</groupId>
                 <artifactId>ai-curated-commerce</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>com.ai.fabric</groupId>
+                <groupId>io.github.loom-ai-labs</groupId>
                 <artifactId>ai-curated-support</artifactId>
                 <version>${project.version}</version>
             </dependency>
             
             <!-- Provider Modules -->
             <dependency>
-                <groupId>com.ai.fabric</groupId>
+                <groupId>io.github.loom-ai-labs</groupId>
                 <artifactId>ai-fabric-provider-openai</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>com.ai.fabric</groupId>
+                <groupId>io.github.loom-ai-labs</groupId>
                 <artifactId>ai-infrastructure-provider-azure</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>com.ai.fabric</groupId>
+                <groupId>io.github.loom-ai-labs</groupId>
                 <artifactId>ai-infrastructure-provider-cohere</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>com.ai.fabric</groupId>
+                <groupId>io.github.loom-ai-labs</groupId>
                 <artifactId>ai-infrastructure-provider-anthropic</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>com.ai.fabric</groupId>
+                <groupId>io.github.loom-ai-labs</groupId>
                 <artifactId>ai-infrastructure-provider-gemini</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>com.ai.fabric</groupId>
+                <groupId>io.github.loom-ai-labs</groupId>
                 <artifactId>ai-infrastructure-onnx-starter</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <!-- Vector Modules -->
             <dependency>
-                <groupId>com.ai.fabric</groupId>
+                <groupId>io.github.loom-ai-labs</groupId>
                 <artifactId>ai-infrastructure-vector-lucene</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>com.ai.fabric</groupId>
+                <groupId>io.github.loom-ai-labs</groupId>
                 <artifactId>ai-infrastructure-vector-pinecone</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>com.ai.fabric</groupId>
+                <groupId>io.github.loom-ai-labs</groupId>
                 <artifactId>ai-infrastructure-vector-memory</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>com.ai.fabric</groupId>
+                <groupId>io.github.loom-ai-labs</groupId>
                 <artifactId>ai-infrastructure-vector-weaviate</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>com.ai.fabric</groupId>
+                <groupId>io.github.loom-ai-labs</groupId>
                 <artifactId>ai-infrastructure-vector-qdrant</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>com.ai.fabric</groupId>
+                <groupId>io.github.loom-ai-labs</groupId>
                 <artifactId>ai-infrastructure-vector-milvus</artifactId>
                 <version>${project.version}</version>
             </dependency>
@@ -382,13 +415,11 @@
 
     <!-- No dependencies in parent POM - they belong in child modules -->
 
-    <distributionManagement>
-        <repository>
-            <id>github</id>
-            <name>GitHub AI Fabric Framework Apache Maven Packages</name>
-            <url>https://maven.pkg.github.com/mahmoudashraf/ai-fabric-framework</url>
-        </repository>
-    </distributionManagement>
+    <!--
+        Publishing to Maven Central is handled by the `central` profile
+        (central-publishing-maven-plugin), so no distributionManagement is required here.
+        See docs/MAVEN_CENTRAL_RELEASE_GUIDE.md.
+    -->
 
     <build>
         <plugins>
@@ -403,7 +434,7 @@
         <plugin>
             <groupId>org.apache.maven.plugins</groupId>
             <artifactId>maven-surefire-plugin</artifactId>
-            <version>3.0.0</version>
+            <version>${maven-surefire-plugin.version}</version>
             <configuration>
                 <argLine>-Dnet.bytebuddy.experimental=true -XX:+EnableDynamicAgentLoading -Xshare:off</argLine>
             </configuration>
@@ -411,7 +442,7 @@
         <plugin>
             <groupId>org.apache.maven.plugins</groupId>
             <artifactId>maven-failsafe-plugin</artifactId>
-            <version>3.0.0</version>
+            <version>${maven-failsafe-plugin.version}</version>
             <configuration>
                 <argLine>-Dnet.bytebuddy.experimental=true -XX:+EnableDynamicAgentLoading -Xshare:off</argLine>
             </configuration>
@@ -432,7 +463,7 @@
                         <path>
                             <groupId>org.mapstruct</groupId>
                             <artifactId>mapstruct-processor</artifactId>
-                            <version>1.5.5.Final</version>
+                            <version>${mapstruct.version}</version>
                         </path>
                     </annotationProcessorPaths>
                     <compilerArgs>
@@ -447,4 +478,104 @@
                  Annotation processing is already handled by maven-compiler-plugin -->
         </plugins>
     </build>
+
+    <profiles>
+        <!--
+            Release profile: attaches the -sources.jar and -javadoc.jar that Maven Central
+            requires, so consumers also get source and Javadoc in their IDEs. Combine with the
+            `central` profile (GPG signing + Central upload) at deploy time: mvn -Prelease,central deploy.
+        -->
+        <profile>
+            <id>release</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-source-plugin</artifactId>
+                        <version>${maven-source-plugin.version}</version>
+                        <executions>
+                            <execution>
+                                <id>attach-sources</id>
+                                <phase>verify</phase>
+                                <goals>
+                                    <goal>jar-no-fork</goal>
+                                </goals>
+                            </execution>
+                        </executions>
+                    </plugin>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-javadoc-plugin</artifactId>
+                        <version>${maven-javadoc-plugin.version}</version>
+                        <configuration>
+                            <!-- Preview APIs are documented for consumers, not gated on strict linting. -->
+                            <doclint>none</doclint>
+                            <quiet>true</quiet>
+                            <failOnError>false</failOnError>
+                        </configuration>
+                        <executions>
+                            <execution>
+                                <id>attach-javadocs</id>
+                                <phase>verify</phase>
+                                <goals>
+                                    <goal>jar</goal>
+                                </goals>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+
+        <!--
+            Central profile: GPG-signs every artifact and publishes to Maven Central via the
+            Sonatype Central Portal. Use together with the release profile:
+
+                mvn -Prelease,central deploy
+
+            Requires (provided as CI secrets / local env, never committed):
+              - a GPG key importable into the build, with its passphrase in MAVEN_GPG_PASSPHRASE
+              - a Central Portal user token configured for server id `central` in settings.xml
+                (CENTRAL_TOKEN_USERNAME / CENTRAL_TOKEN_PASSWORD)
+        -->
+        <profile>
+            <id>central</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-gpg-plugin</artifactId>
+                        <version>${maven-gpg-plugin.version}</version>
+                        <executions>
+                            <execution>
+                                <id>sign-artifacts</id>
+                                <phase>verify</phase>
+                                <goals>
+                                    <goal>sign</goal>
+                                </goals>
+                                <configuration>
+                                    <!-- Non-interactive signing for CI; passphrase comes from env. -->
+                                    <gpgArguments>
+                                        <arg>--pinentry-mode</arg>
+                                        <arg>loopback</arg>
+                                    </gpgArguments>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                    <plugin>
+                        <groupId>org.sonatype.central</groupId>
+                        <artifactId>central-publishing-maven-plugin</artifactId>
+                        <version>${central-publishing-maven-plugin.version}</version>
+                        <extensions>true</extensions>
+                        <configuration>
+                            <publishingServerId>central</publishingServerId>
+                            <autoPublish>true</autoPublish>
+                            <waitUntil>published</waitUntil>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
 </project>

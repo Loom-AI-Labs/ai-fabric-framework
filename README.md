@@ -30,15 +30,16 @@ mvn -f ai-infrastructure-module/pom.xml clean install
 
 ## Maven Usage
 
-The preview BOM artifact is:
+Artifacts are published to Maven Central under the `io.github.loom-ai-labs` group, so no
+extra repository configuration is needed. The BOM artifact is:
 
 ```xml
 <dependencyManagement>
   <dependencies>
     <dependency>
-      <groupId>com.ai.fabric</groupId>
+      <groupId>io.github.loom-ai-labs</groupId>
       <artifactId>ai-fabric-bom</artifactId>
-      <version>0.1.0-preview</version>
+      <version>0.1.0</version>
       <type>pom</type>
       <scope>import</scope>
     </dependency>
@@ -51,22 +52,22 @@ Example dependency set:
 ```xml
 <dependencies>
   <dependency>
-    <groupId>com.ai.fabric</groupId>
+    <groupId>io.github.loom-ai-labs</groupId>
     <artifactId>ai-fabric-starter</artifactId>
   </dependency>
 
   <dependency>
-    <groupId>com.ai.fabric</groupId>
+    <groupId>io.github.loom-ai-labs</groupId>
     <artifactId>ai-fabric-provider-openai</artifactId>
   </dependency>
 
   <dependency>
-    <groupId>com.ai.fabric</groupId>
+    <groupId>io.github.loom-ai-labs</groupId>
     <artifactId>ai-infrastructure-onnx-starter</artifactId>
   </dependency>
 
   <dependency>
-    <groupId>com.ai.fabric</groupId>
+    <groupId>io.github.loom-ai-labs</groupId>
     <artifactId>ai-infrastructure-vector-lucene</artifactId>
   </dependency>
 </dependencies>
@@ -134,12 +135,12 @@ docs/                              Release and consumer docs
 
 ## Release Status
 
-This is a preview release line. APIs may still change before a stable `1.0.0`.
+This is an early release line (`0.x`). APIs may still change before a stable `1.0.0`.
 
-The first recommended release is:
+The first public release is:
 
 ```text
-0.1.0-preview
+0.1.0
 ```
 
 ## License

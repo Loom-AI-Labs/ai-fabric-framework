@@ -5,9 +5,9 @@
     <modelVersion>4.0.0</modelVersion>
 
     <parent>
-        <groupId>com.ai.fabric</groupId>
+        <groupId>io.github.loom-ai-labs</groupId>
         <artifactId>ai-fabric-bom</artifactId>
-        <version>0.1.0-preview</version>
+        <version>0.1.0</version>
     </parent>
 
     <artifactId>ai-infrastructure-behavior</artifactId>
@@ -18,7 +18,7 @@
 
     <dependencies>
         <dependency>
-            <groupId>com.ai.fabric</groupId>
+            <groupId>io.github.loom-ai-labs</groupId>
             <artifactId>ai-fabric-core</artifactId>
             <version>${project.version}</version>
         </dependency>
@@ -54,7 +54,7 @@
 
         <!-- Relationship query integration (optional) -->
         <dependency>
-            <groupId>com.ai.fabric</groupId>
+            <groupId>io.github.loom-ai-labs</groupId>
             <artifactId>ai-infrastructure-relationship-query</artifactId>
             <version>${project.version}</version>
             <optional>true</optional>

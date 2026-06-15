@@ -27,7 +27,10 @@ echo "🧪 Running Real API Integration Tests..."
 echo "This will make actual calls to OpenAI APIs and may incur costs."
 echo ""
 
-mvn test -Dtest=AIInfrastructureRealAPITest -Dspring.profiles.active=real-api-test
+# Resolve the module directory regardless of the caller's working directory.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+mvn -f "${SCRIPT_DIR}/ai-infrastructure-core/pom.xml" test -Dtest=EmbeddingProviderIntegrationTest
 
 echo ""
 echo "✅ Real API Integration Tests completed!"

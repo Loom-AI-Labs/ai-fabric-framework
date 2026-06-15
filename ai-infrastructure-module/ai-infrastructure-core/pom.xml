@@ -6,9 +6,9 @@
     <modelVersion>4.0.0</modelVersion>
 
     <parent>
-        <groupId>com.ai.fabric</groupId>
+        <groupId>io.github.loom-ai-labs</groupId>
         <artifactId>ai-fabric-bom</artifactId>
-        <version>0.1.0-preview</version>
+        <version>0.1.0</version>
     </parent>
 
     <artifactId>ai-fabric-core</artifactId>
@@ -20,7 +20,7 @@
     <dependencies>
         <!-- Default prompt bundle (complete base templates). -->
         <dependency>
-            <groupId>com.ai.fabric</groupId>
+            <groupId>io.github.loom-ai-labs</groupId>
             <artifactId>ai-curated-default</artifactId>
             <version>${project.version}</version>
         </dependency>
@@ -69,7 +69,6 @@
         <dependency>
             <groupId>com.google.code.findbugs</groupId>
             <artifactId>jsr305</artifactId>
-            <version>3.0.2</version>
         </dependency>
 
 
@@ -120,7 +119,6 @@
         <dependency>
             <groupId>org.springframework.cloud</groupId>
             <artifactId>spring-cloud-context</artifactId>
-            <version>4.0.4</version>
         </dependency>
 
         <!-- Spring Boot Test -->
@@ -148,7 +146,7 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
-                <version>3.0.0</version>
+                <version>${maven-surefire-plugin.version}</version>
                 <configuration>
                     <argLine>-Dnet.bytebuddy.experimental=true -XX:+EnableDynamicAgentLoading -Xshare:off</argLine>
                 </configuration>

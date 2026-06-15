@@ -23,7 +23,7 @@
         <maven.compiler.source>21</maven.compiler.source>
         <maven.compiler.target>21</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <ai-fabric.version>0.1.0-preview</ai-fabric.version>
+        <ai-fabric.version>0.1.0</ai-fabric.version>
         <lombok.version>1.18.38</lombok.version>
     </properties>
 
@@ -48,17 +48,17 @@
 
         <!-- AI Fabric: indexing + migration + local providers -->
         <dependency>
-            <groupId>com.ai.fabric</groupId>
+            <groupId>io.github.loom-ai-labs</groupId>
             <artifactId>ai-fabric-starter</artifactId>
             <version>${ai-fabric.version}</version>
         </dependency>
         <dependency>
-            <groupId>com.ai.fabric</groupId>
+            <groupId>io.github.loom-ai-labs</groupId>
             <artifactId>ai-fabric-migration-core</artifactId>
             <version>${ai-fabric.version}</version>
         </dependency>
         <dependency>
-            <groupId>com.ai.fabric</groupId>
+            <groupId>io.github.loom-ai-labs</groupId>
             <artifactId>ai-infrastructure-vector-lucene</artifactId>
             <version>${ai-fabric.version}</version>
         </dependency>

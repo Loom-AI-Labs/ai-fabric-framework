@@ -5,9 +5,9 @@
     <modelVersion>4.0.0</modelVersion>
 
     <parent>
-        <groupId>com.ai.fabric</groupId>
+        <groupId>io.github.loom-ai-labs</groupId>
         <artifactId>ai-fabric-bom</artifactId>
-        <version>0.1.0-preview</version>
+        <version>0.1.0</version>
         <relativePath>../pom.xml</relativePath>
     </parent>
 
@@ -59,7 +59,6 @@
         <dependency>
             <groupId>com.atlassian.oai</groupId>
             <artifactId>swagger-request-validator-mockmvc</artifactId>
-            <version>2.40.0</version>
             <scope>test</scope>
         </dependency>
     </dependencies>
