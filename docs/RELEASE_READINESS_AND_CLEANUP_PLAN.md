@@ -10,18 +10,21 @@
 
 ## 1. Verdict
 
-**Can we release? — Yes, after one blocker is fixed.**
+**Can we release? — Yes. All blockers and recommended cleanup are now applied.**
 
-The framework is in good shape. The code compiles, the module reactor is internally
+The framework is in good shape: the code compiles, the module reactor is internally
 consistent, there are no leaked secrets, and the OSS governance/documentation set is
-complete. There is exactly **one true release blocker**: every published-coordinate URL
-points at a personal account (`mahmoudashraf`) instead of the release org
-(`loom-ai-labs`). Because GitHub Packages rejects a `mvn deploy` whose
-`distributionManagement` URL owner does not match the hosting repository, the release
-workflow **will fail** until this is corrected.
+complete. Two blockers were found and **both are now fixed** in branch
+`claude/framework-release-check-3tma5g`:
 
-Everything else is recommended cleanup or nice-to-have polish that does not block the
-preview release.
+- **B1** — published-coordinate URLs pointed at a personal account (`mahmoudashraf`) instead
+  of the release org; GitHub Packages would reject `mvn deploy`. Now `loom-ai-labs`.
+- **B2** — a full `mvn clean install` (with tests) failed on **4 pre-existing stale tests**
+  left over from the monorepo split. Root-caused as test-only issues (production logic was
+  correct) and fixed; the full reactor build is now green.
+
+All recommended cleanup (C1–C5) is also applied. Remaining items are optional post-release
+polish (O1–O3).
 
 | Area | Status |
 |------|--------|
@@ -33,10 +36,11 @@ preview release.
 | Examples (`minimal-spring-boot`, `real-apps` x11) | ✅ PASS — env-var config, correct versions |
 | CI workflows + provider scripts | ✅ PASS (functional) |
 | **Published coordinates point at correct org** | ✅ FIXED — now `loom-ai-labs` |
-| **Full test build (`mvn clean install` / `verify`)** | ❌ **FAILS** — 3 pre-existing unit-test failures in `ai-fabric-core` |
+| **Full test build (`mvn clean install`, all modules + tests)** | ✅ **FIXED** — 4 pre-existing stale tests corrected; reactor green |
 | Stale `run-real-api-tests.sh` reference | ✅ FIXED |
-| Maven publishing completeness (source/javadoc jars) | ⚠️ Recommended |
-| CHANGELOG / release notes | ⚠️ Recommended |
+| Tests run in CI (`framework-verify.yml`) | ✅ FIXED — `-DskipTests` removed |
+| Maven publishing completeness (source/javadoc jars) | ✅ FIXED — `release` profile adds source+javadoc |
+| CHANGELOG / release notes | ⚠️ Optional (post-release) |
 
 ---
 
@@ -156,12 +160,12 @@ but degrades the consumer IDE experience and is **mandatory if Maven Central is 
 target**. **Fix:** add both plugins (ideally behind a `release` profile). GPG signing is only
 needed for Maven Central, not GitHub Packages. *(Medium effort)*
 
-### C3 — CI does not run tests — *blocked by B2*
-`framework-verify.yml` builds with `-DskipTests`. With 192 test classes present, the public
-CI gives no test signal on PRs. **This cannot be enabled until B2 is resolved** — turning on
-tests today would make CI red because of the 3 known failures. Once B2 is fixed, run unit
-tests in CI (keep real-API/integration tests gated behind a profile + secrets). *(Medium effort,
-blocked.)* **Not applied in this branch.**
+### C3 — CI does not run tests — *FIXED (unblocked by B2)*
+`framework-verify.yml` previously built the reactor with `-DskipTests`, so the public CI gave
+no test signal on PRs. With B2 resolved, the full reactor build (`mvn clean install`, all
+modules, all tests) is green locally, so **the `-DskipTests` flag was removed from the reactor
+build step** — CI now compiles, tests, and installs. Real-API/integration tests remain
+self-gating (they skip without credentials/specs), and the example-compile steps are unchanged.
 
 ### C4 — POM dependency hygiene
 Minor, non-blocking:
@@ -197,16 +201,17 @@ SECURITY.md says "report privately to the repository owner" but gives no mechani
 
 ## 6. Step-by-step release plan
 
-**Phase 1 — Unblock (required)**
-1. Apply **B1**: replace all 7 `mahmoudashraf` references with `loom-ai-labs`.
-2. Re-run `mvn -f ai-infrastructure-module/pom.xml -DskipTests install` to confirm green.
+**Phase 1 — Unblock (required) — ✅ done in this branch**
+1. ✅ **B1**: replaced all 7 `mahmoudashraf` references with `loom-ai-labs`.
+2. ✅ **B2**: fixed 4 pre-existing stale tests; `mvn -f ai-infrastructure-module/pom.xml clean install`
+   (all modules + tests) is green.
 3. Commit + push to `claude/framework-release-check-3tma5g`; open a PR into `main`.
 
-**Phase 2 — Recommended cleanup (same PR or fast follow)**
-4. Fix `run-real-api-tests.sh` (**C1**).
-5. Add source/javadoc plugins behind a `release` profile (**C2**).
-6. Enable unit tests in `framework-verify.yml` (**C3**).
-7. Optional POM hygiene (**C4**) and SECURITY contact (**C5**).
+**Phase 2 — Recommended cleanup — ✅ done in this branch**
+4. ✅ Fixed `run-real-api-tests.sh` (**C1**).
+5. ✅ Added source/javadoc plugins behind a `release` profile, wired into the deploy workflow (**C2**).
+6. ✅ Enabled tests in `framework-verify.yml` (**C3**).
+7. ✅ POM hygiene (**C4**) and SECURITY contact (**C5**).
 
 **Phase 3 — Release**
 8. Merge to `main`. Confirm `framework-verify.yml` is green.
@@ -233,20 +238,18 @@ SECURITY.md says "report privately to the repository owner" but gives no mechani
 | ID | Task | Priority | Effort | Status |
 |----|------|----------|--------|--------|
 | B1 | `mahmoudashraf` → `loom-ai-labs` (7 refs) | P0 | Low | ✅ Done |
-| B2 | Triage/fix 3 failing `ai-fabric-core` unit tests | P0 | Med–High | ⏳ Needs maintainer decision |
+| B2 | Fix 4 pre-existing stale tests (core ×3, relay ×1) | P0 | Med | ✅ Done |
 | C1 | Fix stale `run-real-api-tests.sh` | P1 | Low | ✅ Done |
 | C2 | Add source + javadoc jar plugins (`release` profile) | P1 | Med | ✅ Done |
-| C3 | Run unit tests in CI | P1 | Med | ⛔ Blocked by B2 |
+| C3 | Run tests in CI (remove `-DskipTests`) | P1 | Med | ✅ Done |
 | C4 | POM version-hygiene cleanup | P2 | Low | ✅ Done |
 | C5 | Concrete security reporting channel | P2 | Low | ✅ Done |
-| O1 | `CHANGELOG.md` | P2 | Low | Open |
-| O2 | Issue / PR templates | P3 | Low | Open |
-| O3 | Rename `victor-databases/` → `vector-databases/` | P3 | Med | Open |
+| O1 | `CHANGELOG.md` | P2 | Low | Open (post-release) |
+| O2 | Issue / PR templates | P3 | Low | Open (post-release) |
+| O3 | Rename `victor-databases/` → `vector-databases/` | P3 | Med | Open (post-release) |
 | O4 | Example `TODO`s | — | — | Leave |
 
-**Bottom line:** **B1 is fixed**, so the framework can produce and publish `0.1.0-preview`
-artifacts (they compile and deploy). The open decision is **B2**: a full `mvn clean verify`
-fails on 3 pre-existing `ai-fabric-core` unit tests, which also breaks the documented
-contributor build and blocks turning tests on in CI (C3). Either fix those three before
-release, or consciously ship the preview with a documented known-issue. C1, C2, C4, C5 are
-applied; the O-items can follow the first release.
+**Bottom line:** **B1 and B2 are fixed and all C-items are applied.** The full reactor build
+with tests (`mvn clean install`, all 33 modules) is green, CI now runs tests, and the release
+profile attaches source + javadoc jars. The framework is releasable as `0.1.0-preview`; only
+the optional O-items remain for after the first release.

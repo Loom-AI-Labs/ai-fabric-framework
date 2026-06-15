@@ -57,10 +57,9 @@ jobs:
           docker --version
           docker info | head -5
 
-      - name: Build and install framework reactor
+      - name: Build, test, and install framework reactor
         run: |
           mvn ${MAVEN_ARGS} -f ai-infrastructure-module/pom.xml \
-            -DskipTests \
             -Dai.vector-db.lucene.cleanup-on-close=true \
             install
         env:
