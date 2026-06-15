@@ -3,7 +3,7 @@ set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 project_root="$(cd "$script_dir/../.." && pwd)"
-registry_file="$project_root/ai-infrastructure-module/ai-infrastructure-core/src/main/resources/providers-registry.yml"
+registry_file="$project_root/ai-infrastructure-module/ai-fabric-core/src/main/resources/providers-registry.yml"
 provider_workflow_file="$project_root/.github/workflows/provider-configuration-check.yml"
 
 if [ ! -f "$registry_file" ]; then
