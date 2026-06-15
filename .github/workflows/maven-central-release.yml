@@ -42,6 +42,7 @@ jobs:
           gpg-passphrase: MAVEN_GPG_PASSPHRASE
 
       - name: Verify release tag matches Maven version
+        id: version
         shell: bash
         run: |
           set -euo pipefail
@@ -52,8 +53,26 @@ jobs:
             echo "Release ref '${ref}' does not match Maven version '${version}'. Expected '${expected_tag}'." >&2
             exit 1
           fi
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+
+      - name: Skip if version already published to Maven Central
+        id: central
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${{ steps.version.outputs.version }}"
+          url="https://repo1.maven.org/maven2/io/github/loom-ai-labs/ai-fabric-bom/${version}/ai-fabric-bom-${version}.pom"
+          code="$(curl -s -o /dev/null -w '%{http_code}' "${url}")"
+          if [[ "${code}" == "200" ]]; then
+            echo "ai-fabric-bom ${version} is already on Maven Central; skipping deploy (releases are immutable)."
+            echo "already_published=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Version ${version} not found on Central (HTTP ${code}); proceeding with deploy."
+            echo "already_published=false" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Deploy signed artifacts to Maven Central
+        if: steps.central.outputs.already_published != 'true'
         env:
           CENTRAL_TOKEN_USERNAME: ${{ secrets.CENTRAL_TOKEN_USERNAME }}
           CENTRAL_TOKEN_PASSWORD: ${{ secrets.CENTRAL_TOKEN_PASSWORD }}
