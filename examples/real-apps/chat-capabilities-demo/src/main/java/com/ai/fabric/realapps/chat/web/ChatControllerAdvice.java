@@ -1,7 +1,7 @@
 package com.ai.fabric.realapps.chat.web;
 
-import com.ai.infrastructure.chat.exception.ChatSessionAccessDeniedException;
-import com.ai.infrastructure.chat.exception.ChatSessionNotFoundException;
+import ai.fabric.chat.exception.ChatSessionAccessDeniedException;
+import ai.fabric.chat.exception.ChatSessionNotFoundException;
 import jakarta.persistence.EntityNotFoundException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;

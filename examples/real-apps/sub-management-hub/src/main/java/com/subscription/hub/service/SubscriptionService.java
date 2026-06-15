@@ -1,10 +1,10 @@
 package com.subscription.hub.service;
 
-import com.ai.infrastructure.annotation.AIProcess;
-import com.ai.infrastructure.indexing.api.IndexingStrategy;
-import com.ai.infrastructure.core.AICoreService;
-import com.ai.infrastructure.dto.AISearchRequest;
-import com.ai.infrastructure.dto.AISearchResponse;
+import ai.fabric.annotation.AIProcess;
+import ai.fabric.indexing.api.IndexingStrategy;
+import ai.fabric.core.AICoreService;
+import ai.fabric.dto.AISearchRequest;
+import ai.fabric.dto.AISearchResponse;
 import com.subscription.hub.entity.Subscription;
 import com.subscription.hub.entity.SubscriptionPlan;
 import com.subscription.hub.entity.Address;

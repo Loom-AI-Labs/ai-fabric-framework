@@ -1,8 +1,8 @@
 package com.ai.fabric.realapps.chat.web;
 
-import com.ai.infrastructure.chat.domain.ChatSession;
-import com.ai.infrastructure.chat.domain.SessionStatus;
-import com.ai.infrastructure.chat.service.ChatSessionService;
+import ai.fabric.chat.domain.ChatSession;
+import ai.fabric.chat.domain.SessionStatus;
+import ai.fabric.chat.service.ChatSessionService;
 import java.time.LocalDateTime;
 import java.util.List;
 import org.junit.jupiter.api.Test;

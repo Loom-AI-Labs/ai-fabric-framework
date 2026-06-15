@@ -2,11 +2,11 @@ package com.ai.fabric.realapps.behavior.spi;
 
 import com.ai.fabric.realapps.behavior.domain.AppBehaviorEvent;
 import com.ai.fabric.realapps.behavior.repo.AppBehaviorEventRepository;
-import com.ai.infrastructure.behavior.entity.BehaviorInsights;
-import com.ai.infrastructure.behavior.model.ExternalEvent;
-import com.ai.infrastructure.behavior.model.UserEventBatch;
-import com.ai.infrastructure.behavior.repository.BehaviorInsightsRepository;
-import com.ai.infrastructure.behavior.spi.ExternalEventProvider;
+import ai.fabric.behavior.entity.BehaviorInsights;
+import ai.fabric.behavior.model.ExternalEvent;
+import ai.fabric.behavior.model.UserEventBatch;
+import ai.fabric.behavior.repository.BehaviorInsightsRepository;
+import ai.fabric.behavior.spi.ExternalEventProvider;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;

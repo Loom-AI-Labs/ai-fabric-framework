@@ -2,10 +2,10 @@ package com.ai.fabric.realapps.faq.service;
 
 import com.ai.fabric.realapps.faq.domain.FaqArticle;
 import com.ai.fabric.realapps.faq.repo.FaqArticleRepository;
-import com.ai.infrastructure.core.AICoreService;
-import com.ai.infrastructure.dto.AISearchRequest;
-import com.ai.infrastructure.dto.AISearchResponse;
-import com.ai.infrastructure.service.AICapabilityService;
+import ai.fabric.core.AICoreService;
+import ai.fabric.dto.AISearchRequest;
+import ai.fabric.dto.AISearchResponse;
+import ai.fabric.service.AICapabilityService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.ObjectProvider;

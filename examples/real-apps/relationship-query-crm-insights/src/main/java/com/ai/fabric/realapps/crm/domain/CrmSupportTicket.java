@@ -1,6 +1,6 @@
 package com.ai.fabric.realapps.crm.domain;
 
-import com.ai.infrastructure.annotation.AICapable;
+import ai.fabric.annotation.AICapable;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;

@@ -91,7 +91,7 @@ management:
 logging:
   level:
     com.ai.fabric.realapps.chat: INFO
-    com.ai.infrastructure: INFO
+    ai.fabric: INFO
 
 app:
   cors:

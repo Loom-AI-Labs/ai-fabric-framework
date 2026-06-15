@@ -1,3 +1,0 @@
-org.springframework.boot.env.EnvironmentPostProcessor=\
-com.ai.infrastructure.curated.CuratedPackEnvironmentPostProcessor
-

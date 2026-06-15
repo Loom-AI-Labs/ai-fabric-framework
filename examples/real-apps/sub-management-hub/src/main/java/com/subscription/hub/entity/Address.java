@@ -1,7 +1,7 @@
 package com.subscription.hub.entity;
 
-import com.ai.infrastructure.annotation.AIContext;
-import com.ai.infrastructure.annotation.AISearchable;
+import ai.fabric.annotation.AIContext;
+import ai.fabric.annotation.AISearchable;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Builder;

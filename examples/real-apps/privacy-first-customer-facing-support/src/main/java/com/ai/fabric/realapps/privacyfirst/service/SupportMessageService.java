@@ -2,9 +2,9 @@ package com.ai.fabric.realapps.privacyfirst.service;
 
 import com.ai.fabric.realapps.privacyfirst.domain.SupportMessage;
 import com.ai.fabric.realapps.privacyfirst.repo.SupportMessageRepository;
-import com.ai.infrastructure.dto.PIIDetection;
-import com.ai.infrastructure.dto.PIIDetectionResult;
-import com.ai.infrastructure.privacy.pii.PIIDetectionService;
+import ai.fabric.dto.PIIDetection;
+import ai.fabric.dto.PIIDetectionResult;
+import ai.fabric.privacy.pii.PIIDetectionService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;

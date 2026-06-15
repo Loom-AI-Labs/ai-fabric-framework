@@ -3,7 +3,7 @@ set -euo pipefail
 
 provider_name="${1:-}"
 provider_type="${2:-}"
-registry_file="ai-infrastructure-module/ai-infrastructure-core/src/main/resources/providers-registry.yml"
+registry_file="ai-infrastructure-module/ai-fabric-core/src/main/resources/providers-registry.yml"
 
 if [ -z "$provider_name" ] || [ -z "$provider_type" ]; then
   echo "Usage: get-provider-models.sh <provider-name> <provider-type>" >&2

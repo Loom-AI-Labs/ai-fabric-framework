@@ -39,7 +39,7 @@ extra repository configuration is needed. The BOM artifact is:
     <dependency>
       <groupId>io.github.loom-ai-labs</groupId>
       <artifactId>ai-fabric-bom</artifactId>
-      <version>0.1.0</version>
+      <version>0.2.0</version>
       <type>pom</type>
       <scope>import</scope>
     </dependency>
@@ -63,12 +63,12 @@ Example dependency set:
 
   <dependency>
     <groupId>io.github.loom-ai-labs</groupId>
-    <artifactId>ai-infrastructure-onnx-starter</artifactId>
+    <artifactId>ai-fabric-onnx-starter</artifactId>
   </dependency>
 
   <dependency>
     <groupId>io.github.loom-ai-labs</groupId>
-    <artifactId>ai-infrastructure-vector-lucene</artifactId>
+    <artifactId>ai-fabric-vector-lucene</artifactId>
   </dependency>
 </dependencies>
 ```
@@ -76,7 +76,7 @@ Example dependency set:
 ## Minimal Spring Boot Entry Point
 
 ```java
-import com.ai.infrastructure.annotation.EnableAIInfrastructure;
+import ai.fabric.annotation.EnableAIInfrastructure;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
@@ -137,11 +137,14 @@ docs/                              Release and consumer docs
 
 This is an early release line (`0.x`). APIs may still change before a stable `1.0.0`.
 
-The first public release is:
+The current release is:
 
 ```text
-0.1.0
+0.2.0
 ```
+
+> Note: `0.2.0` renames coordinates and Java packages (`com.ai.infrastructure.*` → `ai.fabric.*`,
+> `ai-infrastructure-*` → `ai-fabric-*`) and is **not** a drop-in upgrade from `0.1.0`.
 
 ## License
 

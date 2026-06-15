@@ -1,3 +1,0 @@
-org.springframework.boot.env.EnvironmentPostProcessor=\
-com.ai.infrastructure.intent.action.connector.registry.liquibase.AIActionDbRegistryLiquibaseEnvironmentPostProcessor
-

@@ -51,4 +51,4 @@ ai:
 logging:
   level:
     com.subscription.hub: DEBUG
-    com.ai.infrastructure: INFO
+    ai.fabric: INFO

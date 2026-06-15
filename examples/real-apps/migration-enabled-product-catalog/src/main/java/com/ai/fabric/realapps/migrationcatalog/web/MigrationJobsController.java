@@ -1,10 +1,10 @@
 package com.ai.fabric.realapps.migrationcatalog.web;
 
-import com.ai.infrastructure.migration.domain.MigrationFilters;
-import com.ai.infrastructure.migration.domain.MigrationJob;
-import com.ai.infrastructure.migration.domain.MigrationProgress;
-import com.ai.infrastructure.migration.domain.MigrationRequest;
-import com.ai.infrastructure.migration.service.DataMigrationService;
+import ai.fabric.migration.domain.MigrationFilters;
+import ai.fabric.migration.domain.MigrationJob;
+import ai.fabric.migration.domain.MigrationProgress;
+import ai.fabric.migration.domain.MigrationRequest;
+import ai.fabric.migration.service.DataMigrationService;
 import jakarta.validation.constraints.NotBlank;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;

@@ -44,6 +44,6 @@ ai:
 logging:
   level:
     com.ai.fabric.realapps.migrationcatalog: INFO
-    com.ai.infrastructure.migration: INFO
-    com.ai.infrastructure.indexing: INFO
-    com.ai.infrastructure: INFO
+    ai.fabric.migration: INFO
+    ai.fabric.indexing: INFO
+    ai.fabric: INFO

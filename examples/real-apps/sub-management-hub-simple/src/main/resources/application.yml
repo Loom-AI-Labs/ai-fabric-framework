@@ -53,7 +53,7 @@ springdoc:
 logging:
   level:
     com.subscription.hub: DEBUG
-    com.ai.infrastructure: INFO
+    ai.fabric: INFO
 
 server:
   port: ${PORT:8080}

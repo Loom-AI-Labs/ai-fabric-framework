@@ -42,4 +42,4 @@ ai:
 logging:
   level:
     com.ai.fabric.realapps.cloudvector: INFO
-    com.ai.infrastructure: INFO
+    ai.fabric: INFO

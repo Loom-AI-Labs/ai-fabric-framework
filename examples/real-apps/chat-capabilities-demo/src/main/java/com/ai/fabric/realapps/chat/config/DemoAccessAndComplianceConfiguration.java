@@ -1,8 +1,8 @@
 package com.ai.fabric.realapps.chat.config;
 
-import com.ai.infrastructure.access.policy.EntityAccessPolicy;
-import com.ai.infrastructure.compliance.policy.ComplianceCheckProvider;
-import com.ai.infrastructure.compliance.policy.ComplianceCheckResult;
+import ai.fabric.access.policy.EntityAccessPolicy;
+import ai.fabric.compliance.policy.ComplianceCheckProvider;
+import ai.fabric.compliance.policy.ComplianceCheckResult;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 

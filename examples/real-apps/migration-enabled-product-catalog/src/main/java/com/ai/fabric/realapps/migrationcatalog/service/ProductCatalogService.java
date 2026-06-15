@@ -2,9 +2,9 @@ package com.ai.fabric.realapps.migrationcatalog.service;
 
 import com.ai.fabric.realapps.migrationcatalog.domain.Product;
 import com.ai.fabric.realapps.migrationcatalog.repo.ProductRepository;
-import com.ai.infrastructure.core.AICoreService;
-import com.ai.infrastructure.dto.AISearchRequest;
-import com.ai.infrastructure.dto.AISearchResponse;
+import ai.fabric.core.AICoreService;
+import ai.fabric.dto.AISearchRequest;
+import ai.fabric.dto.AISearchResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;

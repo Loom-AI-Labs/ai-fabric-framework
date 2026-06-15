@@ -2,15 +2,15 @@ package com.ai.fabric.realapps.itsupport.action;
 
 import com.ai.fabric.realapps.itsupport.domain.Ticket;
 import com.ai.fabric.realapps.itsupport.service.TicketService;
-import com.ai.infrastructure.intent.action.ActionAccessMode;
-import com.ai.infrastructure.intent.action.ActionContext;
-import com.ai.infrastructure.intent.action.ActionResult;
-import com.ai.infrastructure.intent.action.ActionResultContracts;
-import com.ai.infrastructure.intent.action.annotation.AIAction;
-import com.ai.infrastructure.intent.action.annotation.ActionAllowed;
-import com.ai.infrastructure.intent.action.annotation.ActionConfirmation;
-import com.ai.infrastructure.intent.action.annotation.ActionExecute;
-import com.ai.infrastructure.intent.action.annotation.Param;
+import ai.fabric.intent.action.ActionAccessMode;
+import ai.fabric.intent.action.ActionContext;
+import ai.fabric.intent.action.ActionResult;
+import ai.fabric.intent.action.ActionResultContracts;
+import ai.fabric.intent.action.annotation.AIAction;
+import ai.fabric.intent.action.annotation.ActionAllowed;
+import ai.fabric.intent.action.annotation.ActionConfirmation;
+import ai.fabric.intent.action.annotation.ActionExecute;
+import ai.fabric.intent.action.annotation.Param;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
