@@ -1,8 +1,8 @@
 package com.ai.fabric.realapps.faq.ai;
 
-import com.ai.infrastructure.dto.AIEmbeddingRequest;
-import com.ai.infrastructure.dto.AIEmbeddingResponse;
-import com.ai.infrastructure.embedding.EmbeddingProvider;
+import ai.fabric.dto.AIEmbeddingRequest;
+import ai.fabric.dto.AIEmbeddingResponse;
+import ai.fabric.embedding.EmbeddingProvider;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 

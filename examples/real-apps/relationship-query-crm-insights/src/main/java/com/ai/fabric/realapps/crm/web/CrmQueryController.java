@@ -1,8 +1,8 @@
 package com.ai.fabric.realapps.crm.web;
 
-import com.ai.infrastructure.dto.RAGResponse;
-import com.ai.infrastructure.relationship.service.RelationshipSchemaProvider;
-import com.ai.infrastructure.relationship.service.ReliableRelationshipQueryService;
+import ai.fabric.dto.RAGResponse;
+import ai.fabric.relationship.service.RelationshipSchemaProvider;
+import ai.fabric.relationship.service.ReliableRelationshipQueryService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import lombok.RequiredArgsConstructor;

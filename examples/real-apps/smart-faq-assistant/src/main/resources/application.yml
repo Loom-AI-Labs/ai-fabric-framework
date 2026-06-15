@@ -32,4 +32,4 @@ ai:
 logging:
   level:
     com.ai.fabric.realapps.faq: INFO
-    com.ai.infrastructure: INFO
+    ai.fabric: INFO

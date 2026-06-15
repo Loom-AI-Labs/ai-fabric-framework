@@ -23,7 +23,7 @@
         <maven.compiler.source>21</maven.compiler.source>
         <maven.compiler.target>21</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <ai-fabric.version>0.1.0</ai-fabric.version>
+        <ai-fabric.version>0.2.0</ai-fabric.version>
         <lombok.version>1.18.38</lombok.version>
     </properties>
 
@@ -49,7 +49,7 @@
         <!-- AI Fabric (PII module + core) -->
         <dependency>
             <groupId>io.github.loom-ai-labs</groupId>
-            <artifactId>ai-infrastructure-pii</artifactId>
+            <artifactId>ai-fabric-pii</artifactId>
             <version>${ai-fabric.version}</version>
         </dependency>
 

@@ -1,0 +1,11 @@
+package ai.fabric.behavior.api.dto;
+
+import lombok.Builder;
+import lombok.Data;
+
+@Data
+@Builder
+public class ContinuousProcessingResponse {
+    private String jobId;
+    private String status;
+}

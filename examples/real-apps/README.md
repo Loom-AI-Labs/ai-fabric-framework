@@ -30,7 +30,7 @@ Then compile all real apps:
 mvn -B -V --no-transfer-progress -f examples/real-apps/pom.xml -DskipTests compile
 ```
 
-Each app declares `ai-fabric.version=0.1.0`, so it resolves the framework artifacts from the local Maven install produced by this repository.
+Each app declares `ai-fabric.version=0.2.0`, so it resolves the framework artifacts from the local Maven install produced by this repository.
 
 ## Runtime Notes
 

@@ -1,15 +1,15 @@
 package com.subscription.hub.action.handler;
 
-import com.ai.infrastructure.intent.action.ActionAccessMode;
-import com.ai.infrastructure.intent.action.ActionContext;
-import com.ai.infrastructure.intent.action.ActionResult;
-import com.ai.infrastructure.intent.action.ActionResultContracts;
-import com.ai.infrastructure.intent.action.annotation.AIAction;
-import com.ai.infrastructure.intent.action.annotation.ActionAllowed;
-import com.ai.infrastructure.intent.action.annotation.ActionConfirmation;
-import com.ai.infrastructure.intent.action.annotation.ActionExecute;
-import com.ai.infrastructure.intent.action.annotation.Param;
-import com.ai.infrastructure.privacy.pii.PIIDetectionService;
+import ai.fabric.intent.action.ActionAccessMode;
+import ai.fabric.intent.action.ActionContext;
+import ai.fabric.intent.action.ActionResult;
+import ai.fabric.intent.action.ActionResultContracts;
+import ai.fabric.intent.action.annotation.AIAction;
+import ai.fabric.intent.action.annotation.ActionAllowed;
+import ai.fabric.intent.action.annotation.ActionConfirmation;
+import ai.fabric.intent.action.annotation.ActionExecute;
+import ai.fabric.intent.action.annotation.Param;
+import ai.fabric.privacy.pii.PIIDetectionService;
 import com.subscription.hub.entity.Address;
 import com.subscription.hub.service.SubscriptionService;
 import com.subscription.hub.service.UserService;

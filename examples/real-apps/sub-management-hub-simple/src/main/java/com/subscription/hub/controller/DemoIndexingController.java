@@ -1,6 +1,6 @@
 package com.subscription.hub.controller;
 
-import com.ai.infrastructure.service.AICapabilityService;
+import ai.fabric.service.AICapabilityService;
 import com.subscription.hub.entity.SubscriptionPlan;
 import com.subscription.hub.repository.SubscriptionPlanRepository;
 import lombok.RequiredArgsConstructor;

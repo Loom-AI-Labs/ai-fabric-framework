@@ -37,4 +37,4 @@ ai:
 logging:
   level:
     root: INFO
-    com.ai.infrastructure.privacy.pii: INFO
+    ai.fabric.privacy.pii: INFO

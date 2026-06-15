@@ -1,8 +1,8 @@
 package com.ai.fabric.realapps.cloudvector.domain;
 
-import com.ai.infrastructure.annotation.AICapable;
-import com.ai.infrastructure.annotation.AIContext;
-import com.ai.infrastructure.annotation.AISearchable;
+import ai.fabric.annotation.AICapable;
+import ai.fabric.annotation.AIContext;
+import ai.fabric.annotation.AISearchable;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;

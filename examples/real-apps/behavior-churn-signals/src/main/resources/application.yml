@@ -37,5 +37,5 @@ ai:
 logging:
   level:
     com.ai.fabric.realapps.behavior: INFO
-    com.ai.infrastructure.behavior: INFO
-    com.ai.infrastructure: INFO
+    ai.fabric.behavior: INFO
+    ai.fabric: INFO

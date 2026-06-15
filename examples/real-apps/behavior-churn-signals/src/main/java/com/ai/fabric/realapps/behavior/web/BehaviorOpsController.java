@@ -1,8 +1,8 @@
 package com.ai.fabric.realapps.behavior.web;
 
-import com.ai.infrastructure.behavior.entity.BehaviorInsights;
-import com.ai.infrastructure.behavior.repository.BehaviorInsightsRepository;
-import com.ai.infrastructure.behavior.service.BehaviorAnalysisService;
+import ai.fabric.behavior.entity.BehaviorInsights;
+import ai.fabric.behavior.repository.BehaviorInsightsRepository;
+import ai.fabric.behavior.service.BehaviorAnalysisService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;

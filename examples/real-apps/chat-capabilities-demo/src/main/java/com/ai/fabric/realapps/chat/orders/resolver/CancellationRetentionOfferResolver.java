@@ -1,12 +1,12 @@
 package com.ai.fabric.realapps.chat.orders.resolver;
 
 import com.ai.fabric.realapps.chat.orders.action.OfferOrderDiscountActionHandler;
-import com.ai.infrastructure.chat.annotation.AIConfirmationInterceptors;
-import com.ai.infrastructure.chat.annotation.OnPendingActionConfirmation;
-import com.ai.infrastructure.chat.interception.ConfirmationInterceptionContext;
-import com.ai.infrastructure.chat.interception.InterceptionDecision;
-import com.ai.infrastructure.dto.IntentType;
-import com.ai.infrastructure.intent.action.PendingAction;
+import ai.fabric.chat.annotation.AIConfirmationInterceptors;
+import ai.fabric.chat.annotation.OnPendingActionConfirmation;
+import ai.fabric.chat.interception.ConfirmationInterceptionContext;
+import ai.fabric.chat.interception.InterceptionDecision;
+import ai.fabric.dto.IntentType;
+import ai.fabric.intent.action.PendingAction;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import org.springframework.util.StringUtils;

@@ -1,12 +1,12 @@
 package com.ai.fabric.realapps.behavior.ai;
 
-import com.ai.infrastructure.dto.AIEmbeddingRequest;
-import com.ai.infrastructure.dto.AIEmbeddingResponse;
-import com.ai.infrastructure.dto.AIGenerationRequest;
-import com.ai.infrastructure.dto.AIGenerationResponse;
-import com.ai.infrastructure.provider.AIProvider;
-import com.ai.infrastructure.provider.ProviderConfig;
-import com.ai.infrastructure.provider.ProviderStatus;
+import ai.fabric.dto.AIEmbeddingRequest;
+import ai.fabric.dto.AIEmbeddingResponse;
+import ai.fabric.dto.AIGenerationRequest;
+import ai.fabric.dto.AIGenerationResponse;
+import ai.fabric.provider.AIProvider;
+import ai.fabric.provider.ProviderConfig;
+import ai.fabric.provider.ProviderStatus;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 

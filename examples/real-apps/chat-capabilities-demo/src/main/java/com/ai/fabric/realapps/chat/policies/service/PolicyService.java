@@ -2,10 +2,10 @@ package com.ai.fabric.realapps.chat.policies.service;
 
 import com.ai.fabric.realapps.chat.policies.domain.Policy;
 import com.ai.fabric.realapps.chat.policies.repo.PolicyRepository;
-import com.ai.infrastructure.annotation.AIProcess;
-import com.ai.infrastructure.core.AICoreService;
-import com.ai.infrastructure.dto.AISearchRequest;
-import com.ai.infrastructure.dto.AISearchResponse;
+import ai.fabric.annotation.AIProcess;
+import ai.fabric.core.AICoreService;
+import ai.fabric.dto.AISearchRequest;
+import ai.fabric.dto.AISearchResponse;
 import jakarta.persistence.EntityNotFoundException;
 import java.util.List;
 import java.util.Map;

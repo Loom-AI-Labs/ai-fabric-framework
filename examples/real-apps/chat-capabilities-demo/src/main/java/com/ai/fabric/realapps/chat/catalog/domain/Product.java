@@ -1,9 +1,9 @@
 package com.ai.fabric.realapps.chat.catalog.domain;
 
-import com.ai.infrastructure.annotation.AICapable;
-import com.ai.infrastructure.annotation.AIContext;
-import com.ai.infrastructure.annotation.AISearchable;
-import com.ai.infrastructure.indexing.api.IndexingStrategy;
+import ai.fabric.annotation.AICapable;
+import ai.fabric.annotation.AIContext;
+import ai.fabric.annotation.AISearchable;
+import ai.fabric.indexing.api.IndexingStrategy;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;

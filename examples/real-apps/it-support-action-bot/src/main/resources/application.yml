@@ -53,4 +53,4 @@ management:
 logging:
   level:
     com.ai.fabric.realapps.itsupport: INFO
-    com.ai.infrastructure: INFO
+    ai.fabric: INFO

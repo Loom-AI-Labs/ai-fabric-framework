@@ -1,6 +1,6 @@
 package com.ai.fabric.realapps.chat.config;
 
-import com.ai.infrastructure.chat.spi.ChatSessionAccessControlPolicy;
+import ai.fabric.chat.spi.ChatSessionAccessControlPolicy;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.util.StringUtils;

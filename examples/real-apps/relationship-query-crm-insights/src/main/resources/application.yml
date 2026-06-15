@@ -36,5 +36,5 @@ ai:
 logging:
   level:
     com.ai.fabric.realapps.crm: INFO
-    com.ai.infrastructure.relationship: INFO
-    com.ai.infrastructure: INFO
+    ai.fabric.relationship: INFO
+    ai.fabric: INFO

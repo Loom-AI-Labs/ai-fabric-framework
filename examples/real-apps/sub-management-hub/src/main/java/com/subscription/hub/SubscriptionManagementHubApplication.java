@@ -1,6 +1,6 @@
 package com.subscription.hub;
 
-import com.ai.infrastructure.annotation.EnableAIInfrastructure;
+import ai.fabric.annotation.EnableAIInfrastructure;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 

@@ -2,9 +2,9 @@ package com.ai.fabric.realapps.chat.catalog.action;
 
 import com.ai.fabric.realapps.chat.catalog.domain.Product;
 import com.ai.fabric.realapps.chat.catalog.service.ProductService;
-import com.ai.infrastructure.intent.action.ActionContext;
-import com.ai.infrastructure.intent.action.ActionListPayload;
-import com.ai.infrastructure.intent.action.ActionResult;
+import ai.fabric.intent.action.ActionContext;
+import ai.fabric.intent.action.ActionListPayload;
+import ai.fabric.intent.action.ActionResult;
 import java.math.BigDecimal;
 import java.util.List;
 import org.junit.jupiter.api.Test;

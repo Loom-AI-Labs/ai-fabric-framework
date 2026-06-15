@@ -1,12 +1,12 @@
 package com.ai.fabric.realapps.chat.web;
 
-import com.ai.infrastructure.core.AICoreService;
-import com.ai.infrastructure.core.LlmPurpose;
-import com.ai.infrastructure.dto.AIGenerationRequest;
-import com.ai.infrastructure.dto.AIGenerationResponse;
-import com.ai.infrastructure.intent.action.AIActionMetaData;
-import com.ai.infrastructure.intent.action.AIActionRegistry;
-import com.ai.infrastructure.intent.action.ActionAccessMode;
+import ai.fabric.core.AICoreService;
+import ai.fabric.core.LlmPurpose;
+import ai.fabric.dto.AIGenerationRequest;
+import ai.fabric.dto.AIGenerationResponse;
+import ai.fabric.intent.action.AIActionMetaData;
+import ai.fabric.intent.action.AIActionRegistry;
+import ai.fabric.intent.action.ActionAccessMode;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;

@@ -1,8 +1,8 @@
 package com.subscription.hub.controller;
 
-import com.ai.infrastructure.core.AICoreService;
-import com.ai.infrastructure.dto.AISearchRequest;
-import com.ai.infrastructure.dto.AISearchResponse;
+import ai.fabric.core.AICoreService;
+import ai.fabric.dto.AISearchRequest;
+import ai.fabric.dto.AISearchResponse;
 import com.subscription.hub.entity.SubscriptionPlan;
 import com.subscription.hub.repository.SubscriptionPlanRepository;
 import lombok.RequiredArgsConstructor;

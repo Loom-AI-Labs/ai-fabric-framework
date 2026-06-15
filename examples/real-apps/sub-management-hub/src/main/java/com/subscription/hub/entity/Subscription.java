@@ -1,8 +1,8 @@
 package com.subscription.hub.entity;
 
-import com.ai.infrastructure.annotation.AICapable;
-import com.ai.infrastructure.annotation.AIContext;
-import com.ai.infrastructure.indexing.api.IndexingStrategy;
+import ai.fabric.annotation.AICapable;
+import ai.fabric.annotation.AIContext;
+import ai.fabric.indexing.api.IndexingStrategy;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Builder;

@@ -1,6 +1,6 @@
 package com.subscription.hub.config;
 
-import com.ai.infrastructure.service.AICapabilityService;
+import ai.fabric.service.AICapabilityService;
 import com.subscription.hub.entity.*;
 import com.subscription.hub.repository.*;
 import lombok.RequiredArgsConstructor;

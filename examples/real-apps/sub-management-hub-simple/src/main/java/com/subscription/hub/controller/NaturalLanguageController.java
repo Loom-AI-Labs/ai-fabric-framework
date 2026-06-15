@@ -1,13 +1,13 @@
 package com.subscription.hub.controller;
 
-import com.ai.infrastructure.intent.action.AIActionHandler;
-import com.ai.infrastructure.intent.action.AIActionRegistry;
-import com.ai.infrastructure.intent.action.ActionContext;
-import com.ai.infrastructure.intent.action.ActionResult;
-import com.ai.infrastructure.intent.orchestration.OrchestrationContext;
-import com.ai.infrastructure.intent.orchestration.OrchestrationResult;
-import com.ai.infrastructure.intent.orchestration.RAGOrchestrator;
-import com.ai.infrastructure.intent.orchestration.attachment.OrchestrationAttachment;
+import ai.fabric.intent.action.AIActionHandler;
+import ai.fabric.intent.action.AIActionRegistry;
+import ai.fabric.intent.action.ActionContext;
+import ai.fabric.intent.action.ActionResult;
+import ai.fabric.intent.orchestration.OrchestrationContext;
+import ai.fabric.intent.orchestration.OrchestrationResult;
+import ai.fabric.intent.orchestration.RAGOrchestrator;
+import ai.fabric.intent.orchestration.attachment.OrchestrationAttachment;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -51,7 +51,7 @@ public class NaturalLanguageController {
         if (ragOrchestrator == null) {
             log.warn("RAGOrchestrator not available, returning basic response");
             return ResponseEntity.ok(OrchestrationResult.builder()
-                .type(com.ai.infrastructure.intent.orchestration.OrchestrationResultType.ERROR)
+                .type(ai.fabric.intent.orchestration.OrchestrationResultType.ERROR)
                 .success(false)
                 .message("RAG orchestrator not configured. Please configure AI RAG module.")
                 .build());

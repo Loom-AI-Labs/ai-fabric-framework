@@ -1,11 +1,19 @@
 # AI Fabric Framework — Release Readiness & Cleanup Plan
 
 - **Date:** 2026-06-15
-- **First release version:** `0.1.0`
+- **First release version:** `0.1.0` (published to Maven Central)
+- **Current release version:** `0.2.0` (naming normalization — see note below)
 - **groupId:** `io.github.loom-ai-labs`
 - **Target repository:** `loom-ai-labs/ai-fabric-framework`
 - **Reviewed branch:** `claude/framework-release-check-3tma5g`
 - **Release channel:** Maven Central (Sonatype Central Portal) — see `docs/MAVEN_CENTRAL_RELEASE_GUIDE.md`
+
+> **0.2.0 naming normalization (post-0.1.0):** unified all artifactIds under one prefix
+> (`ai-infrastructure-*` → `ai-fabric-*`, `ai-curated-*` → `ai-fabric-curated-*`) and renamed the
+> Java base package `com.ai.infrastructure.*` → `ai.fabric.*` (plus `com.ai.curated.*` →
+> `ai.fabric.curated.*`). This is a breaking change, hence the minor bump. Public class names
+> (e.g. `EnableAIInfrastructure`) were intentionally left unchanged. Example apps keep their own
+> packages (`com.ai.fabric.realapps.*`, `com.subscription.hub.*`); only their framework imports moved.
 
 ---
 
