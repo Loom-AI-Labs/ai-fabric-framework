@@ -4,7 +4,7 @@ This guide releases AI Fabric Framework as Maven packages in GitHub Packages and
 
 ## Release Target
 
-- Maven registry: `https://maven.pkg.github.com/mahmoudashraf/ai-fabric-framework`
+- Maven registry: `https://maven.pkg.github.com/loom-ai-labs/ai-fabric-framework`
 - Maven group: `com.ai.fabric`
 - BOM artifact: `ai-fabric-bom`
 - Source asset name: `ai-fabric-framework-source-<version>.tar.gz`
@@ -58,7 +58,7 @@ Consumer repository and BOM:
 <repositories>
   <repository>
     <id>github</id>
-    <url>https://maven.pkg.github.com/mahmoudashraf/ai-fabric-framework</url>
+    <url>https://maven.pkg.github.com/loom-ai-labs/ai-fabric-framework</url>
   </repository>
 </repositories>
 

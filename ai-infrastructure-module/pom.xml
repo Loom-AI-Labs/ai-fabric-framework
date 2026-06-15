@@ -12,12 +12,12 @@
 
     <name>AI Fabric Framework BOM</name>
     <description>Open-source AI Fabric Framework for Spring Boot applications with orchestration, RAG, actions, providers, and vector integration</description>
-    <url>https://github.com/mahmoudashraf/ai-fabric-framework</url>
+    <url>https://github.com/loom-ai-labs/ai-fabric-framework</url>
 
     <scm>
-        <connection>scm:git:https://github.com/mahmoudashraf/ai-fabric-framework.git</connection>
-        <developerConnection>scm:git:https://github.com/mahmoudashraf/ai-fabric-framework.git</developerConnection>
-        <url>https://github.com/mahmoudashraf/ai-fabric-framework</url>
+        <connection>scm:git:https://github.com/loom-ai-labs/ai-fabric-framework.git</connection>
+        <developerConnection>scm:git:https://github.com/loom-ai-labs/ai-fabric-framework.git</developerConnection>
+        <url>https://github.com/loom-ai-labs/ai-fabric-framework</url>
         <tag>HEAD</tag>
     </scm>
 
@@ -70,17 +70,24 @@
         <maven.compiler.target>21</maven.compiler.target>
         <maven.compiler.proc>full</maven.compiler.proc>
         <maven-compiler-plugin.version>3.13.0</maven-compiler-plugin.version>
+        <maven-surefire-plugin.version>3.0.0</maven-surefire-plugin.version>
+        <maven-failsafe-plugin.version>3.0.0</maven-failsafe-plugin.version>
+        <maven-source-plugin.version>3.3.1</maven-source-plugin.version>
+        <maven-javadoc-plugin.version>3.6.3</maven-javadoc-plugin.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <spring-boot.version>3.2.0</spring-boot.version>
+        <spring-cloud-context.version>4.0.4</spring-cloud-context.version>
         <openai.version>0.18.2</openai.version>
         <lucene.version>9.10.0</lucene.version>
         <lombok.version>1.18.38</lombok.version>
         <mapstruct.version>1.5.5.Final</mapstruct.version>
+        <jsr305.version>3.0.2</jsr305.version>
         <testcontainers.version>1.19.3</testcontainers.version>
         <awaitility.version>4.2.0</awaitility.version>
         <mockito.version>5.8.0</mockito.version>
         <jmh.version>1.37</jmh.version>
         <javafaker.version>1.0.2</javafaker.version>
+        <swagger-request-validator.version>2.40.0</swagger-request-validator.version>
         <!-- Align gRPC versions across vector DB SDKs (Qdrant/Pinecone/Weaviate/Milvus). -->
         <grpc.version>1.68.2</grpc.version>
         <!-- Align protobuf across SDKs (Pinecone/Milvus/Qdrant/Weaviate) to avoid runtime CNF errors. -->
@@ -109,7 +116,22 @@
                 <artifactId>protobuf-java</artifactId>
                 <version>${protobuf.version}</version>
             </dependency>
-            
+            <dependency>
+                <groupId>com.google.code.findbugs</groupId>
+                <artifactId>jsr305</artifactId>
+                <version>${jsr305.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.springframework.cloud</groupId>
+                <artifactId>spring-cloud-context</artifactId>
+                <version>${spring-cloud-context.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.atlassian.oai</groupId>
+                <artifactId>swagger-request-validator-mockmvc</artifactId>
+                <version>${swagger-request-validator.version}</version>
+            </dependency>
+
 	            <!-- AI Infrastructure Core Module -->
 	            <dependency>
 	                <groupId>com.ai.fabric</groupId>
@@ -386,7 +408,7 @@
         <repository>
             <id>github</id>
             <name>GitHub AI Fabric Framework Apache Maven Packages</name>
-            <url>https://maven.pkg.github.com/mahmoudashraf/ai-fabric-framework</url>
+            <url>https://maven.pkg.github.com/loom-ai-labs/ai-fabric-framework</url>
         </repository>
     </distributionManagement>
 
@@ -403,7 +425,7 @@
         <plugin>
             <groupId>org.apache.maven.plugins</groupId>
             <artifactId>maven-surefire-plugin</artifactId>
-            <version>3.0.0</version>
+            <version>${maven-surefire-plugin.version}</version>
             <configuration>
                 <argLine>-Dnet.bytebuddy.experimental=true -XX:+EnableDynamicAgentLoading -Xshare:off</argLine>
             </configuration>
@@ -411,7 +433,7 @@
         <plugin>
             <groupId>org.apache.maven.plugins</groupId>
             <artifactId>maven-failsafe-plugin</artifactId>
-            <version>3.0.0</version>
+            <version>${maven-failsafe-plugin.version}</version>
             <configuration>
                 <argLine>-Dnet.bytebuddy.experimental=true -XX:+EnableDynamicAgentLoading -Xshare:off</argLine>
             </configuration>
@@ -432,7 +454,7 @@
                         <path>
                             <groupId>org.mapstruct</groupId>
                             <artifactId>mapstruct-processor</artifactId>
-                            <version>1.5.5.Final</version>
+                            <version>${mapstruct.version}</version>
                         </path>
                     </annotationProcessorPaths>
                     <compilerArgs>
@@ -447,4 +469,55 @@
                  Annotation processing is already handled by maven-compiler-plugin -->
         </plugins>
     </build>
+
+    <profiles>
+        <!--
+            Release profile: attaches -sources.jar and -javadoc.jar to every module.
+            Activated automatically by the GitHub Packages release workflow (mvn deploy -Prelease)
+            so consumers get source and Javadoc in their IDEs. GPG signing is intentionally not
+            configured here because GitHub Packages does not require it; add maven-gpg-plugin under
+            this profile if publishing to Maven Central later.
+        -->
+        <profile>
+            <id>release</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-source-plugin</artifactId>
+                        <version>${maven-source-plugin.version}</version>
+                        <executions>
+                            <execution>
+                                <id>attach-sources</id>
+                                <phase>verify</phase>
+                                <goals>
+                                    <goal>jar-no-fork</goal>
+                                </goals>
+                            </execution>
+                        </executions>
+                    </plugin>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-javadoc-plugin</artifactId>
+                        <version>${maven-javadoc-plugin.version}</version>
+                        <configuration>
+                            <!-- Preview APIs are documented for consumers, not gated on strict linting. -->
+                            <doclint>none</doclint>
+                            <quiet>true</quiet>
+                            <failOnError>false</failOnError>
+                        </configuration>
+                        <executions>
+                            <execution>
+                                <id>attach-javadocs</id>
+                                <phase>verify</phase>
+                                <goals>
+                                    <goal>jar</goal>
+                                </goals>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
 </project>
