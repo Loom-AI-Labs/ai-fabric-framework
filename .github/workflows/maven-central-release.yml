@@ -44,9 +44,13 @@ jobs:
       - name: Verify release tag matches Maven version
         id: version
         shell: bash
+        env:
+          # Override the global MAVEN_ARGS: -V prints a version banner to stdout that would
+          # pollute the -DforceStdout capture below (and break $GITHUB_OUTPUT).
+          MAVEN_ARGS: -B --no-transfer-progress
         run: |
           set -euo pipefail
-          version="$(mvn -q -f ai-infrastructure-module/pom.xml help:evaluate -Dexpression=project.version -DforceStdout)"
+          version="$(mvn -q -f ai-infrastructure-module/pom.xml help:evaluate -Dexpression=project.version -DforceStdout | tail -n1)"
           ref="${{ github.event.release.tag_name || inputs.ref }}"
           expected_tag="ai-fabric-framework-v${version}"
           if [[ "${ref}" == ai-fabric-framework-v* && "${ref}" != "${expected_tag}" ]]; then
