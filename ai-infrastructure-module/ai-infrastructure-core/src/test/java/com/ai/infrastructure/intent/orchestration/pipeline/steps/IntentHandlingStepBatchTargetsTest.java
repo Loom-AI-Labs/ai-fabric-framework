@@ -187,7 +187,7 @@ class IntentHandlingStepBatchTargetsTest {
             .toBuilder()
             .intentResponse(MultiIntentResponse.builder().intents(List.of(intent)).build())
             .resolvedTargets(List.of(
-                target("commerce://resource/Product/1", Map.of("product_variant_id", "commerce://product-variant/1"))
+                target("commerce://resource/Product/1", Map.of("product_variant_id", "commerce://resource/ProductVariant/1"))
             ))
             .build();
 
@@ -202,7 +202,7 @@ class IntentHandlingStepBatchTargetsTest {
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> items = (List<Map<String, Object>>) raw;
         assertThat(items).singleElement().satisfies(item -> assertThat(item)
-            .containsEntry("product_variant_id", "commerce://product-variant/1")
+            .containsEntry("product_variant_id", "commerce://resource/ProductVariant/1")
             .containsEntry("quantity", 1L));
     }
 
@@ -234,7 +234,7 @@ class IntentHandlingStepBatchTargetsTest {
             .toBuilder()
             .intentResponse(MultiIntentResponse.builder().intents(List.of(intent)).build())
             .resolvedTargets(List.of(
-                target("commerce://resource/Product/1", Map.of("product_variant_id", "commerce://product-variant/1"))
+                target("commerce://resource/Product/1", Map.of("product_variant_id", "commerce://resource/ProductVariant/1"))
             ))
             .build();
 
@@ -249,7 +249,7 @@ class IntentHandlingStepBatchTargetsTest {
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> items = (List<Map<String, Object>>) raw;
         assertThat(items).singleElement().satisfies(item -> assertThat(item)
-            .containsEntry("product_variant_id", "commerce://product-variant/1")
+            .containsEntry("product_variant_id", "commerce://resource/ProductVariant/1")
             .containsEntry("quantity", 1L));
     }
 

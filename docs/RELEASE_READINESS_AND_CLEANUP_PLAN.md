@@ -110,11 +110,23 @@ Why it matters:
 - CI currently masks this by building with `-DskipTests` (see C3).
 - The published *artifacts* still compile and deploy; this does not block producing packages, but it is a real quality signal for a public release.
 
-These are commerce/MCP intent-orchestration logic and a prompt template — fixing them is
-potentially non-trivial and the intended behavior is ambiguous from the test alone. **Triage
-required before C3 can be enabled and before claiming a "tests green" release.** Recommend a
-maintainer decision: fix the three tests/logic, or consciously ship the preview with a
-documented known-issue and tests disabled in CI.
+**Root cause (resolved): all three were stale tests, not production regressions.**
+
+- The two `IntentHandlingStepBatchTargetsTest` cases declare a schema whose
+  `product_variant_id` property carries `pattern("^commerce://resource/ProductVariant/[0-9]+$")`
+  and `evidenceBound(true)`, but then fed a resolved-target metadata value of
+  `commerce://product-variant/1`, which cannot match that pattern. The production
+  `IntentHandlingStep.normalizeBatchStringValue` *correctly* rejects the malformed value, so
+  `add_items` is left null. Sibling tests that use a valid `commerce://resource/ProductVariant/<digits>`
+  id pass. **Fix:** corrected the 4 fixture/assertion occurrences to a pattern-valid id
+  (`commerce://resource/ProductVariant/1`). Test-only; no production logic changed.
+- `MultiStepIntentExtractionStrategyTest` asserted the **commerce** pack's fill-params wording
+  ("For catalog/search actions…"), but `ai-fabric-core` resolves the **default** pack
+  (`ai-curated-default` `v1`), whose template reads "For search/read actions…". **Fix:**
+  aligned the assertion with the default template's actual wording. Test-only.
+
+**Status: FIXED** — the three previously-failing tests now pass; `mvn clean install` (with
+tests) is green, which unblocks C3.
 
 ---
 
