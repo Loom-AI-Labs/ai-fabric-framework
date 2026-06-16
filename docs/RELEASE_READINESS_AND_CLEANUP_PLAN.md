@@ -329,6 +329,35 @@ verified in code, full test suite run (passes), and all 11 example apps booted.
 > suggestions → response sanitization → history persistence, with per-step skip/timing/error-isolation
 > and early termination, and is extended simply by registering a `PipelineStep` Spring bean. This is a
 > genuine differentiator versus generic Java AI toolkits and should be graded **Solid**.
+
+> **Second correction (2026-06-16, deeper pass on connectors / action config / MCP / interception):**
+> the first pass also missed material capabilities in the actions/connector surface. Adding them here:
+>
+> - **Dual action models.** Actions can be defined either as annotated Java (`@AIAction` +
+>   `@ActionExecute`/`@Param`/`@ActionAllowed`/`@ActionConfirmation`) **or** as declarative
+>   **connector** config (`ConnectorActionDefinition`, prefix `ai.actions.connector.*` /
+>   `ai.actions.*`), both merged into one `AIActionRegistry` via the `AIActionRegistryContributor`
+>   SPI. Config actions support typed/`allowedValues`/`sensitive` params, **evidence-bound** params
+>   (`evidenceBound`/`evidenceKeys`/`evidenceFallbackPolicy`), post-execution policies, and **signed
+>   webhook targets** (`urlSecretRef`/`signingSecretRef`).
+> - **MCP (Model Context Protocol) tool actions.** Connector actions have an `adapterType` of
+>   `webhook` or `mcp-tool` plus an `mcpServers` map; `mcp-tool` actions execute through a configured
+>   **MCP execution gateway** (`ai.actions.connector.mcp-gateway.*`) with secret-ref resolution, and
+>   MCP tool output is normalized into the bounded LLM "facts" payload. This is a current, topical
+>   capability that the first assessment entirely missed.
+> - **Confirmation-interception engine** (`intent/action/confirmation/`): rules + triggers + stack
+>   policy + decision types (`EXECUTE_ACTION`/`PROMPT_ACTION`/`REPLY`), resolved from three sources —
+>   annotations (`@OnPendingActionConfirmation`), config, and connectors — not just the two chat
+>   annotations named earlier.
+> - **Retrieval connector** (`RetrievalConnectorRAGProvider`): RAG can be backed by an external
+>   retrieval connector over a protocol, not only the local vector store.
+> - **Security analysis** (`security/` package → pipeline `SecurityAnalysisStep`): prompt-injection /
+>   malicious-request blocking as a first-class pipeline step.
+>
+> Net effect on the verdict: the governed, extensible **actions/connector + MCP** surface is a
+> stronger differentiator than first credited. Grade it **Solid**. Two consecutive corrections (this
+> and the orchestrator) also indicate the framework's depth is concentrated in the orchestration/
+> action layer and is easy to under-read from module names alone.
 | Curated packs | Yes (resource/prompt assets) | 0 Java by design | Thin by design |
 
 ### Annotation programming model (standout)
