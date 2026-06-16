@@ -71,8 +71,11 @@ jobs:
             -DskipTests \
             compile
 
-      - name: Compile real apps suite
+      - name: Build and install real apps suite
         run: |
           mvn ${MAVEN_ARGS} -f examples/real-apps/pom.xml \
             -DskipTests \
-            compile
+            install
+
+      - name: Smoke boot-test real apps (offline 'smoke' profile)
+        run: .github/scripts/smoke-boot-realapps.sh
