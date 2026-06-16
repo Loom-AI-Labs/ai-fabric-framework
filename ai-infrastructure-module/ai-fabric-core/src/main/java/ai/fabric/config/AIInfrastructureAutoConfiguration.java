@@ -107,15 +107,15 @@ import jakarta.persistence.EntityManagerFactory;
     excludeFilters = @ComponentScan.Filter(
         type = FilterType.REGEX,
         pattern = {
-            "com\\.ai\\.infrastructure\\.behavior\\..*",
-            "com\\.ai\\.infrastructure\\.chat\\..*",
-            "com\\.ai\\.infrastructure\\.rag\\..*",
-            "com\\.ai\\.infrastructure\\.relationship\\..*",
-            "com\\.ai\\.infrastructure\\.web\\..*",
-            "com\\.ai\\.infrastructure\\.migration\\..*",
-            "com\\.ai\\.infrastructure\\.it\\..*",
-            "com\\.ai\\.infrastructure\\.onnxstarter\\..*",
-            "com\\.ai\\.infrastructure\\.config\\..*"
+            "ai\\.fabric\\.behavior\\..*",
+            "ai\\.fabric\\.chat\\..*",
+            "ai\\.fabric\\.rag\\..*",
+            "ai\\.fabric\\.relationship\\..*",
+            "ai\\.fabric\\.web\\..*",
+            "ai\\.fabric\\.migration\\..*",
+            "ai\\.fabric\\.it\\..*",
+            "ai\\.fabric\\.onnxstarter\\..*",
+            "ai\\.fabric\\.config\\..*"
         }
     )
 )

@@ -23,12 +23,18 @@
         <maven.compiler.source>21</maven.compiler.source>
         <maven.compiler.target>21</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <ai-fabric.version>0.2.0</ai-fabric.version>
+        <ai-fabric.version>0.2.1</ai-fabric.version>
         <lombok.version>1.18.38</lombok.version>
         <springdoc.version>2.3.0</springdoc.version>
     </properties>
 
     <dependencies>
+        <!-- Offline stubs so this app boots with no keys under the smoke profile (mvn spring-boot:run -Dspring-boot.run.profiles=smoke) -->
+        <dependency>
+            <groupId>com.ai.fabric.examples</groupId>
+            <artifactId>smoke-support</artifactId>
+            <version>0.2.1</version>
+        </dependency>
         <!-- Spring Boot -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

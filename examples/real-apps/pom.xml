@@ -6,13 +6,14 @@
 
     <groupId>com.ai.fabric.examples</groupId>
     <artifactId>real-apps-suite</artifactId>
-    <version>0.2.0</version>
+    <version>0.2.1</version>
     <packaging>pom</packaging>
 
     <name>AI Fabric Real Apps Suite</name>
     <description>Standalone applications used to validate real AI Fabric framework integration scenarios.</description>
 
     <modules>
+        <module>smoke-support</module>
         <module>behavior-churn-signals</module>
         <module>chat-capabilities-demo</module>
         <module>cloud-qdrant-openai-vector-search</module>

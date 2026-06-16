@@ -1,0 +1,19 @@
+# App-specific "smoke" overrides. This app normally targets Postgres + Qdrant + OpenAI; under the
+# smoke profile we run fully offline. A per-app application-smoke.yml shadows the shared one from
+# smoke-support, so it must restate the common offline selectors in addition to the H2 datasource.
+spring:
+  datasource:
+    url: jdbc:h2:mem:smoke;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
+    driver-class-name: org.h2.Driver
+    username: sa
+    password: ""
+  jpa:
+    database-platform: org.hibernate.dialect.H2Dialect
+    hibernate:
+      ddl-auto: create-drop
+ai:
+  providers:
+    llm-provider: smoke
+    embedding-provider: smoke
+  vector-db:
+    type: memory
