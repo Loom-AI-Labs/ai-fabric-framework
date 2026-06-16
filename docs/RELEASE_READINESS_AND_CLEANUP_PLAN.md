@@ -293,3 +293,64 @@ automatically. I cannot perform R4 because it requires your credentials.
 
 I can drive the tag/release once the secrets exist (I can dispatch the workflow); I cannot
 create the Sonatype account, the GPG key, or add repository secrets.
+
+---
+
+## 9. Honest capability assessment (2026-06-16, at `0.2.1`)
+
+Evidence-based review: source/test sizes measured, integrations and annotation processors
+verified in code, full test suite run (passes), and all 11 example apps booted.
+
+### Scale & substance
+- ~96,700 lines of main Java; ~31,800 lines of test (≈0.33 test:code ratio).
+- `ai-fabric-core` is the real mass: 50k LOC / 288 classes / 80 test files / 17k test LOC.
+- Incompleteness is low: 1 TODO/FIXME, 3 `UnsupportedOperationException`, only 5 "not
+  implemented"-style throws. The 222 "stub/placeholder" grep hits were noise (208 are query/prompt
+  parameter placeholders; the rest are legitimate no-op beans).
+
+### Capability-by-capability verdict
+| Capability | Real? | Evidence | Grade |
+|---|---|---|---|
+| Core abstractions + auto-config | Yes | 50k LOC, exercised by every example | Solid |
+| Annotation programming model | Yes (not decorative) | Real processors: `AICapableProcessor` (360 LOC), `AnnotationFieldScanner`, `AnnotationMetadataEntityConfigRegistrar`, `AIActionRegistry`, `AnnotatedAIActionHandler`, `ActionMethodArgumentBinder` | Solid — key differentiator |
+| LLM providers (OpenAI/Anthropic/Cohere/Gemini/Azure) | Yes | All make real `HttpClient` calls, ~1k LOC each | Solid surface, thin tests (1 test file each) |
+| Relationship-query (NL→JPQL) | Yes | 6k LOC main / 4.4k test — best-tested after core | Solid |
+| Vector stores (Qdrant/Pinecone/Weaviate/Milvus/Lucene/Memory) | Yes | Real `io.qdrant`/`io.milvus`/pinecone/weaviate/`lucene` clients | Real but lightly tested (Lucene/Memory 0 tests; Milvus 49 test LOC) |
+| RAG, indexing, migration, data-sync | Yes | 1–2k LOC each + annotation-driven indexing | Partial; depth varies |
+| Actions/orchestration, governance, PII, chat-session, behavior | Yes | Substantive (governance 3.2k, chat 4.4k, behavior 1.7k LOC); action model has authz + confirmation + bounded-facts | Partial→Solid, area-dependent |
+| Curated packs | Yes (resource/prompt assets) | 0 Java by design | Thin by design |
+
+### Annotation programming model (standout)
+14 annotations with working processors form a declarative, JPA-style model:
+- Domain: `@AICapable`, `@AISearchable`, `@AIContext`, `@AISmartValidation`, `@AIProcess`.
+- Actions/tools: `@AIAction`, `@ActionExecute`, `@Param`, `@ActionAllowed` (authz),
+  `@ActionConfirmation` (human-in-the-loop), `@ActionFacts` (bounded data to the LLM).
+- Chat confirmation: `@AIConfirmationInterceptors`, `@OnPendingActionConfirmation`.
+- Bootstrap: `@EnableAIInfrastructure`.
+The action model's built-in authorization, confirmation, and data-minimization are genuinely
+enterprise-oriented and not something generic frameworks provide out of the box.
+
+### Maturity signals (the honest mix)
+- **Good:** low TODO density; real integrations throughout; well-tested core + relationship-query;
+  coherent declarative model with working processors; new CI smoke gate boots all 11 examples.
+- **Concerning:** a shipped-version bug (`0.2.0` component-scan broke multi-module apps, fixed in
+  `0.2.1`); order-fragile tests; examples that couldn't boot until the smoke profile was added; an
+  incomplete rename; **uneven coverage** — core and relationship-query are well-covered, but
+  providers and vector stores have a single test file each (some zero), which is where regressions
+  will hide.
+
+### Bottom line
+Real and substantively implemented — not vaporware, not a thin wrapper. The capability surface
+mostly exists in working code; the annotation model is the standout; the core is solid and tested.
+What it lacks is maturity and edge coverage. **Verified:** code present, integrates real clients,
+compiles, passes tests, all examples boot. **Not verified (needs creds/data/traffic):** runtime
+*quality* — relationship-query plan quality on messy schemas, cloud vector stores against live
+services, response quality under load. Strong on "the capabilities are genuinely built," unproven
+on "battle-hardened at scale."
+
+### Highest-leverage next steps for the 1.0 story
+1. Add focused tests for the least-covered, highest-risk areas: **LLM providers** and **vector
+   stores** (the smoke gate now protects boot wiring; these protect behavior).
+2. Harden the order-fragile test patterns surfaced during the rename.
+3. Pick one sharp differentiator to lead with (relationship-query / the annotation + action model)
+   rather than competing feature-for-feature with Spring AI and LangChain4j.
