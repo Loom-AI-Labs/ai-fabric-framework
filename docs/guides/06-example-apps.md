@@ -4,6 +4,10 @@ The framework ships a suite of runnable example apps under `examples/real-apps/`
 standalone Spring Boot application that demonstrates one slice of AI Fabric against realistic domain
 code. They are the fastest way to see how the framework is used in practice.
 
+> **Per-app deep dives:** for a developer walkthrough of *how each app uses AI Fabric* (modules,
+> configuration, the Java wiring, and reusable techniques), see
+> [Real-App Walkthroughs](real-apps/README.md).
+
 ## Run any example offline (no keys)
 
 Every example boots fully offline with the **`smoke`** profile — no API keys, no external services.
