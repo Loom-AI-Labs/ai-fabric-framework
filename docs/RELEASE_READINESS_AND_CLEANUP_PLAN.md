@@ -317,7 +317,18 @@ verified in code, full test suite run (passes), and all 11 example apps booted.
 | Relationship-query (NL→JPQL) | Yes | 6k LOC main / 4.4k test — best-tested after core | Solid |
 | Vector stores (Qdrant/Pinecone/Weaviate/Milvus/Lucene/Memory) | Yes | Real `io.qdrant`/`io.milvus`/pinecone/weaviate/`lucene` clients | Real but lightly tested (Lucene/Memory 0 tests; Milvus 49 test LOC) |
 | RAG, indexing, migration, data-sync | Yes | 1–2k LOC each + annotation-driven indexing | Partial; depth varies |
-| Actions/orchestration, governance, PII, chat-session, behavior | Yes | Substantive (governance 3.2k, chat 4.4k, behavior 1.7k LOC); action model has authz + confirmation + bounded-facts | Partial→Solid, area-dependent |
+| **Orchestration / intent pipeline** | Yes — core & deep | `intent/` is **~22.7k LOC / 107 files** (≈¼ of the framework); 18-step Spring-wired Chain-of-Responsibility pipeline (`DefaultOrchestrationPipeline`, `RAGOrchestrator`); multi-strategy intent extraction (~3k LOC); **57 test files / ~14.4k test LOC, ≈0.64 ratio — ~2× the framework average** | **Solid — strongest/most differentiated subsystem** |
+| Actions, governance, PII, chat-session, behavior | Yes | Substantive (governance 3.2k, chat 4.4k, behavior 1.7k LOC); action model has authz + confirmation + bounded-facts | Partial→Solid, area-dependent |
+
+> **Correction (2026-06-16, after a direct re-assessment of the orchestrator):** an earlier draft of
+> this section folded orchestration into the actions row and treated it as a "lighter," area-dependent
+> capability. That under-rated it. Measured properly, the intent/orchestration subsystem is the
+> framework's largest and best-tested area and the place where the "governed AI" claims are actually
+> enforced: the pipeline runs security analysis → access control → PII detection → compliance →
+> multi-strategy LLM intent extraction → intent handling (action execution / RAG) → metadata → smart
+> suggestions → response sanitization → history persistence, with per-step skip/timing/error-isolation
+> and early termination, and is extended simply by registering a `PipelineStep` Spring bean. This is a
+> genuine differentiator versus generic Java AI toolkits and should be graded **Solid**.
 | Curated packs | Yes (resource/prompt assets) | 0 Java by design | Thin by design |
 
 ### Annotation programming model (standout)
@@ -341,7 +352,8 @@ enterprise-oriented and not something generic frameworks provide out of the box.
 
 ### Bottom line
 Real and substantively implemented — not vaporware, not a thin wrapper. The capability surface
-mostly exists in working code; the annotation model is the standout; the core is solid and tested.
+mostly exists in working code; the **governed orchestration pipeline and the annotation model are the
+standouts**; the core is solid and tested.
 What it lacks is maturity and edge coverage. **Verified:** code present, integrates real clients,
 compiles, passes tests, all examples boot. **Not verified (needs creds/data/traffic):** runtime
 *quality* — relationship-query plan quality on messy schemas, cloud vector stores against live
@@ -352,5 +364,7 @@ on "battle-hardened at scale."
 1. Add focused tests for the least-covered, highest-risk areas: **LLM providers** and **vector
    stores** (the smoke gate now protects boot wiring; these protect behavior).
 2. Harden the order-fragile test patterns surfaced during the rename.
-3. Pick one sharp differentiator to lead with (relationship-query / the annotation + action model)
-   rather than competing feature-for-feature with Spring AI and LangChain4j.
+3. Pick one sharp differentiator to lead with — the **governed orchestration pipeline** (security /
+   access-control / PII / compliance / intent → action / RAG, extensible via `PipelineStep` beans),
+   relationship-query, or the annotation + action model — rather than competing feature-for-feature
+   with Spring AI and LangChain4j.
