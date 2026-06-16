@@ -358,6 +358,60 @@ verified in code, full test suite run (passes), and all 11 example apps booted.
 > stronger differentiator than first credited. Grade it **Solid**. Two consecutive corrections (this
 > and the orchestrator) also indicate the framework's depth is concentrated in the orchestration/
 > action layer and is easy to under-read from module names alone.
+
+### Full-sweep capability map (2026-06-16)
+
+A systematic sweep (every `@ConfigurationProperties` prefix, every SPI, every auto-configuration)
+confirmed further depth that name-level reading misses. 32 config prefixes, ~24 SPI extension points,
+28 registered auto-configurations.
+
+- **Enterprise data governance** (`ai-fabric-governance`, 3.2k LOC, prefix `ai.governance`): GDPR
+  user-data **deletion** (`UserDataDeletionService`/`UserDataDeletionProvider`), **retention**
+  policies + `RetentionCleanupScheduler`, **compliance** checks (`AIComplianceService` + pipeline
+  `ComplianceCheckStep`), an **index catalog** (JPA + vector) for audit/scan, and a
+  `GovernanceVectorDatabaseServiceDecorator` that enforces governance transparently on the vector
+  store. **Differentiated** — the incumbents do not ship this.
+- **Three action-definition sources** unified in one registry: annotated Java (`@AIAction`),
+  declarative connector config (`ai.actions.connector.*`), and a **DB-backed, REST-managed registry**
+  (`ai.actions.db`, `ConnectorActionRegistryController`, Liquibase schema) for runtime-managed actions
+  — on top of the MCP-tool adapter and signed webhooks already noted.
+- **Vector-space routing** (`ai.rag.vectorspace-routing`) for segmented/multi-tenant retrieval.
+- **Pluggable everything via SPIs:** chat memory (`ChatSessionStorageProvider`, `MemoryStrategy`),
+  RAG (`AdvancedRAGProvider`, `rag.source.SearchSource`, retrieval connector), security
+  (`SecurityAnalysisPolicy`), access control at entity/chat/relationship layers, compliance,
+  retention, deletion.
+- Plus orchestration **attachments** (multimodal), **intent history**, **post-action generation**,
+  **smart suggestions**, **response sanitization**, and a `relay` module (rate limiting/transport).
+
+### Verdict: is this just a redundancy for existing Java AI frameworks?
+
+**No — it is a different category, not a redundant clone.**
+
+- **Redundant on the basics** (and less mature): provider abstraction, embeddings, vector stores,
+  basic RAG, function/tool calling. Spring AI and LangChain4j do all of this, are more mature, and
+  are better distributed. For "call an LLM + do RAG from Java," AI Fabric adds little over them.
+- **Genuinely differentiated above the basics:** Spring AI / LangChain4j are *unopinionated
+  libraries* that hand you primitives and leave the application architecture, governance and request
+  lifecycle to you. AI Fabric is an *opinionated, governed AI-application framework* — a 18-step
+  orchestration pipeline with security/access-control/PII/compliance/sanitization built in; a
+  three-source, MCP-capable, interception-governed **actions platform**; declarative JPA-style entity
+  annotations; NL→JPQL over your own data; and enterprise data-governance (GDPR deletion, retention,
+  audit). That layer is **not** provided by the incumbents.
+
+So the honest framing is "Spring/Rails-for-AI-apps" vs. "AI client libraries" — overlapping
+foundations, different ambition. The differentiation is real and technical, not cosmetic.
+
+**Caveats (unchanged):** differentiated ≠ adopted. (1) The opinionation that differentiates it is also
+a barrier — many teams prefer composing unopinionated libraries to avoid lock-in, and AI Fabric also
+competes with "roll your own on top of Spring AI." (2) Maturity gaps remain (a shipped `0.2.0` bug,
+uneven edge test coverage). (3) Distribution/community, not code, will decide attention. Net: not
+redundant, but its path to adoption runs through a sharp "governed AI-app framework" wedge + a hardened
+1.0, not through matching the incumbents feature-for-feature.
+
+> **Assessment honesty note:** this verdict followed *three* upward revisions of perceived depth
+> (orchestrator, then connectors/MCP/interception, then governance/DB-registry/SPIs). The initial
+> "probably redundant" read was too dismissive of the technical differentiation; the market caveats
+> above still stand.
 | Curated packs | Yes (resource/prompt assets) | 0 Java by design | Thin by design |
 
 ### Annotation programming model (standout)
