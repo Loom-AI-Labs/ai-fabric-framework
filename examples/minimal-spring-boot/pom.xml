@@ -16,7 +16,7 @@
         <maven.compiler.source>${java.version}</maven.compiler.source>
         <maven.compiler.target>${java.version}</maven.compiler.target>
         <spring-boot.version>3.2.0</spring-boot.version>
-        <ai-fabric.version>0.2.0</ai-fabric.version>
+        <ai-fabric.version>0.2.1</ai-fabric.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     </properties>
 

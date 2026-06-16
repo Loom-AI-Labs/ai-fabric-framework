@@ -1,0 +1,13 @@
+# Shared overrides for the "smoke" profile, contributed to every example app that depends on
+# smoke-support. As a profile-specific document it takes precedence over each app's base
+# application.yml when run with --spring.profiles.active=smoke, redirecting all AI selectors at the
+# bundled offline stubs so the app boots with no API keys or external services.
+ai:
+  providers:
+    # No-op LLM stub (SmokeAiProvider#getProviderName) - replaces openai/cohere/etc.
+    llm-provider: smoke
+    # Deterministic in-process embeddings (SmokeEmbeddingProvider) - no ONNX model file required.
+    embedding-provider: smoke
+  vector-db:
+    # Local in-memory vector store - no Qdrant/Pinecone/etc.
+    type: memory
