@@ -20,16 +20,10 @@ import org.springframework.context.annotation.Primary;
 public class MemoryVectorAutoConfiguration {
 
     @Bean
-    @ConditionalOnProperty(name = "ai.vector-db.type", havingValue = "memory")
-    public InMemoryVectorDatabaseService inMemoryVectorDatabaseDelegate(AIProviderConfig config) {
-        return new InMemoryVectorDatabaseService(config);
-    }
-
-    @Bean
     @Primary
     @ConditionalOnProperty(name = "ai.vector-db.type", havingValue = "memory")
     @ConditionalOnMissingBean(VectorDatabaseService.class)
-    public VectorDatabaseService inMemoryVectorDatabaseService(InMemoryVectorDatabaseService delegate) {
-        return delegate;
+    public InMemoryVectorDatabaseService inMemoryVectorDatabaseService(AIProviderConfig config) {
+        return new InMemoryVectorDatabaseService(config);
     }
 }

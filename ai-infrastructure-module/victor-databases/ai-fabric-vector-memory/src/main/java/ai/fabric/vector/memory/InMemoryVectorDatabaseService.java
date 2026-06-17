@@ -6,14 +6,23 @@ import ai.fabric.dto.AISearchResponse;
 import ai.fabric.dto.VectorRecord;
 import ai.fabric.dto.VectorScanPage;
 import ai.fabric.dto.VectorScanRequest;
-import ai.fabric.rag.VectorDatabaseService;
 import ai.fabric.exception.AIServiceException;
+import ai.fabric.rag.VectorDatabaseService;
 import ai.fabric.util.MetadataJsonSerializer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 import java.time.LocalDateTime;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 /**
@@ -32,8 +41,7 @@ public class InMemoryVectorDatabaseService implements VectorDatabaseService {
     
     private final AIProviderConfig config;
     
-    // In-memory vector store - using vectorId as key for efficient lookups
-    private final Map<String, VectorRecord> vectorStore = new HashMap<>();
+    private final Map<String, VectorRecord> vectorStore = new ConcurrentHashMap<>();
 
     @Override
     public boolean supportsVectorScan() {
@@ -66,12 +74,12 @@ public class InMemoryVectorDatabaseService implements VectorDatabaseService {
                 .entityType(entityType)
                 .entityId(entityId)
                 .content(content)
-                .embedding(embedding)
+                .embedding(copyEmbedding(embedding))
                 .metadata(safeMetadata)
                 .aiAnalysis(null)
                 .createdAt(now)
                 .updatedAt(now)
-                .vectorMetadata(new HashMap<>())
+                .vectorMetadata(new LinkedHashMap<>())
                 .similarityScore(null)
                 .active(true)
                 .version(1)
@@ -107,15 +115,15 @@ public class InMemoryVectorDatabaseService implements VectorDatabaseService {
                 .entityType(entityType)
                 .entityId(entityId)
                 .content(content)
-                .embedding(embedding)
+                .embedding(copyEmbedding(embedding))
                 .metadata(safeMetadata)
                 .aiAnalysis(existingRecord.getAiAnalysis())
                 .createdAt(existingRecord.getCreatedAt())
                 .updatedAt(LocalDateTime.now())
-                .vectorMetadata(existingRecord.getVectorMetadata())
+                .vectorMetadata(copyMap(existingRecord.getVectorMetadata()))
                 .similarityScore(existingRecord.getSimilarityScore())
                 .active(existingRecord.getActive())
-                .version(existingRecord.getVersion() + 1)
+                .version(nextVersion(existingRecord.getVersion()))
                 .build();
             
             vectorStore.put(vectorId, updatedRecord);
@@ -133,7 +141,7 @@ public class InMemoryVectorDatabaseService implements VectorDatabaseService {
     public Optional<VectorRecord> getVector(String vectorId) {
         try {
             log.debug("Getting vector from memory with vectorId {}", vectorId);
-            return Optional.ofNullable(vectorStore.get(vectorId));
+            return Optional.ofNullable(vectorStore.get(vectorId)).map(this::copyRecord);
         } catch (Exception e) {
             log.error("Error getting vector from memory", e);
             throw new AIServiceException("Failed to get vector from memory", e);
@@ -145,8 +153,10 @@ public class InMemoryVectorDatabaseService implements VectorDatabaseService {
         try {
             log.debug("Getting vector from memory for entity {} of type {}", entityId, entityType);
             return vectorStore.values().stream()
-                .filter(record -> entityType.equals(record.getEntityType()) && entityId.equals(record.getEntityId()))
-                .findFirst();
+                .filter(record -> matchesEntity(record, entityType, entityId))
+                .sorted(recordOrder())
+                .findFirst()
+                .map(this::copyRecord);
         } catch (Exception e) {
             log.error("Error getting vector from memory by entity", e);
             throw new AIServiceException("Failed to get vector from memory by entity", e);
@@ -156,65 +166,22 @@ public class InMemoryVectorDatabaseService implements VectorDatabaseService {
     @Override
     public AISearchResponse search(List<Double> queryVector, AISearchRequest request) {
         try {
+            Objects.requireNonNull(request, "request must not be null");
             log.debug("Searching vectors in memory for query: {}", request.getQuery());
             
             long startTime = System.currentTimeMillis();
-            
-            // Get entities to search
-            String entityType = request.getEntityType();
-            List<VectorRecord> entities = vectorStore.values().stream()
-                .filter(record -> entityType.equals(record.getEntityType()))
-                .filter(record -> matchesMetadata(record.getMetadata(), request.getMetadata()))
-                .collect(Collectors.toList());
-            
-            if (entities.isEmpty()) {
-                log.debug("No entities found for type: {}", entityType);
-                return AISearchResponse.builder()
-                    .results(new ArrayList<>())
-                    .totalResults(0)
-                    .maxScore(0.0)
-                    .processingTimeMs(System.currentTimeMillis() - startTime)
-                    .requestId(UUID.randomUUID().toString())
-                    .query(request.getQuery())
-                    .model(config.resolveEmbeddingDefaults().model())
-                    .build();
-            }
-            
-            // Calculate similarity scores
-            List<Map<String, Object>> scoredEntities = entities.stream()
-                .map(record -> {
-                    double similarity = calculateCosineSimilarity(queryVector, record.getEmbedding());
-                    
-                    Map<String, Object> scoredEntity = new HashMap<>();
-                    scoredEntity.put("vectorId", record.getVectorId());
-                    scoredEntity.put("id", record.getEntityId());
-                    scoredEntity.put("entityId", record.getEntityId());
-                    scoredEntity.put("entityType", record.getEntityType());
-                    scoredEntity.put("vectorSpace", record.getEntityType());
-                    scoredEntity.put("content", record.getContent());
-                    scoredEntity.put("metadata", record.getMetadata());
-                    scoredEntity.put("similarity", similarity);
-                    scoredEntity.put("score", similarity);
-                    return scoredEntity;
-                })
-                .filter(entity -> (Double) entity.get("similarity") >= request.getThreshold())
-                .sorted((a, b) -> Double.compare((Double) b.get("similarity"), (Double) a.get("similarity")))
-                .limit(request.getLimit())
-                .collect(Collectors.toList());
-            
+
+            List<Map<String, Object>> scoredEntities = scoreEntities(
+                queryVector,
+                request.getEntityType(),
+                request.getMetadata(),
+                normalizeLimit(request.getLimit()),
+                normalizeThreshold(request.getThreshold()),
+                true
+            );
             long processingTime = System.currentTimeMillis() - startTime;
-            
             log.debug("Found {} results in memory in {}ms", scoredEntities.size(), processingTime);
-            
-            return AISearchResponse.builder()
-                .results(scoredEntities)
-                .totalResults(scoredEntities.size())
-                .maxScore(scoredEntities.isEmpty() ? 0.0 : (Double) scoredEntities.get(0).get("similarity"))
-                .processingTimeMs(processingTime)
-                .requestId(UUID.randomUUID().toString())
-                .query(request.getQuery())
-                .model(config.resolveEmbeddingDefaults().model())
-                .build();
+            return buildSearchResponse(scoredEntities, request.getQuery(), processingTime);
                 
         } catch (Exception e) {
             log.error("Error searching vectors in memory", e);
@@ -228,56 +195,17 @@ public class InMemoryVectorDatabaseService implements VectorDatabaseService {
             log.debug("Searching vectors in memory for entity type: {}", entityType);
             
             long startTime = System.currentTimeMillis();
-            
-            List<VectorRecord> entities = vectorStore.values().stream()
-                .filter(record -> entityType.equals(record.getEntityType()))
-                .collect(Collectors.toList());
-            
-            if (entities.isEmpty()) {
-                log.debug("No entities found for type: {}", entityType);
-                return AISearchResponse.builder()
-                    .results(new ArrayList<>())
-                    .totalResults(0)
-                    .maxScore(0.0)
-                    .processingTimeMs(System.currentTimeMillis() - startTime)
-                    .requestId(UUID.randomUUID().toString())
-                    .query("")
-                    .model(config.resolveEmbeddingDefaults().model())
-                    .build();
-            }
-            
-            // Calculate similarity scores
-            List<Map<String, Object>> scoredEntities = entities.stream()
-                .map(record -> {
-                    double similarity = calculateCosineSimilarity(queryVector, record.getEmbedding());
-                    
-                    Map<String, Object> scoredEntity = new HashMap<>();
-                    scoredEntity.put("vectorId", record.getVectorId());
-                    scoredEntity.put("entityId", record.getEntityId());
-                    scoredEntity.put("content", record.getContent());
-                    scoredEntity.put("metadata", record.getMetadata());
-                    scoredEntity.put("similarity", similarity);
-                    scoredEntity.put("score", similarity);
-                    return scoredEntity;
-                })
-                .filter(entity -> (Double) entity.get("similarity") >= threshold)
-                .sorted((a, b) -> Double.compare((Double) b.get("similarity"), (Double) a.get("similarity")))
-                .limit(limit)
-                .collect(Collectors.toList());
-            
+            List<Map<String, Object>> scoredEntities = scoreEntities(
+                queryVector,
+                entityType,
+                null,
+                normalizeLimit(limit),
+                threshold,
+                false
+            );
             long processingTime = System.currentTimeMillis() - startTime;
-            
             log.debug("Found {} results in memory in {}ms", scoredEntities.size(), processingTime);
-            
-            return AISearchResponse.builder()
-                .results(scoredEntities)
-                .totalResults(scoredEntities.size())
-                .maxScore(scoredEntities.isEmpty() ? 0.0 : (Double) scoredEntities.get(0).get("similarity"))
-                .processingTimeMs(processingTime)
-                .requestId(UUID.randomUUID().toString())
-                .query("")
-                .model(config.resolveEmbeddingDefaults().model())
-                .build();
+            return buildSearchResponse(scoredEntities, "", processingTime);
                 
         } catch (Exception e) {
             log.error("Error searching vectors in memory by entity type", e);
@@ -291,7 +219,7 @@ public class InMemoryVectorDatabaseService implements VectorDatabaseService {
             log.debug("Removing vector from memory for entity {} of type {}", entityId, entityType);
             
             Optional<VectorRecord> recordToRemove = vectorStore.values().stream()
-                .filter(record -> entityType.equals(record.getEntityType()) && entityId.equals(record.getEntityId()))
+                .filter(record -> matchesEntity(record, entityType, entityId))
                 .findFirst();
             
             if (recordToRemove.isPresent()) {
@@ -410,7 +338,9 @@ public class InMemoryVectorDatabaseService implements VectorDatabaseService {
             log.debug("Getting all vectors from memory for entity type {}", entityType);
             
             return vectorStore.values().stream()
-                .filter(record -> entityType.equals(record.getEntityType()))
+                .filter(record -> Objects.equals(entityType, record.getEntityType()))
+                .sorted(recordOrder())
+                .map(this::copyRecord)
                 .collect(Collectors.toList());
                 
         } catch (Exception e) {
@@ -425,7 +355,7 @@ public class InMemoryVectorDatabaseService implements VectorDatabaseService {
             log.debug("Getting vector count from memory for entity type {}", entityType);
             
             return vectorStore.values().stream()
-                .filter(record -> entityType.equals(record.getEntityType()))
+                .filter(record -> Objects.equals(entityType, record.getEntityType()))
                 .count();
                 
         } catch (Exception e) {
@@ -440,7 +370,7 @@ public class InMemoryVectorDatabaseService implements VectorDatabaseService {
             log.debug("Checking if vector exists in memory for entity {} of type {}", entityId, entityType);
             
             return vectorStore.values().stream()
-                .anyMatch(record -> entityType.equals(record.getEntityType()) && entityId.equals(record.getEntityId()));
+                .anyMatch(record -> matchesEntity(record, entityType, entityId));
                 
         } catch (Exception e) {
             log.error("Error checking if vector exists in memory", e);
@@ -471,7 +401,7 @@ public class InMemoryVectorDatabaseService implements VectorDatabaseService {
             log.debug("Clearing vectors from memory for entity type {}", entityType);
             
             List<String> vectorIdsToRemove = vectorStore.values().stream()
-                .filter(record -> entityType.equals(record.getEntityType()))
+                .filter(record -> Objects.equals(entityType, record.getEntityType()))
                 .map(VectorRecord::getVectorId)
                 .collect(Collectors.toList());
             
@@ -490,16 +420,32 @@ public class InMemoryVectorDatabaseService implements VectorDatabaseService {
     
     @Override
     public Map<String, Object> getStatistics() {
-        Map<String, Object> stats = new HashMap<>();
+        Map<String, Object> stats = new LinkedHashMap<>();
         stats.put("type", "memory");
         stats.put("totalVectors", vectorStore.size());
         
         Map<String, Long> entityTypeCounts = vectorStore.values().stream()
-            .collect(Collectors.groupingBy(VectorRecord::getEntityType, Collectors.counting()));
+            .collect(Collectors.groupingBy(
+                VectorRecord::getEntityType,
+                LinkedHashMap::new,
+                Collectors.counting()
+            ));
         
-        stats.put("entityTypes", entityTypeCounts.keySet());
+        stats.put("entityTypes", new ArrayList<>(entityTypeCounts.keySet()));
         stats.put("entityTypeCounts", entityTypeCounts);
         return stats;
+    }
+
+    @Override
+    public Map<String, Object> adminDiagnostics() {
+        Map<String, Object> diagnostics = new LinkedHashMap<>();
+        diagnostics.put("provider", "memory");
+        diagnostics.put("persistent", false);
+        diagnostics.put("sharedStorage", false);
+        diagnostics.put("supportsVectorScan", supportsVectorScan());
+        diagnostics.put("supportsMetadataFiltering", supportsMetadataFiltering());
+        diagnostics.put("totalVectors", vectorStore.size());
+        return diagnostics;
     }
     
     /**
@@ -529,6 +475,68 @@ public class InMemoryVectorDatabaseService implements VectorDatabaseService {
         return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
     }
 
+    private List<Map<String, Object>> scoreEntities(List<Double> queryVector,
+                                                    String entityType,
+                                                    Map<String, Object> metadataFilter,
+                                                    int limit,
+                                                    double threshold,
+                                                    boolean includeVectorSpace) {
+        return vectorStore.values().stream()
+            .filter(record -> Objects.equals(entityType, record.getEntityType()))
+            .filter(record -> matchesMetadata(record.getMetadata(), metadataFilter))
+            .filter(record -> hasComparableDimensions(queryVector, record.getEmbedding()))
+            .map(record -> scoredEntity(record, calculateCosineSimilarity(queryVector, record.getEmbedding()), includeVectorSpace))
+            .filter(entity -> (Double) entity.get("similarity") >= threshold)
+            .sorted(searchResultOrder())
+            .limit(limit)
+            .collect(Collectors.toList());
+    }
+
+    private Map<String, Object> scoredEntity(VectorRecord record, double similarity, boolean includeVectorSpace) {
+        Map<String, Object> scoredEntity = new LinkedHashMap<>();
+        scoredEntity.put("vectorId", record.getVectorId());
+        if (includeVectorSpace) {
+            scoredEntity.put("id", record.getEntityId());
+        }
+        scoredEntity.put("entityId", record.getEntityId());
+        scoredEntity.put("entityType", record.getEntityType());
+        if (includeVectorSpace) {
+            scoredEntity.put("vectorSpace", record.getEntityType());
+        }
+        scoredEntity.put("content", record.getContent());
+        scoredEntity.put("metadata", copyMap(record.getMetadata()));
+        scoredEntity.put("similarity", similarity);
+        scoredEntity.put("score", similarity);
+        return scoredEntity;
+    }
+
+    private AISearchResponse buildSearchResponse(List<Map<String, Object>> results, String query, long processingTime) {
+        return AISearchResponse.builder()
+            .results(results)
+            .totalResults(results.size())
+            .maxScore(results.isEmpty() ? 0.0 : (Double) results.get(0).get("similarity"))
+            .processingTimeMs(processingTime)
+            .requestId(UUID.randomUUID().toString())
+            .query(query)
+            .model(config.resolveEmbeddingDefaults().model())
+            .build();
+    }
+
+    private boolean hasComparableDimensions(List<Double> queryVector, List<Double> recordEmbedding) {
+        return queryVector != null
+            && recordEmbedding != null
+            && !queryVector.isEmpty()
+            && queryVector.size() == recordEmbedding.size();
+    }
+
+    private int normalizeLimit(Integer limit) {
+        return limit != null && limit > 0 ? limit : 10;
+    }
+
+    private double normalizeThreshold(Double threshold) {
+        return threshold != null ? threshold : 0.7;
+    }
+
     private Map<String, Object> normalizeMetadata(Map<String, Object> metadata) {
         Map<String, Object> safeMetadata = metadata == null ? new LinkedHashMap<>() : new LinkedHashMap<>(metadata);
         Object rawValue = safeMetadata.get("raw");
@@ -555,10 +563,66 @@ public class InMemoryVectorDatabaseService implements VectorDatabaseService {
         }
         Map<String, Object> candidate = metadata == null ? Collections.emptyMap() : metadata;
         for (Map.Entry<String, Object> entry : metadataEquals.entrySet()) {
-            if (!Objects.equals(candidate.get(entry.getKey()), entry.getValue())) {
+            if (!metadataValueMatches(candidate.get(entry.getKey()), entry.getValue())) {
                 return false;
             }
         }
         return true;
+    }
+
+    private boolean metadataValueMatches(Object actual, Object expected) {
+        if (expected == null) {
+            return actual == null;
+        }
+        return actual != null && String.valueOf(expected).equals(String.valueOf(actual));
+    }
+
+    private boolean matchesEntity(VectorRecord record, String entityType, String entityId) {
+        return Objects.equals(entityType, record.getEntityType())
+            && Objects.equals(entityId, record.getEntityId());
+    }
+
+    private int nextVersion(Integer currentVersion) {
+        return currentVersion == null ? 2 : currentVersion + 1;
+    }
+
+    private List<Double> copyEmbedding(List<Double> embedding) {
+        return embedding == null ? null : new ArrayList<>(embedding);
+    }
+
+    private Map<String, Object> copyMap(Map<String, Object> map) {
+        return map == null ? null : new LinkedHashMap<>(map);
+    }
+
+    private VectorRecord copyRecord(VectorRecord record) {
+        return VectorRecord.builder()
+            .vectorId(record.getVectorId())
+            .entityType(record.getEntityType())
+            .entityId(record.getEntityId())
+            .content(record.getContent())
+            .embedding(copyEmbedding(record.getEmbedding()))
+            .metadata(copyMap(record.getMetadata()))
+            .aiAnalysis(record.getAiAnalysis())
+            .createdAt(record.getCreatedAt())
+            .updatedAt(record.getUpdatedAt())
+            .vectorMetadata(copyMap(record.getVectorMetadata()))
+            .similarityScore(record.getSimilarityScore())
+            .active(record.getActive())
+            .version(record.getVersion())
+            .build();
+    }
+
+    private Comparator<VectorRecord> recordOrder() {
+        return Comparator
+            .comparing((VectorRecord record) -> record.getUpdatedAt() != null ? record.getUpdatedAt() : record.getCreatedAt(),
+                Comparator.nullsLast(Comparator.naturalOrder()))
+            .thenComparing(record -> record.getVectorId() != null ? record.getVectorId() : "");
+    }
+
+    private Comparator<Map<String, Object>> searchResultOrder() {
+        return Comparator
+            .<Map<String, Object>, Double>comparing(result -> (Double) result.get("similarity"), Comparator.reverseOrder())
+            .thenComparing(result -> Objects.toString(result.get("entityId"), ""))
+            .thenComparing(result -> Objects.toString(result.get("vectorId"), ""));
     }
 }
