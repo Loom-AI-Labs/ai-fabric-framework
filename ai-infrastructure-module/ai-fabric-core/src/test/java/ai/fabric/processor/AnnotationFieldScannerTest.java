@@ -3,11 +3,14 @@ package ai.fabric.processor;
 import ai.fabric.annotation.AICapable;
 import ai.fabric.annotation.AIContext;
 import ai.fabric.annotation.AISearchable;
+import ai.fabric.privacy.pii.PIIDetectionService;
+import ai.fabric.testsupport.SimplePIIDetectionService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.beans.factory.ObjectProvider;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -16,6 +19,8 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 /**
  * Tests for AnnotationFieldScanner
@@ -110,6 +115,34 @@ class AnnotationFieldScannerTest {
 
         // Assert - Normalized (trimmed, lowercase)
         assertThat(searchableContent).isEqualTo("macbook pro m3 powerful laptop");
+    }
+
+    @Test
+    @DisplayName("Should keep sanitize preprocessing character cleanup without PII service")
+    void shouldSanitizeWithoutPiiService() {
+        SanitizedProduct product = new SanitizedProduct();
+        product.setNotes("VIP #A-1! Contact: support@example.com");
+
+        String searchableContent = new AnnotationFieldScanner().extractSearchableContent(product);
+
+        assertThat(searchableContent).isEqualTo("VIP A1 Contact supportexamplecom");
+    }
+
+    @Test
+    @DisplayName("Should apply optional PII redaction before sanitize preprocessing cleanup")
+    void shouldSanitizeWithPiiServiceWhenAvailable() {
+        @SuppressWarnings("unchecked")
+        ObjectProvider<PIIDetectionService> piiProvider = mock(ObjectProvider.class);
+        when(piiProvider.getIfAvailable()).thenReturn(new SimplePIIDetectionService());
+        AnnotationFieldScanner scannerWithPii = new AnnotationFieldScanner(piiProvider);
+
+        SanitizedProduct product = new SanitizedProduct();
+        product.setNotes("Contact jane@example.com about order");
+
+        String searchableContent = scannerWithPii.extractSearchableContent(product);
+
+        assertThat(searchableContent).isEqualTo("Contact about order");
+        assertThat(searchableContent).doesNotContain("jane", "example", "@");
     }
 
     @Test
@@ -239,6 +272,15 @@ class AnnotationFieldScannerTest {
 
         public String getName() { return name; }
         public void setName(String name) { this.name = name; }
+    }
+
+    @AICapable(entityType = "sanitized_product")
+    static class SanitizedProduct {
+        @AISearchable(preprocessing = "sanitize")
+        private String notes;
+
+        public String getNotes() { return notes; }
+        public void setNotes(String notes) { this.notes = notes; }
     }
 
     enum ProductStatus {

@@ -3,8 +3,13 @@ package ai.fabric.processor;
 import ai.fabric.annotation.AICapable;
 import ai.fabric.annotation.AIContext;
 import ai.fabric.annotation.AISearchable;
+import ai.fabric.dto.PIIDetectionResult;
+import ai.fabric.privacy.pii.PIIDetectionService;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
 
 import java.lang.reflect.Field;
 import java.math.BigDecimal;
@@ -54,6 +59,17 @@ public class AnnotationFieldScanner {
     // Cache for context fields (application-level)
     private final ConcurrentHashMap<Class<?>, List<ContextFieldMetadata>> contextFieldsCache =
         new ConcurrentHashMap<>();
+
+    private final ObjectProvider<PIIDetectionService> piiDetectionServiceProvider;
+
+    public AnnotationFieldScanner() {
+        this(null);
+    }
+
+    @Autowired
+    public AnnotationFieldScanner(ObjectProvider<PIIDetectionService> piiDetectionServiceProvider) {
+        this.piiDetectionServiceProvider = piiDetectionServiceProvider;
+    }
 
     /**
      * Scans an entity class for @AISearchable fields and returns metadata.
@@ -280,10 +296,33 @@ public class AnnotationFieldScanner {
     }
 
     private String cleanAndSanitize(String value) {
-        // Clean special characters
-        String cleaned = value.replaceAll("[^a-zA-Z0-9\\s]", "").replaceAll("\\s+", " ").trim();
-        // TODO: Integrate with PIIDetectionService when available
-        return cleaned;
+        return cleanSearchableText(applyPiiSanitization(value));
+    }
+
+    private String applyPiiSanitization(String value) {
+        if (!StringUtils.hasText(value) || piiDetectionServiceProvider == null) {
+            return value;
+        }
+        PIIDetectionService piiDetectionService = piiDetectionServiceProvider.getIfAvailable();
+        if (piiDetectionService == null) {
+            return value;
+        }
+        try {
+            PIIDetectionResult result = piiDetectionService.detectAndProcess(value);
+            if (result != null && StringUtils.hasText(result.getProcessedQuery())) {
+                return result.getProcessedQuery();
+            }
+        } catch (Exception ex) {
+            log.debug("PII sanitization failed for searchable annotation field: {}", ex.getMessage());
+        }
+        return value;
+    }
+
+    private String cleanSearchableText(String value) {
+        if (value == null) {
+            return null;
+        }
+        return value.replaceAll("[^a-zA-Z0-9\\s]", "").replaceAll("\\s+", " ").trim();
     }
 
     private String truncateIfNeeded(String value, int maxLength) {
