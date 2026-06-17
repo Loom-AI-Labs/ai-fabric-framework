@@ -22,6 +22,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.Comparator;
@@ -140,22 +141,31 @@ public class AdvancedRAGService implements AdvancedRAGProvider {
      * @return AdvancedRAGResponse with expanded queries, re-ranked documents, and generated response
      */
     public AdvancedRAGResponse performAdvancedRAG(AdvancedRAGRequest request) {
+        if (request == null) {
+            String message = "Advanced RAG request must not be null";
+            return AdvancedRAGResponse.builder()
+                .response(String.format(ERROR_MESSAGE_TEMPLATE, message))
+                .success(false)
+                .errorMessage(message)
+                .build();
+        }
+
         log.info("Performing advanced RAG for query: {}", request.getQuery());
         
         try {
             long startTime = System.currentTimeMillis();
             
-            List<String> expandedQueries = expandQuery(request.getQuery(), request.getExpansionLevel());
+            List<String> expandedQueries = expandQuery(request.getQuery(), expansionLevel(request));
             log.debug("Expanded queries: {}", expandedQueries);
             
             List<RAGResponse> searchResults = performMultiStrategySearch(expandedQueries, request);
             
             List<RAGResponse.RAGDocument> rerankedDocuments = rerankDocuments(
-                searchResults, request.getQuery(), request.getRerankingStrategy()
+                searchResults, request.getQuery(), rerankingStrategy(request)
             );
             
             String optimizedContext = optimizeContext(
-                rerankedDocuments, request.getContextOptimizationLevel());
+                rerankedDocuments, contextOptimizationLevel(request));
             
             String generatedResponse = generateResponse(
                 request.getQuery(), optimizedContext, request);
@@ -173,14 +183,14 @@ public class AdvancedRAGService implements AdvancedRAGProvider {
                 .context(optimizedContext)
                 .documents(convertedDocuments)
                 .totalDocuments(convertedDocuments.size())
-                .usedDocuments(Math.min(convertedDocuments.size(), request.getMaxDocuments()))
+                .usedDocuments(Math.min(convertedDocuments.size(), maxDocuments(request)))
                 .relevanceScores(extractRelevanceScores(rerankedDocuments))
                 .confidenceScore(calculateConfidence(rerankedDocuments))
                 .processingTimeMs(processingTime)
                 .success(true)
-                .rerankingStrategy(request.getRerankingStrategy())
-                .expansionLevel(request.getExpansionLevel())
-                .contextOptimizationLevel(request.getContextOptimizationLevel())
+                .rerankingStrategy(rerankingStrategy(request))
+                .expansionLevel(expansionLevel(request))
+                .contextOptimizationLevel(contextOptimizationLevel(request))
                 .metadata(createMetadata(request, processingTime))
                 .build();
                 
@@ -240,6 +250,7 @@ public class AdvancedRAGService implements AdvancedRAGProvider {
         
         return futures.stream()
             .map(CompletableFuture::join)
+            .filter(Objects::nonNull)
             .filter(response -> Boolean.TRUE.equals(response.getSuccess()))
             .collect(Collectors.toList());
     }
@@ -248,7 +259,7 @@ public class AdvancedRAGService implements AdvancedRAGProvider {
         try {
             RAGRequest.RAGRequestBuilder ragRequestBuilder = RAGRequest.builder()
                 .query(query)
-                .limit(request.getMaxResults())
+                .limit(maxResults(request))
                 .enableHybridSearch(request.getEnableHybridSearch())
                 .enableContextualSearch(request.getEnableContextualSearch())
                 .categories(request.getCategories())
@@ -292,11 +303,12 @@ public class AdvancedRAGService implements AdvancedRAGProvider {
             List<RAGResponse> searchResults, String originalQuery, String strategy) {
         
         List<RAGResponse.RAGDocument> allDocuments = searchResults.stream()
-            .flatMap(response -> response.getDocuments().stream())
+            .filter(Objects::nonNull)
+            .flatMap(response -> safeDocuments(response).stream())
             .distinct()
             .collect(Collectors.toList());
         
-        return switch (strategy.toLowerCase()) {
+        return switch (rerankingStrategy(strategy).toLowerCase()) {
             case STRATEGY_SEMANTIC -> rerankBySemanticSimilarity(allDocuments, originalQuery);
             case STRATEGY_HYBRID -> rerankByHybridScore(allDocuments, originalQuery);
             case STRATEGY_DIVERSITY -> rerankByDiversity(allDocuments);
@@ -387,11 +399,11 @@ public class AdvancedRAGService implements AdvancedRAGProvider {
     // =========================================================================
 
     private String optimizeContext(List<RAGResponse.RAGDocument> documents, String level) {
-        if (documents.isEmpty()) {
+        if (documents == null || documents.isEmpty()) {
             return "";
         }
         
-        return switch (level.toLowerCase()) {
+        return switch (contextOptimizationLevel(level).toLowerCase()) {
             case LEVEL_HIGH -> optimizeContextHigh(documents);
             case LEVEL_MEDIUM -> optimizeContextMedium(documents);
             case LEVEL_LOW -> optimizeContextLow(documents);
@@ -476,6 +488,9 @@ public class AdvancedRAGService implements AdvancedRAGProvider {
     // =========================================================================
 
     private double calculateCosineSimilarity(List<Double> vector1, List<Double> vector2) {
+        if (vector1 == null || vector2 == null || vector1.isEmpty()) {
+            return 0.0;
+        }
         if (vector1.size() != vector2.size()) {
             return 0.0;
         }
@@ -536,10 +551,10 @@ public class AdvancedRAGService implements AdvancedRAGProvider {
         Map<String, Object> metadata = new HashMap<>();
         metadata.put(METADATA_KEY_TIMESTAMP, System.currentTimeMillis());
         metadata.put(METADATA_KEY_PROCESSING_TIME_MS, processingTime);
-        metadata.put(METADATA_KEY_EXPANSION_LEVEL, request.getExpansionLevel());
-        metadata.put(METADATA_KEY_RERANKING_STRATEGY, request.getRerankingStrategy());
-        metadata.put(METADATA_KEY_CONTEXT_OPTIMIZATION_LEVEL, request.getContextOptimizationLevel());
-        metadata.put(METADATA_KEY_MAX_DOCUMENTS, request.getMaxDocuments());
+        metadata.put(METADATA_KEY_EXPANSION_LEVEL, expansionLevel(request));
+        metadata.put(METADATA_KEY_RERANKING_STRATEGY, rerankingStrategy(request));
+        metadata.put(METADATA_KEY_CONTEXT_OPTIMIZATION_LEVEL, contextOptimizationLevel(request));
+        metadata.put(METADATA_KEY_MAX_DOCUMENTS, maxDocuments(request));
         metadata.put(METADATA_KEY_ENABLE_HYBRID_SEARCH, request.getEnableHybridSearch());
         metadata.put(METADATA_KEY_ENABLE_CONTEXTUAL_SEARCH, request.getEnableContextualSearch());
         return metadata;
@@ -562,5 +577,41 @@ public class AdvancedRAGService implements AdvancedRAGProvider {
             .wordCount(doc.getWordCount())
             .language(doc.getLanguage())
             .build();
+    }
+
+    private List<RAGResponse.RAGDocument> safeDocuments(RAGResponse response) {
+        return response.getDocuments() != null ? response.getDocuments() : List.of();
+    }
+
+    private int expansionLevel(AdvancedRAGRequest request) {
+        return request.getExpansionLevel() != null ? request.getExpansionLevel() : 2;
+    }
+
+    private int maxDocuments(AdvancedRAGRequest request) {
+        return request.getMaxDocuments() != null && request.getMaxDocuments() > 0
+            ? request.getMaxDocuments()
+            : 5;
+    }
+
+    private int maxResults(AdvancedRAGRequest request) {
+        return request.getMaxResults() != null && request.getMaxResults() > 0
+            ? request.getMaxResults()
+            : 10;
+    }
+
+    private String rerankingStrategy(AdvancedRAGRequest request) {
+        return rerankingStrategy(request.getRerankingStrategy());
+    }
+
+    private String rerankingStrategy(String strategy) {
+        return strategy != null && !strategy.isBlank() ? strategy : STRATEGY_HYBRID;
+    }
+
+    private String contextOptimizationLevel(AdvancedRAGRequest request) {
+        return contextOptimizationLevel(request.getContextOptimizationLevel());
+    }
+
+    private String contextOptimizationLevel(String level) {
+        return level != null && !level.isBlank() ? level : LEVEL_MEDIUM;
     }
 }

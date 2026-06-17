@@ -59,6 +59,9 @@ Select with `ai.vector-db.type`.
 | `ai-fabric-data-sync` | Keep indexed content in sync with your data as it changes. |
 | `ai-fabric-migration` | Bulk backfill/migration of existing data into the index. |
 
+For the indexing lifecycle behind RAG (annotate, extract, embed, upsert, update, delete, backfill),
+see [RAG Indexing Lifecycle Guide](../Framework-Dev-Guides/retrieval-vectorization/RAG_INDEXING_LIFECYCLE_GUIDE.md).
+
 ## Actions & orchestration
 
 | Module | Purpose |

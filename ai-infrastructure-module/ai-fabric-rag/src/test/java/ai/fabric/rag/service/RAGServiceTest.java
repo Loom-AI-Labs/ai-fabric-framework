@@ -147,6 +147,50 @@ class RAGServiceTest {
         assertThat(response).isNotNull();
         assertThat(response.getSuccess()).isTrue();
     }
+
+    @Test
+    @DisplayName("performRag returns a failed response for null request")
+    void performRagReturnsFailedResponseForNullRequest() {
+        RAGResponse response = ragService.performRag(null);
+
+        assertThat(response.getSuccess()).isFalse();
+        assertThat(response.getDocuments()).isEmpty();
+        assertThat(response.getErrorMessage()).contains("must not be null");
+    }
+
+    @Test
+    @DisplayName("performRAGQuery tolerates string scores and null totals")
+    void performRAGQueryToleratesStringScoresAndNullTotals() {
+        when(vectorDatabaseService.hybridSearch(any(), anyString(), any())).thenReturn(
+            AISearchResponse.builder()
+                .results(List.of(Map.of(
+                    "id", 123,
+                    "content", "Document with string scores",
+                    "score", "0.82",
+                    "similarity", "0.76",
+                    "metadata", "{\"knowledgeSourceId\":\"manual\"}"
+                )))
+                .totalResults(null)
+                .build()
+        );
+
+        RAGResponse response = ragService.performRAGQuery(RAGRequest.builder()
+            .query("string scores")
+            .entityType("document")
+            .limit(null)
+            .threshold(null)
+            .enableHybridSearch(true)
+            .build());
+
+        assertThat(response.getSuccess()).isTrue();
+        assertThat(response.getTotalDocuments()).isEqualTo(1);
+        assertThat(response.getUsedDocuments()).isEqualTo(1);
+        assertThat(response.getDocuments()).hasSize(1);
+        assertThat(response.getDocuments().get(0).getId()).isEqualTo("123");
+        assertThat(response.getDocuments().get(0).getScore()).isEqualTo(0.82);
+        assertThat(response.getDocuments().get(0).getSimilarity()).isEqualTo(0.76);
+        assertThat(response.getDocuments().get(0).getSource()).isEqualTo("manual");
+    }
     
     @Test
     @DisplayName("getStatistics returns non-null map")

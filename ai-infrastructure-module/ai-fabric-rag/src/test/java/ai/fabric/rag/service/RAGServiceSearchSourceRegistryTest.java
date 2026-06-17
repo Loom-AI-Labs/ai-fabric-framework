@@ -72,16 +72,11 @@ class RAGServiceSearchSourceRegistryTest {
             searchSourceRegistry
         );
 
-        when(privateSource.sourceId()).thenReturn("deployment-private-vector");
-        when(privateSource.sourceType()).thenReturn("deployment-private-vector");
-        when(privateSource.adapterType()).thenReturn("deployment-private-vector");
-        when(sharedSource.sourceId()).thenReturn("shared-catalog");
-        when(sharedSource.sourceType()).thenReturn("shared-vector");
-        when(sharedSource.adapterType()).thenReturn("shared-index");
     }
 
     @Test
     void performRagMergesResolvedSearchSourcesAndAddsAttribution() {
+        configureSourceIdentities();
         when(privateSource.isEligible(any())).thenReturn(true);
         when(sharedSource.isEligible(any())).thenReturn(true);
         when(searchSourceRegistry.resolveSearchSources(any())).thenReturn(List.of(privateSource, sharedSource));
@@ -151,6 +146,7 @@ class RAGServiceSearchSourceRegistryTest {
 
     @Test
     void performRagContinuesWhenOneSearchSourceFailsAndMarksDegraded() {
+        configureSourceIdentities();
         when(privateSource.isEligible(any())).thenReturn(true);
         when(sharedSource.isEligible(any())).thenReturn(true);
         when(searchSourceRegistry.resolveSearchSources(any())).thenReturn(List.of(privateSource, sharedSource));
@@ -207,6 +203,7 @@ class RAGServiceSearchSourceRegistryTest {
 
     @Test
     void performRagTracksSkippedIneligibleSourcesWithoutMarkingDegraded() {
+        configureSourceIdentities();
         when(privateSource.isEligible(any())).thenReturn(true);
         when(sharedSource.isEligible(any())).thenReturn(false);
         when(searchSourceRegistry.resolveSearchSources(any())).thenReturn(List.of(privateSource, sharedSource));
@@ -254,5 +251,37 @@ class RAGServiceSearchSourceRegistryTest {
                 .containsEntry("status", "SKIPPED")
                 .containsEntry("reason", "ineligible"));
         verify(searchSourceRegistry).recordSearchExecution(any(), eq(false));
+    }
+
+    @Test
+    void performRagTreatsNullResolvedSearchSourcesAsEmptyResultSet() {
+        when(searchSourceRegistry.resolveSearchSources(any())).thenReturn(null);
+
+        RAGResponse response = ragService.performRag(RAGRequest.builder()
+            .query("tell me about Alienware m18 R2")
+            .entityType("product")
+            .limit(5)
+            .threshold(0.1)
+            .build());
+
+        assertThat(response.getSuccess()).isTrue();
+        assertThat(response.getDocuments()).isEmpty();
+        assertThat(response.getMetadata())
+            .containsEntry("searchSourceCount", 0)
+            .containsEntry("searchSourceEligibleCount", 0)
+            .containsEntry("searchSourceAttemptedCount", 0)
+            .containsEntry("searchSourceSucceededCount", 0)
+            .containsEntry("searchSourceFailedCount", 0)
+            .containsEntry("searchSourceSkippedCount", 0)
+            .containsEntry("searchSourcesDegraded", false);
+    }
+
+    private void configureSourceIdentities() {
+        when(privateSource.sourceId()).thenReturn("deployment-private-vector");
+        when(privateSource.sourceType()).thenReturn("deployment-private-vector");
+        when(privateSource.adapterType()).thenReturn("deployment-private-vector");
+        when(sharedSource.sourceId()).thenReturn("shared-catalog");
+        when(sharedSource.sourceType()).thenReturn("shared-vector");
+        when(sharedSource.adapterType()).thenReturn("shared-index");
     }
 }

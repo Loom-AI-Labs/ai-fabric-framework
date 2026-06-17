@@ -43,6 +43,72 @@ class AdvancedRAGServiceTest {
     private RAGProvider ragProvider;
 
     @Test
+    void performAdvancedRAGReturnsFailedResponseForNullRequest() {
+        AdvancedRAGService service = new AdvancedRAGService(
+            aiSearchService,
+            aiEmbeddingService,
+            aiCoreService,
+            ragProvider,
+            promptTemplateResolver(),
+            new PromptRenderer()
+        );
+
+        AdvancedRAGResponse response = service.performAdvancedRAG(null);
+
+        assertThat(response.getSuccess()).isFalse();
+        assertThat(response.getErrorMessage()).contains("must not be null");
+    }
+
+    @Test
+    void performAdvancedRAGUsesDefaultsForNullOptionalFields() {
+        when(aiCoreService.generateText(any())).thenReturn("expanded one\nexpanded two");
+        when(ragProvider.performRag(any(RAGRequest.class))).thenReturn(
+            RAGResponse.builder()
+                .success(true)
+                .documents(List.of(
+                    RAGResponse.RAGDocument.builder()
+                        .id("doc-1")
+                        .content("retrieved content")
+                        .score(0.8)
+                        .similarity(0.7)
+                        .build()
+                ))
+                .build()
+        );
+
+        AdvancedRAGService service = new AdvancedRAGService(
+            aiSearchService,
+            aiEmbeddingService,
+            aiCoreService,
+            ragProvider,
+            promptTemplateResolver(),
+            new PromptRenderer()
+        );
+
+        AdvancedRAGResponse response = service.performAdvancedRAG(
+            AdvancedRAGRequest.builder()
+                .query("test query")
+                .expansionLevel(null)
+                .rerankingStrategy(null)
+                .contextOptimizationLevel(null)
+                .maxDocuments(null)
+                .maxResults(null)
+                .build()
+        );
+
+        assertThat(response.getSuccess()).isTrue();
+        assertThat(response.getExpansionLevel()).isEqualTo(2);
+        assertThat(response.getRerankingStrategy()).isEqualTo("hybrid");
+        assertThat(response.getContextOptimizationLevel()).isEqualTo("medium");
+        assertThat(response.getDocuments()).hasSize(1);
+        assertThat(response.getMetadata())
+            .containsEntry("expansionLevel", 2)
+            .containsEntry("rerankingStrategy", "hybrid")
+            .containsEntry("contextOptimizationLevel", "medium")
+            .containsEntry("maxDocuments", 5);
+    }
+
+    @Test
     void performAdvancedRAGDoesNotFailWhenDocumentSimilarityIsNull() {
         when(aiCoreService.generateText(any())).thenReturn("ok");
 
