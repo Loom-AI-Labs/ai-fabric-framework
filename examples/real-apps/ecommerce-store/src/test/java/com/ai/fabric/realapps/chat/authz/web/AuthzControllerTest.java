@@ -89,6 +89,44 @@ class AuthzControllerTest {
     }
 
     @Test
+    void allowsAnonymousActionFromMetadataWhenResourceIsGeneric() {
+        ResponseEntity<AuthzController.AuthzCheckResponse> response = controller.check(
+            new AuthzController.AuthzCheckRequest(
+                "AUTH_CONTEXT_V1",
+                "req-2b",
+                null,
+                "anon-session-1",
+                "ANONYMOUS_SESSION",
+                "PUBLIC_RUNTIME_ANONYMOUS",
+                "anon-session-1",
+                List.of("chat:query"),
+                List.of(),
+                "action:unknown",
+                "EXECUTE_ACTION",
+                Map.of(),
+                Map.of("actionId", "view_cart"),
+                Map.of(),
+                new AuthzController.VerifiedAuthContext(
+                    "anon-session-1",
+                    "ANONYMOUS_SESSION",
+                    "PUBLIC_RUNTIME_ANONYMOUS",
+                    "PUBLIC_BROWSER",
+                    "anon-session-1",
+                    "dep-1",
+                    null,
+                    null,
+                    "ecommerce-demo",
+                    List.of("chat:query")
+                )
+            )
+        );
+
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().granted()).isTrue();
+        assertThat(response.getBody().reason()).isEqualTo("anonymous-action-allowed");
+    }
+
+    @Test
     void deniesAnonymousSensitiveAction() {
         ResponseEntity<AuthzController.AuthzCheckResponse> response = controller.check(
             new AuthzController.AuthzCheckRequest(

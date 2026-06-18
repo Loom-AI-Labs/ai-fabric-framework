@@ -7,6 +7,7 @@ import ai.fabric.dto.AIEmbeddingRequest;
 import ai.fabric.dto.AIEmbeddingResponse;
 import ai.fabric.dto.AIChatMessage;
 import ai.fabric.dto.AIChatRole;
+import ai.fabric.exception.AIServiceException;
 import ai.fabric.provider.AIProvider;
 import ai.fabric.provider.ProviderConfig;
 import ai.fabric.provider.ProviderRequestOverrideSupport;
@@ -30,11 +31,9 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.List;
 import java.util.ArrayList;
-import java.util.Objects;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.stream.Collectors;
 
 /**
  * Google Gemini Provider Implementation
@@ -60,6 +59,8 @@ public class GeminiProvider implements AIProvider {
     private final AtomicReference<Double> averageResponseTime = new AtomicReference<>(0.0);
     
     private static final String GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta";
+    private static final String DEFAULT_MODEL = "gemini-2.5-flash";
+    private static final String DEFAULT_EMBEDDING_MODEL = "text-embedding-004";
     private static final int MAX_RETRY_ATTEMPTS = 5;
     private static final int MAX_TRANSIENT_INLINE_BYTES = 20 * 1024 * 1024;
     
@@ -85,21 +86,21 @@ public class GeminiProvider implements AIProvider {
         totalRequests.incrementAndGet();
         
         try {
-            log.debug("Generating content with Gemini: model={}, generationType={}, prompt={}", 
-                     request.getModel(), request.getGenerationType(), 
-                     request.getPrompt() != null ? request.getPrompt().substring(0, Math.min(100, request.getPrompt().length())) : "null");
-            
-            String model = request.getModel() != null ? request.getModel() : config.getDefaultModel();
-            if (model == null || model.trim().isEmpty()) {
-                model = "gemini-2.5-flash"; // Default Gemini model
-            }
+            log.debug(
+                "Generating content with Gemini: model={}, generationType={}, prompt={}",
+                request.getModel(),
+                request.getGenerationType(),
+                snippet(request.getPrompt(), 100)
+            );
+
+            String model = firstNonBlank(request.getModel(), config.getDefaultModel(), DEFAULT_MODEL);
             
             ProviderRequestOverrideSupport.LlmConnectionOverride connectionOverride =
                 ProviderRequestOverrideSupport.read(request.getParameters());
             String baseUrl = hasText(connectionOverride.baseUrl()) ? connectionOverride.baseUrl() : config.getBaseUrl();
             String apiKey = hasText(connectionOverride.apiKey()) ? connectionOverride.apiKey() : config.getApiKey();
             String url = normalizeBaseUrl(baseUrl != null ? baseUrl : GEMINI_BASE_URL)
-                + "/models/" + model + ":generateContent?key=" + apiKey;
+                + "/models/" + modelPathSegment(model) + ":generateContent?key=" + apiKey;
             String safeUrl = url.replaceAll("([?&]key=)[^&]+", "$1***");
             
             HttpHeaders headers = new HttpHeaders();
@@ -154,15 +155,17 @@ public class GeminiProvider implements AIProvider {
             for (AIGenerationInputPart part : fileParts) {
                 String contentType = TransientInputSupport.normalizeContentType(part.getContentType());
                 if (!hasText(contentType) || "application/octet-stream".equals(contentType)) {
-                    return TransientInputSupport.unsupportedFileUrlResponse(
+                    return unsupportedTransientResponse(
                         request,
+                        startTime,
                         getProviderName(),
                         "Gemini file URL inputs require a contentType so the provider can process the file."
                     );
                 }
                 if (!TransientInputSupport.isGeminiInlineContentType(contentType)) {
-                    return TransientInputSupport.unsupportedFileUrlResponse(
+                    return unsupportedTransientResponse(
                         request,
+                        startTime,
                         getProviderName(),
                         "Gemini transient inline inputs do not support content type: " + contentType
                     );
@@ -175,15 +178,17 @@ public class GeminiProvider implements AIProvider {
                 try {
                     fetchedFile = TransientInputSupport.fetchTransientFile(httpClient, part, MAX_TRANSIENT_INLINE_BYTES);
                 } catch (IllegalArgumentException ex) {
-                    return TransientInputSupport.unsupportedFileUrlResponse(
+                    return unsupportedTransientResponse(
                         request,
+                        startTime,
                         getProviderName(),
                         ex.getMessage()
                     );
                 }
                 if (!TransientInputSupport.isGeminiInlineContentType(fetchedFile.contentType())) {
-                    return TransientInputSupport.unsupportedFileUrlResponse(
+                    return unsupportedTransientResponse(
                         request,
+                        startTime,
                         getProviderName(),
                         "Gemini transient fetch returned unsupported content type: " + fetchedFile.contentType()
                     );
@@ -233,100 +238,52 @@ public class GeminiProvider implements AIProvider {
                 requestBody.put("generationConfig", generationConfig);
             }
 
-            if (log.isInfoEnabled()) {
-                log.info("=== GEMINI API REQUEST ===");
-                Object temperature = generationConfig.get("temperature");
-                Object maxOutputTokens = generationConfig.get("maxOutputTokens");
-                log.info(
-                    "Gemini API request: url={}, model={}, temperature={}, maxOutputTokens={}, hasSystemInstruction={}, promptLength={}",
-                    safeUrl,
-                    model,
-                    temperature,
-                    maxOutputTokens,
-                    requestBody.containsKey("systemInstruction"),
-                    request.getPrompt() != null ? request.getPrompt().length() : 0
-                );
-                if (!fileParts.isEmpty()) {
-                    log.info("Gemini transientInputs={}", TransientInputSupport.redactedDescriptors(fileParts));
-                }
-                String prompt = request.getPrompt();
-                int len = prompt != null ? prompt.length() : 0;
-                String snippet = prompt == null ? "" : prompt.substring(0, Math.min(500, len));
-                log.info("Gemini API request promptSnippet={}", snippet);
-                log.info("=== END GEMINI API REQUEST ===");
+            Object temperature = generationConfig.get("temperature");
+            Object maxOutputTokens = generationConfig.get("maxOutputTokens");
+            log.info(
+                "Gemini API request: url={}, model={}, temperature={}, maxOutputTokens={}, hasSystemInstruction={}, promptLength={}, transientInputs={}",
+                safeUrl,
+                model,
+                temperature,
+                maxOutputTokens,
+                requestBody.containsKey("systemInstruction"),
+                request.getPrompt() != null ? request.getPrompt().length() : 0,
+                fileParts.size()
+            );
+            if (!fileParts.isEmpty()) {
+                log.debug("Gemini transientInputs={}", TransientInputSupport.redactedDescriptors(fileParts));
             }
+            log.debug("Gemini API request promptSnippet={}", snippet(request.getPrompt(), 500));
             
             HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
             
             ResponseEntity<Map> response = exchangeWithRetry(url, HttpMethod.POST, entity, Map.class, "generateContent");
             
             long responseTime = System.currentTimeMillis() - startTime;
-            updateMetrics(true, responseTime);
-            
-            @SuppressWarnings("unchecked")
-            Map<String, Object> responseBody = response.getBody();
-            if (responseBody == null) {
-                throw new RuntimeException("Gemini returned an empty response body");
-            }
-            @SuppressWarnings("unchecked")
-            List<Map<String, Object>> candidates = (List<Map<String, Object>>) responseBody.get("candidates");
-            if (candidates == null || candidates.isEmpty()) {
-                throw new RuntimeException("Gemini returned no candidates");
-            }
-            @SuppressWarnings("unchecked")
+            Map<String, Object> responseBody = requireResponseBody(response, "Gemini returned an empty response body");
+            List<Map<String, Object>> candidates = requireMapList(responseBody.get("candidates"), "Gemini returned no candidates");
             Map<String, Object> candidate = candidates.get(0);
-            @SuppressWarnings("unchecked")
-            Map<String, Object> contentResponse = (Map<String, Object>) candidate.get("content");
-            @SuppressWarnings("unchecked")
-            List<Map<String, Object>> partsResponse = (List<Map<String, Object>>) contentResponse.get("parts");
-            String generatedText = "";
-            if (partsResponse != null && !partsResponse.isEmpty()) {
-                generatedText = partsResponse.stream()
-                    .map(part -> part != null ? (String) part.get("text") : null)
-                    .filter(Objects::nonNull)
-                    .collect(Collectors.joining());
-            }
+            String generatedText = extractGeneratedText(candidate);
+            updateMetrics(true, responseTime);
 
-            if (log.isInfoEnabled()) {
-                log.info("=== GEMINI API RESPONSE ===");
-                Object finishReason = candidate.get("finishReason");
-                int contentLength = generatedText != null ? generatedText.length() : 0;
-                log.info(
-                    "Gemini API response: responseTimeMs={}, model={}, finishReason={}, contentLength={}, candidates={}",
-                    responseTime,
-                    model,
-                    finishReason,
-                    contentLength,
-                    candidates != null ? candidates.size() : 0
-                );
-                if (generatedText != null) {
-                    log.info(
-                        "Gemini API response contentSnippet={}",
-                        generatedText.substring(0, Math.min(500, generatedText.length()))
-                    );
-                }
-                log.info("=== END GEMINI API RESPONSE ===");
-            }
+            Object finishReason = candidate.get("finishReason");
+            int contentLength = generatedText.length();
+            log.info(
+                "Gemini API response: responseTimeMs={}, model={}, finishReason={}, contentLength={}, candidates={}",
+                responseTime,
+                model,
+                finishReason,
+                contentLength,
+                candidates.size()
+            );
+            log.debug("Gemini API response contentSnippet={}", snippet(generatedText, 500));
             
             log.debug("Gemini content generation completed in {}ms", responseTime);
-            
-            // Extract usage information if available
-            @SuppressWarnings("unchecked")
-            Map<String, Object> usageMetadata = (Map<String, Object>) responseBody.get("usageMetadata");
-            
-            // Create usage map
-            Map<String, Object> usage = null;
-            if (usageMetadata != null) {
-                usage = new HashMap<>();
-                usage.put("promptTokens", getIntValue(usageMetadata, "promptTokenCount"));
-                usage.put("completionTokens", getIntValue(usageMetadata, "candidatesTokenCount"));
-                usage.put("totalTokens", getIntValue(usageMetadata, "totalTokenCount"));
-            }
             
             return AIGenerationResponse.builder()
                 .content(generatedText)
                 .model(model)
-                .usage(usage)
+                .usage(createUsageFromResponse(responseBody))
                 .processingTimeMs(responseTime)
                 .requestId(java.util.UUID.randomUUID().toString())
                 .metadata(fileParts.isEmpty()
@@ -345,7 +302,7 @@ public class GeminiProvider implements AIProvider {
             lastError.set(LocalDateTime.now());
             lastErrorMessage.set(e.getMessage());
             
-            throw new RuntimeException("Gemini content generation failed: " + e.getMessage(), e);
+            throw wrapException("Gemini content generation failed", e);
         }
     }
     
@@ -355,15 +312,17 @@ public class GeminiProvider implements AIProvider {
         totalRequests.incrementAndGet();
         
         try {
-            log.debug("Generating embedding with Gemini: model={}, text={}", 
-                     request.getModel(), request.getText().substring(0, Math.min(100, request.getText().length())));
-            
-            String model = request.getModel() != null ? request.getModel() : config.getDefaultEmbeddingModel();
-            if (model == null || model.trim().isEmpty()) {
-                model = "text-embedding-004"; // Default Gemini embedding model
+            String text = requireText(request.getText(), "Gemini embedding text is required");
+            log.debug("Generating embedding with Gemini: model={}, text={}", request.getModel(), snippet(text, 100));
+
+            String model = firstNonBlank(request.getModel(), config.getDefaultEmbeddingModel(), DEFAULT_EMBEDDING_MODEL);
+            String baseUrl = firstNonBlank(config.getEmbeddingBaseUrl(), config.getBaseUrl(), GEMINI_BASE_URL);
+            String apiKey = firstNonBlank(config.getEmbeddingApiKey(), config.getApiKey());
+            if (!hasText(apiKey)) {
+                throw new AIServiceException("Gemini embedding API key is required");
             }
-            
-            String url = GEMINI_BASE_URL + "/models/" + model + ":embedContent?key=" + config.getApiKey();
+
+            String url = normalizeBaseUrl(baseUrl) + "/models/" + modelPathSegment(model) + ":embedContent?key=" + apiKey;
             String safeUrl = url.replaceAll("([?&]key=)[^&]+", "$1***");
             
             HttpHeaders headers = new HttpHeaders();
@@ -374,52 +333,29 @@ public class GeminiProvider implements AIProvider {
             // Gemini embedding API structure
             Map<String, Object> content = new HashMap<>();
             Map<String, Object> part = new HashMap<>();
-            part.put("text", request.getText());
+            part.put("text", text);
             content.put("parts", List.of(part));
+            requestBody.put("model", "models/" + model);
             requestBody.put("content", content);
 
-            if (log.isInfoEnabled()) {
-                log.info("=== GEMINI EMBEDDING API REQUEST ===");
-                log.info(
-                    "Gemini embedding request: url={}, model={}, textLength={}",
-                    safeUrl,
-                    model,
-                    request.getText() != null ? request.getText().length() : 0
-                );
-                String text = request.getText();
-                int len = text != null ? text.length() : 0;
-                String snippet = text == null ? "" : text.substring(0, Math.min(300, len));
-                log.info("Gemini embedding request textSnippet={}", snippet);
-                log.info("=== END GEMINI EMBEDDING API REQUEST ===");
-            }
+            log.info("Gemini embedding request: url={}, model={}, textLength={}", safeUrl, model, text.length());
+            log.debug("Gemini embedding request textSnippet={}", snippet(text, 300));
             
             HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
             
             ResponseEntity<Map> response = exchangeWithRetry(url, HttpMethod.POST, entity, Map.class, "embedContent");
             
             long responseTime = System.currentTimeMillis() - startTime;
+            Map<String, Object> responseBody = requireResponseBody(response, "Gemini embedding service returned empty response");
+            List<Double> embedding = requireEmbeddingValues(responseBody, "Gemini embedding response missing embedding");
             updateMetrics(true, responseTime);
-            
-            @SuppressWarnings("unchecked")
-            Map<String, Object> responseBody = response.getBody();
-            @SuppressWarnings("unchecked")
-            Map<String, Object> embeddingData = (Map<String, Object>) responseBody.get("embedding");
-            @SuppressWarnings("unchecked")
-            List<Double> values = (List<Double>) embeddingData.get("values");
-            
-            // Keep as List<Double> for embedding
-            List<Double> embedding = new ArrayList<>(values);
 
-            if (log.isInfoEnabled()) {
-                log.info("=== GEMINI EMBEDDING API RESPONSE ===");
-                log.info(
-                    "Gemini embedding response: responseTimeMs={}, model={}, dimensions={}",
-                    responseTime,
-                    model,
-                    embedding != null ? embedding.size() : 0
-                );
-                log.info("=== END GEMINI EMBEDDING API RESPONSE ===");
-            }
+            log.info(
+                "Gemini embedding response: responseTimeMs={}, model={}, dimensions={}",
+                responseTime,
+                model,
+                embedding.size()
+            );
             
             log.debug("Gemini embedding generation completed in {}ms, dimension: {}", responseTime, embedding.size());
             
@@ -439,7 +375,7 @@ public class GeminiProvider implements AIProvider {
             lastError.set(LocalDateTime.now());
             lastErrorMessage.set(e.getMessage());
             
-            throw new RuntimeException("Gemini embedding generation failed: " + e.getMessage(), e);
+            throw wrapException("Gemini embedding generation failed", e);
         }
     }
 
@@ -486,7 +422,7 @@ public class GeminiProvider implements AIProvider {
                 throw ex;
             }
         }
-        throw new RuntimeException("Gemini " + operation + " call failed after retries");
+        throw new AIServiceException("Gemini " + operation + " call failed after retries");
     }
 
     private boolean isRetryableStatus(int status) {
@@ -539,20 +475,6 @@ public class GeminiProvider implements AIProvider {
         averageResponseTime.set(newAvg);
     }
     
-    private Integer getIntValue(Map<String, Object> map, String key) {
-        Object value = map.get(key);
-        if (value == null) {
-            return null;
-        }
-        if (value instanceof Integer) {
-            return (Integer) value;
-        }
-        if (value instanceof Number) {
-            return ((Number) value).intValue();
-        }
-        return null;
-    }
-
     private boolean isJsonMimeTypeRequested(Map<String, Object> parameters) {
         if (parameters == null || parameters.isEmpty()) {
             return false;
@@ -613,6 +535,148 @@ public class GeminiProvider implements AIProvider {
             return GEMINI_BASE_URL;
         }
         return baseUrl.endsWith("/") ? baseUrl.substring(0, baseUrl.length() - 1) : baseUrl;
+    }
+
+    private AIGenerationResponse unsupportedTransientResponse(AIGenerationRequest request,
+                                                              long startTime,
+                                                              String providerName,
+                                                              String message) {
+        long responseTime = System.currentTimeMillis() - startTime;
+        updateMetrics(false, responseTime);
+        lastErrorMessage.set(message);
+        return TransientInputSupport.unsupportedFileUrlResponse(request, providerName, message);
+    }
+
+    private Map<String, Object> requireResponseBody(ResponseEntity<Map> response, String message) {
+        if (response == null || response.getBody() == null) {
+            throw new AIServiceException(message);
+        }
+        return copyStringKeyMap(response.getBody(), message);
+    }
+
+    private String extractGeneratedText(Map<String, Object> candidate) {
+        Map<String, Object> content = requireMap(candidate.get("content"), "Gemini response content was missing");
+        List<Map<String, Object>> parts = requireMapList(content.get("parts"), "Gemini response content parts were missing");
+        StringBuilder generatedText = new StringBuilder();
+        for (Map<String, Object> part : parts) {
+            Object text = part.get("text");
+            if (text instanceof String textPart) {
+                generatedText.append(textPart);
+            }
+        }
+        if (generatedText.isEmpty()) {
+            throw new AIServiceException("Gemini response content text was missing");
+        }
+        return generatedText.toString();
+    }
+
+    private Object createUsageFromResponse(Map<String, Object> responseBody) {
+        Map<String, Object> usageMetadata = asStringKeyMap(responseBody.get("usageMetadata"));
+        if (usageMetadata.isEmpty()) {
+            return Map.of();
+        }
+        Map<String, Object> usage = new HashMap<>();
+        putIntIfNumber(usage, "promptTokens", usageMetadata.get("promptTokenCount"));
+        putIntIfNumber(usage, "completionTokens", usageMetadata.get("candidatesTokenCount"));
+        putIntIfNumber(usage, "totalTokens", usageMetadata.get("totalTokenCount"));
+        return Map.copyOf(usage);
+    }
+
+    private void putIntIfNumber(Map<String, Object> target, String key, Object value) {
+        if (value instanceof Number number) {
+            target.put(key, number.intValue());
+        }
+    }
+
+    private List<Double> requireEmbeddingValues(Map<String, Object> responseBody, String message) {
+        Map<String, Object> embeddingData = requireMap(responseBody.get("embedding"), message);
+        return requireDoubleList(embeddingData.get("values"), message + " values were missing");
+    }
+
+    private List<Double> requireDoubleList(Object value, String message) {
+        if (!(value instanceof List<?> items) || items.isEmpty()) {
+            throw new AIServiceException(message);
+        }
+        List<Double> values = new ArrayList<>();
+        for (Object item : items) {
+            if (!(item instanceof Number number)) {
+                throw new AIServiceException(message + " contained non-numeric value");
+            }
+            values.add(number.doubleValue());
+        }
+        return List.copyOf(values);
+    }
+
+    private List<Map<String, Object>> requireMapList(Object value, String message) {
+        if (!(value instanceof List<?> items) || items.isEmpty()) {
+            throw new AIServiceException(message);
+        }
+        List<Map<String, Object>> maps = new ArrayList<>();
+        for (Object item : items) {
+            maps.add(requireMap(item, message));
+        }
+        return List.copyOf(maps);
+    }
+
+    private Map<String, Object> requireMap(Object value, String message) {
+        if (!(value instanceof Map<?, ?> map)) {
+            throw new AIServiceException(message);
+        }
+        return copyStringKeyMap(map, message);
+    }
+
+    private Map<String, Object> asStringKeyMap(Object value) {
+        if (!(value instanceof Map<?, ?> map)) {
+            return Map.of();
+        }
+        return copyStringKeyMap(map, "Gemini response map");
+    }
+
+    private Map<String, Object> copyStringKeyMap(Map<?, ?> source, String message) {
+        Map<String, Object> copy = new HashMap<>();
+        source.forEach((key, value) -> {
+            if (key == null) {
+                throw new AIServiceException(message + " contained a null key");
+            }
+            copy.put(String.valueOf(key), value);
+        });
+        return copy;
+    }
+
+    private String requireText(String text, String message) {
+        if (!hasText(text)) {
+            throw new AIServiceException(message);
+        }
+        return text;
+    }
+
+    private String firstNonBlank(String... values) {
+        if (values == null) {
+            return "";
+        }
+        for (String value : values) {
+            if (hasText(value)) {
+                return value.trim();
+            }
+        }
+        return "";
+    }
+
+    private String snippet(String value, int maxLength) {
+        if (value == null || value.isEmpty()) {
+            return "";
+        }
+        return value.substring(0, Math.min(maxLength, value.length()));
+    }
+
+    private String modelPathSegment(String model) {
+        return model.startsWith("models/") ? model.substring("models/".length()) : model;
+    }
+
+    private AIServiceException wrapException(String message, Exception ex) {
+        return ex instanceof AIServiceException serviceException
+            ? serviceException
+            : new AIServiceException(message + ": " + ex.getMessage(), ex);
     }
 
     private boolean hasText(String value) {

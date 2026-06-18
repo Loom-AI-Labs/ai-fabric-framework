@@ -56,12 +56,13 @@ public class IndexingQueueService {
 
     public List<IndexingQueueEntry> lease(IndexingStrategy strategy, int batchSize) {
         LocalDateTime now = now();
+        int effectiveBatchSize = Math.max(1, batchSize);
         List<IndexingQueueEntry> pending = repository
             .findByStatusAndStrategyAndScheduledForLessThanEqualOrderByPriorityWeightAscRequestedAtAsc(
                 IndexingStatus.PENDING,
                 strategy,
                 now,
-                PageRequest.of(0, batchSize)
+                PageRequest.of(0, effectiveBatchSize)
             );
 
         for (IndexingQueueEntry entry : pending) {
@@ -91,6 +92,7 @@ public class IndexingQueueService {
         entry.setLastErrorAt(now);
         entry.setProcessingNode(null);
         entry.setUpdatedAt(now);
+        entry.setVisibilityTimeoutUntil(null);
 
         int attempts = entry.getRetryCount() + 1;
         entry.setRetryCount(attempts);
@@ -103,7 +105,6 @@ public class IndexingQueueService {
             entry.setStatus(IndexingStatus.PENDING);
             long delaySeconds = Math.min(300, (long) Math.pow(2, attempts));
             entry.setScheduledFor(now.plusSeconds(delaySeconds));
-            entry.setVisibilityTimeoutUntil(null);
             log.warn("Indexing entry {} will be retried in {} seconds (attempt {}/{})",
                 entry.getId(), delaySeconds, attempts, entry.getMaxRetries());
         }

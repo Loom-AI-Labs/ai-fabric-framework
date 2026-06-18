@@ -20,16 +20,15 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 
 import java.lang.reflect.Method;
 import java.util.Collection;
-import java.util.HashMap;
-import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 
 /**
  * AICapable Aspect
  * 
- * Spring AOP aspect that intercepts methods annotated with @AICapable
- * and triggers automatic AI processing based on configuration.
+ * Spring AOP aspect that routes annotation-driven AI processing into the
+ * indexing coordinator while keeping user method execution fail-open for
+ * AI setup and post-processing failures.
  * 
  * @author AI Infrastructure Team
  * @version 1.0.0
@@ -45,90 +44,94 @@ public class AICapableAspect {
     
     @Around("@annotation(aiCapable)")
     public Object processAICapableMethod(ProceedingJoinPoint joinPoint, AICapable aiCapable) throws Throwable {
+        AIEntityConfig config = null;
+        String entityType = null;
+        boolean shouldProcess = false;
+
         try {
-            log.debug("Processing AI-capable method: {}", joinPoint.getSignature().getName());
-            
-            // Get method signature
-            MethodSignature signature = (MethodSignature) joinPoint.getSignature();
-            Method method = signature.getMethod();
-            
-            // Get entity type from annotation or method name
-            String entityType = getEntityType(aiCapable, method);
-            
-            // Load configuration for entity type
-            AIEntityConfig config = configLoader.getEntityConfig(entityType);
+            log.debug("Processing AI-capable method: {}", signatureName(joinPoint));
+
+            entityType = getEntityType(aiCapable);
+            config = configLoader.getEntityConfig(entityType);
             if (config == null) {
                 log.warn("No configuration found for entity type: {}", entityType);
-                return joinPoint.proceed();
-            }
-            
-            // Check if auto-processing is enabled
-            if (!config.isAutoProcess()) {
+            } else if (!config.isAutoProcess()) {
                 log.debug("Auto-processing disabled for entity type: {}", entityType);
-                return joinPoint.proceed();
+            } else {
+                shouldProcess = true;
             }
-            
-            // Process before method execution
-            processBeforeMethod(joinPoint, config, entityType);
-            
-            // Execute the original method
-            Object result = joinPoint.proceed();
-            
-            // Process after method execution
-            processAfterMethod(joinPoint, result, config, entityType, null);
-            
-            return result;
-            
         } catch (Exception e) {
-            log.error("Error processing AI-capable method: {}", joinPoint.getSignature().getName(), e);
-            // Don't fail the original method if AI processing fails
+            log.error("Error preparing AI-capable method: {}", signatureName(joinPoint), e);
+        }
+
+        if (!shouldProcess) {
             return joinPoint.proceed();
         }
+
+        return proceedWithProcessing(joinPoint, config, entityType, null);
     }
     
     @Around("@annotation(aiProcess)")
     public Object processAIMethod(ProceedingJoinPoint joinPoint, AIProcess aiProcess) throws Throwable {
+        AIEntityConfig config = null;
+        String entityType = null;
+        boolean shouldProcess = false;
+
         try {
-            log.debug("Processing AI method: {}", joinPoint.getSignature().getName());
-            
-            // Get method signature
-            MethodSignature signature = (MethodSignature) joinPoint.getSignature();
-            Method method = signature.getMethod();
-            
-            // Framework contract: @AIProcess must declare entityType explicitly.
-            String entityType = StringUtils.hasText(aiProcess.entityType()) ? aiProcess.entityType().trim() : null;
+            log.debug("Processing AI method: {}", signatureName(joinPoint));
+
+            Method method = methodFrom(joinPoint);
+            entityType = StringUtils.hasText(aiProcess.entityType()) ? aiProcess.entityType().trim() : null;
             if (!StringUtils.hasText(entityType)) {
                 log.warn("Missing required @AIProcess(entityType=...) for method {}.{}; skipping AI processing for this invocation",
                     method.getDeclaringClass().getSimpleName(), method.getName());
-                return joinPoint.proceed();
+            } else {
+                config = configLoader.getEntityConfig(entityType);
+                if (config == null) {
+                    log.warn("No configuration found for entity type: {}", entityType);
+                } else {
+                    shouldProcess = true;
+                }
             }
-            
-            // Load configuration for entity type
-            AIEntityConfig config = configLoader.getEntityConfig(entityType);
-            if (config == null) {
-                log.warn("No configuration found for entity type: {}", entityType);
-                return joinPoint.proceed();
-            }
-            
-            // Process before method execution
-            processBeforeMethod(joinPoint, config, entityType);
-            
-            // Execute the original method
-            Object result = joinPoint.proceed();
-            
-            // Process after method execution
-            processAfterMethod(joinPoint, result, config, entityType, aiProcess);
-            
-            return result;
-            
         } catch (Exception e) {
-            log.error("Error processing AI method: {}", joinPoint.getSignature().getName(), e);
-            // Don't fail the original method if AI processing fails
+            log.error("Error preparing AI method: {}", signatureName(joinPoint), e);
+        }
+
+        if (!shouldProcess) {
             return joinPoint.proceed();
         }
+
+        return proceedWithProcessing(joinPoint, config, entityType, aiProcess);
+    }
+
+    private Method methodFrom(ProceedingJoinPoint joinPoint) {
+        MethodSignature signature = (MethodSignature) joinPoint.getSignature();
+        return signature.getMethod();
+    }
+
+    private String signatureName(ProceedingJoinPoint joinPoint) {
+        try {
+            return joinPoint.getSignature().getName();
+        } catch (Exception e) {
+            return "unknown";
+        }
+    }
+
+    private Object proceedWithProcessing(
+        ProceedingJoinPoint joinPoint,
+        AIEntityConfig config,
+        String entityType,
+        AIProcess aiProcess
+    ) throws Throwable {
+        processBeforeMethod(joinPoint, config, entityType);
+
+        Object result = joinPoint.proceed();
+
+        processAfterMethod(joinPoint, result, config, entityType, aiProcess);
+        return result;
     }
     
-    private String getEntityType(AICapable aiCapable, Method method) {
+    private String getEntityType(AICapable aiCapable) {
         if (!aiCapable.entityType().isEmpty()) {
             return aiCapable.entityType();
         }
@@ -195,8 +198,8 @@ public class AICapableAspect {
                     shouldGenerateEmbedding = false;
                 }
 
-                  if ((shouldGenerateEmbedding || shouldIndexForSearch)
-                      && TransactionSynchronizationManager.isSynchronizationActive()) {
+                if ((shouldGenerateEmbedding || shouldIndexForSearch)
+                    && TransactionSynchronizationManager.isSynchronizationActive()) {
                     final Object entityRef = result;
                     TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
                         @Override
@@ -220,15 +223,15 @@ public class AICapableAspect {
                 log.debug("AI processing flags resolved for operation {}: generateEmbedding={}, indexForSearch={}, enableAnalysis={} (annotationPresent={})",
                     operation, shouldGenerateEmbedding, shouldIndexForSearch, shouldEnableAnalysis, aiProcess != null);
 
-                  IndexingActionPlan actionPlan = new IndexingActionPlan(
-                      shouldGenerateEmbedding,
-                      shouldIndexForSearch,
-                      shouldEnableAnalysis,
-                      shouldRemoveFromSearch,
-                      shouldCleanupEmbeddings
-                  );
+                IndexingActionPlan actionPlan = new IndexingActionPlan(
+                    shouldGenerateEmbedding,
+                    shouldIndexForSearch,
+                    shouldEnableAnalysis,
+                    shouldRemoveFromSearch,
+                    shouldCleanupEmbeddings
+                );
 
-                  routeIndexingWork(result, entityType, operation, actionPlan, aiProcess);
+                routeIndexingWork(result, entityType, operation, actionPlan, aiProcess);
             }
             
         } catch (Exception e) {

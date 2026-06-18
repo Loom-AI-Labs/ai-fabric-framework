@@ -10,6 +10,7 @@ import ai.fabric.relationship.service.EntityRelationshipMapper;
 import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
 
+import java.lang.reflect.Array;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.math.BigDecimal;
@@ -23,6 +24,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -166,22 +168,22 @@ public class DynamicJPAQueryBuilder {
         FilterOperator operator = condition.getOperator() != null
             ? condition.getOperator()
             : FilterOperator.EQUALS;
-        String referencedField = resolveFieldReference(value, aliases);
-        if (referencedField == null) {
+        Optional<String> referencedField = resolveFieldReference(value, aliases);
+        if (referencedField.isEmpty()) {
             value = coerceParameterValue(value, condition);
         }
 
         return switch (operator) {
             case EQUALS -> {
-                if (referencedField != null) {
-                    yield "%s = %s".formatted(fieldName, referencedField);
+                if (referencedField.isPresent()) {
+                    yield "%s = %s".formatted(fieldName, referencedField.get());
                 }
                 parameters.put(parameterName, value);
                 yield "%s = :%s".formatted(fieldName, parameterName);
             }
             case NOT_EQUALS -> {
-                if (referencedField != null) {
-                    yield "%s <> %s".formatted(fieldName, referencedField);
+                if (referencedField.isPresent()) {
+                    yield "%s <> %s".formatted(fieldName, referencedField.get());
                 }
                 parameters.put(parameterName, value);
                 yield "%s <> :%s".formatted(fieldName, parameterName);
@@ -224,7 +226,7 @@ public class DynamicJPAQueryBuilder {
 
     private String ensureLikePattern(String raw) {
         if (raw == null) {
-            return null;
+            return raw;
         }
         String text = raw.trim();
         if (text.isEmpty()) {
@@ -249,9 +251,10 @@ public class DynamicJPAQueryBuilder {
             iterable.forEach(item -> values.add(coerceParameterValue(item, condition)));
             parameters.put(parameterName, values);
         } else if (value != null && value.getClass().isArray()) {
-            Object[] array = (Object[]) value;
-            List<Object> values = new ArrayList<>(array.length);
-            for (Object element : array) {
+            int length = Array.getLength(value);
+            List<Object> values = new ArrayList<>(length);
+            for (int i = 0; i < length; i++) {
+                Object element = Array.get(value, i);
                 values.add(coerceParameterValue(element, condition));
             }
             parameters.put(parameterName, values);
@@ -306,23 +309,23 @@ public class DynamicJPAQueryBuilder {
         return defaultAlias + "." + raw;
     }
 
-    private String resolveFieldReference(Object value, AliasRegistry aliases) {
+    private Optional<String> resolveFieldReference(Object value, AliasRegistry aliases) {
         if (!(value instanceof String str)) {
-            return null;
+            return Optional.empty();
         }
         String trimmed = str.trim();
         if (!trimmed.contains(".")) {
-            return null;
+            return Optional.empty();
         }
         String[] parts = trimmed.split("\\.", 2);
         if (parts.length != 2) {
-            return null;
+            return Optional.empty();
         }
         String refAlias = aliases.aliasFor(parts[0]);
         if (!StringUtils.hasText(refAlias)) {
-            return null;
+            return Optional.empty();
         }
-        return refAlias + "." + parts[1];
+        return Optional.of(refAlias + "." + parts[1]);
     }
 
     private Object coerceParameterValue(Object value) {
@@ -350,10 +353,11 @@ public class DynamicJPAQueryBuilder {
             return coerced;
         }
 
-        Class<?> expectedType = resolveExpectedJavaType(condition);
-        if (expectedType == null) {
+        Optional<Class<?>> expectedJavaType = resolveExpectedJavaType(condition);
+        if (expectedJavaType.isEmpty()) {
             return coerced;
         }
+        Class<?> expectedType = expectedJavaType.get();
 
         if (expectedType.isEnum()) {
             if (coerced instanceof String str) {
@@ -452,7 +456,7 @@ public class DynamicJPAQueryBuilder {
         return coerced;
     }
 
-    private Class<?> resolveExpectedJavaType(FilterCondition condition) {
+    private Optional<Class<?>> resolveExpectedJavaType(FilterCondition condition) {
         String entityType = condition.getEntityType();
         String field = condition.getField();
 
@@ -461,14 +465,14 @@ public class DynamicJPAQueryBuilder {
             resolvedEntityType = field.substring(0, field.indexOf('.'));
         }
         if (!StringUtils.hasText(resolvedEntityType)) {
-            return null;
+            return Optional.empty();
         }
 
         Class<?> entityClass;
         try {
             entityClass = relationshipMapper.getEntityClass(resolvedEntityType);
         } catch (Exception ignored) {
-            return null;
+            return Optional.empty();
         }
 
         String propertyPath = field;
@@ -480,63 +484,66 @@ public class DynamicJPAQueryBuilder {
         }
 
         if (!StringUtils.hasText(propertyPath)) {
-            return null;
+            return Optional.empty();
         }
 
         String cacheKey = resolvedEntityType.trim().toLowerCase(Locale.ROOT) + "|" + propertyPath.trim();
         Class<?> cached = expectedTypeCache.get(cacheKey);
         if (cached != null) {
-            return cached == NO_TYPE ? null : cached;
+            return cached == NO_TYPE ? Optional.empty() : Optional.of(cached);
         }
 
-        Class<?> resolved = resolvePropertyType(entityClass, propertyPath);
-        expectedTypeCache.put(cacheKey, resolved != null ? resolved : NO_TYPE);
+        Optional<Class<?>> resolved = resolvePropertyType(entityClass, propertyPath);
+        expectedTypeCache.put(cacheKey, resolved.orElse(NO_TYPE));
         return resolved;
     }
 
-    private Class<?> resolvePropertyType(Class<?> rootType, String propertyPath) {
+    private Optional<Class<?>> resolvePropertyType(Class<?> rootType, String propertyPath) {
         String[] segments = propertyPath.split("\\.");
         Class<?> currentType = rootType;
         for (String segment : segments) {
             if (!StringUtils.hasText(segment) || currentType == null) {
-                return null;
+                return Optional.empty();
             }
-            currentType = resolveSinglePropertyType(currentType, segment.trim());
+            Optional<Class<?>> nextType = resolveSinglePropertyType(currentType, segment.trim());
+            if (nextType.isEmpty()) {
+                return Optional.empty();
+            }
+            currentType = nextType.get();
         }
-        return currentType;
+        return Optional.ofNullable(currentType);
     }
 
-    private Class<?> resolveSinglePropertyType(Class<?> type, String property) {
-        Class<?> fieldType = findFieldType(type, property);
-        if (fieldType != null) {
+    private Optional<Class<?>> resolveSinglePropertyType(Class<?> type, String property) {
+        Optional<Class<?>> fieldType = findFieldType(type, property);
+        if (fieldType.isPresent()) {
             return fieldType;
         }
-        Method getter = findGetter(type, property);
-        return getter != null ? getter.getReturnType() : null;
+        return findGetter(type, property).map(Method::getReturnType);
     }
 
-    private Class<?> findFieldType(Class<?> type, String name) {
+    private Optional<Class<?>> findFieldType(Class<?> type, String name) {
         Class<?> current = type;
         while (current != null && current != Object.class) {
             try {
                 Field field = current.getDeclaredField(name);
-                return field.getType();
+                return Optional.of(field.getType());
             } catch (NoSuchFieldException ignored) {
             }
             current = current.getSuperclass();
         }
-        return null;
+        return Optional.empty();
     }
 
-    private Method findGetter(Class<?> type, String property) {
+    private Optional<Method> findGetter(Class<?> type, String property) {
         String capitalized = property.substring(0, 1).toUpperCase(Locale.ROOT) + property.substring(1);
         for (String candidate : List.of("get" + capitalized, "is" + capitalized)) {
             try {
-                return type.getMethod(candidate);
+                return Optional.of(type.getMethod(candidate));
             } catch (NoSuchMethodException ignored) {
             }
         }
-        return null;
+        return Optional.empty();
     }
 
     private static class AliasRegistry {

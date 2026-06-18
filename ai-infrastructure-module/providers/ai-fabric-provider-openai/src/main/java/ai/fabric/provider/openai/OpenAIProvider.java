@@ -29,6 +29,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.HashMap;
+import java.util.Optional;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
@@ -86,8 +87,8 @@ public class OpenAIProvider implements AIProvider {
             if (TransientInputSupport.hasFileUrlInputs(request)) {
                 return generateResponsesContent(request, startTime);
             }
-            log.debug("Generating content with OpenAI: model={}, prompt={}", 
-                     request.getModel(), request.getPrompt().substring(0, Math.min(100, request.getPrompt().length())));
+            log.debug("Generating content with OpenAI: model={}, prompt={}",
+                request.getModel(), snippet(request.getPrompt(), 100));
             ProviderRequestOverrideSupport.LlmConnectionOverride connectionOverride =
                 ProviderRequestOverrideSupport.read(request.getParameters());
             String baseUrl = hasText(connectionOverride.baseUrl()) ? connectionOverride.baseUrl() : config.getBaseUrl();
@@ -142,11 +143,10 @@ public class OpenAIProvider implements AIProvider {
 
             applyResponseFormat(requestBody, request.getParameters());
             
-            // IMPORTANT: Never use System.out for provider logging; it bypasses log levels and makes CI noisy.
-            // Emit request/response summaries + payload snippets at INFO (visible at "normal").
-            if (log.isInfoEnabled()) {
-                log.info("=== OPENAI API REQUEST ===");
-                log.info(
+            // Provider payload diagnostics stay behind DEBUG to avoid exposing prompts in normal logs.
+            if (log.isDebugEnabled()) {
+                log.debug("=== OPENAI API REQUEST ===");
+                log.debug(
                     "OpenAI API request: url={}, model={}, temperature={}, topP={}, maxCompletionTokens={}, messages={}",
                     url,
                     requestBody.get("model"),
@@ -160,16 +160,15 @@ public class OpenAIProvider implements AIProvider {
                     String role = msg.get("role");
                     String content = msg.get("content");
                     int len = content != null ? content.length() : 0;
-                    String snippet = content == null ? "" : content.substring(0, Math.min(500, len));
-                    log.info(
+                    log.debug(
                         "OpenAI API request message[{}]: role={}, contentLength={}, contentSnippet={}",
                         i,
                         role,
                         len,
-                        snippet
+                        snippet(content, 500)
                     );
                 }
-                log.info("=== END OPENAI API REQUEST ===");
+                log.debug("=== END OPENAI API REQUEST ===");
             }
             
             HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
@@ -177,21 +176,18 @@ public class OpenAIProvider implements AIProvider {
             ResponseEntity<Map> response = exchangeWithRetry(url, HttpMethod.POST, entity, Map.class, "chat.completions");
             
             long responseTime = System.currentTimeMillis() - startTime;
+            Map<String, Object> responseBody = requireResponseBody(response, "chat.completions");
+            List<Map<String, Object>> choices = requireMapList(responseBody.get("choices"), "choices", "chat.completions");
+            Map<String, Object> firstChoice = choices.get(0);
+            Map<String, Object> message = requireMap(firstChoice.get("message"), "choices[0].message", "chat.completions");
+            String content = requireString(message.get("content"), "choices[0].message.content", "chat.completions");
             updateMetrics(true, responseTime);
             
-            @SuppressWarnings("unchecked")
-            Map<String, Object> responseBody = response.getBody();
-            @SuppressWarnings("unchecked")
-            List<Map<String, Object>> choices = (List<Map<String, Object>>) responseBody.get("choices");
-            @SuppressWarnings("unchecked")
-            Map<String, String> message = (Map<String, String>) choices.get(0).get("message");
-            String content = message.get("content");
-            
-            if (log.isInfoEnabled()) {
-                log.info("=== OPENAI API RESPONSE ===");
-                Object finishReason = choices.get(0).get("finish_reason");
+            if (log.isDebugEnabled()) {
+                log.debug("=== OPENAI API RESPONSE ===");
+                Object finishReason = firstChoice.get("finish_reason");
                 int contentLength = content != null ? content.length() : 0;
-                log.info(
+                log.debug(
                     "OpenAI API response: responseTimeMs={}, model={}, finishReason={}, contentLength={}",
                     responseTime,
                     responseBody.get("model"),
@@ -199,12 +195,12 @@ public class OpenAIProvider implements AIProvider {
                     contentLength
                 );
                 if (content != null) {
-                    log.info(
+                    log.debug(
                         "OpenAI API response contentSnippet={}",
-                        content.substring(0, Math.min(500, content.length()))
+                        snippet(content, 500)
                     );
                 }
-                log.info("=== END OPENAI API RESPONSE ===");
+                log.debug("=== END OPENAI API RESPONSE ===");
             }
             
             log.debug("OpenAI content generation completed in {}ms", responseTime);
@@ -291,9 +287,9 @@ public class OpenAIProvider implements AIProvider {
         putIfNotNull(requestBody, "max_output_tokens", request.getMaxTokens() != null ? request.getMaxTokens() : config.getMaxTokens());
         putIfNotNull(requestBody, "temperature", request.getTemperature() != null ? request.getTemperature() : config.getTemperature());
 
-        if (log.isInfoEnabled()) {
-            log.info("=== OPENAI RESPONSES API REQUEST ===");
-            log.info(
+        if (log.isDebugEnabled()) {
+            log.debug("=== OPENAI RESPONSES API REQUEST ===");
+            log.debug(
                 "OpenAI Responses request: url={}, model={}, temperature={}, maxOutputTokens={}, fileUrlInputs={}, promptLength={}",
                 url,
                 requestBody.get("model"),
@@ -302,36 +298,36 @@ public class OpenAIProvider implements AIProvider {
                 fileParts.size(),
                 request.getPrompt() != null ? request.getPrompt().length() : 0
             );
-            log.info("OpenAI Responses transientInputs={}", TransientInputSupport.redactedDescriptors(fileParts));
-            log.info("=== END OPENAI RESPONSES API REQUEST ===");
+            log.debug("OpenAI Responses transientInputs={}", TransientInputSupport.redactedDescriptors(fileParts));
+            log.debug("=== END OPENAI RESPONSES API REQUEST ===");
         }
 
         HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
         ResponseEntity<Map> response = exchangeWithRetry(url, HttpMethod.POST, entity, Map.class, "responses");
 
         long responseTime = System.currentTimeMillis() - startTime;
-        updateMetrics(true, responseTime);
 
         @SuppressWarnings("unchecked")
         Map<String, Object> responseBody = response.getBody();
         String contentText = extractResponsesText(responseBody);
+        updateMetrics(true, responseTime);
 
-        if (log.isInfoEnabled()) {
+        if (log.isDebugEnabled()) {
             int contentLength = contentText != null ? contentText.length() : 0;
-            log.info("=== OPENAI RESPONSES API RESPONSE ===");
-            log.info(
+            log.debug("=== OPENAI RESPONSES API RESPONSE ===");
+            log.debug(
                 "OpenAI Responses response: responseTimeMs={}, model={}, contentLength={}",
                 responseTime,
                 responseBody != null ? responseBody.get("model") : null,
                 contentLength
             );
             if (contentText != null) {
-                log.info(
+                log.debug(
                     "OpenAI Responses response contentSnippet={}",
-                    contentText.substring(0, Math.min(500, contentText.length()))
+                    snippet(contentText, 500)
                 );
             }
-            log.info("=== END OPENAI RESPONSES API RESPONSE ===");
+            log.debug("=== END OPENAI RESPONSES API RESPONSE ===");
         }
 
         return AIGenerationResponse.builder()
@@ -390,8 +386,8 @@ public class OpenAIProvider implements AIProvider {
         totalRequests.incrementAndGet();
         
         try {
-            log.debug("Generating embedding with OpenAI: model={}, text={}", 
-                     request.getModel(), request.getText().substring(0, Math.min(100, request.getText().length())));
+            log.debug("Generating embedding with OpenAI: model={}, text={}",
+                request.getModel(), snippet(request.getText(), 100));
             
             String url = normalizeBaseUrl(firstNonBlank(config.getEmbeddingBaseUrl(), config.getBaseUrl())) + PATH_EMBEDDINGS;
             
@@ -408,14 +404,10 @@ public class OpenAIProvider implements AIProvider {
             ResponseEntity<Map> response = exchangeWithRetry(url, HttpMethod.POST, entity, Map.class, "embeddings");
             
             long responseTime = System.currentTimeMillis() - startTime;
+            Map<String, Object> responseBody = requireResponseBody(response, "embeddings");
+            List<Map<String, Object>> data = requireMapList(responseBody.get("data"), "data", "embeddings");
+            List<Double> embeddingValues = requireDoubleList(data.get(0).get("embedding"), "data[0].embedding", "embeddings");
             updateMetrics(true, responseTime);
-            
-            @SuppressWarnings("unchecked")
-            Map<String, Object> responseBody = response.getBody();
-            @SuppressWarnings("unchecked")
-            List<Map<String, Object>> data = (List<Map<String, Object>>) responseBody.get("data");
-            @SuppressWarnings("unchecked")
-            List<Double> embeddingValues = (List<Double>) data.get(0).get("embedding");
             
             log.debug("OpenAI embedding generation completed in {}ms", responseTime);
             
@@ -589,20 +581,15 @@ public class OpenAIProvider implements AIProvider {
      */
     private Object createUsageFromResponse(Map<String, Object> responseBody) {
         Map<String, Object> usage = new HashMap<>();
-        
-        @SuppressWarnings("unchecked")
-        Map<String, Object> usageData = (Map<String, Object>) responseBody.get("usage");
-        if (usageData != null) {
+
+        Object usageValue = responseBody != null ? responseBody.get("usage") : null;
+        if (usageValue instanceof Map<?, ?> usageData) {
             Object promptTokens = usageData.get("prompt_tokens");
-            if (promptTokens == null) {
-                promptTokens = usageData.get("input_tokens");
-            }
+            usage.put("prompt_tokens", promptTokens != null ? promptTokens : usageData.get("input_tokens"));
+
             Object completionTokens = usageData.get("completion_tokens");
-            if (completionTokens == null) {
-                completionTokens = usageData.get("output_tokens");
-            }
-            usage.put("prompt_tokens", promptTokens);
-            usage.put("completion_tokens", completionTokens);
+            usage.put("completion_tokens", completionTokens != null ? completionTokens : usageData.get("output_tokens"));
+
             usage.put("total_tokens", usageData.get("total_tokens"));
         }
         
@@ -636,33 +623,31 @@ public class OpenAIProvider implements AIProvider {
         if (responseFormat == null) {
             responseFormat = parameters.get("responseFormat");
         }
-        Object normalized = normalizeResponseFormat(responseFormat);
-        if (normalized != null) {
-            requestBody.put("response_format", normalized);
-        }
+        normalizeResponseFormat(responseFormat)
+            .ifPresent(normalized -> requestBody.put("response_format", normalized));
     }
 
-    private Object normalizeResponseFormat(Object responseFormat) {
+    private Optional<Object> normalizeResponseFormat(Object responseFormat) {
         if (responseFormat == null) {
-            return null;
+            return Optional.empty();
         }
         if (responseFormat instanceof Map<?, ?>) {
-            return responseFormat;
+            return Optional.of(responseFormat);
         }
         if (!(responseFormat instanceof String)) {
-            return null;
+            return Optional.empty();
         }
         String value = ((String) responseFormat).trim().toLowerCase();
         if (value.isEmpty()) {
-            return null;
+            return Optional.empty();
         }
         if (value.equals("json") || value.equals("json_object") || value.equals("json-object") || value.equals("jsonobject")) {
-            return Map.of("type", "json_object");
+            return Optional.of(Map.of("type", "json_object"));
         }
         if (value.equals("text")) {
-            return Map.of("type", "text");
+            return Optional.of(Map.of("type", "text"));
         }
-        return null;
+        return Optional.empty();
     }
 
     private void putIfNotNull(Map<String, Object> target, String key, Object value) {
@@ -670,5 +655,62 @@ public class OpenAIProvider implements AIProvider {
             return;
         }
         target.put(key, value);
+    }
+
+    private Map<String, Object> requireResponseBody(ResponseEntity<Map> response, String operation) {
+        if (response == null || response.getBody() == null) {
+            throw new RuntimeException("OpenAI " + operation + " response body was empty");
+        }
+        @SuppressWarnings("unchecked")
+        Map<String, Object> responseBody = response.getBody();
+        return responseBody;
+    }
+
+    private List<Map<String, Object>> requireMapList(Object value, String field, String operation) {
+        if (!(value instanceof List<?> items) || items.isEmpty()) {
+            throw new RuntimeException("OpenAI " + operation + " response missing " + field);
+        }
+        List<Map<String, Object>> maps = new ArrayList<>();
+        for (Object item : items) {
+            maps.add(requireMap(item, field + "[]", operation));
+        }
+        return maps;
+    }
+
+    private Map<String, Object> requireMap(Object value, String field, String operation) {
+        if (!(value instanceof Map<?, ?> map)) {
+            throw new RuntimeException("OpenAI " + operation + " response missing " + field);
+        }
+        Map<String, Object> typed = new HashMap<>();
+        map.forEach((key, mapValue) -> typed.put(String.valueOf(key), mapValue));
+        return typed;
+    }
+
+    private String requireString(Object value, String field, String operation) {
+        if (!(value instanceof String text)) {
+            throw new RuntimeException("OpenAI " + operation + " response missing " + field);
+        }
+        return text;
+    }
+
+    private List<Double> requireDoubleList(Object value, String field, String operation) {
+        if (!(value instanceof List<?> items) || items.isEmpty()) {
+            throw new RuntimeException("OpenAI " + operation + " response missing " + field);
+        }
+        List<Double> values = new ArrayList<>();
+        for (Object item : items) {
+            if (!(item instanceof Number number)) {
+                throw new RuntimeException("OpenAI " + operation + " response contained non-numeric " + field);
+            }
+            values.add(number.doubleValue());
+        }
+        return values;
+    }
+
+    private String snippet(String value, int maxLength) {
+        if (value == null || value.isEmpty()) {
+            return "";
+        }
+        return value.substring(0, Math.min(maxLength, value.length()));
     }
 }

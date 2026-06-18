@@ -15,16 +15,15 @@ import ai.fabric.indexing.worker.IndexingCleanupScheduler;
 import ai.fabric.indexing.worker.IndexingWorkProcessor;
 import ai.fabric.repository.IndexingQueueRepository;
 import ai.fabric.service.AICapabilityService;
-import ai.fabric.service.VectorManagementService;
-import java.time.Clock;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.time.Clock;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.AutoConfigureAfter;
-import org.springframework.context.annotation.Conditional;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Conditional;
 import org.springframework.scheduling.annotation.EnableScheduling;
 
 @AutoConfiguration
@@ -69,7 +68,8 @@ public class AIIndexingAutoConfiguration {
         AIEntityConfigurationLoader configurationLoader,
         AIIndexingProperties indexingProperties,
         ObjectMapper objectMapper,
-        AICapabilityService capabilityService
+        AICapabilityService capabilityService,
+        Clock clock
     ) {
         return new IndexingCoordinator(
             indexingStrategyResolver,
@@ -77,7 +77,8 @@ public class AIIndexingAutoConfiguration {
             configurationLoader,
             indexingProperties,
             objectMapper,
-            capabilityService
+            capabilityService,
+            clock
         );
     }
 

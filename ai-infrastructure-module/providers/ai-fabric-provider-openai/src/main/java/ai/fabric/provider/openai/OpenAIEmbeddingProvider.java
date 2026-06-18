@@ -24,7 +24,11 @@ import org.springframework.web.client.ResourceAccessException;
 import jakarta.annotation.PostConstruct;
 
 import java.time.Duration;
-import java.util.*;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.stream.Collectors;
 
@@ -50,6 +54,7 @@ public class OpenAIEmbeddingProvider implements EmbeddingProvider {
     private int embeddingDimension = 1536; // Default for text-embedding-3-small
     private boolean useDirectHttp = false; // Use direct HTTP when dimension reduction is needed
     private static final int MAX_RETRY_ATTEMPTS = 3;
+    private static final String DEFAULT_OPENAI_BASE_URL = "https://api.openai.com/v1";
     
     @PostConstruct
     public void initialize() {
@@ -64,15 +69,15 @@ public class OpenAIEmbeddingProvider implements EmbeddingProvider {
                 openai.getEmbeddingDimensions(),
                 openai.getApiKey() != null ? "***" : "null");
 
-            String apiKey = embeddingApiKey(openai);
-            if (apiKey == null || apiKey.trim().isEmpty()) {
+            Optional<String> apiKey = embeddingApiKey(openai);
+            if (apiKey.isEmpty()) {
                 log.warn("OpenAI API key not configured. Provider will not be available.");
                 available = false;
                 return;
             }
             
             openAiService = new OpenAiService(
-                apiKey,
+                apiKey.get(),
                 Duration.ofSeconds(openai.getTimeout())
             );
             
@@ -158,9 +163,9 @@ public class OpenAIEmbeddingProvider implements EmbeddingProvider {
             // Skip availability check for HTTP calls as they don't need the library service
             if (useDirectHttp && requestedDimensions != null) {
                 long startTime = System.currentTimeMillis();
-                if (log.isInfoEnabled()) {
-                    log.info("=== OPENAI EMBEDDING API REQUEST ===");
-                    log.info(
+                if (log.isDebugEnabled()) {
+                    log.debug("=== OPENAI EMBEDDING API REQUEST ===");
+                    log.debug(
                         "OpenAI embedding request (http): model={}, dimensions={}, textLength={}",
                         request.getModel() != null ? request.getModel() : openai.getEmbeddingModel(),
                         requestedDimensions,
@@ -169,8 +174,8 @@ public class OpenAIEmbeddingProvider implements EmbeddingProvider {
                     String text = request.getText();
                     int len = text != null ? text.length() : 0;
                     String snippet = text == null ? "" : text.substring(0, Math.min(300, len));
-                    log.info("OpenAI embedding request textSnippet={}", snippet);
-                    log.info("=== END OPENAI EMBEDDING API REQUEST ===");
+                    log.debug("OpenAI embedding request textSnippet={}", snippet);
+                    log.debug("=== END OPENAI EMBEDDING API REQUEST ===");
                 }
                 log.debug("Generating embedding using OpenAI via HTTP for text: {}", request.getText());
                 return generateEmbeddingViaHttp(request, requestedDimensions, startTime);
@@ -186,10 +191,10 @@ public class OpenAIEmbeddingProvider implements EmbeddingProvider {
             long startTime = System.currentTimeMillis();
             
             // Use library for standard requests
-            if (log.isInfoEnabled()) {
-                log.info("=== OPENAI EMBEDDING API REQUEST ===");
+            if (log.isDebugEnabled()) {
+                log.debug("=== OPENAI EMBEDDING API REQUEST ===");
                 String model = request.getModel() != null ? request.getModel() : openai.getEmbeddingModel();
-                log.info(
+                log.debug(
                     "OpenAI embedding request (library): model={}, textLength={}",
                     model,
                     request.getText() != null ? request.getText().length() : 0
@@ -197,8 +202,8 @@ public class OpenAIEmbeddingProvider implements EmbeddingProvider {
                 String text = request.getText();
                 int len = text != null ? text.length() : 0;
                 String snippet = text == null ? "" : text.substring(0, Math.min(300, len));
-                log.info("OpenAI embedding request textSnippet={}", snippet);
-                log.info("=== END OPENAI EMBEDDING API REQUEST ===");
+                log.debug("OpenAI embedding request textSnippet={}", snippet);
+                log.debug("=== END OPENAI EMBEDDING API REQUEST ===");
             }
             EmbeddingRequest embeddingRequest = EmbeddingRequest.builder()
                   .model(request.getModel() != null ? request.getModel() : openai.getEmbeddingModel())
@@ -210,15 +215,15 @@ public class OpenAIEmbeddingProvider implements EmbeddingProvider {
             
             long processingTime = System.currentTimeMillis() - startTime;
             
-            if (log.isInfoEnabled()) {
-                log.info("=== OPENAI EMBEDDING API RESPONSE ===");
-                log.info(
+            if (log.isDebugEnabled()) {
+                log.debug("=== OPENAI EMBEDDING API RESPONSE ===");
+                log.debug(
                     "OpenAI embedding response (library): responseTimeMs={}, model={}, dimensions={}",
                     processingTime,
                     request.getModel() != null ? request.getModel() : openai.getEmbeddingModel(),
                     embedding != null ? embedding.size() : 0
                 );
-                log.info("=== END OPENAI EMBEDDING API RESPONSE ===");
+                log.debug("=== END OPENAI EMBEDDING API RESPONSE ===");
             }
 
             log.debug("Successfully generated OpenAI embedding with {} dimensions in {}ms", 
@@ -245,12 +250,12 @@ public class OpenAIEmbeddingProvider implements EmbeddingProvider {
     private AIEmbeddingResponse generateEmbeddingViaHttp(AIEmbeddingRequest request, Integer dimensions, long startTime) {
         try {
             AIProviderConfig.OpenAIConfig openai = config.getOpenai();
-            String baseUrl = embeddingBaseUrl(openai) != null ? embeddingBaseUrl(openai) : "https://api.openai.com/v1";
+            String baseUrl = embeddingBaseUrl(openai).orElse(DEFAULT_OPENAI_BASE_URL);
             String url = baseUrl + "/embeddings";
             
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
-            headers.setBearerAuth(embeddingApiKey(openai));
+            headers.setBearerAuth(requireEmbeddingApiKey(openai));
             
             Map<String, Object> requestBody = new HashMap<>();
             requestBody.put("model", request.getModel() != null ? request.getModel() : openai.getEmbeddingModel());
@@ -279,15 +284,15 @@ public class OpenAIEmbeddingProvider implements EmbeddingProvider {
             
             long processingTime = System.currentTimeMillis() - startTime;
             
-            if (log.isInfoEnabled()) {
-                log.info("=== OPENAI EMBEDDING API RESPONSE ===");
-                log.info(
+            if (log.isDebugEnabled()) {
+                log.debug("=== OPENAI EMBEDDING API RESPONSE ===");
+                log.debug(
                     "OpenAI embedding response (http): responseTimeMs={}, model={}, dimensions={}",
                     processingTime,
                     responseBody.get("model"),
                     embedding != null ? embedding.size() : 0
                 );
-                log.info("=== END OPENAI EMBEDDING API RESPONSE ===");
+                log.debug("=== END OPENAI EMBEDDING API RESPONSE ===");
             }
 
             log.debug("Successfully generated OpenAI embedding with {} dimensions via HTTP in {}ms", 
@@ -363,12 +368,12 @@ public class OpenAIEmbeddingProvider implements EmbeddingProvider {
     private List<AIEmbeddingResponse> generateEmbeddingsViaHttp(List<String> texts, Integer dimensions, long startTime) {
         try {
             AIProviderConfig.OpenAIConfig openai = config.getOpenai();
-            String baseUrl = openai.getBaseUrl() != null ? openai.getBaseUrl() : "https://api.openai.com/v1";
+            String baseUrl = embeddingBaseUrl(openai).orElse(DEFAULT_OPENAI_BASE_URL);
             String url = baseUrl + "/embeddings";
             
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
-            headers.setBearerAuth(openai.getApiKey());
+            headers.setBearerAuth(requireEmbeddingApiKey(openai));
             
             Map<String, Object> requestBody = new HashMap<>();
             requestBody.put("model", openai.getEmbeddingModel());
@@ -405,16 +410,16 @@ public class OpenAIEmbeddingProvider implements EmbeddingProvider {
                 })
                 .collect(Collectors.toList());
             
-            if (log.isInfoEnabled()) {
-                log.info("=== OPENAI EMBEDDING API RESPONSE ===");
-                log.info(
+            if (log.isDebugEnabled()) {
+                log.debug("=== OPENAI EMBEDDING API RESPONSE ===");
+                log.debug(
                     "OpenAI embedding batch response (http): responseTimeMs={}, model={}, embeddings={}, dimensions={}",
                     processingTime,
                     responseBody.get("model"),
                     responses.size(),
                     dimensions != null ? dimensions : -1
                 );
-                log.info("=== END OPENAI EMBEDDING API RESPONSE ===");
+                log.debug("=== END OPENAI EMBEDDING API RESPONSE ===");
             }
 
             log.debug("Successfully generated {} OpenAI embeddings via HTTP in {}ms", 
@@ -488,18 +493,25 @@ public class OpenAIEmbeddingProvider implements EmbeddingProvider {
         }
     }
 
-    private String embeddingApiKey(AIProviderConfig.OpenAIConfig openai) {
+    private Optional<String> embeddingApiKey(AIProviderConfig.OpenAIConfig openai) {
         if (openai == null) {
-            return null;
+            return Optional.empty();
         }
-        return hasText(openai.getEmbeddingApiKey()) ? openai.getEmbeddingApiKey() : openai.getApiKey();
+        String apiKey = hasText(openai.getEmbeddingApiKey()) ? openai.getEmbeddingApiKey() : openai.getApiKey();
+        return hasText(apiKey) ? Optional.of(apiKey) : Optional.empty();
     }
 
-    private String embeddingBaseUrl(AIProviderConfig.OpenAIConfig openai) {
+    private String requireEmbeddingApiKey(AIProviderConfig.OpenAIConfig openai) {
+        return embeddingApiKey(openai)
+            .orElseThrow(() -> new AIServiceException("OpenAI embedding API key is not configured"));
+    }
+
+    private Optional<String> embeddingBaseUrl(AIProviderConfig.OpenAIConfig openai) {
         if (openai == null) {
-            return null;
+            return Optional.empty();
         }
-        return hasText(openai.getEmbeddingBaseUrl()) ? openai.getEmbeddingBaseUrl() : openai.getBaseUrl();
+        String baseUrl = hasText(openai.getEmbeddingBaseUrl()) ? openai.getEmbeddingBaseUrl() : openai.getBaseUrl();
+        return hasText(baseUrl) ? Optional.of(baseUrl) : Optional.empty();
     }
 
     private boolean hasText(String value) {

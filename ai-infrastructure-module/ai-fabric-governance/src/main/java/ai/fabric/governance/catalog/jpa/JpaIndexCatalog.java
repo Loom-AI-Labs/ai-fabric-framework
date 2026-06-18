@@ -13,7 +13,10 @@ import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.Base64;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 
 @Slf4j
 @RequiredArgsConstructor
@@ -86,8 +89,8 @@ public class JpaIndexCatalog implements IndexCatalog {
 
         int limit = request.getLimit() != null && request.getLimit() > 0 ? request.getLimit() : 200;
         LocalDateTime updatedAfter = decodeUpdatedAfterCursor(request.getCursor());
+        Map<String, Object> metadataEquals = normalizeMetadataEquals(request.getMetadataEquals());
 
-        // Metadata filtering is intentionally not implemented in SQL catalog MVP; use required keys as columns later if needed.
         List<IndexCatalogEntity> entities = repository.scanByEntityType(request.getEntityType(), updatedAfter, PageRequest.of(0, limit + 1));
         if (entities == null || entities.isEmpty()) {
             return IndexCatalogScanPage.builder()
@@ -102,6 +105,7 @@ public class JpaIndexCatalog implements IndexCatalog {
 
         List<IndexCatalogEntry> entries = pageEntities.stream()
             .map(this::toEntry)
+            .filter(entry -> metadataMatches(entry.getMetadata(), metadataEquals))
             .toList();
 
         String nextCursor = null;
@@ -189,5 +193,39 @@ public class JpaIndexCatalog implements IndexCatalog {
         } catch (Exception ex) {
             return null;
         }
+    }
+
+    private Map<String, Object> normalizeMetadataEquals(Map<String, Object> metadataEquals) {
+        if (metadataEquals == null || metadataEquals.isEmpty()) {
+            return Collections.emptyMap();
+        }
+        Map<String, Object> normalized = new LinkedHashMap<>();
+        metadataEquals.forEach((key, value) -> {
+            if (key != null && !key.isBlank()) {
+                normalized.put(key, value);
+            }
+        });
+        return Collections.unmodifiableMap(normalized);
+    }
+
+    private boolean metadataMatches(Map<String, Object> metadata, Map<String, Object> metadataEquals) {
+        if (metadataEquals == null || metadataEquals.isEmpty()) {
+            return true;
+        }
+        if (metadata == null || metadata.isEmpty()) {
+            return false;
+        }
+        return metadataEquals.entrySet().stream()
+            .allMatch(entry -> metadataValueMatches(metadata.get(entry.getKey()), entry.getValue()));
+    }
+
+    private boolean metadataValueMatches(Object actual, Object expected) {
+        if (Objects.equals(actual, expected)) {
+            return true;
+        }
+        if (actual == null || expected == null) {
+            return false;
+        }
+        return actual.toString().equals(expected.toString());
     }
 }

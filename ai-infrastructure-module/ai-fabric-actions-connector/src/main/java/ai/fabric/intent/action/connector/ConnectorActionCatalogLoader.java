@@ -853,6 +853,7 @@ public class ConnectorActionCatalogLoader {
         boolean evidenceBound = readBoolean(raw, KEY_EVIDENCE_BOUND, false);
         List<String> evidenceKeys = readStringList(raw.get(KEY_EVIDENCE_KEYS));
         String evidenceFallbackPolicy = readString(raw, KEY_EVIDENCE_FALLBACK_POLICY);
+        validateParamSchemaShape(type, properties, requiredProperties, label, actionName, name);
 
         return new ConnectorActionParamDefinition(
             name.trim(),
@@ -918,6 +919,34 @@ public class ConnectorActionCatalogLoader {
             out.put(entry.getKey().trim(), parseParam(property, label, actionName, entry.getKey().trim()));
         }
         return Map.copyOf(out);
+    }
+
+    private void validateParamSchemaShape(AIActionParamType type,
+                                          Map<String, ConnectorActionParamDefinition> properties,
+                                          List<String> requiredProperties,
+                                          String label,
+                                          String actionName,
+                                          String paramName) {
+        List<String> required = requiredProperties != null ? requiredProperties : List.of();
+        Map<String, ConnectorActionParamDefinition> props = properties != null ? properties : Map.of();
+        if (required.isEmpty()) {
+            return;
+        }
+        if (type != AIActionParamType.OBJECT) {
+            throw new IllegalStateException("Invalid action contract in " + label + " for action '" + actionName
+                + "', param '" + paramName + "': requiredProperties is only valid for OBJECT params.");
+        }
+        for (String requiredProperty : required) {
+            if (!StringUtils.hasText(requiredProperty)) {
+                throw new IllegalStateException("Invalid action contract in " + label + " for action '" + actionName
+                    + "', param '" + paramName + "': requiredProperties must not contain blank entries.");
+            }
+            if (!props.containsKey(requiredProperty.trim())) {
+                throw new IllegalStateException("Invalid action contract in " + label + " for action '" + actionName
+                    + "', param '" + paramName + "': required property '" + requiredProperty
+                    + "' is not declared in properties.");
+            }
+        }
     }
 
     private void validateConfirmationTemplate(String actionName,

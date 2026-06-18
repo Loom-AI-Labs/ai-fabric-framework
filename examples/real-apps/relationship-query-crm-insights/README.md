@@ -2,7 +2,7 @@
 
 Scenario: **natural language → JPQL** using AI Fabric’s Relationship Query module, over a realistic CRM schema.
 
-This app is **fully offline**: it includes an in-app stub LLM provider so you can run the module without external keys.
+This app is **fully offline**: it includes an in-app deterministic LLM provider so you can run the module without external keys.
 
 ## What this app proves
 

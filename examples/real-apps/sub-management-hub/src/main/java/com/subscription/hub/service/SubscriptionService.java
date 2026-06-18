@@ -253,21 +253,9 @@ public class SubscriptionService {
                 return fallback;
             }
 
-            // Convert search results to SubscriptionPlan entities
             return response.getResults().stream()
-                .map(result -> {
-                    String entityId = extractEntityId(result);
-                    if (entityId == null) {
-                        return null;
-                    }
-                    try {
-                        return planRepository.findById(UUID.fromString(entityId)).orElse(null);
-                    } catch (IllegalArgumentException ex) {
-                        log.debug("Unable to parse plan entityId '{}' as UUID (result keys: {})", entityId, result.keySet());
-                        return null;
-                    }
-                })
-                .filter(plan -> plan != null)
+                .map(this::findPlanFromSearchResult)
+                .flatMap(Optional::stream)
                 .limit(limit)
                 .collect(Collectors.toList());
         } catch (Exception ex) {
@@ -294,16 +282,28 @@ public class SubscriptionService {
         return value.toLowerCase().contains(lowerNeedle);
     }
 
-    private String extractEntityId(Map<String, Object> result) {
-        if (result == null || result.isEmpty()) {
-            return null;
-        }
-        Object id = firstNonNull(result.get("entityId"), result.get("id"));
-        return id != null ? Objects.toString(id, null) : null;
+    private Optional<SubscriptionPlan> findPlanFromSearchResult(Map<String, Object> result) {
+        return extractEntityId(result).flatMap(entityId -> {
+            try {
+                return planRepository.findById(UUID.fromString(entityId));
+            } catch (IllegalArgumentException ex) {
+                log.debug("Unable to parse plan entityId '{}' as UUID (result keys: {})", entityId, result.keySet());
+                return Optional.empty();
+            }
+        });
     }
 
-    private Object firstNonNull(Object first, Object second) {
-        return first != null ? first : second;
+    private Optional<String> extractEntityId(Map<String, Object> result) {
+        if (result == null || result.isEmpty()) {
+            return Optional.empty();
+        }
+        return firstPresent(result.get("entityId"), result.get("id"))
+            .map(Objects::toString)
+            .filter(value -> !value.isBlank());
+    }
+
+    private Optional<Object> firstPresent(Object first, Object second) {
+        return Optional.ofNullable(first != null ? first : second);
     }
 
     /**

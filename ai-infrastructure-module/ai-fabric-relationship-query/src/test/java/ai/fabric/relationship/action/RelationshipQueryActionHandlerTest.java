@@ -310,7 +310,7 @@ class RelationshipQueryActionHandlerTest {
 
     private static AIAccessSubjectContext normalize(AIAccessSubjectContext authContext) {
         if (authContext == null) {
-            return null;
+            return authContext(null);
         }
         String subjectId = authContext.getSubjectId();
         if ((subjectId == null || subjectId.isBlank()) && authContext.getSessionId() != null && !authContext.getSessionId().isBlank()) {

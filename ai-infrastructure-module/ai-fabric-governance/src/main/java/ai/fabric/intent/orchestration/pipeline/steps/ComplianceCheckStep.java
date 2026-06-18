@@ -48,7 +48,7 @@ public class ComplianceCheckStep implements PipelineStep {
 
         AIComplianceResponse complianceResponse = complianceService.checkCompliance(complianceRequest);
 
-        if (Boolean.FALSE.equals(complianceResponse.getOverallCompliant())) {
+        if (complianceResponse == null || !Boolean.TRUE.equals(complianceResponse.getOverallCompliant())) {
             log.warn("Compliance check failed for request {} - user: {}",
                 context.getRequestId(), context.getIdentifier());
             return context.terminate(OrchestrationResult.error(ERROR_MSG_COMPLIANCE_FAILED));

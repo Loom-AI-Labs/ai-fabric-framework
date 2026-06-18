@@ -23,7 +23,7 @@ ai:
       enable-search: false
       enable-generation: true
   providers:
-    llm-provider: crm-stub
+    llm-provider: crm-local
   infrastructure:
     relationship:
       enabled: true

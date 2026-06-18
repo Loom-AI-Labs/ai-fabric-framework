@@ -13,7 +13,15 @@ import org.springframework.core.env.MapPropertySource;
 import org.springframework.core.env.StandardEnvironment;
 import org.springframework.core.io.DefaultResourceLoader;
 
+import java.io.IOException;
+import java.net.URISyntaxException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -186,5 +194,58 @@ class CommerceCuratedPackTest {
             .contains("Do not substitute price, availability, vendor, or product title as safety evidence")
             .contains("present explicit price, availability, variant, shipping-policy, review-signal")
             .contains("Do not append generic closers");
+    }
+
+    @Test
+    void shouldResolveEveryCommercePromptOverlay() throws Exception {
+        PromptTemplateResolver resolver = commerceResolver();
+
+        for (String promptResource : promptResources()) {
+            String resource = promptResource.substring("prompts/".length());
+            int versionStart = resource.indexOf("/v1-commerce/");
+            assertThat(versionStart)
+                .as(promptResource)
+                .isPositive();
+
+            String family = resource.substring(0, versionStart);
+            String name = resource.substring(versionStart + "/v1-commerce/".length(), resource.length() - ".md".length());
+            String rawTemplate = readResource(promptResource);
+
+            var resolved = resolver.resolve(family, name).template();
+            assertThat(resolved.key().version()).as(promptResource).isEqualTo("v1-commerce");
+            assertThat(resolved.template()).as(promptResource).isEqualTo(rawTemplate).isNotBlank();
+        }
+    }
+
+    private static PromptTemplateResolver commerceResolver() {
+        PromptBundleProperties promptBundle = new PromptBundleProperties();
+        promptBundle.setOverlays(List.of("v1-commerce"));
+        return new PromptTemplateResolver(
+            new ClasspathPromptTemplateStore(new DefaultResourceLoader()),
+            promptBundle
+        );
+    }
+
+    private static String readResource(String resourcePath) throws IOException {
+        var classLoader = CommerceCuratedPackTest.class.getClassLoader();
+        try (var stream = Objects.requireNonNull(classLoader.getResourceAsStream(resourcePath), resourcePath)) {
+            return new String(stream.readAllBytes(), StandardCharsets.UTF_8);
+        }
+    }
+
+    private static List<String> promptResources() throws IOException, URISyntaxException {
+        var classLoader = CommerceCuratedPackTest.class.getClassLoader();
+        var promptsUrl = Objects.requireNonNull(classLoader.getResource("prompts"), "prompts");
+        Path promptsRoot = Path.of(promptsUrl.toURI());
+        try (Stream<Path> paths = Files.walk(promptsRoot)) {
+            return paths
+                .filter(Files::isRegularFile)
+                .filter(path -> path.getFileName().toString().endsWith(".md"))
+                .map(promptsRoot::relativize)
+                .map(path -> "prompts/" + path.toString().replace('\\', '/'))
+                .filter(path -> path.contains("/v1-commerce/"))
+                .sorted()
+                .toList();
+        }
     }
 }

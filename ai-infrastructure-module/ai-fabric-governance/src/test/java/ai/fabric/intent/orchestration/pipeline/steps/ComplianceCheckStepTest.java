@@ -81,4 +81,33 @@ class ComplianceCheckStepTest {
         assertThat(result.getEarlyTerminationResult().getMessage())
             .isEqualTo("Request failed compliance validation.");
     }
+
+    @Test
+    void processTerminatesWhenComplianceResponseIsMissingDecision() {
+        when(complianceService.checkCompliance(any()))
+            .thenReturn(AIComplianceResponse.builder().build());
+
+        PipelineContext context = PipelineContext.from("Export customer data", OrchestrationContext.forUser("user-1"));
+
+        PipelineContext result = step.process(context);
+
+        assertThat(result.isShouldTerminate()).isTrue();
+        assertThat(result.getEarlyTerminationResult()).isNotNull();
+        assertThat(result.getEarlyTerminationResult().getMessage())
+            .isEqualTo("Request failed compliance validation.");
+    }
+
+    @Test
+    void processTerminatesWhenComplianceServiceReturnsNull() {
+        when(complianceService.checkCompliance(any())).thenReturn(null);
+
+        PipelineContext context = PipelineContext.from("Export customer data", OrchestrationContext.forUser("user-1"));
+
+        PipelineContext result = step.process(context);
+
+        assertThat(result.isShouldTerminate()).isTrue();
+        assertThat(result.getEarlyTerminationResult()).isNotNull();
+        assertThat(result.getEarlyTerminationResult().getMessage())
+            .isEqualTo("Request failed compliance validation.");
+    }
 }

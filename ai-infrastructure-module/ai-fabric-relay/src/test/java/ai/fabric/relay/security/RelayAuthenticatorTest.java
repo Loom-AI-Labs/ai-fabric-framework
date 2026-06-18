@@ -67,6 +67,34 @@ class RelayAuthenticatorTest {
     }
 
     @Test
+    void verify_doesNotConsumeNonceWhenSignatureIsInvalid() throws Exception {
+        Clock clock = Clock.fixed(Instant.ofEpochSecond(1_700_000_000L), ZoneOffset.UTC);
+        RelayKeyValueStore kv = new InMemoryRelayKeyValueStore("test:", clock);
+        NonceStore nonceStore = new NonceStore(kv);
+        RelayAuthenticator authenticator = new RelayAuthenticator(hmacProps("secret"), nonceStore, clock);
+
+        String body = "{\"actionId\":\"ping\",\"params\":{},\"trace\":{}}";
+        String timestamp = String.valueOf(Instant.now(clock).getEpochSecond());
+        String nonce = "n1";
+
+        Map<String, String> invalidHeaders = Map.of(
+            "X-AIFABRIC-TIMESTAMP", timestamp,
+            "X-AIFABRIC-NONCE", nonce,
+            "X-AIFABRIC-SIGNATURE", "bad"
+        );
+
+        assertThatThrownBy(() -> authenticator.verify(invalidHeaders, body))
+            .isInstanceOf(RelayRequestRejectedException.class);
+
+        Map<String, String> validHeaders = new LinkedHashMap<>();
+        validHeaders.put("X-AIFABRIC-TIMESTAMP", timestamp);
+        validHeaders.put("X-AIFABRIC-NONCE", nonce);
+        validHeaders.put("X-AIFABRIC-SIGNATURE", sign("secret", timestamp, nonce, body));
+
+        authenticator.verify(validHeaders, body);
+    }
+
+    @Test
     void verify_rejectsNonceReplay() throws Exception {
         Clock clock = Clock.fixed(Instant.ofEpochSecond(1_700_000_000L), ZoneOffset.UTC);
         RelayKeyValueStore kv = new InMemoryRelayKeyValueStore("test:", clock);

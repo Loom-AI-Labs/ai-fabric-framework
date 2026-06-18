@@ -42,6 +42,7 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 @RestController
@@ -128,7 +129,7 @@ public class ChatController {
                 .prompt(prompt)
                 .maxTokens(300)
                 .temperature(0.4)
-                .authContext(buildGenerationAuthContext(request.getUserId()))
+                .authContext(buildGenerationAuthContext(request.getUserId()).orElse(null))
                 .build(), LlmPurpose.GENERATION);
 
             String raw = response != null ? response.getContent() : null;
@@ -154,14 +155,14 @@ public class ChatController {
         }
     }
 
-    private AIAccessSubjectContext buildGenerationAuthContext(String userId) {
+    private Optional<AIAccessSubjectContext> buildGenerationAuthContext(String userId) {
         if (!StringUtils.hasText(userId)) {
-            return null;
+            return Optional.empty();
         }
-        return AIAccessSubjectContext.builder()
+        return Optional.of(AIAccessSubjectContext.builder()
             .subjectId(userId.trim())
             .subjectType("END_USER")
-            .build();
+            .build());
     }
 
     @GetMapping("/conversations/{conversationId}")
@@ -172,11 +173,11 @@ public class ChatController {
         if (service == null) {
             return ResponseEntity.notFound().build();
         }
-        String resolvedOwnerId = resolveOwnerId(userId, ownerId);
-        if (!StringUtils.hasText(resolvedOwnerId)) {
+        Optional<String> resolvedOwnerId = resolveOwnerId(userId, ownerId);
+        if (resolvedOwnerId.isEmpty()) {
             return ResponseEntity.badRequest().build();
         }
-        return ResponseEntity.ok(toConversationResponse(service.getSession(conversationId, resolvedOwnerId)));
+        return ResponseEntity.ok(toConversationResponse(service.getSession(conversationId, resolvedOwnerId.get())).orElse(null));
     }
 
     @GetMapping("/conversations")
@@ -188,11 +189,14 @@ public class ChatController {
         if (service == null) {
             return ResponseEntity.ok(List.of());
         }
-        String resolvedOwnerId = resolveOwnerId(userId, ownerId);
-        if (!StringUtils.hasText(resolvedOwnerId)) {
+        Optional<String> resolvedOwnerId = resolveOwnerId(userId, ownerId);
+        if (resolvedOwnerId.isEmpty()) {
             return ResponseEntity.badRequest().build();
         }
-        return ResponseEntity.ok(service.getUserConversations(resolvedOwnerId).stream().map(this::toConversationSummaryResponse).toList());
+        return ResponseEntity.ok(service.getUserConversations(resolvedOwnerId.get()).stream()
+            .map(this::toConversationSummaryResponse)
+            .flatMap(Optional::stream)
+            .toList());
     }
 
     @DeleteMapping("/conversations/{conversationId}")
@@ -203,16 +207,16 @@ public class ChatController {
         if (service == null) {
             return ResponseEntity.noContent().build();
         }
-        String resolvedOwnerId = resolveOwnerId(userId, ownerId);
-        if (!StringUtils.hasText(resolvedOwnerId)) {
+        Optional<String> resolvedOwnerId = resolveOwnerId(userId, ownerId);
+        if (resolvedOwnerId.isEmpty()) {
             return ResponseEntity.badRequest().build();
         }
-        service.deleteConversation(conversationId, resolvedOwnerId);
+        service.deleteConversation(conversationId, resolvedOwnerId.get());
         return ResponseEntity.noContent().build();
     }
 
     private OrchestrationContext buildContext(ChatQueryRequest request, String conversationId) {
-        String userId = StringUtils.hasText(request.getUserId()) ? request.getUserId() : null;
+        String userId = trimToText(request.getUserId()).orElse("");
         String sessionId = StringUtils.hasText(request.getSessionId())
             ? request.getSessionId()
             : "anon-" + UUID.randomUUID();
@@ -239,14 +243,8 @@ public class ChatController {
         return builder.build();
     }
 
-    private String resolveOwnerId(String userId, String ownerId) {
-        if (StringUtils.hasText(userId)) {
-            return userId;
-        }
-        if (StringUtils.hasText(ownerId)) {
-            return ownerId;
-        }
-        return null;
+    private Optional<String> resolveOwnerId(String userId, String ownerId) {
+        return trimToText(userId).or(() -> trimToText(ownerId));
     }
 
     private String buildSuggestionsPrompt(String content, int n) {
@@ -414,9 +412,9 @@ public class ChatController {
     }
 
     private String extractHint(String content, List<OrchestrationAttachment> attachments) {
-        String raw = StringUtils.hasText(content) ? content.trim() : null;
+        String raw = trimToText(content).orElse("");
         if (!StringUtils.hasText(raw)) {
-            raw = firstAttachmentText(attachments);
+            raw = firstAttachmentText(attachments).orElse("");
         }
         if (!StringUtils.hasText(raw)) {
             return "your request";
@@ -428,25 +426,25 @@ public class ChatController {
         return "\"" + trimmed + "\"";
     }
 
-    private String firstAttachmentText(List<OrchestrationAttachment> attachments) {
+    private Optional<String> firstAttachmentText(List<OrchestrationAttachment> attachments) {
         if (attachments == null || attachments.isEmpty()) {
-            return null;
+            return Optional.empty();
         }
         for (OrchestrationAttachment a : attachments) {
             if (a == null) {
                 continue;
             }
             if (StringUtils.hasText(a.getContentText())) {
-                return a.getContentText();
+                return Optional.of(a.getContentText());
             }
             if (StringUtils.hasText(a.getUrl())) {
-                return a.getUrl();
+                return Optional.of(a.getUrl());
             }
             if (StringUtils.hasText(a.getVectorSpace())) {
-                return a.getVectorSpace();
+                return Optional.of(a.getVectorSpace());
             }
         }
-        return null;
+        return Optional.empty();
     }
 
     private List<String> parseSuggestions(String raw) {
@@ -569,9 +567,9 @@ public class ChatController {
         private String raw;
     }
 
-    private ConversationResponse toConversationResponse(ChatSession session) {
+    private Optional<ConversationResponse> toConversationResponse(ChatSession session) {
         if (session == null) {
-            return null;
+            return Optional.empty();
         }
         List<ChatTurn> turns = (session.getTurns() != null && Hibernate.isInitialized(session.getTurns()))
             ? session.getTurns()
@@ -584,30 +582,37 @@ public class ChatController {
                 .aiResponse(t.getAiResponse())
                 .build())
             .toList();
-        return ConversationResponse.builder()
+        return Optional.of(ConversationResponse.builder()
             .id(session.getId())
             .ownerId(session.getOwnerId())
             .status(session.getStatus() != null ? session.getStatus().name() : null)
             .createdAt(session.getCreatedAt())
             .lastInteractionAt(session.getLastInteractionAt())
             .turns(mappedTurns)
-            .build();
+            .build());
     }
 
-    private ConversationSummaryResponse toConversationSummaryResponse(ChatSession session) {
+    private Optional<ConversationSummaryResponse> toConversationSummaryResponse(ChatSession session) {
         if (session == null) {
-            return null;
+            return Optional.empty();
         }
         int turnsCount = (session.getTurns() != null && Hibernate.isInitialized(session.getTurns()))
             ? session.getTurns().size()
             : 0;
-        return ConversationSummaryResponse.builder()
+        return Optional.of(ConversationSummaryResponse.builder()
             .id(session.getId())
             .ownerId(session.getOwnerId())
             .status(session.getStatus() != null ? session.getStatus().name() : null)
             .createdAt(session.getCreatedAt())
             .lastInteractionAt(session.getLastInteractionAt())
             .turnsCount(turnsCount)
-            .build();
+            .build());
+    }
+
+    private Optional<String> trimToText(String value) {
+        if (!StringUtils.hasText(value)) {
+            return Optional.empty();
+        }
+        return Optional.of(value.trim());
     }
 }

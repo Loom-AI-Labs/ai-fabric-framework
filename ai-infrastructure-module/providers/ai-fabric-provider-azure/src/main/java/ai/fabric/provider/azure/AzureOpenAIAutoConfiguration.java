@@ -75,9 +75,8 @@ public class AzureOpenAIAutoConfiguration {
     }
 
     private String normalizeEndpoint(String endpoint) {
-        if (endpoint == null) {
-            return null;
-        }
-        return endpoint.endsWith("/") ? endpoint.substring(0, endpoint.length() - 1) : endpoint;
+        return endpoint == null || !endpoint.endsWith("/")
+            ? endpoint
+            : endpoint.substring(0, endpoint.length() - 1);
     }
 }

@@ -47,6 +47,9 @@ public class PIIDetectionStep implements PipelineStep {
         }
 
         PIIDetectionDirection detectionDirection = piiDetectionProperties.getDetectionDirection();
+        if (detectionDirection == null) {
+            detectionDirection = PIIDetectionDirection.INPUT_OUTPUT;
+        }
         boolean detectInput = piiDetectionProperties.isEnabled() &&
             (detectionDirection == PIIDetectionDirection.INPUT ||
                 detectionDirection == PIIDetectionDirection.INPUT_OUTPUT);
@@ -66,8 +69,9 @@ public class PIIDetectionStep implements PipelineStep {
         }
 
         List<PIIDetection> detections = piiResult.getDetections() != null ? piiResult.getDetections() : List.of();
+        boolean hasPii = piiResult.isPiiDetected() || !detections.isEmpty();
 
-        String processedQuery = StringUtils.hasText(piiResult.getProcessedQuery())
+        String processedQuery = piiResult.getProcessedQuery() != null
             ? piiResult.getProcessedQuery()
             : inputQuery;
 
@@ -75,7 +79,7 @@ public class PIIDetectionStep implements PipelineStep {
         // Even when PIIMode is DETECT_ONLY (which stores the original payload and emits detections),
         // we still pass a masked version into the orchestration pipeline so providers do not see
         // secrets/PII and to reduce provider refusals / OUT_OF_SCOPE misclassifications.
-        if (piiResult.isPiiDetected()
+        if (hasPii
             && processedQuery.equals(inputQuery)
             && !detections.isEmpty()) {
             processedQuery = redact(inputQuery, detections);
@@ -87,7 +91,7 @@ public class PIIDetectionStep implements PipelineStep {
             .distinct()
             .toList();
 
-        if (piiResult.isPiiDetected()) {
+        if (hasPii) {
             log.info("PII detected in user query - types: {}", detectedTypes);
         }
 
@@ -104,13 +108,21 @@ public class PIIDetectionStep implements PipelineStep {
 
         StringBuilder builder = new StringBuilder(original);
         detections.stream()
-            .filter(d -> d != null && StringUtils.hasText(d.getMaskedValue()))
+            .filter(detection -> canApply(detection, builder.length()))
             .sorted(Comparator.comparingInt((PIIDetection d) -> d.getStartIndex()).reversed())
             .forEach(detection -> {
-                int start = Math.max(0, Math.min(detection.getStartIndex(), builder.length()));
+                int start = Math.min(detection.getStartIndex(), builder.length());
                 int end = Math.max(start, Math.min(detection.getEndIndex(), builder.length()));
                 builder.replace(start, end, detection.getMaskedValue());
             });
         return builder.toString();
+    }
+
+    private boolean canApply(PIIDetection detection, int inputLength) {
+        return detection != null
+            && detection.getMaskedValue() != null
+            && detection.getStartIndex() >= 0
+            && detection.getStartIndex() < inputLength
+            && detection.getEndIndex() > detection.getStartIndex();
     }
 }

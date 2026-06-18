@@ -35,6 +35,7 @@ public class AIDataPrivacyService {
      * Process data privacy request
      */
     public AIDataPrivacyResponse processDataPrivacyRequest(AIDataPrivacyRequest request) {
+        Objects.requireNonNull(request, "data privacy request must not be null");
         log.info("Processing data privacy request for subject: {}", resolveSubjectId(request));
         
         try {
@@ -239,7 +240,7 @@ public class AIDataPrivacyService {
             case "CONFIDENTIAL":
                 return true; // Always require consent for sensitive data
             case "INTERNAL":
-                return request.isConsentRequired(); // Check user preference
+                return Boolean.TRUE.equals(request.isConsentRequired()); // Check user preference
             case "PUBLIC":
             default:
                 return false; // No consent required for public data
@@ -274,7 +275,7 @@ public class AIDataPrivacyService {
                 break;
         }
         
-        if (request.isConsentRequired() && !request.isConsentGiven()) {
+        if (Boolean.TRUE.equals(request.isConsentRequired()) && !Boolean.TRUE.equals(request.isConsentGiven())) {
             recommendations.add("Obtain explicit consent before processing personal data");
         }
         
@@ -310,7 +311,7 @@ public class AIDataPrivacyService {
         controls.put("purposeLimitation", request.getPurpose());
         
         // Consent tracking
-        controls.put("consentTracking", request.isConsentRequired());
+        controls.put("consentTracking", Boolean.TRUE.equals(request.isConsentRequired()));
         
         return controls;
     }
@@ -371,6 +372,9 @@ public class AIDataPrivacyService {
             return true; // Will be set by controls
         }
         int maxRetention = getRetentionPeriod(dataClassification);
+        if (maxRetention <= 0) {
+            return true;
+        }
         return request.getDataRetentionPeriod() <= maxRetention;
     }
 

@@ -4,6 +4,7 @@ import ai.fabric.chat.domain.ChatTurn;
 import ai.fabric.dto.AIChatMessage;
 import org.springframework.util.StringUtils;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
@@ -15,10 +16,10 @@ public class SlidingWindowMemoryStrategy implements MemoryStrategy {
             return List.of();
         }
         if (history.size() <= limit) {
-            return Collections.unmodifiableList(history);
+            return Collections.unmodifiableList(new ArrayList<>(history));
         }
         int startIndex = Math.max(0, history.size() - limit);
-        return Collections.unmodifiableList(history.subList(startIndex, history.size()));
+        return Collections.unmodifiableList(new ArrayList<>(history.subList(startIndex, history.size())));
     }
 
     @Override

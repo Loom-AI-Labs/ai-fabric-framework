@@ -12,6 +12,7 @@ import ai.fabric.provider.ProviderStatus;
 import ai.fabric.provider.TransientInputSupport;
 import ai.fabric.dto.AIEmbeddingRequest;
 import ai.fabric.dto.AIEmbeddingResponse;
+import ai.fabric.exception.AIServiceException;
 import ai.fabric.http.HttpClient;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -25,9 +26,11 @@ import org.springframework.web.client.HttpStatusCodeException;
 import org.springframework.web.client.ResourceAccessException;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
@@ -56,6 +59,7 @@ public class AnthropicProvider implements AIProvider {
     private final AtomicReference<Double> averageResponseTime = new AtomicReference<>(0.0);
     
     private static final String ANTHROPIC_BASE_URL = "https://api.anthropic.com/v1";
+    private static final String DEFAULT_MODEL = "claude-3-7-sonnet-latest";
     private static final int MAX_RETRY_ATTEMPTS = 3;
     
     @Override
@@ -83,9 +87,13 @@ public class AnthropicProvider implements AIProvider {
             if (TransientInputSupport.hasFileUrlInputs(request)) {
                 return generateContentWithDocumentUrls(request, startTime);
             }
-            log.debug("Generating content with Anthropic: model={}, generationType={}, prompt={}", 
-                     request.getModel(), request.getGenerationType(), 
-                     request.getPrompt() != null ? request.getPrompt().substring(0, Math.min(100, request.getPrompt().length())) : "null");
+            String prompt = request.getPrompt();
+            log.debug(
+                "Generating content with Anthropic: model={}, generationType={}, prompt={}",
+                request.getModel(),
+                request.getGenerationType(),
+                snippet(prompt, 100)
+            );
             
             ProviderRequestOverrideSupport.LlmConnectionOverride connectionOverride =
                 ProviderRequestOverrideSupport.read(request.getParameters());
@@ -99,7 +107,8 @@ public class AnthropicProvider implements AIProvider {
             headers.set("anthropic-version", "2023-06-01");
             
             Map<String, Object> requestBody = new HashMap<>();
-            requestBody.put("model", request.getModel() != null ? request.getModel() : config.getDefaultModel());
+            requestBody.put("model", firstNonBlank(request.getModel(), config.getDefaultModel(), DEFAULT_MODEL)
+                .orElse(DEFAULT_MODEL));
             requestBody.put("max_tokens", request.getMaxTokens() != null ? request.getMaxTokens() : config.getMaxTokens());
             requestBody.put("temperature", request.getTemperature() != null ? request.getTemperature() : config.getTemperature());
             
@@ -127,7 +136,7 @@ public class AnthropicProvider implements AIProvider {
             }
             
             // Build messages list - only user messages, no system role (Anthropic doesn't allow system role in messages)
-            List<Map<String, Object>> messages = new java.util.ArrayList<>();
+            List<Map<String, Object>> messages = new ArrayList<>();
             if (request.getMessages() != null && !request.getMessages().isEmpty()) {
                 for (AIChatMessage msg : request.getMessages()) {
                     if (msg == null || msg.getRole() == null || msg.getContent() == null || msg.getContent().isBlank()) {
@@ -139,63 +148,44 @@ public class AnthropicProvider implements AIProvider {
                     messages.add(Map.of("role", msg.getRole().getApiValue(), "content", msg.getContent()));
                 }
             }
-            messages.add(Map.of("role", "user", "content", request.getPrompt() != null ? request.getPrompt() : ""));
+            messages.add(Map.of("role", "user", "content", prompt != null ? prompt : ""));
             requestBody.put("messages", messages);
 
-            if (log.isInfoEnabled()) {
-                log.info("=== ANTHROPIC API REQUEST ===");
-                log.info(
-                    "Anthropic API request: url={}, model={}, temperature={}, maxTokens={}, hasSystem={}, messages={}",
-                    url,
-                    requestBody.get("model"),
-                    requestBody.get("temperature"),
-                    requestBody.get("max_tokens"),
-                    requestBody.containsKey("system"),
-                    messages.size()
-                );
-                String prompt = request.getPrompt();
-                int len = prompt != null ? prompt.length() : 0;
-                String snippet = prompt == null ? "" : prompt.substring(0, Math.min(500, len));
-                log.info("Anthropic API request promptLength={}, promptSnippet={}", len, snippet);
-                log.info("=== END ANTHROPIC API REQUEST ===");
-            }
+            log.info(
+                "Anthropic API request: url={}, model={}, temperature={}, maxTokens={}, hasSystem={}, messages={}, promptLength={}",
+                url,
+                requestBody.get("model"),
+                requestBody.get("temperature"),
+                requestBody.get("max_tokens"),
+                requestBody.containsKey("system"),
+                messages.size(),
+                prompt != null ? prompt.length() : 0
+            );
+            log.debug("Anthropic API request promptSnippet={}", snippet(prompt, 500));
             
             HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
             
             ResponseEntity<Map> response = exchangeWithRetry(url, HttpMethod.POST, entity, Map.class, "messages");
             
             long responseTime = System.currentTimeMillis() - startTime;
+            Map<String, Object> responseBody = requireResponseBody(response, "Anthropic response body was empty");
+            String generatedText = extractTextContent(responseBody, "Anthropic response content text was missing");
             updateMetrics(true, responseTime);
-            
-            @SuppressWarnings("unchecked")
-            Map<String, Object> responseBody = response.getBody();
-            @SuppressWarnings("unchecked")
-            List<Map<String, Object>> content = (List<Map<String, Object>>) responseBody.get("content");
-            String generatedText = (String) content.get(0).get("text");
-            
-            if (log.isInfoEnabled()) {
-                log.info("=== ANTHROPIC API RESPONSE ===");
-                int contentLength = generatedText != null ? generatedText.length() : 0;
-                log.info(
-                    "Anthropic API response: responseTimeMs={}, model={}, contentLength={}",
-                    responseTime,
-                    responseBody.get("model"),
-                    contentLength
-                );
-                if (generatedText != null) {
-                    log.info(
-                        "Anthropic API response contentSnippet={}",
-                        generatedText.substring(0, Math.min(500, generatedText.length()))
-                    );
-                }
-                log.info("=== END ANTHROPIC API RESPONSE ===");
-            }
+
+            int contentLength = generatedText.length();
+            log.info(
+                "Anthropic API response: responseTimeMs={}, model={}, contentLength={}",
+                responseTime,
+                responseBody.get("model"),
+                contentLength
+            );
+            log.debug("Anthropic API response contentSnippet={}", snippet(generatedText, 500));
 
             log.debug("Anthropic content generation completed in {}ms", responseTime);
             
             return AIGenerationResponse.builder()
                 .content(generatedText)
-                .model((String) responseBody.get("model"))
+                .model(responseBody.get("model") instanceof String model ? model : String.valueOf(requestBody.get("model")))
                 .usage(createUsageFromResponse(responseBody))
                 .processingTimeMs(responseTime)
                 .requestId(java.util.UUID.randomUUID().toString())
@@ -209,7 +199,7 @@ public class AnthropicProvider implements AIProvider {
             lastError.set(LocalDateTime.now());
             lastErrorMessage.set(e.getMessage());
             
-            throw new RuntimeException("Anthropic content generation failed: " + e.getMessage(), e);
+            throw wrapException("Anthropic content generation failed", e);
         }
     }
 
@@ -219,12 +209,12 @@ public class AnthropicProvider implements AIProvider {
             try {
                 TransientInputSupport.validateFileUrlInput(part);
             } catch (IllegalArgumentException ex) {
-                return TransientInputSupport.unsupportedFileUrlResponse(request, getProviderName(), ex.getMessage());
+                return unsupportedTransientResponse(request, startTime, ex.getMessage());
             }
             if (!isAnthropicDocumentUrlSupported(part)) {
-                return TransientInputSupport.unsupportedFileUrlResponse(
+                return unsupportedTransientResponse(
                     request,
-                    getProviderName(),
+                    startTime,
                     "Anthropic document URL inputs are enabled only for supported document MIME types."
                 );
             }
@@ -242,14 +232,15 @@ public class AnthropicProvider implements AIProvider {
         headers.set("anthropic-version", "2023-06-01");
 
         Map<String, Object> requestBody = new HashMap<>();
-        requestBody.put("model", request.getModel() != null ? request.getModel() : config.getDefaultModel());
+        requestBody.put("model", firstNonBlank(request.getModel(), config.getDefaultModel(), DEFAULT_MODEL)
+            .orElse(DEFAULT_MODEL));
         requestBody.put("max_tokens", request.getMaxTokens() != null ? request.getMaxTokens() : config.getMaxTokens());
         requestBody.put("temperature", request.getTemperature() != null ? request.getTemperature() : config.getTemperature());
         if (hasText(request.getSystemPrompt())) {
             requestBody.put("system", request.getSystemPrompt());
         }
 
-        List<Map<String, Object>> messages = new java.util.ArrayList<>();
+        List<Map<String, Object>> messages = new ArrayList<>();
         if (request.getMessages() != null && !request.getMessages().isEmpty()) {
             for (AIChatMessage msg : request.getMessages()) {
                 if (msg == null || msg.getRole() == null || msg.getContent() == null || msg.getContent().isBlank()) {
@@ -262,7 +253,7 @@ public class AnthropicProvider implements AIProvider {
             }
         }
 
-        List<Map<String, Object>> contentBlocks = new java.util.ArrayList<>();
+        List<Map<String, Object>> contentBlocks = new ArrayList<>();
         for (AIGenerationInputPart part : fileParts) {
             String contentType = TransientInputSupport.normalizeContentType(part.getContentType());
             if (TransientInputSupport.isPdfContentType(contentType)) {
@@ -289,31 +280,23 @@ public class AnthropicProvider implements AIProvider {
         messages.add(Map.of("role", "user", "content", contentBlocks));
         requestBody.put("messages", messages);
 
-        if (log.isInfoEnabled()) {
-            log.info("=== ANTHROPIC DOCUMENT URL REQUEST ===");
-            log.info(
-                "Anthropic document URL request: url={}, model={}, maxTokens={}, fileUrlInputs={}, promptLength={}",
-                url,
-                requestBody.get("model"),
-                requestBody.get("max_tokens"),
-                fileParts.size(),
-                request.getPrompt() != null ? request.getPrompt().length() : 0
-            );
-            log.info("Anthropic transientInputs={}", TransientInputSupport.redactedDescriptors(fileParts));
-            log.info("=== END ANTHROPIC DOCUMENT URL REQUEST ===");
-        }
+        log.info(
+            "Anthropic document URL request: url={}, model={}, maxTokens={}, fileUrlInputs={}, promptLength={}",
+            url,
+            requestBody.get("model"),
+            requestBody.get("max_tokens"),
+            fileParts.size(),
+            request.getPrompt() != null ? request.getPrompt().length() : 0
+        );
+        log.debug("Anthropic transientInputs={}", TransientInputSupport.redactedDescriptors(fileParts));
 
         HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
         ResponseEntity<Map> response = exchangeWithRetry(url, HttpMethod.POST, entity, Map.class, "messages.document-url");
 
         long responseTime = System.currentTimeMillis() - startTime;
+        Map<String, Object> responseBody = requireResponseBody(response, "Anthropic document URL response body was empty");
+        String generatedText = extractTextContent(responseBody, "Anthropic document URL response content text was missing");
         updateMetrics(true, responseTime);
-
-        @SuppressWarnings("unchecked")
-        Map<String, Object> responseBody = response.getBody();
-        @SuppressWarnings("unchecked")
-        List<Map<String, Object>> content = responseBody != null ? (List<Map<String, Object>>) responseBody.get("content") : List.of();
-        String generatedText = content != null && !content.isEmpty() ? (String) content.get(0).get("text") : "";
 
         return AIGenerationResponse.builder()
             .content(generatedText)
@@ -326,6 +309,12 @@ public class AnthropicProvider implements AIProvider {
                 "transientInputs", TransientInputSupport.redactedDescriptors(fileParts)
             ))
             .build();
+    }
+
+    private AIGenerationResponse unsupportedTransientResponse(AIGenerationRequest request, long startTime, String message) {
+        long responseTime = System.currentTimeMillis() - startTime;
+        updateMetrics(false, responseTime);
+        return TransientInputSupport.unsupportedFileUrlResponse(request, getProviderName(), message);
     }
 
     private boolean isAnthropicDocumentUrlSupported(AIGenerationInputPart part) {
@@ -378,7 +367,7 @@ public class AnthropicProvider implements AIProvider {
                 throw ex;
             }
         }
-        throw new RuntimeException("Anthropic " + operation + " call failed after retries");
+        throw new AIServiceException("Anthropic " + operation + " call failed after retries");
     }
 
     private boolean isRetryableStatus(int status) {
@@ -399,26 +388,15 @@ public class AnthropicProvider implements AIProvider {
     public AIEmbeddingResponse generateEmbedding(AIEmbeddingRequest request) {
         long startTime = System.currentTimeMillis();
         totalRequests.incrementAndGet();
-        
-        try {
-            log.debug("Generating embedding with Anthropic: model={}, text={}", 
-                     request.getModel(), request.getText().substring(0, Math.min(100, request.getText().length())));
-            
-            // Note: Anthropic doesn't have a direct embedding API, so we'll use a workaround
-            // or delegate to another provider. For now, we'll throw an exception.
-            throw new UnsupportedOperationException("Anthropic does not provide embedding services directly. " +
-                "Please use OpenAI or another provider for embeddings.");
-                
-        } catch (Exception e) {
-            long responseTime = System.currentTimeMillis() - startTime;
-            updateMetrics(false, responseTime);
-            
-            log.error("Anthropic embedding generation failed", e);
-            lastError.set(LocalDateTime.now());
-            lastErrorMessage.set(e.getMessage());
-            
-            throw new RuntimeException("Anthropic embedding generation failed: " + e.getMessage(), e);
-        }
+
+        String message = "Anthropic does not provide embedding services directly. " +
+            "Configure a dedicated embedding provider such as onnx, openai, cohere, or gemini.";
+        long responseTime = System.currentTimeMillis() - startTime;
+        updateMetrics(false, responseTime);
+        lastError.set(LocalDateTime.now());
+        lastErrorMessage.set(message);
+        log.warn("Anthropic embedding generation is unsupported: {}", message);
+        throw new AIServiceException(message);
     }
     
     @Override
@@ -509,17 +487,87 @@ public class AnthropicProvider implements AIProvider {
      */
     private Object createUsageFromResponse(Map<String, Object> responseBody) {
         Map<String, Object> usage = new HashMap<>();
-        
-        @SuppressWarnings("unchecked")
-        Map<String, Object> inputTokens = (Map<String, Object>) responseBody.get("usage");
-        if (inputTokens != null) {
-            usage.put("prompt_tokens", inputTokens.get("input_tokens"));
-            usage.put("completion_tokens", inputTokens.get("output_tokens"));
-            usage.put("total_tokens", ((Number) inputTokens.get("input_tokens")).intValue() + 
-                                     ((Number) inputTokens.get("output_tokens")).intValue());
+
+        Map<String, Object> tokenUsage = asStringKeyMap(responseBody.get("usage"));
+        Optional<Number> inputTokens = numberValue(tokenUsage.get("input_tokens"));
+        Optional<Number> outputTokens = numberValue(tokenUsage.get("output_tokens"));
+        inputTokens.ifPresent(value -> usage.put("prompt_tokens", value));
+        outputTokens.ifPresent(value -> usage.put("completion_tokens", value));
+        if (inputTokens.isPresent() && outputTokens.isPresent()) {
+            usage.put("total_tokens", inputTokens.get().intValue() + outputTokens.get().intValue());
         }
         
         return usage;
+    }
+
+    private Map<String, Object> requireResponseBody(ResponseEntity<Map> response, String message) {
+        if (response == null || response.getBody() == null) {
+            throw new AIServiceException(message);
+        }
+        return copyStringKeyMap(response.getBody(), message);
+    }
+
+    private String extractTextContent(Map<String, Object> responseBody, String message) {
+        Object value = responseBody.get("content");
+        if (!(value instanceof List<?> content) || content.isEmpty()) {
+            throw new AIServiceException(message);
+        }
+        Object first = content.get(0);
+        if (!(first instanceof Map<?, ?> firstBlock)) {
+            throw new AIServiceException(message);
+        }
+        Object text = firstBlock.get("text");
+        if (!(text instanceof String contentText)) {
+            throw new AIServiceException(message);
+        }
+        return contentText;
+    }
+
+    private Map<String, Object> asStringKeyMap(Object value) {
+        if (!(value instanceof Map<?, ?> map)) {
+            return Map.of();
+        }
+        return copyStringKeyMap(map, "Anthropic response map");
+    }
+
+    private Map<String, Object> copyStringKeyMap(Map<?, ?> source, String message) {
+        Map<String, Object> copy = new HashMap<>();
+        source.forEach((key, value) -> {
+            if (key == null) {
+                throw new AIServiceException(message + " contained a null key");
+            }
+            copy.put(String.valueOf(key), value);
+        });
+        return copy;
+    }
+
+    private Optional<Number> numberValue(Object value) {
+        return value instanceof Number number ? Optional.of(number) : Optional.empty();
+    }
+
+    private Optional<String> firstNonBlank(String... values) {
+        if (values == null) {
+            return Optional.empty();
+        }
+        for (String value : values) {
+            if (hasText(value)) {
+                return Optional.of(value.trim());
+            }
+        }
+        return Optional.empty();
+    }
+
+    private String snippet(String value, int maxLength) {
+        if (value == null || value.isEmpty()) {
+            return "";
+        }
+        return value.substring(0, Math.min(maxLength, value.length()));
+    }
+
+    private AIServiceException wrapException(String message, Exception ex) {
+        return ex instanceof AIServiceException serviceException
+            ? serviceException
+            : new AIServiceException(message + ": " + ex.getMessage(), ex);
     }
 
     private String normalizeBaseUrl(String baseUrl) {

@@ -61,7 +61,7 @@ public class SmokeEmbeddingProvider implements EmbeddingProvider {
             "provider", NAME,
             "available", true,
             "dimension", DIMENSION,
-            "details", "offline deterministic stub (smoke profile)"
+            "details", "offline deterministic provider (smoke profile)"
         );
     }
 

@@ -6,6 +6,7 @@ import ai.fabric.core.AIEmbeddingService;
 import ai.fabric.datasync.AIDataSyncProperties;
 import ai.fabric.datasync.dto.DataSyncBatchRequest;
 import ai.fabric.datasync.dto.DataSyncBatchResponse;
+import ai.fabric.datasync.dto.DataSyncDeleteRequest;
 import ai.fabric.datasync.dto.DataSyncIdentity;
 import ai.fabric.datasync.dto.DataSyncOperation;
 import ai.fabric.datasync.dto.DataSyncOperationResponse;
@@ -529,6 +530,222 @@ class DataSyncServiceTest {
         assertThat(response.getMessage()).isEqualTo("Vector store failed.");
         assertThat(response.getMetadata())
             .isEqualTo(Map.of("cause", "Field [vector] vector's dimensions must be <= [1024]; got 1536"));
+    }
+
+    @Test
+    void upsert_shouldReturnInvalidRequest_whenChunkIdentityHasNoSafeCharacters() {
+        AIDataSyncProperties props = new AIDataSyncProperties();
+        AIEntityConfigurationLoader loader = mock(AIEntityConfigurationLoader.class);
+        AIEmbeddingService embeddingService = mock(AIEmbeddingService.class);
+        VectorManagementService vectorManagementService = mock(VectorManagementService.class);
+        AIAccessControlService accessControlService = mock(AIAccessControlService.class);
+
+        DataSyncService service = new DataSyncService(
+            props,
+            loader,
+            embeddingService,
+            vectorManagementService,
+            accessControlService,
+            new DataSyncEntityNormalizer(props, null),
+            Clock.fixed(Instant.parse("2026-02-12T00:00:00Z"), ZoneOffset.UTC)
+        );
+
+        DataSyncIdentity identity = new DataSyncIdentity();
+        identity.setChunkId("!!!");
+
+        DataSyncUpsertRequest request = new DataSyncUpsertRequest();
+        request.setVectorSpace("product");
+        request.setId("sku-1");
+        request.setContent("gaming laptop");
+        request.setIdentity(identity);
+        request.setTrace(verifiedTrace("system", null, "req-invalid-chunk"));
+
+        DataSyncOperationResponse response = service.upsert(request);
+
+        assertThat(response.getSuccess()).isFalse();
+        assertThat(response.getErrorCode()).isEqualTo("INVALID_REQUEST");
+        assertThat(response.getMessage()).contains("identity.chunkId");
+        assertThat(response.getId()).isEqualTo("sku-1");
+        verifyNoInteractions(loader, embeddingService, vectorManagementService, accessControlService);
+    }
+
+    @Test
+    void delete_shouldReturnInvalidRequest_whenChunkIdentityHasNoSafeCharacters() {
+        AIDataSyncProperties props = new AIDataSyncProperties();
+        AIEntityConfigurationLoader loader = mock(AIEntityConfigurationLoader.class);
+        AIEmbeddingService embeddingService = mock(AIEmbeddingService.class);
+        VectorManagementService vectorManagementService = mock(VectorManagementService.class);
+        AIAccessControlService accessControlService = mock(AIAccessControlService.class);
+
+        DataSyncService service = new DataSyncService(
+            props,
+            loader,
+            embeddingService,
+            vectorManagementService,
+            accessControlService,
+            new DataSyncEntityNormalizer(props, null),
+            Clock.fixed(Instant.parse("2026-02-12T00:00:00Z"), ZoneOffset.UTC)
+        );
+
+        DataSyncIdentity identity = new DataSyncIdentity();
+        identity.setChunkId("!!!");
+
+        DataSyncDeleteRequest request = new DataSyncDeleteRequest();
+        request.setVectorSpace("product");
+        request.setId("sku-1");
+        request.setIdentity(identity);
+        request.setTrace(verifiedTrace("system", null, "req-invalid-delete-chunk"));
+
+        DataSyncOperationResponse response = service.delete(request);
+
+        assertThat(response.getSuccess()).isFalse();
+        assertThat(response.getErrorCode()).isEqualTo("INVALID_REQUEST");
+        assertThat(response.getMessage()).contains("identity.chunkId");
+        assertThat(response.getId()).isEqualTo("sku-1");
+        verifyNoInteractions(loader, embeddingService, vectorManagementService, accessControlService);
+    }
+
+    @Test
+    void batch_shouldReportOperationCounts_whenPreflightValidationFails() {
+        AIDataSyncProperties props = new AIDataSyncProperties();
+        props.setMaxBatchSize(1);
+        AIEntityConfigurationLoader loader = mock(AIEntityConfigurationLoader.class);
+        AIEmbeddingService embeddingService = mock(AIEmbeddingService.class);
+        VectorManagementService vectorManagementService = mock(VectorManagementService.class);
+        AIAccessControlService accessControlService = mock(AIAccessControlService.class);
+
+        DataSyncService service = new DataSyncService(
+            props,
+            loader,
+            embeddingService,
+            vectorManagementService,
+            accessControlService,
+            new DataSyncEntityNormalizer(props, null),
+            Clock.fixed(Instant.parse("2026-02-12T00:00:00Z"), ZoneOffset.UTC)
+        );
+
+        DataSyncOperation first = new DataSyncOperation(
+            DataSyncOperationType.UPSERT,
+            "product",
+            "sku-1",
+            "gaming laptop",
+            null,
+            null,
+            null
+        );
+        DataSyncOperation second = new DataSyncOperation(
+            DataSyncOperationType.DELETE,
+            "product",
+            "sku-2",
+            null,
+            null,
+            null,
+            null
+        );
+
+        DataSyncBatchResponse response = service.batch(new DataSyncBatchRequest(
+            verifiedTrace("system", null, "req-too-large"),
+            List.of(first, second)
+        ));
+
+        assertThat(response.getSuccess()).isFalse();
+        assertThat(response.getErrorCode()).isEqualTo("BATCH_TOO_LARGE");
+        assertThat(response.getTotalOperations()).isEqualTo(2);
+        assertThat(response.getSucceededOperations()).isZero();
+        assertThat(response.getFailedOperations()).isEqualTo(2);
+        assertThat(response.getResults()).hasSize(1);
+        verifyNoInteractions(loader, embeddingService, vectorManagementService, accessControlService);
+    }
+
+    @Test
+    void batch_shouldReturnInvalidRequest_whenOperationChunkIdentityIsInvalid() {
+        AIDataSyncProperties props = new AIDataSyncProperties();
+        AIEntityConfigurationLoader loader = mock(AIEntityConfigurationLoader.class);
+        AIEmbeddingService embeddingService = mock(AIEmbeddingService.class);
+        VectorManagementService vectorManagementService = mock(VectorManagementService.class);
+        AIAccessControlService accessControlService = mock(AIAccessControlService.class);
+
+        DataSyncService service = new DataSyncService(
+            props,
+            loader,
+            embeddingService,
+            vectorManagementService,
+            accessControlService,
+            new DataSyncEntityNormalizer(props, null),
+            Clock.fixed(Instant.parse("2026-02-12T00:00:00Z"), ZoneOffset.UTC)
+        );
+
+        DataSyncIdentity identity = new DataSyncIdentity();
+        identity.setChunkId("!!!");
+        DataSyncOperation invalid = new DataSyncOperation(
+            DataSyncOperationType.UPSERT,
+            "product",
+            "sku-1",
+            "gaming laptop",
+            null,
+            null,
+            identity
+        );
+        DataSyncOperation valid = new DataSyncOperation(
+            DataSyncOperationType.DELETE,
+            "product",
+            "sku-2",
+            null,
+            null,
+            null,
+            null
+        );
+
+        DataSyncBatchResponse response = service.batch(new DataSyncBatchRequest(
+            verifiedTrace("system", null, "req-invalid-batch-chunk"),
+            List.of(invalid, valid)
+        ));
+
+        assertThat(response.getSuccess()).isFalse();
+        assertThat(response.getErrorCode()).isEqualTo("INVALID_REQUEST");
+        assertThat(response.getMessage()).contains("Operation at index 0").contains("identity.chunkId");
+        assertThat(response.getTotalOperations()).isEqualTo(2);
+        assertThat(response.getSucceededOperations()).isZero();
+        assertThat(response.getFailedOperations()).isEqualTo(2);
+        verifyNoInteractions(loader, embeddingService, vectorManagementService, accessControlService);
+    }
+
+    @Test
+    void batch_shouldReportOperationCount_whenTraceIsMissing() {
+        AIDataSyncProperties props = new AIDataSyncProperties();
+        AIEntityConfigurationLoader loader = mock(AIEntityConfigurationLoader.class);
+        AIEmbeddingService embeddingService = mock(AIEmbeddingService.class);
+        VectorManagementService vectorManagementService = mock(VectorManagementService.class);
+        AIAccessControlService accessControlService = mock(AIAccessControlService.class);
+
+        DataSyncService service = new DataSyncService(
+            props,
+            loader,
+            embeddingService,
+            vectorManagementService,
+            accessControlService,
+            new DataSyncEntityNormalizer(props, null),
+            Clock.fixed(Instant.parse("2026-02-12T00:00:00Z"), ZoneOffset.UTC)
+        );
+
+        DataSyncOperation operation = new DataSyncOperation(
+            DataSyncOperationType.UPSERT,
+            "product",
+            "sku-1",
+            "gaming laptop",
+            null,
+            null,
+            null
+        );
+
+        DataSyncBatchResponse response = service.batch(new DataSyncBatchRequest(null, List.of(operation)));
+
+        assertThat(response.getSuccess()).isFalse();
+        assertThat(response.getErrorCode()).isEqualTo("INVALID_REQUEST");
+        assertThat(response.getTotalOperations()).isEqualTo(1);
+        assertThat(response.getSucceededOperations()).isZero();
+        assertThat(response.getFailedOperations()).isEqualTo(1);
+        verifyNoInteractions(loader, embeddingService, vectorManagementService, accessControlService);
     }
 
     private DataSyncTrace verifiedTrace(String subjectId, String sessionId, String requestId) {

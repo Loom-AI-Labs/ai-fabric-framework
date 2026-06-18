@@ -5,6 +5,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -73,47 +74,45 @@ class RelationshipQueryAccessControlPolicyTest {
         @Override
         public boolean canExecuteRelationshipQueries(AIAccessSubjectContext authContext) {
             // Anonymous users cannot execute relationship queries
-            return subjectId(authContext) != null;
+            return subjectId(authContext).isPresent();
         }
 
         @Override
         public boolean canQueryEntityType(AIAccessSubjectContext authContext, String entityType) {
-            String userId = subjectId(authContext);
-            if (userId == null) {
-                return false;
-            }
+            return subjectId(authContext)
+                .map(userId -> {
+                    // Admin users can query all entity types
+                    if (userId.startsWith("admin-")) {
+                        return true;
+                    }
 
-            // Admin users can query all entity types
-            if (userId.startsWith("admin-")) {
-                return true;
-            }
+                    // Regular users can only query "product" entity type
+                    if (userId.startsWith("regular-")) {
+                        return "product".equals(entityType);
+                    }
 
-            // Regular users can only query "product" entity type
-            if (userId.startsWith("regular-")) {
-                return "product".equals(entityType);
-            }
-
-            return false;
+                    return false;
+                })
+                .orElse(false);
         }
 
         @Override
         public List<String> getAllowedEntityTypes(AIAccessSubjectContext authContext) {
-            String userId = subjectId(authContext);
-            if (userId == null) {
-                return List.of();
-            }
+            return subjectId(authContext)
+                .map(userId -> {
+                    // Admin users get all entity types
+                    if (userId.startsWith("admin-")) {
+                        return List.of("customer", "order", "product");
+                    }
 
-            // Admin users get all entity types
-            if (userId.startsWith("admin-")) {
-                return List.of("customer", "order", "product");
-            }
+                    // Regular users only get "product"
+                    if (userId.startsWith("regular-")) {
+                        return List.of("product");
+                    }
 
-            // Regular users only get "product"
-            if (userId.startsWith("regular-")) {
-                return List.of("product");
-            }
-
-            return List.of();
+                    return List.<String>of();
+                })
+                .orElse(List.of());
         }
     }
 
@@ -130,32 +129,29 @@ class RelationshipQueryAccessControlPolicyTest {
 
         @Override
         public boolean canExecuteRelationshipQueries(AIAccessSubjectContext authContext) {
-            String userId = subjectId(authContext);
-            return userId != null && userPermissions.containsKey(userId);
+            return subjectId(authContext)
+                .map(userPermissions::containsKey)
+                .orElse(false);
         }
 
         @Override
         public boolean canQueryEntityType(AIAccessSubjectContext authContext, String entityType) {
-            String userId = subjectId(authContext);
-            if (userId == null || !userPermissions.containsKey(userId)) {
-                return false;
-            }
-
             String permission = "relationship_query:" + entityType;
-            return userPermissions.get(userId).contains(permission);
+            return subjectId(authContext)
+                .filter(userPermissions::containsKey)
+                .map(userId -> userPermissions.get(userId).contains(permission))
+                .orElse(false);
         }
 
         @Override
         public List<String> getAllowedEntityTypes(AIAccessSubjectContext authContext) {
-            String userId = subjectId(authContext);
-            if (userId == null || !userPermissions.containsKey(userId)) {
-                return List.of();
-            }
-
-            return userPermissions.get(userId).stream()
-                .filter(perm -> perm.startsWith("relationship_query:"))
-                .map(perm -> perm.substring("relationship_query:".length()))
-                .toList();
+            return subjectId(authContext)
+                .filter(userPermissions::containsKey)
+                .map(userId -> userPermissions.get(userId).stream()
+                    .filter(perm -> perm.startsWith("relationship_query:"))
+                    .map(perm -> perm.substring("relationship_query:".length()))
+                    .toList())
+                .orElse(List.of());
         }
     }
 
@@ -166,16 +162,16 @@ class RelationshipQueryAccessControlPolicyTest {
             .build();
     }
 
-    private static String subjectId(AIAccessSubjectContext authContext) {
+    private static Optional<String> subjectId(AIAccessSubjectContext authContext) {
         if (authContext == null) {
-            return null;
+            return Optional.empty();
         }
         if (authContext.getSubjectId() != null && !authContext.getSubjectId().isBlank()) {
-            return authContext.getSubjectId();
+            return Optional.of(authContext.getSubjectId());
         }
         if (authContext.getSessionId() != null && !authContext.getSessionId().isBlank()) {
-            return authContext.getSessionId();
+            return Optional.of(authContext.getSessionId());
         }
-        return null;
+        return Optional.empty();
     }
 }

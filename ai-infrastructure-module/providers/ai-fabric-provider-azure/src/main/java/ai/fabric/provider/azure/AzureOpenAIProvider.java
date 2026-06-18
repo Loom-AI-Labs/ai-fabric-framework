@@ -183,61 +183,48 @@ public class AzureOpenAIProvider implements AIProvider {
                 }
             }
 
-            if (log.isInfoEnabled()) {
-                log.info("=== AZURE OPENAI API REQUEST ===");
-                log.info(
-                    "Azure OpenAI request: url={}, messages={}, temperature={}, maxTokens={}, hasModelField={}",
-                    url,
-                    messages.size(),
-                    body.get("temperature"),
-                    body.get("max_tokens"),
-                    body.containsKey("model")
-                );
-                String prompt = request.getPrompt();
-                int len = prompt != null ? prompt.length() : 0;
-                String snippet = prompt == null ? "" : prompt.substring(0, Math.min(500, len));
-                log.info("Azure OpenAI request promptLength={}, promptSnippet={}", len, snippet);
-                log.info("=== END AZURE OPENAI API REQUEST ===");
-            }
+            String prompt = request.getPrompt();
+            int promptLength = prompt != null ? prompt.length() : 0;
+            log.info(
+                "Azure OpenAI request: url={}, messages={}, temperature={}, maxTokens={}, hasModelField={}, promptLength={}",
+                url,
+                messages.size(),
+                body.get("temperature"),
+                body.get("max_tokens"),
+                body.containsKey("model"),
+                promptLength
+            );
+            log.debug("Azure OpenAI request promptSnippet={}", snippet(prompt, 500));
 
             HttpEntity<Map<String, Object>> entity = new HttpEntity<>(body, headers);
             ResponseEntity<Map> response = exchangeWithRetry(url, HttpMethod.POST, entity, Map.class, "chat.completions");
 
             long responseTime = System.currentTimeMillis() - startTime;
+            Map<String, Object> responseBody = requireResponseBody(response, "Azure response body was empty");
+            List<Map<String, Object>> choices = requireMapList(
+                responseBody,
+                "choices",
+                "Azure response did not contain choices"
+            );
+            Map<String, Object> firstChoice = choices.get(0);
+            Map<String, Object> message = requireMap(
+                firstChoice.get("message"),
+                "Azure response choice message was not an object"
+            );
+            String content = requireString(message, "content", "Azure response message content was missing");
             updateMetrics(true, responseTime);
 
-            Map<String, Object> responseBody = response.getBody();
-            if (responseBody == null) {
-                throw new AIServiceException("Azure response body was empty");
-            }
-
-            @SuppressWarnings("unchecked")
-            List<Map<String, Object>> choices = (List<Map<String, Object>>) responseBody.get("choices");
-            if (choices == null || choices.isEmpty()) {
-                throw new AIServiceException("Azure response did not contain choices");
-            }
-
-            @SuppressWarnings("unchecked")
-            Map<String, Object> message = (Map<String, Object>) choices.get(0).get("message");
-            String content = message != null ? (String) message.get("content") : "";
-
-            if (log.isInfoEnabled()) {
-                log.info("=== AZURE OPENAI API RESPONSE ===");
-                Object model = responseBody.get("model");
-                Object finishReason = choices.get(0).get("finish_reason");
-                int contentLength = content != null ? content.length() : 0;
-                log.info(
-                    "Azure OpenAI response: responseTimeMs={}, model={}, finishReason={}, contentLength={}",
-                    responseTime,
-                    model,
-                    finishReason,
-                    contentLength
-                );
-                if (content != null) {
-                    log.info("Azure OpenAI response contentSnippet={}", content.substring(0, Math.min(500, content.length())));
-                }
-                log.info("=== END AZURE OPENAI API RESPONSE ===");
-            }
+            Object model = responseBody.get("model");
+            Object finishReason = firstChoice.get("finish_reason");
+            int contentLength = content.length();
+            log.info(
+                "Azure OpenAI response: responseTimeMs={}, model={}, finishReason={}, contentLength={}",
+                responseTime,
+                model,
+                finishReason,
+                contentLength
+            );
+            log.debug("Azure OpenAI response contentSnippet={}", snippet(content, 500));
 
             return AIGenerationResponse.builder()
                 .content(content)
@@ -285,7 +272,8 @@ public class AzureOpenAIProvider implements AIProvider {
         headers.set(HEADER_API_KEY, apiKey);
 
         Map<String, Object> body = new HashMap<>();
-        body.put("model", firstNonBlank(request.getModel(), config.getDefaultModel(), deploymentName));
+        String requestModel = firstNonBlank(request.getModel(), config.getDefaultModel(), deploymentName).orElse("");
+        body.put("model", requestModel);
         body.put("input", List.of(Map.of("role", "user", "content", content)));
         if (hasText(request.getSystemPrompt())) {
             body.put("instructions", request.getSystemPrompt());
@@ -293,54 +281,40 @@ public class AzureOpenAIProvider implements AIProvider {
         putIfNotNull(body, "max_output_tokens", Optional.ofNullable(request.getMaxTokens()).orElse(config.getMaxTokens()));
         putIfNotNull(body, "temperature", Optional.ofNullable(request.getTemperature()).orElse(config.getTemperature()));
 
-        if (log.isInfoEnabled()) {
-            log.info("=== AZURE OPENAI RESPONSES API REQUEST ===");
-            log.info(
-                "Azure OpenAI Responses request: url={}, model={}, temperature={}, maxOutputTokens={}, fileUrlInputs={}, promptLength={}",
-                url,
-                body.get("model"),
-                body.get("temperature"),
-                body.get("max_output_tokens"),
-                fileParts.size(),
-                request.getPrompt() != null ? request.getPrompt().length() : 0
-            );
-            log.info("Azure OpenAI Responses transientInputs={}", TransientInputSupport.redactedDescriptors(fileParts));
-            log.info("=== END AZURE OPENAI RESPONSES API REQUEST ===");
-        }
+        log.info(
+            "Azure OpenAI Responses request: url={}, model={}, temperature={}, maxOutputTokens={}, fileUrlInputs={}, promptLength={}",
+            url,
+            body.get("model"),
+            body.get("temperature"),
+            body.get("max_output_tokens"),
+            fileParts.size(),
+            request.getPrompt() != null ? request.getPrompt().length() : 0
+        );
+        log.debug("Azure OpenAI Responses transientInputs={}", TransientInputSupport.redactedDescriptors(fileParts));
 
         HttpEntity<Map<String, Object>> entity = new HttpEntity<>(body, headers);
         ResponseEntity<Map> response = exchangeWithRetry(url, HttpMethod.POST, entity, Map.class, "responses");
 
         long responseTime = System.currentTimeMillis() - startTime;
+        Map<String, Object> responseBody = requireResponseBody(response, "Azure Responses response body was empty");
+        String contentText = extractResponsesText(responseBody);
         updateMetrics(true, responseTime);
 
-        Map<String, Object> responseBody = response.getBody();
-        String contentText = extractResponsesText(responseBody);
-
-        if (log.isInfoEnabled()) {
-            int contentLength = contentText != null ? contentText.length() : 0;
-            log.info("=== AZURE OPENAI RESPONSES API RESPONSE ===");
-            log.info(
-                "Azure OpenAI Responses response: responseTimeMs={}, model={}, contentLength={}",
-                responseTime,
-                responseBody != null ? responseBody.get("model") : null,
-                contentLength
-            );
-            if (contentText != null) {
-                log.info(
-                    "Azure OpenAI Responses response contentSnippet={}",
-                    contentText.substring(0, Math.min(500, contentText.length()))
-                );
-            }
-            log.info("=== END AZURE OPENAI RESPONSES API RESPONSE ===");
-        }
+        int contentLength = contentText != null ? contentText.length() : 0;
+        log.info(
+            "Azure OpenAI Responses response: responseTimeMs={}, model={}, contentLength={}",
+            responseTime,
+            responseBody.get("model"),
+            contentLength
+        );
+        log.debug("Azure OpenAI Responses response contentSnippet={}", snippet(contentText, 500));
 
         return AIGenerationResponse.builder()
             .content(contentText)
-            .model(responseBody != null && responseBody.get("model") instanceof String model ? model : String.valueOf(body.get("model")))
+            .model(responseBody.get("model") instanceof String model ? model : requestModel)
             .processingTimeMs(responseTime)
             .requestId(UUID.randomUUID().toString())
-            .usage(createUsageFromResponse(responseBody != null ? responseBody : Map.of()))
+            .usage(createUsageFromResponse(responseBody))
             .metadata(Map.of(
                 "providerRoute", "azure.responses",
                 "transientInputs", TransientInputSupport.redactedDescriptors(fileParts)
@@ -467,53 +441,36 @@ public class AzureOpenAIProvider implements AIProvider {
             Map<String, Object> body = new HashMap<>();
             body.put("input", List.of(request.getText()));
 
-            if (log.isInfoEnabled()) {
-                log.info("=== AZURE OPENAI EMBEDDING API REQUEST ===");
-                log.info(
-                    "Azure OpenAI embedding request: url={}, inputCount={}, textLength={}",
-                    url,
-                    1,
-                    request.getText() != null ? request.getText().length() : 0
-                );
-                String text = request.getText();
-                int len = text != null ? text.length() : 0;
-                String snippet = text == null ? "" : text.substring(0, Math.min(300, len));
-                log.info("Azure OpenAI embedding request textSnippet={}", snippet);
-                log.info("=== END AZURE OPENAI EMBEDDING API REQUEST ===");
-            }
+            String text = request.getText();
+            log.info(
+                "Azure OpenAI embedding request: url={}, inputCount={}, textLength={}",
+                url,
+                1,
+                text != null ? text.length() : 0
+            );
+            log.debug("Azure OpenAI embedding request textSnippet={}", snippet(text, 300));
 
             HttpEntity<Map<String, Object>> entity = new HttpEntity<>(body, headers);
             ResponseEntity<Map> response = exchangeWithRetry(url, HttpMethod.POST, entity, Map.class, "embeddings");
 
             long processingTime = System.currentTimeMillis() - startTime;
+            Map<String, Object> responseBody = requireResponseBody(response, "Azure embedding response body was empty");
+            List<Map<String, Object>> data = requireMapList(
+                responseBody,
+                "data",
+                "Azure embedding response did not contain data"
+            );
+            List<Double> embedding = requireDoubleList(
+                data.get(0).get("embedding"),
+                "Azure embedding data missing"
+            );
             updateMetrics(true, processingTime);
 
-            Map<String, Object> responseBody = response.getBody();
-            if (responseBody == null) {
-                throw new AIServiceException("Azure embedding response body was empty");
-            }
-
-            @SuppressWarnings("unchecked")
-            List<Map<String, Object>> data = (List<Map<String, Object>>) responseBody.get("data");
-            if (data == null || data.isEmpty()) {
-                throw new AIServiceException("Azure embedding response did not contain data");
-            }
-
-            @SuppressWarnings("unchecked")
-            List<Double> embedding = (List<Double>) data.get(0).get("embedding");
-            if (embedding == null) {
-                throw new AIServiceException("Azure embedding data missing");
-            }
-
-            if (log.isInfoEnabled()) {
-                log.info("=== AZURE OPENAI EMBEDDING API RESPONSE ===");
-                log.info(
-                    "Azure OpenAI embedding response: responseTimeMs={}, dimensions={}",
-                    processingTime,
-                    embedding.size()
-                );
-                log.info("=== END AZURE OPENAI EMBEDDING API RESPONSE ===");
-            }
+            log.info(
+                "Azure OpenAI embedding response: responseTimeMs={}, dimensions={}",
+                processingTime,
+                embedding.size()
+            );
 
             return AIEmbeddingResponse.builder()
                 .embedding(embedding)
@@ -667,33 +624,30 @@ public class AzureOpenAIProvider implements AIProvider {
         if (responseFormat == null) {
             responseFormat = parameters.get("responseFormat");
         }
-        Object normalized = normalizeResponseFormat(responseFormat);
-        if (normalized != null) {
-            body.put("response_format", normalized);
-        }
+        normalizeResponseFormat(responseFormat).ifPresent(normalized -> body.put("response_format", normalized));
     }
 
-    private Object normalizeResponseFormat(Object responseFormat) {
+    private Optional<Object> normalizeResponseFormat(Object responseFormat) {
         if (responseFormat == null) {
-            return null;
+            return Optional.empty();
         }
         if (responseFormat instanceof Map<?, ?>) {
-            return responseFormat;
+            return Optional.of(responseFormat);
         }
         if (!(responseFormat instanceof String)) {
-            return null;
+            return Optional.empty();
         }
         String value = ((String) responseFormat).trim().toLowerCase();
         if (value.isEmpty()) {
-            return null;
+            return Optional.empty();
         }
         if (value.equals("json") || value.equals("json_object") || value.equals("json-object") || value.equals("jsonobject")) {
-            return Map.of("type", "json_object");
+            return Optional.of(Map.of("type", "json_object"));
         }
         if (value.equals("text")) {
-            return Map.of("type", "text");
+            return Optional.of(Map.of("type", "text"));
         }
-        return null;
+        return Optional.empty();
     }
 
     private void updateMetrics(boolean success, long responseTime) {
@@ -731,7 +685,11 @@ public class AzureOpenAIProvider implements AIProvider {
         Map<String, Object> usage = new HashMap<>();
         Object usageNode = responseBody.get("usage");
         if (usageNode instanceof Map<?, ?> usageMap) {
-            usage.putAll((Map<String, Object>) usageMap);
+            usageMap.forEach((key, value) -> {
+                if (key != null) {
+                    usage.put(String.valueOf(key), value);
+                }
+            });
         }
         return usage;
     }
@@ -746,16 +704,82 @@ public class AzureOpenAIProvider implements AIProvider {
         }
     }
 
-    private String firstNonBlank(String... values) {
+    private Optional<String> firstNonBlank(String... values) {
         if (values == null) {
-            return null;
+            return Optional.empty();
         }
         for (String value : values) {
             if (hasText(value)) {
-                return value.trim();
+                return Optional.of(value.trim());
             }
         }
-        return null;
+        return Optional.empty();
+    }
+
+    private Map<String, Object> requireResponseBody(ResponseEntity<Map> response, String message) {
+        if (response == null || response.getBody() == null) {
+            throw new AIServiceException(message);
+        }
+        return copyStringKeyMap(response.getBody(), message);
+    }
+
+    private List<Map<String, Object>> requireMapList(Map<String, Object> source, String key, String message) {
+        Object value = source.get(key);
+        if (!(value instanceof List<?> items) || items.isEmpty()) {
+            throw new AIServiceException(message);
+        }
+        List<Map<String, Object>> maps = new ArrayList<>();
+        for (Object item : items) {
+            maps.add(requireMap(item, message + " item was not an object"));
+        }
+        return List.copyOf(maps);
+    }
+
+    private Map<String, Object> requireMap(Object value, String message) {
+        if (!(value instanceof Map<?, ?> map)) {
+            throw new AIServiceException(message);
+        }
+        return copyStringKeyMap(map, message);
+    }
+
+    private String requireString(Map<String, Object> source, String key, String message) {
+        Object value = source.get(key);
+        if (!(value instanceof String text)) {
+            throw new AIServiceException(message);
+        }
+        return text;
+    }
+
+    private List<Double> requireDoubleList(Object value, String message) {
+        if (!(value instanceof List<?> items) || items.isEmpty()) {
+            throw new AIServiceException(message);
+        }
+        List<Double> numbers = new ArrayList<>();
+        for (Object item : items) {
+            if (!(item instanceof Number number)) {
+                throw new AIServiceException(message + " contained non-numeric value");
+            }
+            numbers.add(number.doubleValue());
+        }
+        return List.copyOf(numbers);
+    }
+
+    private Map<String, Object> copyStringKeyMap(Map<?, ?> source, String message) {
+        Map<String, Object> copy = new HashMap<>();
+        source.forEach((key, value) -> {
+            if (key == null) {
+                throw new AIServiceException(message + " contained a null key");
+            }
+            copy.put(String.valueOf(key), value);
+        });
+        return copy;
+    }
+
+    private String snippet(String value, int maxLength) {
+        if (value == null || value.isEmpty()) {
+            return "";
+        }
+        return value.substring(0, Math.min(maxLength, value.length()));
     }
 
     private AIServiceException wrapException(String message, Exception ex) {

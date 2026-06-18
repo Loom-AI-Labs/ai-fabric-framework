@@ -44,7 +44,7 @@ public class DbExternalEventProvider implements ExternalEventProvider {
     public UserEventBatch getNextUserEvents() {
         List<String> userIds = eventRepository.findDistinctUserIds();
         if (userIds == null || userIds.isEmpty()) {
-            return null;
+            return noPendingBatch();
         }
 
         Optional<String> next = userIds.stream()
@@ -62,7 +62,7 @@ public class DbExternalEventProvider implements ExternalEventProvider {
             .findFirst();
 
         if (next.isEmpty()) {
-            return null;
+            return noPendingBatch();
         }
 
         String userId = next.get();
@@ -78,6 +78,18 @@ public class DbExternalEventProvider implements ExternalEventProvider {
             .events(events)
             .totalEventCount(events.size())
             .userContext(context)
+            .build();
+    }
+
+    private UserEventBatch noPendingBatch() {
+        return UserEventBatch.builder()
+            .events(List.of())
+            .totalEventCount(0)
+            .userContext(Map.of(
+                "source", "db",
+                "eventCount", 0,
+                "pending", false
+            ))
             .build();
     }
 

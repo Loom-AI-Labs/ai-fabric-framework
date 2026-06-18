@@ -43,7 +43,7 @@ A standard Spring Boot 3.2.x app on Java 21. Add the AI Fabric BOM and the modul
       <artifactId>ai-fabric-vector-lucene</artifactId>
     </dependency>
 
-    <!-- Offline stubs for the 'smoke' profile (no keys/models needed). Optional. -->
+    <!-- Offline vector store for the 'smoke' profile (no keys/models needed). Optional. -->
     <dependency>
       <groupId>io.github.loom-ai-labs</groupId>
       <artifactId>ai-fabric-vector-memory</artifactId>
@@ -186,7 +186,7 @@ search.
 
 ## 6. Go to production
 
-Switch from the offline stubs to real backends by **changing configuration, not code**:
+Switch from the offline local providers to real backends by **changing configuration, not code**:
 
 - Add a real embedding/LLM provider (e.g. `ai-fabric-provider-openai`) and set
   `ai.providers.embedding-provider` / `ai.providers.llm-provider` + the API key.

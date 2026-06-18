@@ -12,6 +12,7 @@ import ai.fabric.provider.ProviderStatus;
 import ai.fabric.provider.TransientInputSupport;
 import ai.fabric.dto.AIEmbeddingRequest;
 import ai.fabric.dto.AIEmbeddingResponse;
+import ai.fabric.exception.AIServiceException;
 import ai.fabric.http.HttpClient;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.text.PDFTextStripper;
@@ -32,6 +33,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.List;
 import java.io.IOException;
+import java.util.Optional;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
@@ -60,6 +62,8 @@ public class CohereProvider implements AIProvider {
     private final AtomicReference<Double> averageResponseTime = new AtomicReference<>(0.0);
     
     private static final String COHERE_BASE_URL = "https://api.cohere.ai/v1";
+    private static final String DEFAULT_CHAT_MODEL = "command-r7b-12-2024";
+    private static final String DEFAULT_EMBEDDING_MODEL = "embed-english-v3.0";
     private static final int MAX_RETRY_ATTEMPTS = 3;
     private static final int MAX_TRANSIENT_DOCUMENT_BYTES = 5 * 1024 * 1024;
     private static final int MAX_TRANSIENT_DOCUMENT_CHARS = 12_000;
@@ -87,8 +91,8 @@ public class CohereProvider implements AIProvider {
         
         try {
             List<Map<String, String>> transientDocuments = buildTransientDocuments(request);
-            log.debug("Generating content with Cohere: model={}, prompt={}", 
-                     request.getModel(), request.getPrompt().substring(0, Math.min(100, request.getPrompt().length())));
+            String prompt = request.getPrompt();
+            log.debug("Generating content with Cohere: model={}, prompt={}", request.getModel(), snippet(prompt, 100));
             
             ProviderRequestOverrideSupport.LlmConnectionOverride connectionOverride =
                 ProviderRequestOverrideSupport.read(request.getParameters());
@@ -101,8 +105,8 @@ public class CohereProvider implements AIProvider {
             headers.set("Authorization", "Bearer " + apiKey);
             
             Map<String, Object> requestBody = new HashMap<>();
-            requestBody.put("model", request.getModel() != null ? request.getModel() : 
-                          (config.getDefaultModel() != null ? config.getDefaultModel() : "command-r7b-12-2024"));
+            requestBody.put("model", firstNonBlank(request.getModel(), config.getDefaultModel(), DEFAULT_CHAT_MODEL)
+                .orElse(DEFAULT_CHAT_MODEL));
             
             // Add system prompt if present
             if (request.getSystemPrompt() != null && !request.getSystemPrompt().trim().isEmpty()) {
@@ -139,7 +143,7 @@ public class CohereProvider implements AIProvider {
                 }
             }
 
-            requestBody.put("message", request.getPrompt());
+            requestBody.put("message", prompt);
             if (!transientDocuments.isEmpty()) {
                 requestBody.put("documents", transientDocuments);
                 requestBody.put("prompt_truncation", "AUTO_PRESERVE_ORDER");
@@ -148,67 +152,48 @@ public class CohereProvider implements AIProvider {
             requestBody.put("max_tokens", request.getMaxTokens() != null ? request.getMaxTokens() : config.getMaxTokens());
             requestBody.put("temperature", request.getTemperature() != null ? request.getTemperature() : config.getTemperature());
 
-            if (log.isInfoEnabled()) {
-                log.info("=== COHERE API REQUEST ===");
-                log.info(
-                    "Cohere API request: url={}, model={}, temperature={}, maxTokens={}, hasPreamble={}, promptLength={}, transientDocuments={}",
-                    url,
-                    requestBody.get("model"),
-                    requestBody.get("temperature"),
-                    requestBody.get("max_tokens"),
-                    requestBody.containsKey("preamble"),
-                    request.getPrompt() != null ? request.getPrompt().length() : 0,
-                    transientDocuments.size()
+            log.info(
+                "Cohere API request: url={}, model={}, temperature={}, maxTokens={}, hasPreamble={}, promptLength={}, transientDocuments={}",
+                url,
+                requestBody.get("model"),
+                requestBody.get("temperature"),
+                requestBody.get("max_tokens"),
+                requestBody.containsKey("preamble"),
+                prompt != null ? prompt.length() : 0,
+                transientDocuments.size()
+            );
+            if (TransientInputSupport.hasFileUrlInputs(request)) {
+                log.debug(
+                    "Cohere API transientInputs={}",
+                    TransientInputSupport.redactedDescriptors(TransientInputSupport.fileUrlInputParts(request))
                 );
-                if (TransientInputSupport.hasFileUrlInputs(request)) {
-                    log.info(
-                        "Cohere API transientInputs={}",
-                        TransientInputSupport.redactedDescriptors(TransientInputSupport.fileUrlInputParts(request))
-                    );
-                }
-                String prompt = request.getPrompt();
-                int len = prompt != null ? prompt.length() : 0;
-                String snippet = prompt == null ? "" : prompt.substring(0, Math.min(500, len));
-                log.info("Cohere API request promptSnippet={}", snippet);
-                log.info("=== END COHERE API REQUEST ===");
             }
+            log.debug("Cohere API request promptSnippet={}", snippet(prompt, 500));
             
             HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
             
             ResponseEntity<Map> response = exchangeWithRetry(url, HttpMethod.POST, entity, Map.class, "chat");
             
             long responseTime = System.currentTimeMillis() - startTime;
+            Map<String, Object> responseBody = requireResponseBody(response, "Cohere response body was empty");
+            String generatedText = requireString(responseBody, "text", "Cohere response text was missing");
             updateMetrics(true, responseTime);
-            
-            @SuppressWarnings("unchecked")
-            Map<String, Object> responseBody = response.getBody();
-            String generatedText = (String) responseBody.get("text");
 
-            if (log.isInfoEnabled()) {
-                log.info("=== COHERE API RESPONSE ===");
-                int contentLength = generatedText != null ? generatedText.length() : 0;
-                log.info(
-                    "Cohere API response: responseTimeMs={}, model={}, contentLength={}",
-                    responseTime,
-                    responseBody != null ? responseBody.get("model") : null,
-                    contentLength
-                );
-                if (generatedText != null) {
-                    log.info(
-                        "Cohere API response contentSnippet={}",
-                        generatedText.substring(0, Math.min(500, generatedText.length()))
-                    );
-                }
-                log.info("=== END COHERE API RESPONSE ===");
-            }
+            int contentLength = generatedText.length();
+            log.info(
+                "Cohere API response: responseTimeMs={}, model={}, contentLength={}",
+                responseTime,
+                responseBody.get("model"),
+                contentLength
+            );
+            log.debug("Cohere API response contentSnippet={}", snippet(generatedText, 500));
             
             log.debug("Cohere content generation completed in {}ms", responseTime);
             
             // Extract model from response or use request model
-            String model = (String) responseBody.get("model");
-            if (model == null) {
-                model = request.getModel() != null ? request.getModel() : config.getDefaultModel();
-            }
+            String model = responseBody.get("model") instanceof String responseModel
+                ? responseModel
+                : firstNonBlank(request.getModel(), config.getDefaultModel(), DEFAULT_CHAT_MODEL).orElse(DEFAULT_CHAT_MODEL);
             
             return AIGenerationResponse.builder()
                 .content(generatedText)
@@ -238,7 +223,7 @@ public class CohereProvider implements AIProvider {
             lastError.set(LocalDateTime.now());
             lastErrorMessage.set(e.getMessage());
             
-            throw new RuntimeException("Cohere content generation failed: " + e.getMessage(), e);
+            throw wrapException("Cohere content generation failed", e);
         }
     }
 
@@ -314,65 +299,55 @@ public class CohereProvider implements AIProvider {
         totalRequests.incrementAndGet();
         
         try {
-            log.debug("Generating embedding with Cohere: model={}, text={}", 
-                     request.getModel(), request.getText().substring(0, Math.min(100, request.getText().length())));
+            String text = request.getText();
+            log.debug("Generating embedding with Cohere: model={}, text={}", request.getModel(), snippet(text, 100));
+            if (!hasText(text)) {
+                throw new AIServiceException("Cohere embedding text is required");
+            }
             
-            String url = COHERE_BASE_URL + "/embed";
+            String url = normalizeBaseUrl(config.getBaseUrl()) + "/embed";
             
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
             headers.set("Authorization", "Bearer " + config.getApiKey());
             
             Map<String, Object> requestBody = new HashMap<>();
-            requestBody.put("model", request.getModel() != null ? request.getModel() : config.getDefaultEmbeddingModel());
-            requestBody.put("texts", List.of(request.getText()));
+            String model = firstNonBlank(request.getModel(), config.getDefaultEmbeddingModel(), DEFAULT_EMBEDDING_MODEL)
+                .orElse(DEFAULT_EMBEDDING_MODEL);
+            requestBody.put("model", model);
+            requestBody.put("texts", List.of(text));
             requestBody.put("input_type", "search_document");
 
-            if (log.isInfoEnabled()) {
-                log.info("=== COHERE EMBEDDING API REQUEST ===");
-                log.info(
-                    "Cohere embedding request: url={}, model={}, inputType={}, textLength={}",
-                    url,
-                    requestBody.get("model"),
-                    requestBody.get("input_type"),
-                    request.getText() != null ? request.getText().length() : 0
-                );
-                String text = request.getText();
-                int len = text != null ? text.length() : 0;
-                String snippet = text == null ? "" : text.substring(0, Math.min(300, len));
-                log.info("Cohere embedding request textSnippet={}", snippet);
-                log.info("=== END COHERE EMBEDDING API REQUEST ===");
-            }
+            log.info(
+                "Cohere embedding request: url={}, model={}, inputType={}, textLength={}",
+                url,
+                requestBody.get("model"),
+                requestBody.get("input_type"),
+                text != null ? text.length() : 0
+            );
+            log.debug("Cohere embedding request textSnippet={}", snippet(text, 300));
             
             HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
             
             ResponseEntity<Map> response = exchangeWithRetry(url, HttpMethod.POST, entity, Map.class, "embed");
             
             long responseTime = System.currentTimeMillis() - startTime;
+            Map<String, Object> responseBody = requireResponseBody(response, "Cohere embedding response body was empty");
+            List<Double> embedding = requireFirstEmbedding(responseBody, "Cohere embedding response missing embeddings");
             updateMetrics(true, responseTime);
-            
-            @SuppressWarnings("unchecked")
-            Map<String, Object> responseBody = response.getBody();
-            @SuppressWarnings("unchecked")
-            List<List<Double>> embeddings = (List<List<Double>>) responseBody.get("embeddings");
-            List<Double> embedding = embeddings.get(0);
 
-            if (log.isInfoEnabled()) {
-                log.info("=== COHERE EMBEDDING API RESPONSE ===");
-                log.info(
-                    "Cohere embedding response: responseTimeMs={}, model={}, dimensions={}",
-                    responseTime,
-                    responseBody != null ? responseBody.get("model") : null,
-                    embedding != null ? embedding.size() : 0
-                );
-                log.info("=== END COHERE EMBEDDING API RESPONSE ===");
-            }
+            log.info(
+                "Cohere embedding response: responseTimeMs={}, model={}, dimensions={}",
+                responseTime,
+                responseBody.get("model"),
+                embedding.size()
+            );
             
             log.debug("Cohere embedding generation completed in {}ms", responseTime);
             
             return AIEmbeddingResponse.builder()
                 .embedding(embedding)
-                .model((String) responseBody.get("model"))
+                .model(responseBody.get("model") instanceof String responseModel ? responseModel : model)
                 .dimensions(embedding.size())
                 .processingTimeMs(responseTime)
                 .requestId(java.util.UUID.randomUUID().toString())
@@ -386,7 +361,7 @@ public class CohereProvider implements AIProvider {
             lastError.set(LocalDateTime.now());
             lastErrorMessage.set(e.getMessage());
             
-            throw new RuntimeException("Cohere embedding generation failed: " + e.getMessage(), e);
+            throw wrapException("Cohere embedding generation failed", e);
         }
     }
 
@@ -433,8 +408,7 @@ public class CohereProvider implements AIProvider {
                 throw ex;
             }
         }
-        // defensive; loop always returns/throws
-        throw new RuntimeException("Cohere " + operation + " call failed after retries");
+        throw new AIServiceException("Cohere " + operation + " call failed after retries");
     }
 
     private boolean isRetryableStatus(int status) {
@@ -540,43 +514,112 @@ public class CohereProvider implements AIProvider {
      */
     private Object createUsageFromResponse(Map<String, Object> responseBody) {
         Map<String, Object> usage = new HashMap<>();
-        
-        @SuppressWarnings("unchecked")
-        Map<String, Object> meta = (Map<String, Object>) responseBody.get("meta");
-        if (meta != null) {
-            // Cohere Chat API uses different structure
-            @SuppressWarnings("unchecked")
-            Map<String, Object> tokens = (Map<String, Object>) meta.get("tokens");
-            if (tokens != null) {
-                Object inputTokens = tokens.get("input_tokens");
-                Object outputTokens = tokens.get("output_tokens");
-                if (inputTokens != null && outputTokens != null) {
-                    usage.put("prompt_tokens", inputTokens);
-                    usage.put("completion_tokens", outputTokens);
-                    int total = ((Number) inputTokens).intValue() + ((Number) outputTokens).intValue();
-                    usage.put("total_tokens", total);
-                }
-            }
-            // Also check for billed_units (newer API format)
-            @SuppressWarnings("unchecked")
-            Map<String, Object> billedUnits = (Map<String, Object>) meta.get("billed_units");
-            if (billedUnits != null && tokens == null) {
-                Object inputTokens = billedUnits.get("input_tokens");
-                Object outputTokens = billedUnits.get("output_tokens");
-                if (inputTokens != null) {
-                    usage.put("prompt_tokens", inputTokens);
-                }
-                if (outputTokens != null) {
-                    usage.put("completion_tokens", outputTokens);
-                }
-                if (inputTokens != null && outputTokens != null) {
-                    int total = ((Number) inputTokens).intValue() + ((Number) outputTokens).intValue();
-                    usage.put("total_tokens", total);
-                }
-            }
+        Map<String, Object> meta = asStringKeyMap(responseBody.get("meta"));
+        Map<String, Object> tokens = asStringKeyMap(meta.get("tokens"));
+        if (!tokens.isEmpty()) {
+            copyUsageNumbers(tokens, usage);
+        }
+
+        Map<String, Object> billedUnits = asStringKeyMap(meta.get("billed_units"));
+        if (usage.isEmpty() && !billedUnits.isEmpty()) {
+            copyUsageNumbers(billedUnits, usage);
         }
         
         return usage;
+    }
+
+    private void copyUsageNumbers(Map<String, Object> source, Map<String, Object> target) {
+        Optional<Number> inputTokens = numberValue(source.get("input_tokens"));
+        Optional<Number> outputTokens = numberValue(source.get("output_tokens"));
+        inputTokens.ifPresent(value -> target.put("prompt_tokens", value));
+        outputTokens.ifPresent(value -> target.put("completion_tokens", value));
+        if (inputTokens.isPresent() && outputTokens.isPresent()) {
+            target.put("total_tokens", inputTokens.get().intValue() + outputTokens.get().intValue());
+        }
+    }
+
+    private Optional<Number> numberValue(Object value) {
+        return value instanceof Number number ? Optional.of(number) : Optional.empty();
+    }
+
+    private Map<String, Object> requireResponseBody(ResponseEntity<Map> response, String message) {
+        if (response == null || response.getBody() == null) {
+            throw new AIServiceException(message);
+        }
+        return copyStringKeyMap(response.getBody(), message);
+    }
+
+    private String requireString(Map<String, Object> source, String key, String message) {
+        Object value = source.get(key);
+        if (!(value instanceof String text)) {
+            throw new AIServiceException(message);
+        }
+        return text;
+    }
+
+    private List<Double> requireFirstEmbedding(Map<String, Object> responseBody, String message) {
+        Object value = responseBody.get("embeddings");
+        if (!(value instanceof List<?> embeddings) || embeddings.isEmpty()) {
+            throw new AIServiceException(message);
+        }
+        return requireDoubleList(embeddings.get(0), message);
+    }
+
+    private List<Double> requireDoubleList(Object value, String message) {
+        if (!(value instanceof List<?> items) || items.isEmpty()) {
+            throw new AIServiceException(message);
+        }
+        List<Double> numbers = new ArrayList<>();
+        for (Object item : items) {
+            if (!(item instanceof Number number)) {
+                throw new AIServiceException(message + " contained non-numeric value");
+            }
+            numbers.add(number.doubleValue());
+        }
+        return List.copyOf(numbers);
+    }
+
+    private Map<String, Object> asStringKeyMap(Object value) {
+        if (!(value instanceof Map<?, ?> map)) {
+            return Map.of();
+        }
+        return copyStringKeyMap(map, "Cohere response map");
+    }
+
+    private Map<String, Object> copyStringKeyMap(Map<?, ?> source, String message) {
+        Map<String, Object> copy = new HashMap<>();
+        source.forEach((key, value) -> {
+            if (key == null) {
+                throw new AIServiceException(message + " contained a null key");
+            }
+            copy.put(String.valueOf(key), value);
+        });
+        return copy;
+    }
+
+    private Optional<String> firstNonBlank(String... values) {
+        if (values == null) {
+            return Optional.empty();
+        }
+        for (String value : values) {
+            if (hasText(value)) {
+                return Optional.of(value.trim());
+            }
+        }
+        return Optional.empty();
+    }
+
+    private String snippet(String value, int maxLength) {
+        if (value == null || value.isEmpty()) {
+            return "";
+        }
+        return value.substring(0, Math.min(maxLength, value.length()));
+    }
+
+    private AIServiceException wrapException(String message, Exception ex) {
+        return ex instanceof AIServiceException serviceException
+            ? serviceException
+            : new AIServiceException(message + ": " + ex.getMessage(), ex);
     }
 
     private String normalizeBaseUrl(String baseUrl) {

@@ -29,7 +29,7 @@ ai:
       enable-search: false
       enable-generation: true
   providers:
-    llm-provider: behavior-stub
+    llm-provider: behavior-local
   behavior:
     enabled: true
     mode: LIGHT

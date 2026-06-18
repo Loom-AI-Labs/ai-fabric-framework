@@ -36,6 +36,7 @@ public class AIContentFilterService {
      * Filter content based on policies and rules
      */
     public AIContentFilterResponse filterContent(AIContentFilterRequest request) {
+        Objects.requireNonNull(request, "content filter request must not be null");
         log.info("Filtering content for subject: {}", resolveSubjectId(request));
         
         try {
@@ -121,7 +122,7 @@ public class AIContentFilterService {
             String response = aiCoreService.generateText(prompt);
             violations = Arrays.stream(response.split("\n"))
                 .map(String::trim)
-                .filter(violation -> !violation.isEmpty() && !violation.equals("NONE"))
+                .filter(violation -> !violation.isEmpty() && !"NONE".equalsIgnoreCase(violation))
                 .collect(Collectors.toList());
                 
         } catch (Exception e) {

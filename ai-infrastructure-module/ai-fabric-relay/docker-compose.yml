@@ -15,7 +15,7 @@ services:
   relay:
     build:
       context: ../..
-      dockerfile: ai-infrastructure-module/ai-infrastructure-relay/Dockerfile
+      dockerfile: ai-infrastructure-module/ai-fabric-relay/Dockerfile
     ports:
       - "8081:8081"
     environment:
@@ -40,4 +40,3 @@ services:
     depends_on:
       - redis
       - internal-dispatcher
-

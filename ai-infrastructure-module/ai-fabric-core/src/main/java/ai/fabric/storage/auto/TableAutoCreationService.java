@@ -117,7 +117,7 @@ public class TableAutoCreationService {
                 CREATE INDEX idx_ai_queue_scheduled ON %s(scheduled_for);
                 CREATE INDEX idx_ai_queue_entity ON %s(entity_type, entity_id);
                 """.formatted(tableName, tableName, tableName, tableName);
-            default -> throw new UnsupportedOperationException(
+            default -> throw new IllegalArgumentException(
                 "Database " + dbType + " not supported for indexing queue auto-create.");
         };
     }

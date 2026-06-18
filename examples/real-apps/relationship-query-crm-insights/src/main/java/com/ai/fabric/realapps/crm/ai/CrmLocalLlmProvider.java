@@ -11,22 +11,28 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
-import java.util.Map;
+import java.util.Optional;
+import java.util.Random;
 import java.util.UUID;
 
 /**
- * Offline stub LLM provider that returns deterministic RelationshipQuery plans for a small set of demo queries.
+ * Offline deterministic LLM provider that returns RelationshipQuery plans for a small set of demo queries.
  *
  * <p>This exists only to make the Real_App runnable without external keys.</p>
  */
 @Slf4j
 @Component
-public class CrmStubLlmProvider implements AIProvider {
+public class CrmLocalLlmProvider implements AIProvider {
+
+    static final String PROVIDER_NAME = "crm-local";
+    static final int EMBEDDING_DIMENSION = 384;
 
     @Override
     public String getProviderName() {
-        return "crm-stub";
+        return PROVIDER_NAME;
     }
 
     @Override
@@ -41,14 +47,15 @@ public class CrmStubLlmProvider implements AIProvider {
         String planJson = buildPlan(userQuery);
         return AIGenerationResponse.builder()
             .content(planJson)
-            .model("crm-stub")
+            .model(PROVIDER_NAME)
             .requestId("gen-" + UUID.randomUUID())
             .build();
     }
 
     @Override
     public AIEmbeddingResponse generateEmbedding(AIEmbeddingRequest request) {
-        throw new UnsupportedOperationException("crm-stub does not support embeddings");
+        String text = request != null ? request.getText() : "";
+        return deterministicEmbedding(text);
     }
 
     @Override
@@ -60,7 +67,7 @@ public class CrmStubLlmProvider implements AIProvider {
             .successRate(1.0)
             .averageResponseTime(1.0)
             .lastUpdated(LocalDateTime.now())
-            .details("offline deterministic stub (relationship query planning only)")
+            .details("offline deterministic provider (relationship query planning)")
             .build();
     }
 
@@ -69,9 +76,9 @@ public class CrmStubLlmProvider implements AIProvider {
         return ProviderConfig.builder()
             .providerName(getProviderName())
             .enabled(true)
-            .apiKey("stub")
-            .baseUrl("stub://local")
-            .defaultModel("crm-stub")
+            .apiKey("crm-local-key")
+            .baseUrl("crm://local")
+            .defaultModel(PROVIDER_NAME)
             .timeoutSeconds(1)
             .maxRetries(0)
             .build();
@@ -197,20 +204,20 @@ public class CrmStubLlmProvider implements AIProvider {
         }
 
         if (lower.contains("account")) {
-            String region = lower.contains("emea") ? "EMEA" : lower.contains("apac") ? "APAC" : lower.contains("na") ? "NA" : null;
-            String revenue = extractRevenueThreshold(lower);
-            String regionFilter = region != null
-                ? """
+            Optional<String> region = extractRegion(lower);
+            Optional<String> revenue = extractRevenueThreshold(lower);
+            String regionFilter = region
+                .map(value -> """
                     {"field":"account.region","operator":"EQUALS","value":"%s","entityType":"account"}
-                  """.formatted(region)
-                : null;
-            String revenueFilter = revenue != null
-                ? """
+                  """.formatted(value))
+                .orElse("");
+            String revenueFilter = revenue
+                .map(value -> """
                     {"field":"account.annualRevenue","operator":"GREATER_THAN","value":%s,"entityType":"account"}
-                  """.formatted(revenue)
-                : null;
+                  """.formatted(value))
+                .orElse("");
 
-            String filters = joinNonNull(regionFilter, revenueFilter);
+            String filters = joinPresent(regionFilter, revenueFilter);
             return """
                 {
                   "primaryEntityType": "account",
@@ -258,11 +265,24 @@ public class CrmStubLlmProvider implements AIProvider {
         return "Acme";
     }
 
-    private String extractRevenueThreshold(String lower) {
+    private Optional<String> extractRegion(String lower) {
+        if (lower.contains("emea")) {
+            return Optional.of("EMEA");
+        }
+        if (lower.contains("apac")) {
+            return Optional.of("APAC");
+        }
+        if (lower.contains("na")) {
+            return Optional.of("NA");
+        }
+        return Optional.empty();
+    }
+
+    private Optional<String> extractRevenueThreshold(String lower) {
         String token = "revenue over";
         int idx = lower.indexOf(token);
         if (idx < 0) {
-            return null;
+            return Optional.empty();
         }
         String tail = lower.substring(idx + token.length()).trim();
         StringBuilder number = new StringBuilder();
@@ -274,20 +294,45 @@ public class CrmStubLlmProvider implements AIProvider {
                 break;
             }
         }
-        return number.isEmpty() ? null : number.toString();
+        return number.isEmpty() ? Optional.empty() : Optional.of(number.toString());
     }
 
-    private String joinNonNull(String first, String second) {
+    private String joinPresent(String first, String second) {
         StringBuilder builder = new StringBuilder();
-        if (first != null) {
+        if (first != null && !first.isBlank()) {
             builder.append(first);
         }
-        if (second != null) {
+        if (second != null && !second.isBlank()) {
             if (!builder.isEmpty()) {
                 builder.append(", ");
             }
             builder.append(second);
         }
         return builder.toString();
+    }
+
+    private AIEmbeddingResponse deterministicEmbedding(String text) {
+        long seed = (text == null ? "" : text).hashCode() & 0xffffffffL;
+        Random random = new Random(seed);
+        List<Double> vector = new ArrayList<>(EMBEDDING_DIMENSION);
+        double sumSquares = 0.0;
+        for (int i = 0; i < EMBEDDING_DIMENSION; i++) {
+            double value = random.nextDouble() * 2.0 - 1.0;
+            vector.add(value);
+            sumSquares += value * value;
+        }
+        double norm = Math.sqrt(sumSquares);
+        if (norm > 0.0) {
+            for (int i = 0; i < EMBEDDING_DIMENSION; i++) {
+                vector.set(i, vector.get(i) / norm);
+            }
+        }
+        return AIEmbeddingResponse.builder()
+            .embedding(vector)
+            .model(PROVIDER_NAME)
+            .dimensions(EMBEDDING_DIMENSION)
+            .processingTimeMs(0L)
+            .requestId("embedding-" + UUID.randomUUID())
+            .build();
     }
 }

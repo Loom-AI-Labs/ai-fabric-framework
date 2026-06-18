@@ -15,7 +15,7 @@
     <packaging>jar</packaging>
 
     <name>AI Fabric Starter</name>
-    <description>Convenience starter that pulls in the default AI Fabric modules (core + indexing).</description>
+    <description>Convenience starter that pulls in the default AI Fabric modules (core + PII + indexing).</description>
 
     <dependencies>
         <dependency>

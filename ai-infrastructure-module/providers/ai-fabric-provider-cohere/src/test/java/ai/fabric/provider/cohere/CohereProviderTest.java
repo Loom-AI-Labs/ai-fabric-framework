@@ -1,8 +1,11 @@
 package ai.fabric.provider.cohere;
 
+import ai.fabric.config.AIProviderConfig;
+import ai.fabric.dto.AIEmbeddingRequest;
 import ai.fabric.dto.AIGenerationInputPart;
 import ai.fabric.dto.AIGenerationInputType;
 import ai.fabric.dto.AIGenerationRequest;
+import ai.fabric.exception.AIServiceException;
 import ai.fabric.http.HttpClient;
 import ai.fabric.provider.ProviderConfig;
 import org.apache.pdfbox.pdmodel.PDDocument;
@@ -22,8 +25,25 @@ import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class CohereProviderTest {
+
+    @Test
+    void autoConfigurationAppliesReleaseDefaultsForApiKeyOnlyConfig() {
+        AIProviderConfig aiProviderConfig = new AIProviderConfig();
+        AIProviderConfig.CohereConfig cohere = aiProviderConfig.getCohere();
+        cohere.setEnabled(true);
+        cohere.setApiKey("test-key");
+
+        ProviderConfig providerConfig = new CohereAutoConfiguration().cohereProviderConfig(aiProviderConfig);
+
+        assertThat(providerConfig.isValid()).isTrue();
+        assertThat(providerConfig.getBaseUrl()).isEqualTo(CohereAutoConfiguration.DEFAULT_BASE_URL);
+        assertThat(providerConfig.getDefaultModel()).isEqualTo(CohereAutoConfiguration.DEFAULT_CHAT_MODEL);
+        assertThat(providerConfig.getDefaultEmbeddingModel()).isEqualTo(CohereAutoConfiguration.DEFAULT_EMBEDDING_MODEL);
+        assertThat(providerConfig.getTimeoutSeconds()).isEqualTo(CohereAutoConfiguration.DEFAULT_TIMEOUT_SECONDS);
+    }
 
     @Test
     void textFileUrlInputsAreFetchedTransientlyAndSentAsDocuments() {
@@ -122,6 +142,39 @@ class CohereProviderTest {
         assertThat(response.getContent()).doesNotContain("sig=secret");
     }
 
+    @Test
+    void malformedChatResponseFailsClearlyAndRecordsFailure() {
+        RecordingHttpClient httpClient = new RecordingHttpClient(List.of(ResponseEntity.ok(Map.of(
+            "model", "command-r7b-12-2024"
+        ))));
+        CohereProvider provider = new CohereProvider(config(), httpClient);
+
+        assertThatThrownBy(() -> provider.generateContent(AIGenerationRequest.builder()
+            .prompt("Hello")
+            .build()))
+            .isInstanceOf(AIServiceException.class)
+            .hasMessageContaining("Cohere response text was missing");
+
+        assertThat(provider.getStatus().getTotalRequests()).isEqualTo(1);
+        assertThat(provider.getStatus().getSuccessfulRequests()).isZero();
+        assertThat(provider.getStatus().getFailedRequests()).isEqualTo(1);
+    }
+
+    @Test
+    void numericEmbeddingValuesAreConvertedToDoublesBeforeSuccessMetrics() {
+        RecordingHttpClient httpClient = new RecordingHttpClient(List.of(embeddingResponse(List.of(1, 2.5, 3))));
+        CohereProvider provider = new CohereProvider(config(), httpClient);
+
+        var response = provider.generateEmbedding(AIEmbeddingRequest.builder()
+            .text("embed me")
+            .build());
+
+        assertThat(response.getEmbedding()).containsExactly(1.0, 2.5, 3.0);
+        assertThat(provider.getStatus().getTotalRequests()).isEqualTo(1);
+        assertThat(provider.getStatus().getSuccessfulRequests()).isEqualTo(1);
+        assertThat(provider.getStatus().getFailedRequests()).isZero();
+    }
+
     private static ProviderConfig config() {
         return ProviderConfig.builder()
             .providerName("cohere")
@@ -179,6 +232,13 @@ class CohereProviderTest {
                     "output_tokens", 6
                 )
             )
+        ));
+    }
+
+    private static ResponseEntity<Map> embeddingResponse(List<? extends Number> embedding) {
+        return ResponseEntity.ok(Map.of(
+            "model", "embed-english-v3.0",
+            "embeddings", List.of(embedding)
         ));
     }
 

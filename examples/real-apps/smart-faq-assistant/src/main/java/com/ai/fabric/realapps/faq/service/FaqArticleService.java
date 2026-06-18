@@ -17,6 +17,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
@@ -108,16 +109,9 @@ public class FaqArticleService {
 
         return response.getResults().stream()
             .map(this::extractEntityId)
-            .filter(Objects::nonNull)
-            .map(id -> {
-                try {
-                    return repository.findById(Long.parseLong(id)).orElse(null);
-                } catch (NumberFormatException ex) {
-                    log.debug("Unable to parse faq entityId '{}' as Long (result keys: {})", id, response.getResults().getFirst().keySet());
-                    return null;
-                }
-            })
-            .filter(Objects::nonNull)
+            .flatMap(Optional::stream)
+            .map(id -> findArticleByEntityId(id, response))
+            .flatMap(Optional::stream)
             .limit(limit)
             .toList();
     }
@@ -164,16 +158,26 @@ public class FaqArticleService {
         capabilityService.processEntityForAI(article, ENTITY_TYPE);
     }
 
-    private String extractEntityId(Map<String, Object> row) {
+    private Optional<String> extractEntityId(Map<String, Object> row) {
         if (row == null || row.isEmpty()) {
-            return null;
+            return Optional.empty();
         }
-        Object id = firstNonNull(row.get("entityId"), row.get("id"));
-        return id != null ? Objects.toString(id, null) : null;
+        return firstPresent(row.get("entityId"), row.get("id"))
+            .map(Objects::toString)
+            .filter(value -> !value.isBlank());
     }
 
-    private Object firstNonNull(Object first, Object second) {
-        return first != null ? first : second;
+    private Optional<Object> firstPresent(Object first, Object second) {
+        return Optional.ofNullable(first != null ? first : second);
+    }
+
+    private Optional<FaqArticle> findArticleByEntityId(String id, AISearchResponse response) {
+        try {
+            return repository.findById(Long.parseLong(id));
+        } catch (NumberFormatException ex) {
+            log.debug("Unable to parse faq entityId '{}' as Long (result keys: {})", id, response.getResults().getFirst().keySet());
+            return Optional.empty();
+        }
     }
 
     private String buildContext(List<FaqArticle> matches) {

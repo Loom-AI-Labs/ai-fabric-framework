@@ -10,26 +10,46 @@ import ai.fabric.chat.spi.ChatSessionAccessControlPolicy;
 import ai.fabric.chat.spi.ChatSessionStorageProvider;
 import ai.fabric.chat.strategy.MemoryStrategy;
 import ai.fabric.dto.AIChatMessage;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import java.time.Clock;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 
 @Slf4j
-@RequiredArgsConstructor
 public class ChatSessionServiceImpl implements ChatSessionService {
 
     private final ChatSessionStorageProvider storageProvider;
     private final ChatSessionAccessControlPolicy accessPolicy;
     private final MemoryStrategy memoryStrategy;
     private final ChatSessionProperties properties;
+    private final Clock clock;
+
+    public ChatSessionServiceImpl(ChatSessionStorageProvider storageProvider,
+                                  ChatSessionAccessControlPolicy accessPolicy,
+                                  MemoryStrategy memoryStrategy,
+                                  ChatSessionProperties properties) {
+        this(storageProvider, accessPolicy, memoryStrategy, properties, Clock.systemDefaultZone());
+    }
+
+    ChatSessionServiceImpl(ChatSessionStorageProvider storageProvider,
+                           ChatSessionAccessControlPolicy accessPolicy,
+                           MemoryStrategy memoryStrategy,
+                           ChatSessionProperties properties,
+                           Clock clock) {
+        this.storageProvider = Objects.requireNonNull(storageProvider, "storageProvider");
+        this.accessPolicy = Objects.requireNonNull(accessPolicy, "accessPolicy");
+        this.memoryStrategy = Objects.requireNonNull(memoryStrategy, "memoryStrategy");
+        this.properties = properties;
+        this.clock = clock != null ? clock : Clock.systemDefaultZone();
+    }
 
     @Override
     @Transactional
@@ -45,7 +65,7 @@ public class ChatSessionServiceImpl implements ChatSessionService {
             throw new ChatSessionAccessDeniedException("Access denied to conversation: " + conversationId);
         }
 
-        ChatSession session = storageProvider.findById(conversationId)
+        ChatSession session = findSession(conversationId)
             .orElseGet(() -> autoCreateSession(conversationId, ownerId));
 
         if (!session.isOwnedBy(ownerId)) {
@@ -59,9 +79,12 @@ public class ChatSessionServiceImpl implements ChatSessionService {
 
         int windowSize = properties != null ? properties.getWindowSize() : 10;
         List<ChatTurn> pruned = memoryStrategy.prune(history, windowSize);
+        if (pruned == null || pruned.isEmpty()) {
+            return List.of();
+        }
 
         List<AIChatMessage> messages = memoryStrategy.toMessages(pruned);
-        if (messages.isEmpty()) {
+        if (messages == null || messages.isEmpty()) {
             return List.of();
         }
 
@@ -109,7 +132,7 @@ public class ChatSessionServiceImpl implements ChatSessionService {
             throw new ChatSessionAccessDeniedException("Access denied recording conversation: " + conversationId);
         }
 
-        ChatSession session = storageProvider.findById(conversationId)
+        ChatSession session = findSession(conversationId)
             .orElseGet(() -> autoCreateSession(conversationId, ownerId));
 
         if (!session.isOwnedBy(ownerId)) {
@@ -125,11 +148,12 @@ public class ChatSessionServiceImpl implements ChatSessionService {
             return;
         }
 
+        LocalDateTime now = now();
         ChatTurn.ChatTurnBuilder builder = ChatTurn.builder()
             .session(session)
             .userQuery(userQuery)
             .aiResponse(aiResponse)
-            .timestamp(LocalDateTime.now());
+            .timestamp(now);
 
         if (turnMetadata != null && !turnMetadata.isEmpty()) {
             builder.turnMetadata(new LinkedHashMap<>(turnMetadata));
@@ -143,7 +167,7 @@ public class ChatSessionServiceImpl implements ChatSessionService {
             session.setTurns(turns);
         }
         turns.add(turn);
-        session.setLastInteractionAt(LocalDateTime.now());
+        session.setLastInteractionAt(now);
 
         storageProvider.save(session);
     }
@@ -162,7 +186,7 @@ public class ChatSessionServiceImpl implements ChatSessionService {
             throw new ChatSessionAccessDeniedException("Access denied to conversation: " + conversationId);
         }
 
-        ChatSession session = storageProvider.findById(conversationId)
+        ChatSession session = findSession(conversationId)
             .orElseThrow(() -> new ChatSessionNotFoundException("Conversation not found: " + conversationId));
 
         if (!session.isOwnedBy(ownerId)) {
@@ -186,7 +210,7 @@ public class ChatSessionServiceImpl implements ChatSessionService {
             throw new ChatSessionAccessDeniedException("Access denied to conversation: " + conversationId);
         }
 
-        ChatSession session = storageProvider.findById(conversationId)
+        ChatSession session = findSession(conversationId)
             .orElseGet(() -> autoCreateSession(conversationId, ownerId));
 
         if (!session.isOwnedBy(ownerId)) {
@@ -209,7 +233,8 @@ public class ChatSessionServiceImpl implements ChatSessionService {
         if (!StringUtils.hasText(ownerId)) {
             return List.of();
         }
-        return storageProvider.findByOwnerId(ownerId);
+        List<ChatSession> conversations = storageProvider.findByOwnerId(ownerId);
+        return conversations != null ? conversations : List.of();
     }
 
     @Override
@@ -222,7 +247,7 @@ public class ChatSessionServiceImpl implements ChatSessionService {
             throw new IllegalArgumentException("ownerId cannot be blank");
         }
         // Fail-closed: never allow deletion without verifying ownership when the conversation exists.
-        storageProvider.findById(conversationId).ifPresent(session -> {
+        findSession(conversationId).ifPresent(session -> {
             if (!session.isOwnedBy(ownerId)) {
                 throw new ChatSessionAccessDeniedException("Conversation is owned by a different user");
             }
@@ -241,14 +266,24 @@ public class ChatSessionServiceImpl implements ChatSessionService {
             throw new ChatSessionAccessDeniedException("Conversation creation not allowed for ownerId: " + ownerId);
         }
 
+        LocalDateTime now = now();
         ChatSession created = ChatSession.builder()
             .id(conversationId)
             .ownerId(ownerId)
             .status(SessionStatus.ACTIVE)
-            .createdAt(LocalDateTime.now())
-            .lastInteractionAt(LocalDateTime.now())
+            .createdAt(now)
+            .lastInteractionAt(now)
             .build();
 
         return Objects.requireNonNull(storageProvider.save(created), "storageProvider.save returned null session");
+    }
+
+    private Optional<ChatSession> findSession(String conversationId) {
+        Optional<ChatSession> session = storageProvider.findById(conversationId);
+        return session != null ? session : Optional.empty();
+    }
+
+    private LocalDateTime now() {
+        return LocalDateTime.now(clock);
     }
 }

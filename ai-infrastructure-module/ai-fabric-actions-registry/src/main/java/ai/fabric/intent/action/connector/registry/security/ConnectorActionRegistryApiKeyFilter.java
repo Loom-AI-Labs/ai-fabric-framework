@@ -41,7 +41,7 @@ public class ConnectorActionRegistryApiKeyFilter extends OncePerRequestFilter {
         String uri = request.getRequestURI();
         String contextPath = request.getContextPath();
         String path = normalizePath(contextPath, uri);
-        return path == null || !path.startsWith(PATH_PREFIX);
+        return path == null || !isRegistryPath(path);
     }
 
     @Override
@@ -78,6 +78,10 @@ public class ConnectorActionRegistryApiKeyFilter extends OncePerRequestFilter {
             }
         }
         return out;
+    }
+
+    private boolean isRegistryPath(String path) {
+        return PATH_PREFIX.equals(path) || path.startsWith(PATH_PREFIX + "/");
     }
 
     private boolean constantTimeEquals(String expected, String provided) {

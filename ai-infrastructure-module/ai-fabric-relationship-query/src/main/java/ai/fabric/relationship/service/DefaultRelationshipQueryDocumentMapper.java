@@ -58,12 +58,13 @@ public class DefaultRelationshipQueryDocumentMapper implements RelationshipQuery
             metadata.putAll(extractContextMetadataForResponse(entity));
         }
 
-        AIEntityConfig config = resolveConfig(entityType);
-        if (config != null) {
+        Optional<AIEntityConfig> config = resolveConfig(entityType);
+        if (config.isPresent()) {
+            AIEntityConfig entityConfig = config.get();
             if (!StringUtils.hasText(content)) {
-                content = extractSearchableContentFromConfig(entity, config);
+                content = extractSearchableContentFromConfig(entity, entityConfig);
             }
-            metadata.putAll(extractMetadataFromConfig(entity, config));
+            metadata.putAll(extractMetadataFromConfig(entity, entityConfig));
         }
 
         if (!StringUtils.hasText(content) && metadata.isEmpty()) {
@@ -105,15 +106,14 @@ public class DefaultRelationshipQueryDocumentMapper implements RelationshipQuery
         return metadata;
     }
 
-    @Nullable
-    private AIEntityConfig resolveConfig(String entityType) {
+    private Optional<AIEntityConfig> resolveConfig(String entityType) {
         if (configurationLoader == null || !StringUtils.hasText(entityType)) {
-            return null;
+            return Optional.empty();
         }
         try {
-            return configurationLoader.getEntityConfig(entityType);
+            return Optional.ofNullable(configurationLoader.getEntityConfig(entityType));
         } catch (RuntimeException ex) {
-            return null;
+            return Optional.empty();
         }
     }
 
@@ -127,11 +127,11 @@ public class DefaultRelationshipQueryDocumentMapper implements RelationshipQuery
             if (field == null || !field.isIncludeInRAG() || !StringUtils.hasText(field.getName())) {
                 continue;
             }
-            Object value = readPropertyPath(entity, field.getName());
-            if (value == null) {
+            Optional<Object> value = readPropertyPath(entity, field.getName());
+            if (value.isEmpty()) {
                 continue;
             }
-            String rendered = renderValue(value);
+            String rendered = renderValue(value.get());
             if (StringUtils.hasText(rendered)) {
                 parts.add(rendered);
             }
@@ -149,11 +149,11 @@ public class DefaultRelationshipQueryDocumentMapper implements RelationshipQuery
             if (field == null || !StringUtils.hasText(field.getName())) {
                 continue;
             }
-            Object value = readPropertyPath(entity, field.getName());
-            if (value == null) {
+            Optional<Object> value = readPropertyPath(entity, field.getName());
+            if (value.isEmpty()) {
                 continue;
             }
-            metadata.put(metadataKey(field.getName()), simplifyMetadataValue(value));
+            metadata.put(metadataKey(field.getName()), simplifyMetadataValue(value.get()));
         }
         return metadata;
     }
@@ -167,9 +167,6 @@ public class DefaultRelationshipQueryDocumentMapper implements RelationshipQuery
     }
 
     private Object simplifyMetadataValue(Object value) {
-        if (value == null) {
-            return null;
-        }
         if (isJsonFriendlyScalar(value)) {
             return value;
         }
@@ -192,27 +189,31 @@ public class DefaultRelationshipQueryDocumentMapper implements RelationshipQuery
         return value.toString();
     }
 
-    private Object readPropertyPath(Object root, String path) {
+    private Optional<Object> readPropertyPath(Object root, String path) {
         if (root == null || !StringUtils.hasText(path)) {
-            return null;
+            return Optional.empty();
         }
 
         Object current = root;
         String[] segments = path.split("\\.");
         for (String segment : segments) {
             if (current == null) {
-                return null;
+                return Optional.empty();
             }
             String name = segment.trim();
             if (!StringUtils.hasText(name)) {
-                return null;
+                return Optional.empty();
             }
-            current = readProperty(current, name);
+            Optional<Object> next = readProperty(current, name);
+            if (next.isEmpty()) {
+                return Optional.empty();
+            }
+            current = next.get();
         }
-        return current;
+        return Optional.ofNullable(current);
     }
 
-    private Object readProperty(Object target, String property) {
+    private Optional<Object> readProperty(Object target, String property) {
         Class<?> type = target.getClass();
         String getterSuffix = property.substring(0, 1).toUpperCase(Locale.ROOT) + property.substring(1);
         List<String> candidateGetters = List.of("get" + getterSuffix, "is" + getterSuffix, property);
@@ -221,35 +222,35 @@ public class DefaultRelationshipQueryDocumentMapper implements RelationshipQuery
             try {
                 Method method = type.getMethod(methodName);
                 if (method.getParameterCount() == 0) {
-                    return method.invoke(target);
+                    return Optional.ofNullable(method.invoke(target));
                 }
             } catch (Exception ignored) {
             }
         }
 
-        Field field = findField(type, property);
-        if (field != null) {
+        Optional<Field> field = findField(type, property);
+        if (field.isPresent()) {
             try {
-                field.setAccessible(true);
-                return field.get(target);
+                Field resolved = field.get();
+                resolved.setAccessible(true);
+                return Optional.ofNullable(resolved.get(target));
             } catch (Exception ignored) {
-                return null;
+                return Optional.empty();
             }
         }
 
-        return null;
+        return Optional.empty();
     }
 
-    @Nullable
-    private Field findField(Class<?> type, String name) {
+    private Optional<Field> findField(Class<?> type, String name) {
         Class<?> current = type;
         while (current != null && current != Object.class) {
             try {
-                return current.getDeclaredField(name);
+                return Optional.of(current.getDeclaredField(name));
             } catch (NoSuchFieldException ignored) {
                 current = current.getSuperclass();
             }
         }
-        return null;
+        return Optional.empty();
     }
 }

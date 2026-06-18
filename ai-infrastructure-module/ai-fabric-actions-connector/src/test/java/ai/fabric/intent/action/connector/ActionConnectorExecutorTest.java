@@ -31,13 +31,13 @@ class ActionConnectorExecutorTest {
 
     @Test
     void execute_shouldParseObjectPayloadSuccess() {
-        StubHttpClient stub = new StubHttpClient(List.of(
+        FakeHttpClient fake = new FakeHttpClient(List.of(
             new OutboundHttpExecutionResponse(200, "{\"success\":true,\"message\":\"ok\",\"data\":{\"orderRef\":\"PO-1\"}}", Map.of())
         ));
 
         ActionConnectorExecutor executor = new ActionConnectorExecutor(
             connectorProps("https://example", 1, Duration.ZERO),
-            stub,
+            fake,
             null,
             fixedClock()
         );
@@ -53,8 +53,8 @@ class ActionConnectorExecutorTest {
         assertThat(result.getMessage()).isEqualTo("ok");
         assertThat(result.getData()).isInstanceOf(ActionObjectPayload.class);
         assertThat(result.getData().toMap()).containsEntry("orderRef", "PO-1");
-        assertThat(stub.lastRequestBody()).isNotBlank();
-        Map<String, Object> request = readRequest(stub.lastRequestBody());
+        assertThat(fake.lastRequestBody()).isNotBlank();
+        Map<String, Object> request = readRequest(fake.lastRequestBody());
         @SuppressWarnings("unchecked")
         Map<String, Object> trace = (Map<String, Object>) request.get(ActionConnectorProtocol.KEY_TRACE);
         assertThat(trace)
@@ -78,7 +78,7 @@ class ActionConnectorExecutorTest {
 
     @Test
     void execute_shouldParseListPayloadWithCursorAndTotalCount() {
-        StubHttpClient stub = new StubHttpClient(List.of(
+        FakeHttpClient fake = new FakeHttpClient(List.of(
             new OutboundHttpExecutionResponse(
                 200,
                 """
@@ -90,7 +90,7 @@ class ActionConnectorExecutorTest {
 
         ActionConnectorExecutor executor = new ActionConnectorExecutor(
             connectorProps("https://example", 1, Duration.ZERO),
-            stub,
+            fake,
             null,
             fixedClock()
         );
@@ -113,7 +113,7 @@ class ActionConnectorExecutorTest {
 
     @Test
     void execute_shouldIncludeRuntimeActionConfigInTrace() {
-        StubHttpClient stub = new StubHttpClient(List.of(
+        FakeHttpClient fake = new FakeHttpClient(List.of(
             new OutboundHttpExecutionResponse(200, "{\"success\":true,\"message\":\"ok\",\"data\":{}}", Map.of())
         ));
         AIActionConnectorProperties props = connectorProps("https://example", 1, Duration.ZERO);
@@ -121,7 +121,7 @@ class ActionConnectorExecutorTest {
         props.getMcpGateway().setApiKey("gateway-secret");
         ActionConnectorExecutor executor = new ActionConnectorExecutor(
             props,
-            stub,
+            fake,
             null,
             fixedClock()
         );
@@ -151,9 +151,9 @@ class ActionConnectorExecutorTest {
             )
         );
 
-        Map<String, Object> request = readRequest(stub.lastRequestBody());
-        assertThat(stub.lastRequest().url()).isEqualTo("https://mcp-gateway.internal/api/internal/mcp/actions/execute");
-        assertThat(stub.lastRequest().headers()).containsEntry("X-MCP-GATEWAY-API-KEY", "gateway-secret");
+        Map<String, Object> request = readRequest(fake.lastRequestBody());
+        assertThat(fake.lastRequest().url()).isEqualTo("https://mcp-gateway.internal/api/internal/mcp/actions/execute");
+        assertThat(fake.lastRequest().headers()).containsEntry("X-MCP-GATEWAY-API-KEY", "gateway-secret");
         @SuppressWarnings("unchecked")
         Map<String, Object> trace = (Map<String, Object>) request.get(ActionConnectorProtocol.KEY_TRACE);
         @SuppressWarnings("unchecked")
@@ -174,7 +174,7 @@ class ActionConnectorExecutorTest {
         String oldValue = System.getProperty(secretRef);
         System.setProperty(secretRef, "vendor-secret-value");
         try {
-            StubHttpClient stub = new StubHttpClient(List.of(
+            FakeHttpClient fake = new FakeHttpClient(List.of(
                 new OutboundHttpExecutionResponse(200, "{\"success\":true,\"message\":\"ok\",\"data\":{}}", Map.of())
             ));
             AIActionConnectorProperties props = connectorProps("https://example", 1, Duration.ZERO);
@@ -182,7 +182,7 @@ class ActionConnectorExecutorTest {
             props.getMcpGateway().setApiKey("gateway-secret");
             ActionConnectorExecutor executor = new ActionConnectorExecutor(
                 props,
-                stub,
+                fake,
                 null,
                 fixedClock()
             );
@@ -206,7 +206,7 @@ class ActionConnectorExecutorTest {
                 )
             );
 
-            Map<String, Object> request = readRequest(stub.lastRequestBody());
+            Map<String, Object> request = readRequest(fake.lastRequestBody());
             @SuppressWarnings("unchecked")
             Map<String, Object> trace = (Map<String, Object>) request.get(ActionConnectorProtocol.KEY_TRACE);
             @SuppressWarnings("unchecked")
@@ -223,7 +223,7 @@ class ActionConnectorExecutorTest {
 
     @Test
     void execute_shouldPromoteStorefrontShopDomainAttachmentIntoMcpTrace() {
-        StubHttpClient stub = new StubHttpClient(List.of(
+        FakeHttpClient fake = new FakeHttpClient(List.of(
             new OutboundHttpExecutionResponse(200, "{\"success\":true,\"message\":\"ok\",\"data\":{}}", Map.of())
         ));
         AIActionConnectorProperties props = connectorProps("https://example", 1, Duration.ZERO);
@@ -231,7 +231,7 @@ class ActionConnectorExecutorTest {
         props.getMcpGateway().setApiKey("gateway-secret");
         ActionConnectorExecutor executor = new ActionConnectorExecutor(
             props,
-            stub,
+            fake,
             null,
             fixedClock()
         );
@@ -262,7 +262,7 @@ class ActionConnectorExecutorTest {
             )
         );
 
-        Map<String, Object> request = readRequest(stub.lastRequestBody());
+        Map<String, Object> request = readRequest(fake.lastRequestBody());
         @SuppressWarnings("unchecked")
         Map<String, Object> trace = (Map<String, Object>) request.get(ActionConnectorProtocol.KEY_TRACE);
         assertThat(trace).containsEntry("shopDomain", "alpha.store.example.com");
@@ -270,12 +270,12 @@ class ActionConnectorExecutorTest {
 
     @Test
     void execute_shouldFailClosedForMcpToolWhenGatewayApiKeyMissing() {
-        StubHttpClient stub = new StubHttpClient(List.of());
+        FakeHttpClient fake = new FakeHttpClient(List.of());
         AIActionConnectorProperties props = connectorProps("https://example", 1, Duration.ZERO);
         props.getMcpGateway().setBaseUrl("https://mcp-gateway.internal");
         ActionConnectorExecutor executor = new ActionConnectorExecutor(
             props,
-            stub,
+            fake,
             null,
             fixedClock()
         );
@@ -295,19 +295,19 @@ class ActionConnectorExecutorTest {
         assertThat(result.isSuccess()).isFalse();
         assertThat(result.getErrorCode()).isEqualTo("INVALID_CONFIGURATION");
         assertThat(result.getMessage()).contains("mcp-gateway.api-key");
-        assertThat(stub.callCount()).isZero();
+        assertThat(fake.callCount()).isZero();
     }
 
     @Test
     void execute_shouldRetryOnRetryableErrorCodeWhenIdempotent() {
-        StubHttpClient stub = new StubHttpClient(List.of(
+        FakeHttpClient fake = new FakeHttpClient(List.of(
             new OutboundHttpExecutionResponse(200, "{\"success\":false,\"errorCode\":\"SERVICE_UNAVAILABLE\",\"message\":\"temp\"}", Map.of()),
             new OutboundHttpExecutionResponse(200, "{\"success\":true,\"message\":\"ok\",\"data\":{\"orderRef\":\"PO-2\"}}", Map.of())
         ));
 
         ActionConnectorExecutor executor = new ActionConnectorExecutor(
             connectorProps("https://example", 2, Duration.ZERO),
-            stub,
+            fake,
             null,
             fixedClock()
         );
@@ -320,7 +320,7 @@ class ActionConnectorExecutorTest {
         );
 
         assertThat(result.isSuccess()).isTrue();
-        assertThat(stub.callCount()).isEqualTo(2);
+        assertThat(fake.callCount()).isEqualTo(2);
     }
 
     private static AIActionConnectorProperties connectorProps(String baseUrl, int maxAttempts, Duration initialBackoff) {
@@ -365,13 +365,13 @@ class ActionConnectorExecutorTest {
         }
     }
 
-    private static final class StubHttpClient implements OutboundHttpExecutor {
+    private static final class FakeHttpClient implements OutboundHttpExecutor {
         private final List<OutboundHttpExecutionResponse> responses;
         private final AtomicInteger calls = new AtomicInteger(0);
         private volatile OutboundHttpExecutionRequest lastRequest;
         private volatile String lastRequestBody;
 
-        private StubHttpClient(List<OutboundHttpExecutionResponse> responses) {
+        private FakeHttpClient(List<OutboundHttpExecutionResponse> responses) {
             this.responses = responses != null ? new ArrayList<>(responses) : List.of();
         }
 

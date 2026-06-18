@@ -144,6 +144,20 @@ class ConnectorActionCatalogLoaderTest {
     }
 
     @Test
+    void loadActions_shouldRejectRequiredPropertiesThatAreNotDeclared() {
+        ConnectorActionCatalogLoader loader = new ConnectorActionCatalogLoader(new DefaultResourceLoader());
+
+        AIActionCatalogProperties.ActionSourceProperties source = new AIActionCatalogProperties.ActionSourceProperties();
+        source.setType(AIActionCatalogProperties.ActionSourceType.FILE);
+        source.setPath("classpath:actions/invalid-required-properties.yml");
+
+        assertThatThrownBy(() -> loader.loadActions(List.of(source)))
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessageContaining("required property 'missing'")
+            .hasMessageContaining("not declared in properties");
+    }
+
+    @Test
     void loadCatalog_shouldRejectUnknownWebhookTargetReference() {
         ConnectorActionCatalogLoader loader = new ConnectorActionCatalogLoader(new DefaultResourceLoader());
 

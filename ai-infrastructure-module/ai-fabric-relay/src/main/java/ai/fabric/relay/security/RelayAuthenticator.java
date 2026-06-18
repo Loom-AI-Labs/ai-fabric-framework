@@ -71,12 +71,12 @@ public class RelayAuthenticator {
                 throw new RelayRequestRejectedException(HttpStatus.UNAUTHORIZED, ERROR_UNAUTHORIZED, "HMAC authentication failed.");
             }
 
-            if (!nonceStore.tryUse(nonce.trim(), hmac.getNonceTtlSeconds())) {
+            String expected = HmacSigner.signBase64(hmac.getSecret(), timestamp.trim(), nonce.trim(), body);
+            if (!constantTimeEquals(expected, signature.trim())) {
                 throw new RelayRequestRejectedException(HttpStatus.UNAUTHORIZED, ERROR_UNAUTHORIZED, "HMAC authentication failed.");
             }
 
-            String expected = HmacSigner.signBase64(hmac.getSecret(), timestamp.trim(), nonce.trim(), body);
-            if (!constantTimeEquals(expected, signature.trim())) {
+            if (!nonceStore.tryUse(nonce.trim(), hmac.getNonceTtlSeconds())) {
                 throw new RelayRequestRejectedException(HttpStatus.UNAUTHORIZED, ERROR_UNAUTHORIZED, "HMAC authentication failed.");
             }
         }

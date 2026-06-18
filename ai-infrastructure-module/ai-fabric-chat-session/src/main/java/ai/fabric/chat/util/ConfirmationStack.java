@@ -33,7 +33,11 @@ public final class ConfirmationStack {
             return null;
         }
         Map<String, Object> top = stack.remove(stack.size() - 1);
-        metadata.put(METADATA_KEY_STACK, stack);
+        if (stack.isEmpty()) {
+            metadata.remove(METADATA_KEY_STACK);
+        } else {
+            metadata.put(METADATA_KEY_STACK, stack);
+        }
         return PendingAction.fromMap(top);
     }
 

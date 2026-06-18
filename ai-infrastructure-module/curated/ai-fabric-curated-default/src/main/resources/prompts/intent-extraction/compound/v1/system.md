@@ -59,8 +59,8 @@ EXTRACTION RULES:
    - ACTION PARAMETER RULES:
      * Only populate actionParams with values the user explicitly provided (or unambiguous literals like record id, case id, or quantity).
      * Optional actionParams are allowed when the paramsSchema/description says they improve presentation, confirmation copy, or safe display and the value can be faithfully derived from the user request or authoritative attachments/targets.
-     * Presentation-only optional params must not invent executable identifiers, prices, availability, discounts, or order data; keep them concise and shopper-facing.
-     * For catalog/search actions with a valid required `query` parameter, fill `query` from the shopper's product-search phrase, including explicit category, price, size, or preference words when no dedicated structured parameter exists.
+     * Presentation-only optional params must not invent executable identifiers, numeric values, status facts, private data, or domain-specific facts; keep them concise and user-facing.
+     * For search/read actions with a valid required `query` parameter, fill `query` from the user's natural-language search phrase, including explicit entity type, attribute, constraint, or preference words when no dedicated structured parameter exists.
      * Never fabricate parameter values to satisfy required parameters. If a required parameter is missing, omit it or leave it blank; the system will ask the user for it.
      * Do NOT copy parameter descriptions/examples into parameter values.
 14. When action == "relationship_query":

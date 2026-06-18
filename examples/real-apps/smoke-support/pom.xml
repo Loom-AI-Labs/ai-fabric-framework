@@ -16,8 +16,8 @@
     <artifactId>smoke-support</artifactId>
     <version>0.2.1</version>
     <name>AI Fabric Real Apps :: Smoke Support</name>
-    <description>Shared offline stub beans (no-op LLM + deterministic embeddings) that let the example apps boot
-        under the "smoke" profile with no API keys or external services.</description>
+    <description>Shared offline deterministic providers that let the example apps boot under the "smoke"
+        profile with no API keys or external services.</description>
 
     <properties>
         <java.version>21</java.version>
@@ -49,6 +49,11 @@
             <groupId>com.h2database</groupId>
             <artifactId>h2</artifactId>
             <scope>runtime</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
         </dependency>
     </dependencies>
 </project>

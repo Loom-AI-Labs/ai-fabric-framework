@@ -13,7 +13,7 @@ import org.springframework.boot.test.context.SpringBootTest;
         "ai.service.features.enable-search=false",
         "ai.service.features.enable-embeddings=false",
 
-        // Keep generation enabled but satisfy config validator with dummy values.
+        // Keep generation enabled while using non-live provider settings.
         "ai.providers.llm-provider=openai",
         "ai.providers.openai.api-key=sk-test-key",
         "ai.providers.openai.base-url=https://api.openai.com/v1",
@@ -36,4 +36,3 @@ class ProviderOnlyStarterContextTest {
     void contextLoads() {
     }
 }
-

@@ -10,7 +10,9 @@ import ai.fabric.service.AICapabilityService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 
+import java.time.Clock;
 import java.time.LocalDateTime;
+import java.util.Objects;
 
 /**
  * Entry point that decides whether to execute indexing work synchronously or enqueue it.
@@ -24,6 +26,7 @@ public class IndexingCoordinator {
     private final AIIndexingProperties properties;
     private final ObjectMapper objectMapper;
     private final AICapabilityService capabilityService;
+    private final Clock clock;
 
     public IndexingCoordinator(
         IndexingStrategyResolver strategyResolver,
@@ -33,12 +36,33 @@ public class IndexingCoordinator {
         ObjectMapper objectMapper,
         AICapabilityService capabilityService
     ) {
+        this(
+            strategyResolver,
+            queueService,
+            configurationLoader,
+            properties,
+            objectMapper,
+            capabilityService,
+            Clock.systemUTC()
+        );
+    }
+
+    public IndexingCoordinator(
+        IndexingStrategyResolver strategyResolver,
+        IndexingQueueService queueService,
+        AIEntityConfigurationLoader configurationLoader,
+        AIIndexingProperties properties,
+        ObjectMapper objectMapper,
+        AICapabilityService capabilityService,
+        Clock clock
+    ) {
         this.strategyResolver = strategyResolver;
         this.queueService = queueService;
         this.configurationLoader = configurationLoader;
         this.properties = properties;
         this.objectMapper = objectMapper;
         this.capabilityService = capabilityService;
+        this.clock = Objects.requireNonNull(clock, "clock is required");
     }
 
     public void handle(
@@ -124,7 +148,7 @@ public class IndexingCoordinator {
                 .strategy(strategy)
                 .payload(payload)
                 .maxRetries(properties.getQueue().getMaxRetries())
-                .scheduledFor(LocalDateTime.now())
+                .scheduledFor(LocalDateTime.now(clock))
                 .build();
             queueService.enqueue(request);
         } catch (Exception ex) {

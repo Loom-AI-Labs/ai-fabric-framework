@@ -87,5 +87,127 @@ class PIIDetectionStepTest {
         assertThat(result.getProcessedQuery()).isEqualTo("hello ******");
         assertThat(result.getDetectedPiiTypesView()).containsExactly("NUMBER");
     }
-}
 
+    @Test
+    void preservesEmptyProcessedQueryAsIntentionalRedaction() {
+        PIIDetectionService piiDetectionService = mock(PIIDetectionService.class);
+        PIIDetectionProperties properties = new PIIDetectionProperties();
+        properties.setEnabled(true);
+        properties.setDetectionDirection(PIIDetectionDirection.INPUT);
+
+        String query = "sk-secret";
+        when(piiDetectionService.detectAndProcess(query)).thenReturn(PIIDetectionResult.builder()
+            .originalQuery(query)
+            .processedQuery("")
+            .piiDetected(true)
+            .detections(List.of(PIIDetection.builder()
+                .type("API_TOKEN")
+                .startIndex(0)
+                .endIndex(query.length())
+                .maskedValue("")
+                .build()))
+            .build());
+
+        PipelineContext context = PipelineContext.from(query, OrchestrationContext.forTest());
+
+        PipelineContext result = new PIIDetectionStep(piiDetectionService, properties).process(context);
+
+        verify(piiDetectionService).detectAndProcess(query);
+        assertThat(result.getProcessedQuery()).isEmpty();
+        assertThat(result.getDetectedPiiTypesView()).containsExactly("API_TOKEN");
+    }
+
+    @Test
+    void redactsWhenDetectionsArePresentEvenIfFlagIsFalse() {
+        PIIDetectionService piiDetectionService = mock(PIIDetectionService.class);
+        PIIDetectionProperties properties = new PIIDetectionProperties();
+        properties.setEnabled(true);
+        properties.setDetectionDirection(PIIDetectionDirection.INPUT);
+
+        String query = "email user@example.com";
+        when(piiDetectionService.detectAndProcess(query)).thenReturn(PIIDetectionResult.builder()
+            .originalQuery(query)
+            .processedQuery(query)
+            .piiDetected(false)
+            .detections(List.of(PIIDetection.builder()
+                .type("EMAIL")
+                .startIndex(6)
+                .endIndex(22)
+                .maskedValue("***@***.***")
+                .build()))
+            .build());
+
+        PipelineContext context = PipelineContext.from(query, OrchestrationContext.forTest());
+
+        PipelineContext result = new PIIDetectionStep(piiDetectionService, properties).process(context);
+
+        assertThat(result.getProcessedQuery()).isEqualTo("email ***@***.***");
+        assertThat(result.getDetectedPiiTypesView()).containsExactly("EMAIL");
+    }
+
+    @Test
+    void fallbackRedactionSkipsMalformedDetections() {
+        PIIDetectionService piiDetectionService = mock(PIIDetectionService.class);
+        PIIDetectionProperties properties = new PIIDetectionProperties();
+        properties.setEnabled(true);
+        properties.setDetectionDirection(PIIDetectionDirection.INPUT);
+
+        String query = "safe token";
+        when(piiDetectionService.detectAndProcess(query)).thenReturn(PIIDetectionResult.builder()
+            .originalQuery(query)
+            .processedQuery(query)
+            .piiDetected(true)
+            .detections(List.of(
+                PIIDetection.builder()
+                    .type("BAD_NEGATIVE")
+                    .startIndex(-1)
+                    .endIndex(4)
+                    .maskedValue("xxx")
+                    .build(),
+                PIIDetection.builder()
+                    .type("BAD_EMPTY")
+                    .startIndex(2)
+                    .endIndex(2)
+                    .maskedValue("xxx")
+                    .build(),
+                PIIDetection.builder()
+                    .type("TOKEN")
+                    .startIndex(5)
+                    .endIndex(50)
+                    .maskedValue("***")
+                    .build()
+            ))
+            .build());
+
+        PipelineContext context = PipelineContext.from(query, OrchestrationContext.forTest());
+
+        PipelineContext result = new PIIDetectionStep(piiDetectionService, properties).process(context);
+
+        assertThat(result.getProcessedQuery()).isEqualTo("safe ***");
+        assertThat(result.getDetectedPiiTypesView())
+            .containsExactly("BAD_NEGATIVE", "BAD_EMPTY", "TOKEN");
+    }
+
+    @Test
+    void nullDetectionDirectionDefaultsToInputOutput() {
+        PIIDetectionService piiDetectionService = mock(PIIDetectionService.class);
+        PIIDetectionProperties properties = new PIIDetectionProperties();
+        properties.setEnabled(true);
+        properties.setDetectionDirection(null);
+
+        String query = "hello";
+        when(piiDetectionService.detectAndProcess(query)).thenReturn(PIIDetectionResult.builder()
+            .originalQuery(query)
+            .processedQuery(query)
+            .piiDetected(false)
+            .detections(List.of())
+            .build());
+
+        PipelineContext context = PipelineContext.from(query, OrchestrationContext.forTest());
+
+        PipelineContext result = new PIIDetectionStep(piiDetectionService, properties).process(context);
+
+        verify(piiDetectionService).detectAndProcess(query);
+        assertThat(result.getProcessedQuery()).isEqualTo(query);
+    }
+}

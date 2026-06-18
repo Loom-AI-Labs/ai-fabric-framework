@@ -82,6 +82,8 @@ public class MilvusVectorDatabaseService implements VectorDatabaseService, AutoC
     // Milvus SDK (2.4.x) uses mixed units: interval in milliseconds, timeout in seconds.
     private static final long COLLECTION_LOAD_INTERVAL_MILLIS = 500L; // max 2000ms per SDK constant
     private static final long COLLECTION_LOAD_TIMEOUT_SECONDS = 120L; // max 300s per SDK constant
+    private static final int DEFAULT_SEARCH_LIMIT = 10;
+    private static final int MAX_SEARCH_LIMIT = 100;
 
     private final AIProviderConfig.MilvusConfig config;
     private final String collectionPrefix;
@@ -91,17 +93,25 @@ public class MilvusVectorDatabaseService implements VectorDatabaseService, AutoC
     private final ConcurrentMap<String, Object> collectionLoadLocks = new ConcurrentHashMap<>();
 
     public MilvusVectorDatabaseService(AIProviderConfig providerConfig) {
+        this(providerConfig, null);
+    }
+
+    MilvusVectorDatabaseService(AIProviderConfig providerConfig, MilvusServiceClient client) {
         this.config = Objects.requireNonNull(providerConfig.getMilvus(), "Milvus configuration must be present");
         this.collectionPrefix = normalizeCollectionPrefix(this.config.getCollectionPrefix());
         if (!config.isEnabled()) {
             throw new AIServiceException("Milvus vector provider is disabled");
         }
 
-        try {
-            this.client = new MilvusServiceClient(buildConnectParam());
-            log.info("Connected to Milvus at {}:{}", config.getHost(), config.getPort());
-        } catch (Exception ex) {
-            throw new AIServiceException("Failed to initialise Milvus client: " + ex.getMessage(), ex);
+        if (client != null) {
+            this.client = client;
+        } else {
+            try {
+                this.client = new MilvusServiceClient(buildConnectParam());
+                log.info("Connected to Milvus at {}:{}", config.getHost(), config.getPort());
+            } catch (Exception ex) {
+                throw new AIServiceException("Failed to initialise Milvus client: " + ex.getMessage(), ex);
+            }
         }
 
         String requestedDatabase = Optional.ofNullable(config.getDatabaseName()).orElse("default");
@@ -199,13 +209,18 @@ public class MilvusVectorDatabaseService implements VectorDatabaseService, AutoC
     @Override
     public boolean updateVector(String vectorId, String entityType, String entityId,
                                 String content, List<Double> embedding, Map<String, Object> metadata) {
+        if (vectorId == null || vectorId.isBlank()) {
+            return false;
+        }
         storeVector(entityType, entityId, content, embedding, metadata);
         return true;
     }
 
     @Override
     public Optional<VectorRecord> getVector(String vectorId) {
-        Objects.requireNonNull(vectorId, "vectorId must not be null");
+        if (vectorId == null || vectorId.isBlank()) {
+            return Optional.empty();
+        }
         String entityTypeToken = extractEntityTypeToken(vectorId);
         String collection = collectionName(entityTypeToken);
         if (!collectionExists(collection)) {
@@ -279,8 +294,8 @@ public class MilvusVectorDatabaseService implements VectorDatabaseService, AutoC
         ensureCollection(collection, queryVector.size());
         ensureCollectionLoaded(collection);
 
-        int topK = Optional.ofNullable(request.getLimit()).orElse(10);
-        double threshold = Optional.ofNullable(request.getThreshold()).orElse(0.0);
+        int topK = normalizeSearchLimit(request.getLimit());
+        double threshold = normalizeScoreThreshold(request.getThreshold());
         String expr = buildScanExpr(request.getMetadata());
 
         SearchParam searchParam = SearchParam.newBuilder()
@@ -418,7 +433,7 @@ public class MilvusVectorDatabaseService implements VectorDatabaseService, AutoC
 
     @Override
     public boolean removeVectorById(String vectorId) {
-        if (vectorId == null) {
+        if (vectorId == null || vectorId.isBlank()) {
             return false;
         }
         String collection = collectionName(extractEntityTypeToken(vectorId));
@@ -451,6 +466,9 @@ public class MilvusVectorDatabaseService implements VectorDatabaseService, AutoC
         }
         List<String> ids = new ArrayList<>(vectors.size());
         for (VectorRecord record : vectors) {
+            if (record == null) {
+                continue;
+            }
             ids.add(storeVector(record.getEntityType(), record.getEntityId(), record.getContent(),
                 record.getEmbedding(), record.getMetadata()));
         }
@@ -462,8 +480,17 @@ public class MilvusVectorDatabaseService implements VectorDatabaseService, AutoC
         if (vectors == null || vectors.isEmpty()) {
             return 0;
         }
-        batchStoreVectors(vectors);
-        return vectors.size();
+        int updated = 0;
+        for (VectorRecord record : vectors) {
+            if (record == null || record.getVectorId() == null || record.getVectorId().isBlank()) {
+                continue;
+            }
+            if (updateVector(record.getVectorId(), record.getEntityType(), record.getEntityId(),
+                record.getContent(), record.getEmbedding(), record.getMetadata())) {
+                updated++;
+            }
+        }
+        return updated;
     }
 
     @Override
@@ -571,7 +598,7 @@ public class MilvusVectorDatabaseService implements VectorDatabaseService, AutoC
             records.add(applyScanProjection(record, request));
         }
 
-        String nextCursor = hasMore ? encodeOffsetCursor(offset + returned) : null;
+        String nextCursor = hasMore ? encodeOffsetCursor(offset + returned).orElse(null) : null;
 
         return VectorScanPage.builder()
             .vectors(records)
@@ -1044,8 +1071,8 @@ public class MilvusVectorDatabaseService implements VectorDatabaseService, AutoC
                 .content(content)
                 .embedding(embedding)
                 .metadata(metadata)
-                .createdAt(readTimestamp(metadata, "_indexedCreatedAt"))
-                .updatedAt(readTimestamp(metadata, "_indexedUpdatedAt"))
+                .createdAt(readTimestamp(metadata, "_indexedCreatedAt").orElse(null))
+                .updatedAt(readTimestamp(metadata, "_indexedUpdatedAt").orElse(null))
                 .build();
         } catch (ParamException | IllegalResponseException ex) {
             throw new AIServiceException("Failed to parse Milvus query response", ex);
@@ -1078,12 +1105,12 @@ public class MilvusVectorDatabaseService implements VectorDatabaseService, AutoC
         return value.replace("\"", "\\\"");
     }
 
-    private static String encodeOffsetCursor(long offset) {
+    private static Optional<String> encodeOffsetCursor(long offset) {
         if (offset <= 0) {
-            return null;
+            return Optional.empty();
         }
         String raw = "offset:" + offset;
-        return Base64.getUrlEncoder().withoutPadding().encodeToString(raw.getBytes(StandardCharsets.UTF_8));
+        return Optional.of(Base64.getUrlEncoder().withoutPadding().encodeToString(raw.getBytes(StandardCharsets.UTF_8)));
     }
 
     private static long decodeOffsetCursor(String cursor) {
@@ -1121,18 +1148,18 @@ public class MilvusVectorDatabaseService implements VectorDatabaseService, AutoC
             .build();
     }
 
-    private static LocalDateTime readTimestamp(Map<String, Object> metadata, String key) {
+    private static Optional<LocalDateTime> readTimestamp(Map<String, Object> metadata, String key) {
         if (metadata == null || key == null) {
-            return null;
+            return Optional.empty();
         }
         Object raw = metadata.get(key);
         if (raw == null) {
-            return null;
+            return Optional.empty();
         }
         try {
-            return LocalDateTime.parse(raw.toString());
+            return Optional.of(LocalDateTime.parse(raw.toString()));
         } catch (Exception ex) {
-            return null;
+            return Optional.empty();
         }
     }
 
@@ -1288,6 +1315,21 @@ public class MilvusVectorDatabaseService implements VectorDatabaseService, AutoC
             combined = combined.substring(0, maxLen);
         }
         return combined;
+    }
+
+    static int normalizeSearchLimit(Integer limit) {
+        int resolved = limit != null ? limit : DEFAULT_SEARCH_LIMIT;
+        if (resolved <= 0) {
+            return DEFAULT_SEARCH_LIMIT;
+        }
+        return Math.min(resolved, MAX_SEARCH_LIMIT);
+    }
+
+    static double normalizeScoreThreshold(Double threshold) {
+        if (threshold == null || !Double.isFinite(threshold)) {
+            return 0.0d;
+        }
+        return Math.max(0.0d, Math.min(1.0d, threshold));
     }
 
     private static String shortHash(String value) {

@@ -107,4 +107,10 @@ class BehaviorProcessingManagerTest {
         assertThat(cancelled).isNotNull();
         assertThat(cancelled.getStatus()).isEqualTo("CANCELLED");
     }
+
+    @Test
+    void cancelUnknownJobReturnsEmptyOptionalAndKeepsNullCompatibleApi() {
+        assertThat(manager.cancelContinuousOptional("missing-job")).isEmpty();
+        assertThat(manager.cancelContinuous("missing-job")).isNull();
+    }
 }

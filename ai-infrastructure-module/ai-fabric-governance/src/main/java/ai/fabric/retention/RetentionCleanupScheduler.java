@@ -4,7 +4,7 @@ import ai.fabric.governance.catalog.IndexCatalog;
 import ai.fabric.governance.catalog.IndexCatalogEntry;
 import ai.fabric.governance.catalog.IndexCatalogScanPage;
 import ai.fabric.governance.catalog.IndexCatalogScanRequest;
-import ai.fabric.governance.catalog.noop.NoopIndexCatalog;
+import ai.fabric.governance.catalog.disabled.DisabledIndexCatalog;
 import ai.fabric.governance.config.AIGovernanceProperties;
 import ai.fabric.rag.VectorDatabaseService;
 import ai.fabric.retention.policy.RetentionPolicyProvider;
@@ -33,7 +33,7 @@ public class RetentionCleanupScheduler {
         if (!properties.isEnabled() || properties.getRetention() == null || !properties.getRetention().isEnabled()) {
             return;
         }
-        if (indexCatalog instanceof NoopIndexCatalog) {
+        if (indexCatalog instanceof DisabledIndexCatalog) {
             log.warn("Retention cleanup is enabled but IndexCatalog is DISABLED; no cleanup will run");
             return;
         }
@@ -176,4 +176,3 @@ public class RetentionCleanupScheduler {
             .toList();
     }
 }
-

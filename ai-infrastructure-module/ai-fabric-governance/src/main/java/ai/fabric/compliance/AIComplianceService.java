@@ -71,7 +71,12 @@ public class AIComplianceService {
 
         try {
             ComplianceCheckResult result = provider.checkCompliance(request);
-            if (result != null) {
+            if (result == null) {
+                compliant = false;
+                failed = true;
+                violations.add("COMPLIANCE_PROVIDER_EMPTY_RESULT");
+                details = "ComplianceCheckProvider returned no decision";
+            } else {
                 compliant = result.isCompliant();
                 if (result.getViolations() != null) {
                     violations.addAll(result.getViolations());

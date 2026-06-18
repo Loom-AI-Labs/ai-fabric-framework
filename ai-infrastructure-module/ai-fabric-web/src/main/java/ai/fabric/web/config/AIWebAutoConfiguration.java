@@ -16,6 +16,6 @@ import org.springframework.context.annotation.Configuration;
 public class AIWebAutoConfiguration {
     
     public AIWebAutoConfiguration() {
-        log.info("AI Infrastructure Web AutoConfiguration initialized - 59 REST endpoints available");
+        log.info("AI Infrastructure Web AutoConfiguration initialized");
     }
 }

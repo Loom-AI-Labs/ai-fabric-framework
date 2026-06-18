@@ -6,12 +6,12 @@ start and wire up?"), not for producing real AI results.
 
 ## What it provides
 
-- **`SmokeAiProvider`** — a no-op `ai.fabric.provider.AIProvider` (name `smoke`) that returns a
-  deterministic placeholder instead of calling a model.
+- **`SmokeAiProvider`** — a local `ai.fabric.provider.AIProvider` (name `smoke`) that returns a
+  deterministic response instead of calling an external model.
 - **`SmokeEmbeddingProvider`** — a deterministic, in-process `ai.fabric.embedding.EmbeddingProvider`
   (name `smoke`, 384-dim) that needs no ONNX model file.
 - Transitive **`ai-fabric-vector-memory`** (in-memory vector store) and **H2** (in-memory database).
-- A bundled **`application-smoke.yml`** that points the framework's selectors at the local stubs:
+- A bundled **`application-smoke.yml`** that points the framework's selectors at the local providers:
 
   ```yaml
   ai:

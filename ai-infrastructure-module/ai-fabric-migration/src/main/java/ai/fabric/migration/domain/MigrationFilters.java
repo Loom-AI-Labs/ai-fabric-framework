@@ -1,5 +1,6 @@
 package ai.fabric.migration.domain;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -28,6 +29,7 @@ public class MigrationFilters {
         return entityIds == null ? Collections.emptyList() : entityIds;
     }
 
+    @JsonIgnore
     public boolean isEmpty() {
         return createdBefore == null && createdAfter == null && safeEntityIds().isEmpty();
     }

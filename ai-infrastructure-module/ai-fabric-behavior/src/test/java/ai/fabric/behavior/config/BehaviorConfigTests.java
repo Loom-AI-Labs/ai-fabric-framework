@@ -10,6 +10,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
 
 class BehaviorConfigTests {
 
@@ -35,6 +36,6 @@ class BehaviorConfigTests {
         registration.registerRelationships();
 
         verify(mapper).registerEntityType(BehaviorInsights.class);
-        assertThat(true).isTrue(); // placeholder to keep AssertJ usage consistent
+        verifyNoMoreInteractions(mapper);
     }
 }

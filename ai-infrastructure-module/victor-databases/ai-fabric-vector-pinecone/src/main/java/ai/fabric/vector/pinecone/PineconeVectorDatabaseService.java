@@ -197,13 +197,10 @@ public class PineconeVectorDatabaseService implements VectorDatabaseService, Aut
         long start = System.currentTimeMillis();
 
         String namespace = namespace(request.getEntityType());
-        int topK = Optional.ofNullable(request.getLimit()).orElse(10);
-        double threshold = Optional.ofNullable(request.getThreshold()).orElse(0.0);
+        int topK = resolveSearchLimit(request);
+        double threshold = resolveSearchThreshold(request);
 
-        Struct filter = null;
-        if (request.getMetadata() != null && !request.getMetadata().isEmpty()) {
-            filter = toFilterStruct(request.getMetadata());
-        }
+        Struct filter = toFilterStruct(request.getMetadata()).orElse(null);
 
         QueryResponseWithUnsignedIndices response;
         boolean preferSparse = isSparseIndex();
@@ -526,6 +523,22 @@ public class PineconeVectorDatabaseService implements VectorDatabaseService, Aut
             .model(namespace)
             .build();
     }
+
+    private int resolveSearchLimit(AISearchRequest request) {
+        Integer requestedLimit = request != null ? request.getLimit() : null;
+        if (requestedLimit == null || requestedLimit <= 0) {
+            return 10;
+        }
+        return Math.min(requestedLimit, 100);
+    }
+
+    private double resolveSearchThreshold(AISearchRequest request) {
+        Double requestedThreshold = request != null ? request.getThreshold() : null;
+        if (requestedThreshold == null || !Double.isFinite(requestedThreshold)) {
+            return 0.0d;
+        }
+        return Math.max(0.0d, Math.min(1.0d, requestedThreshold));
+    }
     
     @Override
     public long getVectorCountByEntityType(String entityType) {
@@ -611,10 +624,7 @@ public class PineconeVectorDatabaseService implements VectorDatabaseService, Aut
         if (shouldAwaitClearConsistency()) {
             clearNamespaceByListing(namespace);
         } else {
-            withPineconeRetry("deleteAll", () -> {
-                index.deleteAll(namespace);
-                return null;
-            });
+            withPineconeRetryVoid("deleteAll", () -> index.deleteAll(namespace));
         }
 
         awaitNamespaceCleared(namespace);
@@ -649,10 +659,7 @@ public class PineconeVectorDatabaseService implements VectorDatabaseService, Aut
             }
 
             try {
-                withPineconeRetry("deleteByIds", () -> {
-                    index.deleteByIds(ids, namespace);
-                    return null;
-                });
+                withPineconeRetryVoid("deleteByIds", () -> index.deleteByIds(ids, namespace));
             } catch (Exception ex) {
                 if (!isNamespaceNotFound(ex)) {
                     throw ex;
@@ -823,25 +830,28 @@ public class PineconeVectorDatabaseService implements VectorDatabaseService, Aut
 
         boolean preferSparse = isSparseIndex();
         try {
-            withPineconeRetry("upsert", () -> {
+            withPineconeRetryVoid("upsert", () -> {
                 if (preferSparse) {
                     upsertSparse(vectorId, namespace, embedding, metadataStruct, true);
                 } else {
                     upsertDense(vectorId, namespace, embedding, metadataStruct);
                 }
-                return null;
             });
         } catch (Exception ex) {
             if (!preferSparse && shouldRetryAsSparse(ex)) {
                 sparseIndex = true;
-                withPineconeRetry("upsertSparse", () -> {
-                    upsertSparse(vectorId, namespace, embedding, metadataStruct, true);
-                    return null;
-                });
+                withPineconeRetryVoid("upsertSparse", () -> upsertSparse(vectorId, namespace, embedding, metadataStruct, true));
                 return;
             }
             throw new AIServiceException("Failed to upsert vector into Pinecone", ex);
         }
+    }
+
+    private void withPineconeRetryVoid(String operation, Runnable runnable) {
+        withPineconeRetry(operation, () -> {
+            runnable.run();
+            return Boolean.TRUE;
+        });
     }
 
     private <T> T withPineconeRetry(String operation, Supplier<T> supplier) {
@@ -1024,14 +1034,18 @@ public class PineconeVectorDatabaseService implements VectorDatabaseService, Aut
     }
 
     private String extractEntityId(String vectorId) {
+        return extractEntityIdOptional(vectorId).orElse(null);
+    }
+
+    private Optional<String> extractEntityIdOptional(String vectorId) {
         if (!StringUtils.hasText(vectorId)) {
-            return null;
+            return Optional.empty();
         }
         int idx = vectorId.indexOf("::");
         if (idx < 0) {
-            return vectorId;
+            return Optional.of(vectorId);
         }
-        return vectorId.substring(idx + 2);
+        return Optional.of(vectorId.substring(idx + 2));
     }
 
     private Struct buildMetadataStruct(String entityType,
@@ -1121,9 +1135,9 @@ public class PineconeVectorDatabaseService implements VectorDatabaseService, Aut
      * Lists/collections must be represented via operators such as "$in", not raw arrays.
      * Null/blank values are skipped to avoid INVALID_ARGUMENT errors.
      */
-    private Struct toFilterStruct(Map<String, Object> metadata) {
+    private Optional<Struct> toFilterStruct(Map<String, Object> metadata) {
         if (metadata == null || metadata.isEmpty()) {
-            return null;
+            return Optional.empty();
         }
 
         Map<String, Value> fields = new LinkedHashMap<>();
@@ -1131,63 +1145,57 @@ public class PineconeVectorDatabaseService implements VectorDatabaseService, Aut
             if (!StringUtils.hasText(key)) {
                 return;
             }
-            Value condition = toFilterCondition(value);
-            if (condition != null) {
-                fields.put(key, condition);
-            }
+            toFilterCondition(value).ifPresent(condition -> fields.put(key, condition));
         });
 
         if (fields.isEmpty()) {
-            return null;
+            return Optional.empty();
         }
-        return Struct.newBuilder().putAllFields(fields).build();
+        return Optional.of(Struct.newBuilder().putAllFields(fields).build());
     }
 
-    private Value toFilterCondition(Object value) {
+    private Optional<Value> toFilterCondition(Object value) {
         if (value == null) {
-            return null;
+            return Optional.empty();
         }
         if (value instanceof String str && !StringUtils.hasText(str)) {
-            return null;
+            return Optional.empty();
         }
 
         // If caller already provided a Pinecone-style operator map, keep it (but skip nulls).
         if (value instanceof Map<?, ?> map) {
             Struct struct = toFilterOperatorStruct(map);
             if (struct == null || struct.getFieldsCount() == 0) {
-                return null;
+                return Optional.empty();
             }
-            return Value.newBuilder().setStructValue(struct).build();
+            return Optional.of(Value.newBuilder().setStructValue(struct).build());
         }
 
         // Collections/lists must use operators like "$in" instead of a raw ListValue.
         if (value instanceof Iterable<?> iterable) {
             List<Value> items = new ArrayList<>();
             for (Object item : iterable) {
-                Value scalar = toFilterScalarValue(item);
-                if (scalar != null) {
-                    items.add(scalar);
-                }
+                toFilterScalarValue(item).ifPresent(items::add);
             }
             if (items.isEmpty()) {
-                return null;
+                return Optional.empty();
             }
             Struct condition = Struct.newBuilder()
                 .putFields("$in", Value.newBuilder()
                     .setListValue(ListValue.newBuilder().addAllValues(items))
                     .build())
                 .build();
-            return Value.newBuilder().setStructValue(condition).build();
+            return Optional.of(Value.newBuilder().setStructValue(condition).build());
         }
 
-        Value scalar = toFilterScalarValue(value);
-        if (scalar == null) {
-            return null;
+        Optional<Value> scalar = toFilterScalarValue(value);
+        if (scalar.isEmpty()) {
+            return Optional.empty();
         }
         Struct condition = Struct.newBuilder()
-            .putFields("$eq", scalar)
+            .putFields("$eq", scalar.get())
             .build();
-        return Value.newBuilder().setStructValue(condition).build();
+        return Optional.of(Value.newBuilder().setStructValue(condition).build());
     }
 
     private Struct toFilterOperatorStruct(Map<?, ?> map) {
@@ -1209,10 +1217,7 @@ public class PineconeVectorDatabaseService implements VectorDatabaseService, Aut
             if ("$in".equals(key) && rawValue instanceof Iterable<?> iterable) {
                 List<Value> items = new ArrayList<>();
                 for (Object item : iterable) {
-                    Value scalar = toFilterScalarValue(item);
-                    if (scalar != null) {
-                        items.add(scalar);
-                    }
+                    toFilterScalarValue(item).ifPresent(items::add);
                 }
                 if (!items.isEmpty()) {
                     fields.put(key, Value.newBuilder()
@@ -1223,49 +1228,47 @@ public class PineconeVectorDatabaseService implements VectorDatabaseService, Aut
             }
 
             // Default: allow scalar or nested structures, but avoid embedding nulls.
-            Value scalar = toFilterScalarValue(rawValue);
-            if (scalar != null) {
-                fields.put(key, scalar);
-            }
+            toFilterScalarValue(rawValue).ifPresent(scalar -> fields.put(key, scalar));
         });
 
         return Struct.newBuilder().putAllFields(fields).build();
     }
 
-    private Value toFilterScalarValue(Object value) {
+    private Optional<Value> toFilterScalarValue(Object value) {
         if (value == null) {
-            return null;
+            return Optional.empty();
         }
         if (value instanceof String str) {
             return StringUtils.hasText(str)
-                ? Value.newBuilder().setStringValue(str).build()
-                : null;
+                ? Optional.of(Value.newBuilder().setStringValue(str).build())
+                : Optional.empty();
         }
         if (value instanceof Boolean bool) {
-            return Value.newBuilder().setBoolValue(bool).build();
+            return Optional.of(Value.newBuilder().setBoolValue(bool).build());
         }
         if (value instanceof Number number) {
-            return Value.newBuilder().setNumberValue(number.doubleValue()).build();
+            return Optional.of(Value.newBuilder().setNumberValue(number.doubleValue()).build());
         }
         // As a fallback, treat as a keyword string value.
         String text = String.valueOf(value);
-        return StringUtils.hasText(text) ? Value.newBuilder().setStringValue(text).build() : null;
+        return StringUtils.hasText(text)
+            ? Optional.of(Value.newBuilder().setStringValue(text).build())
+            : Optional.empty();
     }
 
-    private Object fromValue(Value value) {
+    private Optional<Object> fromValue(Value value) {
         if (value == null) {
-            return null;
+            return Optional.empty();
         }
         return switch (value.getKindCase()) {
-            case NULL_VALUE -> null;
-            case STRING_VALUE -> value.getStringValue();
-            case BOOL_VALUE -> value.getBoolValue();
-            case NUMBER_VALUE -> value.getNumberValue();
-            case STRUCT_VALUE -> fromStruct(value.getStructValue());
-            case LIST_VALUE -> value.getListValue().getValuesList().stream()
-                .map(this::fromValue)
-                .toList();
-            case KIND_NOT_SET -> null;
+            case NULL_VALUE, KIND_NOT_SET -> Optional.empty();
+            case STRING_VALUE -> Optional.of(value.getStringValue());
+            case BOOL_VALUE -> Optional.of(value.getBoolValue());
+            case NUMBER_VALUE -> Optional.of(value.getNumberValue());
+            case STRUCT_VALUE -> Optional.of(fromStruct(value.getStructValue()));
+            case LIST_VALUE -> Optional.of(value.getListValue().getValuesList().stream()
+                .map(item -> fromValue(item).orElse(null))
+                .toList());
         };
     }
 
@@ -1274,7 +1277,7 @@ public class PineconeVectorDatabaseService implements VectorDatabaseService, Aut
             return Collections.emptyMap();
         }
         Map<String, Object> map = new LinkedHashMap<>();
-        struct.getFieldsMap().forEach((k, v) -> map.put(k, fromValue(v)));
+        struct.getFieldsMap().forEach((k, v) -> map.put(k, fromValue(v).orElse(null)));
         if (!map.containsKey("raw") && !map.isEmpty()) {
             map.put("raw", MetadataJsonSerializer.serialize(map));
         }
@@ -1297,8 +1300,8 @@ public class PineconeVectorDatabaseService implements VectorDatabaseService, Aut
 
         List<Double> embedding = extractEmbedding(vector, allMetadata);
 
-        LocalDateTime createdAt = readTimestamp(metadata, "_indexedCreatedAt");
-        LocalDateTime updatedAt = readTimestamp(metadata, "_indexedUpdatedAt");
+        LocalDateTime createdAt = readTimestamp(metadata, "_indexedCreatedAt").orElse(null);
+        LocalDateTime updatedAt = readTimestamp(metadata, "_indexedUpdatedAt").orElse(null);
 
         return VectorRecord.builder()
             .vectorId(vector.getId())
@@ -1312,18 +1315,18 @@ public class PineconeVectorDatabaseService implements VectorDatabaseService, Aut
             .build();
     }
 
-    private static LocalDateTime readTimestamp(Map<String, Object> metadata, String key) {
+    private static Optional<LocalDateTime> readTimestamp(Map<String, Object> metadata, String key) {
         if (metadata == null || key == null) {
-            return null;
+            return Optional.empty();
         }
         Object raw = metadata.get(key);
         if (raw == null) {
-            return null;
+            return Optional.empty();
         }
         try {
-            return LocalDateTime.parse(raw.toString());
+            return Optional.of(LocalDateTime.parse(raw.toString()));
         } catch (Exception ex) {
-            return null;
+            return Optional.empty();
         }
     }
 
@@ -1348,26 +1351,34 @@ public class PineconeVectorDatabaseService implements VectorDatabaseService, Aut
     }
 
     private static String encodeListTokenCursor(String token) {
+        return encodeListTokenCursorOptional(token).orElse(null);
+    }
+
+    private static Optional<String> encodeListTokenCursorOptional(String token) {
         if (!StringUtils.hasText(token)) {
-            return null;
+            return Optional.empty();
         }
         String raw = "token:" + token;
-        return Base64.getUrlEncoder().withoutPadding().encodeToString(raw.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        return Optional.of(Base64.getUrlEncoder().withoutPadding().encodeToString(raw.getBytes(java.nio.charset.StandardCharsets.UTF_8)));
     }
 
     private static String decodeListTokenCursor(String cursor) {
+        return decodeListTokenCursorOptional(cursor).orElse(null);
+    }
+
+    private static Optional<String> decodeListTokenCursorOptional(String cursor) {
         if (!StringUtils.hasText(cursor)) {
-            return null;
+            return Optional.empty();
         }
         try {
             String raw = new String(Base64.getUrlDecoder().decode(cursor), java.nio.charset.StandardCharsets.UTF_8);
             if (!raw.startsWith("token:")) {
-                return null;
+                return Optional.empty();
             }
             String token = raw.substring("token:".length());
-            return StringUtils.hasText(token) ? token : null;
+            return StringUtils.hasText(token) ? Optional.of(token) : Optional.empty();
         } catch (Exception ex) {
-            return null;
+            return Optional.empty();
         }
     }
 
@@ -1383,8 +1394,8 @@ public class PineconeVectorDatabaseService implements VectorDatabaseService, Aut
             .entityType(record.getEntityType())
             .entityId(record.getEntityId())
             .content(request.isIncludeContent() ? record.getContent() : null)
-            .embedding(request.isIncludeEmbedding() ? record.getEmbedding() : List.of())
-            .metadata(request.isIncludeMetadata() ? record.getMetadata() : Map.of())
+            .embedding(request.isIncludeEmbedding() ? record.getEmbedding() : null)
+            .metadata(request.isIncludeMetadata() ? record.getMetadata() : null)
             .createdAt(record.getCreatedAt())
             .updatedAt(record.getUpdatedAt())
             .similarityScore(record.getSimilarityScore())

@@ -63,6 +63,31 @@ class ProductComparisonServiceTest {
         assertThat(response.keyDifferences()).isNotEmpty();
     }
 
+    @Test
+    void compareProductsToleratesMissingPriceRatingAndStockSignals() {
+        ProductService productService = mock(ProductService.class);
+        ReviewRepository reviewRepository = mock(ReviewRepository.class);
+        ProductComparisonService service = new ProductComparisonService(productService, reviewRepository);
+
+        Product reference = product(1L, "SKU-0001", "Alpha Backpack", "Bags", "travel", "99.00", 0);
+        Product comparison = product(2L, "SKU-0002", "Beta Backpack", "Bags", "travel", "109.00", 0);
+        reference.setPrice(null);
+        comparison.setInStockQty(null);
+
+        when(productService.findBySku("sku-0001")).thenReturn(Optional.of(reference));
+        when(productService.findBySku("sku-0002")).thenReturn(Optional.of(comparison));
+        when(reviewRepository.findAll()).thenReturn(List.of());
+
+        var response = service.compareProducts("SKU-0001", "SKU-0002");
+
+        assertThat(response.highlights().comparisonPriceDelta()).isNull();
+        assertThat(response.highlights().cheaperSku()).isNull();
+        assertThat(response.highlights().higherRatedSku()).isNull();
+        assertThat(response.highlights().comparisonStockDelta()).isNull();
+        assertThat(response.highlights().betterStockedSku()).isNull();
+        assertThat(response.keyDifferences()).isNotEmpty();
+    }
+
     private Product product(Long id, String sku, String name, String category, String tags, String price, int stock) {
         Product product = new Product();
         product.setId(id);

@@ -11,4 +11,6 @@ import org.springframework.boot.autoconfigure.orm.jpa.HibernateJpaAutoConfigurat
 @AutoConfigureBefore({HibernateJpaAutoConfiguration.class, JpaRepositoriesAutoConfiguration.class})
 @AutoConfigurationPackage(basePackages = "ai.fabric.governance")
 @ConditionalOnProperty(prefix = "ai.governance", name = "enabled", havingValue = "true")
-public class AIGovernanceAutoConfigurationPackages {}
+public class AIGovernanceAutoConfigurationPackages {
+    public static final String BASE_PACKAGE = "ai.fabric.governance";
+}

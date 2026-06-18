@@ -19,6 +19,8 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class AIComplianceController {
 
+    private static final String UNKNOWN_VALUE = "unknown";
+
     private final AIComplianceService aiComplianceService;
 
     /**
@@ -27,7 +29,7 @@ public class AIComplianceController {
     @PostMapping("/check")
     public ResponseEntity<AIComplianceResponse> checkCompliance(
             @Valid @RequestBody AIComplianceRequest request) {
-        log.info("Checking compliance for request: {}", request.getRequestId());
+        log.info("Checking compliance for request: {}", resolveRequestId(request));
         
         try {
             AIComplianceResponse response = aiComplianceService.checkCompliance(request);
@@ -36,7 +38,7 @@ public class AIComplianceController {
             log.error("Error checking compliance", e);
             return ResponseEntity.internalServerError()
                 .body(AIComplianceResponse.builder()
-                    .requestId(request.getRequestId())
+                    .requestId(resolveRequestId(request))
                     .subjectId(resolveSubjectId(request))
                     .success(false)
                     .errorMessage(e.getMessage())
@@ -72,11 +74,24 @@ public class AIComplianceController {
 
     private String resolveSubjectId(AIComplianceRequest request) {
         if (request == null || request.getAuthContext() == null) {
-            return null;
+            return UNKNOWN_VALUE;
         }
-        if (request.getAuthContext().getSubjectId() != null && !request.getAuthContext().getSubjectId().isBlank()) {
-            return request.getAuthContext().getSubjectId();
+        if (hasText(request.getAuthContext().getSubjectId())) {
+            return request.getAuthContext().getSubjectId().trim();
         }
-        return request.getAuthContext().getSessionId();
+        if (hasText(request.getAuthContext().getSessionId())) {
+            return request.getAuthContext().getSessionId().trim();
+        }
+        return UNKNOWN_VALUE;
+    }
+
+    private String resolveRequestId(AIComplianceRequest request) {
+        return request != null && hasText(request.getRequestId())
+            ? request.getRequestId().trim()
+            : UNKNOWN_VALUE;
+    }
+
+    private boolean hasText(String value) {
+        return value != null && !value.isBlank();
     }
 }

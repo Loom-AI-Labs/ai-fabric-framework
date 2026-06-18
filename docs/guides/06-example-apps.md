@@ -7,7 +7,7 @@ code. They are the fastest way to see how the framework is used in practice.
 ## Run any example offline (no keys)
 
 Every example boots fully offline with the **`smoke`** profile — no API keys, no external services.
-The profile is provided by the shared `smoke-support` module (a no-op LLM provider, deterministic
+The profile is provided by the shared `smoke-support` module (a deterministic local LLM provider,
 in-process embeddings, an in-memory vector store, and H2).
 
 ```bash
@@ -35,7 +35,7 @@ configuration/keys instead.
 | **chat-capabilities-demo** | Conversation context + turn recording | chat-session, provider-openai | An LLM provider key |
 | **it-support-action-bot** | Action/tool execution (no vector DB) | actions-registry, provider | An LLM provider key |
 | **migration-enabled-product-catalog** | Bulk backfill indexing | migration, indexing, vector-lucene | None (H2 + local embeddings) |
-| **behavior-churn-signals** | Churn + sentiment insights | behavior | None (offline stub LLM) |
+| **behavior-churn-signals** | Churn + sentiment insights | behavior | None (offline local LLM) |
 | **ecommerce-store** | Domain API used as a base for AI demos | (domain only) | None |
 | **sub-management-hub** / **-simple** | AI-powered subscription management | rag, provider-cohere, vector-lucene | A Cohere key |
 

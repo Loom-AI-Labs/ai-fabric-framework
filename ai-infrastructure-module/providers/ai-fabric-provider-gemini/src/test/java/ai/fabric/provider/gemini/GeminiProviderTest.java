@@ -1,8 +1,12 @@
 package ai.fabric.provider.gemini;
 
+import ai.fabric.config.AIProviderConfig;
+import ai.fabric.dto.AIEmbeddingRequest;
+import ai.fabric.dto.AIEmbeddingResponse;
 import ai.fabric.dto.AIGenerationInputPart;
 import ai.fabric.dto.AIGenerationInputType;
 import ai.fabric.dto.AIGenerationRequest;
+import ai.fabric.exception.AIServiceException;
 import ai.fabric.http.HttpClient;
 import ai.fabric.provider.ProviderConfig;
 import org.junit.jupiter.api.Test;
@@ -18,8 +22,27 @@ import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class GeminiProviderTest {
+
+    @Test
+    void autoConfigurationAppliesReleaseDefaultsForApiKeyOnlyConfig() {
+        AIProviderConfig aiProviderConfig = new AIProviderConfig();
+        AIProviderConfig.GeminiConfig gemini = aiProviderConfig.getGemini();
+        gemini.setEnabled(true);
+        gemini.setApiKey("test-key");
+
+        ProviderConfig providerConfig = new GeminiAutoConfiguration().geminiProviderConfig(aiProviderConfig);
+
+        assertThat(providerConfig.isValid()).isTrue();
+        assertThat(providerConfig.getBaseUrl()).isEqualTo(GeminiAutoConfiguration.DEFAULT_BASE_URL);
+        assertThat(providerConfig.getDefaultModel()).isEqualTo(GeminiAutoConfiguration.DEFAULT_MODEL);
+        assertThat(providerConfig.getDefaultEmbeddingModel()).isEqualTo(GeminiAutoConfiguration.DEFAULT_EMBEDDING_MODEL);
+        assertThat(providerConfig.getMaxTokens()).isEqualTo(GeminiAutoConfiguration.DEFAULT_MAX_TOKENS);
+        assertThat(providerConfig.getTemperature()).isEqualTo(GeminiAutoConfiguration.DEFAULT_TEMPERATURE);
+        assertThat(providerConfig.getTimeoutSeconds()).isEqualTo(GeminiAutoConfiguration.DEFAULT_TIMEOUT_SECONDS);
+    }
 
     @Test
     void supportedFileUrlInputsAreFetchedTransientlyAndSentAsInlineData() {
@@ -79,6 +102,84 @@ class GeminiProviderTest {
         assertThat(response.getStatus()).isEqualTo("PROVIDER_FILE_URL_INPUT_UNSUPPORTED");
         assertThat(response.getContent()).contains("\"status\":\"NOT_USED\"");
         assertThat(response.getContent()).doesNotContain("sig=secret");
+        assertThat(provider.getStatus().getTotalRequests()).isEqualTo(1);
+        assertThat(provider.getStatus().getSuccessfulRequests()).isZero();
+        assertThat(provider.getStatus().getFailedRequests()).isEqualTo(1);
+    }
+
+    @Test
+    void malformedGenerateContentResponseFailsClearlyAndRecordsFailure() {
+        RecordingHttpClient httpClient = new RecordingHttpClient(List.of(ResponseEntity.ok(Map.of(
+            "candidates", List.of(Map.of("finishReason", "STOP"))
+        ))));
+        GeminiProvider provider = new GeminiProvider(config(), httpClient);
+
+        assertThatThrownBy(() -> provider.generateContent(AIGenerationRequest.builder()
+            .prompt("Hello")
+            .build()))
+            .isInstanceOf(AIServiceException.class)
+            .hasMessageContaining("Gemini response content was missing");
+
+        assertThat(provider.getStatus().getTotalRequests()).isEqualTo(1);
+        assertThat(provider.getStatus().getSuccessfulRequests()).isZero();
+        assertThat(provider.getStatus().getFailedRequests()).isEqualTo(1);
+    }
+
+    @Test
+    void generateEmbeddingConvertsNumericValuesAndRecordsSuccess() {
+        RecordingHttpClient httpClient = new RecordingHttpClient(List.of(embeddingSuccessResponse()));
+        GeminiProvider provider = new GeminiProvider(config(), httpClient);
+
+        AIEmbeddingResponse response = provider.generateEmbedding(AIEmbeddingRequest.builder()
+            .text("embed me")
+            .build());
+
+        assertThat(httpClient.urls()).containsExactly(
+            "https://generativelanguage.googleapis.com/v1beta/models/text-embedding-004:embedContent?key=test-key"
+        );
+        assertThat(response.getEmbedding()).containsExactly(1.0d, 2.5d, 3.0d);
+        assertThat(response.getDimensions()).isEqualTo(3);
+        assertThat(provider.getStatus().getTotalRequests()).isEqualTo(1);
+        assertThat(provider.getStatus().getSuccessfulRequests()).isEqualTo(1);
+        assertThat(provider.getStatus().getFailedRequests()).isZero();
+    }
+
+    @Test
+    void malformedEmbeddingResponseFailsClearlyAndRecordsFailure() {
+        RecordingHttpClient httpClient = new RecordingHttpClient(List.of(ResponseEntity.ok(Map.of(
+            "embedding", Map.of("values", List.of("not-a-number"))
+        ))));
+        GeminiProvider provider = new GeminiProvider(config(), httpClient);
+
+        assertThatThrownBy(() -> provider.generateEmbedding(AIEmbeddingRequest.builder()
+            .text("embed me")
+            .build()))
+            .isInstanceOf(AIServiceException.class)
+            .hasMessageContaining("contained non-numeric value");
+
+        assertThat(provider.getStatus().getTotalRequests()).isEqualTo(1);
+        assertThat(provider.getStatus().getSuccessfulRequests()).isZero();
+        assertThat(provider.getStatus().getFailedRequests()).isEqualTo(1);
+    }
+
+    @Test
+    void embeddingProviderUsesBatchEndpointForMultipleTexts() {
+        RecordingHttpClient httpClient = new RecordingHttpClient(List.of(batchEmbeddingSuccessResponse()));
+        GeminiEmbeddingProvider provider = new GeminiEmbeddingProvider(geminiAiProviderConfig(), httpClient);
+        provider.initialize();
+
+        List<AIEmbeddingResponse> responses = provider.generateEmbeddings(List.of("first text", "second text"));
+
+        assertThat(httpClient.urls()).containsExactly(
+            "https://generativelanguage.googleapis.com/v1beta/models/text-embedding-004:batchEmbedContents?key=test-key"
+        );
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> requests = (List<Map<String, Object>>) httpClient.providerRequestBody().get("requests");
+        assertThat(requests).hasSize(2);
+        assertThat(requests).allSatisfy(request -> assertThat(request).containsEntry("model", "models/text-embedding-004"));
+        assertThat(responses).hasSize(2);
+        assertThat(responses.get(0).getEmbedding()).containsExactly(1.0d, 2.0d);
+        assertThat(responses.get(1).getEmbedding()).containsExactly(3.0d, 4.0d);
     }
 
     private static ProviderConfig config() {
@@ -93,6 +194,16 @@ class GeminiProviderTest {
             .timeoutSeconds(30)
             .enabled(true)
             .build();
+    }
+
+    private static AIProviderConfig geminiAiProviderConfig() {
+        AIProviderConfig aiProviderConfig = new AIProviderConfig();
+        AIProviderConfig.GeminiConfig gemini = aiProviderConfig.getGemini();
+        gemini.setEnabled(true);
+        gemini.setApiKey("test-key");
+        gemini.setBaseUrl("https://generativelanguage.googleapis.com/v1beta");
+        gemini.setEmbeddingModel("text-embedding-004");
+        return aiProviderConfig;
     }
 
     private static ResponseEntity<byte[]> imageResponse() {
@@ -113,6 +224,21 @@ class GeminiProviderTest {
                 "promptTokenCount", 11,
                 "candidatesTokenCount", 6,
                 "totalTokenCount", 17
+            )
+        ));
+    }
+
+    private static ResponseEntity<Map> embeddingSuccessResponse() {
+        return ResponseEntity.ok(Map.of(
+            "embedding", Map.of("values", List.of(1, 2.5d, 3L))
+        ));
+    }
+
+    private static ResponseEntity<Map> batchEmbeddingSuccessResponse() {
+        return ResponseEntity.ok(Map.of(
+            "embeddings", List.of(
+                Map.of("values", List.of(1, 2)),
+                Map.of("values", List.of(3L, 4.0d))
             )
         ));
     }

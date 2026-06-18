@@ -236,29 +236,32 @@ public class ProductService {
 
         return response.getResults().stream()
             .map(this::extractEntityId)
-            .filter(Objects::nonNull)
-            .map(id -> {
-                try {
-                    return productRepository.findById(Long.parseLong(id)).orElse(null);
-                } catch (NumberFormatException ex) {
-                    return null;
-                }
-            })
-            .filter(Objects::nonNull)
+            .flatMap(Optional::stream)
+            .map(this::findProductByEntityId)
+            .flatMap(Optional::stream)
             .limit(effectiveLimit)
             .toList();
     }
 
-    private String extractEntityId(Map<String, Object> row) {
+    private Optional<String> extractEntityId(Map<String, Object> row) {
         if (row == null || row.isEmpty()) {
-            return null;
+            return Optional.empty();
         }
-        Object id = firstNonNull(row.get("entityId"), row.get("id"));
-        return id != null ? Objects.toString(id, null) : null;
+        return firstPresent(row.get("entityId"), row.get("id"))
+            .map(Objects::toString)
+            .filter(value -> !value.isBlank());
     }
 
-    private Object firstNonNull(Object first, Object second) {
-        return first != null ? first : second;
+    private Optional<Object> firstPresent(Object first, Object second) {
+        return Optional.ofNullable(first != null ? first : second);
+    }
+
+    private Optional<Product> findProductByEntityId(String id) {
+        try {
+            return productRepository.findById(Long.parseLong(id));
+        } catch (NumberFormatException ex) {
+            return Optional.empty();
+        }
     }
 
     private boolean equalsIgnoreCase(String left, String right) {
@@ -270,7 +273,7 @@ public class ProductService {
 
     private String normalizeQuery(String raw) {
         if (!StringUtils.hasText(raw)) {
-            return null;
+            return "";
         }
         return raw.trim().toLowerCase();
     }

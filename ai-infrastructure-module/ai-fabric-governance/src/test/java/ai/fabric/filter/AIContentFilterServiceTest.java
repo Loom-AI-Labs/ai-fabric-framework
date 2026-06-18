@@ -16,6 +16,8 @@ import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
 class AIContentFilterServiceTest {
 
     @Test
@@ -55,5 +57,52 @@ class AIContentFilterServiceTest {
         assertThat(response.getSubjectId()).isEqualTo("customer-7");
         assertThat(response.getSuccess()).isTrue();
         assertThat(response.getShouldFilter()).isFalse();
+    }
+
+    @Test
+    void filterContentTreatsNoneViolationCaseInsensitively() {
+        AICoreService aiCoreService = mock(AICoreService.class);
+        PromptTemplateResolver promptTemplateResolver = mock(PromptTemplateResolver.class);
+        PromptRenderer promptRenderer = mock(PromptRenderer.class);
+        PromptTemplate promptTemplate =
+            new PromptTemplate(new PromptTemplateKey("governance/content-filter", "v1", "analyze-violations"), "Analyze {{content}}");
+        when(promptTemplateResolver.resolve("governance/content-filter", "analyze-violations"))
+            .thenReturn(new ResolvedPromptTemplate(
+                promptTemplate,
+                List.of("v1")
+            ));
+        when(promptRenderer.render(promptTemplate, Map.of("content", "safe content")))
+            .thenReturn("Analyze safe content");
+        when(aiCoreService.generateText("Analyze safe content")).thenReturn(" none \n");
+
+        AIContentFilterService service = new AIContentFilterService(
+            aiCoreService,
+            promptTemplateResolver,
+            promptRenderer
+        );
+
+        AIContentFilterRequest request = AIContentFilterRequest.builder()
+            .requestId("filter-none")
+            .content("safe content")
+            .build();
+
+        var response = service.filterContent(request);
+
+        assertThat(response.getSuccess()).isTrue();
+        assertThat(response.getViolations()).isEmpty();
+        assertThat(response.getShouldFilter()).isFalse();
+    }
+
+    @Test
+    void filterContentRejectsNullRequest() {
+        AIContentFilterService service = new AIContentFilterService(
+            mock(AICoreService.class),
+            mock(PromptTemplateResolver.class),
+            mock(PromptRenderer.class)
+        );
+
+        assertThatThrownBy(() -> service.filterContent(null))
+            .isInstanceOf(NullPointerException.class)
+            .hasMessageContaining("content filter request");
     }
 }

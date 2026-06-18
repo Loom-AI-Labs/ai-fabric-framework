@@ -4,12 +4,16 @@ import ai.fabric.config.AIProviderConfig;
 import ai.fabric.dto.AISearchRequest;
 import ai.fabric.dto.AISearchResponse;
 import ai.fabric.dto.VectorRecord;
+import ai.fabric.dto.VectorScanPage;
+import ai.fabric.dto.VectorScanRequest;
 import com.google.protobuf.Struct;
 import com.google.protobuf.Value;
 import io.pinecone.clients.Index;
 import io.pinecone.configs.PineconeConnection;
 import io.pinecone.proto.DescribeIndexStatsResponse;
 import io.pinecone.proto.FetchResponse;
+import io.pinecone.proto.ListItem;
+import io.pinecone.proto.ListResponse;
 import io.pinecone.proto.QueryResponse;
 import io.pinecone.proto.ScoredVector;
 import io.pinecone.proto.UpsertRequest;
@@ -90,8 +94,8 @@ class PineconeVectorDatabaseServiceTest {
         when(index.describeIndexStats()).thenReturn(DescribeIndexStatsResponse.newBuilder().setDimension(0).build());
 
         PineconeConnection connection = mock(PineconeConnection.class);
-        VectorServiceGrpc.VectorServiceBlockingStub stub = mock(VectorServiceGrpc.VectorServiceBlockingStub.class);
-        when(connection.getBlockingStub()).thenReturn(stub);
+        VectorServiceGrpc.VectorServiceBlockingStub blockingClient = mock(VectorServiceGrpc.VectorServiceBlockingStub.class);
+        when(connection.getBlockingStub()).thenReturn(blockingClient);
 
         service = new PineconeVectorDatabaseService(new AIProviderConfig() {{
             AIProviderConfig.PineconeConfig pinecone = getPinecone();
@@ -112,7 +116,7 @@ class PineconeVectorDatabaseServiceTest {
         );
 
         ArgumentCaptor<UpsertRequest> requestCaptor = ArgumentCaptor.forClass(UpsertRequest.class);
-        verify(stub).upsert(requestCaptor.capture());
+        verify(blockingClient).upsert(requestCaptor.capture());
         UpsertRequest request = requestCaptor.getValue();
         assertEquals("product", request.getNamespace());
         assertEquals(1, request.getVectorsCount());
@@ -270,6 +274,74 @@ class PineconeVectorDatabaseServiceTest {
         Value inValue = piiCond.getStructValue().getFieldsOrThrow("$in");
         assertTrue(inValue.hasListValue());
         assertEquals("SSN", inValue.getListValue().getValues(0).getStringValue());
+    }
+
+    @Test
+    void searchNormalizesInvalidLimitAndThreshold() {
+        ScoredVector match = ScoredVector.newBuilder()
+            .setId("product::123")
+            .setScore(0.25f)
+            .setMetadata(Struct.newBuilder()
+                .putFields("entityType", Value.newBuilder().setStringValue("product").build())
+                .putFields("entityId", Value.newBuilder().setStringValue("123").build())
+                .build())
+            .build();
+        QueryResponse queryResponse = QueryResponse.newBuilder()
+            .addMatches(match)
+            .build();
+
+        when(index.queryByVector(eq(10), anyList(), eq("product"), nullable(Struct.class), eq(false), eq(true)))
+            .thenReturn(new QueryResponseWithUnsignedIndices(queryResponse));
+
+        AISearchResponse response = service.search(
+            List.of(0.2, 0.3, 0.4),
+            AISearchRequest.builder()
+                .query("luxury")
+                .entityType("product")
+                .limit(0)
+                .threshold(Double.NaN)
+                .build()
+        );
+
+        assertEquals(1, response.getTotalResults());
+        verify(index).queryByVector(eq(10), anyList(), eq("product"), nullable(Struct.class), eq(false), eq(true));
+    }
+
+    @Test
+    void scanProjectionOmitsExcludedFields() {
+        Struct metadata = Struct.newBuilder()
+            .putFields("entityType", Value.newBuilder().setStringValue("product").build())
+            .putFields("entityId", Value.newBuilder().setStringValue("123").build())
+            .putFields("content", Value.newBuilder().setStringValue("Luxury watch").build())
+            .putFields("category", Value.newBuilder().setStringValue("watches").build())
+            .build();
+        io.pinecone.proto.Vector vector = io.pinecone.proto.Vector.newBuilder()
+            .setId("product::123")
+            .addAllValues(List.of(0.1f, 0.3f, 0.5f))
+            .setMetadata(metadata)
+            .build();
+
+        when(index.list(eq("product"), eq(1))).thenReturn(ListResponse.newBuilder()
+            .addVectors(ListItem.newBuilder().setId("product::123").build())
+            .build());
+        when(index.fetch(eq(List.of("product::123")), eq("product"))).thenReturn(FetchResponse.newBuilder()
+            .putVectors("product::123", vector)
+            .build());
+
+        VectorScanPage page = service.scan(VectorScanRequest.builder()
+            .entityType("product")
+            .limit(1)
+            .includeContent(false)
+            .includeEmbedding(false)
+            .includeMetadata(false)
+            .build());
+
+        assertThat(page.getVectors()).hasSize(1);
+        VectorRecord record = page.getVectors().get(0);
+        assertThat(record.getEntityId()).isEqualTo("123");
+        assertThat(record.getContent()).isNull();
+        assertThat(record.getEmbedding()).isNull();
+        assertThat(record.getMetadata()).isNull();
     }
 
     @Test

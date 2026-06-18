@@ -28,6 +28,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.regex.PatternSyntaxException;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -93,7 +94,7 @@ public class DefaultPIIDetectionService implements PIIDetectionService {
             Map.of(
                 "patternsEvaluated", detectionPatterns.size(),
                 "auditLoggingEnabled", properties.isAuditLoggingEnabled(),
-                "piiSensitiveFieldsConfigured", properties.getSensitiveFields()
+                "piiSensitiveFieldsConfigured", configuredSensitiveFields()
             )
         );
         result.setEncryptedOriginalQuery(originalPayloadRecord);
@@ -229,7 +230,7 @@ public class DefaultPIIDetectionService implements PIIDetectionService {
 
         for (DetectionMatch match : matches) {
             sanitized.append(original, cursor, match.startIndex());
-            sanitized.append(match.maskedValue());
+            sanitized.append(maskValue(match.maskedValue()));
             cursor = match.endIndex();
         }
         sanitized.append(original.substring(cursor));
@@ -298,24 +299,54 @@ public class DefaultPIIDetectionService implements PIIDetectionService {
 
     private List<DetectionPattern> buildPatterns(PIIDetectionProperties properties) {
         Map<String, PIIDetectionProperties.PatternConfig> configured = new LinkedHashMap<>();
-
-        configured.putAll(properties.getPatterns());
+        if (properties.getPatterns() != null) {
+            configured.putAll(properties.getPatterns());
+        }
 
         return configured.entrySet().stream()
             .filter(entry -> entry.getValue() != null && entry.getValue().isEnabled())
-            .map(entry -> new DetectionPattern(
-                entry.getKey().toUpperCase(Locale.ROOT),
-                compilePattern(entry.getValue().getRegex()),
-                entry.getValue().getFieldName(),
-                entry.getValue().getReplacement(),
-                entry.getValue().getConfidence(),
-                entry.getValue().getContextNote()
-            ))
+            .map(entry -> toDetectionPattern(entry.getKey(), entry.getValue()))
             .collect(Collectors.toUnmodifiableList());
     }
 
-    private Pattern compilePattern(String regex) {
-        return Pattern.compile(regex, Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
+    private DetectionPattern toDetectionPattern(String name, PIIDetectionProperties.PatternConfig config) {
+        String type = StringUtils.hasText(name) ? name.toUpperCase(Locale.ROOT) : "CUSTOM";
+        String regex = config.getRegex();
+        if (!StringUtils.hasText(regex)) {
+            throw new IllegalArgumentException("PII detection pattern '" + type + "' must define a non-blank regex");
+        }
+
+        return new DetectionPattern(
+            type,
+            compilePattern(type, regex),
+            config.getFieldName(),
+            maskValue(config.getReplacement()),
+            normalizeConfidence(config.getConfidence()),
+            config.getContextNote()
+        );
+    }
+
+    private Pattern compilePattern(String type, String regex) {
+        try {
+            return Pattern.compile(regex, Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
+        } catch (PatternSyntaxException ex) {
+            throw new IllegalArgumentException("Invalid PII detection regex for pattern '" + type + "'", ex);
+        }
+    }
+
+    private String maskValue(String replacement) {
+        return replacement != null ? replacement : "***";
+    }
+
+    private double normalizeConfidence(double confidence) {
+        if (Double.isNaN(confidence) || Double.isInfinite(confidence)) {
+            return 1.0d;
+        }
+        return Math.max(0.0d, Math.min(1.0d, confidence));
+    }
+
+    private List<String> configuredSensitiveFields() {
+        return properties.getSensitiveFields() != null ? properties.getSensitiveFields() : List.of();
     }
 
     private record DetectionPattern(
@@ -365,4 +396,3 @@ public class DefaultPIIDetectionService implements PIIDetectionService {
 
     private record EncryptionPayload(String encrypted, String salt) { }
 }
-

@@ -210,7 +210,7 @@ Quickstart (from `ai-infrastructure-module/ai-infrastructure-relay`):
 What the Compose quickstart includes:
 - `relay` (apiKey auth enabled, Redis store enabled, dispatcher routing)
 - `redis` (for HA-safe stores)
-- `internal-dispatcher` (WireMock stub for local end-to-end testing)
+- `internal-dispatcher` (WireMock simulator for local end-to-end testing)
 
 Try it (api key is `dev-relay-key` in the quickstart):
 

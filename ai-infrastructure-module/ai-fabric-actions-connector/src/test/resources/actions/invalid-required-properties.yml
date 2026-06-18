@@ -1,0 +1,14 @@
+actions:
+  - name: broken_required_properties
+    description: "Invalid object schema"
+    accessMode: READ
+    params:
+      - name: item
+        type: OBJECT
+        requiredProperties:
+          - sku
+          - missing
+        properties:
+          sku:
+            type: STRING
+            required: true

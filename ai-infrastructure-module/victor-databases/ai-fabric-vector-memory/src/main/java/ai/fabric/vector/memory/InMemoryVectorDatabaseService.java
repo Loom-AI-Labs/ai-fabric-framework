@@ -101,6 +101,9 @@ public class InMemoryVectorDatabaseService implements VectorDatabaseService {
                               List<Double> embedding, Map<String, Object> metadata) {
         try {
             log.debug("Updating vector in memory with vectorId {}", vectorId);
+            if (isBlank(vectorId)) {
+                return false;
+            }
             
             VectorRecord existingRecord = vectorStore.get(vectorId);
             if (existingRecord == null) {
@@ -141,6 +144,9 @@ public class InMemoryVectorDatabaseService implements VectorDatabaseService {
     public Optional<VectorRecord> getVector(String vectorId) {
         try {
             log.debug("Getting vector from memory with vectorId {}", vectorId);
+            if (isBlank(vectorId)) {
+                return Optional.empty();
+            }
             return Optional.ofNullable(vectorStore.get(vectorId)).map(this::copyRecord);
         } catch (Exception e) {
             log.error("Error getting vector from memory", e);
@@ -200,7 +206,7 @@ public class InMemoryVectorDatabaseService implements VectorDatabaseService {
                 entityType,
                 null,
                 normalizeLimit(limit),
-                threshold,
+                normalizeThreshold(threshold),
                 false
             );
             long processingTime = System.currentTimeMillis() - startTime;
@@ -241,6 +247,9 @@ public class InMemoryVectorDatabaseService implements VectorDatabaseService {
     public boolean removeVectorById(String vectorId) {
         try {
             log.debug("Removing vector from memory with vectorId {}", vectorId);
+            if (isBlank(vectorId)) {
+                return false;
+            }
             
             VectorRecord removed = vectorStore.remove(vectorId);
             if (removed != null) {
@@ -260,10 +269,11 @@ public class InMemoryVectorDatabaseService implements VectorDatabaseService {
     @Override
     public List<String> batchStoreVectors(List<VectorRecord> vectors) {
         try {
-            log.debug("Batch storing {} vectors in memory", vectors.size());
+            List<VectorRecord> safeVectors = safeVectors(vectors);
+            log.debug("Batch storing {} vectors in memory", safeVectors.size());
             
             List<String> vectorIds = new ArrayList<>();
-            for (VectorRecord vector : vectors) {
+            for (VectorRecord vector : safeVectors) {
                 String vectorId = storeVector(
                     vector.getEntityType(),
                     vector.getEntityId(),
@@ -274,7 +284,7 @@ public class InMemoryVectorDatabaseService implements VectorDatabaseService {
                 vectorIds.add(vectorId);
             }
             
-            log.debug("Successfully batch stored {} vectors in memory", vectors.size());
+            log.debug("Successfully batch stored {} vectors in memory", vectorIds.size());
             return vectorIds;
             
         } catch (Exception e) {
@@ -286,10 +296,14 @@ public class InMemoryVectorDatabaseService implements VectorDatabaseService {
     @Override
     public int batchUpdateVectors(List<VectorRecord> vectors) {
         try {
-            log.debug("Batch updating {} vectors in memory", vectors.size());
+            List<VectorRecord> safeVectors = safeVectors(vectors);
+            log.debug("Batch updating {} vectors in memory", safeVectors.size());
             
             int updatedCount = 0;
-            for (VectorRecord vector : vectors) {
+            for (VectorRecord vector : safeVectors) {
+                if (isBlank(vector.getVectorId())) {
+                    continue;
+                }
                 if (updateVector(
                     vector.getVectorId(),
                     vector.getEntityType(),
@@ -314,10 +328,11 @@ public class InMemoryVectorDatabaseService implements VectorDatabaseService {
     @Override
     public int batchRemoveVectors(List<String> vectorIds) {
         try {
-            log.debug("Batch removing {} vectors from memory", vectorIds.size());
+            List<String> safeVectorIds = safeVectorIds(vectorIds);
+            log.debug("Batch removing {} vectors from memory", safeVectorIds.size());
             
             int removedCount = 0;
-            for (String vectorId : vectorIds) {
+            for (String vectorId : safeVectorIds) {
                 if (removeVectorById(vectorId)) {
                     removedCount++;
                 }
@@ -461,8 +476,13 @@ public class InMemoryVectorDatabaseService implements VectorDatabaseService {
         double normB = 0.0;
         
         for (int i = 0; i < vectorA.size(); i++) {
-            double a = vectorA.get(i);
-            double b = vectorB.get(i);
+            Double aValue = vectorA.get(i);
+            Double bValue = vectorB.get(i);
+            if (!isFinite(aValue) || !isFinite(bValue)) {
+                return 0.0;
+            }
+            double a = aValue;
+            double b = bValue;
             dotProduct += a * b;
             normA += a * a;
             normB += b * b;
@@ -526,7 +546,9 @@ public class InMemoryVectorDatabaseService implements VectorDatabaseService {
         return queryVector != null
             && recordEmbedding != null
             && !queryVector.isEmpty()
-            && queryVector.size() == recordEmbedding.size();
+            && queryVector.size() == recordEmbedding.size()
+            && hasFiniteValues(queryVector)
+            && hasFiniteValues(recordEmbedding);
     }
 
     private int normalizeLimit(Integer limit) {
@@ -534,7 +556,40 @@ public class InMemoryVectorDatabaseService implements VectorDatabaseService {
     }
 
     private double normalizeThreshold(Double threshold) {
-        return threshold != null ? threshold : 0.7;
+        if (threshold == null || !Double.isFinite(threshold)) {
+            return 0.7d;
+        }
+        return Math.max(0.0d, Math.min(1.0d, threshold));
+    }
+
+    private List<VectorRecord> safeVectors(List<VectorRecord> vectors) {
+        if (vectors == null || vectors.isEmpty()) {
+            return Collections.emptyList();
+        }
+        return vectors.stream()
+            .filter(Objects::nonNull)
+            .collect(Collectors.toList());
+    }
+
+    private List<String> safeVectorIds(List<String> vectorIds) {
+        if (vectorIds == null || vectorIds.isEmpty()) {
+            return Collections.emptyList();
+        }
+        return vectorIds.stream()
+            .filter(vectorId -> !isBlank(vectorId))
+            .collect(Collectors.toList());
+    }
+
+    private boolean hasFiniteValues(List<Double> vector) {
+        return vector.stream().allMatch(this::isFinite);
+    }
+
+    private boolean isFinite(Double value) {
+        return value != null && Double.isFinite(value);
+    }
+
+    private boolean isBlank(String value) {
+        return value == null || value.isBlank();
     }
 
     private Map<String, Object> normalizeMetadata(Map<String, Object> metadata) {

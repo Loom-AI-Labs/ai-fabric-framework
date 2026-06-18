@@ -4,6 +4,7 @@ import ai.fabric.governance.catalog.IndexCatalog;
 import ai.fabric.governance.catalog.IndexCatalogEntry;
 import ai.fabric.governance.catalog.IndexCatalogScanPage;
 import ai.fabric.governance.catalog.IndexCatalogScanRequest;
+import ai.fabric.governance.catalog.disabled.DisabledIndexCatalog;
 import ai.fabric.governance.config.AIGovernanceProperties;
 import ai.fabric.rag.VectorDatabaseService;
 import ai.fabric.retention.policy.RetentionPolicyProvider;
@@ -92,16 +93,31 @@ class RetentionCleanupSchedulerTest {
         assertThat(requestCaptor.getValue().getLimit()).isEqualTo(50);
     }
 
+    @Test
+    void skipsCleanupWhenCatalogIsDisabled() {
+        RetentionCleanupScheduler disabledCatalogScheduler = new RetentionCleanupScheduler(
+            properties,
+            new DisabledIndexCatalog(),
+            vectorDatabaseService,
+            emptyProvider(),
+            clock
+        );
+
+        disabledCatalogScheduler.cleanupByRetentionPolicy();
+
+        verifyNoInteractions(vectorDatabaseService);
+    }
+
     private static ObjectProvider<RetentionPolicyProvider> emptyProvider() {
         return new ObjectProvider<>() {
             @Override
             public RetentionPolicyProvider getObject(Object... args) {
-                throw new UnsupportedOperationException();
+                return null;
             }
 
             @Override
             public RetentionPolicyProvider getObject() {
-                throw new UnsupportedOperationException();
+                return null;
             }
 
             @Override
@@ -136,4 +152,3 @@ class RetentionCleanupSchedulerTest {
         };
     }
 }
-

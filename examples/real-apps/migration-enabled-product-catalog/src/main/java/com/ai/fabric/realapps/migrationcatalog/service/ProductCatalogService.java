@@ -16,6 +16,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Random;
 
 @Service
@@ -69,15 +70,9 @@ public class ProductCatalogService {
 
         return response.getResults().stream()
             .map(this::extractEntityId)
-            .filter(Objects::nonNull)
-            .map(id -> {
-                try {
-                    return productRepository.findById(Long.parseLong(id)).orElse(null);
-                } catch (NumberFormatException ex) {
-                    return null;
-                }
-            })
-            .filter(Objects::nonNull)
+            .flatMap(Optional::stream)
+            .map(this::findProductByEntityId)
+            .flatMap(Optional::stream)
             .limit(limit)
             .toList();
     }
@@ -108,15 +103,25 @@ public class ProductCatalogService {
         return product;
     }
 
-    private String extractEntityId(Map<String, Object> row) {
+    private Optional<String> extractEntityId(Map<String, Object> row) {
         if (row == null || row.isEmpty()) {
-            return null;
+            return Optional.empty();
         }
-        Object id = firstNonNull(row.get("entityId"), row.get("id"));
-        return id != null ? Objects.toString(id, null) : null;
+        return firstPresent(row.get("entityId"), row.get("id"))
+            .map(Objects::toString)
+            .filter(value -> !value.isBlank());
     }
 
-    private Object firstNonNull(Object first, Object second) {
-        return first != null ? first : second;
+    private Optional<Object> firstPresent(Object first, Object second) {
+        return Optional.ofNullable(first != null ? first : second);
+    }
+
+    private Optional<Product> findProductByEntityId(String id) {
+        try {
+            return productRepository.findById(Long.parseLong(id));
+        } catch (NumberFormatException ex) {
+            log.debug("Unable to parse product entityId '{}' as Long", id);
+            return Optional.empty();
+        }
     }
 }

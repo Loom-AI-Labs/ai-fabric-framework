@@ -20,6 +20,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
 
 @RestController
@@ -61,21 +62,14 @@ public class PlanAiSearchController {
         List<Map<String, Object>> matches = new ArrayList<>();
         if (response != null && response.getResults() != null) {
             for (Map<String, Object> row : response.getResults()) {
-                String entityId = extractEntityId(row);
-                SubscriptionPlan plan = null;
-                if (entityId != null) {
-                    try {
-                        plan = planRepository.findById(UUID.fromString(entityId)).orElse(null);
-                    } catch (IllegalArgumentException ex) {
-                        log.debug("Unable to parse plan entityId '{}' as UUID", entityId);
-                    }
-                }
+                Optional<String> entityId = extractEntityId(row);
+                Optional<SubscriptionPlan> plan = entityId.flatMap(this::findPlan);
 
                 Map<String, Object> match = new LinkedHashMap<>();
-                match.put("entityId", entityId);
+                match.put("entityId", entityId.orElse(null));
                 match.put("score", row != null ? row.get("score") : null);
                 match.put("vectorId", row != null ? row.get("vectorId") : null);
-                match.put("plan", plan);
+                match.put("plan", plan.orElse(null));
                 matches.add(match);
             }
         }
@@ -89,14 +83,25 @@ public class PlanAiSearchController {
         return ResponseEntity.ok(result);
     }
 
-    private String extractEntityId(Map<String, Object> row) {
+    private Optional<SubscriptionPlan> findPlan(String entityId) {
+        try {
+            return planRepository.findById(UUID.fromString(entityId));
+        } catch (IllegalArgumentException ex) {
+            log.debug("Unable to parse plan entityId '{}' as UUID", entityId);
+            return Optional.empty();
+        }
+    }
+
+    private Optional<String> extractEntityId(Map<String, Object> row) {
         if (row == null || row.isEmpty()) {
-            return null;
+            return Optional.empty();
         }
         Object id = row.get("entityId");
         if (id == null) {
             id = row.get("id");
         }
-        return id != null ? Objects.toString(id, null) : null;
+        return Optional.ofNullable(id)
+            .map(Objects::toString)
+            .filter(value -> !value.isBlank());
     }
 }

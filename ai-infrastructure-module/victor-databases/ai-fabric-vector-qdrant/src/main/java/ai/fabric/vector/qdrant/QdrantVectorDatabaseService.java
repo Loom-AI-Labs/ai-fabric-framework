@@ -54,6 +54,8 @@ public class QdrantVectorDatabaseService implements VectorDatabaseService, AutoC
     private static final String KNOWLEDGE_SOURCE_HANDLE_REF_FIELD = "knowledgeSourceHandleRef";
     private static final Set<String> RESERVED_PAYLOAD_FIELDS = Set.of("entityType", "entityId", "content", EMBEDDING_PAYLOAD_FIELD);
     private static final List<String> REQUIRED_KEYWORD_PAYLOAD_INDEX_FIELDS = List.of(KNOWLEDGE_SOURCE_HANDLE_REF_FIELD);
+    private static final int DEFAULT_SEARCH_LIMIT = 10;
+    private static final int MAX_SEARCH_LIMIT = 100;
 
     private final AIProviderConfig.QdrantConfig config;
     private final VectorDatabaseConfig vectorDatabaseConfig;
@@ -68,7 +70,7 @@ public class QdrantVectorDatabaseService implements VectorDatabaseService, AutoC
     }
 
     public QdrantVectorDatabaseService(AIProviderConfig providerConfig, VectorDatabaseConfig vectorDatabaseConfig) {
-        this(providerConfig, vectorDatabaseConfig, createClientIfGrpcPreferred(providerConfig));
+        this(providerConfig, vectorDatabaseConfig, createClientIfGrpcPreferred(providerConfig).orElse(null));
     }
 
     QdrantVectorDatabaseService(AIProviderConfig providerConfig,
@@ -276,8 +278,8 @@ public class QdrantVectorDatabaseService implements VectorDatabaseService, AutoC
         }
 
         String entityType = request.getEntityType();
-        int limit = Optional.ofNullable(request.getLimit()).orElse(10);
-        double threshold = Optional.ofNullable(request.getThreshold()).orElse(0.0);
+        int limit = normalizeSearchLimit(request.getLimit());
+        double threshold = normalizeScoreThreshold(request.getThreshold());
 
         List<String> collections = resolveSearchCollections(entityType);
         if (collections.isEmpty()) {
@@ -294,7 +296,7 @@ public class QdrantVectorDatabaseService implements VectorDatabaseService, AutoC
         List<VectorRecord> allResults = new ArrayList<>();
         for (String collection : collections) {
             ensureCollection(collection, queryVector.size());
-            Common.Filter filter = buildMetadataFilter(request.getMetadata());
+            Optional<Common.Filter> filter = buildMetadataFilter(request.getMetadata());
 
             Points.SearchPoints.Builder searchBuilder = Points.SearchPoints.newBuilder()
                 .setCollectionName(collection)
@@ -303,15 +305,13 @@ public class QdrantVectorDatabaseService implements VectorDatabaseService, AutoC
                 .setWithPayload(WithPayloadSelectorFactory.enable(true))
                 .setWithVectors(WithVectorsSelectorFactory.enable(true));
 
-            if (filter != null) {
-                searchBuilder.setFilter(filter);
-            }
+            filter.ifPresent(searchBuilder::setFilter);
 
             List<Points.ScoredPoint> scored;
             try {
                 scored = await(qdrantClient.searchAsync(searchBuilder.build()), "search points");
             } catch (AIServiceException ex) {
-                if (filter == null || !isMissingPayloadIndexFailure(ex)) {
+                if (filter.isEmpty() || !isMissingPayloadIndexFailure(ex)) {
                     throw ex;
                 }
                 log.warn(
@@ -431,6 +431,9 @@ public class QdrantVectorDatabaseService implements VectorDatabaseService, AutoC
 
         List<String> ids = new ArrayList<>(vectors.size());
         for (VectorRecord record : vectors) {
+            if (record == null) {
+                continue;
+            }
             ids.add(storeVector(record.getEntityType(), record.getEntityId(), record.getContent(),
                 record.getEmbedding(), record.getMetadata()));
         }
@@ -444,7 +447,7 @@ public class QdrantVectorDatabaseService implements VectorDatabaseService, AutoC
         }
         int updated = 0;
         for (VectorRecord record : vectors) {
-            if (record.getVectorId() == null) {
+            if (record == null || record.getVectorId() == null || record.getVectorId().isBlank()) {
                 continue;
             }
             if (updateVector(record.getVectorId(), record.getEntityType(), record.getEntityId(), record.getContent(),
@@ -495,20 +498,15 @@ public class QdrantVectorDatabaseService implements VectorDatabaseService, AutoC
 
         int limit = request.getLimit() != null && request.getLimit() > 0 ? request.getLimit() : 200;
         int pageSize = limit + 1;
-        Common.PointId offset = decodeScrollCursor(request.getCursor());
+        Optional<Common.PointId> offset = decodeScrollCursor(request.getCursor());
 
         Points.ScrollPoints.Builder builder = Points.ScrollPoints.newBuilder()
             .setCollectionName(collection)
             .setLimit(pageSize);
 
-        if (offset != null) {
-            builder.setOffset(offset);
-        }
+        offset.ifPresent(builder::setOffset);
 
-        Common.Filter filter = buildMetadataFilter(request.getMetadataEquals());
-        if (filter != null) {
-            builder.setFilter(filter);
-        }
+        buildMetadataFilter(request.getMetadataEquals()).ifPresent(builder::setFilter);
 
         builder.setWithVectors(WithVectorsSelectorFactory.enable(request.isIncludeEmbedding()));
 
@@ -552,7 +550,7 @@ public class QdrantVectorDatabaseService implements VectorDatabaseService, AutoC
             .toList();
 
         String nextCursor = response.hasNextPageOffset()
-            ? encodeScrollCursor(response.getNextPageOffset())
+            ? encodeScrollCursor(response.getNextPageOffset()).orElse(null)
             : null;
 
         return VectorScanPage.builder()
@@ -854,13 +852,13 @@ public class QdrantVectorDatabaseService implements VectorDatabaseService, AutoC
         return UUID.nameUUIDFromBytes(key.getBytes(StandardCharsets.UTF_8)).toString();
     }
 
-    private static QdrantClient createClientIfGrpcPreferred(AIProviderConfig providerConfig) {
+    private static Optional<QdrantClient> createClientIfGrpcPreferred(AIProviderConfig providerConfig) {
         AIProviderConfig.QdrantConfig qdrantConfig =
             Objects.requireNonNull(providerConfig.getQdrant(), "Qdrant configuration must be present");
         if (!Boolean.TRUE.equals(qdrantConfig.getPreferGrpc())) {
-            return null;
+            return Optional.empty();
         }
-        return new QdrantClient(buildGrpcClient(qdrantConfig));
+        return Optional.of(new QdrantClient(buildGrpcClient(qdrantConfig)));
     }
 
     private UUID parseVectorUuid(String vectorId) {
@@ -921,25 +919,29 @@ public class QdrantVectorDatabaseService implements VectorDatabaseService, AutoC
         return ValueFactory.value(obj.toString());
     }
 
-    private Object fromValue(JsonWithInt.Value value) {
+    private Object fromValueOrNull(JsonWithInt.Value value) {
+        return fromValue(value).orElse(null);
+    }
+
+    private Optional<Object> fromValue(JsonWithInt.Value value) {
         if (value == null) {
-            return null;
+            return Optional.empty();
         }
         return switch (value.getKindCase()) {
-            case NULL_VALUE -> null;
-            case STRING_VALUE -> value.getStringValue();
-            case BOOL_VALUE -> value.getBoolValue();
-            case INTEGER_VALUE -> value.getIntegerValue();
-            case DOUBLE_VALUE -> value.getDoubleValue();
+            case NULL_VALUE -> Optional.empty();
+            case STRING_VALUE -> Optional.of((Object) value.getStringValue());
+            case BOOL_VALUE -> Optional.of(value.getBoolValue());
+            case INTEGER_VALUE -> Optional.of(value.getIntegerValue());
+            case DOUBLE_VALUE -> Optional.of(value.getDoubleValue());
             case STRUCT_VALUE -> {
                 Map<String, Object> map = new LinkedHashMap<>();
-                value.getStructValue().getFieldsMap().forEach((k, v) -> map.put(k, fromValue(v)));
-                yield map;
+                value.getStructValue().getFieldsMap().forEach((k, v) -> map.put(k, fromValueOrNull(v)));
+                yield Optional.of(map);
             }
-            case LIST_VALUE -> value.getListValue().getValuesList().stream()
-                .map(this::fromValue)
-                .toList();
-            case KIND_NOT_SET -> null;
+            case LIST_VALUE -> Optional.of(value.getListValue().getValuesList().stream()
+                .map(this::fromValueOrNull)
+                .toList());
+            case KIND_NOT_SET -> Optional.empty();
         };
     }
 
@@ -975,7 +977,7 @@ public class QdrantVectorDatabaseService implements VectorDatabaseService, AutoC
         Map<String, Object> metadata = new LinkedHashMap<>();
         payload.forEach((key, value) -> {
             if (!RESERVED_PAYLOAD_FIELDS.contains(key)) {
-                metadata.put(key, fromValue(value));
+                metadata.put(key, fromValueOrNull(value));
             }
         });
 
@@ -990,8 +992,8 @@ public class QdrantVectorDatabaseService implements VectorDatabaseService, AutoC
             .content(content)
             .embedding(embedding)
             .metadata(metadata)
-            .createdAt(readTimestamp(metadata, "_indexedCreatedAt"))
-            .updatedAt(readTimestamp(metadata, "_indexedUpdatedAt"))
+            .createdAt(readTimestamp(metadata, "_indexedCreatedAt").orElse(null))
+            .updatedAt(readTimestamp(metadata, "_indexedUpdatedAt").orElse(null))
             .similarityScore(scoreOverride)
             .build();
     }
@@ -1036,9 +1038,9 @@ public class QdrantVectorDatabaseService implements VectorDatabaseService, AutoC
             .build();
     }
 
-    private static String encodeScrollCursor(Common.PointId offset) {
+    private static Optional<String> encodeScrollCursor(Common.PointId offset) {
         if (offset == null) {
-            return null;
+            return Optional.empty();
         }
         String raw;
         if (offset.hasUuid()) {
@@ -1046,49 +1048,49 @@ public class QdrantVectorDatabaseService implements VectorDatabaseService, AutoC
         } else if (offset.hasNum()) {
             raw = "offsetNum:" + offset.getNum();
         } else {
-            return null;
+            return Optional.empty();
         }
-        return Base64.getUrlEncoder().withoutPadding().encodeToString(raw.getBytes(StandardCharsets.UTF_8));
+        return Optional.of(Base64.getUrlEncoder().withoutPadding().encodeToString(raw.getBytes(StandardCharsets.UTF_8)));
     }
 
-    private static Common.PointId decodeScrollCursor(String cursor) {
+    private static Optional<Common.PointId> decodeScrollCursor(String cursor) {
         if (cursor == null || cursor.isBlank()) {
-            return null;
+            return Optional.empty();
         }
         try {
             String raw = new String(Base64.getUrlDecoder().decode(cursor), StandardCharsets.UTF_8);
             if (raw.startsWith("offsetUuid:")) {
                 UUID uuid = UUID.fromString(raw.substring("offsetUuid:".length()));
-                return PointIdFactory.id(uuid);
+                return Optional.of(PointIdFactory.id(uuid));
             }
             if (raw.startsWith("offsetNum:")) {
                 long num = Long.parseLong(raw.substring("offsetNum:".length()));
-                return PointIdFactory.id(num);
+                return Optional.of(PointIdFactory.id(num));
             }
-            return null;
+            return Optional.empty();
         } catch (Exception ex) {
-            return null;
+            return Optional.empty();
         }
     }
 
-    private static LocalDateTime readTimestamp(Map<String, Object> metadata, String key) {
+    private static Optional<LocalDateTime> readTimestamp(Map<String, Object> metadata, String key) {
         if (metadata == null || key == null) {
-            return null;
+            return Optional.empty();
         }
         Object raw = metadata.get(key);
         if (raw == null) {
-            return null;
+            return Optional.empty();
         }
         try {
-            return LocalDateTime.parse(raw.toString());
+            return Optional.of(LocalDateTime.parse(raw.toString()));
         } catch (Exception ex) {
-            return null;
+            return Optional.empty();
         }
     }
 
     private List<Double> parseEmbeddingValue(JsonWithInt.Value value) {
         if (value == null || value.getKindCase() != JsonWithInt.Value.KindCase.LIST_VALUE) {
-            return null;
+            return Collections.emptyList();
         }
 
         List<Double> embedding = new ArrayList<>(value.getListValue().getValuesCount());
@@ -1124,9 +1126,9 @@ public class QdrantVectorDatabaseService implements VectorDatabaseService, AutoC
         return toVectorRecord(entityType, converted, score);
     }
 
-    private Common.Filter buildMetadataFilter(Map<String, Object> metadata) {
+    private Optional<Common.Filter> buildMetadataFilter(Map<String, Object> metadata) {
         if (metadata == null || metadata.isEmpty()) {
-            return null;
+            return Optional.empty();
         }
 
         List<Common.Condition> conditions = new ArrayList<>();
@@ -1146,10 +1148,10 @@ public class QdrantVectorDatabaseService implements VectorDatabaseService, AutoC
         });
 
         if (conditions.isEmpty()) {
-            return null;
+            return Optional.empty();
         }
 
-        return Common.Filter.newBuilder().addAllMust(conditions).build();
+        return Optional.of(Common.Filter.newBuilder().addAllMust(conditions).build());
     }
 
     private List<String> resolveSearchCollections(String entityType) {
@@ -1191,6 +1193,21 @@ public class QdrantVectorDatabaseService implements VectorDatabaseService, AutoC
             return entityType;
         }
         return normalizedPrefix + entityType;
+    }
+
+    static int normalizeSearchLimit(Integer limit) {
+        int resolved = limit != null ? limit : DEFAULT_SEARCH_LIMIT;
+        if (resolved <= 0) {
+            return DEFAULT_SEARCH_LIMIT;
+        }
+        return Math.min(resolved, MAX_SEARCH_LIMIT);
+    }
+
+    static double normalizeScoreThreshold(Double threshold) {
+        if (threshold == null || !Double.isFinite(threshold)) {
+            return 0.0d;
+        }
+        return Math.max(0.0d, Math.min(1.0d, threshold));
     }
 
     private boolean isScopedCollection(String collection) {

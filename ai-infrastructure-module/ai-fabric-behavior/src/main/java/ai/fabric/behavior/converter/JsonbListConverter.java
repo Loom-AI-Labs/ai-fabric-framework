@@ -7,6 +7,7 @@ import jakarta.persistence.Converter;
 
 import java.util.Collections;
 import java.util.List;
+import java.util.Optional;
 
 @Converter(autoApply = false)
 public class JsonbListConverter implements AttributeConverter<List<String>, String> {
@@ -15,14 +16,9 @@ public class JsonbListConverter implements AttributeConverter<List<String>, Stri
     
     @Override
     public String convertToDatabaseColumn(List<String> attribute) {
-        if (attribute == null) {
-            return null;
-        }
-        try {
-            return OBJECT_MAPPER.writeValueAsString(attribute);
-        } catch (Exception e) {
-            throw new IllegalStateException("Failed to convert list to JSON", e);
-        }
+        return Optional.ofNullable(attribute)
+            .map(this::writeJson)
+            .orElse(null);
     }
     
     @Override
@@ -39,6 +35,14 @@ public class JsonbListConverter implements AttributeConverter<List<String>, Stri
             return OBJECT_MAPPER.readValue(payload, new TypeReference<List<String>>() {});
         } catch (Exception e) {
             throw new IllegalStateException("Failed to convert JSON to list", e);
+        }
+    }
+
+    private String writeJson(List<String> attribute) {
+        try {
+            return OBJECT_MAPPER.writeValueAsString(attribute);
+        } catch (Exception e) {
+            throw new IllegalStateException("Failed to convert list to JSON", e);
         }
     }
 }

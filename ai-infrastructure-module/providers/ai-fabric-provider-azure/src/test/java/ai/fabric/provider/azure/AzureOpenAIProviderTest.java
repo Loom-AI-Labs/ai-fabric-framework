@@ -1,9 +1,11 @@
 package ai.fabric.provider.azure;
 
 import ai.fabric.config.AIProviderConfig;
+import ai.fabric.dto.AIEmbeddingRequest;
 import ai.fabric.dto.AIGenerationInputPart;
 import ai.fabric.dto.AIGenerationInputType;
 import ai.fabric.dto.AIGenerationRequest;
+import ai.fabric.exception.AIServiceException;
 import ai.fabric.http.HttpClient;
 import ai.fabric.provider.ProviderConfig;
 import org.junit.jupiter.api.Test;
@@ -19,6 +21,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class AzureOpenAIProviderTest {
 
@@ -92,6 +95,53 @@ class AzureOpenAIProviderTest {
         });
     }
 
+    @Test
+    void stringResponseFormatAliasesAreNormalizedForChatCompletions() {
+        RecordingHttpClient httpClient = new RecordingHttpClient(List.of(chatCompletionResponse("{\"ok\":true}")));
+        AzureOpenAIProvider provider = new AzureOpenAIProvider(config(), azureConfig(), httpClient);
+
+        provider.generateContent(AIGenerationRequest.builder()
+            .prompt("Return JSON")
+            .parameters(Map.of("responseFormat", "json"))
+            .build());
+
+        assertThat(httpClient.providerRequestBody())
+            .containsEntry("response_format", Map.of("type", "json_object"));
+    }
+
+    @Test
+    void malformedChatCompletionResponseFailsClearlyAndRecordsFailure() {
+        RecordingHttpClient httpClient = new RecordingHttpClient(List.of(ResponseEntity.ok(Map.of(
+            "choices", List.of(Map.of("message", "bad-shape"))
+        ))));
+        AzureOpenAIProvider provider = new AzureOpenAIProvider(config(), azureConfig(), httpClient);
+
+        assertThatThrownBy(() -> provider.generateContent(AIGenerationRequest.builder()
+            .prompt("Hello")
+            .build()))
+            .isInstanceOf(AIServiceException.class)
+            .hasMessageContaining("Azure response choice message was not an object");
+
+        assertThat(provider.getStatus().getTotalRequests()).isEqualTo(1);
+        assertThat(provider.getStatus().getSuccessfulRequests()).isZero();
+        assertThat(provider.getStatus().getFailedRequests()).isEqualTo(1);
+    }
+
+    @Test
+    void numericEmbeddingValuesAreConvertedToDoublesBeforeSuccessMetrics() {
+        RecordingHttpClient httpClient = new RecordingHttpClient(List.of(embeddingResponse(List.of(1, 2.5, 3))));
+        AzureOpenAIProvider provider = new AzureOpenAIProvider(config(), azureConfig(), httpClient);
+
+        var response = provider.generateEmbedding(AIEmbeddingRequest.builder()
+            .text("embed me")
+            .build());
+
+        assertThat(response.getEmbedding()).containsExactly(1.0, 2.5, 3.0);
+        assertThat(provider.getStatus().getTotalRequests()).isEqualTo(1);
+        assertThat(provider.getStatus().getSuccessfulRequests()).isEqualTo(1);
+        assertThat(provider.getStatus().getFailedRequests()).isZero();
+    }
+
     private static ProviderConfig config() {
         return ProviderConfig.builder()
             .providerName("azure")
@@ -111,6 +161,7 @@ class AzureOpenAIProviderTest {
         azure.setEnabled(true);
         azure.setEndpoint("https://example-resource.openai.azure.com");
         azure.setDeploymentName("gpt-4.1");
+        azure.setEmbeddingDeploymentName("text-embedding-3-small");
         azure.setApiVersion("2025-04-01-preview");
         return azure;
     }
@@ -132,6 +183,27 @@ class AzureOpenAIProviderTest {
                 "output_tokens", 6,
                 "total_tokens", 17
             )
+        ));
+    }
+
+    private static ResponseEntity<Map> chatCompletionResponse(String content) {
+        return ResponseEntity.ok(Map.of(
+            "model", "gpt-4.1",
+            "choices", List.of(Map.of(
+                "message", Map.of("content", content),
+                "finish_reason", "stop"
+            )),
+            "usage", Map.of(
+                "prompt_tokens", 3,
+                "completion_tokens", 5,
+                "total_tokens", 8
+            )
+        ));
+    }
+
+    private static ResponseEntity<Map> embeddingResponse(List<? extends Number> embedding) {
+        return ResponseEntity.ok(Map.of(
+            "data", List.of(Map.of("embedding", embedding))
         ));
     }
 

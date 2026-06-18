@@ -155,6 +155,16 @@ class BehaviorAnalysisServiceTest {
     }
 
     @Test
+    void processNextUserOptionalReturnsEmptyWhenNoUserIsPending() {
+        when(eventProvider.getNextUserEvents()).thenReturn(null);
+
+        Optional<BehaviorInsights> result = service.processNextUserOptional();
+
+        assertThat(result).isEmpty();
+        verify(storageAdapter, never()).save(any());
+    }
+
+    @Test
     void clampsAndDefaultsInvalidSentimentAndChurn() {
         String userId = "user-xyz789";
         when(eventProvider.getEventsForUser(userId, null, null)).thenReturn(
@@ -184,6 +194,45 @@ class BehaviorAnalysisServiceTest {
         assertThat(result.getSentimentScore()).isBetween(-1.0, 1.0);
         assertThat(result.getChurnRisk()).isBetween(0.0, 1.0);
         assertThat(result.getSentimentLabel()).isEqualTo(SentimentLabel.NEUTRAL);
+    }
+
+    @Test
+    void normalizesStringNumbersAndScalarCollectionsFromModelOutput() {
+        String userId = "user-flexible-output";
+        when(eventProvider.getEventsForUser(userId, null, null)).thenReturn(
+            List.of(ExternalEvent.builder().eventType("login").timestamp(LocalDateTime.now()).build())
+        );
+        when(storageAdapter.findByUserId(userId)).thenReturn(Optional.empty());
+        when(aiCoreService.generateContent(any())).thenReturn(
+            AIGenerationResponse.builder()
+                .content("""
+                    {
+                      "segment": "Flexible",
+                      "patterns": "login",
+                      "recommendations": ["notify", 123, " "],
+                      "sentiment": {"score": "0.4", "label": "SATISFIED"},
+                      "churn": {"risk": "0.7", "reason": ""},
+                      "trend": "STABLE",
+                      "insights": {"source": "test"},
+                      "confidence": "0.85"
+                    }
+                    """)
+                .model("flex-model")
+                .build()
+        );
+        when(storageAdapter.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        BehaviorInsights result = service.analyzeUser(userId);
+
+        assertThat(result.getSegment()).isEqualTo("Flexible");
+        assertThat(result.getPatterns()).containsExactly("login");
+        assertThat(result.getRecommendations()).containsExactly("notify", "123");
+        assertThat(result.getSentimentScore()).isEqualTo(0.4);
+        assertThat(result.getSentimentLabel()).isEqualTo(SentimentLabel.SATISFIED);
+        assertThat(result.getChurnRisk()).isEqualTo(0.7);
+        assertThat(result.getChurnReason()).isEqualTo("Behavioral drift detected");
+        assertThat(result.getConfidence()).isEqualTo(0.85);
+        assertThat(result.getAiModelUsed()).isEqualTo("flex-model");
     }
 
     @Test

@@ -35,12 +35,26 @@ public class VectorIndexCatalog implements IndexCatalog {
     }
 
     @Override
+    public void deleteByEntityType(String entityType) {
+        vectorDatabaseService.clearVectorsByEntityType(entityType);
+    }
+
+    @Override
+    public void deleteAll() {
+        vectorDatabaseService.clearVectors();
+    }
+
+    @Override
     public boolean exists(String entityType, String entityId) {
         return vectorDatabaseService.vectorExists(entityType, entityId);
     }
 
     @Override
     public IndexCatalogScanPage scan(IndexCatalogScanRequest request) {
+        if (request == null || request.getEntityType() == null || request.getEntityType().isBlank()) {
+            return emptyPage();
+        }
+
         VectorScanPage page = vectorDatabaseService.scan(VectorScanRequest.builder()
             .entityType(request.getEntityType())
             .metadataEquals(request.getMetadataEquals())
@@ -51,6 +65,10 @@ public class VectorIndexCatalog implements IndexCatalog {
             .includeMetadata(true)
             .build());
 
+        if (page == null || page.getVectors() == null || page.getVectors().isEmpty()) {
+            return emptyPage();
+        }
+
         List<IndexCatalogEntry> entries = page.getVectors().stream()
             .map(this::toEntry)
             .toList();
@@ -59,6 +77,14 @@ public class VectorIndexCatalog implements IndexCatalog {
             .entries(entries)
             .nextCursor(page.getNextCursor())
             .hasMore(page.isHasMore())
+            .build();
+    }
+
+    private IndexCatalogScanPage emptyPage() {
+        return IndexCatalogScanPage.builder()
+            .entries(List.of())
+            .nextCursor(null)
+            .hasMore(false)
             .build();
     }
 
@@ -76,4 +102,3 @@ public class VectorIndexCatalog implements IndexCatalog {
             .build();
     }
 }
-

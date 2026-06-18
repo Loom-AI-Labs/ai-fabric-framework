@@ -78,4 +78,31 @@ class ChatControllerSuggestionsTest {
         assertThat(sent.getPrompt()).contains("list_products");
         assertThat(sent.getPrompt()).contains("iPhone 15 Pro details");
     }
+
+    @Test
+    void suggestionsOmitAuthContextWhenUserIdIsBlank() throws Exception {
+        when(aiActionRegistry.getAllMetadata()).thenReturn(List.of());
+        when(aiCoreService.generateContent(any(AIGenerationRequest.class), eq(LlmPurpose.GENERATION)))
+            .thenReturn(AIGenerationResponse.builder()
+                .content("[\"a\",\"b\",\"c\"]")
+                .build());
+
+        mockMvc.perform(post("/api/chat/suggestions")
+                .contentType("application/json")
+                .content("""
+                    {
+                      "content": "help me shop",
+                      "userId": " ",
+                      "maxSuggestions": 3
+                    }
+                    """))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.success").value(true))
+            .andExpect(jsonPath("$.suggestions.length()").value(3));
+
+        ArgumentCaptor<AIGenerationRequest> captor = ArgumentCaptor.forClass(AIGenerationRequest.class);
+        verify(aiCoreService).generateContent(captor.capture(), eq(LlmPurpose.GENERATION));
+
+        assertThat(captor.getValue().getAuthContext()).isNull();
+    }
 }

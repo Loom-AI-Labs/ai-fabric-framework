@@ -144,16 +144,28 @@ public interface VectorDatabaseService {
      * Perform keyword/text-only search (BM25/full-text/etc.).
      *
      * <p>This is an OPTIONAL method. Providers that support keyword search
-     * should override this method.</p>
+     * should override this method. Providers that do not support it return an
+     * empty result set by default so callers can degrade gracefully.</p>
      *
      * @param queryText the original query text
      * @param request the search request
      * @return keyword search results
-     * @throws UnsupportedOperationException if not supported by provider
      */
     default AISearchResponse keywordSearch(String queryText, AISearchRequest request) {
-        throw new UnsupportedOperationException(
-            "Keyword search not supported by " + this.getClass().getSimpleName());
+        Logger log = LoggerFactory.getLogger(this.getClass());
+        log.debug("Keyword search not supported by {} - returning empty result set",
+            this.getClass().getSimpleName());
+        String resolvedQuery = queryText != null
+            ? queryText
+            : (request != null ? request.getQuery() : null);
+        return AISearchResponse.builder()
+            .results(List.of())
+            .totalResults(0)
+            .maxScore(0.0d)
+            .processingTimeMs(0L)
+            .query(resolvedQuery)
+            .model(this.getClass().getSimpleName())
+            .build();
     }
 
     /**

@@ -11,7 +11,6 @@ import ai.fabric.intent.action.annotation.ActionAllowed;
 import ai.fabric.intent.action.annotation.ActionExecute;
 import ai.fabric.intent.action.annotation.ActionFacts;
 import ai.fabric.intent.action.annotation.Param;
-import ai.fabric.relationship.model.QueryMode;
 import ai.fabric.relationship.model.QueryOptions;
 import ai.fabric.relationship.model.ReturnMode;
 import ai.fabric.relationship.service.ReliableRelationshipQueryService;
@@ -30,7 +29,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Set;
+import java.util.Optional;
 
 /**
  * AI action that lets the orchestrator execute relationship queries.
@@ -115,7 +114,7 @@ public class RelationshipQueryActionHandler {
                                 @Param(value = PARAM_SIMILARITY_THRESHOLD, description = "Vector similarity threshold 0-1 (optional)") Double similarityThreshold,
                                 ActionContext actionContext) {
         AIAccessSubjectContext authContext = actionContext != null ? actionContext.authContext() : null;
-        String subjectId = subjectId(authContext);
+        String subjectId = subjectId(authContext).orElse("unknown");
         try {
             List<String> requestedEntityTypes = normalizeEntityTypes(entityTypes);
             List<String> allowedEntityTypes = filterAllowedEntityTypes(authContext, requestedEntityTypes);
@@ -232,7 +231,7 @@ public class RelationshipQueryActionHandler {
     @ActionAllowed
     public boolean allowed(ActionContext context) {
         AIAccessSubjectContext authContext = context != null ? context.authContext() : null;
-        if (authContext == null || subjectId(authContext) == null) {
+        if (authContext == null || subjectId(authContext).isEmpty()) {
             return false;
         }
         // Policy is always present when orchestrator integration is enabled (enforced by @ConditionalOnBean)
@@ -310,7 +309,7 @@ public class RelationshipQueryActionHandler {
      * @return Filtered list of entity types the user is allowed to query
      */
     private List<String> filterAllowedEntityTypes(AIAccessSubjectContext authContext, List<String> requestedEntityTypes) {
-        String subjectId = subjectId(authContext);
+        String subjectId = subjectId(authContext).orElse("unknown");
         if (requestedEntityTypes == null || requestedEntityTypes.isEmpty()) {
             // If no entity types specified, get allowed entity types from policy
             List<String> allowed = accessControlPolicy.getAllowedEntityTypes(authContext);
@@ -333,54 +332,17 @@ public class RelationshipQueryActionHandler {
         return allowed;
     }
 
-    private String subjectId(AIAccessSubjectContext authContext) {
+    private Optional<String> subjectId(AIAccessSubjectContext authContext) {
         if (authContext == null) {
-            return null;
+            return Optional.empty();
         }
         if (authContext.getSubjectId() != null && !authContext.getSubjectId().isBlank()) {
-            return authContext.getSubjectId().trim();
+            return Optional.of(authContext.getSubjectId().trim());
         }
         if (authContext.getSessionId() != null && !authContext.getSessionId().isBlank()) {
-            return authContext.getSessionId().trim();
+            return Optional.of(authContext.getSessionId().trim());
         }
-        return null;
-    }
-
-    private int parseInteger(Object raw, int defaultValue) {
-        if (raw == null) {
-            return defaultValue;
-        }
-        if (raw instanceof Number number) {
-            return number.intValue();
-        }
-        try {
-            return Integer.parseInt(raw.toString());
-        } catch (NumberFormatException ex) {
-            log.warn("Invalid integer value '{}', using default {}", raw, defaultValue);
-            return defaultValue;
-        }
-    }
-
-    private Double parseDouble(Object raw, Double defaultValue) {
-        if (raw == null) {
-            return defaultValue;
-        }
-        if (raw instanceof Number number) {
-            return number.doubleValue();
-        }
-        try {
-            return Double.parseDouble(raw.toString());
-        } catch (NumberFormatException ex) {
-            log.warn("Invalid double value '{}', using default {}", raw, defaultValue);
-            return defaultValue;
-        }
-    }
-
-    private ReturnMode parseReturnMode(Object raw) {
-        if (raw == null) {
-            return ReturnMode.IDS;
-        }
-        return ReturnMode.fromValue(raw.toString());
+        return Optional.empty();
     }
 
     private void copyIfPresent(Map<String, Object> source, Map<String, Object> target, String key) {
@@ -410,7 +372,12 @@ public class RelationshipQueryActionHandler {
         if (raw instanceof RAGResponse.RAGDocument document) {
             Map<String, Object> fact = new LinkedHashMap<>();
             putIfPresent(fact, "title", document.getTitle());
-            putIfPresent(fact, "entityType", firstNonBlank(document.getType(), metadataString(document.getMetadata(), "entityType"), metadataString(document.getMetadata(), "documentType"), metadataString(document.getMetadata(), "vectorSpace")));
+            putIfPresent(fact, "entityType", firstNonBlank(
+                document.getType(),
+                metadataString(document.getMetadata(), "entityType").orElse(null),
+                metadataString(document.getMetadata(), "documentType").orElse(null),
+                metadataString(document.getMetadata(), "vectorSpace").orElse(null)
+            ).orElse(null));
             putSelectedMetadata(fact, document.getMetadata());
             if (!hasCommerceFacts(fact)) {
                 putIfPresent(fact, "content", truncate(document.getContent(), 300));
@@ -419,14 +386,17 @@ public class RelationshipQueryActionHandler {
         }
         if (raw instanceof Map<?, ?> map) {
             Map<String, Object> fact = new LinkedHashMap<>();
-            putIfPresent(fact, "title", mapValue(map, "title"));
-            putIfPresent(fact, "entityType", firstNonBlank(asString(mapValue(map, "entityType")), asString(mapValue(map, "type"))));
-            Object metadata = mapValue(map, "metadata");
+            putIfPresent(fact, "title", mapValue(map, "title").orElse(null));
+            putIfPresent(fact, "entityType", firstNonBlank(
+                asString(mapValue(map, "entityType").orElse(null)).orElse(null),
+                asString(mapValue(map, "type").orElse(null)).orElse(null)
+            ).orElse(null));
+            Object metadata = mapValue(map, "metadata").orElse(null);
             if (metadata instanceof Map<?, ?> metadataMap) {
                 putSelectedMetadata(fact, metadataMap);
             }
             if (!hasCommerceFacts(fact)) {
-                putIfPresent(fact, "content", truncate(asString(mapValue(map, "content")), 300));
+                putIfPresent(fact, "content", truncate(asString(mapValue(map, "content").orElse(null)).orElse(null), 300));
             }
             return fact;
         }
@@ -449,33 +419,33 @@ public class RelationshipQueryActionHandler {
         if (metadata == null || metadata.isEmpty()) {
             return;
         }
-        putIfPresent(fact, "vendor", mapValue(metadata, "vendor"));
-        putIfPresent(fact, "productType", mapValue(metadata, "productType"));
-        putIfPresent(fact, "available", mapValue(metadata, "available"));
-        putIfPresent(fact, "price", mapValue(metadata, "price"));
-        putIfPresent(fact, "inventoryQuantity", mapValue(metadata, "inventoryQuantity"));
-        putIfPresent(fact, "primarySku", mapValue(metadata, "primarySku"));
-        putIfPresent(fact, "currency", mapValue(metadata, "currency"));
+        putIfPresent(fact, "vendor", mapValue(metadata, "vendor").orElse(null));
+        putIfPresent(fact, "productType", mapValue(metadata, "productType").orElse(null));
+        putIfPresent(fact, "available", mapValue(metadata, "available").orElse(null));
+        putIfPresent(fact, "price", mapValue(metadata, "price").orElse(null));
+        putIfPresent(fact, "inventoryQuantity", mapValue(metadata, "inventoryQuantity").orElse(null));
+        putIfPresent(fact, "primarySku", mapValue(metadata, "primarySku").orElse(null));
+        putIfPresent(fact, "currency", mapValue(metadata, "currency").orElse(null));
     }
 
-    private Object mapValue(Map<?, ?> map, String key) {
+    private Optional<Object> mapValue(Map<?, ?> map, String key) {
         if (map == null || key == null) {
-            return null;
+            return Optional.empty();
         }
         Object direct = map.get(key);
         if (direct != null) {
-            return direct;
+            return Optional.of(direct);
         }
         for (Map.Entry<?, ?> entry : map.entrySet()) {
             if (entry != null && entry.getKey() != null && key.equalsIgnoreCase(entry.getKey().toString())) {
-                return entry.getValue();
+                return Optional.ofNullable(entry.getValue());
             }
         }
-        return null;
+        return Optional.empty();
     }
 
-    private String metadataString(Map<?, ?> metadata, String key) {
-        return asString(mapValue(metadata, key));
+    private Optional<String> metadataString(Map<?, ?> metadata, String key) {
+        return asString(mapValue(metadata, key).orElse(null));
     }
 
     private void putIfPresent(Map<String, Object> target, String key, Object value) {
@@ -492,23 +462,23 @@ public class RelationshipQueryActionHandler {
         target.put(key, value);
     }
 
-    private String firstNonBlank(String... values) {
+    private Optional<String> firstNonBlank(String... values) {
         if (values == null) {
-            return null;
+            return Optional.empty();
         }
         for (String value : values) {
             if (value != null && !value.isBlank()) {
-                return value.trim();
+                return Optional.of(value.trim());
             }
         }
-        return null;
+        return Optional.empty();
     }
 
-    private String asString(Object value) {
+    private Optional<String> asString(Object value) {
         if (value == null) {
-            return null;
+            return Optional.empty();
         }
-        return Objects.toString(value, null);
+        return Optional.of(Objects.toString(value));
     }
 
     private String truncate(String value, int maxChars) {

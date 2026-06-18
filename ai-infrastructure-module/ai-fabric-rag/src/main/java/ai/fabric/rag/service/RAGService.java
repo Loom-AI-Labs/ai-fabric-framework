@@ -239,8 +239,11 @@ public class RAGService implements RAGProvider {
             );
 
             AISearchResponse searchResponse = searchExecution.response();
-            List<RAGResponse.RAGDocument> documents = documentMapper.toDocuments(safeResults(searchResponse));
-            String context = documentMapper.buildContext(searchResponse);
+            List<RAGResponse.RAGDocument> documents = documentMapper.toFilteredDocuments(
+                safeResults(searchResponse),
+                request.getFilters()
+            );
+            String context = documentMapper.buildContextFromDocuments(documents);
             long processingTime = System.currentTimeMillis() - startTime;
             Map<String, Object> metadata = responseMetadata(
                 request,
@@ -257,7 +260,7 @@ public class RAGService implements RAGProvider {
                 .context(context)
                 .documents(documents)
                 .totalDocuments(safeTotalResults(searchResponse))
-                .usedDocuments(Math.min(safeTotalResults(searchResponse), effectiveLimit(request)))
+                .usedDocuments(documents.size())
                 .confidenceScore(calculateConfidence(documents))
                 .relevanceScores(documents.stream()
                     .map(RAGResponse.RAGDocument::getSimilarity)

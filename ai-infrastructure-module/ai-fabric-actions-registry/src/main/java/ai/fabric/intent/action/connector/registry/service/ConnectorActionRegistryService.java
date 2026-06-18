@@ -6,11 +6,13 @@ import ai.fabric.intent.action.connector.ConnectorActionDefinition;
 import ai.fabric.repository.RegisteredConnectorActionRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.util.StringUtils;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -38,7 +40,11 @@ public class ConnectorActionRegistryService {
 
     @Transactional
     public ConnectorActionDefinition register(ConnectorActionDefinition definition) {
-        validator.validate(definition);
+        try {
+            validator.validate(definition);
+        } catch (IllegalArgumentException ex) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, ex.getMessage(), ex);
+        }
 
         String actionName = definition.name().trim();
         if (repository.existsByNameIgnoreCase(actionName)) {
@@ -56,11 +62,7 @@ public class ConnectorActionRegistryService {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Action '" + actionName + "' already exists.", ex);
         }
 
-        // Refresh after commit to make the new action immediately available.
-        // Collision checks above should prevent refresh failures.
-        if (actionRegistry != null) {
-            actionRegistry.refresh();
-        }
+        refreshRegistryAfterCommit();
 
         log.info("Registered connector action '{}' (params={})", saved.getName(), saved.getParams() != null ? saved.getParams().size() : 0);
         return saved.toDefinition();
@@ -81,10 +83,24 @@ public class ConnectorActionRegistryService {
         repository.delete(entity);
         repository.flush();
 
-        if (actionRegistry != null) {
-            actionRegistry.refresh();
-        }
+        refreshRegistryAfterCommit();
 
         log.info("Deregistered connector action '{}'", entity.getName());
+    }
+
+    private void refreshRegistryAfterCommit() {
+        if (actionRegistry == null) {
+            return;
+        }
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            actionRegistry.refresh();
+            return;
+        }
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                actionRegistry.refresh();
+            }
+        });
     }
 }

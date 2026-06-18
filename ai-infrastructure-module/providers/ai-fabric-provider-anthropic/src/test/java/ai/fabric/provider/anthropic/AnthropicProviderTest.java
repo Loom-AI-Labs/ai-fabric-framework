@@ -1,8 +1,11 @@
 package ai.fabric.provider.anthropic;
 
+import ai.fabric.config.AIProviderConfig;
+import ai.fabric.dto.AIEmbeddingRequest;
 import ai.fabric.dto.AIGenerationInputPart;
 import ai.fabric.dto.AIGenerationInputType;
 import ai.fabric.dto.AIGenerationRequest;
+import ai.fabric.exception.AIServiceException;
 import ai.fabric.http.HttpClient;
 import ai.fabric.provider.ProviderConfig;
 import org.junit.jupiter.api.Test;
@@ -14,8 +17,24 @@ import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class AnthropicProviderTest {
+
+    @Test
+    void autoConfigurationAppliesReleaseDefaultsForApiKeyOnlyConfig() {
+        AIProviderConfig aiProviderConfig = new AIProviderConfig();
+        AIProviderConfig.AnthropicConfig anthropic = aiProviderConfig.getAnthropic();
+        anthropic.setEnabled(true);
+        anthropic.setApiKey("test-key");
+
+        ProviderConfig providerConfig = new AnthropicAutoConfiguration().anthropicProviderConfig(aiProviderConfig);
+
+        assertThat(providerConfig.isValid()).isTrue();
+        assertThat(providerConfig.getBaseUrl()).isEqualTo(AnthropicAutoConfiguration.DEFAULT_BASE_URL);
+        assertThat(providerConfig.getDefaultModel()).isEqualTo(AnthropicAutoConfiguration.DEFAULT_MODEL);
+        assertThat(providerConfig.getTimeoutSeconds()).isEqualTo(AnthropicAutoConfiguration.DEFAULT_TIMEOUT_SECONDS);
+    }
 
     @Test
     void imageFileUrlInputsUseImageUrlBlocks() {
@@ -96,6 +115,42 @@ class AnthropicProviderTest {
         assertThat(response.getStatus()).isEqualTo("PROVIDER_FILE_URL_INPUT_UNSUPPORTED");
         assertThat(response.getContent()).contains("\"status\":\"NOT_USED\"");
         assertThat(response.getContent()).doesNotContain("sig=secret");
+        assertThat(provider.getStatus().getTotalRequests()).isEqualTo(1);
+        assertThat(provider.getStatus().getSuccessfulRequests()).isZero();
+        assertThat(provider.getStatus().getFailedRequests()).isEqualTo(1);
+    }
+
+    @Test
+    void malformedResponseFailsClearlyAndRecordsFailure() {
+        RecordingHttpClient httpClient = new RecordingHttpClient(ResponseEntity.ok(Map.of(
+            "model", "claude-3-7-sonnet-latest"
+        )));
+        AnthropicProvider provider = new AnthropicProvider(config(), httpClient);
+
+        assertThatThrownBy(() -> provider.generateContent(AIGenerationRequest.builder()
+            .prompt("Hello")
+            .build()))
+            .isInstanceOf(AIServiceException.class)
+            .hasMessageContaining("Anthropic response content text was missing");
+
+        assertThat(provider.getStatus().getTotalRequests()).isEqualTo(1);
+        assertThat(provider.getStatus().getSuccessfulRequests()).isZero();
+        assertThat(provider.getStatus().getFailedRequests()).isEqualTo(1);
+    }
+
+    @Test
+    void embeddingRequestsFailWithExplicitUnsupportedCapability() {
+        AnthropicProvider provider = new AnthropicProvider(config(), new RecordingHttpClient(successResponse()));
+
+        assertThatThrownBy(() -> provider.generateEmbedding(AIEmbeddingRequest.builder()
+            .text("embed me")
+            .build()))
+            .isInstanceOf(AIServiceException.class)
+            .hasMessageContaining("Anthropic does not provide embedding services directly");
+
+        assertThat(provider.getStatus().getTotalRequests()).isEqualTo(1);
+        assertThat(provider.getStatus().getSuccessfulRequests()).isZero();
+        assertThat(provider.getStatus().getFailedRequests()).isEqualTo(1);
     }
 
     private static ProviderConfig config() {

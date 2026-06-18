@@ -104,6 +104,28 @@ class DynamicJPAQueryBuilderTest {
         assertThat(query.getParameters()).containsEntry("p1", "%archive%");
     }
 
+    @Test
+    void shouldSupportPrimitiveArraysInInPredicates() {
+        RelationshipQueryPlan plan = RelationshipQueryPlan.builder()
+            .originalQuery("Find documents by priority")
+            .primaryEntityType("document")
+            .directFilters(Map.of(
+                "document", List.of(
+                    FilterCondition.builder()
+                        .field("priority")
+                        .operator(FilterOperator.IN)
+                        .value(new int[] {1, 2, 3})
+                        .build()
+                )
+            ))
+            .build();
+
+        JpqlQuery query = builder.buildQuery(plan);
+
+        assertThat(query.getJpql()).contains("root.priority IN :p1");
+        assertThat(query.getParameters()).containsEntry("p1", List.of(1, 2, 3));
+    }
+
     @AICapable(entityType = "document")
     private static class DocumentEntity { }
 

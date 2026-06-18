@@ -19,6 +19,8 @@ import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -134,5 +136,72 @@ class MetadataRelationshipTraversalServiceTest {
 
         assertThat(results.entityIds()).isEmpty();
     }
-}
 
+    @Test
+    void shouldNotScanWhenLimitIsZero() {
+        RelationshipQueryPlan plan = RelationshipQueryPlan.builder()
+            .primaryEntityType("document")
+            .build();
+
+        TraversalResult results = service.traverse(plan, JpqlQuery.builder().limit(0).build());
+
+        assertThat(results.entityIds()).isEmpty();
+        verify(vectorDatabaseService, never()).scan(any());
+    }
+
+    @Test
+    void shouldNotTreatMissingOrInvalidNumbersAsZero() {
+        when(vectorDatabaseService.scan(any())).thenReturn(VectorScanPage.builder()
+            .vectors(List.of(
+                VectorRecord.builder().entityType("document").entityId("doc-1").metadata(null).build(),
+                VectorRecord.builder().entityType("document").entityId("doc-2").metadata(Map.of("priority", "unknown")).build()
+            ))
+            .hasMore(false)
+            .nextCursor(null)
+            .build());
+
+        RelationshipQueryPlan plan = RelationshipQueryPlan.builder()
+            .primaryEntityType("document")
+            .directFilters(Map.of(
+                "document",
+                List.of(FilterCondition.builder()
+                    .field("priority")
+                    .operator(FilterOperator.LESS_THAN_OR_EQUAL)
+                    .value(0)
+                    .build())
+            ))
+            .build();
+
+        TraversalResult results = service.traverse(plan, null);
+
+        assertThat(results.entityIds()).isEmpty();
+    }
+
+    @Test
+    void shouldMatchPrimitiveArrayValuesForInFilters() {
+        when(vectorDatabaseService.scan(any())).thenReturn(VectorScanPage.builder()
+            .vectors(List.of(
+                VectorRecord.builder().entityType("document").entityId("doc-1").metadata(Map.of("priority", 2)).build(),
+                VectorRecord.builder().entityType("document").entityId("doc-2").metadata(Map.of("priority", 5)).build()
+            ))
+            .hasMore(false)
+            .nextCursor(null)
+            .build());
+
+        RelationshipQueryPlan plan = RelationshipQueryPlan.builder()
+            .primaryEntityType("document")
+            .directFilters(Map.of(
+                "document",
+                List.of(FilterCondition.builder()
+                    .field("priority")
+                    .operator(FilterOperator.IN)
+                    .value(new int[] {1, 2, 3})
+                    .build())
+            ))
+            .build();
+
+        TraversalResult results = service.traverse(plan, null);
+
+        assertThat(results.entityIds()).containsExactly("doc-1");
+    }
+}

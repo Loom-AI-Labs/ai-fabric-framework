@@ -6,10 +6,10 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Profile;
 
 /**
- * Registers the offline stub provider beans only when the {@code smoke} profile is active.
+ * Registers the offline deterministic provider beans only when the {@code smoke} profile is active.
  *
  * <p>Combined with the bundled {@code application-smoke.yml} (which points the LLM/embedding/vector
- * selectors at these local stubs), depending on this module is enough for an example app to boot with
+ * selectors at these local providers), depending on this module is enough for an example app to boot with
  * {@code --spring.profiles.active=smoke} and no external credentials or services.</p>
  */
 @AutoConfiguration

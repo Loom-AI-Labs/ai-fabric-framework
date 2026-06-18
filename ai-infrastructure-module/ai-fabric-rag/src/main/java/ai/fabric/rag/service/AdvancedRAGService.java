@@ -1,23 +1,24 @@
 package ai.fabric.rag.service;
 
+import ai.fabric.core.AICoreService;
+import ai.fabric.core.AIEmbeddingService;
+import ai.fabric.core.AISearchService;
 import ai.fabric.dto.AIEmbeddingRequest;
 import ai.fabric.dto.AdvancedRAGRequest;
 import ai.fabric.dto.AdvancedRAGResponse;
 import ai.fabric.dto.RAGRequest;
 import ai.fabric.dto.RAGResponse;
-import ai.fabric.core.AISearchService;
-import ai.fabric.core.AIEmbeddingService;
-import ai.fabric.core.AICoreService;
 import ai.fabric.prompt.PromptRenderer;
 import ai.fabric.prompt.PromptTemplateResolver;
-import ai.fabric.spi.RAGProvider;
 import ai.fabric.spi.AdvancedRAGProvider;
+import ai.fabric.spi.RAGProvider;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -25,7 +26,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
-import java.util.Comparator;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 
 /**
@@ -121,6 +122,14 @@ public class AdvancedRAGService implements AdvancedRAGProvider {
     private final PromptTemplateResolver promptTemplateResolver;
     private final PromptRenderer promptRenderer;
 
+    private final AtomicLong totalRequests = new AtomicLong();
+    private final AtomicLong successfulRequests = new AtomicLong();
+    private final AtomicLong failedRequests = new AtomicLong();
+    private final AtomicLong totalProcessingTimeMs = new AtomicLong();
+    private final AtomicLong lastProcessingTimeMs = new AtomicLong();
+    private final AtomicLong lastRequestTimestamp = new AtomicLong();
+    private volatile String lastErrorMessage;
+
     // =========================================================================
     // Public Methods
     // =========================================================================
@@ -141,8 +150,12 @@ public class AdvancedRAGService implements AdvancedRAGProvider {
      * @return AdvancedRAGResponse with expanded queries, re-ranked documents, and generated response
      */
     public AdvancedRAGResponse performAdvancedRAG(AdvancedRAGRequest request) {
+        long startTime = System.currentTimeMillis();
+        totalRequests.incrementAndGet();
+
         if (request == null) {
             String message = "Advanced RAG request must not be null";
+            recordFailure(System.currentTimeMillis() - startTime, message);
             return AdvancedRAGResponse.builder()
                 .response(String.format(ERROR_MESSAGE_TEMPLATE, message))
                 .success(false)
@@ -153,8 +166,6 @@ public class AdvancedRAGService implements AdvancedRAGProvider {
         log.info("Performing advanced RAG for query: {}", request.getQuery());
         
         try {
-            long startTime = System.currentTimeMillis();
-            
             List<String> expandedQueries = expandQuery(request.getQuery(), expansionLevel(request));
             log.debug("Expanded queries: {}", expandedQueries);
             
@@ -171,6 +182,7 @@ public class AdvancedRAGService implements AdvancedRAGProvider {
                 request.getQuery(), optimizedContext, request);
             
             long processingTime = System.currentTimeMillis() - startTime;
+            recordSuccess(processingTime);
             
             List<AdvancedRAGResponse.RAGDocument> convertedDocuments = rerankedDocuments.stream()
                 .map(this::convertToAdvancedDocument)
@@ -196,6 +208,7 @@ public class AdvancedRAGService implements AdvancedRAGProvider {
                 
         } catch (Exception e) {
             log.error("Error performing advanced RAG", e);
+            recordFailure(System.currentTimeMillis() - startTime, e.getMessage());
             return AdvancedRAGResponse.builder()
                 .query(request.getQuery())
                 .response(String.format(ERROR_MESSAGE_TEMPLATE, e.getMessage()))
@@ -203,6 +216,24 @@ public class AdvancedRAGService implements AdvancedRAGProvider {
                 .errorMessage(e.getMessage())
                 .build();
         }
+    }
+
+    public Map<String, Object> getStatistics() {
+        long total = totalRequests.get();
+        long successful = successfulRequests.get();
+        long failed = failedRequests.get();
+        long processingTime = totalProcessingTimeMs.get();
+
+        Map<String, Object> stats = new HashMap<>();
+        stats.put("totalRequests", total);
+        stats.put("successfulRequests", successful);
+        stats.put("failedRequests", failed);
+        stats.put("successRate", total > 0 ? (double) successful / total : 0.0);
+        stats.put("averageProcessingTimeMs", total > 0 ? (double) processingTime / total : 0.0);
+        stats.put("lastProcessingTimeMs", lastProcessingTimeMs.get());
+        stats.put("lastRequestTimestamp", lastRequestTimestamp.get() > 0 ? lastRequestTimestamp.get() : null);
+        stats.put("lastErrorMessage", lastErrorMessage);
+        return Collections.unmodifiableMap(stats);
     }
 
     // =========================================================================
@@ -558,6 +589,25 @@ public class AdvancedRAGService implements AdvancedRAGProvider {
         metadata.put(METADATA_KEY_ENABLE_HYBRID_SEARCH, request.getEnableHybridSearch());
         metadata.put(METADATA_KEY_ENABLE_CONTEXTUAL_SEARCH, request.getEnableContextualSearch());
         return metadata;
+    }
+
+    private void recordSuccess(long processingTimeMs) {
+        successfulRequests.incrementAndGet();
+        recordProcessing(processingTimeMs);
+        lastErrorMessage = null;
+    }
+
+    private void recordFailure(long processingTimeMs, String errorMessage) {
+        failedRequests.incrementAndGet();
+        recordProcessing(processingTimeMs);
+        lastErrorMessage = errorMessage;
+    }
+
+    private void recordProcessing(long processingTimeMs) {
+        long safeProcessingTimeMs = Math.max(processingTimeMs, 0L);
+        totalProcessingTimeMs.addAndGet(safeProcessingTimeMs);
+        lastProcessingTimeMs.set(safeProcessingTimeMs);
+        lastRequestTimestamp.set(System.currentTimeMillis());
     }
     
     private AdvancedRAGResponse.RAGDocument convertToAdvancedDocument(RAGResponse.RAGDocument doc) {

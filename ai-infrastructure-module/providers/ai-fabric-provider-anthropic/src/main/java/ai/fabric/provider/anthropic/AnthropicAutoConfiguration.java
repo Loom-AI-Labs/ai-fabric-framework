@@ -26,22 +26,28 @@ import java.time.Duration;
 @ConditionalOnClass(AnthropicProvider.class)
 public class AnthropicAutoConfiguration {
 
+    static final String DEFAULT_BASE_URL = "https://api.anthropic.com/v1";
+    static final String DEFAULT_MODEL = "claude-3-7-sonnet-latest";
+    static final int DEFAULT_MAX_TOKENS = 2_000;
+    static final double DEFAULT_TEMPERATURE = 0.3d;
+    static final int DEFAULT_TIMEOUT_SECONDS = 30;
+
     @Bean(name = "anthropicProviderConfig")
     @ConditionalOnMissingBean(name = "anthropicProviderConfig")
     @ConditionalOnProperty(prefix = "ai.providers.anthropic", name = "enabled", havingValue = "true")
     public ProviderConfig anthropicProviderConfig(AIProviderConfig aiProviderConfig) {
         AIProviderConfig.AnthropicConfig anthropic = aiProviderConfig.getAnthropic();
-        boolean hasApiKey = anthropic.getApiKey() != null && !anthropic.getApiKey().isBlank();
+        boolean hasApiKey = hasText(anthropic.getApiKey());
 
         return ProviderConfig.builder()
             .providerName("anthropic")
             .apiKey(anthropic.getApiKey())
-            .baseUrl(anthropic.getBaseUrl())
-            .defaultModel(anthropic.getModel())
+            .baseUrl(normalizeBaseUrl(anthropic.getBaseUrl()))
+            .defaultModel(hasText(anthropic.getModel()) ? anthropic.getModel() : DEFAULT_MODEL)
             .defaultEmbeddingModel(null)
-            .maxTokens(anthropic.getMaxTokens())
-            .temperature(anthropic.getTemperature())
-            .timeoutSeconds(anthropic.getTimeout())
+            .maxTokens(anthropic.getMaxTokens() != null ? anthropic.getMaxTokens() : DEFAULT_MAX_TOKENS)
+            .temperature(anthropic.getTemperature() != null ? anthropic.getTemperature() : DEFAULT_TEMPERATURE)
+            .timeoutSeconds(anthropic.getTimeout() != null ? anthropic.getTimeout() : DEFAULT_TIMEOUT_SECONDS)
             .maxRetries(3)
             .retryDelayMs(1000L)
             .rateLimitPerMinute(60)
@@ -60,5 +66,16 @@ public class AnthropicAutoConfiguration {
             providerConfig.getTimeoutSeconds() != null ? Duration.ofSeconds(providerConfig.getTimeoutSeconds()) : null
         );
         return new AnthropicProvider(providerConfig, httpClient);
+    }
+
+    private String normalizeBaseUrl(String baseUrl) {
+        if (!hasText(baseUrl)) {
+            return DEFAULT_BASE_URL;
+        }
+        return baseUrl.endsWith("/") ? baseUrl.substring(0, baseUrl.length() - 1) : baseUrl;
+    }
+
+    private boolean hasText(String value) {
+        return value != null && !value.trim().isEmpty();
     }
 }

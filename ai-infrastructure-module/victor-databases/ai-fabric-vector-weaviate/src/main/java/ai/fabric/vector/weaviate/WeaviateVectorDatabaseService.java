@@ -201,7 +201,7 @@ public class WeaviateVectorDatabaseService implements VectorDatabaseService {
             }
 
             if (!CollectionUtils.isEmpty(result.getResult())) {
-                return Optional.ofNullable(toVectorRecord(result.getResult().getFirst(), null));
+                return toVectorRecord(result.getResult().getFirst(), null);
             }
         }
 
@@ -227,7 +227,7 @@ public class WeaviateVectorDatabaseService implements VectorDatabaseService {
             return Optional.empty();
         }
 
-        return Optional.ofNullable(toVectorRecord(result.getResult().getFirst(), null));
+        return toVectorRecord(result.getResult().getFirst(), null);
     }
 
     @Override
@@ -261,7 +261,7 @@ public class WeaviateVectorDatabaseService implements VectorDatabaseService {
             return Optional.empty();
         }
 
-        return Optional.ofNullable(toVectorRecord(result.getResult().getFirst(), null));
+        return toVectorRecord(result.getResult().getFirst(), null);
     }
 
     @Override
@@ -274,8 +274,8 @@ public class WeaviateVectorDatabaseService implements VectorDatabaseService {
             throw new AIServiceException("Weaviate search requires a non-empty query vector");
         }
 
-        int limit = Optional.ofNullable(request.getLimit()).orElse(10);
-        double threshold = Optional.ofNullable(request.getThreshold()).orElse(0.0);
+        int limit = normalizeSearchLimit(request.getLimit());
+        double threshold = normalizeSearchThreshold(request.getThreshold());
 
         List<String> entityTypes = request.getEntityType() != null
             ? List.of(request.getEntityType())
@@ -414,8 +414,9 @@ public class WeaviateVectorDatabaseService implements VectorDatabaseService {
         if (CollectionUtils.isEmpty(vectors)) {
             return Collections.emptyList();
         }
-        List<String> ids = new ArrayList<>(vectors.size());
-        for (VectorRecord record : vectors) {
+        List<VectorRecord> safeVectors = safeVectors(vectors);
+        List<String> ids = new ArrayList<>(safeVectors.size());
+        for (VectorRecord record : safeVectors) {
             ids.add(storeVector(record.getEntityType(), record.getEntityId(), record.getContent(),
                 record.getEmbedding(), record.getMetadata()));
         }
@@ -428,7 +429,10 @@ public class WeaviateVectorDatabaseService implements VectorDatabaseService {
             return 0;
         }
         int updated = 0;
-        for (VectorRecord record : vectors) {
+        for (VectorRecord record : safeVectors(vectors)) {
+            if (!hasText(record.getEntityType()) || !hasText(record.getEntityId())) {
+                continue;
+            }
             String vectorId = buildVectorId(record.getEntityType(), record.getEntityId());
             if (updateVector(vectorId, record.getEntityType(), record.getEntityId(), record.getContent(),
                 record.getEmbedding(), record.getMetadata())) {
@@ -444,7 +448,7 @@ public class WeaviateVectorDatabaseService implements VectorDatabaseService {
             return 0;
         }
         int removed = 0;
-        for (String id : vectorIds) {
+        for (String id : safeVectorIds(vectorIds)) {
             if (removeVectorById(id)) {
                 removed++;
             }
@@ -478,8 +482,8 @@ public class WeaviateVectorDatabaseService implements VectorDatabaseService {
             limit = 200;
         }
 
-        String after = decodeAfterCursor(request.getCursor());
-        WhereFilter where = buildWhereFilter(request.getMetadataEquals());
+        String after = decodeAfterCursor(request.getCursor()).orElse(null);
+        Optional<WhereFilter> where = buildWhereFilter(request.getMetadataEquals());
 
         List<Field> fields = new ArrayList<>();
         fields.add(Field.builder().name(PROPERTY_ENTITY_TYPE).build());
@@ -503,8 +507,8 @@ public class WeaviateVectorDatabaseService implements VectorDatabaseService {
             .withLimit(limit + 1)
             .withFields(fields.toArray(Field[]::new));
 
-        if (where != null) {
-            query = query.withWhere(where);
+        if (where.isPresent()) {
+            query = query.withWhere(where.get());
         }
         if (after != null) {
             query = query.withAfter(after);
@@ -525,7 +529,7 @@ public class WeaviateVectorDatabaseService implements VectorDatabaseService {
 
         String nextCursor = null;
         if (hasMore && !records.isEmpty()) {
-            nextCursor = encodeAfterCursor(records.get(records.size() - 1).getVectorId());
+            nextCursor = encodeAfterCursor(records.get(records.size() - 1).getVectorId()).orElse(null);
         }
 
         return VectorScanPage.builder()
@@ -566,8 +570,7 @@ public class WeaviateVectorDatabaseService implements VectorDatabaseService {
         }
 
         return result.getResult().stream()
-            .map(obj -> toVectorRecord(obj, null))
-            .filter(Objects::nonNull)
+            .flatMap(obj -> toVectorRecord(obj, null).stream())
             .toList();
     }
 
@@ -671,6 +674,38 @@ public class WeaviateVectorDatabaseService implements VectorDatabaseService {
 
     private boolean hasText(String value) {
         return value != null && !value.trim().isEmpty();
+    }
+
+    private int normalizeSearchLimit(Integer limit) {
+        if (limit == null || limit <= 0) {
+            return 10;
+        }
+        return Math.min(limit, 100);
+    }
+
+    private double normalizeSearchThreshold(Double threshold) {
+        if (threshold == null || !Double.isFinite(threshold)) {
+            return 0.0d;
+        }
+        return Math.max(0.0d, Math.min(1.0d, threshold));
+    }
+
+    private List<VectorRecord> safeVectors(List<VectorRecord> vectors) {
+        if (vectors == null || vectors.isEmpty()) {
+            return Collections.emptyList();
+        }
+        return vectors.stream()
+            .filter(Objects::nonNull)
+            .toList();
+    }
+
+    private List<String> safeVectorIds(List<String> vectorIds) {
+        if (vectorIds == null || vectorIds.isEmpty()) {
+            return Collections.emptyList();
+        }
+        return vectorIds.stream()
+            .filter(this::hasText)
+            .toList();
     }
 
     private WeaviateClient buildClient(AIProviderConfig.WeaviateConfig config) {
@@ -823,13 +858,13 @@ public class WeaviateVectorDatabaseService implements VectorDatabaseService {
                 return;
             }
 
-            String propertyName = toMetadataPropertyName(key);
-            if (propertyName == null || knownProperties.contains(propertyName)) {
+            Optional<String> propertyName = toMetadataPropertyName(key);
+            if (propertyName.isEmpty() || knownProperties.contains(propertyName.get())) {
                 return;
             }
 
             Property property = Property.builder()
-                .name(propertyName)
+                .name(propertyName.get())
                 .dataType(List.of(DataType.TEXT))
                 .description("Metadata field '" + key + "'")
                 .build();
@@ -845,7 +880,7 @@ public class WeaviateVectorDatabaseService implements VectorDatabaseService {
                 return;
             }
 
-            knownProperties.add(propertyName);
+            knownProperties.add(propertyName.get());
             knownPropertiesByClass.put(className, knownProperties);
         });
     }
@@ -870,9 +905,9 @@ public class WeaviateVectorDatabaseService implements VectorDatabaseService {
         knownPropertiesByClass.put(className, props);
     }
 
-    private WhereFilter buildWhereFilter(Map<String, Object> metadataEquals) {
+    private Optional<WhereFilter> buildWhereFilter(Map<String, Object> metadataEquals) {
         if (metadataEquals == null || metadataEquals.isEmpty()) {
-            return null;
+            return Optional.empty();
         }
 
         List<WhereFilter> operands = new ArrayList<>();
@@ -880,27 +915,25 @@ public class WeaviateVectorDatabaseService implements VectorDatabaseService {
             if (!hasText(key) || value == null) {
                 return;
             }
-            String property = toMetadataPropertyName(key);
-            if (property == null) {
-                return;
-            }
-            operands.add(WhereFilter.builder()
-                .path(new String[]{property})
-                .operator("Equal")
-                .valueText(String.valueOf(value))
-                .build());
+            toMetadataPropertyName(key)
+                .map(property -> WhereFilter.builder()
+                    .path(new String[]{property})
+                    .operator("Equal")
+                    .valueText(String.valueOf(value))
+                    .build())
+                .ifPresent(operands::add);
         });
 
         if (operands.isEmpty()) {
-            return null;
+            return Optional.empty();
         }
         if (operands.size() == 1) {
-            return operands.getFirst();
+            return Optional.of(operands.getFirst());
         }
-        return WhereFilter.builder()
+        return Optional.of(WhereFilter.builder()
             .operator("And")
             .operands(operands.toArray(WhereFilter[]::new))
-            .build();
+            .build());
     }
 
     private List<VectorRecord> parseGraphQLScanRecords(String className, GraphQLResponse response, VectorScanRequest request) {
@@ -942,8 +975,8 @@ public class WeaviateVectorDatabaseService implements VectorDatabaseService {
             String raw = row.get(PROPERTY_RAW) != null ? String.valueOf(row.get(PROPERTY_RAW)) : "{}";
 
             Map<String, Object> parsedMetadata = parseRawMetadata(raw);
-            LocalDateTime createdAt = readTimestamp(parsedMetadata, "_indexedCreatedAt");
-            LocalDateTime updatedAt = readTimestamp(parsedMetadata, "_indexedUpdatedAt");
+            LocalDateTime createdAt = readTimestamp(parsedMetadata, "_indexedCreatedAt").orElse(null);
+            LocalDateTime updatedAt = readTimestamp(parsedMetadata, "_indexedUpdatedAt").orElse(null);
 
             records.add(VectorRecord.builder()
                 .vectorId(vectorId)
@@ -960,42 +993,42 @@ public class WeaviateVectorDatabaseService implements VectorDatabaseService {
         return records;
     }
 
-    private static LocalDateTime readTimestamp(Map<String, Object> metadata, String key) {
+    private static Optional<LocalDateTime> readTimestamp(Map<String, Object> metadata, String key) {
         if (metadata == null || key == null) {
-            return null;
+            return Optional.empty();
         }
         Object raw = metadata.get(key);
         if (raw == null) {
-            return null;
+            return Optional.empty();
         }
         try {
-            return LocalDateTime.parse(raw.toString());
+            return Optional.of(LocalDateTime.parse(raw.toString()));
         } catch (Exception ex) {
-            return null;
+            return Optional.empty();
         }
     }
 
-    private static String encodeAfterCursor(String vectorId) {
+    private static Optional<String> encodeAfterCursor(String vectorId) {
         if (!hasTextStatic(vectorId)) {
-            return null;
+            return Optional.empty();
         }
         String raw = "after:" + vectorId;
-        return Base64.getUrlEncoder().withoutPadding().encodeToString(raw.getBytes(StandardCharsets.UTF_8));
+        return Optional.of(Base64.getUrlEncoder().withoutPadding().encodeToString(raw.getBytes(StandardCharsets.UTF_8)));
     }
 
-    private static String decodeAfterCursor(String cursor) {
+    private static Optional<String> decodeAfterCursor(String cursor) {
         if (!hasTextStatic(cursor)) {
-            return null;
+            return Optional.empty();
         }
         try {
             String raw = new String(Base64.getUrlDecoder().decode(cursor), StandardCharsets.UTF_8);
             if (!raw.startsWith("after:")) {
-                return null;
+                return Optional.empty();
             }
             String after = raw.substring("after:".length());
-            return hasTextStatic(after) ? after : null;
+            return hasTextStatic(after) ? Optional.of(after) : Optional.empty();
         } catch (Exception ex) {
-            return null;
+            return Optional.empty();
         }
     }
 
@@ -1024,9 +1057,9 @@ public class WeaviateVectorDatabaseService implements VectorDatabaseService {
         return messages.contains("already exists") || messages.contains("tenant exists");
     }
 
-    private String toMetadataPropertyName(String key) {
+    private Optional<String> toMetadataPropertyName(String key) {
         if (!hasText(key)) {
-            return null;
+            return Optional.empty();
         }
         String normalized = key.trim().toLowerCase();
         String base = normalized.replaceAll("[^a-z0-9_]", "_")
@@ -1044,7 +1077,7 @@ public class WeaviateVectorDatabaseService implements VectorDatabaseService {
         if (candidate.length() > 64) {
             candidate = candidate.substring(0, 63);
         }
-        return candidate;
+        return Optional.of(candidate);
     }
 
     private String toClassName(String entityType) {
@@ -1152,11 +1185,8 @@ public class WeaviateVectorDatabaseService implements VectorDatabaseService {
             if (PROPERTY_RAW.equals(key) || PROPERTY_ENTITY_ID.equals(key) || PROPERTY_ENTITY_TYPE.equals(key) || PROPERTY_CONTENT.equals(key)) {
                 return;
             }
-            String propertyName = toMetadataPropertyName(key);
-            if (propertyName == null) {
-                return;
-            }
-            props.put(propertyName, String.valueOf(value));
+            toMetadataPropertyName(key)
+                .ifPresent(propertyName -> props.put(propertyName, String.valueOf(value)));
         });
         return props;
     }
@@ -1222,7 +1252,7 @@ public class WeaviateVectorDatabaseService implements VectorDatabaseService {
         NearVectorArgument nearVector = NearVectorArgument.builder()
             .vector(queryVector)
             .build();
-        WhereFilter where = buildWhereFilter(metadataEquals);
+        Optional<WhereFilter> where = buildWhereFilter(metadataEquals);
 
         Field[] fields = new Field[]{
             Field.builder().name(PROPERTY_ENTITY_TYPE).build(),
@@ -1242,8 +1272,8 @@ public class WeaviateVectorDatabaseService implements VectorDatabaseService {
             .withNearVector(nearVector)
             .withLimit(limit)
             .withFields(fields));
-        if (where != null) {
-            query = query.withWhere(where);
+        if (where.isPresent()) {
+            query = query.withWhere(where.get());
         }
 
         Result<GraphQLResponse> result = query.run();
@@ -1285,9 +1315,11 @@ public class WeaviateVectorDatabaseService implements VectorDatabaseService {
 
             String vectorId = String.valueOf(additional.get("id"));
 
-            Double certainty = toDouble(additional.get("certainty"));
-            Double distance = toDouble(additional.get("distance"));
-            double score = certainty != null ? certainty : (distance != null ? Math.max(0.0, 1.0 - distance) : 0.0);
+            Optional<Double> certainty = toDouble(additional.get("certainty"));
+            Optional<Double> distance = toDouble(additional.get("distance"));
+            double score = certainty.orElseGet(() -> distance
+                .map(value -> Math.max(0.0, 1.0 - value))
+                .orElse(0.0));
 
             if (score < threshold) {
                 continue;
@@ -1299,8 +1331,8 @@ public class WeaviateVectorDatabaseService implements VectorDatabaseService {
             String raw = row.get(PROPERTY_RAW) != null ? String.valueOf(row.get(PROPERTY_RAW)) : "{}";
 
             Map<String, Object> metadata = parseRawMetadata(raw);
-            LocalDateTime createdAt = readTimestamp(metadata, "_indexedCreatedAt");
-            LocalDateTime updatedAt = readTimestamp(metadata, "_indexedUpdatedAt");
+            LocalDateTime createdAt = readTimestamp(metadata, "_indexedCreatedAt").orElse(null);
+            LocalDateTime updatedAt = readTimestamp(metadata, "_indexedUpdatedAt").orElse(null);
 
             records.add(VectorRecord.builder()
                 .vectorId(vectorId)
@@ -1340,18 +1372,18 @@ public class WeaviateVectorDatabaseService implements VectorDatabaseService {
         return vector;
     }
 
-    private Double toDouble(Object value) {
+    private Optional<Double> toDouble(Object value) {
         if (value instanceof Number number) {
-            return number.doubleValue();
+            return Optional.of(number.doubleValue());
         }
         if (value instanceof String string && hasText(string)) {
             try {
-                return Double.parseDouble(string);
+                return Optional.of(Double.parseDouble(string));
             } catch (NumberFormatException ignored) {
-                return null;
+                return Optional.empty();
             }
         }
-        return null;
+        return Optional.empty();
     }
 
     private Map<String, Object> parseRawMetadata(String raw) {
@@ -1368,9 +1400,9 @@ public class WeaviateVectorDatabaseService implements VectorDatabaseService {
         }
     }
 
-    private VectorRecord toVectorRecord(WeaviateObject object, Double similarityScore) {
+    private Optional<VectorRecord> toVectorRecord(WeaviateObject object, Double similarityScore) {
         if (object == null) {
-            return null;
+            return Optional.empty();
         }
 
         Map<String, Object> props = object.getProperties() != null ? object.getProperties() : Collections.emptyMap();
@@ -1380,10 +1412,10 @@ public class WeaviateVectorDatabaseService implements VectorDatabaseService {
         String raw = props.get(PROPERTY_RAW) != null ? String.valueOf(props.get(PROPERTY_RAW)) : "{}";
 
         Map<String, Object> metadata = parseRawMetadata(raw);
-        LocalDateTime createdAt = readTimestamp(metadata, "_indexedCreatedAt");
-        LocalDateTime updatedAt = readTimestamp(metadata, "_indexedUpdatedAt");
+        LocalDateTime createdAt = readTimestamp(metadata, "_indexedCreatedAt").orElse(null);
+        LocalDateTime updatedAt = readTimestamp(metadata, "_indexedUpdatedAt").orElse(null);
 
-        return VectorRecord.builder()
+        return Optional.of(VectorRecord.builder()
             .vectorId(object.getId())
             .entityType(entityType)
             .entityId(entityId)
@@ -1393,7 +1425,7 @@ public class WeaviateVectorDatabaseService implements VectorDatabaseService {
             .createdAt(createdAt)
             .updatedAt(updatedAt)
             .similarityScore(similarityScore)
-            .build();
+            .build());
     }
 
     private boolean isNotFound(WeaviateError error) {

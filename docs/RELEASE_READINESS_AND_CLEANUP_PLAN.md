@@ -203,8 +203,7 @@ SECURITY.md says "report privately to the repository owner" but gives no mechani
   is **cosmetic but public-facing** and touches the parent POM `<module>` paths and the
   release workflow `FRAMEWORK_MODULES` list. Defer unless desired — low value, non-trivial
   blast radius. If done, do it as an isolated commit and re-run the full build.
-- **O4 — Two `TODO`s in example code** (`sub-management-hub/.../BehaviorEventService.java`,
-  `core/.../AnnotationFieldScanner.java`) — legitimate future-work markers, leave as-is.
+- **O4 — Previously tracked example future-work markers** — resolved during the module cleanup sweep.
 
 ---
 
@@ -259,7 +258,7 @@ steps need maintainer credentials.
 | O1 | `CHANGELOG.md` | P2 | Low | Open (post-release) |
 | O2 | Issue / PR templates | P3 | Low | Open (post-release) |
 | O3 | Rename `victor-databases/` → `vector-databases/` | P3 | Med | Open (post-release) |
-| O4 | Example `TODO`s | — | — | Leave |
+| O4 | Example future-work markers | — | — | ✅ Resolved |
 | R1 | Set version → `0.1.0` and groupId → `io.github.loom-ai-labs` | P0 | Med | ✅ Done |
 | R2 | Add `<developers>`, `central` profile (GPG + central-publishing) | P0 | Med | ✅ Done |
 | R3 | `maven-central-release.yml`; remove GitHub Packages workflow/guide | P0 | Low | ✅ Done |

@@ -2,7 +2,7 @@
 
 Scenario: **behavior analytics + churn/sentiment insights** using AI Fabric’s behavior module.
 
-This app is **fully offline**: it includes an in-app stub LLM provider and uses H2 with a small compatibility schema for the behavior tables.
+This app is **fully offline**: it includes an in-app deterministic LLM provider and uses H2 with a small compatibility schema for the behavior tables.
 
 ## What this app proves
 

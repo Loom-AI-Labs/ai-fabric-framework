@@ -120,7 +120,7 @@ Then point `ai.providers.onnx.model-path` / `tokenizer-path` at the downloaded f
 above already match the script's output location).
 
 > **Evaluating without keys or models?** Use the `smoke` profile shown in the
-> [guides index](README.md) and [Quickstart](07-quickstart.md): it swaps in a no-op LLM provider,
+> [guides index](README.md) and [Quickstart](07-quickstart.md): it swaps in a deterministic local LLM provider,
 > deterministic in-process embeddings (no ONNX file), an in-memory vector store, and H2.
 
 ## Building from source (optional)

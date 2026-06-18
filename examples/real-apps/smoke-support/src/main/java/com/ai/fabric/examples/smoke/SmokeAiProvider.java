@@ -12,11 +12,11 @@ import java.time.LocalDateTime;
 import java.util.UUID;
 
 /**
- * Offline, no-op {@link AIProvider} used by the "smoke" profile.
+ * Offline deterministic {@link AIProvider} used by the "smoke" profile.
  *
  * <p>Its only purpose is to satisfy the framework's provider wiring so an example app can BOOT with no
- * API keys or network access. Generation returns a deterministic placeholder rather than a real model
- * response, so endpoints that call the LLM will return stub content under this profile.</p>
+ * API keys or network access. Generation returns a deterministic local response rather than calling an
+ * external model, so endpoints that call the LLM remain testable under this profile.</p>
  *
  * <p>Selected via {@code ai.providers.llm-provider: smoke} (see {@code application-smoke.yml}).</p>
  */
@@ -39,7 +39,7 @@ public class SmokeAiProvider implements AIProvider {
         return AIGenerationResponse.builder()
             .id("smoke-" + UUID.randomUUID())
             .requestId(request != null ? request.getEntityId() : null)
-            .content("[smoke profile] offline stub response - no model was called")
+            .content("[smoke profile] deterministic local response - no external model was called")
             .model(NAME)
             .tokensUsed(0)
             .confidence(0.0)
@@ -64,7 +64,7 @@ public class SmokeAiProvider implements AIProvider {
             .successRate(1.0)
             .averageResponseTime(0.0)
             .lastUpdated(LocalDateTime.now())
-            .details("offline no-op stub (smoke profile)")
+            .details("offline deterministic provider (smoke profile)")
             .build();
     }
 
@@ -73,8 +73,8 @@ public class SmokeAiProvider implements AIProvider {
         return ProviderConfig.builder()
             .providerName(NAME)
             .enabled(true)
-            .apiKey("stub")
-            .baseUrl("stub://local")
+            .apiKey("smoke-local-key")
+            .baseUrl("smoke://local")
             .defaultModel(NAME)
             .timeoutSeconds(1)
             .maxRetries(0)

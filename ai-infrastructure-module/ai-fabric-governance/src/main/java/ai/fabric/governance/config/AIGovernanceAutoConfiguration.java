@@ -8,7 +8,7 @@ import ai.fabric.deletion.policy.UserDataDeletionProvider;
 import ai.fabric.deletion.port.BehaviorDeletionPort;
 import ai.fabric.filter.AIContentFilterService;
 import ai.fabric.governance.catalog.IndexCatalog;
-import ai.fabric.governance.catalog.noop.NoopIndexCatalog;
+import ai.fabric.governance.catalog.disabled.DisabledIndexCatalog;
 import ai.fabric.governance.catalog.jpa.IndexCatalogRepository;
 import ai.fabric.governance.catalog.jpa.JpaIndexCatalog;
 import ai.fabric.governance.catalog.vector.VectorIndexCatalog;
@@ -54,19 +54,22 @@ public class AIGovernanceAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean(IndexCatalog.class)
-    @ConditionalOnBean(VectorDatabaseService.class)
     public IndexCatalog indexCatalog(
         AIGovernanceProperties properties,
-        VectorDatabaseService vectorDatabaseService,
+        ObjectProvider<VectorDatabaseService> vectorDatabaseServiceProvider,
         ObjectMapper governanceObjectMapper,
-        org.springframework.beans.factory.ObjectProvider<IndexCatalogRepository> repositoryProvider
+        ObjectProvider<IndexCatalogRepository> repositoryProvider
     ) {
         AIGovernanceProperties.CatalogProperties.Mode mode = properties.getCatalog() != null
             ? properties.getCatalog().getMode()
             : AIGovernanceProperties.CatalogProperties.Mode.AUTO;
 
-        boolean vectorCapable = vectorDatabaseService.supportsVectorScan() && vectorDatabaseService.supportsMetadataFiltering();
-        boolean sqlCapable = repositoryProvider.getIfAvailable() != null;
+        VectorDatabaseService vectorDatabaseService = vectorDatabaseServiceProvider.getIfAvailable();
+        IndexCatalogRepository repository = repositoryProvider.getIfAvailable();
+        boolean vectorCapable = vectorDatabaseService != null
+            && vectorDatabaseService.supportsVectorScan()
+            && vectorDatabaseService.supportsMetadataFiltering();
+        boolean sqlCapable = repository != null;
 
         AIGovernanceProperties.CatalogProperties.Mode resolved = switch (mode) {
             case VECTOR -> AIGovernanceProperties.CatalogProperties.Mode.VECTOR;
@@ -78,32 +81,39 @@ public class AIGovernanceAutoConfiguration {
         };
 
         if (resolved == AIGovernanceProperties.CatalogProperties.Mode.VECTOR) {
+            if (vectorDatabaseService == null) {
+                throw new IllegalStateException("ai.governance.catalog.mode=VECTOR requires a VectorDatabaseService bean");
+            }
+            if (!vectorCapable) {
+                throw new IllegalStateException(
+                    "ai.governance.catalog.mode=VECTOR requires VectorDatabaseService to support vector scan and metadata filtering");
+            }
             return new VectorIndexCatalog(vectorDatabaseService);
         }
 
         if (resolved == AIGovernanceProperties.CatalogProperties.Mode.SQL) {
-            IndexCatalogRepository repository = repositoryProvider.getIfAvailable();
             if (repository == null) {
                 throw new IllegalStateException("ai.governance.catalog.mode=SQL requires IndexCatalogRepository (JPA) to be available");
             }
             return new JpaIndexCatalog(repository, governanceObjectMapper);
         }
 
-        return new NoopIndexCatalog();
+        return new DisabledIndexCatalog();
     }
 
     @Bean
-    public BeanPostProcessor governanceVectorDatabaseServiceDecorator(
-        AIGovernanceProperties properties,
-        org.springframework.beans.factory.ObjectProvider<IndexCatalog> catalogProvider
+    public static BeanPostProcessor governanceVectorDatabaseServiceDecorator(
+        ObjectProvider<AIGovernanceProperties> propertiesProvider,
+        ObjectProvider<IndexCatalog> catalogProvider
     ) {
         return new BeanPostProcessor() {
             @Override
             public Object postProcessAfterInitialization(Object bean, String beanName) {
-                if (!properties.isEnabled()) {
+                if (!(bean instanceof VectorDatabaseService vectorDatabaseService)) {
                     return bean;
                 }
-                if (!(bean instanceof VectorDatabaseService vectorDatabaseService)) {
+                AIGovernanceProperties properties = propertiesProvider.getIfAvailable();
+                if (properties == null || !properties.isEnabled()) {
                     return bean;
                 }
                 if (bean instanceof GovernanceVectorDatabaseServiceDecorator) {

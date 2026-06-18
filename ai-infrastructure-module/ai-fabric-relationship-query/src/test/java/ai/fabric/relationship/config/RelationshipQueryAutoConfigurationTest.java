@@ -21,9 +21,12 @@ class RelationshipQueryAutoConfigurationTest {
             )
             .run(context -> {
                 assertThat(context).hasSingleBean(RelationshipModuleMetadata.class);
+                assertThat(context).hasSingleBean(RelationshipQueryConfiguration.RelationshipModuleMarker.class);
                 RelationshipModuleMetadata metadata = context.getBean(RelationshipModuleMetadata.class);
                 assertThat(metadata.maxTraversalDepth()).isEqualTo(4);
                 assertThat(metadata.defaultReturnMode()).isNotNull();
+                assertThat(context.getBean(RelationshipQueryConfiguration.RelationshipModuleMarker.class).moduleName())
+                    .isEqualTo("relationship-query");
             });
     }
 

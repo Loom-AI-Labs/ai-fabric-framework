@@ -29,10 +29,16 @@ class SupportCuratedPackTest {
             .orElseThrow(() -> new IllegalStateException("Failed to bind ai.orchestration"));
 
         assertThat(props.getProfile()).isEqualTo(OrchestrationProfile.PRODUCTION_CHAT);
+        assertThat(props.isAlwaysGenerateInformation()).isTrue();
         assertThat(props.getDefaultMode()).isEqualTo("support_assistant");
         assertThat(props.getModes()).containsKeys("support_assistant", "support_deep", "support_operator");
         assertThat(props.getModes().get("support_assistant").getActionsPreferred()).isEqualTo(true);
-        assertThat(props.getModes().get("support_deep").getUseAdvancedRag()).isNull();
+        assertThat(props.getModes().get("support_deep").getDeepRetrievalEnabled()).isTrue();
+        assertThat(props.getModes().get("support_deep").getRag()).isNotNull();
+        assertThat(props.getModes().get("support_deep").getRag().getFanoutEnabled()).isTrue();
+        assertThat(props.getModes().get("support_deep").getRag().getMaxSpaces()).isEqualTo(6);
+        assertThat(props.getModes().get("support_operator").getKnowledgeBaseOverviewEnabled()).isFalse();
+        assertThat(environment.getProperty("ai.prompts.bundle.overlays[0]")).isNull();
         assertThat(props.getPositionRouting())
             .containsEntry("support", "support_assistant")
             .containsEntry("troubleshooting", "support_deep")

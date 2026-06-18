@@ -117,6 +117,13 @@ public final class ConnectorAIActionHandler implements AIActionHandler {
                 .message("Action metadata is missing action name.")
                 .build();
         }
+        if (metadata.getAccessMode() == null) {
+            return ActionResult.builder()
+                .success(false)
+                .errorCode("ACTION_EXECUTION_FAILED")
+                .message("Action metadata is missing access mode.")
+                .build();
+        }
         return executor.execute(actionId, metadata.getAccessMode(), params != null ? params : Map.of(), context, actionConfig);
     }
 

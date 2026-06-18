@@ -15,7 +15,7 @@
     <packaging>jar</packaging>
 
     <name>AI Fabric Provider Starter</name>
-    <description>Convenience starter for provider-only (core) AI Fabric scenarios without indexing.</description>
+    <description>Convenience starter for provider-only AI Fabric scenarios: core runtime only, without indexing, PII, or RAG modules.</description>
 
     <dependencies>
         <dependency>
@@ -23,6 +23,11 @@
             <artifactId>ai-fabric-core</artifactId>
             <version>${project.version}</version>
         </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 </project>
-

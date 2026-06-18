@@ -48,6 +48,7 @@ public class RetrievalConnectorRAGProvider implements RAGProvider {
     private static final String ERROR_SERVICE_UNAVAILABLE = "SERVICE_UNAVAILABLE";
     private static final String ERROR_TIMEOUT = "TIMEOUT";
     private static final String ERROR_RATE_LIMITED = "RATE_LIMITED";
+    private static final String ERROR_HTTP_ERROR = "HTTP_ERROR";
 
     private static final Set<String> RETRYABLE_ERROR_CODES = Set.of(
         ERROR_TIMEOUT,
@@ -62,6 +63,9 @@ public class RetrievalConnectorRAGProvider implements RAGProvider {
     private static final String DOC_URL = "url";
     private static final String DOC_VECTOR_SPACE = "vectorSpace";
     private static final String DOC_METADATA = "metadata";
+    private static final String HEADER_HMAC_TIMESTAMP = "X-AIFABRIC-TIMESTAMP";
+    private static final String HEADER_HMAC_NONCE = "X-AIFABRIC-NONCE";
+    private static final String HEADER_HMAC_SIGNATURE = "X-AIFABRIC-SIGNATURE";
 
     private final AIRetrievalConnectorProperties properties;
     private final AIHttpClientFactory httpClientFactory;
@@ -296,6 +300,9 @@ public class RetrievalConnectorRAGProvider implements RAGProvider {
             HttpClient created = httpClientFactory != null && connect != null && read != null
                 ? httpClientFactory.create(connect, read)
                 : httpClientFactory.create();
+            if (created == null) {
+                throw new IllegalStateException("AIHttpClientFactory returned null for retrieval connector.");
+            }
             httpClient = created;
             httpClientInitialized = true;
             log.debug("Initialized retrieval connector HttpClient (connectTimeout={}, readTimeout={})", connect, read);
@@ -317,12 +324,16 @@ public class RetrievalConnectorRAGProvider implements RAGProvider {
             String timestamp = String.valueOf(Instant.now(clock).getEpochSecond());
             String nonce = ulidGenerator.nextUlid();
             String signature = sign(hmac.getSecret(), timestamp, nonce, body);
-            headers.set(hmac.getTimestampHeader(), timestamp);
-            headers.set(hmac.getNonceHeader(), nonce);
-            headers.set(hmac.getSignatureHeader(), signature);
+            headers.set(headerOrDefault(hmac.getTimestampHeader(), HEADER_HMAC_TIMESTAMP), timestamp);
+            headers.set(headerOrDefault(hmac.getNonceHeader(), HEADER_HMAC_NONCE), nonce);
+            headers.set(headerOrDefault(hmac.getSignatureHeader(), HEADER_HMAC_SIGNATURE), signature);
         }
 
         return headers;
+    }
+
+    private String headerOrDefault(String configured, String fallback) {
+        return StringUtils.hasText(configured) ? configured.trim() : fallback;
     }
 
     private String sign(String secret, String timestamp, String nonce, String body) {
@@ -352,6 +363,10 @@ public class RetrievalConnectorRAGProvider implements RAGProvider {
 
         String body = response.getBody();
         if (!StringUtils.hasText(body)) {
+            if (!response.getStatusCode().is2xxSuccessful()) {
+                int status = response.getStatusCode().value();
+                return ConnectorResult.failure(errorCodeForStatus(status), "Retrieval connector returned HTTP " + status + ".", List.of());
+            }
             return ConnectorResult.failure(ERROR_SERVICE_UNAVAILABLE, "Retrieval connector returned an empty response.", List.of());
         }
 
@@ -362,10 +377,16 @@ public class RetrievalConnectorRAGProvider implements RAGProvider {
             return ConnectorResult.failure(ERROR_SERVICE_UNAVAILABLE, "Retrieval connector returned invalid JSON.", List.of());
         }
 
-        boolean success = readBoolean(parsed.get(RetrievalConnectorProtocol.KEY_SUCCESS), false);
         String message = readString(parsed.get(RetrievalConnectorProtocol.KEY_MESSAGE));
         String errorCode = readString(parsed.get(RetrievalConnectorProtocol.KEY_ERROR_CODE));
+        if (!response.getStatusCode().is2xxSuccessful()) {
+            int status = response.getStatusCode().value();
+            String msg = StringUtils.hasText(message) ? message : "Retrieval connector returned HTTP " + status + ".";
+            String code = StringUtils.hasText(errorCode) ? errorCode : errorCodeForStatus(status);
+            return ConnectorResult.failure(code, msg, List.of());
+        }
 
+        boolean success = readBoolean(parsed.get(RetrievalConnectorProtocol.KEY_SUCCESS), false);
         if (!success) {
             String msg = StringUtils.hasText(message) ? message : "Retrieval connector request failed.";
             String code = StringUtils.hasText(errorCode) ? errorCode : ERROR_SERVICE_UNAVAILABLE;
@@ -386,6 +407,19 @@ public class RetrievalConnectorRAGProvider implements RAGProvider {
         }
 
         return new ConnectorResult(true, message, null, docs, warnings, totalCount);
+    }
+
+    private String errorCodeForStatus(int status) {
+        if (status == 408) {
+            return ERROR_TIMEOUT;
+        }
+        if (status == 429) {
+            return ERROR_RATE_LIMITED;
+        }
+        if (status >= 500) {
+            return ERROR_SERVICE_UNAVAILABLE;
+        }
+        return ERROR_HTTP_ERROR;
     }
 
     private List<RAGResponse.RAGDocument> parseDocuments(Object raw) {

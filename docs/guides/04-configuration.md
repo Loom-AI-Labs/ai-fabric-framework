@@ -109,12 +109,12 @@ store).
 
 ## The `smoke` profile (offline, no keys)
 
-The example apps ship a `smoke` profile that selects local stubs end-to-end:
+The example apps ship a `smoke` profile that selects deterministic local providers end-to-end:
 
 ```yaml
 ai:
   providers:
-    llm-provider: smoke         # no-op provider
+    llm-provider: smoke         # deterministic local provider
     embedding-provider: smoke   # deterministic, in-process (no ONNX file)
   vector-db:
     type: memory                # in-process vector store

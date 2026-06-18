@@ -26,6 +26,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -91,12 +92,17 @@ public class BehaviorAnalysisService {
      */
     @Transactional
     public BehaviorInsights processNextUser() {
+        return processNextUserOptional().orElse(null);
+    }
+
+    @Transactional
+    public Optional<BehaviorInsights> processNextUserOptional() {
         log.debug("Fetching next user for batch processing");
         
         UserEventBatch batch = eventProvider.getNextUserEvents();
         if (batch == null || batch.getUserId() == null) {
             log.debug("No users pending analysis");
-            return null;
+            return Optional.empty();
         }
         
         List<ExternalEvent> events = batch.getEvents() != null
@@ -105,7 +111,7 @@ public class BehaviorAnalysisService {
         
         if (events.isEmpty()) {
             log.warn("No events returned for discovery user: {}", batch.getUserId());
-            return storageAdapter.findByUserId(batch.getUserId()).orElse(null);
+            return storageAdapter.findByUserId(batch.getUserId());
         }
         
         log.info("Processing batch for user: {} with {} events",
@@ -120,7 +126,7 @@ public class BehaviorAnalysisService {
             batch.getUserContext()
         );
         
-        return saveAndIndex(updatedInsight);
+        return Optional.ofNullable(saveAndIndex(updatedInsight));
     }
     
     private BehaviorInsights performEvolutionaryAnalysis(
@@ -290,11 +296,11 @@ public class BehaviorAnalysisService {
     ) throws Exception {
         BehaviorInsights.BehaviorInsightsBuilder builder = BehaviorInsights.builder()
             .userId(userId)
-            .segment((String) parsed.get("segment"))
-            .patterns((List<String>) parsed.get("patterns"))
-            .recommendations((List<String>) parsed.get("recommendations"))
-            .insights((Map<String, Object>) parsed.get("insights"))
-            .confidence(((Number) parsed.getOrDefault("confidence", 0.5)).doubleValue())
+            .segment(asString(parsed.get("segment")).orElse(null))
+            .patterns(asStringList(parsed.get("patterns")).orElse(null))
+            .recommendations(asStringList(parsed.get("recommendations")).orElse(null))
+            .insights(asObjectMap(parsed.get("insights")).orElse(null))
+            .confidence(asDouble(parsed.get("confidence"), 0.5))
             .analyzedAt(LocalDateTime.now());
 
         if (oldInsight != null) {
@@ -302,11 +308,11 @@ public class BehaviorAnalysisService {
             builder.previousChurnRisk(oldInsight.getChurnRisk());
         }
 
-        Map<String, Object> sentiment = (Map<String, Object>) parsed.get("sentiment");
-        if (sentiment != null) {
-            Double score = ((Number) sentiment.getOrDefault("score", 0.0)).doubleValue();
-            String labelStr = (String) sentiment.get("label");
-            score = Math.max(-1.0, Math.min(1.0, score));
+        Optional<Map<String, Object>> sentiment = asObjectMap(parsed.get("sentiment"));
+        if (sentiment.isPresent()) {
+            Map<String, Object> sentimentMap = sentiment.get();
+            Double score = clamp(asDouble(sentimentMap.get("score"), 0.0), -1.0, 1.0);
+            String labelStr = asString(sentimentMap.get("label")).orElse(null);
             SentimentLabel label = SentimentLabel.fromString(labelStr);
             if (labelStr != null && label == SentimentLabel.NEUTRAL && !labelStr.equalsIgnoreCase("NEUTRAL")) {
                 log.warn("Invalid sentiment label '{}' for user {}, defaulted to NEUTRAL", labelStr, userId);
@@ -314,11 +320,11 @@ public class BehaviorAnalysisService {
             builder.sentimentScore(score).sentimentLabel(label);
         }
 
-        Map<String, Object> churn = (Map<String, Object>) parsed.get("churn");
-        if (churn != null) {
-            Double risk = ((Number) churn.getOrDefault("risk", 0.0)).doubleValue();
-            String reason = (String) churn.get("reason");
-            risk = Math.max(0.0, Math.min(1.0, risk));
+        Optional<Map<String, Object>> churn = asObjectMap(parsed.get("churn"));
+        if (churn.isPresent()) {
+            Map<String, Object> churnMap = churn.get();
+            Double risk = clamp(asDouble(churnMap.get("risk"), 0.0), 0.0, 1.0);
+            String reason = asString(churnMap.get("reason")).orElse(null);
             if (risk > 0.5 && (reason == null || reason.isBlank())) {
                 log.warn("High churn risk without reason for user {}", userId);
                 reason = "Behavioral drift detected";
@@ -326,7 +332,7 @@ public class BehaviorAnalysisService {
             builder.churnRisk(risk).churnReason(reason);
         }
 
-        String trendStr = (String) parsed.get("trend");
+        String trendStr = asString(parsed.get("trend")).orElse(null);
         BehaviorTrend trend = BehaviorTrend.fromString(trendStr);
         if (trendStr != null && trend == BehaviorTrend.STABLE && !trendStr.equalsIgnoreCase("STABLE")) {
             log.warn("Invalid trend '{}' for user {}, computing from deltas", trendStr, userId);
@@ -344,6 +350,58 @@ public class BehaviorAnalysisService {
         }
 
         return builder.build();
+    }
+
+    private Optional<String> asString(Object raw) {
+        if (raw == null) {
+            return Optional.empty();
+        }
+        String value = String.valueOf(raw).trim();
+        return value.isEmpty() ? Optional.empty() : Optional.of(value);
+    }
+
+    private Optional<List<String>> asStringList(Object raw) {
+        if (raw == null) {
+            return Optional.empty();
+        }
+        if (raw instanceof List<?> list) {
+            return Optional.of(list.stream()
+                .map(this::asString)
+                .flatMap(Optional::stream)
+                .toList());
+        }
+        return asString(raw).map(List::of);
+    }
+
+    private Optional<Map<String, Object>> asObjectMap(Object raw) {
+        if (!(raw instanceof Map<?, ?> map)) {
+            return Optional.empty();
+        }
+        Map<String, Object> normalized = new LinkedHashMap<>();
+        map.forEach((key, value) -> {
+            if (key != null) {
+                normalized.put(key.toString(), value);
+            }
+        });
+        return Optional.of(normalized);
+    }
+
+    private double asDouble(Object raw, double defaultValue) {
+        if (raw instanceof Number number) {
+            return number.doubleValue();
+        }
+        if (raw instanceof String text && !text.isBlank()) {
+            try {
+                return Double.parseDouble(text.trim());
+            } catch (NumberFormatException ignored) {
+                return defaultValue;
+            }
+        }
+        return defaultValue;
+    }
+
+    private double clamp(double value, double min, double max) {
+        return Math.max(min, Math.min(max, value));
     }
 
     private AIGenerationRequest buildRepairRequest(AIGenerationRequest originalRequest, String originalPrompt, String malformedContent) {

@@ -16,6 +16,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
@@ -100,7 +101,7 @@ public class KnowledgeBaseArticleService {
 
         return response.getResults().stream()
             .map(row -> toHit(row, response.getMaxScore()))
-            .filter(Objects::nonNull)
+            .flatMap(Optional::stream)
             .toList();
     }
 
@@ -113,26 +114,19 @@ public class KnowledgeBaseArticleService {
         capabilityService.processEntityForAI(article, ENTITY_TYPE);
     }
 
-    private SearchHit toHit(Map<String, Object> row, Double maxScore) {
+    private Optional<SearchHit> toHit(Map<String, Object> row, Double maxScore) {
         if (row == null || row.isEmpty()) {
-            return null;
+            return Optional.empty();
         }
 
-        Object entityId = row.get("entityId");
-        if (entityId == null) {
-            return null;
+        Optional<Long> entityId = parseEntityId(row.get("entityId"));
+        if (entityId.isEmpty()) {
+            return Optional.empty();
         }
 
-        Long id;
-        try {
-            id = Long.valueOf(Objects.toString(entityId));
-        } catch (NumberFormatException ex) {
-            return null;
-        }
-
-        KnowledgeBaseArticle article = repository.findById(id).orElse(null);
-        if (article == null) {
-            return null;
+        Optional<KnowledgeBaseArticle> article = repository.findById(entityId.get());
+        if (article.isEmpty()) {
+            return Optional.empty();
         }
 
         Double score = null;
@@ -141,19 +135,32 @@ public class KnowledgeBaseArticleService {
             score = number.doubleValue();
         }
 
-        String snippet = article.getContent();
+        KnowledgeBaseArticle found = article.get();
+        String snippet = found.getContent();
         if (snippet != null && snippet.length() > 220) {
             snippet = snippet.substring(0, 220) + "...";
         }
 
-        return new SearchHit(
-            id,
-            article.getTitle(),
-            article.getCategory(),
+        return Optional.of(new SearchHit(
+            entityId.get(),
+            found.getTitle(),
+            found.getCategory(),
             score,
             maxScore,
             snippet
-        );
+        ));
+    }
+
+    private Optional<Long> parseEntityId(Object entityId) {
+        if (entityId == null) {
+            return Optional.empty();
+        }
+        try {
+            return Optional.of(Long.valueOf(Objects.toString(entityId)));
+        } catch (NumberFormatException ex) {
+            log.debug("Unable to parse kb-article entityId '{}' as Long", entityId);
+            return Optional.empty();
+        }
     }
 
     public record SearchHit(

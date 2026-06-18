@@ -16,5 +16,5 @@ PARTIAL JSON (to complete):
 Notes:
 - If the USER REQUEST includes attachments, use their metadata/contentText as the primary source for completing identifiers instead of guessing.
 - Optional actionParams may be completed when their parameter description says they improve presentation, confirmation copy, or safe display and the value can be faithfully derived from the USER REQUEST or authoritative attachments.
-- Presentation-only optional params must not invent executable identifiers, prices, availability, discounts, or order data.
-- For catalog/search actions with a valid required `query` parameter, fill `query` from the shopper's product-search phrase, including explicit category, price, size, or preference words when no dedicated structured parameter exists.
+- Presentation-only optional params must not invent executable identifiers, numeric values, status facts, private data, or domain-specific facts.
+- For search/read actions with a valid required `query` parameter, fill `query` from the user's natural-language search phrase, including explicit entity type, attribute, constraint, or preference words when no dedicated structured parameter exists.

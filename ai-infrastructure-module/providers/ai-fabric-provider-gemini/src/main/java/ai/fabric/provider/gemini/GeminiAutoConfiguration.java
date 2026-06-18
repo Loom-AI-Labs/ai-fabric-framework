@@ -27,22 +27,35 @@ import java.time.Duration;
 @ConditionalOnClass(GeminiProvider.class)
 public class GeminiAutoConfiguration {
 
+    static final String DEFAULT_BASE_URL = "https://generativelanguage.googleapis.com/v1beta";
+    static final String DEFAULT_MODEL = "gemini-2.5-flash";
+    static final String DEFAULT_EMBEDDING_MODEL = "text-embedding-004";
+    static final int DEFAULT_MAX_TOKENS = 2_000;
+    static final double DEFAULT_TEMPERATURE = 0.3d;
+    static final int DEFAULT_TIMEOUT_SECONDS = 30;
+
     @Bean(name = "geminiProviderConfig")
     @ConditionalOnMissingBean(name = "geminiProviderConfig")
     @ConditionalOnProperty(prefix = "ai.providers.gemini", name = "enabled", havingValue = "true")
     public ProviderConfig geminiProviderConfig(AIProviderConfig aiProviderConfig) {
         AIProviderConfig.GeminiConfig gemini = aiProviderConfig.getGemini();
-        boolean hasApiKey = gemini.getApiKey() != null && !gemini.getApiKey().isBlank();
+        boolean hasApiKey = hasText(gemini.getApiKey());
 
         return ProviderConfig.builder()
             .providerName("gemini")
             .apiKey(gemini.getApiKey())
-            .baseUrl(gemini.getBaseUrl())
-            .defaultModel(gemini.getModel())
-            .defaultEmbeddingModel(gemini.getEmbeddingModel())
-            .maxTokens(gemini.getMaxTokens())
-            .temperature(gemini.getTemperature())
-            .timeoutSeconds(gemini.getTimeout())
+            .baseUrl(normalizeBaseUrl(gemini.getBaseUrl()))
+            .defaultModel(hasText(gemini.getModel()) ? gemini.getModel() : DEFAULT_MODEL)
+            .defaultEmbeddingModel(hasText(gemini.getEmbeddingModel()) ? gemini.getEmbeddingModel() : DEFAULT_EMBEDDING_MODEL)
+            .embeddingApiKey(hasText(aiProviderConfig.getEmbeddingApiKey())
+                ? aiProviderConfig.getEmbeddingApiKey()
+                : gemini.getApiKey())
+            .embeddingBaseUrl(normalizeBaseUrl(hasText(aiProviderConfig.getEmbeddingBaseUrl())
+                ? aiProviderConfig.getEmbeddingBaseUrl()
+                : gemini.getBaseUrl()))
+            .maxTokens(gemini.getMaxTokens() != null ? gemini.getMaxTokens() : DEFAULT_MAX_TOKENS)
+            .temperature(gemini.getTemperature() != null ? gemini.getTemperature() : DEFAULT_TEMPERATURE)
+            .timeoutSeconds(gemini.getTimeout() != null ? gemini.getTimeout() : DEFAULT_TIMEOUT_SECONDS)
             .maxRetries(3)
             .retryDelayMs(1000L)
             .rateLimitPerMinute(60)
@@ -70,5 +83,16 @@ public class GeminiAutoConfiguration {
                                                      AIHttpClientFactory httpClientFactory) {
         HttpClient httpClient = httpClientFactory.create();
         return new GeminiEmbeddingProvider(aiProviderConfig, httpClient);
+    }
+
+    private String normalizeBaseUrl(String baseUrl) {
+        if (!hasText(baseUrl)) {
+            return DEFAULT_BASE_URL;
+        }
+        return baseUrl.endsWith("/") ? baseUrl.substring(0, baseUrl.length() - 1) : baseUrl;
+    }
+
+    private boolean hasText(String value) {
+        return value != null && !value.trim().isEmpty();
     }
 }

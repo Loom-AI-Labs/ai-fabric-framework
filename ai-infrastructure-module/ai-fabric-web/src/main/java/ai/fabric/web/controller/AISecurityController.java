@@ -22,6 +22,8 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class AISecurityController {
 
+    private static final String UNKNOWN_VALUE = "unknown";
+
     private final AISecurityService aiSecurityService;
 
     /**
@@ -39,7 +41,7 @@ public class AISecurityController {
             log.error("Error analyzing security request", e);
             return ResponseEntity.internalServerError()
                 .body(AISecurityResponse.builder()
-                    .requestId(request.getRequestId())
+                    .requestId(resolveRequestId(request))
                     .subjectId(resolveSubjectId(request))
                     .success(false)
                     .errorMessage(e.getMessage())
@@ -141,11 +143,24 @@ public class AISecurityController {
 
     private String resolveSubjectId(AISecurityRequest request) {
         if (request == null || request.getAuthContext() == null) {
-            return null;
+            return UNKNOWN_VALUE;
         }
-        if (request.getAuthContext().getSubjectId() != null && !request.getAuthContext().getSubjectId().isBlank()) {
-            return request.getAuthContext().getSubjectId();
+        if (hasText(request.getAuthContext().getSubjectId())) {
+            return request.getAuthContext().getSubjectId().trim();
         }
-        return request.getAuthContext().getSessionId();
+        if (hasText(request.getAuthContext().getSessionId())) {
+            return request.getAuthContext().getSessionId().trim();
+        }
+        return UNKNOWN_VALUE;
+    }
+
+    private String resolveRequestId(AISecurityRequest request) {
+        return request != null && hasText(request.getRequestId())
+            ? request.getRequestId().trim()
+            : UNKNOWN_VALUE;
+    }
+
+    private boolean hasText(String value) {
+        return value != null && !value.isBlank();
     }
 }

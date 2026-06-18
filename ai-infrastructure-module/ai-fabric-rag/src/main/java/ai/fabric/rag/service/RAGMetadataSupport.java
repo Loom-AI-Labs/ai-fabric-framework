@@ -151,6 +151,12 @@ final class RAGMetadataSupport {
         if (actual == null || expected == null) {
             return false;
         }
+        if (actual instanceof Collection<?> actualCollection) {
+            return actualCollection.stream().anyMatch(item -> valuesEqual(item, expected));
+        }
+        if (expected instanceof Collection<?> expectedCollection) {
+            return expectedCollection.stream().anyMatch(item -> valuesEqual(actual, item));
+        }
         return String.valueOf(actual).equalsIgnoreCase(String.valueOf(expected));
     }
 

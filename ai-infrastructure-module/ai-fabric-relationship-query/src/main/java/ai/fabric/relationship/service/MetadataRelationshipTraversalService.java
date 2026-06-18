@@ -11,12 +11,14 @@ import ai.fabric.relationship.dto.RelationshipQueryPlan;
 import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
 
+import java.lang.reflect.Array;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 
 /**
  * Fallback traversal strategy that inspects vector metadata when direct JPA joins are insufficient.
@@ -49,6 +51,9 @@ public class MetadataRelationshipTraversalService implements RelationshipTravers
 
         String entityType = plan.getPrimaryEntityType();
         Integer limit = query != null ? query.getLimit() : null;
+        if (limit != null && limit <= 0) {
+            return TraversalResult.empty();
+        }
 
         List<FilterCondition> filterConditions = mergeFilters(plan);
         if (filterConditions.isEmpty()) {
@@ -58,10 +63,14 @@ public class MetadataRelationshipTraversalService implements RelationshipTravers
         List<String> matches = new ArrayList<>();
         String cursor = null;
         do {
+            int pageLimit = pageLimit(limit, matches.size());
+            if (pageLimit <= 0) {
+                return TraversalResult.ids(matches);
+            }
             VectorScanPage page = vectorDatabaseService.scan(VectorScanRequest.builder()
                 .entityType(entityType)
                 .cursor(cursor)
-                .limit(limit != null ? Math.min(limit, 500) : 500)
+                .limit(pageLimit)
                 .includeContent(false)
                 .includeEmbedding(false)
                 .includeMetadata(true)
@@ -93,14 +102,21 @@ public class MetadataRelationshipTraversalService implements RelationshipTravers
         if (!StringUtils.hasText(entityType)) {
             return Collections.emptyList();
         }
+        if (limit != null && limit <= 0) {
+            return Collections.emptyList();
+        }
 
         List<String> ids = new ArrayList<>();
         String cursor = null;
         do {
+            int pageLimit = pageLimit(limit, ids.size());
+            if (pageLimit <= 0) {
+                return ids;
+            }
             VectorScanPage page = vectorDatabaseService.scan(VectorScanRequest.builder()
                 .entityType(entityType)
                 .cursor(cursor)
-                .limit(limit != null ? Math.min(limit - ids.size(), 500) : 500)
+                .limit(pageLimit)
                 .includeContent(false)
                 .includeEmbedding(false)
                 .includeMetadata(false)
@@ -122,6 +138,13 @@ public class MetadataRelationshipTraversalService implements RelationshipTravers
         } while (cursor != null);
 
         return ids;
+    }
+
+    private int pageLimit(Integer requestedLimit, int alreadyMatched) {
+        if (requestedLimit == null) {
+            return 500;
+        }
+        return Math.min(Math.max(requestedLimit - alreadyMatched, 0), 500);
     }
 
     private List<FilterCondition> mergeFilters(RelationshipQueryPlan plan) {
@@ -148,7 +171,7 @@ public class MetadataRelationshipTraversalService implements RelationshipTravers
 
     private boolean matches(Map<String, Object> metadata, List<FilterCondition> filters) {
         for (FilterCondition condition : filters) {
-            Object value = lookup(metadata, condition.getField());
+            Object value = lookup(metadata, condition.getField()).orElse(null);
             if (!evaluateCondition(value, condition)) {
                 return false;
             }
@@ -156,23 +179,23 @@ public class MetadataRelationshipTraversalService implements RelationshipTravers
         return true;
     }
 
-    private Object lookup(Map<String, Object> metadata, String field) {
+    private Optional<Object> lookup(Map<String, Object> metadata, String field) {
         if (!StringUtils.hasText(field) || metadata == null) {
-            return null;
+            return Optional.empty();
         }
         if (metadata.containsKey(field)) {
-            return metadata.get(field);
+            return Optional.ofNullable(metadata.get(field));
         }
         int dot = field.lastIndexOf('.');
         if (dot >= 0) {
             String suffix = field.substring(dot + 1);
             if (metadata.containsKey(suffix)) {
-                return metadata.get(suffix);
+                return Optional.ofNullable(metadata.get(suffix));
             }
             String condensed = field.replace(".", "");
-            return metadata.get(condensed);
+            return Optional.ofNullable(metadata.get(condensed));
         }
-        return null;
+        return Optional.empty();
     }
 
     private boolean evaluateCondition(Object candidate, FilterCondition condition) {
@@ -181,21 +204,31 @@ public class MetadataRelationshipTraversalService implements RelationshipTravers
         return switch (operator) {
             case EQUALS -> compareStrings(candidate, expected) == 0;
             case NOT_EQUALS -> compareStrings(candidate, expected) != 0;
-            case GREATER_THAN -> compareNumbers(candidate, expected) > 0;
-            case GREATER_THAN_OR_EQUAL -> compareNumbers(candidate, expected) >= 0;
-            case LESS_THAN -> compareNumbers(candidate, expected) < 0;
-            case LESS_THAN_OR_EQUAL -> compareNumbers(candidate, expected) <= 0;
+            case GREATER_THAN -> compareNumbers(candidate, expected)
+                .map(result -> result > 0)
+                .orElse(false);
+            case GREATER_THAN_OR_EQUAL -> compareNumbers(candidate, expected)
+                .map(result -> result >= 0)
+                .orElse(false);
+            case LESS_THAN -> compareNumbers(candidate, expected)
+                .map(result -> result < 0)
+                .orElse(false);
+            case LESS_THAN_OR_EQUAL -> compareNumbers(candidate, expected)
+                .map(result -> result <= 0)
+                .orElse(false);
             case LIKE, ILIKE -> {
-                String haystack = normalize(candidate);
-                String needle = normalize(expected);
-                yield haystack != null && needle != null && haystack.contains(needle.replace("%", ""));
+                Optional<String> haystack = normalize(candidate);
+                Optional<String> needle = normalize(expected);
+                yield haystack.isPresent()
+                    && needle.isPresent()
+                    && haystack.get().contains(needle.get().replace("%", ""));
             }
             case IN -> containsValue(candidate, expected, true);
             case NOT_IN -> !containsValue(candidate, expected, true);
             case BETWEEN -> {
-                double first = compareNumbers(candidate, expected);
-                double second = compareNumbers(candidate, condition.getSecondaryValue());
-                yield first >= 0 && second <= 0;
+                Optional<Integer> first = compareNumbers(candidate, expected);
+                Optional<Integer> second = compareNumbers(candidate, condition.getSecondaryValue());
+                yield first.isPresent() && second.isPresent() && first.get() >= 0 && second.get() <= 0;
             }
             case EXISTS -> candidate != null;
             case NOT_EXISTS -> candidate == null;
@@ -203,28 +236,34 @@ public class MetadataRelationshipTraversalService implements RelationshipTravers
     }
 
     private int compareStrings(Object first, Object second) {
-        String left = normalize(first);
-        String right = normalize(second);
-        if (left == null || right == null) {
-            return left == right ? 0 : -1;
+        Optional<String> left = normalize(first);
+        Optional<String> right = normalize(second);
+        if (left.isEmpty() || right.isEmpty()) {
+            return left.isEmpty() && right.isEmpty() ? 0 : -1;
         }
-        return left.compareTo(right);
+        return left.get().compareTo(right.get());
     }
 
-    private int compareNumbers(Object first, Object second) {
-        double a = parseDouble(first);
-        double b = parseDouble(second);
-        return Double.compare(a, b);
+    private Optional<Integer> compareNumbers(Object first, Object second) {
+        Optional<Double> a = parseDouble(first);
+        Optional<Double> b = parseDouble(second);
+        if (a.isEmpty() || b.isEmpty()) {
+            return Optional.empty();
+        }
+        return Optional.of(Double.compare(a.get(), b.get()));
     }
 
-    private double parseDouble(Object value) {
+    private Optional<Double> parseDouble(Object value) {
         if (value instanceof Number number) {
-            return number.doubleValue();
+            return Optional.of(number.doubleValue());
+        }
+        if (value == null) {
+            return Optional.empty();
         }
         try {
-            return Double.parseDouble(String.valueOf(value));
+            return Optional.of(Double.parseDouble(String.valueOf(value)));
         } catch (NumberFormatException ex) {
-            return 0;
+            return Optional.empty();
         }
     }
 
@@ -232,7 +271,7 @@ public class MetadataRelationshipTraversalService implements RelationshipTravers
         if (expected instanceof Iterable<?> iterable) {
             for (Object option : iterable) {
                 if (normalize) {
-                    if (Objects.equals(normalize(candidate), normalize(option))) {
+                    if (normalizedEquals(candidate, option)) {
                         return true;
                     }
                 } else if (Objects.equals(candidate, option)) {
@@ -242,24 +281,29 @@ public class MetadataRelationshipTraversalService implements RelationshipTravers
             return false;
         }
         if (expected != null && expected.getClass().isArray()) {
-            Object[] array = (Object[]) expected;
-            for (Object option : array) {
-                if (Objects.equals(normalize(candidate), normalize(option))) {
+            int length = Array.getLength(expected);
+            for (int i = 0; i < length; i++) {
+                Object option = Array.get(expected, i);
+                if (normalizedEquals(candidate, option)) {
                     return true;
                 }
             }
         }
+        return normalizedEquals(candidate, expected);
+    }
+
+    private boolean normalizedEquals(Object candidate, Object expected) {
         return Objects.equals(normalize(candidate), normalize(expected));
     }
 
-    private String normalize(Object value) {
+    private Optional<String> normalize(Object value) {
         if (value == null) {
-            return null;
+            return Optional.empty();
         }
         String text = String.valueOf(value);
         if (!StringUtils.hasText(text)) {
-            return null;
+            return Optional.empty();
         }
-        return text.toLowerCase(Locale.ROOT);
+        return Optional.of(text.toLowerCase(Locale.ROOT));
     }
 }

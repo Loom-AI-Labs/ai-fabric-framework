@@ -18,6 +18,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -80,12 +81,12 @@ public class ProductComparisonService {
         List<String> sharedTags = sharedTags(reference, comparison);
         boolean sameCategory = equalNormalized(reference.getCategory(), comparison.getCategory());
 
-        BigDecimal comparisonPriceDelta = subtractNullable(comparison.getPrice(), reference.getPrice());
-        String cheaperSku = cheaperSku(referenceView, comparisonView);
+        BigDecimal comparisonPriceDelta = subtractIfPresent(comparison.getPrice(), reference.getPrice()).orElse(null);
+        String cheaperSku = cheaperSku(referenceView, comparisonView).orElse(null);
         Double comparisonRatingDelta = roundedDelta(comparisonView.averageRating(), referenceView.averageRating());
-        String higherRatedSku = higherRatedSku(referenceView, comparisonView);
-        Integer comparisonStockDelta = stockDelta(comparisonView.inStockQty(), referenceView.inStockQty());
-        String betterStockedSku = betterStockedSku(referenceView, comparisonView);
+        String higherRatedSku = higherRatedSku(referenceView, comparisonView).orElse(null);
+        Integer comparisonStockDelta = stockDelta(comparisonView.inStockQty(), referenceView.inStockQty()).orElse(null);
+        String betterStockedSku = betterStockedSku(referenceView, comparisonView).orElse(null);
 
         ComparisonHighlights highlights = new ComparisonHighlights(
             comparisonPriceDelta,
@@ -264,7 +265,7 @@ public class ProductComparisonService {
 
     private String normalize(String value) {
         if (!StringUtils.hasText(value)) {
-            return null;
+            return "";
         }
         return value.trim().toLowerCase(Locale.ROOT);
     }
@@ -285,22 +286,22 @@ public class ProductComparisonService {
         return delta.compareTo(baseline.multiply(toleranceRatio)) <= 0;
     }
 
-    private BigDecimal subtractNullable(BigDecimal left, BigDecimal right) {
+    private Optional<BigDecimal> subtractIfPresent(BigDecimal left, BigDecimal right) {
         if (left == null || right == null) {
-            return null;
+            return Optional.empty();
         }
-        return left.subtract(right).setScale(2, RoundingMode.HALF_UP);
+        return Optional.of(left.subtract(right).setScale(2, RoundingMode.HALF_UP));
     }
 
-    private String cheaperSku(ProductReadModel reference, ProductReadModel comparison) {
+    private Optional<String> cheaperSku(ProductReadModel reference, ProductReadModel comparison) {
         if (reference.price() == null || comparison.price() == null) {
-            return null;
+            return Optional.empty();
         }
         int comparisonResult = reference.price().compareTo(comparison.price());
         if (comparisonResult == 0) {
-            return null;
+            return Optional.empty();
         }
-        return comparisonResult < 0 ? reference.sku() : comparison.sku();
+        return Optional.ofNullable(comparisonResult < 0 ? reference.sku() : comparison.sku());
     }
 
     private Double roundedDelta(double left, double right) {
@@ -311,30 +312,30 @@ public class ProductComparisonService {
         return Math.round(value * 100.0d) / 100.0d;
     }
 
-    private String higherRatedSku(ProductReadModel reference, ProductReadModel comparison) {
+    private Optional<String> higherRatedSku(ProductReadModel reference, ProductReadModel comparison) {
         if (reference.reviewCount() <= 0 && comparison.reviewCount() <= 0) {
-            return null;
+            return Optional.empty();
         }
         if (Double.compare(reference.averageRating(), comparison.averageRating()) == 0) {
-            return null;
+            return Optional.empty();
         }
-        return reference.averageRating() > comparison.averageRating() ? reference.sku() : comparison.sku();
+        return Optional.ofNullable(reference.averageRating() > comparison.averageRating() ? reference.sku() : comparison.sku());
     }
 
-    private Integer stockDelta(Integer left, Integer right) {
+    private Optional<Integer> stockDelta(Integer left, Integer right) {
         if (left == null || right == null) {
-            return null;
+            return Optional.empty();
         }
-        return left - right;
+        return Optional.of(left - right);
     }
 
-    private String betterStockedSku(ProductReadModel reference, ProductReadModel comparison) {
+    private Optional<String> betterStockedSku(ProductReadModel reference, ProductReadModel comparison) {
         Integer referenceStock = reference.inStockQty();
         Integer comparisonStock = comparison.inStockQty();
         if (referenceStock == null || comparisonStock == null || Objects.equals(referenceStock, comparisonStock)) {
-            return null;
+            return Optional.empty();
         }
-        return referenceStock > comparisonStock ? reference.sku() : comparison.sku();
+        return Optional.ofNullable(referenceStock > comparisonStock ? reference.sku() : comparison.sku());
     }
 
     private int safeStock(Integer value) {

@@ -138,8 +138,9 @@ public class RelationshipSchemaProvider {
 
         for (Attribute<?, ?> attribute : entityType.getAttributes()) {
             if (attribute.isAssociation()) {
-                RelationshipInfo info = buildRelationshipInfo(attribute);
-                if (info != null) {
+                Optional<RelationshipInfo> relationshipInfo = buildRelationshipInfo(attribute);
+                if (relationshipInfo.isPresent()) {
+                    RelationshipInfo info = relationshipInfo.get();
                     relationships.add(info);
                     relationshipMapper.registerRelationship(
                         entityTypeName,
@@ -249,20 +250,20 @@ public class RelationshipSchemaProvider {
             .build();
     }
 
-    private RelationshipInfo buildRelationshipInfo(Attribute<?, ?> attribute) {
+    private Optional<RelationshipInfo> buildRelationshipInfo(Attribute<?, ?> attribute) {
         Class<?> targetType = attribute.getJavaType();
         if (targetType == null || !targetType.isAnnotationPresent(AICapable.class)) {
-            return null;
+            return Optional.empty();
         }
         String targetEntityType = relationshipMapper.registerEntityType(targetType).entityType();
-        return RelationshipInfo.builder()
+        return Optional.of(RelationshipInfo.builder()
             .fieldName(attribute.getName())
             .targetEntityType(targetEntityType)
             .targetClassName(targetType.getName())
             .relationshipType(attribute.getPersistentAttributeType().name())
             .direction(determineDirection(attribute))
             .optional(isOptional(attribute))
-            .build();
+            .build());
     }
 
     private RelationshipDirection determineDirection(Attribute<?, ?> attribute) {

@@ -18,9 +18,12 @@ import org.springframework.web.client.HttpStatusCodeException;
 import org.springframework.web.client.ResourceAccessException;
 
 import jakarta.annotation.PostConstruct;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
-import java.util.stream.Collectors;
 
 /**
  * Google Gemini Embedding Provider
@@ -41,6 +44,7 @@ public class GeminiEmbeddingProvider implements EmbeddingProvider {
     private int embeddingDimension = 768; // Default for text-embedding-004 (actual dimension will be determined at runtime)
     
     private static final String GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta";
+    private static final String DEFAULT_EMBEDDING_MODEL = "text-embedding-004";
     private static final int MAX_RETRY_ATTEMPTS = 3;
     
     @PostConstruct
@@ -49,8 +53,14 @@ public class GeminiEmbeddingProvider implements EmbeddingProvider {
             log.info("Initializing Gemini Embedding Provider");
             
             AIProviderConfig.GeminiConfig gemini = aiProviderConfig.getGemini();
+
+            if (!gemini.isEnabled()) {
+                log.info("Gemini embeddings disabled via configuration");
+                available = false;
+                return;
+            }
             
-            if (gemini.getApiKey() == null || gemini.getApiKey().trim().isEmpty()) {
+            if (!hasText(resolveApiKey(gemini))) {
                 log.warn("Gemini API key not configured. Provider will not be available.");
                 available = false;
                 return;
@@ -71,7 +81,7 @@ public class GeminiEmbeddingProvider implements EmbeddingProvider {
                 
                 AIEmbeddingRequest testRequest = AIEmbeddingRequest.builder()
                     .text("test")
-                    .model(gemini.getEmbeddingModel() != null ? gemini.getEmbeddingModel() : "text-embedding-004")
+                    .model(resolveModel(gemini, null))
                     .build();
                 
                 AIEmbeddingResponse testResponse = generateEmbedding(testRequest);
@@ -105,91 +115,9 @@ public class GeminiEmbeddingProvider implements EmbeddingProvider {
     
     @Override
     public AIEmbeddingResponse generateEmbedding(AIEmbeddingRequest request) {
-        if (!isAvailable()) {
-            throw new AIServiceException("Gemini Embedding Provider is not available");
-        }
-        
-        try {
-            AIProviderConfig.GeminiConfig gemini = aiProviderConfig.getGemini();
-            String model = request.getModel() != null ? request.getModel() : 
-                          (gemini.getEmbeddingModel() != null ? gemini.getEmbeddingModel() : "text-embedding-004");
-            
-            log.debug("Generating embedding using Gemini for text: {}", request.getText());
-            
-            long startTime = System.currentTimeMillis();
-            
-            String url = GEMINI_BASE_URL + "/models/" + model + ":embedContent?key=" + gemini.getApiKey();
-            String safeUrl = url.replaceAll("([?&]key=)[^&]+", "$1***");
-            
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.APPLICATION_JSON);
-            
-            Map<String, Object> requestBody = new HashMap<>();
-            
-            // Gemini embedding API structure
-            Map<String, Object> content = new HashMap<>();
-            Map<String, Object> part = new HashMap<>();
-            part.put("text", request.getText());
-            content.put("parts", List.of(part));
-            requestBody.put("content", content);
-
-            if (log.isInfoEnabled()) {
-                log.info("=== GEMINI EMBEDDING API REQUEST ===");
-                log.info(
-                    "Gemini embedding request: url={}, model={}, textLength={}",
-                    safeUrl,
-                    model,
-                    request.getText() != null ? request.getText().length() : 0
-                );
-                String text = request.getText();
-                int len = text != null ? text.length() : 0;
-                String snippet = text == null ? "" : text.substring(0, Math.min(300, len));
-                log.info("Gemini embedding request textSnippet={}", snippet);
-                log.info("=== END GEMINI EMBEDDING API REQUEST ===");
-            }
-            
-            HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
-            
-            ResponseEntity<Map> response = exchangeWithRetry(url, HttpMethod.POST, entity, Map.class, "embedContent");
-            
-            long processingTime = System.currentTimeMillis() - startTime;
-            
-            @SuppressWarnings("unchecked")
-            Map<String, Object> responseBody = response.getBody();
-            @SuppressWarnings("unchecked")
-            Map<String, Object> embeddingData = (Map<String, Object>) responseBody.get("embedding");
-            @SuppressWarnings("unchecked")
-            List<Double> values = (List<Double>) embeddingData.get("values");
-            
-            // Keep as List<Double> for embedding
-            List<Double> embedding = new ArrayList<>(values);
-
-            if (log.isInfoEnabled()) {
-                log.info("=== GEMINI EMBEDDING API RESPONSE ===");
-                log.info(
-                    "Gemini embedding response: responseTimeMs={}, model={}, dimensions={}",
-                    processingTime,
-                    model,
-                    embedding != null ? embedding.size() : 0
-                );
-                log.info("=== END GEMINI EMBEDDING API RESPONSE ===");
-            }
-            
-            log.debug("Successfully generated Gemini embedding with {} dimensions in {}ms", 
-                     embedding.size(), processingTime);
-            
-            return AIEmbeddingResponse.builder()
-                .embedding(embedding)
-                .model(model)
-                .dimensions(embedding.size())
-                .processingTimeMs(processingTime)
-                .requestId(UUID.randomUUID().toString())
-                .build();
-                
-        } catch (Exception e) {
-            log.error("Error generating Gemini embedding", e);
-            throw new AIServiceException("Failed to generate Gemini embedding", e);
-        }
+        AIProviderConfig.GeminiConfig gemini = aiProviderConfig.getGemini();
+        String model = resolveModel(gemini, request.getModel());
+        return generateEmbeddingsInternal(List.of(requireText(request.getText())), model, false).get(0);
     }
 
     private <T> ResponseEntity<T> exchangeWithRetry(String url,
@@ -254,10 +182,9 @@ public class GeminiEmbeddingProvider implements EmbeddingProvider {
     
     @Override
     public List<AIEmbeddingResponse> generateEmbeddings(List<String> texts) {
-        return texts.stream()
-            .map(text -> AIEmbeddingRequest.builder().text(text).build())
-            .map(this::generateEmbedding)
-            .collect(Collectors.toList());
+        AIProviderConfig.GeminiConfig gemini = aiProviderConfig.getGemini();
+        List<String> checkedTexts = requireTexts(texts);
+        return generateEmbeddingsInternal(checkedTexts, resolveModel(gemini, null), checkedTexts.size() > 1);
     }
     
     @Override
@@ -272,5 +199,231 @@ public class GeminiEmbeddingProvider implements EmbeddingProvider {
         status.put("available", isAvailable());
         status.put("dimension", embeddingDimension);
         return status;
+    }
+
+    private List<AIEmbeddingResponse> generateEmbeddingsInternal(List<String> texts, String model, boolean batch) {
+        if (!isAvailable()) {
+            throw new AIServiceException("Gemini Embedding Provider is not available");
+        }
+
+        try {
+            AIProviderConfig.GeminiConfig gemini = aiProviderConfig.getGemini();
+            String apiKey = resolveApiKey(gemini);
+            if (!hasText(apiKey)) {
+                throw new AIServiceException("Gemini embedding API key is required");
+            }
+
+            String operation = batch ? "batchEmbedContents" : "embedContent";
+            String url = normalizeBaseUrl(resolveBaseUrl(gemini))
+                + "/models/" + modelPathSegment(model) + ":" + operation + "?key=" + apiKey;
+            String safeUrl = url.replaceAll("([?&]key=)[^&]+", "$1***");
+
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+
+            Map<String, Object> requestBody = batch
+                ? createBatchRequestBody(texts, model)
+                : createSingleRequestBody(texts.get(0), model);
+
+            log.info(
+                "Gemini embedding request: url={}, model={}, inputCount={}",
+                safeUrl,
+                model,
+                texts.size()
+            );
+            log.debug("Gemini embedding firstTextSnippet={}", snippet(texts.get(0), 300));
+
+            long startTime = System.currentTimeMillis();
+            HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
+            ResponseEntity<Map> response = exchangeWithRetry(url, HttpMethod.POST, entity, Map.class, operation);
+            long processingTime = System.currentTimeMillis() - startTime;
+
+            Map<String, Object> responseBody = requireResponseBody(response, "Gemini embedding service returned empty response");
+            List<List<Double>> embeddings = batch
+                ? requireBatchEmbeddings(responseBody, texts.size())
+                : List.of(requireEmbeddingValues(responseBody, "Gemini embedding response missing embedding"));
+
+            log.info(
+                "Gemini embedding response: responseTimeMs={}, model={}, embeddings={}, dimensions={}",
+                processingTime,
+                model,
+                embeddings.size(),
+                embeddings.get(0).size()
+            );
+
+            return embeddings.stream()
+                .map(embedding -> {
+                    embeddingDimension = embedding.size();
+                    return AIEmbeddingResponse.builder()
+                        .embedding(embedding)
+                        .model(model)
+                        .dimensions(embedding.size())
+                        .processingTimeMs(processingTime)
+                        .requestId(UUID.randomUUID().toString())
+                        .build();
+                })
+                .toList();
+        } catch (Exception e) {
+            log.error("Error generating Gemini embeddings", e);
+            throw e instanceof AIServiceException serviceException
+                ? serviceException
+                : new AIServiceException("Failed to generate Gemini embedding", e);
+        }
+    }
+
+    private Map<String, Object> createSingleRequestBody(String text, String model) {
+        Map<String, Object> requestBody = new HashMap<>();
+        requestBody.put("model", modelResourceName(model));
+        requestBody.put("content", contentForText(text));
+        return requestBody;
+    }
+
+    private Map<String, Object> createBatchRequestBody(List<String> texts, String model) {
+        List<Map<String, Object>> requests = new ArrayList<>();
+        for (String text : texts) {
+            requests.add(Map.of(
+                "model", modelResourceName(model),
+                "content", contentForText(text)
+            ));
+        }
+        return Map.of("requests", requests);
+    }
+
+    private Map<String, Object> contentForText(String text) {
+        return Map.of("parts", List.of(Map.of("text", text)));
+    }
+
+    private String resolveModel(AIProviderConfig.GeminiConfig gemini, String requestModel) {
+        if (hasText(requestModel)) {
+            return requestModel.trim();
+        }
+        if (hasText(gemini.getEmbeddingModel())) {
+            return gemini.getEmbeddingModel().trim();
+        }
+        return DEFAULT_EMBEDDING_MODEL;
+    }
+
+    private String resolveBaseUrl(AIProviderConfig.GeminiConfig gemini) {
+        if (hasText(aiProviderConfig.getEmbeddingBaseUrl())) {
+            return aiProviderConfig.getEmbeddingBaseUrl();
+        }
+        if (hasText(gemini.getBaseUrl())) {
+            return gemini.getBaseUrl();
+        }
+        return GEMINI_BASE_URL;
+    }
+
+    private String resolveApiKey(AIProviderConfig.GeminiConfig gemini) {
+        if (hasText(aiProviderConfig.getEmbeddingApiKey())) {
+            return aiProviderConfig.getEmbeddingApiKey();
+        }
+        return gemini.getApiKey();
+    }
+
+    private String modelResourceName(String model) {
+        return model.startsWith("models/") ? model : "models/" + model;
+    }
+
+    private String modelPathSegment(String model) {
+        return model.startsWith("models/") ? model.substring("models/".length()) : model;
+    }
+
+    private String normalizeBaseUrl(String baseUrl) {
+        if (!hasText(baseUrl)) {
+            return GEMINI_BASE_URL;
+        }
+        return baseUrl.endsWith("/") ? baseUrl.substring(0, baseUrl.length() - 1) : baseUrl;
+    }
+
+    private String requireText(String text) {
+        if (!hasText(text)) {
+            throw new AIServiceException("Gemini embedding text is required");
+        }
+        return text;
+    }
+
+    private List<String> requireTexts(List<String> texts) {
+        if (texts == null || texts.isEmpty()) {
+            throw new AIServiceException("Gemini embedding texts are required");
+        }
+        List<String> checked = new ArrayList<>();
+        for (String text : texts) {
+            checked.add(requireText(text));
+        }
+        return List.copyOf(checked);
+    }
+
+    private Map<String, Object> requireResponseBody(ResponseEntity<Map> response, String message) {
+        if (response == null || response.getBody() == null) {
+            throw new AIServiceException(message);
+        }
+        return copyStringKeyMap(response.getBody(), message);
+    }
+
+    private List<Double> requireEmbeddingValues(Map<String, Object> responseBody, String message) {
+        Map<String, Object> embeddingData = requireMap(responseBody.get("embedding"), message);
+        return requireDoubleList(embeddingData.get("values"), message + " values were missing");
+    }
+
+    private List<List<Double>> requireBatchEmbeddings(Map<String, Object> responseBody, int expectedCount) {
+        Object value = responseBody.get("embeddings");
+        if (!(value instanceof List<?> items) || items.isEmpty()) {
+            throw new AIServiceException("Gemini batch embedding response missing embeddings");
+        }
+        if (items.size() != expectedCount) {
+            throw new AIServiceException("Gemini batch embedding response count did not match request count");
+        }
+        List<List<Double>> embeddings = new ArrayList<>();
+        for (Object item : items) {
+            Map<String, Object> embeddingData = requireMap(item, "Gemini batch embedding vector missing");
+            embeddings.add(requireDoubleList(
+                embeddingData.get("values"),
+                "Gemini batch embedding vector values were missing"
+            ));
+        }
+        return List.copyOf(embeddings);
+    }
+
+    private List<Double> requireDoubleList(Object value, String message) {
+        if (!(value instanceof List<?> items) || items.isEmpty()) {
+            throw new AIServiceException(message);
+        }
+        List<Double> values = new ArrayList<>();
+        for (Object item : items) {
+            if (!(item instanceof Number number)) {
+                throw new AIServiceException(message + " contained non-numeric value");
+            }
+            values.add(number.doubleValue());
+        }
+        return List.copyOf(values);
+    }
+
+    private Map<String, Object> requireMap(Object value, String message) {
+        if (!(value instanceof Map<?, ?> map)) {
+            throw new AIServiceException(message);
+        }
+        return copyStringKeyMap(map, message);
+    }
+
+    private Map<String, Object> copyStringKeyMap(Map<?, ?> source, String message) {
+        Map<String, Object> copy = new HashMap<>();
+        source.forEach((key, value) -> {
+            if (key == null) {
+                throw new AIServiceException(message + " contained a null key");
+            }
+            copy.put(String.valueOf(key), value);
+        });
+        return copy;
+    }
+
+    private String snippet(String value, int maxLength) {
+        if (value == null || value.isEmpty()) {
+            return "";
+        }
+        return value.substring(0, Math.min(maxLength, value.length()));
+    }
+
+    private boolean hasText(String value) {
+        return value != null && !value.trim().isEmpty();
     }
 }

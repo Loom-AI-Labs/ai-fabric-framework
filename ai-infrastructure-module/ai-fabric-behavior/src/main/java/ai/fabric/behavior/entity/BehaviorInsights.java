@@ -135,18 +135,16 @@ public class BehaviorInsights {
     
     @Transient
     public Double getSentimentDelta() {
-        if (sentimentScore == null || previousSentimentScore == null) {
-            return null;
-        }
-        return sentimentScore - previousSentimentScore;
+        return sentimentScore == null || previousSentimentScore == null
+            ? null
+            : sentimentScore - previousSentimentScore;
     }
     
     @Transient
     public Double getChurnDelta() {
-        if (churnRisk == null || previousChurnRisk == null) {
-            return null;
-        }
-        return churnRisk - previousChurnRisk;
+        return churnRisk == null || previousChurnRisk == null
+            ? null
+            : churnRisk - previousChurnRisk;
     }
     
     @Transient

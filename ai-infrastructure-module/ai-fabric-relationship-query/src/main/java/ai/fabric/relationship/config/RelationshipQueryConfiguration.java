@@ -202,5 +202,9 @@ class RelationshipQueryConfiguration {
     /**
      * Simple marker bean that allows downstream applications to confirm the module is active.
      */
-    static final class RelationshipModuleMarker { }
+    static final class RelationshipModuleMarker {
+        String moduleName() {
+            return "relationship-query";
+        }
+    }
 }

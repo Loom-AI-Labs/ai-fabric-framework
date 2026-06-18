@@ -129,7 +129,7 @@ public class ONNXEmbeddingProvider implements EmbeddingProvider {
                 resolvedModelPath = null;
                 log.info("Model loaded from classpath resource: {} ({} bytes)", resourcePath, cached != null ? cached.length : 0);
             } else {
-                resolvedModelPath = resolvePath(modelPath, "model");
+                resolvedModelPath = resolvePath(modelPath, "model").orElse(null);
                 if (resolvedModelPath == null || !Files.exists(resolvedModelPath)) {
                     log.error("========================================");
                     log.error("ONNX model file not found (requested='{}', resolved='{}')", modelPath, resolvedModelPath);
@@ -182,7 +182,7 @@ public class ONNXEmbeddingProvider implements EmbeddingProvider {
                 }
             }
 
-            resolvedTokenizerPath = resolvePath(tokenizerPath, "tokenizer");
+            resolvedTokenizerPath = resolvePath(tokenizerPath, "tokenizer").orElse(null);
             initializeTokenizer();
 
             log.info("ONNX Embedding Provider initialized successfully with model: {}", resolvedModelPath);
@@ -265,9 +265,9 @@ public class ONNXEmbeddingProvider implements EmbeddingProvider {
         }
     }
 
-    private Path resolvePath(String configuredPath, String descriptor) throws IOException {
+    private Optional<Path> resolvePath(String configuredPath, String descriptor) throws IOException {
         if (configuredPath == null || configuredPath.isBlank()) {
-            return null;
+            return Optional.empty();
         }
 
         if (configuredPath.startsWith("classpath:")) {
@@ -278,13 +278,13 @@ public class ONNXEmbeddingProvider implements EmbeddingProvider {
 
             Path cached = CLASSPATH_RESOURCE_CACHE.get(resourcePath);
             if (cached != null && Files.exists(cached)) {
-                return cached;
+                return Optional.of(cached);
             }
 
             try (InputStream inputStream = getClass().getClassLoader().getResourceAsStream(resourcePath)) {
                 if (inputStream == null) {
                     log.warn("Classpath resource '{}' not found for {}", resourcePath, descriptor);
-                    return null;
+                    return Optional.empty();
                 }
                 String suffix = resourcePath.contains(".") ? resourcePath.substring(resourcePath.lastIndexOf('.')) : "";
                 Path tempFile = Files.createTempFile("onnx-" + descriptor + "-", suffix);
@@ -308,10 +308,10 @@ public class ONNXEmbeddingProvider implements EmbeddingProvider {
                     } catch (IOException ignored) {
                         // Another thread won the race; keep deleteOnExit as fallback.
                     }
-                    return existing;
+                    return Optional.of(existing);
                 }
 
-                return tempFile;
+                return Optional.of(tempFile);
             }
         }
 
@@ -319,12 +319,12 @@ public class ONNXEmbeddingProvider implements EmbeddingProvider {
             Path candidate = Paths.get(configuredPath);
             if (!candidate.isAbsolute()) {
                 Path absolute = Paths.get(System.getProperty("user.dir")).resolve(candidate).normalize();
-                return absolute;
+                return Optional.of(absolute);
             }
-            return candidate.normalize();
+            return Optional.of(candidate.normalize());
         } catch (InvalidPathException ex) {
             log.warn("Invalid path '{}' for {}: {}", configuredPath, descriptor, ex.getMessage());
-            return null;
+            return Optional.empty();
         }
     }
     
@@ -911,7 +911,7 @@ public class ONNXEmbeddingProvider implements EmbeddingProvider {
                 return prefix;
             }
         }
-        return null;
+        return "";
     }
     
     /**

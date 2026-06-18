@@ -9,6 +9,7 @@ import com.ai.fabric.realapps.chat.reviews.repo.ReviewRepository;
 import jakarta.persistence.EntityNotFoundException;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
@@ -64,8 +65,7 @@ public class ReviewService {
         Review review = new Review();
         review.setUserId(userId.trim());
         review.setProductId(productId);
-        String resolvedSku = resolveSku(productId, sku);
-        review.setSku(resolvedSku);
+        review.setSku(resolveSku(productId, sku).orElse(null));
         review.setRating(rating);
         review.setText(text.trim());
         Review saved = reviewRepository.save(review);
@@ -133,15 +133,17 @@ public class ReviewService {
         return haystack.toLowerCase().contains(needleLower);
     }
 
-    private String resolveSku(Long productId, String providedSku) {
+    private Optional<String> resolveSku(Long productId, String providedSku) {
         if (StringUtils.hasText(providedSku)) {
-            return providedSku.trim();
+            return Optional.of(providedSku.trim());
         }
         if (productId == null) {
-            return null;
+            return Optional.empty();
         }
-        Product product = productRepository.findById(productId).orElse(null);
-        return product != null && StringUtils.hasText(product.getSku()) ? product.getSku().trim() : null;
+        return productRepository.findById(productId)
+            .map(Product::getSku)
+            .filter(StringUtils::hasText)
+            .map(String::trim);
     }
 
     private void publishUpsert(Review saved) {

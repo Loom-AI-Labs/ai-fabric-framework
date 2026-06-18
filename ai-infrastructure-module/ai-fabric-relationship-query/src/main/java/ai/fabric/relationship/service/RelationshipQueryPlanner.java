@@ -241,7 +241,7 @@ public class RelationshipQueryPlanner {
 
     private Object normalizeReferenceValue(Object raw, Map<String, String> relationshipFieldToEntityType) {
         if (raw == null) {
-            return null;
+            return raw;
         }
         if (raw instanceof List<?> list) {
             List<Object> normalized = new ArrayList<>(list.size());
@@ -581,9 +581,9 @@ public class RelationshipQueryPlanner {
             // Provider-agnostic resilience: attempt a bounded structural repair pass when parsing fails.
             // This helps when providers emit truncated or slightly malformed JSON (common in real API runs).
             try {
-                String repaired = repairPlanPayload(rawResponse, originalQuery, entityTypes, parseException);
-                if (StringUtils.hasText(repaired)) {
-                    return parsePlanPayload(repaired);
+                Optional<String> repaired = repairPlanPayload(rawResponse, originalQuery, entityTypes, parseException);
+                if (repaired.isPresent()) {
+                    return parsePlanPayload(repaired.get());
                 }
             } catch (Exception repairException) {
                 parseException.addSuppressed(repairException);
@@ -610,12 +610,12 @@ public class RelationshipQueryPlanner {
         }
     }
 
-    private String repairPlanPayload(String rawResponse,
-                                    String originalQuery,
-                                    List<String> entityTypes,
-                                    Exception failure) {
+    private Optional<String> repairPlanPayload(String rawResponse,
+                                               String originalQuery,
+                                               List<String> entityTypes,
+                                               Exception failure) {
         if (!StringUtils.hasText(rawResponse) || !StringUtils.hasText(originalQuery)) {
-            return null;
+            return Optional.empty();
         }
 
         RelationshipQueryProperties.LlmProperties llm = properties.getLlm();
@@ -641,7 +641,7 @@ public class RelationshipQueryPlanner {
                 PLACEHOLDER_ALLOWED_ENTITY_TYPES_LINE, allowedTypesLine,
                 PLACEHOLDER_SCHEMA, safeSchema,
                 PLACEHOLDER_USER_QUERY, originalQuery,
-                PLACEHOLDER_MALFORMED_RESPONSE, safeMalformed != null ? safeMalformed : "",
+                PLACEHOLDER_MALFORMED_RESPONSE, Optional.ofNullable(safeMalformed).orElse(""),
                 PLACEHOLDER_SAFE_PRIMARY_ENTITY, safePrimaryEntity
             )
         );
@@ -668,13 +668,13 @@ public class RelationshipQueryPlanner {
         try {
             AIGenerationResponse response = aiCoreService.generateContent(request);
             if (response == null || !StringUtils.hasText(response.getContent())) {
-                return null;
+                return Optional.empty();
             }
             StructuredJsonExtraction repaired = structuredJsonExtractor.extractFirstJson(response.getContent());
-            return repaired.jsonFound() ? repaired.payload() : null;
+            return repaired.jsonFound() ? Optional.ofNullable(repaired.payload()) : Optional.empty();
         } catch (Exception ex) {
             log.warn("Relationship query plan repair failed: {} (originalFailure={})", ex.getMessage(), safeMessage(failure));
-            return null;
+            return Optional.empty();
         }
     }
 
@@ -854,11 +854,11 @@ public class RelationshipQueryPlanner {
                                                   String normalizedQuery) {
         Object value = condition.getValue();
         if (value instanceof String text) {
-            String normalizedValue = normalizeLiteralForQueryMatch(text);
-            if (!StringUtils.hasText(normalizedValue)) {
+            Optional<String> normalizedValue = normalizeLiteralForQueryMatch(text);
+            if (normalizedValue.isEmpty()) {
                 return false;
             }
-            return !normalizedQuery.contains(normalizedValue);
+            return !normalizedQuery.contains(normalizedValue.get());
         }
 
         if (value instanceof List<?> list) {
@@ -867,11 +867,11 @@ public class RelationshipQueryPlanner {
                 if (!(item instanceof String s)) {
                     return false;
                 }
-                String normalizedValue = normalizeLiteralForQueryMatch(s);
-                if (!StringUtils.hasText(normalizedValue)) {
+                Optional<String> normalizedValue = normalizeLiteralForQueryMatch(s);
+                if (normalizedValue.isEmpty()) {
                     return false;
                 }
-                return !normalizedQuery.contains(normalizedValue);
+                return !normalizedQuery.contains(normalizedValue.get());
             });
 
             if (mutable.isEmpty()) {
@@ -884,9 +884,9 @@ public class RelationshipQueryPlanner {
         return false;
     }
 
-    private String normalizeLiteralForQueryMatch(String raw) {
+    private Optional<String> normalizeLiteralForQueryMatch(String raw) {
         if (!StringUtils.hasText(raw)) {
-            return null;
+            return Optional.empty();
         }
         String value = raw.trim().toLowerCase(Locale.ROOT);
         // remove common quoting / wildcard wrappers
@@ -894,7 +894,7 @@ public class RelationshipQueryPlanner {
         value = value.replace("%", "").replace("*", "").trim();
         // collapse whitespace
         value = value.replaceAll("\\s+", " ").trim();
-        return value;
+        return StringUtils.hasText(value) ? Optional.of(value) : Optional.empty();
     }
 
     private boolean mentionsTimeConstraint(String normalizedQuery) {

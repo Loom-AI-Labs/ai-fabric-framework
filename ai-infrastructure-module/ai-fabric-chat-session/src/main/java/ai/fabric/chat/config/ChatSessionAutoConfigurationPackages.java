@@ -13,4 +13,6 @@ import org.springframework.boot.autoconfigure.orm.jpa.HibernateJpaAutoConfigurat
     ai.fabric.chat.domain.ChatSession.class
 })
 @ConditionalOnProperty(prefix = "ai.chat", name = "enabled", havingValue = "true")
-public class ChatSessionAutoConfigurationPackages {}
+public class ChatSessionAutoConfigurationPackages {
+    public static final String BASE_PACKAGE = "ai.fabric.chat";
+}

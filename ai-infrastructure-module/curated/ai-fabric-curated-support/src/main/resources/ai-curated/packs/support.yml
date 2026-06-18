@@ -1,6 +1,7 @@
 ai:
   orchestration:
     profile: PRODUCTION_CHAT
+    always-generate-information: true
     default-mode: support_assistant
     modes:
       support_assistant:

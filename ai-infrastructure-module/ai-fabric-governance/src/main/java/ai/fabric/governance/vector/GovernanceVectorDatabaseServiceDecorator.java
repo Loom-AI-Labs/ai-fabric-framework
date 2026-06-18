@@ -7,7 +7,7 @@ import ai.fabric.dto.VectorScanPage;
 import ai.fabric.dto.VectorScanRequest;
 import ai.fabric.governance.catalog.IndexCatalog;
 import ai.fabric.governance.catalog.IndexCatalogEntry;
-import ai.fabric.governance.catalog.noop.NoopIndexCatalog;
+import ai.fabric.governance.catalog.disabled.DisabledIndexCatalog;
 import ai.fabric.governance.catalog.vector.VectorIndexCatalog;
 import ai.fabric.governance.metadata.GovernanceVectorMetadata;
 import ai.fabric.rag.VectorDatabaseService;
@@ -273,7 +273,7 @@ public class GovernanceVectorDatabaseServiceDecorator implements VectorDatabaseS
 
     private IndexCatalog sqlCatalogOrNull() {
         IndexCatalog catalog = indexCatalogProvider.getIfAvailable();
-        if (catalog == null || catalog instanceof NoopIndexCatalog || catalog instanceof VectorIndexCatalog) {
+        if (catalog == null || catalog instanceof DisabledIndexCatalog || catalog instanceof VectorIndexCatalog) {
             return null;
         }
         return catalog;

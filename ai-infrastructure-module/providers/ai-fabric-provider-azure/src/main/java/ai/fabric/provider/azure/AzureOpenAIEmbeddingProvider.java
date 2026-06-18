@@ -20,6 +20,7 @@ import org.springframework.web.client.ResourceAccessException;
 
 import jakarta.annotation.PostConstruct;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -118,52 +119,36 @@ public class AzureOpenAIEmbeddingProvider implements EmbeddingProvider {
             Map<String, Object> body = new HashMap<>();
             body.put("input", List.of(request.getText()));
 
-            if (log.isInfoEnabled()) {
-                log.info("=== AZURE OPENAI EMBEDDING API REQUEST ===");
-                log.info(
-                    "Azure OpenAI embedding request: url={}, inputCount={}, textLength={}",
-                    url,
-                    1,
-                    request.getText() != null ? request.getText().length() : 0
-                );
-                String text = request.getText();
-                int len = text != null ? text.length() : 0;
-                String snippet = text == null ? "" : text.substring(0, Math.min(300, len));
-                log.info("Azure OpenAI embedding request textSnippet={}", snippet);
-                log.info("=== END AZURE OPENAI EMBEDDING API REQUEST ===");
-            }
+            String text = request.getText();
+            log.info(
+                "Azure OpenAI embedding request: url={}, inputCount={}, textLength={}",
+                url,
+                1,
+                text != null ? text.length() : 0
+            );
+            log.debug("Azure OpenAI embedding request textSnippet={}", snippet(text, 300));
 
             HttpEntity<Map<String, Object>> entity = new HttpEntity<>(body, headers);
             long start = System.currentTimeMillis();
             ResponseEntity<Map> response = exchangeWithRetry(url, HttpMethod.POST, entity, Map.class, "embeddings");
             long elapsed = System.currentTimeMillis() - start;
 
-            Map<String, Object> responseBody = response.getBody();
-            if (responseBody == null) {
-                throw new AIServiceException("Azure embedding service returned empty response");
-            }
+            Map<String, Object> responseBody = requireResponseBody(response, "Azure embedding service returned empty response");
+            List<Map<String, Object>> data = requireMapList(
+                responseBody,
+                "data",
+                "Azure embedding response missing data"
+            );
+            List<Double> embedding = requireDoubleList(
+                data.get(0).get("embedding"),
+                "Azure embedding vector missing"
+            );
 
-            @SuppressWarnings("unchecked")
-            List<Map<String, Object>> data = (List<Map<String, Object>>) responseBody.get("data");
-            if (data == null || data.isEmpty()) {
-                throw new AIServiceException("Azure embedding response missing data");
-            }
-
-            @SuppressWarnings("unchecked")
-            List<Double> embedding = (List<Double>) data.get(0).get("embedding");
-            if (embedding == null) {
-                throw new AIServiceException("Azure embedding vector missing");
-            }
-
-            if (log.isInfoEnabled()) {
-                log.info("=== AZURE OPENAI EMBEDDING API RESPONSE ===");
-                log.info(
-                    "Azure OpenAI embedding response: responseTimeMs={}, dimensions={}",
-                    elapsed,
-                    embedding.size()
-                );
-                log.info("=== END AZURE OPENAI EMBEDDING API RESPONSE ===");
-            }
+            log.info(
+                "Azure OpenAI embedding response: responseTimeMs={}, dimensions={}",
+                elapsed,
+                embedding.size()
+            );
 
             embeddingDimension = embedding.size();
 
@@ -199,46 +184,33 @@ public class AzureOpenAIEmbeddingProvider implements EmbeddingProvider {
             Map<String, Object> body = new HashMap<>();
             body.put("input", texts);
 
-            if (log.isInfoEnabled()) {
-                log.info("=== AZURE OPENAI EMBEDDING API REQUEST ===");
-                log.info(
-                    "Azure OpenAI embedding batch request: url={}, inputCount={}",
-                    url,
-                    texts != null ? texts.size() : 0
-                );
-                log.info("=== END AZURE OPENAI EMBEDDING API REQUEST ===");
-            }
+            log.info(
+                "Azure OpenAI embedding batch request: url={}, inputCount={}",
+                url,
+                texts != null ? texts.size() : 0
+            );
 
             HttpEntity<Map<String, Object>> entity = new HttpEntity<>(body, headers);
             long start = System.currentTimeMillis();
             ResponseEntity<Map> response = exchangeWithRetry(url, HttpMethod.POST, entity, Map.class, "embeddings(batch)");
             long elapsed = System.currentTimeMillis() - start;
 
-            Map<String, Object> responseBody = response.getBody();
-            if (responseBody == null) {
-                throw new AIServiceException("Azure embedding service returned empty response");
-            }
+            Map<String, Object> responseBody = requireResponseBody(response, "Azure embedding service returned empty response");
+            List<Map<String, Object>> data = requireMapList(
+                responseBody,
+                "data",
+                "Azure embedding response missing data"
+            );
 
-            @SuppressWarnings("unchecked")
-            List<Map<String, Object>> data = (List<Map<String, Object>>) responseBody.get("data");
-            if (data == null || data.isEmpty()) {
-                throw new AIServiceException("Azure embedding response missing data");
-            }
-
-            if (log.isInfoEnabled()) {
-                log.info("=== AZURE OPENAI EMBEDDING API RESPONSE ===");
-                log.info(
-                    "Azure OpenAI embedding batch response: responseTimeMs={}, embeddings={}",
-                    elapsed,
-                    data.size()
-                );
-                log.info("=== END AZURE OPENAI EMBEDDING API RESPONSE ===");
-            }
+            log.info(
+                "Azure OpenAI embedding batch response: responseTimeMs={}, embeddings={}",
+                elapsed,
+                data.size()
+            );
 
             return data.stream()
                 .map(item -> {
-                    @SuppressWarnings("unchecked")
-                    List<Double> values = (List<Double>) item.get("embedding");
+                    List<Double> values = requireDoubleList(item.get("embedding"), "Azure embedding vector missing");
                     int dimension = values != null ? values.size() : 0;
                     embeddingDimension = dimension;
                     return AIEmbeddingResponse.builder()
@@ -282,8 +254,14 @@ public class AzureOpenAIEmbeddingProvider implements EmbeddingProvider {
     }
 
     private void ensureConfigured(AIProviderConfig.AzureConfig azure, boolean requireAvailability) {
-        if (azure == null || !azure.isEnabled() || !hasText(embeddingApiKey(azure))
-            || !hasText(embeddingEndpoint(azure)) || !hasText(embeddingDeploymentName(azure))) {
+        if (azure == null || !azure.isEnabled()) {
+            throw new AIServiceException("Azure embedding provider configuration is incomplete");
+        }
+        String endpoint = embeddingEndpoint(azure);
+        if (!hasText(embeddingApiKey(azure)) || !hasText(endpoint)) {
+            throw new AIServiceException("Azure embedding provider configuration is incomplete");
+        }
+        if (!isFoundryEndpoint(endpoint) && !hasText(embeddingDeploymentName(azure))) {
             throw new AIServiceException("Azure embedding provider configuration is incomplete");
         }
         if (requireAvailability && !available) {
@@ -335,6 +313,64 @@ public class AzureOpenAIEmbeddingProvider implements EmbeddingProvider {
 
     private String embeddingApiVersion(AIProviderConfig.AzureConfig azure) {
         return hasText(azure.getEmbeddingApiVersion()) ? azure.getEmbeddingApiVersion() : azure.getApiVersion();
+    }
+
+    private boolean isFoundryEndpoint(String endpoint) {
+        return endpoint.contains("/models") || endpoint.contains("services.ai.azure.com");
+    }
+
+    private Map<String, Object> requireResponseBody(ResponseEntity<Map> response, String message) {
+        if (response == null || response.getBody() == null) {
+            throw new AIServiceException(message);
+        }
+        return copyStringKeyMap(response.getBody(), message);
+    }
+
+    private List<Map<String, Object>> requireMapList(Map<String, Object> source, String key, String message) {
+        Object value = source.get(key);
+        if (!(value instanceof List<?> items) || items.isEmpty()) {
+            throw new AIServiceException(message);
+        }
+        List<Map<String, Object>> maps = new ArrayList<>();
+        for (Object item : items) {
+            if (!(item instanceof Map<?, ?> itemMap)) {
+                throw new AIServiceException(message + " item was not an object");
+            }
+            maps.add(copyStringKeyMap(itemMap, message));
+        }
+        return List.copyOf(maps);
+    }
+
+    private List<Double> requireDoubleList(Object value, String message) {
+        if (!(value instanceof List<?> items) || items.isEmpty()) {
+            throw new AIServiceException(message);
+        }
+        List<Double> numbers = new ArrayList<>();
+        for (Object item : items) {
+            if (!(item instanceof Number number)) {
+                throw new AIServiceException(message + " contained non-numeric value");
+            }
+            numbers.add(number.doubleValue());
+        }
+        return List.copyOf(numbers);
+    }
+
+    private Map<String, Object> copyStringKeyMap(Map<?, ?> source, String message) {
+        Map<String, Object> copy = new HashMap<>();
+        source.forEach((key, value) -> {
+            if (key == null) {
+                throw new AIServiceException(message + " contained a null key");
+            }
+            copy.put(String.valueOf(key), value);
+        });
+        return copy;
+    }
+
+    private String snippet(String value, int maxLength) {
+        if (value == null || value.isEmpty()) {
+            return "";
+        }
+        return value.substring(0, Math.min(maxLength, value.length()));
     }
 
     private AIServiceException wrapException(String message, Exception ex) {

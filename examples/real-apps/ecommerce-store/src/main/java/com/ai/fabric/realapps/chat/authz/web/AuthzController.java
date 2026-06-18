@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 
 /**
@@ -69,8 +70,8 @@ public class AuthzController {
     }
 
     private AuthzCheckResponse authorizeAnonymous(AuthzCheckRequest request) {
-        String resourceId = trimToNull(request.resourceId());
-        String operationType = trimToNull(request.operationType());
+        String resourceId = trimToText(request.resourceId()).orElse("");
+        String operationType = trimToText(request.operationType()).orElse("");
         if (RESOURCE_RAG_INTENT.equals(resourceId) && OPERATION_READ.equalsIgnoreCase(operationType)) {
             return allow("anonymous-chat-read");
         }
@@ -86,29 +87,30 @@ public class AuthzController {
         if (StringUtils.hasText(resourceId) && ANONYMOUS_ALLOWED_ACTION_RESOURCES.contains(resourceId.trim())) {
             return true;
         }
-        String actionId = actionId(request);
-        return StringUtils.hasText(actionId) && ANONYMOUS_ALLOWED_ACTION_IDS.contains(actionId);
+        return actionId(request)
+            .filter(ANONYMOUS_ALLOWED_ACTION_IDS::contains)
+            .isPresent();
     }
 
-    private String actionId(AuthzCheckRequest request) {
+    private Optional<String> actionId(AuthzCheckRequest request) {
         if (request == null) {
-            return null;
+            return Optional.empty();
         }
         Map<String, Object> requestContext = request.requestContext();
         if (requestContext != null) {
             Object raw = requestContext.get("actionId");
             if (raw != null && StringUtils.hasText(raw.toString())) {
-                return raw.toString().trim();
+                return Optional.of(raw.toString().trim());
             }
         }
         Map<String, Object> metadata = request.metadata();
         if (metadata != null) {
             Object raw = metadata.get("actionId");
             if (raw != null && StringUtils.hasText(raw.toString())) {
-                return raw.toString().trim();
+                return Optional.of(raw.toString().trim());
             }
         }
-        return null;
+        return Optional.empty();
     }
 
     private CanonicalSubject resolveSubject(AuthzCheckRequest request) {
@@ -117,15 +119,15 @@ public class AuthzController {
             authContext != null ? authContext.subjectId() : null,
             request.subjectId(),
             request.userId()
-        );
+        ).orElse("");
         String subjectType = firstText(
             authContext != null ? authContext.subjectType() : null,
             request.subjectType()
-        );
+        ).orElse("");
         String authMode = firstText(
             authContext != null ? authContext.authMode() : null,
             request.authMode()
-        );
+        ).orElse("");
         boolean anonymous = SUBJECT_TYPE_ANONYMOUS_SESSION.equalsIgnoreCase(subjectType)
             || AUTH_MODE_PUBLIC_RUNTIME_ANONYMOUS.equalsIgnoreCase(authMode);
         return new CanonicalSubject(subjectId, anonymous);
@@ -139,25 +141,25 @@ public class AuthzController {
         return new AuthzCheckResponse(false, reason, POLICY_VERSION);
     }
 
-    private String firstText(String... values) {
+    private Optional<String> firstText(String... values) {
         if (values == null) {
-            return null;
+            return Optional.empty();
         }
         for (String value : values) {
-            String trimmed = trimToNull(value);
-            if (trimmed != null) {
+            Optional<String> trimmed = trimToText(value);
+            if (trimmed.isPresent()) {
                 return trimmed;
             }
         }
-        return null;
+        return Optional.empty();
     }
 
-    private String trimToNull(String value) {
+    private Optional<String> trimToText(String value) {
         if (!StringUtils.hasText(value)) {
-            return null;
+            return Optional.empty();
         }
         String trimmed = value.trim();
-        return trimmed.isEmpty() ? null : trimmed;
+        return trimmed.isEmpty() ? Optional.empty() : Optional.of(trimmed);
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)

@@ -70,6 +70,25 @@ class ConnectorActionRegistryApiKeyFilterTest {
         assertThat(response.getStatus()).isEqualTo(200);
     }
 
+    @Test
+    void doFilterInternal_doesNotFilterPrefixCollisionPath() throws Exception {
+        AIActionDbRegistryProperties props = new AIActionDbRegistryProperties();
+        props.setEnabled(true);
+        props.getApiKey().setEnabled(true);
+        props.getApiKey().setValue("k1");
+
+        ConnectorActionRegistryApiKeyFilter filter = new ConnectorActionRegistryApiKeyFilter(props);
+
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/ai/actions/registryevil");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        RecordingChain chain = new RecordingChain();
+
+        filter.doFilter(request, response, chain);
+
+        assertThat(chain.called).isTrue();
+        assertThat(response.getStatus()).isEqualTo(200);
+    }
+
     private static final class RecordingChain implements FilterChain {
         private boolean called = false;
 
@@ -79,4 +98,3 @@ class ConnectorActionRegistryApiKeyFilterTest {
         }
     }
 }
-

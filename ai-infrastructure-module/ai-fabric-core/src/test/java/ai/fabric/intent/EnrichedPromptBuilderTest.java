@@ -99,7 +99,7 @@ class EnrichedPromptBuilderTest {
             .contains("cancel_subscription")
             .contains("cart_update_confirmation:string - Presentation-only shopper-facing confirmation phrase")
             .contains("Optional actionParams are allowed when the paramsSchema/description says they improve presentation")
-            .contains("For catalog/search actions with a valid required `query` parameter")
+            .contains("For search/read actions with a valid required `query` parameter")
             .contains("KNOWLEDGE BASE OVERVIEW")
             .contains("Total documents: 123")
             .contains("Available vectorSpace values:")

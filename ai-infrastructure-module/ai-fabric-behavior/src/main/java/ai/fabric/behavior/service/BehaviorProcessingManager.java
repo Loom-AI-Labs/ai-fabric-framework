@@ -24,6 +24,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.Optional;
 
 @Slf4j
 @Service
@@ -122,9 +123,13 @@ public class BehaviorProcessingManager {
     }
 
     public ContinuousProcessingResponse cancelContinuous(String jobId) {
+        return cancelContinuousOptional(jobId).orElse(null);
+    }
+
+    public Optional<ContinuousProcessingResponse> cancelContinuousOptional(String jobId) {
         ContinuousJobStatus status = jobStatuses.get(jobId);
         if (status == null) {
-            return null;
+            return Optional.empty();
         }
 
         Future<?> future = runningJobs.remove(jobId);
@@ -142,10 +147,10 @@ public class BehaviorProcessingManager {
             }
         }
 
-        return ContinuousProcessingResponse.builder()
+        return Optional.of(ContinuousProcessingResponse.builder()
             .jobId(jobId)
             .status(status.getStatus())
-            .build();
+            .build());
     }
 
     public ScheduledControlResponse pauseScheduled() {

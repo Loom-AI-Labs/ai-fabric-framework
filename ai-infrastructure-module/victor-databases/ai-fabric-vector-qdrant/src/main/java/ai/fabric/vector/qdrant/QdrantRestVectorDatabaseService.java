@@ -184,8 +184,8 @@ final class QdrantRestVectorDatabaseService implements VectorDatabaseService, Au
         requireEmbedding("search", queryVector);
 
         String entityType = request.getEntityType();
-        int limit = Optional.ofNullable(request.getLimit()).orElse(10);
-        double threshold = Optional.ofNullable(request.getThreshold()).orElse(0.0);
+        int limit = QdrantVectorDatabaseService.normalizeSearchLimit(request.getLimit());
+        double threshold = QdrantVectorDatabaseService.normalizeScoreThreshold(request.getThreshold());
 
         List<String> collections = resolveSearchCollections(entityType);
         if (collections.isEmpty()) {
@@ -195,22 +195,20 @@ final class QdrantRestVectorDatabaseService implements VectorDatabaseService, Au
         List<VectorRecord> allResults = new ArrayList<>();
         for (String collection : collections) {
             ensureCollection(collection, queryVector.size());
-            JsonNode filter = buildMetadataFilter(request.getMetadata());
+            Optional<JsonNode> filter = buildMetadataFilter(request.getMetadata());
 
             ObjectNode body = objectMapper.createObjectNode();
             body.set("vector", toArrayNode(queryVector));
             body.put("limit", limit);
             body.set("with_payload", BooleanNode.TRUE);
             body.set("with_vector", BooleanNode.TRUE);
-            if (filter != null) {
-                body.set("filter", filter);
-            }
+            filter.ifPresent(value -> body.set("filter", value));
 
             JsonNode result;
             try {
                 result = request("POST", "/collections/" + pathSegment(collection) + "/points/search", body, "search points");
             } catch (AIServiceException ex) {
-                if (filter == null || !isMissingPayloadIndexFailure(ex)) {
+                if (filter.isEmpty() || !isMissingPayloadIndexFailure(ex)) {
                     throw ex;
                 }
                 log.warn(
@@ -305,6 +303,9 @@ final class QdrantRestVectorDatabaseService implements VectorDatabaseService, Au
         }
         List<String> ids = new ArrayList<>(vectors.size());
         for (VectorRecord record : vectors) {
+            if (record == null) {
+                continue;
+            }
             ids.add(storeVector(record.getEntityType(), record.getEntityId(), record.getContent(),
                 record.getEmbedding(), record.getMetadata()));
         }
@@ -318,7 +319,7 @@ final class QdrantRestVectorDatabaseService implements VectorDatabaseService, Au
         }
         int updated = 0;
         for (VectorRecord record : vectors) {
-            if (record.getVectorId() == null) {
+            if (record == null || record.getVectorId() == null || record.getVectorId().isBlank()) {
                 continue;
             }
             if (updateVector(record.getVectorId(), record.getEntityType(), record.getEntityId(), record.getContent(),
@@ -365,17 +366,13 @@ final class QdrantRestVectorDatabaseService implements VectorDatabaseService, Au
 
         int limit = request.getLimit() != null && request.getLimit() > 0 ? request.getLimit() : 200;
         int pageSize = limit + 1;
-        JsonNode offset = decodeScrollCursor(request.getCursor());
-        JsonNode filter = buildMetadataFilter(request.getMetadataEquals());
+        Optional<JsonNode> offset = decodeScrollCursor(request.getCursor());
+        Optional<JsonNode> filter = buildMetadataFilter(request.getMetadataEquals());
 
         ObjectNode body = objectMapper.createObjectNode();
         body.put("limit", pageSize);
-        if (offset != null) {
-            body.set("offset", offset);
-        }
-        if (filter != null) {
-            body.set("filter", filter);
-        }
+        offset.ifPresent(value -> body.set("offset", value));
+        filter.ifPresent(value -> body.set("filter", value));
         body.set("with_vector", BooleanNode.valueOf(request.isIncludeEmbedding()));
         body.set("with_payload", buildPayloadSelector(request));
 
@@ -403,7 +400,7 @@ final class QdrantRestVectorDatabaseService implements VectorDatabaseService, Au
             .toList();
 
         JsonNode nextOffset = result.path("result").path("next_page_offset");
-        String nextCursor = nextOffset.isMissingNode() || nextOffset.isNull() ? null : encodeScrollCursor(nextOffset);
+        String nextCursor = encodeScrollCursor(nextOffset).orElse(null);
 
         return VectorScanPage.builder()
             .vectors(records)
@@ -734,9 +731,9 @@ final class QdrantRestVectorDatabaseService implements VectorDatabaseService, Au
         return payload;
     }
 
-    private JsonNode buildMetadataFilter(Map<String, Object> metadata) {
+    private Optional<JsonNode> buildMetadataFilter(Map<String, Object> metadata) {
         if (metadata == null || metadata.isEmpty()) {
-            return null;
+            return Optional.empty();
         }
 
         ArrayNode must = objectMapper.createArrayNode();
@@ -759,11 +756,11 @@ final class QdrantRestVectorDatabaseService implements VectorDatabaseService, Au
         });
 
         if (must.isEmpty()) {
-            return null;
+            return Optional.empty();
         }
         ObjectNode filter = objectMapper.createObjectNode();
         filter.set("must", must);
-        return filter;
+        return Optional.of(filter);
     }
 
     private JsonNode buildPayloadSelector(VectorScanRequest request) {
@@ -801,7 +798,7 @@ final class QdrantRestVectorDatabaseService implements VectorDatabaseService, Au
         if (payload.isObject()) {
             payload.fields().forEachRemaining(entry -> {
                 if (!RESERVED_PAYLOAD_FIELDS.contains(entry.getKey())) {
-                    metadata.put(entry.getKey(), jsonToObject(entry.getValue()));
+                    metadata.put(entry.getKey(), jsonToObjectOrNull(entry.getValue()));
                 }
             });
         }
@@ -816,8 +813,8 @@ final class QdrantRestVectorDatabaseService implements VectorDatabaseService, Au
             .content(content)
             .embedding(embedding)
             .metadata(metadata)
-            .createdAt(readTimestamp(metadata, "_indexedCreatedAt"))
-            .updatedAt(readTimestamp(metadata, "_indexedUpdatedAt"))
+            .createdAt(readTimestamp(metadata, "_indexedCreatedAt").orElse(null))
+            .updatedAt(readTimestamp(metadata, "_indexedUpdatedAt").orElse(null))
             .similarityScore(scoreOverride)
             .build();
     }
@@ -957,25 +954,29 @@ final class QdrantRestVectorDatabaseService implements VectorDatabaseService, Au
         return copy;
     }
 
-    private Object jsonToObject(JsonNode node) {
-        if (node == null || node.isNull()) {
-            return null;
-        }
-        return objectMapper.convertValue(node, Object.class);
+    private Object jsonToObjectOrNull(JsonNode node) {
+        return jsonToObject(node).orElse(null);
     }
 
-    private static LocalDateTime readTimestamp(Map<String, Object> metadata, String key) {
+    private Optional<Object> jsonToObject(JsonNode node) {
+        if (node == null || node.isNull()) {
+            return Optional.empty();
+        }
+        return Optional.ofNullable(objectMapper.convertValue(node, Object.class));
+    }
+
+    private static Optional<LocalDateTime> readTimestamp(Map<String, Object> metadata, String key) {
         if (metadata == null || key == null) {
-            return null;
+            return Optional.empty();
         }
         Object raw = metadata.get(key);
         if (raw == null) {
-            return null;
+            return Optional.empty();
         }
         try {
-            return LocalDateTime.parse(raw.toString());
+            return Optional.of(LocalDateTime.parse(raw.toString()));
         } catch (Exception ex) {
-            return null;
+            return Optional.empty();
         }
     }
 
@@ -1025,24 +1026,24 @@ final class QdrantRestVectorDatabaseService implements VectorDatabaseService, Au
         return URLEncoder.encode(segment, StandardCharsets.UTF_8).replace("+", "%20");
     }
 
-    private JsonNode decodeScrollCursor(String cursor) {
+    private Optional<JsonNode> decodeScrollCursor(String cursor) {
         if (cursor == null || cursor.isBlank()) {
-            return null;
+            return Optional.empty();
         }
         try {
             String raw = new String(Base64.getUrlDecoder().decode(cursor), StandardCharsets.UTF_8);
-            return objectMapper.readTree(raw);
+            return Optional.of(objectMapper.readTree(raw));
         } catch (Exception ex) {
-            return null;
+            return Optional.empty();
         }
     }
 
-    private String encodeScrollCursor(JsonNode offset) {
+    private Optional<String> encodeScrollCursor(JsonNode offset) {
         if (offset == null || offset.isNull() || offset.isMissingNode()) {
-            return null;
+            return Optional.empty();
         }
-        return Base64.getUrlEncoder().withoutPadding()
-            .encodeToString(offset.toString().getBytes(StandardCharsets.UTF_8));
+        return Optional.of(Base64.getUrlEncoder().withoutPadding()
+            .encodeToString(offset.toString().getBytes(StandardCharsets.UTF_8)));
     }
 
     private boolean isMissingPayloadIndexFailure(AIServiceException exception) {

@@ -49,4 +49,31 @@ class AIComplianceServiceTest {
         assertThat(response.getReport().getSubjectId()).isEqualTo("customer-123");
         assertThat(response.getOverallCompliant()).isTrue();
     }
+
+    @Test
+    void checkComplianceFailsClosedWhenProviderReturnsNoDecision() {
+        ComplianceCheckProvider provider = mock(ComplianceCheckProvider.class);
+        when(provider.checkCompliance(org.mockito.ArgumentMatchers.any())).thenReturn(null);
+
+        AIComplianceService service = new AIComplianceService(
+            Clock.fixed(Instant.parse("2026-01-16T00:00:00Z"), ZoneOffset.UTC),
+            provider
+        );
+
+        AIComplianceRequest request = AIComplianceRequest.builder()
+            .requestId("comp-null")
+            .authContext(AIAccessSubjectContext.builder()
+                .subjectId("customer-123")
+                .build())
+            .content("review my data processing")
+            .build();
+
+        var response = service.checkCompliance(request);
+
+        assertThat(response.getSuccess()).isFalse();
+        assertThat(response.getOverallCompliant()).isFalse();
+        assertThat(response.getViolations()).containsExactly("COMPLIANCE_PROVIDER_EMPTY_RESULT");
+        assertThat(response.getErrorMessage()).contains("no decision");
+        assertThat(response.getReport().getViolations()).containsExactly("COMPLIANCE_PROVIDER_EMPTY_RESULT");
+    }
 }

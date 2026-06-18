@@ -14,6 +14,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class OpenAIProviderTest {
 
@@ -47,6 +48,43 @@ class OpenAIProviderTest {
             .containsEntry("max_completion_tokens", 512)
             .doesNotContainKey("max_tokens")
             .containsEntry("temperature", 0.2d);
+    }
+
+    @Test
+    void normalizesStringResponseFormatParameter() {
+        RecordingHttpClient httpClient = new RecordingHttpClient(successResponse());
+        OpenAIProvider provider = new OpenAIProvider(config(512, 0.2d), httpClient);
+
+        provider.generateContent(AIGenerationRequest.builder()
+            .prompt("Classify this request")
+            .model("gpt-5.4-nano")
+            .parameters(Map.of("response_format", "json"))
+            .build());
+
+        assertThat(httpClient.lastRequestBody())
+            .containsEntry("response_format", Map.of("type", "json_object"));
+    }
+
+    @Test
+    void malformedChatCompletionResponseFailsClearlyAndRecordsFailure() {
+        RecordingHttpClient httpClient = new RecordingHttpClient(ResponseEntity.ok(Map.of(
+            "model", "gpt-5.4-nano",
+            "choices", List.of(Map.of("finish_reason", "stop"))
+        )));
+        OpenAIProvider provider = new OpenAIProvider(config(512, 0.2d), httpClient);
+
+        assertThatThrownBy(() -> provider.generateContent(AIGenerationRequest.builder()
+            .prompt("Classify this request")
+            .model("gpt-5.4-nano")
+            .build()))
+            .isInstanceOf(RuntimeException.class)
+            .hasMessageContaining("OpenAI chat.completions response missing choices[0].message");
+
+        assertThat(provider.getStatus().getTotalRequests()).isEqualTo(1);
+        assertThat(provider.getStatus().getSuccessfulRequests()).isZero();
+        assertThat(provider.getStatus().getFailedRequests()).isEqualTo(1);
+        assertThat(provider.getStatus().getLastErrorMessage())
+            .contains("OpenAI chat.completions response missing choices[0].message");
     }
 
     @Test

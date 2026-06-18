@@ -29,7 +29,7 @@
     </properties>
 
     <dependencies>
-        <!-- Offline stubs so this app boots with no keys under the smoke profile (mvn spring-boot:run -Dspring-boot.run.profiles=smoke) -->
+        <!-- Offline providers so this app boots with no keys under the smoke profile (mvn spring-boot:run -Dspring-boot.run.profiles=smoke) -->
         <dependency>
             <groupId>com.ai.fabric.examples</groupId>
             <artifactId>smoke-support</artifactId>

@@ -10,7 +10,7 @@ final class SkuNormalizer {
 
     static String normalize(String sku) {
         if (!StringUtils.hasText(sku)) {
-            return null;
+            return "";
         }
 
         String normalized = sku.trim();
@@ -21,7 +21,7 @@ final class SkuNormalizer {
 
     static String normalizeForLookup(String sku) {
         String normalized = normalize(sku);
-        return normalized != null ? normalized.toLowerCase(Locale.ROOT) : null;
+        return StringUtils.hasText(normalized) ? normalized.toLowerCase(Locale.ROOT) : "";
     }
 
     private static String removeWhitespace(String value) {

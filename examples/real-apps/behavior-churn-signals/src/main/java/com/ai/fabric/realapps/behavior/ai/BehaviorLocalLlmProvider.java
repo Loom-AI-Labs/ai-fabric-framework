@@ -11,21 +11,27 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Random;
 import java.util.UUID;
 
 /**
- * Offline stub provider that returns deterministic JSON for BehaviorAnalysisService prompts.
+ * Offline deterministic provider that returns JSON for BehaviorAnalysisService prompts.
  */
 @Slf4j
 @Component
-public class BehaviorStubLlmProvider implements AIProvider {
+public class BehaviorLocalLlmProvider implements AIProvider {
+
+    static final String PROVIDER_NAME = "behavior-local";
+    static final int EMBEDDING_DIMENSION = 384;
 
     @Override
     public String getProviderName() {
-        return "behavior-stub";
+        return PROVIDER_NAME;
     }
 
     @Override
@@ -98,14 +104,15 @@ public class BehaviorStubLlmProvider implements AIProvider {
 
         return AIGenerationResponse.builder()
             .content(responseJson)
-            .model("behavior-stub")
+            .model(PROVIDER_NAME)
             .requestId("gen-" + UUID.randomUUID())
             .build();
     }
 
     @Override
     public AIEmbeddingResponse generateEmbedding(AIEmbeddingRequest request) {
-        throw new UnsupportedOperationException("behavior-stub does not support embeddings");
+        String text = request != null ? request.getText() : "";
+        return deterministicEmbedding(text);
     }
 
     @Override
@@ -117,7 +124,7 @@ public class BehaviorStubLlmProvider implements AIProvider {
             .successRate(1.0)
             .averageResponseTime(1.0)
             .lastUpdated(LocalDateTime.now())
-            .details("offline deterministic stub (behavior analysis JSON only)")
+            .details("offline deterministic provider (behavior analysis JSON)")
             .build();
     }
 
@@ -126,11 +133,36 @@ public class BehaviorStubLlmProvider implements AIProvider {
         return ProviderConfig.builder()
             .providerName(getProviderName())
             .enabled(true)
-            .apiKey("stub")
-            .baseUrl("stub://local")
-            .defaultModel("behavior-stub")
+            .apiKey("behavior-local-key")
+            .baseUrl("behavior://local")
+            .defaultModel(PROVIDER_NAME)
             .timeoutSeconds(1)
             .maxRetries(0)
+            .build();
+    }
+
+    private AIEmbeddingResponse deterministicEmbedding(String text) {
+        long seed = (text == null ? "" : text).hashCode() & 0xffffffffL;
+        Random random = new Random(seed);
+        List<Double> vector = new ArrayList<>(EMBEDDING_DIMENSION);
+        double sumSquares = 0.0;
+        for (int i = 0; i < EMBEDDING_DIMENSION; i++) {
+            double value = random.nextDouble() * 2.0 - 1.0;
+            vector.add(value);
+            sumSquares += value * value;
+        }
+        double norm = Math.sqrt(sumSquares);
+        if (norm > 0.0) {
+            for (int i = 0; i < EMBEDDING_DIMENSION; i++) {
+                vector.set(i, vector.get(i) / norm);
+            }
+        }
+        return AIEmbeddingResponse.builder()
+            .embedding(vector)
+            .model(PROVIDER_NAME)
+            .dimensions(EMBEDDING_DIMENSION)
+            .processingTimeMs(0L)
+            .requestId("embedding-" + UUID.randomUUID())
             .build();
     }
 

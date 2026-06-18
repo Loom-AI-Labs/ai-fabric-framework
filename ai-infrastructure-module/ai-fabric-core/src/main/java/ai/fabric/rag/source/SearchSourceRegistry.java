@@ -14,7 +14,7 @@ public interface SearchSourceRegistry {
     List<SearchSource> resolveSearchSources(RAGRequest request);
 
     default void recordSearchExecution(List<Map<String, Object>> sourceDiagnostics, boolean degraded) {
-        // Default no-op: registries that do not maintain runtime health state can ignore executions.
+        // Default behavior leaves runtime health state unchanged.
     }
 
     default Map<String, Object> adminDiagnostics() {

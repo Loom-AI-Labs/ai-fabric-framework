@@ -3,9 +3,13 @@ package ai.fabric.curated.defaultpack;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
+import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Objects;
+import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -53,7 +57,6 @@ class DefaultCuratedPackTest {
                 .as(promptResource)
                 .doesNotContain("private vertical brand")
                 .doesNotContain("commerce")
-                .doesNotContain("commerce")
                 .doesNotContain("shopper");
         }
 
@@ -78,10 +81,43 @@ class DefaultCuratedPackTest {
             .doesNotContain("785.95");
     }
 
+    @Test
+    void shouldPackageOnlyGenericPromptResources() throws Exception {
+        for (String promptResource : promptResources()) {
+            String prompt = readResource(promptResource);
+            assertThat(prompt)
+                .as(promptResource)
+                .isNotBlank()
+                .doesNotContain("private vertical brand")
+                .doesNotContain("commerce_")
+                .doesNotContain("commerce")
+                .doesNotContain("cart_assistant")
+                .doesNotContain("resolver_assistant")
+                .doesNotContain("shopper")
+                .doesNotContain("catalog/search")
+                .doesNotContain("product-search");
+        }
+    }
+
     private static String readResource(String resourcePath) throws IOException {
         var classLoader = DefaultCuratedPackTest.class.getClassLoader();
         try (var stream = Objects.requireNonNull(classLoader.getResourceAsStream(resourcePath), resourcePath)) {
             return new String(stream.readAllBytes(), StandardCharsets.UTF_8);
+        }
+    }
+
+    private static List<String> promptResources() throws IOException, URISyntaxException {
+        var classLoader = DefaultCuratedPackTest.class.getClassLoader();
+        var promptsUrl = Objects.requireNonNull(classLoader.getResource("prompts"), "prompts");
+        Path promptsRoot = Path.of(promptsUrl.toURI());
+        try (Stream<Path> paths = Files.walk(promptsRoot)) {
+            return paths
+                .filter(Files::isRegularFile)
+                .filter(path -> path.getFileName().toString().endsWith(".md"))
+                .map(promptsRoot::relativize)
+                .map(path -> "prompts/" + path.toString().replace('\\', '/'))
+                .sorted()
+                .toList();
         }
     }
 }

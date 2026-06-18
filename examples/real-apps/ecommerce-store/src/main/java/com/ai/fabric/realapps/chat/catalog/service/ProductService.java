@@ -234,7 +234,7 @@ public class ProductService {
 
     private String normalizeQuery(String raw) {
         if (!StringUtils.hasText(raw)) {
-            return null;
+            return "";
         }
         return raw.trim().toLowerCase();
     }

@@ -12,6 +12,7 @@ import jakarta.persistence.EntityNotFoundException;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -338,9 +339,9 @@ public class PurchaseOrderService {
         }
 
         String normalized = orderNumberOrId.trim();
-        Long asId = parseLongIfDigitsOnly(normalized);
-        if (asId != null) {
-            return getForUser(asId, userId);
+        Optional<Long> asId = parseLongIfDigitsOnly(normalized);
+        if (asId.isPresent()) {
+            return getForUser(asId.get(), userId);
         }
 
         PurchaseOrder order = purchaseOrderRepository.findByOrderNumber(normalized)
@@ -361,20 +362,20 @@ public class PurchaseOrderService {
             .orElseThrow(() -> new EntityNotFoundException("No current order found for user: " + userId.trim()));
     }
 
-    private Long parseLongIfDigitsOnly(String value) {
+    private Optional<Long> parseLongIfDigitsOnly(String value) {
         if (!StringUtils.hasText(value)) {
-            return null;
+            return Optional.empty();
         }
         String trimmed = value.trim();
         for (int i = 0; i < trimmed.length(); i++) {
             if (!Character.isDigit(trimmed.charAt(i))) {
-                return null;
+                return Optional.empty();
             }
         }
         try {
-            return Long.parseLong(trimmed);
+            return Optional.of(Long.parseLong(trimmed));
         } catch (NumberFormatException ex) {
-            return null;
+            return Optional.empty();
         }
     }
 }

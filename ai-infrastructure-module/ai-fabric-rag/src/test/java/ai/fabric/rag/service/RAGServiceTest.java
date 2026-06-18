@@ -191,6 +191,52 @@ class RAGServiceTest {
         assertThat(response.getDocuments().get(0).getSimilarity()).isEqualTo(0.76);
         assertThat(response.getDocuments().get(0).getSource()).isEqualTo("manual");
     }
+
+    @Test
+    @DisplayName("performRAGQuery filters JSON metadata with collection values before building context")
+    void performRAGQueryFiltersJsonMetadataCollectionValuesBeforeBuildingContext() {
+        when(vectorDatabaseService.hybridSearch(any(), anyString(), any())).thenReturn(
+            AISearchResponse.builder()
+                .results(List.of(
+                    Map.of(
+                        "id", "refund-policy",
+                        "content", "Refund requests can be opened from the billing portal.",
+                        "score", 0.92,
+                        "similarity", 0.89,
+                        "metadata", "{\"tags\":[\"billing\",\"refund\"],\"audience\":\"customer\"}"
+                    ),
+                    Map.of(
+                        "id", "password-reset",
+                        "content", "Password resets are handled by account security.",
+                        "score", 0.95,
+                        "similarity", 0.93,
+                        "metadata", Map.of("tags", List.of("identity", "security"))
+                    )
+                ))
+                .totalResults(2)
+                .build()
+        );
+
+        RAGResponse response = ragService.performRAGQuery(RAGRequest.builder()
+            .query("refund help")
+            .entityType("article")
+            .limit(5)
+            .filters(Map.of("tags", "refund"))
+            .build());
+
+        assertThat(response.getSuccess()).isTrue();
+        assertThat(response.getDocuments())
+            .singleElement()
+            .satisfies(document -> {
+                assertThat(document.getId()).isEqualTo("refund-policy");
+                assertThat(document.getMetadata()).containsEntry("audience", "customer");
+                assertThat(document.getMetadata().get("tags")).asList().containsExactly("billing", "refund");
+            });
+        assertThat(response.getUsedDocuments()).isEqualTo(1);
+        assertThat(response.getContext())
+            .contains("Refund requests can be opened")
+            .doesNotContain("Password resets");
+    }
     
     @Test
     @DisplayName("getStatistics returns non-null map")

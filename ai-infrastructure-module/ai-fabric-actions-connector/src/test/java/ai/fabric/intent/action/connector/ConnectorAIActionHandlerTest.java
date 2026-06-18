@@ -9,6 +9,7 @@ import ai.fabric.intent.orchestration.OrchestrationContext;
 import ai.fabric.intent.orchestration.pipeline.PipelineContext;
 import org.junit.jupiter.api.Test;
 
+import java.time.Clock;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -37,6 +38,34 @@ class ConnectorAIActionHandlerTest {
             null
         )).isEqualTo("Add 1 Selling Plans Ski Wax to your cart?");
         assertThat(handler.getConfirmationMessage(Map.of(), null)).isEqualTo("Update your cart?");
+    }
+
+    @Test
+    void executeAction_shouldReturnStructuredFailureWhenAccessModeIsMissing() {
+        ActionConnectorExecutor executor = new ActionConnectorExecutor(
+            new AIActionConnectorProperties(),
+            request -> {
+                throw new AssertionError("executor should not be called when metadata is incomplete");
+            },
+            null,
+            Clock.systemUTC()
+        );
+        ConnectorAIActionHandler handler = new ConnectorAIActionHandler(
+            AIActionMetaData.builder()
+                .name("broken_action")
+                .category("generic")
+                .build(),
+            false,
+            null,
+            Set.of(),
+            executor
+        );
+
+        ActionResult result = handler.executeAction(Map.of(), null);
+
+        assertThat(result.isSuccess()).isFalse();
+        assertThat(result.getErrorCode()).isEqualTo("ACTION_EXECUTION_FAILED");
+        assertThat(result.getMessage()).contains("access mode");
     }
 
     @Test

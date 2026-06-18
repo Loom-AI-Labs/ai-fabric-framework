@@ -9,6 +9,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import jakarta.validation.Valid;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
@@ -20,6 +21,8 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class AdvancedRAGController {
 
+    private static final String UNKNOWN_QUERY = "unknown";
+
     private final AdvancedRAGService advancedRAGService;
 
     /**
@@ -28,7 +31,7 @@ public class AdvancedRAGController {
     @PostMapping("/search")
     public ResponseEntity<AdvancedRAGResponse> performAdvancedRAG(
             @Valid @RequestBody AdvancedRAGRequest request) {
-        log.info("Processing advanced RAG request for query: {}", request.getQuery());
+        log.info("Processing advanced RAG request for query: {}", resolveQuery(request));
         
         try {
             AdvancedRAGResponse response = advancedRAGService.performAdvancedRAG(request);
@@ -37,7 +40,7 @@ public class AdvancedRAGController {
             log.error("Error processing advanced RAG request", e);
             return ResponseEntity.internalServerError()
                 .body(AdvancedRAGResponse.builder()
-                    .query(request.getQuery())
+                    .query(resolveQuery(request))
                     .success(false)
                     .errorMessage(e.getMessage())
                     .build());
@@ -52,13 +55,9 @@ public class AdvancedRAGController {
         log.info("Retrieving advanced RAG statistics");
         
         try {
-            // This would be implemented in the service
-            Map<String, Object> stats = Map.of(
-                "totalQueries", 0,
-                "averageProcessingTime", 0.0,
-                "successRate", 0.0,
-                "timestamp", System.currentTimeMillis()
-            );
+            Map<String, Object> stats = new LinkedHashMap<>(advancedRAGService.getStatistics());
+            stats.put("service", "AdvancedRAGService");
+            stats.put("timestamp", System.currentTimeMillis());
             return ResponseEntity.ok(stats);
         } catch (Exception e) {
             log.error("Error retrieving advanced RAG statistics", e);
@@ -91,5 +90,11 @@ public class AdvancedRAGController {
                     "timestamp", System.currentTimeMillis()
                 ));
         }
+    }
+
+    private String resolveQuery(AdvancedRAGRequest request) {
+        return request != null && request.getQuery() != null && !request.getQuery().isBlank()
+            ? request.getQuery().trim()
+            : UNKNOWN_QUERY;
     }
 }

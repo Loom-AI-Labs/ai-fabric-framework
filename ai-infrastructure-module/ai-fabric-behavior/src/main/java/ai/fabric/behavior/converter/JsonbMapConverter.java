@@ -7,6 +7,7 @@ import jakarta.persistence.Converter;
 
 import java.util.Collections;
 import java.util.Map;
+import java.util.Optional;
 
 @Converter(autoApply = false)
 public class JsonbMapConverter implements AttributeConverter<Map<String, Object>, String> {
@@ -15,14 +16,10 @@ public class JsonbMapConverter implements AttributeConverter<Map<String, Object>
     
     @Override
     public String convertToDatabaseColumn(Map<String, Object> attribute) {
-        if (attribute == null || attribute.isEmpty()) {
-            return null;
-        }
-        try {
-            return OBJECT_MAPPER.writeValueAsString(attribute);
-        } catch (Exception e) {
-            throw new IllegalStateException("Failed to convert map to JSON", e);
-        }
+        return Optional.ofNullable(attribute)
+            .filter(value -> !value.isEmpty())
+            .map(this::writeJson)
+            .orElse(null);
     }
     
     @Override
@@ -38,6 +35,14 @@ public class JsonbMapConverter implements AttributeConverter<Map<String, Object>
             return OBJECT_MAPPER.readValue(payload, new TypeReference<Map<String, Object>>() {});
         } catch (Exception e) {
             throw new IllegalStateException("Failed to convert JSON to map", e);
+        }
+    }
+
+    private String writeJson(Map<String, Object> attribute) {
+        try {
+            return OBJECT_MAPPER.writeValueAsString(attribute);
+        } catch (Exception e) {
+            throw new IllegalStateException("Failed to convert map to JSON", e);
         }
     }
 }

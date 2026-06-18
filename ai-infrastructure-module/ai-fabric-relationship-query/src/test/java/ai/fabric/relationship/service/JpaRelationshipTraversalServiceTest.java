@@ -44,7 +44,7 @@ class JpaRelationshipTraversalServiceTest {
 
     @Test
     void shouldExecuteJpqlAndReturnIdentifiers() {
-        stubJpaInfrastructure();
+        configureJpaInfrastructure();
 
         Object entityOne = new Object();
         Object entityTwo = new Object();
@@ -83,7 +83,7 @@ class JpaRelationshipTraversalServiceTest {
 
     @Test
     void shouldNotApplyLimitWhenNotProvided() {
-        stubJpaInfrastructure();
+        configureJpaInfrastructure();
 
         Object entity = new Object();
         when(jpaQuery.getResultList()).thenReturn(List.of(entity));
@@ -104,7 +104,7 @@ class JpaRelationshipTraversalServiceTest {
         verify(jpaQuery, never()).setMaxResults(anyInt());
     }
 
-    private void stubJpaInfrastructure() {
+    private void configureJpaInfrastructure() {
         when(entityManager.createQuery(anyString())).thenReturn(jpaQuery);
         when(entityManager.getEntityManagerFactory()).thenReturn(entityManagerFactory);
         when(entityManagerFactory.getPersistenceUnitUtil()).thenReturn(persistenceUnitUtil);

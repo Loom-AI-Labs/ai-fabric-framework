@@ -22,7 +22,7 @@ public interface EntityAccessPolicy {
 
     /**
      * Optional callback invoked when access is denied. Implementations can override to emit
-     * custom audit records or telemetry. Default implementation is a no-op.
+     * custom audit records or telemetry. The default callback has no side effects.
      *
      * @param authContext canonical verified auth context for the denied subject
      * @param entity entity metadata that triggered the denial

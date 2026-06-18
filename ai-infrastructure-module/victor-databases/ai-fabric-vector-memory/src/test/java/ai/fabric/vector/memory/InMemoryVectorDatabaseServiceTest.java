@@ -10,6 +10,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -105,6 +106,78 @@ class InMemoryVectorDatabaseServiceTest {
         assertThat(response.getResults()).isEmpty();
         assertThat(response.getTotalResults()).isZero();
         assertThat(response.getMaxScore()).isZero();
+    }
+
+    @Test
+    void normalizesInvalidThresholdsAcrossSearchApis() {
+        service.storeVector(
+            "product",
+            "watch-1",
+            "Luxury watch",
+            List.of(1.0, 0.0),
+            Map.of("category", "watches")
+        );
+
+        AISearchResponse requestSearch = service.search(
+            List.of(1.0, 0.0),
+            AISearchRequest.builder()
+                .query("watch")
+                .entityType("product")
+                .limit(5)
+                .threshold(Double.POSITIVE_INFINITY)
+                .build()
+        );
+        AISearchResponse entityTypeSearch = service.searchByEntityType(
+            List.of(1.0, 0.0),
+            "product",
+            5,
+            Double.NaN
+        );
+
+        assertThat(requestSearch.getResults()).hasSize(1);
+        assertThat(entityTypeSearch.getResults()).hasSize(1);
+    }
+
+    @Test
+    void ignoresNonFiniteVectorsDuringSearch() {
+        service.storeVector(
+            "product",
+            "valid",
+            "Valid embedding",
+            List.of(1.0, 0.0),
+            Map.of()
+        );
+        service.storeVector(
+            "product",
+            "nan",
+            "Invalid embedding",
+            Arrays.asList(Double.NaN, 0.0),
+            Map.of()
+        );
+
+        AISearchResponse response = service.search(
+            List.of(1.0, 0.0),
+            AISearchRequest.builder()
+                .query("embedding")
+                .entityType("product")
+                .limit(10)
+                .threshold(0.0)
+                .build()
+        );
+        AISearchResponse invalidQuery = service.search(
+            Arrays.asList(null, 0.0),
+            AISearchRequest.builder()
+                .query("embedding")
+                .entityType("product")
+                .limit(10)
+                .threshold(0.0)
+                .build()
+        );
+
+        assertThat(response.getResults())
+            .extracting(result -> result.get("entityId"))
+            .containsExactly("valid");
+        assertThat(invalidQuery.getResults()).isEmpty();
     }
 
     @Test
@@ -245,6 +318,46 @@ class InMemoryVectorDatabaseServiceTest {
         assertThat(service.removeVector("product", "p-1")).isTrue();
         assertThat(service.clearVectorsByEntityType("article")).isEqualTo(1);
         assertThat(service.clearVectors()).isZero();
+    }
+
+    @Test
+    void batchAndIdOperationsIgnoreNullOrBlankInputs() {
+        List<VectorRecord> records = new ArrayList<>();
+        records.add(null);
+        records.add(VectorRecord.builder()
+            .entityType("product")
+            .entityId("p-1")
+            .content("First product")
+            .embedding(List.of(1.0, 0.0))
+            .metadata(Map.of())
+            .build());
+
+        List<String> vectorIds = service.batchStoreVectors(records);
+
+        assertThat(service.batchStoreVectors(null)).isEmpty();
+        assertThat(vectorIds).hasSize(1);
+        assertThat(service.getVector(null)).isEmpty();
+        assertThat(service.updateVector(" ", "product", "p-1", "Ignored", List.of(0.0, 1.0), Map.of()))
+            .isFalse();
+        assertThat(service.removeVectorById(" ")).isFalse();
+
+        int updated = service.batchUpdateVectors(Arrays.asList(
+            null,
+            VectorRecord.builder().vectorId("").build(),
+            VectorRecord.builder()
+                .vectorId(vectorIds.get(0))
+                .entityType("product")
+                .entityId("p-1")
+                .content("Updated product")
+                .embedding(List.of(0.9, 0.1))
+                .metadata(Map.of())
+                .build()
+        ));
+
+        assertThat(updated).isEqualTo(1);
+        assertThat(service.batchUpdateVectors(null)).isZero();
+        assertThat(service.batchRemoveVectors(Arrays.asList(null, " ", "missing", vectorIds.get(0)))).isEqualTo(1);
+        assertThat(service.batchRemoveVectors(null)).isZero();
     }
 
     @Test

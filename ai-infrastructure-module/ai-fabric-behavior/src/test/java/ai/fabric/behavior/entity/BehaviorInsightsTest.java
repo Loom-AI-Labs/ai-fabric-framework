@@ -52,4 +52,17 @@ class BehaviorInsightsTest {
 
         assertThat(content).contains("Power").contains("login, buy").contains("upsell").contains("0.42");
     }
+
+    @Test
+    void deltasAreAbsentWhenPreviousValuesAreMissing() {
+        BehaviorInsights insight = BehaviorInsights.builder()
+            .sentimentScore(0.8)
+            .churnRisk(0.2)
+            .build();
+
+        assertThat(insight.getSentimentDelta()).isNull();
+        assertThat(insight.getChurnDelta()).isNull();
+        assertThat(insight.isSentimentImproving()).isFalse();
+        assertThat(insight.isChurnRiskIncreasing()).isFalse();
+    }
 }
