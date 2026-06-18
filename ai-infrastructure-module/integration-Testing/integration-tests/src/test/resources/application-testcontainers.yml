@@ -1,0 +1,54 @@
+# Testcontainers Profile Configuration
+# Activated with: -Dspring.profiles.active=testcontainers
+#
+# This profile enables automatic Testcontainers-based vector database setup
+# for integration tests. Containers are started automatically and connection
+# properties are injected into the Spring environment.
+
+testcontainers:
+  enabled: true
+
+# Vector database type - defaults to lucene if not specified
+# To use Testcontainers, specify a container type: -Dai.vector-db.type=milvus
+# Supported container types: milvus, qdrant, weaviate, chroma, pgvector
+# If not specified or set to lucene/memory, Testcontainers will not activate
+ai:
+  providers:
+    # Enable all vector database providers for integration tests
+    # This allows Testcontainers to use any provider without additional configuration
+    milvus:
+      enabled: true
+    qdrant:
+      enabled: true
+    weaviate:
+      enabled: true
+    chroma:
+      enabled: true
+    pgvector:
+      enabled: true
+
+  vector-db:
+    type: ${VECTOR_DB_TYPE:lucene}
+    lucene:
+      index-path: ./data/test-lucene-index
+      similarity-threshold: 0.7
+      max-results: 100
+
+    # Timeouts adjusted for container startup
+    milvus:
+      timeout: 60000
+    qdrant:
+      timeout: 60000
+    weaviate:
+      timeout: 60000
+    chroma:
+      timeout: 60000
+    pgvector:
+      timeout: 60000
+
+# Logging for Testcontainers
+logging:
+  level:
+    org.testcontainers: INFO
+    com.github.dockerjava: WARN
+    ai.fabric.it.config: DEBUG

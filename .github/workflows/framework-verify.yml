@@ -61,7 +61,18 @@ jobs:
         run: |
           mvn ${MAVEN_ARGS} -f ai-infrastructure-module/pom.xml \
             -Dai.vector-db.lucene.cleanup-on-close=true \
+            -pl '!integration-Testing/testcontainers-support,!integration-Testing/integration-tests,!integration-Testing/relationship-query-integration-tests,!integration-Testing/chat-session-integration-tests,!integration-Testing/behavior-integration-tests' \
             install
+        env:
+          MAVEN_OPTS: -Xmx2g
+
+      - name: Compile restored integration test suites
+        run: |
+          mvn ${MAVEN_ARGS} -f ai-infrastructure-module/pom.xml \
+            -DskipTests \
+            -pl integration-Testing/testcontainers-support,integration-Testing/integration-tests,integration-Testing/relationship-query-integration-tests,integration-Testing/chat-session-integration-tests,integration-Testing/behavior-integration-tests \
+            -am \
+            test-compile
         env:
           MAVEN_OPTS: -Xmx2g
 

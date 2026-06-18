@@ -1,0 +1,127 @@
+# Mock Test Configuration for AI Infrastructure Integration Tests
+# This configuration uses mocked AI services for testing without requiring API keys
+
+spring:
+  application:
+    name: ai-fabric-mock-tests
+
+  # Database Configuration (H2 in-memory for testing)
+  datasource:
+    url: jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+      connection-timeout: 20000
+      auto-commit: true
+      pool-name: HikariCP-Test
+
+  # JPA Configuration
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.H2Dialect
+        format_sql: false
+        jdbc:
+          batch_size: 20
+    open-in-view: false
+
+  # H2 Console for debugging (disabled by default)
+  h2:
+    console:
+      enabled: false
+  liquibase:
+    enabled: false
+
+# AI Infrastructure Configuration (Mock Mode)
+ai:
+  enabled: true
+
+  providers:
+    llm-provider: ${LLM_PROVIDER:test-provider}
+    embedding-provider: ${EMBEDDING_PROVIDER:onnx}
+    enable-fallback: true
+
+    onnx:
+      enabled: true
+      model-path: ${ONNX_MODEL_PATH:classpath:/models/embeddings/all-MiniLM-L6-v2.onnx}
+      tokenizer-path: ${ONNX_TOKENIZER_PATH:classpath:/models/embeddings/tokenizer.json}
+      max-sequence-length: 512
+      use-gpu: false
+      model-alias: all-MiniLM-L6-v2
+
+    openai:
+      enabled: ${OPENAI_ENABLED:false}
+      api-key: ${OPENAI_API_KEY:mock-key}
+      model: gpt-3.5-turbo
+      embedding-model: text-embedding-3-small
+      max-tokens: 1000
+      temperature: 0.3
+      timeout: 30
+      priority: 100
+
+  # Mock Configuration
+  mock:
+    enabled: true
+    embedding-dimensions: 1536
+    embedding-model: text-embedding-3-small
+    response-delay-ms: 100
+
+  # Infrastructure Configuration
+  infrastructure:
+    config:
+      file: ai-entity-config.yml
+    embedding:
+      model: text-embedding-3-small
+      dimensions: 1536
+    search:
+      max-results: 100
+      similarity-threshold: 0.7
+
+  # Vector Database Configuration (in-memory for testing)
+  vector-db:
+    type: memory
+    lucene:
+      index-path: ./data/test-lucene-index
+      similarity-threshold: 0.7
+      max-results: 100
+
+# Test-specific Configuration
+test:
+  ai:
+    # Test data configuration
+    sample-entities-count: 10
+    batch-size: 5
+    timeout-seconds: 30
+
+    # Performance test configuration
+    performance:
+      concurrent-users: 10
+      test-duration-seconds: 60
+      warmup-seconds: 10
+
+# Logging Configuration
+logging:
+  level:
+    root: INFO
+    ai.fabric: DEBUG
+    ai.fabric.it: DEBUG
+    org.springframework.aop: DEBUG
+    org.hibernate.SQL: WARN
+  pattern:
+    console: "%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"
+
+# Management/Actuator Configuration
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "health,info,metrics"
+  endpoint:
+    health:
+      show-details: when-authorized

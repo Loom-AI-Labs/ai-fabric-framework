@@ -1,0 +1,74 @@
+ai-config:
+  default-embedding-model: text-embedding-3-small
+  default-search-limit: 10
+
+ai-entities:
+  product:
+    features: ["embedding", "search", "analysis"]
+    enable-search: true
+    auto-embedding: true
+    indexable: true
+    searchable-fields:
+      - name: name
+      - name: description
+  test-product:
+    features: ["embedding", "search"]
+    enable-search: true
+    auto-embedding: true
+    indexable: true
+    searchable-fields:
+      - name: name
+      - name: description
+      - name: category
+      - name: brand
+    embeddable-fields:
+      - name: description
+      - name: category
+      - name: brand
+    metadata-fields:
+      - name: category
+        type: STRING
+      - name: brand
+        type: STRING
+      - name: price
+        type: DOUBLE
+  test-article:
+    features: ["embedding", "search"]
+    enable-search: true
+    auto-embedding: true
+    indexable: true
+    searchable-fields:
+      - name: title
+      - name: body
+    embeddable-fields:
+      - name: body
+      - name: title
+    metadata-fields:
+      - name: author
+        type: STRING
+      - name: publishDate
+        type: DATE
+      - name: published
+        type: BOOLEAN
+  test-user:
+    features: ["embedding", "search"]
+    enable-search: true
+    auto-embedding: true
+    indexable: true
+    searchable-fields:
+      - name: displayName
+      - name: bio
+      - name: firstName
+      - name: lastName
+      - name: email
+    embeddable-fields:
+      - name: bio
+      - name: firstName
+      - name: lastName
+    metadata-fields:
+      - name: email
+        type: STRING
+      - name: age
+        type: INTEGER
+      - name: location
+        type: STRING

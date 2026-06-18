@@ -1,0 +1,250 @@
+name: Framework Provider Matrix Suite
+
+on:
+  workflow_dispatch:
+    inputs:
+      openai_api_key:
+        description: 'OpenAI API Key (LLM)'
+        required: false
+        type: string
+      pinecone_api_key:
+        description: 'Pinecone API Key (Vector DB)'
+        required: false
+        type: string
+      cohere_api_key:
+        description: 'Cohere API Key (LLM)'
+        required: false
+        type: string
+      anthropic_api_key:
+        description: 'Anthropic API Key (LLM)'
+        required: false
+        type: string
+      gemini_api_key:
+        description: 'Gemini API Key (LLM)'
+        required: false
+        type: string
+      logging_level:
+        description: 'Maven logging level'
+        required: false
+        default: 'normal'
+        type: choice
+        options:
+          - quiet
+          - error
+          - normal
+          - verbose
+          - debug
+      run_openai_lucene:
+        description: 'Also run OpenAI + ONNX + Lucene'
+        required: false
+        default: false
+        type: boolean
+      realapi_minimum_success_rate:
+        description: 'RealAPI provider-matrix minimum success rate (0.0–1.0). Set to 1.0 for strict mode.'
+        required: false
+        type: string
+        default: '0.85'
+      realapi_minimum_considered_tests:
+        description: 'RealAPI provider-matrix minimum considered tests (succeeded+failed) required to apply the threshold.'
+        required: false
+        type: string
+        default: '20'
+
+jobs:
+  resolve-matrix:
+    name: Resolve Matrix
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+      has_any: ${{ steps.matrix.outputs.has_any }}
+    env:
+      OPENAI_API_KEY: ${{ github.event.inputs.openai_api_key || secrets.OPENAI_API_KEY }}
+      PINECONE_API_KEY: ${{ github.event.inputs.pinecone_api_key || secrets.PINECONE_API_KEY }}
+      COHERE_API_KEY: ${{ github.event.inputs.cohere_api_key || secrets.COHERE_API_KEY }}
+      ANTHROPIC_API_KEY: ${{ github.event.inputs.anthropic_api_key || secrets.ANTHROPIC_API_KEY }}
+      GEMINI_API_KEY: ${{ github.event.inputs.gemini_api_key || secrets.GEMINI_API_KEY }}
+      RUN_OPENAI_LUCENE: ${{ github.event.inputs.run_openai_lucene }}
+    steps:
+      - name: Mask provider API keys
+        if: always()
+        run: |
+          [ -n "${{ github.event.inputs.openai_api_key }}" ] && echo "::add-mask::${{ github.event.inputs.openai_api_key }}" || true
+          [ -n "${{ github.event.inputs.pinecone_api_key }}" ] && echo "::add-mask::${{ github.event.inputs.pinecone_api_key }}" || true
+          [ -n "${{ github.event.inputs.cohere_api_key }}" ] && echo "::add-mask::${{ github.event.inputs.cohere_api_key }}" || true
+          [ -n "${{ github.event.inputs.anthropic_api_key }}" ] && echo "::add-mask::${{ github.event.inputs.anthropic_api_key }}" || true
+          [ -n "${{ github.event.inputs.gemini_api_key }}" ] && echo "::add-mask::${{ github.event.inputs.gemini_api_key }}" || true
+
+      - id: matrix
+        name: Build matrix from available keys
+        run: |
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json, os
+
+          def has(key: str) -> bool:
+            return bool((os.getenv(key) or "").strip())
+
+          run_openai_lucene = (os.getenv("RUN_OPENAI_LUCENE") or "").strip().lower() == "true"
+          include = []
+
+          if has("OPENAI_API_KEY") and has("PINECONE_API_KEY"):
+            include.append({
+              "name": "openai-onnx-pinecone",
+              "llm": "openai",
+              "embedding": "onnx",
+              "vector_db": "pinecone",
+              "integration_spring_profiles": "real-api-test",
+              "realapi_spring_profiles": "realapi",
+            })
+
+          if has("COHERE_API_KEY"):
+            include.append({
+              "name": "cohere-onnx-qdrant",
+              "llm": "cohere",
+              "embedding": "onnx",
+              "vector_db": "qdrant",
+              "integration_spring_profiles": "real-api-test,testcontainers",
+              "realapi_spring_profiles": "realapi,testcontainers",
+            })
+
+          if has("ANTHROPIC_API_KEY"):
+            include.append({
+              "name": "anthropic-onnx-milvus",
+              "llm": "anthropic",
+              "embedding": "onnx",
+              "vector_db": "milvus",
+              "integration_spring_profiles": "real-api-test,testcontainers",
+              "realapi_spring_profiles": "realapi,testcontainers",
+            })
+
+          if has("GEMINI_API_KEY"):
+            include.append({
+              "name": "gemini-onnx-weaviate",
+              "llm": "gemini",
+              "embedding": "onnx",
+              "vector_db": "weaviate",
+              "integration_spring_profiles": "real-api-test,testcontainers",
+              "realapi_spring_profiles": "realapi,testcontainers",
+            })
+
+          if run_openai_lucene and has("OPENAI_API_KEY"):
+            include.append({
+              "name": "openai-onnx-lucene",
+              "llm": "openai",
+              "embedding": "onnx",
+              "vector_db": "lucene",
+              "integration_spring_profiles": "real-api-test",
+              "realapi_spring_profiles": "realapi",
+            })
+
+          matrix = {"include": include}
+          print("matrix=" + json.dumps(matrix))
+          print("has_any=" + ("true" if include else "false"))
+          PY
+
+  provider-suite:
+    name: Framework Provider Matrix Suite (${{ matrix.name }})
+    needs: [resolve-matrix]
+    if: needs.resolve-matrix.outputs.has_any == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      max-parallel: 5
+      matrix: ${{ fromJson(needs.resolve-matrix.outputs.matrix) }}
+
+    env:
+      MAVEN_LOGGING_LEVEL: ${{ github.event.inputs.logging_level || 'normal' }}
+      AI_PROVIDERS_REAL_API_MINIMUM_SUCCESS_RATE: ${{ github.event.inputs.realapi_minimum_success_rate }}
+      AI_PROVIDERS_REAL_API_MINIMUM_CONSIDERED_TESTS: ${{ github.event.inputs.realapi_minimum_considered_tests }}
+
+      # Prefer workflow_dispatch inputs, fall back to repo secrets.
+      OPENAI_API_KEY: ${{ github.event.inputs.openai_api_key || secrets.OPENAI_API_KEY }}
+      PINECONE_API_KEY: ${{ github.event.inputs.pinecone_api_key || secrets.PINECONE_API_KEY }}
+      COHERE_API_KEY: ${{ github.event.inputs.cohere_api_key || secrets.COHERE_API_KEY }}
+      ANTHROPIC_API_KEY: ${{ github.event.inputs.anthropic_api_key || secrets.ANTHROPIC_API_KEY }}
+      GEMINI_API_KEY: ${{ github.event.inputs.gemini_api_key || secrets.GEMINI_API_KEY }}
+
+      # Pinecone host/index are fixed defaults; override via repo variables if needed.
+      PINECONE_INDEX_NAME: ${{ vars.PINECONE_INDEX_NAME != '' && vars.PINECONE_INDEX_NAME || 'ai-fabric' }}
+      PINECONE_API_HOST: ${{ vars.PINECONE_API_HOST != '' && vars.PINECONE_API_HOST || 'https://ai-fabric-pwkuyn5.svc.aped-4627-b74a.pinecone.io' }}
+      PINECONE_ENVIRONMENT: ${{ vars.PINECONE_ENVIRONMENT }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # workflow_dispatch inputs are NOT treated as secrets by GitHub.
+      # Mask them explicitly to avoid leaking API keys in logs.
+      - name: Mask provider API keys
+        if: always()
+        run: |
+          [ -n "${{ github.event.inputs.openai_api_key }}" ] && echo "::add-mask::${{ github.event.inputs.openai_api_key }}" || true
+          [ -n "${{ github.event.inputs.pinecone_api_key }}" ] && echo "::add-mask::${{ github.event.inputs.pinecone_api_key }}" || true
+          [ -n "${{ github.event.inputs.cohere_api_key }}" ] && echo "::add-mask::${{ github.event.inputs.cohere_api_key }}" || true
+          [ -n "${{ github.event.inputs.anthropic_api_key }}" ] && echo "::add-mask::${{ github.event.inputs.anthropic_api_key }}" || true
+          [ -n "${{ github.event.inputs.gemini_api_key }}" ] && echo "::add-mask::${{ github.event.inputs.gemini_api_key }}" || true
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: 'maven'
+
+      - name: Verify Docker is available
+        run: |
+          docker --version
+          docker info | head -5
+
+      - name: Build AI Fabric Framework (skip tests)
+        run: |
+          cd ai-infrastructure-module
+          mvn install -DskipTests -B -V
+
+      - name: Run suite (${{ matrix.llm }} + ${{ matrix.embedding }} + ${{ matrix.vector_db }})
+        run: |
+          cd ai-infrastructure-module/integration-Testing/integration-tests
+          export SPRING_PROFILES_ACTIVE="${{ matrix.integration_spring_profiles }}"
+          if [ "${{ matrix.vector_db }}" = "pinecone" ]; then
+            export AI_PROVIDERS_PINECONE_ENABLED="true"
+            export AI_PROVIDERS_PINECONE_API_KEY="${PINECONE_API_KEY}"
+            export AI_PROVIDERS_PINECONE_INDEX_NAME="${PINECONE_INDEX_NAME}"
+            export AI_PROVIDERS_PINECONE_API_HOST="${PINECONE_API_HOST}"
+          else
+            export AI_PROVIDERS_PINECONE_ENABLED="false"
+          fi
+          bash run-provider-matrix-tests.sh "${{ matrix.llm }}:${{ matrix.embedding }}:${{ matrix.vector_db }}" "" "all"
+
+      - name: Upload provider-matrix scorecards
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: provider-matrix-scorecards-${{ matrix.name }}
+          path: |
+            ai-infrastructure-module/integration-Testing/integration-tests/target/provider-matrix-reports/
+            ai-infrastructure-module/integration-Testing/relationship-query-integration-tests/target/provider-matrix-reports/
+            ai-infrastructure-module/integration-Testing/chat-session-integration-tests/target/provider-matrix-reports/
+            ai-infrastructure-module/integration-Testing/behavior-integration-tests/target/provider-matrix-reports/
+          retention-days: 30
+
+      - name: Run relationship-query suite (${{ matrix.llm }} + ${{ matrix.embedding }} + ${{ matrix.vector_db }})
+        run: |
+          cd ai-infrastructure-module/integration-Testing/relationship-query-integration-tests
+          export SPRING_PROFILES_ACTIVE="${{ matrix.realapi_spring_profiles }}"
+          bash run-relationship-query-realapi-tests.sh "${{ matrix.llm }}:${{ matrix.embedding }}:${{ matrix.vector_db }}"
+
+      - name: Run chat-session suite (${{ matrix.llm }} + ${{ matrix.embedding }} + ${{ matrix.vector_db }})
+        run: |
+          cd ai-infrastructure-module/integration-Testing/chat-session-integration-tests
+          export SPRING_PROFILES_ACTIVE="${{ matrix.realapi_spring_profiles }}"
+          bash run-chat-session-realapi-tests.sh "${{ matrix.llm }}:${{ matrix.embedding }}:${{ matrix.vector_db }}"
+
+      - name: Run behavior suite (${{ matrix.llm }} + ${{ matrix.embedding }})
+        run: |
+          cd ai-infrastructure-module/integration-Testing/behavior-integration-tests
+          export SPRING_PROFILES_ACTIVE="realapi"
+          bash run-behavior-realapi-tests.sh "${{ matrix.llm }}:${{ matrix.embedding }}"

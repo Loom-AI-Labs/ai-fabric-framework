@@ -85,4 +85,5 @@ jobs:
           mvn ${MAVEN_ARGS} -f ai-infrastructure-module/pom.xml \
             -Prelease,central \
             -DskipTests \
+            -pl '!integration-Testing/testcontainers-support,!integration-Testing/integration-tests,!integration-Testing/relationship-query-integration-tests,!integration-Testing/chat-session-integration-tests,!integration-Testing/behavior-integration-tests' \
             deploy

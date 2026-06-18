@@ -1,0 +1,235 @@
+# Real API Test Configuration
+# This configuration enables real OpenAI API calls for comprehensive testing
+
+spring:
+  datasource:
+    url: jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
+    hikari:
+      # RealAPI tests run concurrent workloads (e.g. 10-thread analytics scenario).
+      # Keep the pool comfortably above the thread count to avoid artificial timeouts.
+      maximum-pool-size: 20
+      minimum-idle: 5
+      connection-timeout: 60000
+      auto-commit: true
+      pool-name: HikariCP-Test
+
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.H2Dialect
+        format_sql: false
+        jdbc:
+          batch_size: 20
+    open-in-view: false
+
+  h2:
+    console:
+      enabled: false
+  liquibase:
+    enabled: false
+
+# Test Configuration
+test:
+  # Disable mock provider for pure real API testing
+  enable-mock-provider: false
+
+# AI Configuration for Real API Testing
+ai:
+  enabled: true
+  intent-extraction:
+    progressive:
+      enabled: true
+  vector-db:
+    operations:
+      # Pinecone deleteAll() is eventually consistent; tests that clear then immediately upsert
+      # can race the async deletion. Give CI/local enough time to observe namespace empty.
+      await-clear-consistency: true
+      await-clear-timeout-ms: 120000
+  orchestration:
+    result-normalization:
+      enabled: true
+      debug-snapshot-enabled: true
+  config:
+    default-file: ai-entity-config-realapi.yml
+  indexing:
+    enabled: true
+  pii-detection:
+    enabled: true
+    mode: DETECT_ONLY
+    detection-direction: INPUT_OUTPUT  # INPUT | INPUT_OUTPUT (default: INPUT_OUTPUT for comprehensive security)
+    store-encrypted-original: false
+    audit-logging-enabled: true
+    # PII patterns with default configurations
+    patterns:
+      CREDIT_CARD:
+        field-name: "credit_card"
+        regex: "(?<!\\d)(?:\\d[ -]?){13,16}(?!\\d)"
+        replacement: "****-****-****-****"
+        enabled: true
+        confidence: 1.0
+        context-note: "Potential payment card number redacted"
+      EMAIL:
+        field-name: "email"
+        regex: "[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}"
+        replacement: "***@***.***"
+        enabled: true
+        confidence: 1.0
+        context-note: "Email address redacted"
+      PHONE:
+        field-name: "phone_number"
+        regex: "(?:(?:\\+?\\d{1,3}[\\s.-]?)?(?:\\(\\d{3}\\)|\\d{3})[\\s.-]?\\d{3}[\\s.-]?\\d{4})"
+        replacement: "***-***-****"
+        enabled: true
+        confidence: 1.0
+        context-note: "Phone number redacted"
+      SSN:
+        field-name: "ssn"
+        regex: "\\b\\d{3}-?\\d{2}-?\\d{4}\\b"
+        replacement: "***-**-****"
+        enabled: true
+        confidence: 1.0
+        context-note: "Social security number redacted"
+    response-sanitization:
+      enabled: true
+      force-redaction: true
+      suggestion-limit: 3
+      high-risk-types: ["CREDIT_CARD", "SSN", "PASSPORT"]
+      high-risk-warning-message: "SECURITY ALERT: Sensitive payment information was detected and redacted from this response."
+      medium-risk-warning-message: "Some personal details were hidden before presenting this response."
+      warning-enabled: true
+      warning-level-high-risk: BLOCK
+      warning-level-medium-risk: WARN
+      guidance-enabled: true
+      guidance-message: "Avoid sharing card numbers or sensitive identifiers in chat."
+      include-suggestion-metadata: true
+      include-error-codes: true
+      publish-events: true
+      filtered-data-keys: ["password", "token", "secret", "apiKey"]
+      default-replacement: "[REDACTED]"
+  security:
+    block-on-pii-detection: false
+
+  providers:
+    llm-provider: ${LLM_PROVIDER:openai}
+    embedding-provider: ${EMBEDDING_PROVIDER:onnx}
+    enable-fallback: true
+
+    onnx:
+      enabled: true
+      model-path: ${ONNX_MODEL_PATH:classpath:/models/embeddings/all-MiniLM-L6-v2.onnx}
+      tokenizer-path: ${ONNX_TOKENIZER_PATH:classpath:/models/embeddings/tokenizer.json}
+      max-sequence-length: 512
+      use-gpu: false
+      model-alias: all-MiniLM-L6-v2
+
+    openai:
+      enabled: ${OPENAI_ENABLED:false}
+      api-key: ${OPENAI_API_KEY:}
+      base-url: ${OPENAI_BASE_URL:https://api.openai.com/v1}
+      model: ${OPENAI_MODEL:${LLM_MODEL:gpt-4o-mini}}
+      embedding-model: ${OPENAI_EMBEDDING_MODEL:${EMBEDDING_MODEL:text-embedding-3-small}}
+      max-tokens: 2000
+      temperature: 0.0
+      timeout: 30
+      priority: 100
+
+    azure:
+      enabled: ${AZURE_ENABLED:false}
+      api-key: ${AZURE_API_KEY:}
+      endpoint: ${AZURE_ENDPOINT:}
+      deployment-name: ${AZURE_DEPLOYMENT_NAME:}
+      embedding-deployment-name: ${AZURE_EMBEDDING_DEPLOYMENT_NAME:}
+      api-version: ${AZURE_API_VERSION:2024-02-15-preview}
+      timeout: 60
+      priority: 80
+
+    anthropic:
+      enabled: ${ANTHROPIC_ENABLED:true}
+      api-key: ${ANTHROPIC_API_KEY:}
+      base-url: ${ANTHROPIC_BASE_URL:https://api.anthropic.com}
+      model: ${ANTHROPIC_MODEL:${LLM_MODEL:claude-3-haiku-20240307}}
+      embedding-model: ${ANTHROPIC_EMBEDDING_MODEL:${EMBEDDING_MODEL:}}
+      max-tokens: 4096
+      temperature: 0.3
+      timeout: 60
+      priority: 95
+
+    gemini:
+      enabled: ${GEMINI_ENABLED:true}
+      api-key: ${GEMINI_API_KEY:}
+      base-url: ${GEMINI_BASE_URL:https://generativelanguage.googleapis.com/v1beta}
+      model: ${GEMINI_MODEL:${LLM_MODEL:gemini-2.5-flash}}
+      embedding-model: ${GEMINI_EMBEDDING_MODEL:${EMBEDDING_MODEL:text-embedding-004}}
+      max-tokens: 4096
+      temperature: 0.3
+      timeout: 60
+      priority: 90
+
+    cohere:
+      enabled: ${COHERE_ENABLED:true}
+      api-key: ${COHERE_API_KEY:}
+      base-url: ${COHERE_BASE_URL:https://api.cohere.ai/v1}
+      model: ${COHERE_MODEL:command-r7b-12-2024}
+      embedding-model: ${COHERE_EMBEDDING_MODEL:embed-english-v3.0}
+      max-tokens: 4096
+      temperature: 0.3
+      timeout: 60
+      priority: 85
+
+    # Enable all vector database providers for integration tests
+    # This allows tests to use any provider without additional configuration
+    milvus:
+      enabled: true
+    qdrant:
+      enabled: true
+    weaviate:
+      enabled: true
+    chroma:
+      enabled: true
+    pgvector:
+      enabled: true
+
+  service:
+    enabled: true
+    auto-configuration: true
+    caching-enabled: false
+    metrics-enabled: true
+    health-checks-enabled: true
+    logging-enabled: true
+    default-timeout: 30
+    max-retries: 2
+    retry-delay: 1000
+    feature-flags-enabled: true
+    feature-flags:
+      enableRAG: true
+      enableBehavioralAI: true
+      enableSmartValidation: true
+      enableAutoGeneration: true
+    performance:
+      max-concurrent-requests: 3
+
+# Logging for Real API Testing
+logging:
+  level:
+    root: INFO
+    ai.fabric: DEBUG
+    org.springframework.web: WARN
+    org.hibernate.SQL: WARN
+  pattern:
+    console: "%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"
+
+# Management/Actuator
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "health,info"
+  endpoint:
+    health:
+      show-details: when-authorized

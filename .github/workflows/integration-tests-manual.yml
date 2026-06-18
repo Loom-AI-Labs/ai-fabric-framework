@@ -1,0 +1,1539 @@
+name: Framework Integration Tests (Manual Trigger)
+
+on:
+  workflow_dispatch:
+    inputs:
+      modules:
+        description: 'Test modules to run'
+        required: true
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - ai-fabric
+          - relationship-query
+          - chat-session
+          - behavior
+      openai_api_key:
+        description: 'OpenAI API Key (required for OpenAI LLM/Embedding)'
+        required: false
+        type: string
+      anthropic_api_key:
+        description: 'Anthropic API Key (required for Anthropic LLM/Embedding)'
+        required: false
+        type: string
+      gemini_api_key:
+        description: 'Gemini API Key (required for Gemini LLM/Embedding)'
+        required: false
+        type: string
+      cohere_api_key:
+        description: 'Cohere API Key (required for Cohere LLM/Embedding)'
+        required: false
+        type: string
+      azure_api_key:
+        description: 'Azure API Key (required for Azure LLM/Embedding)'
+        required: false
+        type: string
+      azure_endpoint:
+        description: 'Azure Endpoint URL (required for Azure)'
+        required: false
+        type: string
+        default: 'https://mahan-mk5op536-eastus2.services.ai.azure.com/openai/v1'
+      azure_deployment_name:
+        description: 'Azure Deployment Name (required for Azure LLM)'
+        required: false
+        type: string
+        default: 'Llama-4-Maverick-17B-128E-Instruct-FP8'
+      azure_embedding_deployment_name:
+        description: 'Azure Embedding Deployment Name (required for Azure Embedding)'
+        required: false
+        type: string
+        default: 'embedding-model'
+      pinecone_api_key:
+        description: 'Pinecone API Key (required when vector_database=pinecone)'
+        required: false
+        type: string
+      pinecone_index_name:
+        description: 'Pinecone index name (optional when pinecone_host is provided; derived from host if blank). If left blank, workflow will use repo variable PINECONE_INDEX_NAME (if set).'
+        required: false
+        type: string
+        default: 'ai-fabric'
+      pinecone_host:
+        description: 'Pinecone index host URL (optional; recommended for serverless). Example: https://<index>.svc.<env>.pinecone.io. If left blank, workflow will use repo variable PINECONE_API_HOST (if set).'
+        required: false
+        type: string
+        default: 'https://ai-fabric-pwkuyn5.svc.aped-4627-b74a.pinecone.io'
+      llm_provider:
+        description: 'LLM Provider'
+        required: true
+        default: 'openai'
+        type: choice
+        options:
+          - openai
+          - anthropic
+          - gemini
+          - cohere
+          - azure
+          - rest
+      llm_model:
+        description: 'LLM Model Name (optional - uses provider default if not specified). Examples: OpenAI: gpt-4o-mini, gpt-4; Anthropic: claude-3-haiku-20240307; Gemini: gemini-2.5-flash; Cohere: command-r7b-12-2024; Azure: Llama-4-Maverick-17B-128E-Instruct-FP8'
+        required: false
+        type: string
+        default: ''
+      embedding_provider:
+        description: 'Embedding Provider'
+        required: true
+        default: 'onnx'
+        type: choice
+        options:
+          - onnx
+          - openai
+          - anthropic
+          - gemini
+          - cohere
+          - azure
+          - rest
+      embedding_model:
+        description: 'Embedding Model Name (optional - uses provider default if not specified). Examples: OpenAI: text-embedding-3-small; Gemini: text-embedding-004; Cohere: embed-english-v3.0; Azure: text-embedding-ada-002'
+        required: false
+        type: string
+        default: ''
+      vector_database:
+        description: 'Vector Database'
+        required: true
+        default: 'lucene'
+        type: choice
+        options:
+          - lucene
+          - pinecone
+          - weaviate
+          - qdrant
+          - milvus
+          - memory
+      persistence_database:
+        description: 'Persistence Database'
+        required: true
+        default: 'h2'
+        type: choice
+        options:
+          - h2
+          - postgresql
+      timeout_minutes:
+        description: 'Job timeout in minutes'
+        required: false
+        default: '30'
+      logging_level:
+        description: 'Maven logging level'
+        required: false
+        default: 'quiet'
+        type: choice
+        options:
+          - quiet
+          - error
+          - normal
+          - verbose
+          - debug
+      test_chunk:
+        description: 'Test chunk to run (faster execution)'
+        required: false
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - core
+          - vector
+          - intent-actions
+          - advanced
+      realapi_minimum_success_rate:
+        description: 'RealAPI provider-matrix minimum success rate (0.0–1.0). Set to 1.0 for strict mode.'
+        required: false
+        type: string
+        default: '0.85'
+      realapi_minimum_considered_tests:
+        description: 'RealAPI provider-matrix minimum considered tests (succeeded+failed) required to apply the threshold.'
+        required: false
+        type: string
+        default: '20'
+
+jobs:
+  # ==============================================================================
+  # Job 1: AI Fabric Integration Tests
+  # ==============================================================================
+  ai-fabric-tests:
+    name: AI Fabric Integration Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: ${{ fromJSON(github.event.inputs.timeout_minutes) }}
+    permissions:
+      checks: write
+      pull-requests: write
+      contents: read
+    if: |
+      github.event.inputs.modules == 'all' ||
+      github.event.inputs.modules == 'ai-fabric'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # workflow_dispatch inputs are NOT treated as secrets by GitHub.
+      # Mask them explicitly to avoid leaking API keys in logs (including "with:" and "env:" sections).
+      - name: Mask provider API keys
+        if: always()
+        run: |
+          [ -n "${{ github.event.inputs.openai_api_key }}" ] && echo "::add-mask::${{ github.event.inputs.openai_api_key }}" || true
+          [ -n "${{ github.event.inputs.anthropic_api_key }}" ] && echo "::add-mask::${{ github.event.inputs.anthropic_api_key }}" || true
+          [ -n "${{ github.event.inputs.gemini_api_key }}" ] && echo "::add-mask::${{ github.event.inputs.gemini_api_key }}" || true
+          [ -n "${{ github.event.inputs.cohere_api_key }}" ] && echo "::add-mask::${{ github.event.inputs.cohere_api_key }}" || true
+          [ -n "${{ github.event.inputs.azure_api_key }}" ] && echo "::add-mask::${{ github.event.inputs.azure_api_key }}" || true
+          [ -n "${{ github.event.inputs.pinecone_api_key }}" ] && echo "::add-mask::${{ github.event.inputs.pinecone_api_key }}" || true
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: 'maven'
+
+      - name: Verify Docker is available (required for Testcontainers)
+        run: |
+          echo "Verifying Docker availability for Testcontainers..."
+          docker --version
+          docker info | head -5
+          echo "✅ Docker is available and running"
+
+      - name: Cache Maven packages
+        uses: actions/cache@v3
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-ai-fabric-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven-ai-fabric-
+            ${{ runner.os }}-maven-
+
+      - name: Clean temporary files
+        run: |
+          echo "Cleaning temporary files to prevent disk space issues..."
+          # Clean Maven Surefire temp files
+          if [ -d "$TMPDIR" ]; then
+            find "$TMPDIR" -name "surefire-*" -type d -mtime +1 -exec rm -rf {} + 2>/dev/null || true
+            find "$TMPDIR" -name "stdout-*" -type f -mtime +1 -delete 2>/dev/null || true
+            find "$TMPDIR" -name "stderr-*" -type f -mtime +1 -delete 2>/dev/null || true
+          fi
+          # Clean ONNX model temp files (keep recent ones for reuse)
+          if [ -d "$TMPDIR" ]; then
+            find "$TMPDIR" -name "onnx-*" -type f -mtime +1 -delete 2>/dev/null || true
+          fi
+          # Clean embedded-pg temp files
+          if [ -d "$TMPDIR" ]; then
+            find "$TMPDIR" -name "embedded-pg" -type d -mtime +1 -exec rm -rf {} + 2>/dev/null || true
+          fi
+          echo "Temporary file cleanup completed"
+
+      - name: Build AI Fabric Framework
+        run: |
+          cd ai-infrastructure-module
+          # Skip tests during build - parent-verify workflow already runs all unit tests
+          # This workflow focuses on integration tests with real APIs
+          mvn clean install -DskipTests -B -V
+
+      - name: Validate Provider Availability
+        uses: ./.github/actions/configure-providers
+        with:
+          llm_provider: ${{ github.event.inputs.llm_provider }}
+          embedding_provider: ${{ github.event.inputs.embedding_provider }}
+          openai_api_key: ${{ github.event.inputs.openai_api_key || secrets.OPENAI_API_KEY }}
+          anthropic_api_key: ${{ github.event.inputs.anthropic_api_key || secrets.ANTHROPIC_API_KEY }}
+          gemini_api_key: ${{ github.event.inputs.gemini_api_key || secrets.GEMINI_API_KEY }}
+          cohere_api_key: ${{ github.event.inputs.cohere_api_key || secrets.COHERE_API_KEY }}
+          azure_api_key: ${{ github.event.inputs.azure_api_key || secrets.AZURE_API_KEY }}
+          azure_endpoint: ${{ github.event.inputs.azure_endpoint }}
+          azure_deployment_name: ${{ github.event.inputs.azure_deployment_name }}
+          azure_embedding_deployment_name: ${{ github.event.inputs.azure_embedding_deployment_name }}
+
+      - name: Gather Test Execution Evidence
+        id: gather_evidence
+        run: |
+          mkdir -p test-evidence
+
+          # Create evidence file with timestamp and configuration
+          EVIDENCE_FILE="test-evidence/execution-evidence-$(date +%Y%m%d-%H%M%S).json"
+
+          # Determine model names (use custom if provided, otherwise will use provider default)
+          LLM_MODEL="${{ github.event.inputs.llm_model }}"
+          EMBEDDING_MODEL="${{ github.event.inputs.embedding_model }}"
+
+          cat > "$EVIDENCE_FILE" << EOF
+          {
+            "execution": {
+              "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+              "workflow_run_id": "${{ github.run_id }}",
+              "workflow_run_number": "${{ github.run_number }}",
+              "triggered_by": "${{ github.actor }}",
+              "commit_sha": "${{ github.sha }}",
+              "branch": "${{ github.ref_name }}"
+            },
+            "modules": {
+              "selected": "${{ github.event.inputs.modules }}",
+              "tested": []
+            },
+            "providers": {
+              "llm": {
+                "name": "${{ github.event.inputs.llm_provider }}",
+                "model": "${LLM_MODEL:-default}",
+                "configured": true
+              },
+              "embedding": {
+                "name": "${{ github.event.inputs.embedding_provider }}",
+                "model": "${EMBEDDING_MODEL:-default}",
+                "configured": true
+              },
+              "vector_database": "${{ github.event.inputs.vector_database }}",
+              "persistence_database": "${{ github.event.inputs.persistence_database }}"
+            },
+            "test_configuration": {
+              "test_chunk": "${{ github.event.inputs.test_chunk }}",
+              "timeout_minutes": "${{ github.event.inputs.timeout_minutes }}",
+              "logging_level": "${{ github.event.inputs.logging_level }}"
+            },
+            "api_keys_provided": {
+              "openai": ${{ github.event.inputs.openai_api_key != '' && 'true' || 'false' }},
+              "anthropic": ${{ github.event.inputs.anthropic_api_key != '' && 'true' || 'false' }},
+              "gemini": ${{ github.event.inputs.gemini_api_key != '' && 'true' || 'false' }},
+              "cohere": ${{ github.event.inputs.cohere_api_key != '' && 'true' || 'false' }},
+              "azure": ${{ github.event.inputs.azure_api_key != '' && 'true' || 'false' }},
+              "pinecone": ${{ github.event.inputs.pinecone_api_key != '' && 'true' || 'false' }}
+            },
+            "azure_configuration": {
+              "endpoint_provided": ${{ github.event.inputs.azure_endpoint != '' && 'true' || 'false' }},
+              "deployment_name_provided": ${{ github.event.inputs.azure_deployment_name != '' && 'true' || 'false' }},
+              "embedding_deployment_name_provided": ${{ github.event.inputs.azure_embedding_deployment_name != '' && 'true' || 'false' }}
+            }
+          }
+          EOF
+
+          # Also create human-readable summary
+          SUMMARY_FILE="test-evidence/execution-summary-$(date +%Y%m%d-%H%M%S).md"
+
+          cat > "$SUMMARY_FILE" << EOF
+          # Test Execution Evidence
+
+          **Execution Date**: $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+          **Workflow Run**: #${{ github.run_number }} ([View Run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}))
+          **Triggered By**: @${{ github.actor }}
+          **Commit**: \`${{ github.sha }}\`
+          **Branch**: \`${{ github.ref_name }}\`
+
+          ## Modules Tested
+
+          - **Selected**: \`${{ github.event.inputs.modules }}\`
+
+          ## Provider Configuration
+
+          ### LLM Provider
+          - **Provider**: \`${{ github.event.inputs.llm_provider }}\`
+          - **Model**: \`${{ github.event.inputs.llm_model != '' && github.event.inputs.llm_model || 'default' }}\`
+          - **Configured**: ✅ Yes
+
+          ### Embedding Provider
+          - **Provider**: \`${{ github.event.inputs.embedding_provider }}\`
+          - **Model**: \`${{ github.event.inputs.embedding_model != '' && github.event.inputs.embedding_model || 'default' }}\`
+          - **Configured**: ✅ Yes
+
+          ### Vector Database
+          - **Type**: \`${{ github.event.inputs.vector_database }}\`
+
+          ### Persistence Database
+          - **Type**: \`${{ github.event.inputs.persistence_database }}\`
+
+          ## Test Configuration
+
+          - **Test Chunk**: \`${{ github.event.inputs.test_chunk }}\`
+          - **Timeout**: \`${{ github.event.inputs.timeout_minutes }}\` minutes
+          - **Logging Level**: \`${{ github.event.inputs.logging_level }}\`
+
+          ## API Keys Provided
+
+          | Provider | API Key Provided |
+          |----------|------------------|
+          | OpenAI | ${{ github.event.inputs.openai_api_key != '' && '✅ Yes' || '❌ No' }} |
+          | Anthropic | ${{ github.event.inputs.anthropic_api_key != '' && '✅ Yes' || '❌ No' }} |
+          | Gemini | ${{ github.event.inputs.gemini_api_key != '' && '✅ Yes' || '❌ No' }} |
+          | Cohere | ${{ github.event.inputs.cohere_api_key != '' && '✅ Yes' || '❌ No' }} |
+          | Azure | ${{ github.event.inputs.azure_api_key != '' && '✅ Yes' || '❌ No' }} |
+
+          ## Azure Configuration (if applicable)
+
+          ${{ github.event.inputs.llm_provider == 'azure' || github.event.inputs.embedding_provider == 'azure' && '### Azure Settings' || 'N/A' }}
+          ${{ github.event.inputs.llm_provider == 'azure' || github.event.inputs.embedding_provider == 'azure' && '- **Endpoint Provided**: ' || '' }}${{ github.event.inputs.azure_endpoint != '' && github.event.inputs.llm_provider == 'azure' || github.event.inputs.embedding_provider == 'azure' && '✅ Yes' || '' }}
+          ${{ github.event.inputs.llm_provider == 'azure' || github.event.inputs.embedding_provider == 'azure' && '- **Deployment Name Provided**: ' || '' }}${{ github.event.inputs.azure_deployment_name != '' && github.event.inputs.llm_provider == 'azure' && '✅ Yes' || '' }}
+          ${{ github.event.inputs.llm_provider == 'azure' || github.event.inputs.embedding_provider == 'azure' && '- **Embedding Deployment Name Provided**: ' || '' }}${{ github.event.inputs.azure_embedding_deployment_name != '' && github.event.inputs.embedding_provider == 'azure' && '✅ Yes' || '' }}
+
+          ---
+
+          *This evidence file was automatically generated by the GitHub Actions workflow.*
+          EOF
+
+          echo "evidence_file=$EVIDENCE_FILE" >> $GITHUB_OUTPUT
+          echo "summary_file=$SUMMARY_FILE" >> $GITHUB_OUTPUT
+          echo "Evidence files created: $EVIDENCE_FILE and $SUMMARY_FILE"
+
+          # Display summary
+          cat "$SUMMARY_FILE"
+
+      - name: Set Model Names
+        id: set_models
+        run: |
+          # Set model names as system properties and environment variables if provided
+          if [ -n "${{ github.event.inputs.llm_model }}" ]; then
+            echo "LLM_MODEL=${{ github.event.inputs.llm_model }}" >> $GITHUB_ENV
+            # Set provider-specific model property
+            case "${{ github.event.inputs.llm_provider }}" in
+              openai)
+                echo "OPENAI_MODEL=${{ github.event.inputs.llm_model }}" >> $GITHUB_ENV
+                echo "ai.providers.openai.model=${{ github.event.inputs.llm_model }}" >> $GITHUB_ENV
+                ;;
+              anthropic)
+                echo "ANTHROPIC_MODEL=${{ github.event.inputs.llm_model }}" >> $GITHUB_ENV
+                echo "ai.providers.anthropic.model=${{ github.event.inputs.llm_model }}" >> $GITHUB_ENV
+                ;;
+              gemini)
+                echo "GEMINI_MODEL=${{ github.event.inputs.llm_model }}" >> $GITHUB_ENV
+                echo "ai.providers.gemini.model=${{ github.event.inputs.llm_model }}" >> $GITHUB_ENV
+                ;;
+              cohere)
+                echo "COHERE_MODEL=${{ github.event.inputs.llm_model }}" >> $GITHUB_ENV
+                echo "ai.providers.cohere.model=${{ github.event.inputs.llm_model }}" >> $GITHUB_ENV
+                ;;
+              azure)
+                echo "AZURE_DEPLOYMENT_NAME=${{ github.event.inputs.llm_model }}" >> $GITHUB_ENV
+                echo "ai.providers.azure.deployment-name=${{ github.event.inputs.llm_model }}" >> $GITHUB_ENV
+                ;;
+            esac
+            echo "✅ Using custom LLM model: ${{ github.event.inputs.llm_model }}"
+          else
+            echo "ℹ️  Using provider default LLM model"
+            # Set default models for providers that require explicit model configuration
+            case "${{ github.event.inputs.llm_provider }}" in
+              openai)
+                echo "OPENAI_MODEL=gpt-4o-mini" >> $GITHUB_ENV
+                echo "ai.providers.openai.model=gpt-4o-mini" >> $GITHUB_ENV
+                echo "✅ Set OpenAI default model: gpt-4o-mini"
+                ;;
+              anthropic)
+                echo "ANTHROPIC_MODEL=claude-3-haiku-20240307" >> $GITHUB_ENV
+                echo "ai.providers.anthropic.model=claude-3-haiku-20240307" >> $GITHUB_ENV
+                echo "✅ Set Anthropic default model: claude-3-haiku-20240307"
+                ;;
+              cohere)
+                echo "COHERE_MODEL=command-r7b-12-2024" >> $GITHUB_ENV
+                echo "ai.providers.cohere.model=command-r7b-12-2024" >> $GITHUB_ENV
+                echo "✅ Set Cohere default model: command-r7b-12-2024"
+                ;;
+            esac
+          fi
+
+          if [ -n "${{ github.event.inputs.embedding_model }}" ]; then
+            echo "EMBEDDING_MODEL=${{ github.event.inputs.embedding_model }}" >> $GITHUB_ENV
+            # Set provider-specific embedding model property
+            case "${{ github.event.inputs.embedding_provider }}" in
+              openai)
+                echo "OPENAI_EMBEDDING_MODEL=${{ github.event.inputs.embedding_model }}" >> $GITHUB_ENV
+                echo "ai.providers.openai.embedding-model=${{ github.event.inputs.embedding_model }}" >> $GITHUB_ENV
+                ;;
+              gemini)
+                echo "GEMINI_EMBEDDING_MODEL=${{ github.event.inputs.embedding_model }}" >> $GITHUB_ENV
+                echo "ai.providers.gemini.embedding-model=${{ github.event.inputs.embedding_model }}" >> $GITHUB_ENV
+                ;;
+              cohere)
+                echo "COHERE_EMBEDDING_MODEL=${{ github.event.inputs.embedding_model }}" >> $GITHUB_ENV
+                echo "ai.providers.cohere.embedding-model=${{ github.event.inputs.embedding_model }}" >> $GITHUB_ENV
+                ;;
+              azure)
+                echo "AZURE_EMBEDDING_DEPLOYMENT_NAME=${{ github.event.inputs.embedding_model }}" >> $GITHUB_ENV
+                echo "ai.providers.azure.embedding-deployment-name=${{ github.event.inputs.embedding_model }}" >> $GITHUB_ENV
+                ;;
+            esac
+            echo "✅ Using custom Embedding model: ${{ github.event.inputs.embedding_model }}"
+          else
+            echo "ℹ️  Using provider default Embedding model"
+            # Set default embedding models for providers that require explicit model configuration
+            case "${{ github.event.inputs.embedding_provider }}" in
+              openai)
+                echo "OPENAI_EMBEDDING_MODEL=text-embedding-3-small" >> $GITHUB_ENV
+                echo "ai.providers.openai.embedding-model=text-embedding-3-small" >> $GITHUB_ENV
+                echo "✅ Set OpenAI default embedding model: text-embedding-3-small"
+                ;;
+              cohere)
+                echo "COHERE_EMBEDDING_MODEL=embed-english-v3.0" >> $GITHUB_ENV
+                echo "ai.providers.cohere.embedding-model=embed-english-v3.0" >> $GITHUB_ENV
+                echo "✅ Set Cohere default embedding model: embed-english-v3.0"
+                ;;
+            esac
+          fi
+
+      - name: Run Integration Tests (Real API)
+        run: |
+          cd ai-infrastructure-module/integration-Testing/integration-tests
+
+          # Build Maven command with model properties if specified
+          MAVEN_OPTS=""
+          if [ -n "${{ github.event.inputs.llm_model }}" ]; then
+            case "${{ github.event.inputs.llm_provider }}" in
+              openai)
+                MAVEN_OPTS="$MAVEN_OPTS -Dai.providers.openai.model=${{ github.event.inputs.llm_model }}"
+                ;;
+              anthropic)
+                MAVEN_OPTS="$MAVEN_OPTS -Dai.providers.anthropic.model=${{ github.event.inputs.llm_model }}"
+                ;;
+              gemini)
+                MAVEN_OPTS="$MAVEN_OPTS -Dai.providers.gemini.model=${{ github.event.inputs.llm_model }}"
+                ;;
+              cohere)
+                MAVEN_OPTS="$MAVEN_OPTS -Dai.providers.cohere.model=${{ github.event.inputs.llm_model }}"
+                ;;
+              azure)
+                MAVEN_OPTS="$MAVEN_OPTS -Dai.providers.azure.deployment-name=${{ github.event.inputs.llm_model }}"
+                ;;
+            esac
+          else
+            # Set default models for providers that require explicit model configuration
+            case "${{ github.event.inputs.llm_provider }}" in
+              openai)
+                MAVEN_OPTS="$MAVEN_OPTS -Dai.providers.openai.model=gpt-4o-mini"
+                ;;
+              anthropic)
+                MAVEN_OPTS="$MAVEN_OPTS -Dai.providers.anthropic.model=claude-3-haiku-20240307"
+                ;;
+              cohere)
+                MAVEN_OPTS="$MAVEN_OPTS -Dai.providers.cohere.model=command-r7b-12-2024"
+                ;;
+            esac
+          fi
+
+          if [ -n "${{ github.event.inputs.embedding_model }}" ]; then
+            case "${{ github.event.inputs.embedding_provider }}" in
+              openai)
+                MAVEN_OPTS="$MAVEN_OPTS -Dai.providers.openai.embedding-model=${{ github.event.inputs.embedding_model }}"
+                ;;
+              gemini)
+                MAVEN_OPTS="$MAVEN_OPTS -Dai.providers.gemini.embedding-model=${{ github.event.inputs.embedding_model }}"
+                ;;
+              cohere)
+                MAVEN_OPTS="$MAVEN_OPTS -Dai.providers.cohere.embedding-model=${{ github.event.inputs.embedding_model }}"
+                ;;
+              azure)
+                MAVEN_OPTS="$MAVEN_OPTS -Dai.providers.azure.embedding-deployment-name=${{ github.event.inputs.embedding_model }}"
+                ;;
+            esac
+          else
+            # Set default embedding models for providers that require explicit model configuration
+            case "${{ github.event.inputs.embedding_provider }}" in
+              openai)
+                MAVEN_OPTS="$MAVEN_OPTS -Dai.providers.openai.embedding-model=text-embedding-3-small"
+                ;;
+              cohere)
+                MAVEN_OPTS="$MAVEN_OPTS -Dai.providers.cohere.embedding-model=embed-english-v3.0"
+                ;;
+            esac
+          fi
+
+          # Export MAVEN_OPTS for the script to use
+          export MAVEN_OPTS
+
+          # Anthropic runs often finish faster (shorter logs). If the user left Maven logging at "quiet",
+          # bump to "normal" for Anthropic to emit more diagnostic context (without forcing DEBUG).
+          EFFECTIVE_MAVEN_LOGGING_LEVEL="${{ github.event.inputs.logging_level }}"
+          if [ "${{ github.event.inputs.llm_provider }}" = "anthropic" ] && [ "$EFFECTIVE_MAVEN_LOGGING_LEVEL" = "quiet" ]; then
+            EFFECTIVE_MAVEN_LOGGING_LEVEL="normal"
+          fi
+          export MAVEN_LOGGING_LEVEL="$EFFECTIVE_MAVEN_LOGGING_LEVEL"
+          echo "Using MAVEN_LOGGING_LEVEL=$MAVEN_LOGGING_LEVEL"
+
+          # Determine if Testcontainers should be enabled based on vector database selection
+          # Testcontainers-supported databases: milvus, qdrant, weaviate, chroma, pgvector
+          VECTOR_DB="${{ github.event.inputs.vector_database }}"
+          SPRING_PROFILES="real-api-test"
+          if [[ "$VECTOR_DB" == "milvus" ]] || \
+             [[ "$VECTOR_DB" == "qdrant" ]] || \
+             [[ "$VECTOR_DB" == "weaviate" ]] || \
+             [[ "$VECTOR_DB" == "chroma" ]] || \
+             [[ "$VECTOR_DB" == "pgvector" ]]; then
+            SPRING_PROFILES="real-api-test,testcontainers"
+            echo "✅ Testcontainers enabled for vector database: $VECTOR_DB"
+          else
+            echo "ℹ️  Testcontainers not needed for vector database: $VECTOR_DB (using: lucene, memory, or pinecone)"
+          fi
+          export SPRING_PROFILES_ACTIVE="$SPRING_PROFILES"
+
+          bash run-provider-matrix-tests.sh "${{ github.event.inputs.llm_provider }}:${{ github.event.inputs.embedding_provider }}:${{ github.event.inputs.vector_database }}" "" "${{ github.event.inputs.test_chunk }}"
+        env:
+          TESTCONTAINERS_RYUK_DISABLED: false
+          OPENAI_API_KEY: ${{ github.event.inputs.openai_api_key || secrets.OPENAI_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ github.event.inputs.anthropic_api_key || secrets.ANTHROPIC_API_KEY }}
+          GEMINI_API_KEY: ${{ github.event.inputs.gemini_api_key || secrets.GEMINI_API_KEY }}
+          COHERE_API_KEY: ${{ github.event.inputs.cohere_api_key || secrets.COHERE_API_KEY }}
+          AZURE_API_KEY: ${{ github.event.inputs.azure_api_key || secrets.AZURE_API_KEY }}
+          AZURE_ENDPOINT: ${{ github.event.inputs.azure_endpoint }}
+          AZURE_DEPLOYMENT_NAME: ${{ github.event.inputs.azure_deployment_name }}
+          AZURE_EMBEDDING_DEPLOYMENT_NAME: ${{ github.event.inputs.azure_embedding_deployment_name }}
+          PINECONE_API_KEY: ${{ github.event.inputs.pinecone_api_key || secrets.PINECONE_API_KEY }}
+          # Allow leaving workflow_dispatch inputs blank by falling back to GitHub repo variables.
+          # Configure these under: Settings → Secrets and variables → Actions → Variables
+          PINECONE_INDEX_NAME: ${{ github.event.inputs.pinecone_index_name || vars.PINECONE_INDEX_NAME }}
+          PINECONE_API_HOST: ${{ github.event.inputs.pinecone_host || vars.PINECONE_API_HOST }}
+          AI_PROVIDERS_PINECONE_ENABLED: ${{ github.event.inputs.vector_database == 'pinecone' && 'true' || 'false' }}
+          AI_PROVIDERS_PINECONE_API_KEY: ${{ github.event.inputs.pinecone_api_key || secrets.PINECONE_API_KEY }}
+          AI_PROVIDERS_PINECONE_INDEX_NAME: ${{ github.event.inputs.pinecone_index_name || vars.PINECONE_INDEX_NAME }}
+          AI_PROVIDERS_PINECONE_API_HOST: ${{ github.event.inputs.pinecone_host || vars.PINECONE_API_HOST }}
+          AI_INFRASTRUCTURE_PERSISTENCE_DATABASE: ${{ github.event.inputs.persistence_database }}
+          AI_PROVIDERS_REAL_API_MINIMUM_SUCCESS_RATE: ${{ github.event.inputs.realapi_minimum_success_rate }}
+          AI_PROVIDERS_REAL_API_MINIMUM_CONSIDERED_TESTS: ${{ github.event.inputs.realapi_minimum_considered_tests }}
+          # Allow run step to override the effective level (e.g. for Anthropic).
+          MAVEN_LOGGING_LEVEL: ${{ github.event.inputs.logging_level }}
+          # NOTE:
+          # Do NOT pass empty-string model env vars here; empty overrides break Spring placeholders like
+          # ${OPENAI_MODEL:${LLM_MODEL:gpt-4o-mini}} and cause startup validation failures.
+          # Model env vars are set (with defaults) by the "Set Model Names" step via $GITHUB_ENV.
+
+      - name: Update Evidence with Test Results
+        if: always()
+        run: |
+          EVIDENCE_FILE=$(find test-evidence -name "execution-evidence-*.json" | head -1)
+          if [ -f "$EVIDENCE_FILE" ]; then
+            # Update evidence with test results
+            if [ -d "ai-infrastructure-module/integration-Testing/integration-tests/target/surefire-reports" ]; then
+              TEST_RESULTS=$(find ai-infrastructure-module/integration-Testing/integration-tests/target/surefire-reports -name "*.xml" | wc -l)
+              echo "Test result files found: $TEST_RESULTS"
+            fi
+
+            # Mark module as tested
+            python3 << 'PYTHON_SCRIPT'
+          import json
+          import sys
+          import os
+
+          evidence_file = os.environ.get('EVIDENCE_FILE')
+          if evidence_file and os.path.exists(evidence_file):
+              with open(evidence_file, 'r') as f:
+                  evidence = json.load(f)
+
+              # Mark module as tested
+              if "${{ github.event.inputs.modules }}" == "all" or "${{ github.event.inputs.modules }}" == "ai-fabric":
+                  evidence["modules"]["tested"].append("ai-fabric")
+
+              with open(evidence_file, 'w') as f:
+                  json.dump(evidence, f, indent=2)
+          PYTHON_SCRIPT
+          fi
+
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-fabric-test-reports
+          path: |
+            ai-infrastructure-module/integration-Testing/integration-tests/target/surefire-reports/
+            ai-infrastructure-module/integration-Testing/integration-tests/target/failsafe-reports/
+            ai-infrastructure-module/integration-Testing/integration-tests/target/provider-matrix-reports/
+          retention-days: 30
+
+      - name: Upload test execution evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-execution-evidence
+          path: test-evidence/
+          retention-days: 90
+          if-no-files-found: warn
+
+      - name: Publish Test Results
+        uses: EnricoMi/publish-unit-test-result-action@v2
+        if: always()
+        with:
+          large_files: true
+          files: |
+            ai-infrastructure-module/integration-Testing/integration-tests/target/surefire-reports/TEST-*.xml
+            ai-infrastructure-module/integration-Testing/integration-tests/target/failsafe-reports/TEST-*.xml
+          check_name: AI Fabric Integration Test Results
+
+  # ==============================================================================
+  # Job 2: Behavior Analytics Integration Tests
+  # ==============================================================================
+  # Removed: the behavior analytics integration test module was deleted.
+
+  # ==============================================================================
+  # Job 3: Relationship Query Integration Tests
+  # ==============================================================================
+  relationship-query-tests:
+    name: Relationship Query Integration Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      checks: write
+      pull-requests: write
+      contents: read
+    if: |
+      github.event.inputs.modules == 'all' ||
+      github.event.inputs.modules == 'relationship-query'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Mask provider API keys
+        if: always()
+        run: |
+          [ -n "${{ github.event.inputs.openai_api_key }}" ] && echo "::add-mask::${{ github.event.inputs.openai_api_key }}" || true
+          [ -n "${{ github.event.inputs.anthropic_api_key }}" ] && echo "::add-mask::${{ github.event.inputs.anthropic_api_key }}" || true
+          [ -n "${{ github.event.inputs.gemini_api_key }}" ] && echo "::add-mask::${{ github.event.inputs.gemini_api_key }}" || true
+          [ -n "${{ github.event.inputs.cohere_api_key }}" ] && echo "::add-mask::${{ github.event.inputs.cohere_api_key }}" || true
+          [ -n "${{ github.event.inputs.azure_api_key }}" ] && echo "::add-mask::${{ github.event.inputs.azure_api_key }}" || true
+          [ -n "${{ github.event.inputs.pinecone_api_key }}" ] && echo "::add-mask::${{ github.event.inputs.pinecone_api_key }}" || true
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: 'maven'
+
+      - name: Verify Docker is available (required for Testcontainers)
+        run: |
+          echo "Verifying Docker availability for Testcontainers..."
+          docker --version
+          docker info | head -5
+          echo "✅ Docker is available and running"
+
+      - name: Cache Maven packages
+        uses: actions/cache@v3
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-relationship-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven-relationship-
+            ${{ runner.os }}-maven-
+
+      - name: Clean temporary files
+        run: |
+          echo "Cleaning temporary files to prevent disk space issues..."
+          if [ -d "$TMPDIR" ]; then
+            find "$TMPDIR" -name "surefire-*" -type d -mtime +1 -exec rm -rf {} + 2>/dev/null || true
+            find "$TMPDIR" -name "stdout-*" -type f -mtime +1 -delete 2>/dev/null || true
+            find "$TMPDIR" -name "stderr-*" -type f -mtime +1 -delete 2>/dev/null || true
+            find "$TMPDIR" -name "onnx-*" -type f -mtime +1 -delete 2>/dev/null || true
+            find "$TMPDIR" -name "embedded-pg" -type d -mtime +1 -exec rm -rf {} + 2>/dev/null || true
+          fi
+          echo "Temporary file cleanup completed"
+
+      - name: Build AI Fabric Framework
+        run: |
+          cd ai-infrastructure-module
+          mvn clean install -DskipTests -B -V
+
+      - name: Validate Provider Availability
+        uses: ./.github/actions/configure-providers
+        with:
+          llm_provider: ${{ github.event.inputs.llm_provider }}
+          embedding_provider: ${{ github.event.inputs.embedding_provider }}
+          openai_api_key: ${{ github.event.inputs.openai_api_key || secrets.OPENAI_API_KEY }}
+          anthropic_api_key: ${{ github.event.inputs.anthropic_api_key || secrets.ANTHROPIC_API_KEY }}
+          gemini_api_key: ${{ github.event.inputs.gemini_api_key || secrets.GEMINI_API_KEY }}
+          cohere_api_key: ${{ github.event.inputs.cohere_api_key || secrets.COHERE_API_KEY }}
+          azure_api_key: ${{ github.event.inputs.azure_api_key || secrets.AZURE_API_KEY }}
+          azure_endpoint: ${{ github.event.inputs.azure_endpoint }}
+          azure_deployment_name: ${{ github.event.inputs.azure_deployment_name }}
+          azure_embedding_deployment_name: ${{ github.event.inputs.azure_embedding_deployment_name }}
+
+      - name: Gather Test Execution Evidence
+        id: gather_evidence_rq
+        run: |
+          mkdir -p test-evidence
+
+          # Create evidence file for relationship-query module
+          EVIDENCE_FILE="test-evidence/relationship-query-evidence-$(date +%Y%m%d-%H%M%S).json"
+
+          cat > "$EVIDENCE_FILE" << EOF
+          {
+            "module": "relationship-query",
+            "execution": {
+              "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+              "workflow_run_id": "${{ github.run_id }}",
+              "triggered_by": "${{ github.actor }}"
+            },
+            "providers": {
+              "llm": "${{ github.event.inputs.llm_provider }}",
+              "embedding": "${{ github.event.inputs.embedding_provider }}",
+              "vector_database": "${{ github.event.inputs.vector_database }}"
+            }
+          }
+          EOF
+
+          echo "evidence_file=$EVIDENCE_FILE" >> $GITHUB_OUTPUT
+
+      - name: Run Relationship Query Integration Tests (Real API)
+        run: |
+          cd ai-infrastructure-module/integration-Testing/relationship-query-integration-tests
+
+          # Determine if Testcontainers should be enabled based on vector database selection
+          VECTOR_DB="${{ github.event.inputs.vector_database }}"
+          SPRING_PROFILES="realapi"
+          if [[ "$VECTOR_DB" == "milvus" ]] || \
+             [[ "$VECTOR_DB" == "qdrant" ]] || \
+             [[ "$VECTOR_DB" == "weaviate" ]] || \
+             [[ "$VECTOR_DB" == "chroma" ]] || \
+             [[ "$VECTOR_DB" == "pgvector" ]]; then
+            SPRING_PROFILES="realapi,testcontainers"
+            echo "✅ Testcontainers enabled for vector database: $VECTOR_DB"
+          else
+            echo "ℹ️  Testcontainers not needed for vector database: $VECTOR_DB"
+          fi
+          export SPRING_PROFILES_ACTIVE="$SPRING_PROFILES"
+
+          bash run-relationship-query-realapi-tests.sh "${{ github.event.inputs.llm_provider }}:${{ github.event.inputs.embedding_provider }}:${{ github.event.inputs.vector_database }}"
+        env:
+          AI_PROVIDERS_REAL_API_MINIMUM_SUCCESS_RATE: ${{ github.event.inputs.realapi_minimum_success_rate }}
+          AI_PROVIDERS_REAL_API_MINIMUM_CONSIDERED_TESTS: ${{ github.event.inputs.realapi_minimum_considered_tests }}
+          TESTCONTAINERS_RYUK_DISABLED: false
+          OPENAI_API_KEY: ${{ github.event.inputs.openai_api_key || secrets.OPENAI_API_KEY }}
+          # Needed when embedding_provider=openai to satisfy startup validation.
+          OPENAI_ENABLED: ${{ (github.event.inputs.llm_provider == 'openai' || github.event.inputs.embedding_provider == 'openai') && 'true' || 'false' }}
+          ANTHROPIC_API_KEY: ${{ github.event.inputs.anthropic_api_key || secrets.ANTHROPIC_API_KEY }}
+          ANTHROPIC_ENABLED: ${{ (github.event.inputs.llm_provider == 'anthropic' || github.event.inputs.embedding_provider == 'anthropic') && 'true' || 'false' }}
+          GEMINI_API_KEY: ${{ github.event.inputs.gemini_api_key || secrets.GEMINI_API_KEY }}
+          GEMINI_ENABLED: ${{ (github.event.inputs.llm_provider == 'gemini' || github.event.inputs.embedding_provider == 'gemini') && 'true' || 'false' }}
+          COHERE_API_KEY: ${{ github.event.inputs.cohere_api_key || secrets.COHERE_API_KEY }}
+          # IMPORTANT: do not set empty string for booleans; Spring binds empty -> null -> crash for primitive boolean fields.
+          COHERE_ENABLED: ${{ (github.event.inputs.llm_provider == 'cohere' || github.event.inputs.embedding_provider == 'cohere') && 'true' || 'false' }}
+          AZURE_API_KEY: ${{ github.event.inputs.azure_api_key || secrets.AZURE_API_KEY }}
+          AZURE_ENDPOINT: ${{ github.event.inputs.azure_endpoint }}
+          AZURE_DEPLOYMENT_NAME: ${{ github.event.inputs.azure_deployment_name }}
+          AZURE_EMBEDDING_DEPLOYMENT_NAME: ${{ github.event.inputs.azure_embedding_deployment_name }}
+          AZURE_ENABLED: ${{ (github.event.inputs.llm_provider == 'azure' || github.event.inputs.embedding_provider == 'azure') && 'true' || 'false' }}
+          # Pinecone is used when vector_database=pinecone. Allow leaving the API key blank (e.g., using repo secrets/vars)
+          # and fall back for host/index to workflow defaults/repo vars.
+          PINECONE_API_KEY: ${{ github.event.inputs.pinecone_api_key || secrets.PINECONE_API_KEY }}
+          PINECONE_INDEX_NAME: ${{ github.event.inputs.pinecone_index_name || vars.PINECONE_INDEX_NAME }}
+          PINECONE_API_HOST: ${{ github.event.inputs.pinecone_host || vars.PINECONE_API_HOST }}
+          AI_PROVIDERS_PINECONE_ENABLED: ${{ github.event.inputs.vector_database == 'pinecone' && 'true' || 'false' }}
+          AI_PROVIDERS_PINECONE_API_KEY: ${{ github.event.inputs.pinecone_api_key || secrets.PINECONE_API_KEY }}
+          AI_PROVIDERS_PINECONE_INDEX_NAME: ${{ github.event.inputs.pinecone_index_name || vars.PINECONE_INDEX_NAME }}
+          AI_PROVIDERS_PINECONE_API_HOST: ${{ github.event.inputs.pinecone_host || vars.PINECONE_API_HOST }}
+          AI_INFRASTRUCTURE_PERSISTENCE_DATABASE: ${{ github.event.inputs.persistence_database }}
+          COHERE_MODEL: ${{ github.event.inputs.llm_provider == 'cohere' && (github.event.inputs.llm_model || 'command-r7b-12-2024') || '' }}
+          COHERE_EMBEDDING_MODEL: ${{ github.event.inputs.embedding_provider == 'cohere' && (github.event.inputs.embedding_model || 'embed-english-v3.0') || '' }}
+
+      - name: Publish Relationship Query Scorecard Evidence
+        if: always()
+        run: |
+          set -e
+          SCORECARD_ROOT="ai-infrastructure-module/integration-Testing/relationship-query-integration-tests/target/provider-matrix-reports"
+          echo "## Relationship Query RealAPI Scorecard" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          if [ ! -d "$SCORECARD_ROOT" ]; then
+            echo "_No scorecard output found (provider-matrix-reports directory missing)._ " >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          SCORECARD_JSON="$(ls -t "$SCORECARD_ROOT"/relationship-query-realapi-*.json 2>/dev/null | head -n 1 || true)"
+          if [ -z "$SCORECARD_JSON" ] || [ ! -f "$SCORECARD_JSON" ]; then
+            echo "_No relationship-query scorecard JSON found under:_ \`$SCORECARD_ROOT\`" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          SCORECARD_JSON="$SCORECARD_JSON" python3 << 'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json
+          import os
+          from pathlib import Path
+
+          p = Path(os.environ["SCORECARD_JSON"])
+          data = json.loads(p.read_text())
+
+          provider = data.get("provider") or {}
+          thresholds = data.get("thresholds") or {}
+          results = data.get("results") or {}
+          decision = data.get("decision") or {}
+
+          llm = provider.get("llm") or "unknown"
+          embedding = provider.get("embedding") or "unknown"
+          vector_db = provider.get("vectorDb") or "unknown"
+
+          print(f"- **Provider**: `{llm}:{embedding}:{vector_db}`")
+          print(f"- **Scorecard**: `{p.as_posix()}`")
+          print("")
+          print("| Metric | Value |")
+          print("|---|---:|")
+          print(f"| Minimum success rate | {thresholds.get('minimumSuccessRate')} |")
+          print(f"| Minimum considered tests | {thresholds.get('minimumConsideredTests')} |")
+          print(f"| Considered tests | {results.get('consideredTests')} |")
+          print(f"| Passed | {results.get('passed')} |")
+          print(f"| Failed | {results.get('failed')} |")
+          print(f"| Skipped | {results.get('skipped')} |")
+          print(f"| Success rate | {results.get('successRate')} |")
+          print(f"| Gate passed | {decision.get('passed')} |")
+          if decision.get("reason"):
+              print(f"| Reason | {decision.get('reason')} |")
+          print("")
+          PY
+
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "_Raw scorecard artifacts are uploaded under relationship-query-test-reports._" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Publish Relationship Query RealAPI Test Evidence
+        if: always()
+        run: |
+          set -e
+          REPORT_DIR="ai-infrastructure-module/integration-Testing/relationship-query-integration-tests/target/failsafe-reports"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "## Relationship Query RealAPI Tests (Evidence)" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+
+          if [ ! -d "$REPORT_DIR" ]; then
+            echo "_No failsafe-reports directory found._" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          python3 << 'PY' >> "$GITHUB_STEP_SUMMARY"
+          import glob
+          import os
+          import xml.etree.ElementTree as ET
+
+          report_dir = os.environ.get("REPORT_DIR", "ai-infrastructure-module/integration-Testing/relationship-query-integration-tests/target/failsafe-reports")
+          # Prefer TEST-*.xml JUnit reports; skip failsafe-summary.xml and other non-test XML.
+          files = sorted(glob.glob(os.path.join(report_dir, "TEST-*.xml")))
+
+          if not files:
+              print("_No JUnit XML test reports found (expected TEST-*.xml)._")
+              raise SystemExit(0)
+
+          total_tests = total_failures = total_errors = total_skipped = 0
+          failing_cases = []
+
+          for path in files:
+              try:
+                  root = ET.parse(path).getroot()
+              except Exception:
+                  continue
+
+              # JUnit XML may have testsuite as root or testsuites wrapper.
+              suites = []
+              if root.tag == "testsuite":
+                  suites = [root]
+              elif root.tag == "testsuites":
+                  suites = list(root.findall("testsuite"))
+
+              for suite in suites:
+                  def as_int(name):
+                      try:
+                          return int(float(suite.attrib.get(name, "0")))
+                      except Exception:
+                          return 0
+
+                  total_tests += as_int("tests")
+                  total_failures += as_int("failures")
+                  total_errors += as_int("errors")
+                  total_skipped += as_int("skipped")
+
+                  for tc in suite.findall("testcase"):
+                      classname = tc.attrib.get("classname", "")
+                      name = tc.attrib.get("name", "")
+                      failure = tc.find("failure")
+                      error = tc.find("error")
+                      if failure is not None:
+                          msg = (failure.attrib.get("message") or "").strip()
+                          failing_cases.append((f"{classname}.{name}".strip("."), "FAILURE", msg))
+                      elif error is not None:
+                          msg = (error.attrib.get("message") or "").strip()
+                          failing_cases.append((f"{classname}.{name}".strip("."), "ERROR", msg))
+
+          print("| Metric | Value |")
+          print("|---|---:|")
+          print(f"| Tests | {total_tests} |")
+          print(f"| Failures | {total_failures} |")
+          print(f"| Errors | {total_errors} |")
+          print(f"| Skipped | {total_skipped} |")
+          print("")
+
+          if failing_cases:
+              print("### Failing tests")
+              # Cap to avoid huge summaries.
+              for case, kind, msg in failing_cases[:25]:
+                  if msg:
+                      print(f"- **{kind}**: `{case}` — {msg}")
+                  else:
+                      print(f"- **{kind}**: `{case}`")
+              if len(failing_cases) > 25:
+                  print(f"- _…and {len(failing_cases) - 25} more_")
+          else:
+              print("✅ No failing testcases found in JUnit reports.")
+          PY
+        env:
+          REPORT_DIR: ai-infrastructure-module/integration-Testing/relationship-query-integration-tests/target/failsafe-reports
+
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: relationship-query-test-reports
+          path: |
+            ai-infrastructure-module/integration-Testing/relationship-query-integration-tests/target/surefire-reports/
+            ai-infrastructure-module/integration-Testing/relationship-query-integration-tests/target/failsafe-reports/
+            ai-infrastructure-module/integration-Testing/relationship-query-integration-tests/target/provider-matrix-reports/
+          retention-days: 30
+
+      - name: Publish Test Results
+        uses: EnricoMi/publish-unit-test-result-action@v2
+        if: always()
+        with:
+          large_files: true
+          files: |
+            ai-infrastructure-module/integration-Testing/relationship-query-integration-tests/target/surefire-reports/TEST-*.xml
+            ai-infrastructure-module/integration-Testing/relationship-query-integration-tests/target/failsafe-reports/TEST-*.xml
+          check_name: Relationship Query Test Results
+
+  # ==============================================================================
+  # Job 3: Chat Session Integration Tests
+  # ==============================================================================
+  chat-session-tests:
+    name: Chat Session Integration Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      checks: write
+      pull-requests: write
+      contents: read
+    if: |
+      github.event.inputs.modules == 'all' ||
+      github.event.inputs.modules == 'chat-session'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Mask provider API keys
+        if: always()
+        run: |
+          [ -n "${{ github.event.inputs.openai_api_key }}" ] && echo "::add-mask::${{ github.event.inputs.openai_api_key }}" || true
+          [ -n "${{ github.event.inputs.anthropic_api_key }}" ] && echo "::add-mask::${{ github.event.inputs.anthropic_api_key }}" || true
+          [ -n "${{ github.event.inputs.gemini_api_key }}" ] && echo "::add-mask::${{ github.event.inputs.gemini_api_key }}" || true
+          [ -n "${{ github.event.inputs.cohere_api_key }}" ] && echo "::add-mask::${{ github.event.inputs.cohere_api_key }}" || true
+          [ -n "${{ github.event.inputs.azure_api_key }}" ] && echo "::add-mask::${{ github.event.inputs.azure_api_key }}" || true
+          [ -n "${{ github.event.inputs.pinecone_api_key }}" ] && echo "::add-mask::${{ github.event.inputs.pinecone_api_key }}" || true
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: 'maven'
+
+      - name: Verify Docker is available (required for Testcontainers)
+        run: |
+          echo "Verifying Docker availability for Testcontainers..."
+          docker --version
+          docker info | head -5
+          echo "✅ Docker is available and running"
+
+      - name: Cache Maven packages
+        uses: actions/cache@v3
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-chat-session-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven-chat-session-
+            ${{ runner.os }}-maven-
+
+      - name: Clean temporary files
+        run: |
+          echo "Cleaning temporary files to prevent disk space issues..."
+          if [ -d "$TMPDIR" ]; then
+            find "$TMPDIR" -name "surefire-*" -type d -mtime +1 -exec rm -rf {} + 2>/dev/null || true
+            find "$TMPDIR" -name "stdout-*" -type f -mtime +1 -delete 2>/dev/null || true
+            find "$TMPDIR" -name "stderr-*" -type f -mtime +1 -delete 2>/dev/null || true
+            find "$TMPDIR" -name "onnx-*" -type f -mtime +1 -delete 2>/dev/null || true
+            find "$TMPDIR" -name "embedded-pg" -type d -mtime +1 -exec rm -rf {} + 2>/dev/null || true
+          fi
+          echo "Temporary file cleanup completed"
+
+      - name: Build AI Fabric Framework
+        run: |
+          cd ai-infrastructure-module
+          mvn clean install -DskipTests -B -V
+
+      - name: Validate Provider Availability
+        uses: ./.github/actions/configure-providers
+        with:
+          llm_provider: ${{ github.event.inputs.llm_provider }}
+          embedding_provider: ${{ github.event.inputs.embedding_provider }}
+          openai_api_key: ${{ github.event.inputs.openai_api_key || secrets.OPENAI_API_KEY }}
+          anthropic_api_key: ${{ github.event.inputs.anthropic_api_key || secrets.ANTHROPIC_API_KEY }}
+          gemini_api_key: ${{ github.event.inputs.gemini_api_key || secrets.GEMINI_API_KEY }}
+          cohere_api_key: ${{ github.event.inputs.cohere_api_key || secrets.COHERE_API_KEY }}
+          azure_api_key: ${{ github.event.inputs.azure_api_key || secrets.AZURE_API_KEY }}
+          azure_endpoint: ${{ github.event.inputs.azure_endpoint }}
+          azure_deployment_name: ${{ github.event.inputs.azure_deployment_name }}
+          azure_embedding_deployment_name: ${{ github.event.inputs.azure_embedding_deployment_name }}
+
+      - name: Run Chat Session Integration Tests (Real API)
+        run: |
+          cd ai-infrastructure-module/integration-Testing/chat-session-integration-tests
+
+          VECTOR_DB="${{ github.event.inputs.vector_database }}"
+          SPRING_PROFILES="realapi"
+          if [[ "$VECTOR_DB" == "milvus" ]] || \
+             [[ "$VECTOR_DB" == "qdrant" ]] || \
+             [[ "$VECTOR_DB" == "weaviate" ]] || \
+             [[ "$VECTOR_DB" == "chroma" ]] || \
+             [[ "$VECTOR_DB" == "pgvector" ]]; then
+            SPRING_PROFILES="realapi,testcontainers"
+            echo "✅ Testcontainers enabled for vector database: $VECTOR_DB"
+          else
+            echo "ℹ️  Testcontainers not needed for vector database: $VECTOR_DB"
+          fi
+          export SPRING_PROFILES_ACTIVE="$SPRING_PROFILES"
+
+          bash run-chat-session-realapi-tests.sh "${{ github.event.inputs.llm_provider }}:${{ github.event.inputs.embedding_provider }}:${{ github.event.inputs.vector_database }}"
+        env:
+          AI_PROVIDERS_REAL_API_MINIMUM_SUCCESS_RATE: ${{ github.event.inputs.realapi_minimum_success_rate }}
+          AI_PROVIDERS_REAL_API_MINIMUM_CONSIDERED_TESTS: ${{ github.event.inputs.realapi_minimum_considered_tests }}
+          TESTCONTAINERS_RYUK_DISABLED: false
+          OPENAI_API_KEY: ${{ github.event.inputs.openai_api_key || secrets.OPENAI_API_KEY }}
+          OPENAI_ENABLED: ${{ (github.event.inputs.llm_provider == 'openai' || github.event.inputs.embedding_provider == 'openai') && 'true' || 'false' }}
+          ANTHROPIC_API_KEY: ${{ github.event.inputs.anthropic_api_key || secrets.ANTHROPIC_API_KEY }}
+          ANTHROPIC_ENABLED: ${{ (github.event.inputs.llm_provider == 'anthropic' || github.event.inputs.embedding_provider == 'anthropic') && 'true' || 'false' }}
+          GEMINI_API_KEY: ${{ github.event.inputs.gemini_api_key || secrets.GEMINI_API_KEY }}
+          GEMINI_ENABLED: ${{ (github.event.inputs.llm_provider == 'gemini' || github.event.inputs.embedding_provider == 'gemini') && 'true' || 'false' }}
+          COHERE_API_KEY: ${{ github.event.inputs.cohere_api_key || secrets.COHERE_API_KEY }}
+          # IMPORTANT: do not set empty string for booleans; Spring binds empty -> null -> crash for primitive boolean fields.
+          COHERE_ENABLED: ${{ (github.event.inputs.llm_provider == 'cohere' || github.event.inputs.embedding_provider == 'cohere') && 'true' || 'false' }}
+          AZURE_API_KEY: ${{ github.event.inputs.azure_api_key || secrets.AZURE_API_KEY }}
+          AZURE_ENDPOINT: ${{ github.event.inputs.azure_endpoint }}
+          AZURE_DEPLOYMENT_NAME: ${{ github.event.inputs.azure_deployment_name }}
+          AZURE_EMBEDDING_DEPLOYMENT_NAME: ${{ github.event.inputs.azure_embedding_deployment_name }}
+          AZURE_ENABLED: ${{ (github.event.inputs.llm_provider == 'azure' || github.event.inputs.embedding_provider == 'azure') && 'true' || 'false' }}
+          PINECONE_API_KEY: ${{ github.event.inputs.pinecone_api_key || secrets.PINECONE_API_KEY }}
+          PINECONE_INDEX_NAME: ${{ github.event.inputs.pinecone_index_name || vars.PINECONE_INDEX_NAME }}
+          PINECONE_API_HOST: ${{ github.event.inputs.pinecone_host || vars.PINECONE_API_HOST }}
+          AI_PROVIDERS_PINECONE_ENABLED: ${{ github.event.inputs.vector_database == 'pinecone' && 'true' || 'false' }}
+          AI_PROVIDERS_PINECONE_API_KEY: ${{ github.event.inputs.pinecone_api_key || secrets.PINECONE_API_KEY }}
+          AI_PROVIDERS_PINECONE_INDEX_NAME: ${{ github.event.inputs.pinecone_index_name || vars.PINECONE_INDEX_NAME }}
+          AI_PROVIDERS_PINECONE_API_HOST: ${{ github.event.inputs.pinecone_host || vars.PINECONE_API_HOST }}
+          AI_INFRASTRUCTURE_PERSISTENCE_DATABASE: ${{ github.event.inputs.persistence_database }}
+          COHERE_MODEL: ${{ github.event.inputs.llm_provider == 'cohere' && (github.event.inputs.llm_model || 'command-r7b-12-2024') || '' }}
+          COHERE_EMBEDDING_MODEL: ${{ github.event.inputs.embedding_provider == 'cohere' && (github.event.inputs.embedding_model || 'embed-english-v3.0') || '' }}
+
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: chat-session-test-reports
+          path: |
+            ai-infrastructure-module/integration-Testing/chat-session-integration-tests/target/surefire-reports/
+            ai-infrastructure-module/integration-Testing/chat-session-integration-tests/target/failsafe-reports/
+            ai-infrastructure-module/integration-Testing/chat-session-integration-tests/target/provider-matrix-reports/
+          retention-days: 30
+
+      - name: Publish Test Results
+        uses: EnricoMi/publish-unit-test-result-action@v2
+        if: always()
+        with:
+          large_files: true
+          files: |
+            ai-infrastructure-module/integration-Testing/chat-session-integration-tests/target/surefire-reports/TEST-*.xml
+            ai-infrastructure-module/integration-Testing/chat-session-integration-tests/target/failsafe-reports/TEST-*.xml
+          check_name: Chat Session Test Results
+
+  # ==============================================================================
+  # Job 4: Behavior Integration Tests
+  # ==============================================================================
+  behavior-tests:
+    name: Behavior Integration Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      checks: write
+      pull-requests: write
+      contents: read
+    if: |
+      github.event.inputs.modules == 'all' ||
+      github.event.inputs.modules == 'behavior'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Mask provider API keys
+        if: always()
+        run: |
+          [ -n "${{ github.event.inputs.openai_api_key }}" ] && echo "::add-mask::${{ github.event.inputs.openai_api_key }}" || true
+          [ -n "${{ github.event.inputs.anthropic_api_key }}" ] && echo "::add-mask::${{ github.event.inputs.anthropic_api_key }}" || true
+          [ -n "${{ github.event.inputs.gemini_api_key }}" ] && echo "::add-mask::${{ github.event.inputs.gemini_api_key }}" || true
+          [ -n "${{ github.event.inputs.cohere_api_key }}" ] && echo "::add-mask::${{ github.event.inputs.cohere_api_key }}" || true
+          [ -n "${{ github.event.inputs.azure_api_key }}" ] && echo "::add-mask::${{ github.event.inputs.azure_api_key }}" || true
+          [ -n "${{ github.event.inputs.pinecone_api_key }}" ] && echo "::add-mask::${{ github.event.inputs.pinecone_api_key }}" || true
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: 'maven'
+
+      - name: Verify Docker is available (required for Testcontainers)
+        run: |
+          echo "Verifying Docker availability for Testcontainers..."
+          docker --version
+          docker info | head -5
+          echo "✅ Docker is available and running"
+
+      - name: Cache Maven packages
+        uses: actions/cache@v3
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-behavior-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven-behavior-
+            ${{ runner.os }}-maven-
+
+      - name: Build AI Fabric Framework (skip unit tests)
+        run: |
+          cd ai-infrastructure-module
+          mvn clean install -DskipTests -B -V
+
+      - name: Validate Provider Availability
+        uses: ./.github/actions/configure-providers
+        with:
+          llm_provider: ${{ github.event.inputs.llm_provider }}
+          embedding_provider: ${{ github.event.inputs.embedding_provider }}
+          openai_api_key: ${{ github.event.inputs.openai_api_key || secrets.OPENAI_API_KEY }}
+          anthropic_api_key: ${{ github.event.inputs.anthropic_api_key || secrets.ANTHROPIC_API_KEY }}
+          gemini_api_key: ${{ github.event.inputs.gemini_api_key || secrets.GEMINI_API_KEY }}
+          cohere_api_key: ${{ github.event.inputs.cohere_api_key || secrets.COHERE_API_KEY }}
+          azure_api_key: ${{ github.event.inputs.azure_api_key || secrets.AZURE_API_KEY }}
+          azure_endpoint: ${{ github.event.inputs.azure_endpoint }}
+          azure_deployment_name: ${{ github.event.inputs.azure_deployment_name }}
+          azure_embedding_deployment_name: ${{ github.event.inputs.azure_embedding_deployment_name }}
+
+      - name: Gather Test Execution Evidence
+        id: gather_evidence_behavior
+        run: |
+          mkdir -p test-evidence
+
+          # Create evidence file for behavior module
+          EVIDENCE_FILE="test-evidence/behavior-evidence-$(date +%Y%m%d-%H%M%S).json"
+
+          cat > "$EVIDENCE_FILE" << EOF
+          {
+            "module": "behavior",
+            "execution": {
+              "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+              "workflow_run_id": "${{ github.run_id }}",
+              "triggered_by": "${{ github.actor }}"
+            },
+            "providers": {
+              "llm": "${{ github.event.inputs.llm_provider }}",
+              "embedding": "${{ github.event.inputs.embedding_provider }}",
+              "vector_database": "${{ github.event.inputs.vector_database }}"
+            }
+          }
+          EOF
+
+          echo "evidence_file=$EVIDENCE_FILE" >> $GITHUB_OUTPUT
+
+      - name: Run Behavior Integration Tests (Real API)
+        run: |
+          cd ai-infrastructure-module/integration-Testing/behavior-integration-tests
+
+          # Determine if Testcontainers should be enabled based on vector database selection
+          VECTOR_DB="${{ github.event.inputs.vector_database }}"
+          SPRING_PROFILES="realapi"
+          if [[ "$VECTOR_DB" == "milvus" ]] || \
+             [[ "$VECTOR_DB" == "qdrant" ]] || \
+             [[ "$VECTOR_DB" == "weaviate" ]] || \
+             [[ "$VECTOR_DB" == "chroma" ]] || \
+             [[ "$VECTOR_DB" == "pgvector" ]]; then
+            SPRING_PROFILES="realapi,testcontainers"
+            echo "✅ Testcontainers enabled for vector database: $VECTOR_DB"
+          else
+            echo "ℹ️  Testcontainers not needed for vector database: $VECTOR_DB"
+          fi
+          export SPRING_PROFILES_ACTIVE="$SPRING_PROFILES"
+
+          bash run-behavior-realapi-tests.sh "${{ github.event.inputs.llm_provider }}:${{ github.event.inputs.embedding_provider }}:${{ github.event.inputs.vector_database }}"
+        env:
+          AI_PROVIDERS_REAL_API_MINIMUM_SUCCESS_RATE: ${{ github.event.inputs.realapi_minimum_success_rate }}
+          AI_PROVIDERS_REAL_API_MINIMUM_CONSIDERED_TESTS: ${{ github.event.inputs.realapi_minimum_considered_tests }}
+          TESTCONTAINERS_RYUK_DISABLED: false
+          OPENAI_API_KEY: ${{ github.event.inputs.openai_api_key || secrets.OPENAI_API_KEY }}
+          OPENAI_ENABLED: ${{ (github.event.inputs.llm_provider == 'openai' || github.event.inputs.embedding_provider == 'openai') && 'true' || 'false' }}
+          ANTHROPIC_API_KEY: ${{ github.event.inputs.anthropic_api_key || secrets.ANTHROPIC_API_KEY }}
+          ANTHROPIC_ENABLED: ${{ (github.event.inputs.llm_provider == 'anthropic' || github.event.inputs.embedding_provider == 'anthropic') && 'true' || 'false' }}
+          GEMINI_API_KEY: ${{ github.event.inputs.gemini_api_key || secrets.GEMINI_API_KEY }}
+          GEMINI_ENABLED: ${{ (github.event.inputs.llm_provider == 'gemini' || github.event.inputs.embedding_provider == 'gemini') && 'true' || 'false' }}
+          COHERE_API_KEY: ${{ github.event.inputs.cohere_api_key || secrets.COHERE_API_KEY }}
+          # IMPORTANT: do not set empty string for booleans; Spring binds empty -> null -> crash for primitive boolean fields.
+          COHERE_ENABLED: ${{ (github.event.inputs.llm_provider == 'cohere' || github.event.inputs.embedding_provider == 'cohere') && 'true' || 'false' }}
+          AZURE_API_KEY: ${{ github.event.inputs.azure_api_key || secrets.AZURE_API_KEY }}
+          AZURE_ENDPOINT: ${{ github.event.inputs.azure_endpoint }}
+          AZURE_DEPLOYMENT_NAME: ${{ github.event.inputs.azure_deployment_name }}
+          AZURE_EMBEDDING_DEPLOYMENT_NAME: ${{ github.event.inputs.azure_embedding_deployment_name }}
+          AZURE_ENABLED: ${{ (github.event.inputs.llm_provider == 'azure' || github.event.inputs.embedding_provider == 'azure') && 'true' || 'false' }}
+          AI_INFRASTRUCTURE_PERSISTENCE_DATABASE: ${{ github.event.inputs.persistence_database }}
+          COHERE_MODEL: ${{ github.event.inputs.llm_provider == 'cohere' && (github.event.inputs.llm_model || 'command-r7b-12-2024') || '' }}
+          COHERE_EMBEDDING_MODEL: ${{ github.event.inputs.embedding_provider == 'cohere' && (github.event.inputs.embedding_model || 'embed-english-v3.0') || '' }}
+
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: behavior-test-reports
+          path: |
+            ai-infrastructure-module/integration-Testing/behavior-integration-tests/target/surefire-reports/
+            ai-infrastructure-module/integration-Testing/behavior-integration-tests/target/failsafe-reports/
+            ai-infrastructure-module/integration-Testing/behavior-integration-tests/target/provider-matrix-reports/
+          retention-days: 30
+
+      - name: Publish Test Results
+        uses: EnricoMi/publish-unit-test-result-action@v2
+        if: always()
+        with:
+          large_files: true
+          files: |
+            ai-infrastructure-module/integration-Testing/behavior-integration-tests/target/surefire-reports/TEST-*.xml
+            ai-infrastructure-module/integration-Testing/behavior-integration-tests/target/failsafe-reports/TEST-*.xml
+          check_name: Behavior Test Results
+
+  # ==============================================================================
+  # Summary Job - Aggregates all test results
+  # ==============================================================================
+  test-summary:
+    name: Test Summary
+    runs-on: ubuntu-latest
+    needs: [ai-fabric-tests, relationship-query-tests, chat-session-tests, behavior-tests]
+    if: always()
+
+    steps:
+      - name: Download all test reports
+        uses: actions/download-artifact@v4
+        with:
+          path: test-reports
+
+      - name: Aggregate Test Execution Evidence
+        run: |
+          # Aggregate evidence from all modules
+          mkdir -p test-evidence
+          AGGREGATED_EVIDENCE="test-evidence/aggregated-evidence-$(date +%Y%m%d-%H%M%S).json"
+
+          python3 << 'PYTHON_SCRIPT'
+          import json
+          import os
+          from pathlib import Path
+          from datetime import datetime
+
+          evidence_dir = Path("test-evidence")
+          aggregated = {
+              "workflow_run": {
+                  "id": "${{ github.run_id }}",
+                  "number": "${{ github.run_number }}",
+                  "url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}",
+                  "triggered_by": "${{ github.actor }}",
+                  "commit_sha": "${{ github.sha }}",
+                  "branch": "${{ github.ref_name }}",
+                  "timestamp": datetime.utcnow().isoformat() + "Z"
+              },
+              "modules_tested": [],
+            "providers_used": {
+                "llm": {
+                    "name": "${{ github.event.inputs.llm_provider }}",
+                    "model": "${{ github.event.inputs.llm_model != '' && github.event.inputs.llm_model || 'default' }}"
+                },
+                "embedding": {
+                    "name": "${{ github.event.inputs.embedding_provider }}",
+                    "model": "${{ github.event.inputs.embedding_model != '' && github.event.inputs.embedding_model || 'default' }}"
+                },
+                "vector_database": "${{ github.event.inputs.vector_database }}",
+                "persistence_database": "${{ github.event.inputs.persistence_database }}"
+            },
+              "test_configuration": {
+                  "test_chunk": "${{ github.event.inputs.test_chunk }}",
+                  "timeout_minutes": "${{ github.event.inputs.timeout_minutes }}",
+                  "logging_level": "${{ github.event.inputs.logging_level }}"
+              },
+              "api_keys_provided": {
+                  # NOTE: This Python heredoc needs Python booleans (True/False), not JSON booleans (true/false).
+                  "openai": ${{ github.event.inputs.openai_api_key != '' && 'True' || 'False' }},
+                  "anthropic": ${{ github.event.inputs.anthropic_api_key != '' && 'True' || 'False' }},
+                  "gemini": ${{ github.event.inputs.gemini_api_key != '' && 'True' || 'False' }},
+                  "cohere": ${{ github.event.inputs.cohere_api_key != '' && 'True' || 'False' }},
+                  "azure": ${{ github.event.inputs.azure_api_key != '' && 'True' || 'False' }}
+              },
+              "test_results": {
+                  "ai_fabric": "${{ needs.ai-fabric-tests.result }}",
+                  "relationship_query": "${{ needs.relationship-query-tests.result }}",
+                  "chat_session": "${{ needs.chat-session-tests.result }}",
+                  "behavior": "${{ needs.behavior-tests.result }}"
+              }
+          }
+
+          # Collect evidence from individual module files
+          if evidence_dir.exists():
+              for evidence_file in evidence_dir.glob("*-evidence-*.json"):
+                  try:
+                      with open(evidence_file, 'r') as f:
+                          module_evidence = json.load(f)
+                          if "module" in module_evidence:
+                              aggregated["modules_tested"].append(module_evidence["module"])
+                  except Exception as e:
+                      print(f"Error reading {evidence_file}: {e}")
+
+          # Add modules based on workflow inputs
+          if "${{ github.event.inputs.modules }}" == "all" or "${{ github.event.inputs.modules }}" == "ai-fabric":
+              if "ai-fabric" not in aggregated["modules_tested"]:
+                  aggregated["modules_tested"].append("ai-fabric")
+          if "${{ github.event.inputs.modules }}" == "all" or "${{ github.event.inputs.modules }}" == "relationship-query":
+              if "relationship-query" not in aggregated["modules_tested"]:
+                  aggregated["modules_tested"].append("relationship-query")
+          if "${{ github.event.inputs.modules }}" == "all" or "${{ github.event.inputs.modules }}" == "chat-session":
+              if "chat-session" not in aggregated["modules_tested"]:
+                  aggregated["modules_tested"].append("chat-session")
+          if "${{ github.event.inputs.modules }}" == "all" or "${{ github.event.inputs.modules }}" == "behavior":
+              if "behavior" not in aggregated["modules_tested"]:
+                  aggregated["modules_tested"].append("behavior")
+
+          # Write aggregated evidence
+          with open("test-evidence/aggregated-evidence.json", 'w') as f:
+              json.dump(aggregated, f, indent=2)
+
+          print("Aggregated evidence created: test-evidence/aggregated-evidence.json")
+          print(json.dumps(aggregated, indent=2))
+          PYTHON_SCRIPT
+
+      - name: Create Test Summary
+        run: |
+          echo "# 🧪 Integration Tests Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Triggered by:** @${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Workflow Run:** [#${{ github.run_number }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit:** \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Modules tested:** ${{ github.event.inputs.modules }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Configuration" >> $GITHUB_STEP_SUMMARY
+          echo "- **LLM Provider:** ${{ github.event.inputs.llm_provider }}" >> $GITHUB_STEP_SUMMARY
+          if [ -n "${{ github.event.inputs.llm_model }}" ]; then
+            echo "- **LLM Model:** \`${{ github.event.inputs.llm_model }}\` (custom)" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- **LLM Model:** (using provider default)" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "- **Embedding Provider:** ${{ github.event.inputs.embedding_provider }}" >> $GITHUB_STEP_SUMMARY
+          if [ -n "${{ github.event.inputs.embedding_model }}" ]; then
+            echo "- **Embedding Model:** \`${{ github.event.inputs.embedding_model }}\` (custom)" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- **Embedding Model:** (using provider default)" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "- **Vector Database:** ${{ github.event.inputs.vector_database }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Persistence Database:** ${{ github.event.inputs.persistence_database }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Test Chunk:** ${{ github.event.inputs.test_chunk }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### API Keys Provided" >> $GITHUB_STEP_SUMMARY
+          echo "| Provider | Provided |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|----------|" >> $GITHUB_STEP_SUMMARY
+          echo "| OpenAI | ${{ github.event.inputs.openai_api_key != '' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Anthropic | ${{ github.event.inputs.anthropic_api_key != '' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Gemini | ${{ github.event.inputs.gemini_api_key != '' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Cohere | ${{ github.event.inputs.cohere_api_key != '' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Azure | ${{ github.event.inputs.azure_api_key != '' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Check job statuses
+          AI_FABRIC_STATUS="${{ needs.ai-fabric-tests.result }}"
+          RELATIONSHIP_STATUS="${{ needs.relationship-query-tests.result }}"
+          CHAT_SESSION_STATUS="${{ needs.chat-session-tests.result }}"
+          BEHAVIOR_STATUS="${{ needs.behavior-tests.result }}"
+
+          # Function to get emoji for status
+          get_emoji() {
+            case $1 in
+              success) echo "✅" ;;
+              failure) echo "❌" ;;
+              skipped) echo "⏭️" ;;
+              cancelled) echo "🚫" ;;
+              *) echo "❓" ;;
+            esac
+          }
+
+          echo "| Module | Status | Result |" >> $GITHUB_STEP_SUMMARY
+          echo "|--------|--------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| AI Fabric | $(get_emoji $AI_FABRIC_STATUS) | $AI_FABRIC_STATUS |" >> $GITHUB_STEP_SUMMARY
+          echo "| Relationship Query | $(get_emoji $RELATIONSHIP_STATUS) | $RELATIONSHIP_STATUS |" >> $GITHUB_STEP_SUMMARY
+          echo "| Chat Session | $(get_emoji $CHAT_SESSION_STATUS) | $CHAT_SESSION_STATUS |" >> $GITHUB_STEP_SUMMARY
+          echo "| Behavior Integration | $(get_emoji $BEHAVIOR_STATUS) | $BEHAVIOR_STATUS |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Overall result
+          if [[ "$AI_FABRIC_STATUS" == "success" || "$AI_FABRIC_STATUS" == "skipped" ]] && \
+             [[ "$RELATIONSHIP_STATUS" == "success" || "$RELATIONSHIP_STATUS" == "skipped" ]] && \
+             [[ "$CHAT_SESSION_STATUS" == "success" || "$CHAT_SESSION_STATUS" == "skipped" ]] && \
+             [[ "$BEHAVIOR_STATUS" == "success" || "$BEHAVIOR_STATUS" == "skipped" ]]; then
+            echo "### ✅ All tests passed!" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "### ❌ Some tests failed. Please check the logs." >> $GITHUB_STEP_SUMMARY
+          fi
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "📊 **View detailed reports in the artifacts section**" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "📋 **Test execution evidence available in artifacts** (test-execution-evidence)" >> $GITHUB_STEP_SUMMARY
+
+      - name: Upload aggregated test execution evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-execution-evidence-aggregated
+          path: test-evidence/aggregated-evidence.json
+          retention-days: 90
+          if-no-files-found: warn
+
+      - name: Check overall test status
+        run: |
+          AI_FABRIC_STATUS="${{ needs.ai-fabric-tests.result }}"
+          RELATIONSHIP_STATUS="${{ needs.relationship-query-tests.result }}"
+          CHAT_SESSION_STATUS="${{ needs.chat-session-tests.result }}"
+          BEHAVIOR_STATUS="${{ needs.behavior-tests.result }}"
+
+          if [[ "$AI_FABRIC_STATUS" == "failure" ]] || \
+             [[ "$RELATIONSHIP_STATUS" == "failure" ]] || \
+             [[ "$CHAT_SESSION_STATUS" == "failure" ]] || \
+             [[ "$BEHAVIOR_STATUS" == "failure" ]]; then
+            echo "❌ One or more test jobs failed"
+            exit 1
+          else
+            echo "✅ All test jobs passed or were skipped"
+          fi
+
+          # Display evidence summary
+          if [ -f "test-evidence/aggregated-evidence.json" ]; then
+            echo ""
+            echo "📋 Test Execution Evidence Summary:"
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            python3 << 'PYTHON_SCRIPT'
+          import json
+          import sys
+
+          try:
+              with open("test-evidence/aggregated-evidence.json", 'r') as f:
+                  evidence = json.load(f)
+
+              print(f"Modules Tested: {', '.join(evidence.get('modules_tested', []))}")
+              print(f"LLM Provider: {evidence.get('providers_used', {}).get('llm', 'N/A')}")
+              print(f"Embedding Provider: {evidence.get('providers_used', {}).get('embedding', 'N/A')}")
+              print(f"Vector Database: {evidence.get('providers_used', {}).get('vector_database', 'N/A')}")
+              print(f"Test Results: AI Fabric={evidence.get('test_results', {}).get('ai_fabric', 'N/A')}, "
+                    f"Relationship Query={evidence.get('test_results', {}).get('relationship_query', 'N/A')}, "
+                    f"Chat Session={evidence.get('test_results', {}).get('chat_session', 'N/A')}, "
+                    f"Behavior={evidence.get('test_results', {}).get('behavior', 'N/A')}")
+          except Exception as e:
+              print(f"Error reading evidence: {e}")
+          PYTHON_SCRIPT
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          fi

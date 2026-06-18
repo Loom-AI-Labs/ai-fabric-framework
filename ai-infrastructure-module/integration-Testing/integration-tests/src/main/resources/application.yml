@@ -1,0 +1,125 @@
+# Test Application Configuration for AI Infrastructure Integration Tests
+# This configuration provides a clean, isolated environment for testing
+
+spring:
+  application:
+    name: ai-fabric-integration-tests
+
+  # Database Configuration (H2 in-memory for testing)
+  datasource:
+    url: jdbc:h2:mem:testdb;MODE=PostgreSQL;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+      connection-timeout: 20000
+      auto-commit: true
+      pool-name: HikariCP-Test
+
+  # JPA Configuration
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.H2Dialect
+        format_sql: false
+        jdbc:
+          batch_size: 20
+    open-in-view: false
+
+  # H2 Console for debugging (disabled by default)
+  h2:
+    console:
+      enabled: false
+      path: /h2-console
+
+  # SQL Initialization
+  sql:
+    init:
+      mode: always
+      continue-on-error: true
+      platform: h2
+
+# AI Infrastructure Configuration
+ai:
+  enabled: true
+
+  providers:
+    llm-provider: ${LLM_PROVIDER:openai}
+    embedding-provider: ${EMBEDDING_PROVIDER:onnx}
+    enable-fallback: true
+
+    onnx:
+      enabled: true
+      model-path: ${ONNX_MODEL_PATH:classpath:/models/embeddings/all-MiniLM-L6-v2.onnx}
+      tokenizer-path: ${ONNX_TOKENIZER_PATH:classpath:/models/embeddings/tokenizer.json}
+      max-sequence-length: 512
+      use-gpu: false
+      model-alias: all-MiniLM-L6-v2
+
+    openai:
+      enabled: ${OPENAI_ENABLED:false}
+      api-key: ${OPENAI_API_KEY:test-key}
+      model: ${OPENAI_MODEL:gpt-3.5-turbo}
+      embedding-model: ${OPENAI_EMBEDDING_MODEL:text-embedding-ada-002}
+      max-tokens: ${OPENAI_MAX_TOKENS:1000}
+      temperature: ${OPENAI_TEMPERATURE:0.3}
+      timeout: ${OPENAI_TIMEOUT:60}
+      priority: 100
+
+  # Infrastructure Configuration
+  config:
+    default-file: ai-entity-config.yml
+    embedding:
+      model: text-embedding-ada-002
+      dimensions: 1536
+    search:
+      max-results: 100
+      similarity-threshold: 0.7
+
+  # Vector Database Configuration (can be overridden by profile)
+  vector-db:
+    type: memory
+    lucene:
+      index-path: ./data/test-lucene-index
+      similarity-threshold: 0.7
+      max-results: 100
+
+# Test-specific Configuration
+test:
+  ai:
+    # Test data configuration
+    sample-entities-count: 10
+    batch-size: 5
+    timeout-seconds: 30
+
+    # Performance test configuration
+    performance:
+      concurrent-users: 10
+      test-duration-seconds: 60
+      warmup-seconds: 10
+
+# Logging Configuration
+logging:
+  level:
+    root: INFO
+    ai.fabric: DEBUG
+    ai.fabric.it: DEBUG
+    org.springframework.aop: DEBUG
+    org.hibernate.SQL: DEBUG
+  pattern:
+    console: "%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"
+
+# Management/Actuator Configuration
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "health,info,metrics"
+  endpoint:
+    health:
+      show-details: when-authorized

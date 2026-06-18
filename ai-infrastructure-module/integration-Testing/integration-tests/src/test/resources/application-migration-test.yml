@@ -1,0 +1,39 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:migtest;DB_CLOSE_DELAY=-1;MODE=PostgreSQL
+    username: sa
+    password: sa
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.H2Dialect
+  main:
+    allow-bean-definition-overriding: true
+
+ai:
+  enabled: true
+  vector-db:
+    type: memory
+
+  providers:
+    enabled: true
+    llm-provider: openai
+    embedding-provider: onnx
+    enable-fallback: false
+
+    openai:
+      enabled: false
+
+    onnx:
+      enabled: true
+      model-path: classpath:/models/embeddings/all-MiniLM-L6-v2.onnx
+      tokenizer-path: classpath:/models/embeddings/tokenizer.json
+
+  migration:
+    enabled: true
+    default-batch-size: 50
+    entity-fields:
+      mig-test:
+        created-at-field: createdAt

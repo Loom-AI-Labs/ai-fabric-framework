@@ -1,0 +1,59 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:chat_session_it;MODE=PostgreSQL;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    show-sql: false
+  main:
+    allow-bean-definition-overriding: true
+
+ai:
+  enabled: true
+
+  intent-extraction:
+    progressive:
+      enabled: false
+
+  chat:
+    enabled: true
+    window-size: 10
+    max-context-chars: 8000
+    auto-create-sessions: true
+
+  providers:
+    enabled: true
+    llm-provider: ${LLM_PROVIDER:test-provider}
+    embedding-provider: ${EMBEDDING_PROVIDER:onnx}
+    enable-fallback: true
+
+    onnx:
+      enabled: true
+      model-path: ${ONNX_MODEL_PATH:classpath:/models/embeddings/all-MiniLM-L6-v2.onnx}
+      tokenizer-path: ${ONNX_TOKENIZER_PATH:classpath:/models/embeddings/tokenizer.json}
+      max-sequence-length: 512
+      use-gpu: false
+      model-alias: all-MiniLM-L6-v2
+
+    openai:
+      enabled: false
+    anthropic:
+      enabled: false
+    gemini:
+      enabled: false
+    cohere:
+      enabled: false
+    azure:
+      enabled: false
+
+  vector-db:
+    type: lucene
+    lucene:
+      index-path: ./target/chat-session-lucene-index
+      vector-dimension: 384
+      similarity-threshold: 0.6
+      max-results: 100
+      create-index-if-not-exists: true

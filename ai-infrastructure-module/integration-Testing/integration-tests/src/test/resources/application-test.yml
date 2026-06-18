@@ -1,0 +1,133 @@
+spring:
+  task:
+    scheduling:
+      enabled: false
+  # Database Configuration (H2 in-memory for testing)
+  datasource:
+    url: jdbc:h2:mem:testdb;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+      connection-timeout: 20000
+      auto-commit: true
+      pool-name: HikariCP-Test
+
+  # JPA Configuration - Ensure tables are created
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.H2Dialect
+        format_sql: false
+        jdbc:
+          batch_size: 20
+        # Ensure schema is created before tests run
+        hbm2ddl:
+          auto: create-drop
+        # Avoid global quoting to prevent case-sensitive table mismatches
+        globally_quoted_identifiers: false
+    open-in-view: false
+    # Don't defer - let Hibernate create schema immediately
+    defer-datasource-initialization: false
+    # Ensure Hibernate creates schema eagerly
+    generate-ddl: true
+
+  # H2 Console for debugging (disabled by default)
+  h2:
+    console:
+      enabled: false
+      path: /h2-console
+
+  # SQL Initialization
+  sql:
+    init:
+      mode: never  # Let Hibernate handle schema creation
+      continue-on-error: true
+      platform: h2
+
+  liquibase:
+    enabled: false
+
+ai:
+  enabled: true
+  indexing:
+    enabled: false
+  pii-detection:
+    enabled: true
+    mode: DETECT_ONLY
+    patterns:
+      API_KEY:
+        field-name: api_key
+        regex: "sk-[A-Za-z0-9]{12,}"
+        enabled: true
+        replacement: ""
+        confidence: 1.0
+        context-note: API key redacted
+
+  providers:
+    llm-provider: ${LLM_PROVIDER:openai}
+    embedding-provider: ${EMBEDDING_PROVIDER:onnx}
+    enable-fallback: true
+
+    onnx:
+      enabled: true
+      model-path: ${ONNX_MODEL_PATH:classpath:/models/embeddings/all-MiniLM-L6-v2.onnx}
+      tokenizer-path: ${ONNX_TOKENIZER_PATH:classpath:/models/embeddings/tokenizer.json}
+      max-sequence-length: 512
+      use-gpu: false
+      model-alias: all-MiniLM-L6-v2
+
+    openai:
+      enabled: ${OPENAI_ENABLED:false}
+      api-key: ${OPENAI_API_KEY:test-key}
+      base-url: ${OPENAI_BASE_URL:https://api.openai.com/v1}
+      model: gpt-4o-mini
+      embedding-model: text-embedding-3-small
+      max-tokens: 2000
+      temperature: 0.3
+      timeout: 60
+      priority: 100
+
+    # Enable all vector database providers for integration tests
+    # This allows tests to use any provider without additional configuration
+    milvus:
+      enabled: true
+    qdrant:
+      enabled: true
+    weaviate:
+      enabled: true
+    chroma:
+      enabled: true
+    pgvector:
+      enabled: true
+
+  # Vector Database Configuration - Lucene for fast unit tests (default)
+  # Override with -Dai.vector-db.type=<type> to use other implementations
+  # Use -Dspring.profiles.active=testcontainers with container types (milvus, qdrant, etc.) for Testcontainers
+  vector-db:
+    type: ${VECTOR_DB_TYPE:lucene}
+    lucene:
+      index-path: ./data/test-lucene-index
+      similarity-threshold: 0.7
+      max-results: 100
+
+  response-sanitization:
+    enabled: true
+    force-redaction: true
+    warning-enabled: true
+    guidance-enabled: true
+    include-suggestion-metadata: true
+    publish-events: true
+
+# Logging for Test Profile
+logging:
+  level:
+    root: INFO
+    ai.fabric: DEBUG
+    ai.fabric.embedding: DEBUG
+    org.springframework: WARN

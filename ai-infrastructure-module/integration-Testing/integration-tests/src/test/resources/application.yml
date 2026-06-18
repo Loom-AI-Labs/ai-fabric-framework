@@ -1,0 +1,6 @@
+spring:
+  scheduling:
+    enabled: false
+  task:
+    scheduling:
+      enabled: false

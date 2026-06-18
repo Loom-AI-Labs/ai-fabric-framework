@@ -1,0 +1,381 @@
+ai-entities:
+  mig-test:
+    features: ["embedding", "search"]
+    auto-process: true
+    enable-search: true
+    embeddable-fields:
+      - name: createdAt
+  product:
+    features: ["embedding", "search"]
+    enable-search: true
+    auto-process: true
+    auto-embedding: true
+    indexable: true
+    searchable-fields:
+      - name: name
+      - name: description
+  test-product:
+    features: ["embedding", "search"]
+    enable-search: true
+    auto-process: true
+    auto-embedding: true
+    indexable: true
+    searchable-fields:
+      - name: name
+      - name: description
+    embeddable-fields:
+      - name: description
+    metadata-fields:
+      - name: category
+        type: STRING
+      - name: brand
+        type: STRING
+      - name: price
+        type: DOUBLE
+  test-article:
+    features: ["embedding", "search"]
+    enable-search: true
+    auto-process: true
+    searchable-fields:
+      - name: title
+      - name: content
+      - name: summary
+    embeddable-fields:
+      - name: content
+      - name: summary
+  test-user:
+    features: ["embedding", "search"]
+    enable-search: true
+    auto-process: true
+    searchable-fields:
+      - name: firstName
+      - name: lastName
+      - name: email
+      - name: bio
+    embeddable-fields:
+      - name: bio
+  search-concurrency-product:
+    features: ["embedding", "search"]
+    enable-search: true
+    auto-process: true
+    searchable-fields:
+      - name: name
+      - name: description
+  searchpaginationproduct:
+    features: ["embedding", "search"]
+    enable-search: true
+    auto-process: true
+    searchable-fields:
+      - name: name
+      - name: description
+  plan-batch:
+    features: ["embedding", "search"]
+    enable-search: true
+    auto-process: true
+    searchable-fields:
+      - name: name
+      - name: description
+  plan-clear:
+    features: ["embedding", "search"]
+    enable-search: true
+    auto-process: true
+    searchable-fields:
+      - name: name
+      - name: description
+  custom-type:
+    features: ["embedding", "search"]
+    enable-search: true
+    auto-process: true
+    searchable-fields:
+      - name: name
+      - name: description
+  demo-type:
+    features: ["embedding", "search"]
+    enable-search: true
+    auto-process: true
+    searchable-fields:
+      - name: name
+      - name: description
+  search-cache-product:
+    features: ["embedding", "search"]
+    enable-search: true
+    auto-process: true
+    searchable-fields:
+      - name: name
+      - name: description
+  searchsemanticproduct:
+    features: ["embedding", "search"]
+    enable-search: true
+    auto-process: true
+    searchable-fields:
+      - name: name
+      - name: description
+  searchthreshold_product:
+    features: ["embedding", "search"]
+    enable-search: true
+    auto-process: true
+    searchable-fields:
+      - name: name
+      - name: description
+  searchfilterproduct:
+    features: ["embedding", "search"]
+    enable-search: true
+    auto-process: true
+    searchable-fields:
+      - name: name
+      - name: description
+  ragproducthybrid:
+    features: ["embedding", "search"]
+    enable-search: true
+    auto-process: true
+    searchable-fields:
+      - name: name
+      - name: description
+  ragproduct-metadata:
+    features: ["embedding", "search"]
+    enable-search: true
+    auto-process: true
+    searchable-fields:
+      - name: name
+      - name: description
+  ragproduct-expansion-coverage:
+    features: ["embedding", "search"]
+    enable-search: true
+    auto-process: true
+    searchable-fields:
+      - name: name
+      - name: description
+  persistvector:
+    features: ["embedding", "search"]
+    enable-search: true
+    auto-process: true
+    searchable-fields:
+      - name: name
+      - name: description
+  ragproduct-multicontext:
+    features: ["embedding", "search"]
+    enable-search: true
+    auto-process: true
+    searchable-fields:
+      - name: name
+      - name: description
+  testproduct:
+    features: ["embedding", "search"]
+    enable-search: true
+    auto-process: true
+    searchable-fields:
+      - name: name
+      - name: description
+  testvector:
+    features: ["embedding", "search"]
+    enable-search: true
+    auto-process: true
+    searchable-fields:
+      - name: name
+      - name: description
+  ragproduct:
+    features: ["embedding", "search"]
+    enable-search: true
+    auto-process: true
+    searchable-fields:
+      - name: name
+      - name: description
+  ragproduct-contextual:
+    features: ["embedding", "search"]
+    enable-search: true
+    auto-process: true
+    searchable-fields:
+      - name: name
+      - name: description
+  ragproduct-reranking:
+    features: ["embedding", "search"]
+    enable-search: true
+    auto-process: true
+    searchable-fields:
+      - name: name
+      - name: description
+  ragconversation:
+    features: ["embedding", "search"]
+    enable-search: true
+    auto-process: true
+    searchable-fields:
+      - name: name
+      - name: description
+  ragproduct-confidence:
+    features: ["embedding", "search"]
+    enable-search: true
+    auto-process: true
+    searchable-fields:
+      - name: name
+      - name: description
+  ragproduct-expansion:
+    features: ["embedding", "search"]
+    enable-search: true
+    auto-process: true
+    searchable-fields:
+      - name: name
+      - name: description
+  searchmulti_product:
+    features: ["embedding", "search"]
+    enable-search: true
+    auto-process: true
+    searchable-fields:
+      - name: name
+      - name: description
+  searchmulti_user:
+    features: ["embedding", "search"]
+    enable-search: true
+    auto-process: true
+    searchable-fields:
+      - name: name
+      - name: email
+  searchmulti_article:
+    features: ["embedding", "search"]
+    enable-search: true
+    auto-process: true
+    searchable-fields:
+      - name: title
+      - name: body
+  plan-product:
+    features: ["embedding", "search"]
+    enable-search: true
+    auto-process: true
+    searchable-fields:
+      - name: name
+      - name: description
+  plan-product-link:
+    features: ["embedding", "search"]
+    enable-search: true
+    auto-process: true
+    searchable-fields:
+      - name: name
+      - name: description
+  plan-product-update:
+    features: ["embedding", "search"]
+    enable-search: true
+    auto-process: true
+    searchable-fields:
+      - name: name
+      - name: description
+  plan-product-remove:
+    features: ["embedding", "search"]
+    enable-search: true
+    auto-process: true
+    searchable-fields:
+      - name: name
+      - name: description
+  plan-other:
+    features: ["embedding", "search"]
+    enable-search: true
+    auto-process: true
+    searchable-fields:
+      - name: name
+      - name: description
+  rag-article:
+    features: ["embedding", "search"]
+    enable-search: true
+    auto-process: true
+    searchable-fields:
+      - name: title
+      - name: body
+  plan-product-metadata:
+    features: ["embedding", "search"]
+    enable-search: true
+    auto-process: true
+    searchable-fields:
+      - name: name
+      - name: description
+  plan-query:
+    features: ["embedding", "search"]
+    enable-search: true
+    auto-process: true
+    searchable-fields:
+      - name: query
+      - name: description
+  plan-concurrent:
+    features: ["embedding", "search"]
+    enable-search: true
+    auto-process: true
+    searchable-fields:
+      - name: name
+      - name: description
+  plan-transaction:
+    features: ["embedding", "search"]
+    enable-search: true
+    auto-process: true
+    searchable-fields:
+      - name: name
+      - name: description
+  vector-update:
+    features: ["embedding", "search"]
+    enable-search: true
+    auto-process: true
+    searchable-fields:
+      - name: content
+    embeddable-fields:
+      - name: content
+    metadata-fields:
+      - name: version
+        type: STRING
+      - name: origin
+        type: STRING
+  ragcrossentityproduct:
+    features: ["embedding", "search"]
+    enable-search: true
+    auto-process: true
+    searchable-fields:
+      - name: name
+      - name: description
+    embeddable-fields:
+      - name: description
+    metadata-fields:
+      - name: recordType
+        type: STRING
+      - name: category
+        type: STRING
+      - name: priceTier
+        type: STRING
+      - name: customerTier
+        type: STRING
+      - name: relationshipSummary
+        type: STRING
+  ragcrossentitycustomer:
+    features: ["embedding", "search"]
+    enable-search: true
+    auto-process: true
+    searchable-fields:
+      - name: name
+      - name: description
+    embeddable-fields:
+      - name: description
+    metadata-fields:
+      - name: recordType
+        type: STRING
+      - name: customerTier
+        type: STRING
+      - name: segment
+        type: STRING
+      - name: month
+        type: STRING
+      - name: relationshipSummary
+        type: STRING
+  ragcrossentityorder:
+    features: ["embedding", "search"]
+    enable-search: true
+    auto-process: true
+    searchable-fields:
+      - name: name
+      - name: description
+    embeddable-fields:
+      - name: description
+    metadata-fields:
+      - name: recordType
+        type: STRING
+      - name: customerId
+        type: STRING
+      - name: customerTier
+        type: STRING
+      - name: month
+        type: STRING
+      - name: relationshipSummary
+        type: STRING

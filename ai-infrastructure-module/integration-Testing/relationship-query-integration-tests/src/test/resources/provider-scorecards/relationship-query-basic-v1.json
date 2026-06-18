@@ -1,0 +1,70 @@
+{
+  "scenarioSetId": "relationship-query-basic-v1",
+  "description": "Baseline scorecard scenarios for relationship planning and orchestrator compound handling.",
+  "scenarios": [
+    {
+      "id": "rq_plan_broad_list_brands",
+      "target": "RELATIONSHIP_QUERY_API",
+      "category": "relationship_plan",
+      "userQuery": "find all brands",
+      "entityTypes": ["brand"],
+      "expected": {
+        "mustHaveNoFilters": true,
+        "minResults": 1
+      }
+    },
+    {
+      "id": "rq_plan_nike_blue_under_100",
+      "target": "RELATIONSHIP_QUERY_API",
+      "category": "relationship_plan",
+      "userQuery": "Show me blue shoes under $100 from Nike",
+      "entityTypes": ["product"],
+      "expected": {
+        "mustIncludeLiterals": ["nike", "blue"],
+        "mustNotIncludeLiterals": ["adidas"],
+        "mustHaveNumericConstraints": [
+          { "field": "price", "op": "<", "value": 100 }
+        ],
+        "minResults": 1
+      }
+    },
+    {
+      "id": "rq_plan_cross_brand_runner_range",
+      "target": "RELATIONSHIP_QUERY_API",
+      "category": "relationship_plan",
+      "userQuery": "Show active Nike or Adidas runner shoes priced between $80 and $120 available in red or blue",
+      "entityTypes": ["product"],
+      "expected": {
+        "mustIncludeLiterals": ["nike", "adidas", "red", "blue"],
+        "mustHaveNumericConstraints": [
+          { "field": "price", "op": "between", "min": 80, "max": 120 }
+        ],
+        "minResults": 1
+      }
+    },
+    {
+      "id": "rq_plan_mirror_counterparty_owner_match",
+      "target": "RELATIONSHIP_QUERY_API",
+      "category": "relationship_plan",
+      "userQuery": "Find high-risk wire transfers above $30k where the destination account owner matches the source account owner",
+      "entityTypes": ["transaction"],
+      "expected": {
+        "mustHaveNumericConstraints": [
+          { "field": "amount", "op": ">", "value": 30000 }
+        ],
+        "mustHaveCrossEntityComparison": true,
+        "minResults": 1
+      }
+    },
+    {
+      "id": "orch_compound_relational_only",
+      "target": "ORCHESTRATOR",
+      "category": "compound_handling",
+      "userQuery": "relationship query: find all brands and then summarize them",
+      "expected": {
+        "relationalQueryMustContain": ["find all brands"],
+        "relationalQueryMustNotContain": ["summarize"]
+      }
+    }
+  ]
+}
