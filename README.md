@@ -13,7 +13,7 @@ modules → use cases → examples → quickstart). Latest release: **0.2.1** �
 - orchestration and intent/action primitives
 - RAG and retrieval abstractions
 - indexing and data-sync modules
-- provider modules for OpenAI, Azure OpenAI, Anthropic, Cohere, Gemini, and ONNX
+- Spring AI-backed provider module for cloud LLMs/embeddings, plus native and Spring AI ONNX local embeddings
 - vector modules for Lucene, memory, Pinecone, Qdrant, Weaviate, and Milvus
 - curated generic prompt/action packs
 - optional runtime, web, governance, PII, migration, chat-session, behavior, and connector modules
@@ -22,7 +22,7 @@ modules → use cases → examples → quickstart). Latest release: **0.2.1** �
 
 - Java 21
 - Maven 3.9+
-- Spring Boot 3.2.x
+- Spring Boot 4.1.x
 
 ## Install Locally
 
@@ -62,7 +62,7 @@ Example dependency set:
 
   <dependency>
     <groupId>io.github.loom-ai-labs</groupId>
-    <artifactId>ai-fabric-provider-openai</artifactId>
+    <artifactId>ai-fabric-provider-spring-ai</artifactId>
   </dependency>
 
   <dependency>

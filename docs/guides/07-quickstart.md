@@ -188,7 +188,7 @@ search.
 
 Switch from the offline local providers to real backends by **changing configuration, not code**:
 
-- Add a real embedding/LLM provider (e.g. `ai-fabric-provider-openai`) and set
+- Add a real embedding/LLM provider (e.g. `ai-fabric-provider-spring-ai`) and set
   `ai.providers.embedding-provider` / `ai.providers.llm-provider` + the API key.
 - Point `ai.vector-db.type` at a managed store (e.g. `qdrant`) and add `ai-fabric-vector-qdrant`.
 - Layer on RAG (`ai-fabric-rag`), NL→query (`ai-fabric-relationship-query`), PII

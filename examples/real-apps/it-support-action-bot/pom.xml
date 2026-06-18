@@ -61,7 +61,7 @@
         <!-- Choose one LLM provider -->
         <dependency>
             <groupId>io.github.loom-ai-labs</groupId>
-            <artifactId>ai-fabric-provider-openai</artifactId>
+            <artifactId>ai-fabric-provider-spring-ai</artifactId>
             <version>${ai-fabric.version}</version>
         </dependency>
 

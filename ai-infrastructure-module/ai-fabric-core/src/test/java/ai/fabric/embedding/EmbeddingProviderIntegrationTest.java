@@ -22,6 +22,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * Tests the EmbeddingProvider abstraction with different providers:
  * - ONNXEmbeddingProvider (default)
  * - OpenAIEmbeddingProvider (if configured)
+ * - Spring AI ONNX embedding provider (if explicitly configured)
  * 
  * @author AI Infrastructure Team
  * @version 2.0.0
@@ -50,8 +51,8 @@ public class EmbeddingProviderIntegrationTest {
         // Test that embedding provider is configured
         assertNotNull(embeddingProvider, "EmbeddingProvider should be configured");
         assertNotNull(embeddingProvider.getProviderName(), "Provider name should be available");
-        assertTrue(embeddingProvider.getProviderName().matches("onnx|openai"),
-                   "Provider should be onnx or openai");
+        assertTrue(embeddingProvider.getProviderName().matches("onnx|spring-ai-onnx|openai"),
+                   "Provider should be onnx, spring-ai-onnx, or openai");
     }
     
     @Test

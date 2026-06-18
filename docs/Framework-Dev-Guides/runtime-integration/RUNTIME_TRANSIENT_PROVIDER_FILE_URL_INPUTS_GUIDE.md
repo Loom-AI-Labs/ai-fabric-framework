@@ -160,11 +160,9 @@ Provider contract enforcement:
 
 Provider adapters:
 
-- `ai-infrastructure-module/providers/ai-infrastructure-provider-openai/src/main/java/com/ai/infrastructure/provider/openai/OpenAIProvider.java`
-- `ai-infrastructure-module/providers/ai-infrastructure-provider-azure/src/main/java/com/ai/infrastructure/provider/azure/AzureOpenAIProvider.java`
-- `ai-infrastructure-module/providers/ai-infrastructure-provider-anthropic/src/main/java/com/ai/infrastructure/provider/anthropic/AnthropicProvider.java`
-- `ai-infrastructure-module/providers/ai-infrastructure-provider-gemini/src/main/java/com/ai/infrastructure/provider/gemini/GeminiProvider.java`
-- `ai-infrastructure-module/providers/ai-infrastructure-provider-cohere/src/main/java/com/ai/infrastructure/provider/cohere/CohereProvider.java`
+- `ai-infrastructure-module/providers/ai-fabric-provider-spring-ai/src/main/java/ai/fabric/provider/springai/SpringAiChatProvider.java`
+- `ai-infrastructure-module/providers/ai-fabric-provider-spring-ai/src/main/java/ai/fabric/provider/springai/SpringAiPromptMapper.java`
+- `ai-infrastructure-module/providers/ai-fabric-provider-spring-ai/src/main/java/ai/fabric/provider/springai/SpringAiModelResolver.java`
 
 ## Verification Commands
 
@@ -183,8 +181,7 @@ mvn -f ai-infrastructure-module/ai-infrastructure-core/pom.xml -q -Dtest=Transie
 Provider-focused tests:
 
 ```bash
-mvn -f ai-infrastructure-module/pom.xml -q -pl providers/ai-infrastructure-provider-openai,providers/ai-infrastructure-provider-azure -am -Dtest=OpenAIProviderTest,AzureOpenAIProviderTest test
-mvn -f ai-infrastructure-module/pom.xml -q -pl providers/ai-infrastructure-provider-anthropic,providers/ai-infrastructure-provider-gemini,providers/ai-infrastructure-provider-cohere -am -Dtest=AnthropicProviderTest,GeminiProviderTest,CohereProviderTest test
+mvn -f ai-infrastructure-module/pom.xml -q -pl providers/ai-fabric-provider-spring-ai -am -Dtest='SpringAi*' -Dsurefire.failIfNoSpecifiedTests=false test
 ```
 
 Cross-provider integration contract:
@@ -196,7 +193,7 @@ mvn -f ai-infrastructure-module/integration-Testing/integration-tests/pom.xml -q
 Broad affected-module regression:
 
 ```bash
-mvn -f ai-infrastructure-module/pom.xml -q -pl ai-infrastructure-core,ai-fabric-runtime,providers/ai-infrastructure-provider-openai,providers/ai-infrastructure-provider-anthropic,providers/ai-infrastructure-provider-gemini,providers/ai-infrastructure-provider-azure,providers/ai-infrastructure-provider-cohere -am test
+mvn -f ai-infrastructure-module/pom.xml -q -pl ai-fabric-core,providers/ai-fabric-provider-spring-ai -am test
 ```
 
 Whitespace check:

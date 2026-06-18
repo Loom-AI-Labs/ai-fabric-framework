@@ -6,7 +6,7 @@ import ai.fabric.behavior.model.SentimentLabel;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
+import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 import org.springframework.test.context.junit.jupiter.SpringExtension;
@@ -20,7 +20,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @ExtendWith(SpringExtension.class)
-@org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest(properties = {
+@DataJpaTest(properties = {
     "spring.jpa.hibernate.ddl-auto=create-drop",
     "spring.datasource.url=jdbc:h2:mem:behavior_repo;MODE=PostgreSQL;DATABASE_TO_UPPER=false;DEFAULT_NULL_ORDERING=HIGH",
     "spring.datasource.driverClassName=org.h2.Driver",
@@ -122,7 +122,7 @@ class BehaviorInsightsRepositoryTest {
     @org.springframework.boot.SpringBootConfiguration
     @org.springframework.boot.autoconfigure.EnableAutoConfiguration
     @EnableJpaRepositories(basePackageClasses = BehaviorInsightsRepository.class)
-    @org.springframework.boot.autoconfigure.domain.EntityScan(basePackageClasses = BehaviorInsights.class)
+    @org.springframework.boot.persistence.autoconfigure.EntityScan(basePackageClasses = BehaviorInsights.class)
     static class TestConfig {
     }
 }

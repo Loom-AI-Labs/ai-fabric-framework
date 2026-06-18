@@ -47,7 +47,7 @@ bean and select it by name.
 
 1. You add `@EnableAIInfrastructure` and the `ai-fabric-starter`.
 2. Core auto-configuration registers the shared services and scans the framework's feature packages.
-3. Each **provider module** you add (e.g. `ai-fabric-provider-openai`) contributes its provider bean,
+3. Each **provider module** you add (e.g. `ai-fabric-provider-spring-ai`) contributes its provider bean,
    gated by `@ConditionalOnProperty` on `ai.providers.<name>.enabled`.
 4. Each **vector module** (e.g. `ai-fabric-vector-lucene`) contributes a `VectorDatabaseService`,
    gated by `ai.vector-db.type`.

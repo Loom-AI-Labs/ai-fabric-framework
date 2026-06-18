@@ -48,7 +48,7 @@ class AdvancedRAGMetadataFilteringIntegrationTest {
     @Autowired
     private VectorManagementService vectorManagementService;
 
-    @org.springframework.boot.test.mock.mockito.MockBean
+    @org.springframework.test.context.bean.override.mockito.MockitoBean
     private AICoreService aiCoreService;
 
     @BeforeEach

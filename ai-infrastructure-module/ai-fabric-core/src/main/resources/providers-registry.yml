@@ -89,6 +89,20 @@ providers:
       supportedFeatures:
         - "local_execution"
         - "no_api_key"
+
+    spring-ai-onnx:
+      name: "spring-ai-onnx"
+      displayName: "Spring AI ONNX Transformers"
+      apiKeyEnvVar: null
+      required: false
+      enabled: true
+      description: "Spring AI TransformersEmbeddingModel local ONNX embedding provider"
+      defaultModel: "all-MiniLM-L6-v2"
+      dimensions: 384
+      supportedFeatures:
+        - "spring_ai_execution"
+        - "local_execution"
+        - "no_api_key"
       
     openai:
       name: "openai"

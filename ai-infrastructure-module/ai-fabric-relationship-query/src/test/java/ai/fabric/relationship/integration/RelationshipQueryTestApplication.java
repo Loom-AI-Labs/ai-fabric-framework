@@ -9,7 +9,7 @@ import ai.fabric.repository.IntentHistoryRepository;
 import ai.fabric.vector.lucene.LuceneVectorAutoConfiguration;
 import org.springframework.boot.SpringBootConfiguration;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
-import org.springframework.boot.autoconfigure.domain.EntityScan;
+import org.springframework.boot.persistence.autoconfigure.EntityScan;
 import org.springframework.context.annotation.Import;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 
@@ -31,4 +31,3 @@ import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
     RelationshipQueryAutoConfiguration.class
 })
 public class RelationshipQueryTestApplication {}
-

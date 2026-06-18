@@ -20,11 +20,11 @@ Add one or more; select the active one with `ai.providers.llm-provider`.
 
 | Module | Provider |
 |--------|----------|
-| `ai-fabric-provider-openai` | OpenAI |
-| `ai-fabric-provider-azure` | Azure OpenAI |
-| `ai-fabric-provider-anthropic` | Anthropic |
-| `ai-fabric-provider-cohere` | Cohere |
-| `ai-fabric-provider-gemini` | Google Gemini |
+| `ai-fabric-provider-spring-ai` | OpenAI |
+| `ai-fabric-provider-spring-ai` | Azure OpenAI |
+| `ai-fabric-provider-spring-ai` | Anthropic |
+| `ai-fabric-provider-spring-ai` | Cohere |
+| `ai-fabric-provider-spring-ai` | Google Gemini |
 | `ai-fabric-provider-starter` | Convenience aggregator for provider wiring. |
 
 ## Embedding providers

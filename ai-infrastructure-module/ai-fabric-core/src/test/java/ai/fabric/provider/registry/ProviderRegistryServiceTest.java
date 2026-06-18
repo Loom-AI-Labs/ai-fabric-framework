@@ -55,6 +55,7 @@ class ProviderRegistryServiceTest {
             .toList();
         
         assertTrue(names.contains("onnx"), "Should include ONNX");
+        assertTrue(names.contains("spring-ai-onnx"), "Should include Spring AI ONNX");
         assertTrue(names.contains("openai"), "Should include OpenAI");
         assertTrue(names.contains("gemini"), "Should include Gemini");
         assertTrue(names.contains("cohere"), "Should include Cohere");
@@ -111,6 +112,7 @@ class ProviderRegistryServiceTest {
         assertNotNull(embeddingNames);
         assertFalse(embeddingNames.isEmpty());
         assertTrue(embeddingNames.contains("onnx"));
+        assertTrue(embeddingNames.contains("spring-ai-onnx"));
     }
 
     @Test
@@ -131,5 +133,9 @@ class ProviderRegistryServiceTest {
         assertNotNull(onnxVars);
         // ONNX doesn't require API key
         assertTrue(onnxVars.isEmpty() || !onnxVars.contains("OPENAI_API_KEY"));
+
+        List<String> springAiOnnxVars = registry.getRequiredEnvVars("spring-ai-onnx", ProviderType.EMBEDDING);
+        assertNotNull(springAiOnnxVars);
+        assertTrue(springAiOnnxVars.isEmpty() || !springAiOnnxVars.contains("OPENAI_API_KEY"));
     }
 }

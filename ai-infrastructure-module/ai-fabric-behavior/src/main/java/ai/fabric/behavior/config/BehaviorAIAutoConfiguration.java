@@ -20,8 +20,8 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 @AutoConfigurationPackage(basePackages = "ai.fabric.behavior")
 @AutoConfigureAfter(AIInfrastructureAutoConfiguration.class)
 @AutoConfigureBefore({
-    org.springframework.boot.autoconfigure.orm.jpa.HibernateJpaAutoConfiguration.class,
-    org.springframework.boot.autoconfigure.data.jpa.JpaRepositoriesAutoConfiguration.class
+    org.springframework.boot.hibernate.autoconfigure.HibernateJpaAutoConfiguration.class,
+    org.springframework.boot.data.jpa.autoconfigure.DataJpaRepositoriesAutoConfiguration.class
 })
 @ConditionalOnProperty(prefix = "ai.behavior", name = "enabled", havingValue = "true")
 @RequiredArgsConstructor

@@ -44,7 +44,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
-import org.springframework.boot.web.client.RestTemplateBuilder;
+import org.springframework.boot.restclient.RestTemplateBuilder;
 import org.springframework.cache.CacheManager;
 import org.springframework.cache.support.NoOpCacheManager;
 import org.springframework.context.annotation.Bean;
@@ -80,8 +80,8 @@ import jakarta.persistence.EntityManagerFactory;
     "ai.fabric.repository"
 })
 @AutoConfigureBefore({
-    org.springframework.boot.autoconfigure.orm.jpa.HibernateJpaAutoConfiguration.class,
-    org.springframework.boot.autoconfigure.data.jpa.JpaRepositoriesAutoConfiguration.class
+    org.springframework.boot.hibernate.autoconfigure.HibernateJpaAutoConfiguration.class,
+    org.springframework.boot.data.jpa.autoconfigure.DataJpaRepositoriesAutoConfiguration.class
 })
 @EnableConfigurationProperties({
     AIProviderConfig.class,
@@ -206,6 +206,12 @@ public class AIInfrastructureAutoConfiguration {
     @ConditionalOnMissingBean(Clock.class)
     public Clock systemClock() {
         return Clock.systemUTC();
+    }
+
+    @Bean
+    @ConditionalOnMissingBean(ObjectMapper.class)
+    public ObjectMapper aiFabricObjectMapper() {
+        return new ObjectMapper().findAndRegisterModules();
     }
 
     @Bean

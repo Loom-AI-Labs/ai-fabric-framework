@@ -46,7 +46,7 @@ The **starter** brings in the core auto-configuration. Then add one **LLM provid
   <!-- An LLM provider (choose one or more) -->
   <dependency>
     <groupId>io.github.loom-ai-labs</groupId>
-    <artifactId>ai-fabric-provider-openai</artifactId>
+    <artifactId>ai-fabric-provider-spring-ai</artifactId>
   </dependency>
 
   <!-- Local embeddings via ONNX (no API calls) -->

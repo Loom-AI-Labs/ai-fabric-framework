@@ -65,7 +65,6 @@ public class IntentHistoryService {
             String metadataJson = serializeResult(result.getMetadata());
 
             IntentHistory history = IntentHistory.builder()
-                .id(UUID.randomUUID().toString())
                 .userId(userId)
                 .sessionId(StringUtils.hasText(sessionId) ? sessionId : UUID.randomUUID().toString())
                 .redactedQuery(sanitizedQuery)

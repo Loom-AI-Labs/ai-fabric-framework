@@ -115,6 +115,7 @@ public class AIProviderConfig {
     private final CohereConfig cohere = new CohereConfig();
     private final GeminiConfig gemini = new GeminiConfig();
     private final ONNXConfig onnx = new ONNXConfig();
+    private final SpringAiOnnxConfig springAiOnnx = new SpringAiOnnxConfig();
     private final PineconeConfig pinecone = new PineconeConfig();
     private final WeaviateConfig weaviate = new WeaviateConfig();
     private final QdrantConfig qdrant = new QdrantConfig();
@@ -186,6 +187,7 @@ public class AIProviderConfig {
             case "cohere" -> cohere.toEmbeddingDefaults("cohere");
             case "onnx" ->
                 onnx.toEmbeddingDefaults("onnx");
+            case "spring-ai-onnx" -> springAiOnnx.toEmbeddingDefaults("spring-ai-onnx");
             default -> onnx.toEmbeddingDefaults("onnx");
         };
     }
@@ -535,6 +537,23 @@ public class AIProviderConfig {
         private Integer maxSequenceLength = 512;
         private Boolean useGpu = false;
         private String modelAlias;
+
+        EmbeddingDefaults toEmbeddingDefaults(String providerName) {
+            return new EmbeddingDefaults(providerName, modelAlias);
+        }
+    }
+
+    @Data
+    public static class SpringAiOnnxConfig {
+        private boolean enabled = true;
+        private String modelUri;
+        private String tokenizerUri;
+        private Boolean cacheEnabled = true;
+        private String cacheDirectory;
+        private Integer gpuDeviceId = -1;
+        private String modelOutputName;
+        private String modelAlias = "all-MiniLM-L6-v2";
+        private Integer dimensions = 384;
 
         EmbeddingDefaults toEmbeddingDefaults(String providerName) {
             return new EmbeddingDefaults(providerName, modelAlias);

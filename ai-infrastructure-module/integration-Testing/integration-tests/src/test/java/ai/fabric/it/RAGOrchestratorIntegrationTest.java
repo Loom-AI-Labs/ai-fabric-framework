@@ -38,7 +38,7 @@ import org.junit.jupiter.api.Disabled;
 import org.mockito.InOrder;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.TestPropertySource;
 
@@ -54,25 +54,25 @@ class RAGOrchestratorIntegrationTest {
     @Autowired
     private RAGOrchestrator orchestrator;
 
-    @MockBean
+    @MockitoBean
     private AISecurityService securityService;
 
-    @MockBean
+    @MockitoBean
     private AIAccessControlService accessControlService;
 
-    @MockBean
+    @MockitoBean
     private AIComplianceService complianceService;
 
-    @MockBean
+    @MockitoBean
     private IntentQueryExtractor intentQueryExtractor;
 
-    @MockBean
+    @MockitoBean
     private AIActionRegistry actionHandlerRegistry;
 
-    @MockBean
+    @MockitoBean
     private RAGProvider ragProvider;
 
-    @MockBean
+    @MockitoBean
     private ResponseSanitizer responseSanitizer;
 
     private AIActionHandler actionHandler;

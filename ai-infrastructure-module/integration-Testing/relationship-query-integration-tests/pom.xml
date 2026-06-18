@@ -39,30 +39,9 @@
             <artifactId>ai-fabric-relationship-query</artifactId>
             <version>${project.version}</version>
         </dependency>
-
         <dependency>
             <groupId>io.github.loom-ai-labs</groupId>
-            <artifactId>ai-fabric-provider-openai</artifactId>
-            <version>${project.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>io.github.loom-ai-labs</groupId>
-            <artifactId>ai-fabric-provider-anthropic</artifactId>
-            <version>${project.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>io.github.loom-ai-labs</groupId>
-            <artifactId>ai-fabric-provider-gemini</artifactId>
-            <version>${project.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>io.github.loom-ai-labs</groupId>
-            <artifactId>ai-fabric-provider-cohere</artifactId>
-            <version>${project.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>io.github.loom-ai-labs</groupId>
-            <artifactId>ai-fabric-provider-azure</artifactId>
+            <artifactId>ai-fabric-provider-spring-ai</artifactId>
             <version>${project.version}</version>
         </dependency>
         <dependency>
@@ -78,6 +57,12 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-resttestclient</artifactId>
+            <version>${spring-boot.version}</version>
             <scope>test</scope>
         </dependency>
 

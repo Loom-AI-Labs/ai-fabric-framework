@@ -66,6 +66,21 @@ ai:
       use-gpu: false
 ```
 
+Native `onnx` remains the default local embedding path. To use Spring AI's bundled
+transformer ONNX path instead, select `spring-ai-onnx`:
+
+```yaml
+ai:
+  providers:
+    embedding-provider: spring-ai-onnx
+    spring-ai-onnx:
+      model-uri: ${SPRING_AI_ONNX_MODEL_URI:}
+      tokenizer-uri: ${SPRING_AI_ONNX_TOKENIZER_URI:}
+      cache-enabled: true
+      gpu-device-id: -1
+      dimensions: 384
+```
+
 ## Vector store (`ai.vector-db.*`)
 
 ```yaml

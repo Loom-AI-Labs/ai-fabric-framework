@@ -13,7 +13,7 @@ import org.mockito.ArgumentMatchers;
 import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.cache.Cache;
 import org.springframework.cache.CacheManager;
 import org.springframework.context.annotation.Import;
@@ -43,10 +43,10 @@ class EmbeddingProviderFallbackDisabledIntegrationTest {
     @Autowired
     private CacheManager cacheManager;
 
-    @MockBean(name = "openAIEmbeddingProvider")
+    @MockitoBean(name = "openAIEmbeddingProvider")
     private EmbeddingProvider primaryEmbeddingProvider;
 
-    @MockBean(name = "onnxFallbackEmbeddingProvider")
+    @MockitoBean(name = "onnxFallbackEmbeddingProvider")
     private EmbeddingProvider fallbackEmbeddingProvider;
 
     private Cache cache;

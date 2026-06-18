@@ -21,7 +21,7 @@ import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.mock.mockito.SpyBean;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -71,10 +71,10 @@ public class RealAPIMultiProviderFailoverIntegrationTest {
     @Autowired
     private ResponseSanitizationProperties sanitizationProperties;
 
-    @SpyBean
+    @MockitoSpyBean
     private IntentQueryExtractor intentQueryExtractor;
 
-    @SpyBean
+    @MockitoSpyBean
     private AICoreService aiCoreService;
 
     private final AtomicInteger callCount = new AtomicInteger(0);

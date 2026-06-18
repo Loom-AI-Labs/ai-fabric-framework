@@ -21,7 +21,7 @@ closest matches.
 
 **Solution:** retrieve relevant content from the vector store and pass it as context to the LLM.
 
-- Modules: search stack above + an LLM provider (`ai-fabric-provider-openai`) + `ai-fabric-rag`.
+- Modules: search stack above + an LLM provider (`ai-fabric-provider-spring-ai`) + `ai-fabric-rag`.
 - Example: **smart-faq-assistant** (optional RAG), **cloud-qdrant-openai-vector-search**.
 
 ## Natural language → database queries
@@ -40,7 +40,7 @@ entities, executes it, and returns results.
 
 **Solution:** swap the vector store and embedding provider via configuration — no code change.
 
-- Modules: `ai-fabric-vector-qdrant`, `ai-fabric-provider-openai` (embeddings), `ai-fabric-rag`.
+- Modules: `ai-fabric-vector-qdrant`, `ai-fabric-provider-spring-ai` (embeddings), `ai-fabric-rag`.
 - Example: **cloud-qdrant-openai-vector-search** (Postgres + Qdrant + OpenAI).
 
 ## Privacy-first, customer-facing AI

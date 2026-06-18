@@ -93,6 +93,52 @@ class AIProviderConfigValidatorTest {
     }
 
     @Test
+    void shouldPassValidation_whenSpringAiOnnxEmbeddingProviderIsSelected() {
+        AIProviderConfig providerConfig = configuredOpenAiLlm();
+        providerConfig.setEmbeddingProvider("spring-ai-onnx");
+
+        AIProviderConfigValidator validator = new AIProviderConfigValidator(providerConfig, serviceConfig());
+        AIProviderConfigValidator.ValidationResult result = validator.validate();
+
+        assertThat(result.isValid()).isTrue();
+        assertThat(result.errors()).isEmpty();
+    }
+
+    @Test
+    void shouldFailValidation_whenSpringAiOnnxEmbeddingProviderIsDisabled() {
+        AIProviderConfig providerConfig = configuredOpenAiLlm();
+        providerConfig.setEmbeddingProvider("spring-ai-onnx");
+        providerConfig.getSpringAiOnnx().setEnabled(false);
+
+        AIProviderConfigValidator validator = new AIProviderConfigValidator(providerConfig, serviceConfig());
+        AIProviderConfigValidator.ValidationResult result = validator.validate();
+
+        assertThat(result.isValid()).isFalse();
+        assertThat(result.errors())
+            .extracting(AIProviderConfigValidator.ValidationIssue::key)
+            .contains("ai.providers.spring-ai-onnx.enabled");
+    }
+
+    @Test
+    void shouldFailValidation_whenSpringAiOnnxEmbeddingProviderHasInvalidRuntimeSettings() {
+        AIProviderConfig providerConfig = configuredOpenAiLlm();
+        providerConfig.setEmbeddingProvider("spring-ai-onnx");
+        providerConfig.getSpringAiOnnx().setDimensions(0);
+        providerConfig.getSpringAiOnnx().setGpuDeviceId(-2);
+
+        AIProviderConfigValidator validator = new AIProviderConfigValidator(providerConfig, serviceConfig());
+        AIProviderConfigValidator.ValidationResult result = validator.validate();
+
+        assertThat(result.isValid()).isFalse();
+        assertThat(result.errors())
+            .extracting(AIProviderConfigValidator.ValidationIssue::key)
+            .contains(
+                "ai.providers.spring-ai-onnx.dimensions",
+                "ai.providers.spring-ai-onnx.gpu-device-id"
+            );
+    }
+
+    @Test
     void shouldValidatePurposeSpecificLlmWhenGlobalIsDisabled() {
         AIProviderConfig providerConfig = new AIProviderConfig();
         providerConfig.setLlmProvider("none"); // disable global provider
@@ -122,5 +168,23 @@ class AIProviderConfigValidatorTest {
         assertThat(result.isValid()).isTrue();
         assertThat(result.errors()).isEmpty();
         assertThat(result.warnings()).isNotEmpty();
+    }
+
+    private AIProviderConfig configuredOpenAiLlm() {
+        AIProviderConfig providerConfig = new AIProviderConfig();
+        providerConfig.setLlmProvider("openai");
+        providerConfig.getOpenai().setEnabled(true);
+        providerConfig.getOpenai().setApiKey("sk-test");
+        providerConfig.getOpenai().setBaseUrl("https://api.openai.com/v1");
+        providerConfig.getOpenai().setModel("gpt-4o-mini");
+        return providerConfig;
+    }
+
+    private AIServiceConfig serviceConfig() {
+        AIServiceConfig serviceConfig = new AIServiceConfig();
+        serviceConfig.setDefaultTimeout(30);
+        serviceConfig.setMaxRetries(3);
+        serviceConfig.setThreadPoolSize(10);
+        return serviceConfig;
     }
 }

@@ -289,7 +289,8 @@ Signal:
 Investigate:
 
 - [IntentHandlingStep.java](/Users/mahmoudashraf/Downloads/Projects/TheBaseRepo/ai-infrastructure-module/ai-infrastructure-core/src/main/java/com/ai/infrastructure/intent/orchestration/pipeline/steps/IntentHandlingStep.java)
-- [OpenAIProvider.java](/Users/mahmoudashraf/Downloads/Projects/TheBaseRepo/ai-infrastructure-module/providers/ai-infrastructure-provider-openai/src/main/java/com/ai/infrastructure/provider/openai/OpenAIProvider.java)
+- [SpringAiChatProvider.java](/Users/mahmoudashraf/Downloads/Projects/AI-Fabric-Framework/ai-infrastructure-module/providers/ai-fabric-provider-spring-ai/src/main/java/ai/fabric/provider/springai/SpringAiChatProvider.java)
+- [SpringAiModelResolver.java](/Users/mahmoudashraf/Downloads/Projects/AI-Fabric-Framework/ai-infrastructure-module/providers/ai-fabric-provider-spring-ai/src/main/java/ai/fabric/provider/springai/SpringAiModelResolver.java)
 - deployment prompt budgets and response profiles:
   - [PromptsPage.tsx](/Users/mahmoudashraf/Downloads/Projects/TheBaseRepo/Platfrom/ui/src/pages/PromptsPage.tsx)
   - [OrchestrationPolicyResolutionStep.java](/Users/mahmoudashraf/Downloads/Projects/TheBaseRepo/ai-infrastructure-module/ai-infrastructure-core/src/main/java/com/ai/infrastructure/intent/orchestration/pipeline/steps/OrchestrationPolicyResolutionStep.java)
