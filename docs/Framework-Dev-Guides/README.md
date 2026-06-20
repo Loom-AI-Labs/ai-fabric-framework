@@ -84,9 +84,10 @@ For RAG, vector, and provider work:
 For release and verification:
 
 1. `testing-verification/VERIFICATION_PLAYBOOK.md`
-2. `testing-verification/GITHUB_ACTIONS_VERIFICATION_SUITE_GUIDE.md`
-3. `testing-verification/PLATFORM_REGRESSION_AND_LIVE_ADMIN_VERIFICATION_GUIDE.md`
-4. `deployment-operations/PLATFORM_HOSTED_DEPLOYMENT_VERIFICATION_GUIDE.md`
+2. `testing-verification/CI_PIPELINE_GUIDE.md`
+3. `testing-verification/GITHUB_ACTIONS_VERIFICATION_SUITE_GUIDE.md`
+4. `testing-verification/PLATFORM_REGRESSION_AND_LIVE_ADMIN_VERIFICATION_GUIDE.md`
+5. `deployment-operations/PLATFORM_HOSTED_DEPLOYMENT_VERIFICATION_GUIDE.md`
 
 ## Copy Policy
 
