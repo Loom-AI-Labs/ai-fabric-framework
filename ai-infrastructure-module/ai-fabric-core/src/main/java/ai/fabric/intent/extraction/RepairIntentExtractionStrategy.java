@@ -97,7 +97,7 @@ public class RepairIntentExtractionStrategy {
             }
 
             String sanitized = jsonSupport.stripCodeFences(repairedContent);
-            MultiIntentResponse parsed = jsonSupport.parseResponse(sanitized);
+            MultiIntentResponse parsed = jsonSupport.parseResponse(repairedContent);
             IntentExtractionValidator.ValidationResult validation = validator.validate(parsed);
 
             return ExtractionAttempt.builder()

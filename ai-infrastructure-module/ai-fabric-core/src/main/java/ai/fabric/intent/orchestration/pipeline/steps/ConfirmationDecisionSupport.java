@@ -1,5 +1,8 @@
 package ai.fabric.intent.orchestration.pipeline.steps;
 
+import ai.fabric.llm.structured.StructuredJsonExtraction;
+import ai.fabric.llm.structured.StructuredJsonExtractor;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.util.StringUtils;
 
@@ -10,6 +13,9 @@ import java.util.Map;
  * Pure helpers for confirmation-loop parameter matching and LLM decision parsing.
  */
 final class ConfirmationDecisionSupport {
+
+    private static final StructuredJsonExtractor STRUCTURED_JSON_EXTRACTOR = new StructuredJsonExtractor();
+    private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {};
 
     private ConfirmationDecisionSupport() {
     }
@@ -88,8 +94,7 @@ final class ConfirmationDecisionSupport {
         ObjectMapper effectiveMapper = mapper != null ? mapper : new ObjectMapper();
 
         try {
-            @SuppressWarnings("unchecked")
-            Map<String, Object> map = effectiveMapper.readValue(content, Map.class);
+            Map<String, Object> map = parseJsonMap(content, effectiveMapper);
             Object value = map != null ? map.get("decision") : null;
             if (!(value instanceof String text) || !StringUtils.hasText(text)) {
                 return ConfirmationResolutionDecision.UNKNOWN;
@@ -114,8 +119,7 @@ final class ConfirmationDecisionSupport {
         ObjectMapper effectiveMapper = mapper != null ? mapper : new ObjectMapper();
 
         try {
-            @SuppressWarnings("unchecked")
-            Map<String, Object> map = effectiveMapper.readValue(content, Map.class);
+            Map<String, Object> map = parseJsonMap(content, effectiveMapper);
             Object value = map != null ? map.get("confidence") : null;
             if (value instanceof Number number) {
                 double raw = number.doubleValue();
@@ -128,6 +132,14 @@ final class ConfirmationDecisionSupport {
             // ignore
         }
         return 0.0d;
+    }
+
+    private static Map<String, Object> parseJsonMap(String content, ObjectMapper mapper) throws java.io.IOException {
+        StructuredJsonExtraction extraction = STRUCTURED_JSON_EXTRACTOR.extractFirstJson(content);
+        if (!extraction.jsonFound() || !StringUtils.hasText(extraction.payload())) {
+            return Map.of();
+        }
+        return mapper.readValue(extraction.payload(), MAP_TYPE);
     }
 
     private static boolean mapEquivalentOrSubset(Map<?, ?> currentMap, Map<?, ?> pendingMap) {

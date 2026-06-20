@@ -57,6 +57,21 @@ class ConfirmationDecisionSupportTest {
     }
 
     @Test
+    void shouldParseWrappedConfirmationJson() {
+        String wrapped = """
+            Model rationale omitted.
+            ```json
+            {"decision":"approved","confidence":0.64}
+            ```
+            """;
+
+        assertThat(ConfirmationDecisionSupport.parseConfirmationDecision(wrapped, mapper))
+            .isEqualTo(ConfirmationResolutionDecision.POSITIVE);
+        assertThat(ConfirmationDecisionSupport.parseConfirmationConfidence(wrapped, mapper))
+            .isEqualTo(0.64d);
+    }
+
+    @Test
     void shouldClampParsedConfidence() {
         assertThat(ConfirmationDecisionSupport.parseConfirmationConfidence("{\"confidence\":0.72}", mapper))
             .isEqualTo(0.72d);

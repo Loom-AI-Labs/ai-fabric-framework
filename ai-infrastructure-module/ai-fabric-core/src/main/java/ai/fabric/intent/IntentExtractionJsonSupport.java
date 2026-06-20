@@ -2,11 +2,15 @@ package ai.fabric.intent;
 
 import ai.fabric.dto.MultiIntentResponse;
 import ai.fabric.exception.AIServiceException;
+import ai.fabric.llm.structured.StructuredJsonExtraction;
+import ai.fabric.llm.structured.StructuredJsonExtractor;
+import ai.fabric.llm.structured.StructuredJsonProviderHints;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.json.JsonReadFeature;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
@@ -19,8 +23,11 @@ import java.util.Map;
 public class IntentExtractionJsonSupport {
 
     private final ObjectMapper objectMapper;
+    private final StructuredJsonExtractor structuredJsonExtractor;
 
-    public IntentExtractionJsonSupport(ObjectMapper objectMapper) {
+    @Autowired
+    public IntentExtractionJsonSupport(ObjectMapper objectMapper, StructuredJsonExtractor structuredJsonExtractor) {
+        this.structuredJsonExtractor = structuredJsonExtractor != null ? structuredJsonExtractor : new StructuredJsonExtractor();
         this.objectMapper = objectMapper.copy()
             .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
             .configure(DeserializationFeature.ACCEPT_EMPTY_ARRAY_AS_NULL_OBJECT, true)
@@ -32,86 +39,47 @@ public class IntentExtractionJsonSupport {
             .configure(JsonReadFeature.ALLOW_TRAILING_COMMA.mappedFeature(), true);
     }
 
+    public IntentExtractionJsonSupport(ObjectMapper objectMapper) {
+        this(objectMapper, new StructuredJsonExtractor());
+    }
+
     public ObjectMapper objectMapper() {
         return objectMapper;
     }
 
     public MultiIntentResponse parseResponse(String rawJson) {
+        return parsePayload(rawJson, MultiIntentResponse.class);
+    }
+
+    public <T> T parsePayload(String rawJson, Class<T> targetType) {
+        if (targetType == null) {
+            throw new IllegalArgumentException("targetType is required");
+        }
         try {
-            JsonNode root = objectMapper.readTree(rawJson);
+            String extractedJson = extractJsonPayload(rawJson);
+            JsonNode root = objectMapper.readTree(extractedJson);
             if (root == null || root.isNull()) {
                 throw new AIServiceException("Intent extraction returned null JSON payload");
             }
-            return objectMapper.treeToValue(root, MultiIntentResponse.class);
-        } catch (JsonProcessingException firstAttempt) {
-            String extractedJson = extractJsonFromText(rawJson);
-            if (extractedJson != null && !extractedJson.equals(rawJson)) {
-                try {
-                    JsonNode root = objectMapper.readTree(extractedJson);
-                    if (root == null || root.isNull()) {
-                        throw new AIServiceException("Intent extraction returned null JSON payload");
-                    }
-                    return objectMapper.treeToValue(root, MultiIntentResponse.class);
-                } catch (JsonProcessingException ignored) {
-                    // Fall through to throw the original parse error.
-                }
-            }
-            throw new AIServiceException("Unable to parse intent extraction response: " + firstAttempt.getMessage(), firstAttempt);
+            return objectMapper.treeToValue(root, targetType);
+        } catch (JsonProcessingException ex) {
+            throw new AIServiceException("Unable to parse intent extraction response: " + ex.getMessage(), ex);
         }
+    }
+
+    public String extractJsonPayload(String content) {
+        StructuredJsonExtraction extraction = structuredJsonExtractor.extractFirstJson(content);
+        if (!extraction.jsonFound() || !StringUtils.hasText(extraction.payload())) {
+            throw new AIServiceException("Unable to parse intent extraction response: No JSON payload found in provider response");
+        }
+        return extraction.payload();
     }
 
     public String stripCodeFences(String content) {
-        if (!StringUtils.hasText(content)) {
-            return content;
-        }
-
-        String trimmed = content.trim();
-        while (trimmed.startsWith("###")) {
-            int nextNewline = trimmed.indexOf('\n');
-            if (nextNewline < 0) {
-                break;
-            }
-            trimmed = trimmed.substring(nextNewline + 1).trim();
-        }
-
-        if (trimmed.startsWith("```")) {
-            int firstNewline = trimmed.indexOf('\n');
-            if (firstNewline > 0) {
-                trimmed = trimmed.substring(firstNewline + 1);
-            }
-        }
-
-        int firstFence = trimmed.indexOf("```");
-        if (firstFence >= 0) {
-            int endFence = trimmed.indexOf("```", firstFence + 3);
-            if (endFence > firstFence) {
-                trimmed = trimmed.substring(firstFence + 3, endFence);
-            }
-        }
-
-        if (trimmed.endsWith("```")) {
-            trimmed = trimmed.substring(0, trimmed.length() - 3);
-        }
-        return trimmed.trim();
+        return structuredJsonExtractor.stripCodeFences(content);
     }
 
     public Map<String, Object> jsonOnlyResponseParameters() {
-        return Map.of(
-            "response_format", Map.of("type", "json_object")
-        );
-    }
-
-    private String extractJsonFromText(String text) {
-        if (text == null) {
-            return null;
-        }
-        int startIdx = text.indexOf('{');
-        if (startIdx >= 0) {
-            int endIdx = text.lastIndexOf('}');
-            if (endIdx > startIdx) {
-                return text.substring(startIdx, endIdx + 1);
-            }
-        }
-        return text;
+        return StructuredJsonProviderHints.jsonObjectResponseParameters();
     }
 }
