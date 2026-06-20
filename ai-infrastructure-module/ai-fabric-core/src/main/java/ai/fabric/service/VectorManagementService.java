@@ -6,8 +6,10 @@ import ai.fabric.dto.AISearchResponse;
 import ai.fabric.dto.VectorRecord;
 import ai.fabric.rag.VectorDatabaseService;
 import ai.fabric.vector.VectorProviderReadinessEvaluator;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.cache.Cache;
+import org.springframework.cache.CacheManager;
+import org.springframework.lang.Nullable;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
@@ -30,20 +32,29 @@ import java.util.Optional;
 @Slf4j
 public class VectorManagementService {
 
+    private static final String VECTOR_SEARCH_CACHE = "vectorSearch";
     private static final String INDEXED_CREATED_AT_KEY = "_indexedCreatedAt";
     private static final String INDEXED_UPDATED_AT_KEY = "_indexedUpdatedAt";
     
     private final VectorDatabaseService vectorDatabaseService;
     private final AIEntityConfigurationLoader entityConfigurationLoader;
+    private final CacheManager cacheManager;
 
     public VectorManagementService(VectorDatabaseService vectorDatabaseService) {
-        this(vectorDatabaseService, null);
+        this(vectorDatabaseService, null, null);
     }
 
     public VectorManagementService(VectorDatabaseService vectorDatabaseService,
                                    AIEntityConfigurationLoader entityConfigurationLoader) {
+        this(vectorDatabaseService, entityConfigurationLoader, null);
+    }
+
+    public VectorManagementService(VectorDatabaseService vectorDatabaseService,
+                                   AIEntityConfigurationLoader entityConfigurationLoader,
+                                   @Nullable CacheManager cacheManager) {
         this.vectorDatabaseService = vectorDatabaseService;
         this.entityConfigurationLoader = entityConfigurationLoader;
+        this.cacheManager = cacheManager;
     }
 
     private Map<String, Object> ensureIndexTimestamps(Map<String, Object> metadata,
@@ -88,6 +99,7 @@ public class VectorManagementService {
             Map<String, Object> enriched = ensureIndexTimestamps(metadata, now, now);
             String vectorId = vectorDatabaseService.storeVector(entityType, entityId, content, embedding, enriched);
             log.debug("Successfully stored vector {} for entity {} of type {}", vectorId, entityId, entityType);
+            evictVectorSearchCache();
             
             return vectorId;
             
@@ -125,6 +137,7 @@ public class VectorManagementService {
                 boolean updated = vectorDatabaseService.updateVector(existingVectorId, entityType, entityId, content, embedding, enriched);
                 if (updated) {
                     log.debug("Updated vector {} for entity {} of type {}", existingVectorId, entityId, entityType);
+                    evictVectorSearchCache();
                     return existingVectorId;
                 }
                 log.warn("Vector {} for entity {}:{} could not be updated in-place; falling back to store+remove",
@@ -150,6 +163,7 @@ public class VectorManagementService {
                     }
                 });
 
+            evictVectorSearchCache();
             return newVectorId;
             
         } catch (Exception e) {
@@ -242,6 +256,7 @@ public class VectorManagementService {
             log.debug("Removing vector for entity {} of type {}", entityId, entityType);
             boolean removed = vectorDatabaseService.removeVector(entityType, entityId);
             log.debug("Vector removal result for entity {} of type {}: {}", entityId, entityType, removed);
+            evictVectorSearchCache();
             return removed;
         } catch (Exception e) {
             log.error("Error removing vector for entity {} of type {}", entityId, entityType, e);
@@ -261,6 +276,7 @@ public class VectorManagementService {
             log.debug("Removing vector by ID {}", vectorId);
             boolean removed = vectorDatabaseService.removeVectorById(vectorId);
             log.debug("Vector removal result for ID {}: {}", vectorId, removed);
+            evictVectorSearchCache();
             return removed;
         } catch (Exception e) {
             log.error("Error removing vector by ID {}", vectorId, e);
@@ -311,6 +327,7 @@ public class VectorManagementService {
 
             List<String> vectorIds = vectorDatabaseService.batchStoreVectors(enriched);
             log.debug("Successfully batch stored {} vectors", vectorIds.size());
+            evictVectorSearchCache();
             return vectorIds;
         } catch (Exception e) {
             log.error("Error batch storing vectors", e);
@@ -361,6 +378,7 @@ public class VectorManagementService {
 
             int updatedCount = vectorDatabaseService.batchUpdateVectors(enriched);
             log.debug("Successfully batch updated {} vectors", updatedCount);
+            evictVectorSearchCache();
             return updatedCount;
         } catch (Exception e) {
             log.error("Error batch updating vectors", e);
@@ -384,6 +402,7 @@ public class VectorManagementService {
             log.debug("Batch removing {} vectors", vectorIds.size());
             int removedCount = vectorDatabaseService.batchRemoveVectors(vectorIds);
             log.debug("Successfully batch removed {} vectors", removedCount);
+            evictVectorSearchCache();
             return removedCount;
         } catch (Exception e) {
             log.error("Error batch removing vectors", e);
@@ -503,11 +522,13 @@ public class VectorManagementService {
                     cleared += vectorDatabaseService.clearVectorsByEntityType(entityType);
                 }
                 log.debug("Successfully cleared {} vectors from database (per-entity-type)", cleared);
+                evictVectorSearchCache();
                 return cleared;
             }
 
             long clearedCount = vectorDatabaseService.clearVectors();
             log.debug("Successfully cleared {} vectors from database (global)", clearedCount);
+            evictVectorSearchCache();
             return clearedCount;
         } catch (Exception e) {
             log.error("Error clearing all vectors", e);
@@ -527,6 +548,7 @@ public class VectorManagementService {
             log.debug("Clearing all vectors for entity type {}", entityType);
             long clearedCount = vectorDatabaseService.clearVectorsByEntityType(entityType);
             log.debug("Successfully cleared {} vectors for entity type {}", clearedCount, entityType);
+            evictVectorSearchCache();
             return clearedCount;
         } catch (Exception e) {
             // If vector database is not initialized yet, log and return 0 instead of throwing
@@ -549,6 +571,22 @@ public class VectorManagementService {
             }
             log.error("Error clearing vectors for entity type {}", entityType, e);
             throw new RuntimeException("Failed to clear vectors for entity type", e);
+        }
+    }
+
+    private void evictVectorSearchCache() {
+        if (cacheManager == null) {
+            return;
+        }
+        try {
+            Cache cache = cacheManager.getCache(VECTOR_SEARCH_CACHE);
+            if (cache != null) {
+                cache.clear();
+                log.debug("Evicted {} cache after vector index mutation", VECTOR_SEARCH_CACHE);
+            }
+        } catch (RuntimeException ex) {
+            log.warn("Unable to evict {} cache after vector index mutation: {}", VECTOR_SEARCH_CACHE, ex.getMessage());
+            log.debug("Vector search cache eviction failure", ex);
         }
     }
 }

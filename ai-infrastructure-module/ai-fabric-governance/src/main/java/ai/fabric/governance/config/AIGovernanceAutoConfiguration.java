@@ -125,21 +125,21 @@ public class AIGovernanceAutoConfiguration {
     }
 
     @Bean
+    @ConditionalOnMissingBean
     @ConditionalOnProperty(prefix = "ai.governance.deletion", name = "enabled", havingValue = "true")
-    @ConditionalOnBean({VectorDatabaseService.class, IndexCatalog.class, UserDataDeletionProvider.class})
     public UserDataDeletionService userDataDeletionService(
-        VectorDatabaseService vectorDatabaseService,
-        IndexCatalog indexCatalog,
-        org.springframework.beans.factory.ObjectProvider<Clock> clockProvider,
-        UserDataDeletionProvider userDataDeletionProvider,
-        org.springframework.beans.factory.ObjectProvider<BehaviorDeletionPort> behaviorDeletionPortProvider
+        ObjectProvider<VectorDatabaseService> vectorDatabaseServiceProvider,
+        ObjectProvider<IndexCatalog> indexCatalogProvider,
+        ObjectProvider<Clock> clockProvider,
+        ObjectProvider<UserDataDeletionProvider> userDataDeletionProvider,
+        ObjectProvider<BehaviorDeletionPort> behaviorDeletionPortProvider
     ) {
         Clock clock = clockProvider.getIfAvailable(Clock::systemUTC);
         return new UserDataDeletionService(
-            vectorDatabaseService,
-            indexCatalog,
+            vectorDatabaseServiceProvider.getIfAvailable(),
+            indexCatalogProvider.getIfAvailable(),
             clock,
-            userDataDeletionProvider,
+            userDataDeletionProvider.getIfAvailable(),
             behaviorDeletionPortProvider.getIfAvailable()
         );
     }

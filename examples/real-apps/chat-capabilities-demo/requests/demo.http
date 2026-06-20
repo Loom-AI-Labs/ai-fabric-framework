@@ -1,4 +1,4 @@
-@baseUrl = http://localhost:8096
+@baseUrl = http://localhost:8097
 
 ### Health
 GET {{baseUrl}}/actuator/health
@@ -38,6 +38,9 @@ Content-Type: application/json
 
 ### Search products (vector search)
 GET {{baseUrl}}/api/products/search?q=wireless%20headphones&limit=5&threshold=0.3
+
+### Runtime vector probe (raw AI Fabric search evidence, useful for pushed data-sync records)
+GET {{baseUrl}}/api/runtime/vector-search?vectorSpace=product&q=wireless%20headphones&limit=5&threshold=0
 
 ### Chat (RAG) - requires OPENAI_ENABLED=true + OPENAI_API_KEY
 POST {{baseUrl}}/api/chat/query

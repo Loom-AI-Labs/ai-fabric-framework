@@ -149,6 +149,9 @@ public class UserDataDeletionService {
     private List<IndexCatalogEntry> findCatalogIndexedEntities(String userId,
                                                                AtomicInteger failures,
                                                                List<String> failureMessages) {
+        if (indexCatalog == null) {
+            return List.of();
+        }
         try {
             return Optional.ofNullable(indexCatalog.findByMetadataContainingSnippet("\"" + userId + "\"", 2_000))
                 .orElse(List.of());
@@ -197,20 +200,29 @@ public class UserDataDeletionService {
         }
 
         boolean vectorRemoved = false;
-        boolean vectorFailed = false;
-        try {
-            if (vectorDatabaseService.removeVector(entityType, entityId)) {
-                vectorsDeleted.incrementAndGet();
-                vectorRemoved = true;
-            }
-        } catch (Exception ex) {
-            vectorFailed = true;
+        if (vectorDatabaseService == null) {
             failures.incrementAndGet();
-            log.warn("Vector removal failed for {}:{} - {}", entityType, entityId, ex.getMessage());
-            failureMessages.add("vector removal failed for " + cacheKey + ": " + safeMessage(ex));
+            String message = "VectorDatabaseService bean is not available";
+            log.warn("Vector removal failed for {}:{} - {}", entityType, entityId, message);
+            failureMessages.add("vector removal failed for " + cacheKey + ": " + message);
+        } else {
+            try {
+                if (vectorDatabaseService.removeVector(entityType, entityId)) {
+                    vectorsDeleted.incrementAndGet();
+                    vectorRemoved = true;
+                }
+            } catch (Exception ex) {
+                failures.incrementAndGet();
+                log.warn("Vector removal failed for {}:{} - {}", entityType, entityId, ex.getMessage());
+                failureMessages.add("vector removal failed for " + cacheKey + ": " + safeMessage(ex));
+            }
         }
 
-        if (!(indexCatalog instanceof VectorIndexCatalog)) {
+        if (indexCatalog == null || indexCatalog instanceof VectorIndexCatalog) {
+            if (vectorRemoved) {
+                entitiesDeleted.incrementAndGet();
+            }
+        } else {
             try {
                 indexCatalog.delete(entityType, entityId);
                 entitiesDeleted.incrementAndGet();
@@ -219,8 +231,6 @@ public class UserDataDeletionService {
                 log.warn("Catalog deletion failed for {}:{} - {}", entityType, entityId, ex.getMessage());
                 failureMessages.add("catalog deletion failed for " + cacheKey + ": " + safeMessage(ex));
             }
-        } else if (vectorRemoved) {
-            entitiesDeleted.incrementAndGet();
         }
     }
 

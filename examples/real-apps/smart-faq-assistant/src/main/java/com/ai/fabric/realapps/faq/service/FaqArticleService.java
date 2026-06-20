@@ -14,6 +14,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -78,6 +79,13 @@ public class FaqArticleService {
     }
 
     @Transactional
+    public List<FaqArticle> seedBaselineArticles() {
+        return FaqDemoCatalog.baselineArticles().stream()
+            .map(this::upsertSeedArticle)
+            .toList();
+    }
+
+    @Transactional
     public int reindexAll() {
         List<FaqArticle> articles = repository.findAll();
         for (FaqArticle article : articles) {
@@ -91,6 +99,12 @@ public class FaqArticleService {
     }
 
     public List<FaqArticle> semanticSearch(String query, int limit, double threshold) {
+        return searchWithEvidence(query, limit, threshold).stream()
+            .map(SearchHit::article)
+            .toList();
+    }
+
+    public List<SearchHit> searchWithEvidence(String query, int limit, double threshold) {
         AICoreService aiCoreService = aiCoreServiceProvider.getIfAvailable();
         if (aiCoreService == null) {
             throw new IllegalStateException("AICoreService not available (ensure AI Fabric dependencies are present)");
@@ -108,9 +122,7 @@ public class FaqArticleService {
         }
 
         return response.getResults().stream()
-            .map(this::extractEntityId)
-            .flatMap(Optional::stream)
-            .map(id -> findArticleByEntityId(id, response))
+            .map(row -> toSearchHit(row, response))
             .flatMap(Optional::stream)
             .limit(limit)
             .toList();
@@ -158,6 +170,31 @@ public class FaqArticleService {
         capabilityService.processEntityForAI(article, ENTITY_TYPE);
     }
 
+    private FaqArticle upsertSeedArticle(FaqDemoCatalog.SeedArticle seedArticle) {
+        FaqArticle article = repository.findByTitle(seedArticle.title())
+            .orElseGet(FaqArticle::new);
+        if (article.getCreatedAt() == null) {
+            article.setCreatedAt(Instant.now());
+        }
+        article.setTitle(seedArticle.title());
+        article.setContent(seedArticle.content());
+        article.setCategory(seedArticle.category());
+        article.setTags(seedArticle.tags() == null ? null : String.join(",", seedArticle.tags()));
+        article.setUpdatedAt(Instant.now());
+        FaqArticle saved = repository.save(article);
+        index(saved);
+        return saved;
+    }
+
+    private Optional<SearchHit> toSearchHit(Map<String, Object> row, AISearchResponse response) {
+        Optional<String> entityId = extractEntityId(row);
+        if (entityId.isEmpty()) {
+            return Optional.empty();
+        }
+        return findArticleByEntityId(entityId.get(), response)
+            .map(article -> new SearchHit(article, extractScore(row).orElse(null), entityId.get(), immutableRow(row)));
+    }
+
     private Optional<String> extractEntityId(Map<String, Object> row) {
         if (row == null || row.isEmpty()) {
             return Optional.empty();
@@ -169,6 +206,41 @@ public class FaqArticleService {
 
     private Optional<Object> firstPresent(Object first, Object second) {
         return Optional.ofNullable(first != null ? first : second);
+    }
+
+    private Optional<Double> extractScore(Map<String, Object> row) {
+        if (row == null || row.isEmpty()) {
+            return Optional.empty();
+        }
+        return firstPresent(row.get("score"), firstPresent(row.get("similarity"), row.get("relevanceScore")).orElse(null))
+            .flatMap(this::toDouble);
+    }
+
+    private Optional<Double> toDouble(Object value) {
+        if (value instanceof Number number) {
+            return Optional.of(number.doubleValue());
+        }
+        if (value instanceof String text) {
+            try {
+                return Optional.of(Double.parseDouble(text));
+            } catch (NumberFormatException ignored) {
+                return Optional.empty();
+            }
+        }
+        return Optional.empty();
+    }
+
+    private Map<String, Object> immutableRow(Map<String, Object> row) {
+        if (row == null || row.isEmpty()) {
+            return Map.of();
+        }
+        Map<String, Object> copy = new LinkedHashMap<>();
+        row.forEach((key, value) -> {
+            if (key != null && value != null) {
+                copy.put(key, value);
+            }
+        });
+        return Map.copyOf(copy);
     }
 
     private Optional<FaqArticle> findArticleByEntityId(String id, AISearchResponse response) {
@@ -210,4 +282,11 @@ public class FaqArticleService {
             return new AskResult(question, "CONTEXTUAL_GENERATION", answer, matches);
         }
     }
+
+    public record SearchHit(
+        FaqArticle article,
+        Double score,
+        String entityId,
+        Map<String, Object> rawResult
+    ) {}
 }

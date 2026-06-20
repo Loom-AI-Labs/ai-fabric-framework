@@ -5,6 +5,7 @@ import java.net.URI;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
@@ -146,10 +147,27 @@ public class RestConnectorDataSyncClient {
 
     private Map<String, Object> trace(String prefix, String entityId) {
         String requestId = prefix + "-" + safe(entityId) + "-" + Instant.now(clock).toEpochMilli() + "-" + UUID.randomUUID();
+        Map<String, Object> authContext = new LinkedHashMap<>();
+        authContext.put("subjectId", "system:platform-ecommerce-store");
+        authContext.put("subjectType", "SYSTEM_PROCESS");
+        authContext.put("authMode", "PRIVATE_RUNTIME_BACKEND_MEDIATED");
+        authContext.put("callerType", "SYSTEM_PROCESS");
+        authContext.put("sessionId", "connector");
+        authContext.put("deploymentId", "ecommerce-store-local");
+        authContext.put("customerId", "demo-commerce-customer");
+        authContext.put("tenantId", "demo-commerce-tenant");
+        authContext.put("issuer", "platform-ecommerce-store");
+        authContext.put("grantedScopes", List.of("data-sync:upsert", "data-sync:delete"));
+
+        Map<String, Object> metadata = new LinkedHashMap<>();
+        metadata.put("source", "ecommerce-store");
+        metadata.put("operation", prefix);
+        metadata.put("entityId", safe(entityId));
+
         Map<String, Object> trace = new LinkedHashMap<>();
         trace.put("requestId", requestId);
-        trace.put("userId", "connector");
-        trace.put("sessionId", "connector");
+        trace.put("metadata", metadata);
+        trace.put("authContext", authContext);
         return trace;
     }
 

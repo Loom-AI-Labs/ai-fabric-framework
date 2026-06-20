@@ -118,6 +118,32 @@ class UserDataDeletionServiceTest {
     }
 
     @Test
+    void shouldReportPartialWhenIndexedEntityRequiresMissingVectorService() {
+        UserDataDeletionService serviceWithoutVector = new UserDataDeletionService(
+            null,
+            indexCatalog,
+            clock,
+            provider,
+            behaviorDeletionPort
+        );
+        when(provider.canDeleteUser(USER_ID)).thenReturn(true);
+        when(provider.findIndexedEntities(USER_ID))
+            .thenReturn(List.of(new UserEntityReference("doc", "id-1")));
+
+        UserDataDeletionResult result = serviceWithoutVector.deleteUser(USER_ID);
+
+        assertThat(result.getStatus()).isEqualTo(UserDataDeletionResult.Status.PARTIAL);
+        assertThat(result.getIndexedEntitiesDeleted()).isEqualTo(1);
+        assertThat(result.getVectorsDeleted()).isZero();
+        assertThat(result.getDeletionFailures()).isEqualTo(1);
+        assertThat(result.getFailureMessages())
+            .containsExactly("vector removal failed for doc::id-1: VectorDatabaseService bean is not available");
+
+        verify(indexCatalog).delete("doc", "id-1");
+        verify(provider).notifyAfterDeletion(USER_ID);
+    }
+
+    @Test
     void shouldReportPartialWhenCatalogDeletionFails() {
         when(provider.canDeleteUser(USER_ID)).thenReturn(true);
         when(provider.findIndexedEntities(USER_ID))

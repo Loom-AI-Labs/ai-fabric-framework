@@ -52,10 +52,20 @@
             <artifactId>spring-boot-starter-actuator</artifactId>
         </dependency>
 
-        <!-- AI Fabric (PII module + core) -->
+        <!-- AI Fabric (PII + indexing/core starter, governance, local vector provider) -->
         <dependency>
             <groupId>io.github.loom-ai-labs</groupId>
-            <artifactId>ai-fabric-pii</artifactId>
+            <artifactId>ai-fabric-starter</artifactId>
+            <version>${ai-fabric.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>io.github.loom-ai-labs</groupId>
+            <artifactId>ai-fabric-governance</artifactId>
+            <version>${ai-fabric.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>io.github.loom-ai-labs</groupId>
+            <artifactId>ai-fabric-vector-lucene</artifactId>
             <version>${ai-fabric.version}</version>
         </dependency>
 

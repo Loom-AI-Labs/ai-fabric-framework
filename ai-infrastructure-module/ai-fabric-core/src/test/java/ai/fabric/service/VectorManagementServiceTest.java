@@ -4,6 +4,8 @@ import ai.fabric.dto.VectorRecord;
 import ai.fabric.rag.VectorDatabaseService;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.cache.Cache;
+import org.springframework.cache.concurrent.ConcurrentMapCacheManager;
 
 import java.util.List;
 import java.util.Map;
@@ -32,6 +34,21 @@ class VectorManagementServiceTest {
         verify(vectorDatabaseService, never()).batchStoreVectors(anyList());
         verify(vectorDatabaseService, never()).batchUpdateVectors(anyList());
         verify(vectorDatabaseService, never()).batchRemoveVectors(anyList());
+    }
+
+    @Test
+    void removeVectorEvictsCachedSearchResultsEvenWhenProviderReportsMiss() {
+        VectorDatabaseService vectorDatabaseService = mock(VectorDatabaseService.class);
+        when(vectorDatabaseService.removeVector("product", "p-1")).thenReturn(false);
+        ConcurrentMapCacheManager cacheManager = new ConcurrentMapCacheManager("vectorSearch");
+        Cache cache = cacheManager.getCache("vectorSearch");
+        cache.put("stale-query", "stale-result");
+        VectorManagementService service = new VectorManagementService(vectorDatabaseService, null, cacheManager);
+
+        assertThat(service.removeVector("product", "p-1")).isFalse();
+
+        assertThat(cache.get("stale-query")).isNull();
+        verify(vectorDatabaseService).removeVector("product", "p-1");
     }
 
     @Test

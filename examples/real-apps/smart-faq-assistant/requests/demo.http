@@ -21,3 +21,28 @@ POST http://localhost:8094/api/demo/indexing/reindex/articles
 Content-Type: application/json
 
 {}
+
+### 5) List golden RAG quality questions
+GET http://localhost:8094/api/faq/quality/golden
+
+### 6) Seed baseline corpus and run local RAG quality gate
+POST http://localhost:8094/api/demo/quality/seed-and-run
+Content-Type: application/json
+
+{
+  "limit": 5,
+  "threshold": 0.0,
+  "requireTopMatch": false,
+  "springAiEvaluation": false
+}
+
+### 7) Run local RAG quality gate against the current indexed corpus
+POST http://localhost:8094/api/faq/quality/golden/run
+Content-Type: application/json
+
+{
+  "limit": 5,
+  "threshold": 0.0,
+  "requireTopMatch": false,
+  "springAiEvaluation": false
+}

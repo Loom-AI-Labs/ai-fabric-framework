@@ -2,24 +2,37 @@ package com.ai.fabric.realapps.privacyfirst.service;
 
 import com.ai.fabric.realapps.privacyfirst.domain.SupportMessage;
 import com.ai.fabric.realapps.privacyfirst.repo.SupportMessageRepository;
+import ai.fabric.core.AICoreService;
+import ai.fabric.dto.AISearchRequest;
+import ai.fabric.dto.AISearchResponse;
 import ai.fabric.dto.PIIDetection;
 import ai.fabric.dto.PIIDetectionResult;
 import ai.fabric.privacy.pii.PIIDetectionService;
+import ai.fabric.service.AICapabilityService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class SupportMessageService {
+
+    private static final String ENTITY_TYPE = "support-message";
 
     private final SupportMessageRepository repository;
     private final PIIDetectionService piiDetectionService;
+    private final ObjectProvider<AICapabilityService> capabilityServiceProvider;
+    private final ObjectProvider<AICoreService> aiCoreServiceProvider;
 
     @Transactional
     public SupportMessage create(String customerId, String channel, String subject, String message) {
@@ -43,7 +56,9 @@ public class SupportMessageService {
         record.setMessageEncryptedOriginal(messageResult.getEncryptedOriginalQuery());
         record.setMessageEncryptionSalt(messageResult.getEncryptionSalt());
 
-        return repository.save(record);
+        SupportMessage saved = repository.save(record);
+        indexSafeRecord(saved);
+        return saved;
     }
 
     public List<SupportMessage> list() {
@@ -52,6 +67,56 @@ public class SupportMessageService {
 
     public SupportMessage get(long id) {
         return repository.findById(id).orElseThrow();
+    }
+
+    public List<SupportMessage> findByCustomerId(String customerId) {
+        return repository.findByCustomerId(customerId);
+    }
+
+    public List<SupportMessage> semanticSearch(String query, int limit) {
+        AICoreService aiCoreService = aiCoreServiceProvider.getIfAvailable();
+        if (aiCoreService == null) {
+            throw new IllegalStateException("AICoreService is not available");
+        }
+        AISearchResponse response = aiCoreService.performSearch(AISearchRequest.builder()
+            .query(query)
+            .entityType(ENTITY_TYPE)
+            .limit(Math.max(1, Math.min(20, limit)))
+            .threshold(0.0d)
+            .build());
+        if (response == null || response.getResults() == null || response.getResults().isEmpty()) {
+            return List.of();
+        }
+        return response.getResults().stream()
+            .map(this::extractEntityId)
+            .flatMap(Optional::stream)
+            .map(id -> repository.findById(id).orElse(null))
+            .filter(Objects::nonNull)
+            .toList();
+    }
+
+    private void indexSafeRecord(SupportMessage record) {
+        AICapabilityService capabilityService = capabilityServiceProvider.getIfAvailable();
+        if (capabilityService == null) {
+            log.debug("AICapabilityService unavailable; skipping support-message indexing");
+            return;
+        }
+        capabilityService.processEntityForAI(record, ENTITY_TYPE);
+    }
+
+    private Optional<Long> extractEntityId(Map<String, Object> row) {
+        if (row == null || row.isEmpty()) {
+            return Optional.empty();
+        }
+        Object value = row.get("entityId") != null ? row.get("entityId") : row.get("id");
+        if (value == null) {
+            return Optional.empty();
+        }
+        try {
+            return Optional.of(Long.parseLong(value.toString()));
+        } catch (NumberFormatException ex) {
+            return Optional.empty();
+        }
     }
 
     private List<PIIDetection> combineDetections(List<PIIDetection> subjectDetections, List<PIIDetection> messageDetections) {

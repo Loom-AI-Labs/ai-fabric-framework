@@ -21,19 +21,91 @@ The apps are intentionally scenario-focused:
 Install the framework artifacts from the local checkout first:
 
 ```bash
-mvn -B -V --no-transfer-progress -f ai-infrastructure-module/pom.xml -DskipTests install
+mvn -B -V --no-transfer-progress -f ai-infrastructure-module/pom.xml install
 ```
 
-Then compile all real apps:
+Then package the real apps with their unit tests:
 
 ```bash
-mvn -B -V --no-transfer-progress -f examples/real-apps/pom.xml -DskipTests compile
+mvn -B -V --no-transfer-progress -f examples/real-apps/pom.xml package
 ```
 
-Each app declares `ai-fabric.version=0.2.0`, so it resolves the framework artifacts from the local Maven install produced by this repository.
+Each app resolves the framework artifacts from the local Maven install produced by this repository.
+
+For a focused no-key check of the customer-owned ecommerce app using AI Fabric as a separate
+runtime, run:
+
+```bash
+mvn -B --no-transfer-progress -f ai-infrastructure-module/pom.xml -pl ai-fabric-core install
+mvn -B --no-transfer-progress -f examples/real-apps/pom.xml \
+  -pl smoke-support,chat-capabilities-demo,ecommerce-store -am clean package
+```
 
 ## Runtime Notes
 
 Most apps can boot without external API keys because they use local H2 storage and either deterministic local AI providers, deterministic local embeddings, or disabled cloud providers by default.
 
 `cloud-qdrant-openai-vector-search` is compile-verified by default and requires Postgres, Qdrant, and OpenAI configuration before runtime smoke testing.
+
+## External Runtime Proof
+
+This local scenario proves a customer-owned app can use AI Fabric outside its own process:
+
+- `chat-capabilities-demo` runs as the AI Fabric runtime on `8097`.
+- `ecommerce-store` runs as the domain app on `8096`.
+- Product writes in ecommerce emit verified data-sync requests into the runtime.
+- Runtime vector search sees the product before delete and no longer sees it after delete.
+
+Terminal 1, from the repository root:
+
+```bash
+java -jar examples/real-apps/chat-capabilities-demo/target/chat-capabilities-demo-1.0.0-SNAPSHOT.jar \
+  --spring.profiles.active=smoke \
+  --server.port=8097 \
+  --management.server.port=0
+```
+
+Terminal 2, from the repository root:
+
+```bash
+CONNECTOR_INDEXING_ENABLED=true \
+CONNECTOR_INDEXING_RUNTIME_BASE_URL=http://localhost:8097 \
+java -jar examples/real-apps/ecommerce-store/target/ecommerce-store-1.0.0-SNAPSHOT.jar \
+  --spring.profiles.active=smoke \
+  --server.port=8096 \
+  --management.server.port=0 \
+  --spring.datasource.url='jdbc:h2:mem:ecommerce_runtime_proof;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE' \
+  --app.demo.seed-data=false
+```
+
+Terminal 3, verify the push/index/delete loop:
+
+```bash
+sku="SKU-RT-$(date +%s)"
+name="Runtime Proof Wireless Headphones"
+description="Noise-cancelling over-ear headphones with 30h battery life. Built for travel, office focus, and wireless calls."
+content="{\"sku\":\"$sku\",\"name\":\"$name\",\"description\":\"$description\",\"category\":\"Headphones\",\"tags\":\"wireless,noise-cancelling,audio,runtime-proof\",\"price\":199.99,\"currency\":\"USD\",\"inStockQty\":25}"
+encoded_content=$(printf '%s' "$content" | jq -sRr @uri)
+
+curl -fsS http://localhost:8097/api/ai/data-sync/vector-spaces
+created=$(curl -fsS -X POST http://localhost:8096/api/products \
+  -H 'Content-Type: application/json' \
+  -d "$content")
+product_id=$(printf '%s' "$created" | jq -r '.id')
+
+sleep 3
+curl -fsS "http://localhost:8097/api/runtime/vector-search?vectorSpace=product&q=$encoded_content&limit=5&threshold=0" \
+  | jq '{returnedResults, ids: [.results[].entityId]}'
+
+curl -fsS -X DELETE "http://localhost:8096/api/products/$product_id"
+
+sleep 3
+curl -fsS "http://localhost:8097/api/runtime/vector-search?vectorSpace=product&q=$encoded_content&limit=5&threshold=0" \
+  | jq '{returnedResults, ids: [.results[].entityId]}'
+```
+
+Expected verification:
+
+- `GET /api/ai/data-sync/vector-spaces` includes `product`.
+- The first runtime vector search returns `returnedResults: 1` and the generated SKU.
+- The second runtime vector search returns `returnedResults: 0`.

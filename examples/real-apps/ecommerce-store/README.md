@@ -51,7 +51,37 @@ Indexing calls are sent to `CONNECTOR_INDEXING_RUNTIME_BASE_URL`, which can poin
 
 ## Optional Runtime Setup
 
-Runtime chat/RAG integration can use OpenAI for **LLM + embeddings** when those features are enabled.
+For local no-key proof, run the AI Fabric runtime app separately:
+
+```bash
+java -jar ../chat-capabilities-demo/target/chat-capabilities-demo-1.0.0-SNAPSHOT.jar \
+  --spring.profiles.active=smoke \
+  --server.port=8097 \
+  --management.server.port=0
+```
+
+Then run this customer-owned domain API with event indexing enabled:
+
+```bash
+CONNECTOR_INDEXING_ENABLED=true \
+CONNECTOR_INDEXING_RUNTIME_BASE_URL=http://localhost:8097 \
+java -jar target/ecommerce-store-1.0.0-SNAPSHOT.jar \
+  --spring.profiles.active=smoke \
+  --server.port=8096 \
+  --management.server.port=0 \
+  --spring.datasource.url='jdbc:h2:mem:ecommerce_runtime_proof;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE' \
+  --app.demo.seed-data=false
+```
+
+Creating or updating products, policies, and reviews will push verified data-sync requests to the
+runtime. Use `requests/demo.runtime.http` to inspect `/api/ai/data-sync/*` and
+`/api/runtime/vector-search`.
+
+For the deterministic smoke profile, verify pushed products with an exact content query. The
+suite-level guide at `examples/real-apps/README.md` includes the full create/search/delete/search
+script and expected counts.
+
+Runtime chat/RAG integration can also use OpenAI for **LLM + embeddings** when those features are enabled.
 
 ```bash
 export OPENAI_ENABLED=true

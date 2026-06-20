@@ -282,8 +282,10 @@ public class AIInfrastructureAutoConfiguration {
     @ConditionalOnMissingBean
     @Conditional(VectorDbConfiguredCondition.class)
     public VectorManagementService vectorManagementService(VectorDatabaseService vectorDatabaseService,
-                                                           AIEntityConfigurationLoader entityConfigurationLoader) {
-        return new VectorManagementService(vectorDatabaseService, entityConfigurationLoader);
+                                                           AIEntityConfigurationLoader entityConfigurationLoader,
+                                                           ObjectProvider<CacheManager> cacheManagerProvider) {
+        CacheManager cacheManager = cacheManagerProvider.getIfUnique(NoOpCacheManager::new);
+        return new VectorManagementService(vectorDatabaseService, entityConfigurationLoader, cacheManager);
     }
     
 	    @Bean

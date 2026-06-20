@@ -83,6 +83,11 @@
         </dependency>
         <dependency>
             <groupId>io.github.loom-ai-labs</groupId>
+            <artifactId>ai-fabric-data-sync</artifactId>
+            <version>${ai-fabric.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>io.github.loom-ai-labs</groupId>
             <artifactId>ai-fabric-governance</artifactId>
             <version>${ai-fabric.version}</version>
         </dependency>

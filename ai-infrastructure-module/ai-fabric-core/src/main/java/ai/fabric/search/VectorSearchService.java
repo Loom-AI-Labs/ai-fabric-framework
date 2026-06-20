@@ -33,6 +33,8 @@ import java.util.concurrent.atomic.AtomicLong;
  */
 @Slf4j
 public class VectorSearchService {
+
+    private static final String VECTOR_SEARCH_CACHE = "vectorSearch";
     
     private final AIProviderConfig config;
     private final VectorDatabaseService vectorDatabaseService;
@@ -164,6 +166,7 @@ public class VectorSearchService {
             
             // Delegate to VectorDatabaseService - it handles storage and indexing
             vectorDatabaseService.storeVector(entityType, entityId, content, embedding, metadata);
+            evictSearchCache();
             
             log.debug("Successfully stored vector for entity {} of type {}", entityId, entityType);
             
@@ -226,11 +229,24 @@ public class VectorSearchService {
     }
 
     private Cache getSearchCache() {
-        return cacheManager.getCache("vectorSearch");
+        return cacheManager.getCache(VECTOR_SEARCH_CACHE);
     }
 
     private AISearchResponse getFromCache(Cache cache, String cacheKey) {
         return cache != null ? cache.get(cacheKey, AISearchResponse.class) : null;
+    }
+
+    private void evictSearchCache() {
+        try {
+            Cache cache = getSearchCache();
+            if (cache != null) {
+                cache.clear();
+                log.debug("Evicted {} cache after vector index mutation", VECTOR_SEARCH_CACHE);
+            }
+        } catch (RuntimeException ex) {
+            log.warn("Unable to evict {} cache after vector index mutation: {}", VECTOR_SEARCH_CACHE, ex.getMessage());
+            log.debug("Vector search cache eviction failure", ex);
+        }
     }
 
     private String buildCacheKey(List<Double> queryVector, AISearchRequest request) {

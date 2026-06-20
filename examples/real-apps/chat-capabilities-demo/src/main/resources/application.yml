@@ -1,5 +1,5 @@
 server:
-  port: ${PORT:8096}
+  port: ${PORT:8097}
   forward-headers-strategy: framework
 
 spring:
@@ -48,6 +48,9 @@ ai:
     window-size: 12
     max-context-chars: 8000
     auto-create-sessions: true
+
+  data-sync:
+    enabled: ${AI_DATA_SYNC_ENABLED:true}
 
   providers:
     llm-provider: openai
