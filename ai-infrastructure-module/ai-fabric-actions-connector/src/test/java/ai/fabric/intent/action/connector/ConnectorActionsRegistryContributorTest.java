@@ -1,10 +1,15 @@
 package ai.fabric.intent.action.connector;
 
 import ai.fabric.intent.action.AIActionHandler;
+import ai.fabric.intent.action.ActionAccessMode;
+import ai.fabric.intent.action.ActionContext;
+import ai.fabric.intent.action.ActionResult;
 import org.junit.jupiter.api.Test;
 import org.springframework.core.io.DefaultResourceLoader;
 
+import java.time.Clock;
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -56,6 +61,29 @@ class ConnectorActionsRegistryContributorTest {
     }
 
     @Test
+    void getHandlers_shouldAllowMcpCatalogWhenSpringAiMcpBridgeIsAvailable() {
+        ActionConnectorExecutor executor = new ActionConnectorExecutor(
+            new AIActionConnectorProperties(),
+            request -> {
+                throw new AssertionError("Connector HTTP executor should not be used during registry validation");
+            },
+            null,
+            Clock.systemUTC(),
+            new AvailableMcpActionExecutor()
+        );
+        ConnectorActionsRegistryContributor contributor = new ConnectorActionsRegistryContributor(
+            new AIActionConnectorProperties(),
+            catalogService("classpath:actions/valid-mcp-actions.yml"),
+            executor
+        );
+
+        List<AIActionHandler> handlers = contributor.getHandlers();
+
+        assertThat(handlers).hasSize(1);
+        assertThat(handlers.getFirst().getActionMetadata().getName()).isEqualTo("inventory_search");
+    }
+
+    @Test
     void getHandlers_shouldFailFastWhenMcpGatewayApiKeyIsMissing() {
         AIActionConnectorProperties connectorProperties = new AIActionConnectorProperties();
         connectorProperties.getMcpGateway().setBaseUrl("https://mcp-gateway.internal");
@@ -80,5 +108,22 @@ class ConnectorActionsRegistryContributorTest {
             catalogProperties,
             new ConnectorActionCatalogLoader(new DefaultResourceLoader())
         );
+    }
+
+    private static final class AvailableMcpActionExecutor implements McpActionExecutor {
+
+        @Override
+        public boolean isAvailable() {
+            return true;
+        }
+
+        @Override
+        public ActionResult execute(String actionId,
+                                    ActionAccessMode accessMode,
+                                    Map<String, Object> params,
+                                    ActionContext context,
+                                    Map<String, Object> actionConfig) {
+            return ActionResult.builder().success(true).build();
+        }
     }
 }

@@ -332,6 +332,40 @@ class ActionConnectorExecutorTest {
     }
 
     @Test
+    void execute_shouldUseMcpActionExecutorWhenGatewayIsNotConfigured() {
+        FakeHttpClient fake = new FakeHttpClient(List.of());
+        RecordingMcpActionExecutor mcpExecutor = new RecordingMcpActionExecutor(ActionResult.builder()
+            .success(true)
+            .message("bridge ok")
+            .data(ai.fabric.intent.action.ActionPayload.object(Map.of("source", "spring-ai-mcp")))
+            .build());
+        ActionConnectorExecutor executor = new ActionConnectorExecutor(
+            connectorProps("https://example", 1, Duration.ZERO),
+            fake,
+            null,
+            fixedClock(),
+            mcpExecutor
+        );
+
+        ActionResult result = executor.execute(
+            "inventory_search",
+            ActionAccessMode.READ,
+            Map.of("query", "bag"),
+            testContext(),
+            Map.of(
+                "adapterType", "mcp-tool",
+                "execution", Map.of("mcp", Map.of("serverRef", "inventory-mcp", "toolName", "inventory.search"))
+            )
+        );
+
+        assertThat(result.isSuccess()).isTrue();
+        assertThat(result.getMessage()).isEqualTo("bridge ok");
+        assertThat(result.getData().toMap()).containsEntry("source", "spring-ai-mcp");
+        assertThat(mcpExecutor.calls()).isEqualTo(1);
+        assertThat(fake.callCount()).isZero();
+    }
+
+    @Test
     void execute_shouldRetryOnRetryableErrorCodeWhenIdempotent() {
         FakeHttpClient fake = new FakeHttpClient(List.of(
             new OutboundHttpExecutionResponse(200, "{\"success\":false,\"errorCode\":\"SERVICE_UNAVAILABLE\",\"message\":\"temp\"}", Map.of()),
@@ -593,6 +627,34 @@ class ActionConnectorExecutorTest {
 
         OutboundHttpExecutionRequest lastRequest() {
             return lastRequest;
+        }
+    }
+
+    private static final class RecordingMcpActionExecutor implements McpActionExecutor {
+        private final ActionResult result;
+        private final AtomicInteger calls = new AtomicInteger();
+
+        private RecordingMcpActionExecutor(ActionResult result) {
+            this.result = result;
+        }
+
+        @Override
+        public boolean isAvailable() {
+            return true;
+        }
+
+        @Override
+        public ActionResult execute(String actionId,
+                                    ActionAccessMode accessMode,
+                                    Map<String, Object> params,
+                                    ActionContext context,
+                                    Map<String, Object> actionConfig) {
+            calls.incrementAndGet();
+            return result;
+        }
+
+        int calls() {
+            return calls.get();
         }
     }
 }

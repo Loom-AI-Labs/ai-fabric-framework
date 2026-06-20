@@ -16,6 +16,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
@@ -76,11 +77,35 @@ public class ActionConnectorExecutor {
     private final ObjectMapper objectMapper;
     private final UlidGenerator ulidGenerator;
     private final Clock clock;
+    private final McpActionExecutor mcpActionExecutor;
 
     public ActionConnectorExecutor(AIActionConnectorProperties properties,
                                    OutboundHttpExecutor outboundHttpExecutor,
                                    ObjectProvider<ObjectMapper> objectMapperProvider,
                                    Clock clock) {
+        this(properties, outboundHttpExecutor, objectMapperProvider, clock, (McpActionExecutor) null);
+    }
+
+    @Autowired
+    public ActionConnectorExecutor(AIActionConnectorProperties properties,
+                                   OutboundHttpExecutor outboundHttpExecutor,
+                                   ObjectProvider<ObjectMapper> objectMapperProvider,
+                                   Clock clock,
+                                   ObjectProvider<McpActionExecutor> mcpActionExecutorProvider) {
+        this(
+            properties,
+            outboundHttpExecutor,
+            objectMapperProvider,
+            clock,
+            mcpActionExecutorProvider != null ? mcpActionExecutorProvider.getIfAvailable() : null
+        );
+    }
+
+    public ActionConnectorExecutor(AIActionConnectorProperties properties,
+                                   OutboundHttpExecutor outboundHttpExecutor,
+                                   ObjectProvider<ObjectMapper> objectMapperProvider,
+                                   Clock clock,
+                                   McpActionExecutor mcpActionExecutor) {
         this.properties = properties;
         this.outboundHttpExecutor = outboundHttpExecutor;
         this.objectMapper = objectMapperProvider != null
@@ -88,6 +113,11 @@ public class ActionConnectorExecutor {
             : new ObjectMapper();
         this.clock = clock != null ? clock : Clock.systemUTC();
         this.ulidGenerator = new UlidGenerator(this.clock);
+        this.mcpActionExecutor = mcpActionExecutor;
+    }
+
+    public boolean hasMcpActionExecutor() {
+        return mcpActionExecutor != null && mcpActionExecutor.isAvailable();
     }
 
     /**
@@ -119,6 +149,15 @@ public class ActionConnectorExecutor {
         }
 
         boolean mcpToolAction = isMcpToolAction(actionConfig);
+        if (mcpToolAction && hasMcpActionExecutor()) {
+            ActionResult mcpResult = mcpActionExecutor.execute(actionId, accessMode, params, context, actionConfig);
+            if (mcpResult != null && (mcpResult.isSuccess()
+                || !McpActionExecutor.ERROR_MCP_TOOL_NOT_AVAILABLE.equals(mcpResult.getErrorCode())
+                || !hasConfiguredMcpGateway())) {
+                return mcpResult;
+            }
+            log.debug("Spring AI MCP bridge could not resolve action '{}'; falling back to the configured MCP gateway.", actionId);
+        }
         String url;
         try {
             url = mcpToolAction ? buildMcpGatewayExecuteUrl() : buildExecuteUrl();
@@ -475,6 +514,13 @@ public class ActionConnectorExecutor {
             return execution.containsKey("mcp");
         }
         return false;
+    }
+
+    private boolean hasConfiguredMcpGateway() {
+        AIActionConnectorProperties.McpGatewayProperties gateway = properties != null ? properties.getMcpGateway() : null;
+        return gateway != null
+            && StringUtils.hasText(gateway.getBaseUrl())
+            && StringUtils.hasText(gateway.getApiKey());
     }
 
     private String sign(String secret, String timestamp, String nonce, String body) {

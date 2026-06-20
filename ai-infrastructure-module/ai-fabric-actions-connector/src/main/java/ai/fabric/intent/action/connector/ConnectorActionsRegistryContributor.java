@@ -88,6 +88,9 @@ public class ConnectorActionsRegistryContributor implements AIActionRegistryCont
         if (!hasMcpToolAction) {
             return;
         }
+        if (executor != null && executor.hasMcpActionExecutor()) {
+            return;
+        }
         AIActionConnectorProperties.McpGatewayProperties gateway =
             connectorProperties != null ? connectorProperties.getMcpGateway() : null;
         if (gateway == null || !StringUtils.hasText(gateway.getBaseUrl())) {
