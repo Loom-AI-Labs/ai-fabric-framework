@@ -54,7 +54,7 @@ public final class VectorRecordLifecycleMetadata {
                                               LocalDateTime now,
                                               LocalDateTime createdAtHint) {
         Map<String, Object> enriched = new LinkedHashMap<>(metadata == null ? Map.of() : metadata);
-        if (!enriched.containsKey(INDEXED_CREATED_AT_KEY)) {
+        if (readCreatedAt(enriched).isEmpty()) {
             LocalDateTime createdAt = createdAtHint != null ? createdAtHint : now;
             enriched.put(INDEXED_CREATED_AT_KEY, createdAt.toString());
         }

@@ -1,5 +1,6 @@
 package ai.fabric.search;
 
+import ai.fabric.cache.AICacheNames;
 import ai.fabric.config.AIProviderConfig;
 import ai.fabric.rag.VectorDatabaseService;
 import org.junit.jupiter.api.Test;
@@ -18,8 +19,8 @@ class VectorSearchServiceTest {
     @Test
     void storeVectorEvictsCachedSearchResults() {
         VectorDatabaseService vectorDatabaseService = mock(VectorDatabaseService.class);
-        ConcurrentMapCacheManager cacheManager = new ConcurrentMapCacheManager("vectorSearch");
-        Cache cache = cacheManager.getCache("vectorSearch");
+        ConcurrentMapCacheManager cacheManager = new ConcurrentMapCacheManager(AICacheNames.VECTOR_SEARCH);
+        Cache cache = cacheManager.getCache(AICacheNames.VECTOR_SEARCH);
         cache.put("stale-query", "stale-result");
         VectorSearchService service = new VectorSearchService(new AIProviderConfig(), vectorDatabaseService, cacheManager);
 

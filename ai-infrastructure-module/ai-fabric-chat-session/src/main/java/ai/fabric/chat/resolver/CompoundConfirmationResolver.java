@@ -25,7 +25,7 @@ public class CompoundConfirmationResolver extends ConfirmationResolverSupport {
                               Map<String, Object> sessionMetadata,
                               PipelineContext context) {
         PendingAction pending = peekPending(context);
-        if (pending == null) {
+        if (pending == null || isExpired(pending)) {
             return false;
         }
         if (intentResponse == null || intentResponse.getIntents() == null || intentResponse.getIntents().isEmpty()) {
@@ -42,7 +42,7 @@ public class CompoundConfirmationResolver extends ConfirmationResolverSupport {
                                    Map<String, Object> sessionMetadata,
                                    PipelineContext context) {
         PendingAction pending = peekPending(context);
-        if (pending == null) {
+        if (pending == null || isExpired(pending)) {
             return context;
         }
 
@@ -54,7 +54,7 @@ public class CompoundConfirmationResolver extends ConfirmationResolverSupport {
 
         if (positive) {
             PendingAction confirmed = popPending(context);
-            if (confirmed != null) {
+            if (confirmed != null && !isExpired(confirmed)) {
                 Intent confirmedAction = Intent.builder()
                     .type(IntentType.ACTION)
                     .action(confirmed.action())

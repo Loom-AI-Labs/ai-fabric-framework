@@ -7,15 +7,17 @@ import ai.fabric.chat.interception.InterceptionDecision;
 import ai.fabric.dto.Intent;
 import ai.fabric.dto.IntentType;
 import ai.fabric.dto.MultiIntentResponse;
+import ai.fabric.intent.action.AIActionNames;
 import ai.fabric.intent.action.PendingAction;
 import ai.fabric.intent.action.PendingActionStore;
+import ai.fabric.intent.action.confirmation.ConfirmationInterceptorParamSupport;
 import ai.fabric.intent.orchestration.pipeline.PipelineContext;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -56,7 +58,7 @@ public class AnnotatedConfirmationInterceptorsResolver extends ConfirmationResol
             return false;
         }
         PendingAction pending = peekPending(context);
-        if (pending == null || !StringUtils.hasText(pending.action())) {
+        if (pending == null || isExpired(pending) || !StringUtils.hasText(pending.action())) {
             return false;
         }
         if (intentResponse == null || intentResponse.getIntents() == null || intentResponse.getIntents().isEmpty()) {
@@ -76,7 +78,7 @@ public class AnnotatedConfirmationInterceptorsResolver extends ConfirmationResol
                                    Map<String, Object> sessionMetadata,
                                    PipelineContext context) {
         PendingAction pending = peekPending(context);
-        if (pending == null) {
+        if (pending == null || isExpired(pending)) {
             return context;
         }
 
@@ -117,8 +119,11 @@ public class AnnotatedConfirmationInterceptorsResolver extends ConfirmationResol
             }
         }
 
+        List<Intent> nextIntents = new ArrayList<>(decision.intents());
+        nextIntents.addAll(preservedNonConfirmationIntents(intentResponse, pending, decision));
+
         MultiIntentResponse updatedResponse = MultiIntentResponse.builder()
-            .intents(decision.intents())
+            .intents(List.copyOf(nextIntents))
             .orchestrationStrategy(intentResponse != null ? intentResponse.getOrchestrationStrategy() : null)
             .metadata(intentResponse != null && intentResponse.getMetadata() != null ? intentResponse.getMetadata() : Map.of())
             .build();
@@ -152,7 +157,8 @@ public class AnnotatedConfirmationInterceptorsResolver extends ConfirmationResol
     }
 
     private void trySetOnceParamOnTop(String key, PipelineContext context) {
-        if (!StringUtils.hasText(key)) {
+        String normalizedKey = ConfirmationInterceptorParamSupport.normalizeOnceParam(key);
+        if (!StringUtils.hasText(normalizedKey)) {
             return;
         }
         PendingAction current = peekPending(context);
@@ -160,11 +166,11 @@ public class AnnotatedConfirmationInterceptorsResolver extends ConfirmationResol
             return;
         }
         Map<String, Object> params = current.actionParams();
-        if (params != null && Boolean.TRUE.equals(params.get(key))) {
+        if (ConfirmationInterceptorParamSupport.isBooleanFlagSet(params, normalizedKey)) {
             return;
         }
         Map<String, Object> next = params != null ? new HashMap<>(params) : new HashMap<>();
-        next.put(key, true);
+        next.put(normalizedKey, true);
         PendingAction updated = new PendingAction(
             current.action(),
             Map.copyOf(next),
@@ -214,13 +220,87 @@ public class AnnotatedConfirmationInterceptorsResolver extends ConfirmationResol
             if (!handler.pendingActions.contains(actionName)) {
                 continue;
             }
-            if (StringUtils.hasText(handler.onceParam)) {
-                Map<String, Object> params = pending.actionParams();
-                if (params != null && Boolean.TRUE.equals(params.get(handler.onceParam))) {
-                    continue;
-                }
+            if (ConfirmationInterceptorParamSupport.isBooleanFlagSet(pending.actionParams(), handler.onceParam)) {
+                continue;
             }
             return handler;
+        }
+        return null;
+    }
+
+    private List<Intent> preservedNonConfirmationIntents(MultiIntentResponse intentResponse,
+                                                         PendingAction pending,
+                                                         InterceptionDecision decision) {
+        if (intentResponse == null || intentResponse.getIntents() == null || intentResponse.getIntents().isEmpty()) {
+            return List.of();
+        }
+
+        List<Intent> remaining = new ArrayList<>();
+        for (Intent intent : intentResponse.getIntents()) {
+            if (intent == null || intent.getType() == IntentType.CONFIRMATION_POSITIVE || intent.getType() == IntentType.CONFIRMATION_NEGATIVE) {
+                continue;
+            }
+            remaining.add(intent);
+        }
+        if (remaining.isEmpty()) {
+            return List.of();
+        }
+
+        Set<String> correlatedActions = correlatedActionKeys(pending, decision);
+        if (correlatedActions.isEmpty()) {
+            return List.copyOf(remaining);
+        }
+
+        List<Intent> preserved = new ArrayList<>();
+        for (Intent intent : remaining) {
+            if (intent == null || intent.getType() != IntentType.ACTION) {
+                preserved.add(intent);
+                continue;
+            }
+            String actionName = resolveIntentActionName(intent);
+            if (!StringUtils.hasText(actionName)) {
+                preserved.add(intent);
+                continue;
+            }
+            if (!correlatedActions.contains(AIActionNames.normalize(actionName))) {
+                preserved.add(intent);
+            }
+        }
+        return List.copyOf(preserved);
+    }
+
+    private Set<String> correlatedActionKeys(PendingAction pending, InterceptionDecision decision) {
+        Set<String> keys = new LinkedHashSet<>();
+        if (pending != null && StringUtils.hasText(pending.action())) {
+            keys.add(AIActionNames.normalize(pending.action()));
+        }
+        if (decision != null && decision.confirmedActions() != null) {
+            for (String actionName : decision.confirmedActions()) {
+                if (StringUtils.hasText(actionName)) {
+                    keys.add(AIActionNames.normalize(actionName));
+                }
+            }
+        }
+        if (decision != null && decision.intents() != null) {
+            for (Intent intent : decision.intents()) {
+                String actionName = resolveIntentActionName(intent);
+                if (StringUtils.hasText(actionName)) {
+                    keys.add(AIActionNames.normalize(actionName));
+                }
+            }
+        }
+        return Set.copyOf(keys);
+    }
+
+    private String resolveIntentActionName(Intent intent) {
+        if (intent == null) {
+            return null;
+        }
+        if (StringUtils.hasText(intent.getAction())) {
+            return intent.getAction().trim();
+        }
+        if (intent.getType() == IntentType.ACTION && StringUtils.hasText(intent.getIntent())) {
+            return intent.getIntent().trim();
         }
         return null;
     }
@@ -298,7 +378,7 @@ public class AnnotatedConfirmationInterceptorsResolver extends ConfirmationResol
     }
 
     private String normalize(String actionName) {
-        return StringUtils.hasText(actionName) ? actionName.trim().toLowerCase(Locale.ROOT) : "";
+        return StringUtils.hasText(actionName) ? AIActionNames.normalize(actionName) : "";
     }
 
     private record InterceptorMethod(
@@ -334,12 +414,12 @@ public class AnnotatedConfirmationInterceptorsResolver extends ConfirmationResol
                 Set<String> normalized = new java.util.LinkedHashSet<>();
                 for (String a : annotation.pendingActions()) {
                     if (StringUtils.hasText(a)) {
-                        normalized.add(a.trim().toLowerCase(Locale.ROOT));
+                        normalized.add(AIActionNames.normalize(a));
                     }
                 }
                 actions = Set.copyOf(normalized);
             }
-            String once = StringUtils.hasText(annotation.onceParam()) ? annotation.onceParam().trim() : "";
+            String once = ConfirmationInterceptorParamSupport.normalizeOnceParam(annotation.onceParam());
             return new InterceptorMethod(
                 bean,
                 invocable,

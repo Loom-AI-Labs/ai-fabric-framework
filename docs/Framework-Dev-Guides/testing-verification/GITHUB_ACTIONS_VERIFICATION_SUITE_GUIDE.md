@@ -163,8 +163,11 @@ It covers:
 - direct Pinecone provider-live verification for the Pinecone row
 - optional deployed runtime vector readiness smoke verification when `runtime_base_url` is supplied
 
-The vector contract job runs by default and can be explicitly skipped with `run_vector_contracts=false`
-only when the release run is intentionally avoiding Docker-backed provider verification.
+The vector contract job uses `.github/scripts/run-vector-container-contracts.sh`. It also runs in
+the automatic `Framework Build` workflow, and this provider-suite workflow keeps the same gate
+available for release validation alongside live provider rows. The provider-suite vector contract job
+runs by default and can be explicitly skipped with `run_vector_contracts=false` only when the release
+run is intentionally avoiding Docker-backed provider verification.
 The deployed runtime readiness smoke job runs `.github/scripts/verify-vector-readiness-health.sh`
 against `/actuator/health/vectorProvider`. It fails on `WARN` unless
 `vector_readiness_allow_warn=true`, so release runs should normally leave the warning override off.

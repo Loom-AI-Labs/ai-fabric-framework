@@ -98,4 +98,20 @@ class RegisteredConnectorActionMappingTest {
         assertThat(roundTrip.params().getLast().name()).isEqualTo("quantity");
         assertThat(roundTrip.params().getLast().defaultValue()).isEqualTo("1");
     }
+
+    @Test
+    void toDefinition_shouldTreatReadWriteStoredActionsAsNonGroundingByDefault() {
+        RegisteredConnectorAction entity = new RegisteredConnectorAction();
+        entity.setName("update_and_fetch_cart");
+        entity.setDescription("Apply a cart update and return the updated cart");
+        entity.setCategory("commerce");
+        entity.setAccessMode(ActionAccessMode.READ_WRITE);
+
+        ConnectorActionDefinition definition = entity.toDefinition();
+
+        assertThat(definition.accessMode()).isEqualTo(ActionAccessMode.READ_WRITE);
+        assertThat(definition.groundingEligible()).isFalse();
+        assertThat(definition.readActionResolutionEligible()).isFalse();
+        assertThat(definition.resultPresentationHint()).isEqualTo(ActionResultPresentationHint.DEFAULT);
+    }
 }

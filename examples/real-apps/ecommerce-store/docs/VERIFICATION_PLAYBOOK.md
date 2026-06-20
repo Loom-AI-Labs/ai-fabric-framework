@@ -11,13 +11,15 @@ Replace:
 - `{store}` = ecommerce-store base URL
 - `{rest}` = rest connector base URL
 - `{runtime}` = runtime base URL (optional if you proxy runtime via `{rest}`)
+- `{admin-header}` = configured admin API key header, usually `X-ADMIN-API-KEY`
+- `{admin-key}` = configured `APP_ADMIN_API_KEY`
 
 ### Ecommerce Store
 
 - `GET {store}/actuator/health`
-- `POST {store}/api/admin/demo/reset` (confirm required; supports `clearConnectorData`, `clearRuntimeVectors`)
-- `POST {store}/api/admin/demo/clear` (confirm required; eventful deletes for product/policy/review)
-- `POST {store}/api/admin/migration/clear` (legacy alias for reset)
+- `POST {store}/api/admin/demo/reset` (admin header + confirm required; supports `clearConnectorData`, `clearRuntimeVectors`)
+- `POST {store}/api/admin/demo/clear` (admin header + confirm required; eventful deletes for product/policy/review)
+- `POST {store}/api/admin/migration/clear` (admin header + confirm required; legacy alias for reset)
 
 ### REST Connector (routing verification)
 
@@ -53,6 +55,7 @@ STORE_BASE_URL="http://localhost:8096" \
 REST_CONNECTOR_BASE_URL="http://localhost:8082" \
 RUNTIME_BASE_URL="http://localhost:8097" \
 API_KEY="..." \
+APP_ADMIN_API_KEY="..." \
 ./scripts/verify-ecommerce-deployment.sh
 ```
 

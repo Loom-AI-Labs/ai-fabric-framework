@@ -1,5 +1,6 @@
 package ai.fabric.service;
 
+import ai.fabric.cache.AICacheNames;
 import ai.fabric.dto.VectorRecord;
 import ai.fabric.rag.VectorDatabaseService;
 import org.junit.jupiter.api.Test;
@@ -7,11 +8,15 @@ import org.mockito.ArgumentCaptor;
 import org.springframework.cache.Cache;
 import org.springframework.cache.concurrent.ConcurrentMapCacheManager;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -40,8 +45,8 @@ class VectorManagementServiceTest {
     void removeVectorEvictsCachedSearchResultsEvenWhenProviderReportsMiss() {
         VectorDatabaseService vectorDatabaseService = mock(VectorDatabaseService.class);
         when(vectorDatabaseService.removeVector("product", "p-1")).thenReturn(false);
-        ConcurrentMapCacheManager cacheManager = new ConcurrentMapCacheManager("vectorSearch");
-        Cache cache = cacheManager.getCache("vectorSearch");
+        ConcurrentMapCacheManager cacheManager = new ConcurrentMapCacheManager(AICacheNames.VECTOR_SEARCH);
+        Cache cache = cacheManager.getCache(AICacheNames.VECTOR_SEARCH);
         cache.put("stale-query", "stale-result");
         VectorManagementService service = new VectorManagementService(vectorDatabaseService, null, cacheManager);
 
@@ -76,6 +81,57 @@ class VectorManagementServiceTest {
         assertThat(recordsCaptor.getValue().getFirst().getMetadata())
             .containsEntry("category", "outerwear")
             .containsKeys("_indexedCreatedAt", "_indexedUpdatedAt");
+    }
+
+    @Test
+    void updateVectorRepairsInvalidCreatedAtMetadataFromExistingRecord() {
+        VectorDatabaseService vectorDatabaseService = mock(VectorDatabaseService.class);
+        LocalDateTime createdAt = LocalDateTime.parse("2026-06-19T10:00:00");
+        when(vectorDatabaseService.getVectorByEntity("product", "p-1")).thenReturn(Optional.of(
+            VectorRecord.builder()
+                .vectorId("vec-1")
+                .entityType("product")
+                .entityId("p-1")
+                .createdAt(createdAt)
+                .build()
+        ));
+        when(vectorDatabaseService.updateVector(
+            eq("vec-1"),
+            eq("product"),
+            eq("p-1"),
+            eq("updated content"),
+            eq(List.of(0.3d, 0.4d)),
+            anyMap()
+        )).thenReturn(true);
+        VectorManagementService service = new VectorManagementService(vectorDatabaseService);
+
+        String vectorId = service.updateVector(
+            "product",
+            "p-1",
+            "updated content",
+            List.of(0.3d, 0.4d),
+            Map.of(
+                "category", "outerwear",
+                "_indexedCreatedAt", "bad-date",
+                "_indexedUpdatedAt", "2026-06-19T10:01:00"
+            )
+        );
+
+        assertThat(vectorId).isEqualTo("vec-1");
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<Map<String, Object>> metadataCaptor = ArgumentCaptor.forClass(Map.class);
+        verify(vectorDatabaseService).updateVector(
+            eq("vec-1"),
+            eq("product"),
+            eq("p-1"),
+            eq("updated content"),
+            eq(List.of(0.3d, 0.4d)),
+            metadataCaptor.capture()
+        );
+        assertThat(metadataCaptor.getValue())
+            .containsEntry("category", "outerwear")
+            .containsEntry("_indexedCreatedAt", createdAt.toString())
+            .containsKey("_indexedUpdatedAt");
     }
 
     @Test

@@ -1,6 +1,7 @@
 package ai.fabric.provider.springai;
 
 import ai.fabric.dto.AIGenerationRequest;
+import ai.fabric.dto.AIGenerationRequestContracts;
 import ai.fabric.dto.AIGenerationResponse;
 import ai.fabric.dto.AIEmbeddingRequest;
 import ai.fabric.dto.AIEmbeddingResponse;
@@ -85,6 +86,7 @@ public class SpringAiChatProvider implements AIProvider {
     public AIGenerationResponse generateContent(AIGenerationRequest request) {
         long start = System.nanoTime();
         try {
+            AIGenerationRequestContracts.validateStandardChatPrompting(request);
             var unsupportedReason = SpringAiPromptMapper.unsupportedTransientInputReason(family, request);
             if (unsupportedReason.isPresent()) {
                 AIGenerationResponse response = TransientInputSupport.unsupportedFileUrlResponse(

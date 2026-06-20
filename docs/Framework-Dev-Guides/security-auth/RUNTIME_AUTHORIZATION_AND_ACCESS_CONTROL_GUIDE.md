@@ -310,14 +310,20 @@ Runtime env vars:
 ```bash
 AI_FABRIC_RUNTIME_DEV_DEFAULTS_ENABLED=true
 
-# Optional: protect /api/admin/* endpoints (indexing overview, action catalog overview, clear-vectors)
+# Protect /api/admin/* endpoints (indexing overview, action catalog overview, clear-vectors)
 APP_ADMIN_API_KEY="dev-admin-key"
 APP_ADMIN_API_KEY_HEADER="X-ADMIN-API-KEY"
+
+# Optional local-only escape hatch for demos/tests that must run without an admin key.
+# Do not use this in shared, hosted, or production environments.
+# APP_ADMIN_AUTH_ENABLED=false
 ```
 
 Notes:
 - With dev defaults enabled, runtime registers an allow-all `EntityAccessPolicy` if you did not provide one.
-- If you do not set `APP_ADMIN_API_KEY`, runtime admin endpoints are public (dev/test convenience). Do not ship that in production.
+- Runtime and real-app admin endpoints are protected by default.
+- If admin auth is enabled and `APP_ADMIN_API_KEY` is missing, admin requests are denied.
+- Disable admin auth only with an explicit local/demo opt-out such as `APP_ADMIN_AUTH_ENABLED=false`.
 
 ### 7.2 Production
 

@@ -1,5 +1,6 @@
 package ai.fabric.access;
 
+import ai.fabric.cache.AICacheNames;
 import ai.fabric.access.policy.EntityAccessPolicy;
 import ai.fabric.dto.AIAccessControlRequest;
 import ai.fabric.dto.AIAccessControlResponse;
@@ -80,7 +81,7 @@ class AIAccessControlServiceTest {
         AIAccessControlService service = new AIAccessControlService(
             clock,
             policy,
-            new ConcurrentMapCacheManager("accessDecisions")
+            new ConcurrentMapCacheManager(AICacheNames.ACCESS_DECISIONS)
         );
 
         AIAccessControlResponse first = service.checkAccess(buildRequest("cache-user"));
@@ -100,7 +101,7 @@ class AIAccessControlServiceTest {
         AIAccessControlService service = new AIAccessControlService(
             clock,
             policy,
-            new ConcurrentMapCacheManager("accessDecisions")
+            new ConcurrentMapCacheManager(AICacheNames.ACCESS_DECISIONS)
         );
 
         AIAccessControlResponse first = service.checkAccess(buildRequest("failure-user"));

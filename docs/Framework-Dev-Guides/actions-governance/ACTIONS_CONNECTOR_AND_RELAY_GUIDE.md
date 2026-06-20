@@ -90,6 +90,10 @@ Curated packs / licensing provide:
 - parameter contract (required fields + validation hints)
 - `requiresConfirmation` and optional confirmation message template
 
+`readActionResolutionEligible` is valid only for `READ` actions. `READ_WRITE` is side-effecting and
+must not be exposed as a planner-driven read helper; boot-time catalogs and DB registration reject
+that combination. `READ_WRITE` actions are also not grounding-eligible by default.
+
 **Action execution** is how the action actually runs:
 - **Local (in-process)**: Java `@AIAction` handlers executed in the same JVM as AI Fabric
 - **Connector (out-of-process)**: AI Fabric calls a customer HTTP API and receives an `ActionResult`
@@ -292,6 +296,7 @@ Recommended load order (no precedence; duplicates are fatal):
 Validate before exposing actions to the LLM:
 - `name`: non-empty, trimmed, stable identifier (recommended: `snake_case`; enforcement should be **optional/configurable**)
 - `accessMode`: must be one of `READ | READ_WRITE | WRITE_ONLY`
+- `readActionResolutionEligible`: allowed only when `accessMode=READ`
 - `params`: validate `required`, `pattern`, `allowedValues`, `min`, `max` using the same rules as the Java binder
 - `requiresConfirmation`: boolean
 - `confirmationMessage` (if present): validate template placeholders

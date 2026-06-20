@@ -1,5 +1,6 @@
 package ai.fabric.access;
 
+import ai.fabric.cache.AICacheNames;
 import ai.fabric.access.policy.EntityAccessPolicy;
 import ai.fabric.dto.AIAccessControlRequest;
 import ai.fabric.dto.AIAccessControlResponse;
@@ -29,7 +30,7 @@ import org.springframework.cache.CacheManager;
 @RequiredArgsConstructor
 public class AIAccessControlService {
 
-    private static final String ACCESS_DECISIONS_CACHE = "accessDecisions";
+    private static final String ACCESS_DECISIONS_CACHE = AICacheNames.ACCESS_DECISIONS;
 
     private final Clock clock;
     private final EntityAccessPolicy entityAccessPolicy;

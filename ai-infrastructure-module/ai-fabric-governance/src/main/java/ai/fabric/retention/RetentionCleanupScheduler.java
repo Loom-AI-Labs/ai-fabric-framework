@@ -150,6 +150,11 @@ public class RetentionCleanupScheduler {
                     boolean removed = vectorDatabaseService.removeVector(entityType, entry.getEntityId());
                     if (removed) {
                         accumulator.vectorsDeleted++;
+                    } else {
+                        accumulator.failure("vector removal failed for " + entityType + "::" + entry.getEntityId()
+                            + ": provider reported not found");
+                        log.warn("Retention cleanup found eligible catalog entry {}:{} but vector provider removed no record",
+                            entityType, entry.getEntityId());
                     }
                 } catch (Exception ex) {
                     accumulator.failure("vector removal failed for " + entityType + "::" + entry.getEntityId() + ": " + safeMessage(ex));

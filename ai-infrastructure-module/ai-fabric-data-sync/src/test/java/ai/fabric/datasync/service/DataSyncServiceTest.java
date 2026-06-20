@@ -445,6 +445,7 @@ class DataSyncServiceTest {
     @Test
     void upsert_shouldBypassAccessControl_forTrustedPlatformInternalSync() {
         AIDataSyncProperties props = new AIDataSyncProperties();
+        props.setAllowTrustedPlatformInternalSyncBypass(true);
         AIEntityConfigurationLoader loader = mock(AIEntityConfigurationLoader.class);
         AIEmbeddingService embeddingService = mock(AIEmbeddingService.class);
         VectorManagementService vectorManagementService = mock(VectorManagementService.class);
@@ -489,8 +490,55 @@ class DataSyncServiceTest {
     }
 
     @Test
+    void upsert_shouldNotBypassAccessControlByDefault_forPlatformShapedAuthContext() {
+        AIDataSyncProperties props = new AIDataSyncProperties();
+        AIEntityConfigurationLoader loader = mock(AIEntityConfigurationLoader.class);
+        AIEmbeddingService embeddingService = mock(AIEmbeddingService.class);
+        VectorManagementService vectorManagementService = mock(VectorManagementService.class);
+        AIAccessControlService accessControlService = mock(AIAccessControlService.class);
+
+        when(loader.getEntityConfig("product")).thenReturn(AIEntityConfig.builder()
+            .entityType("product")
+            .indexable(true)
+            .build());
+        when(accessControlService.checkAccess(any())).thenReturn(AIAccessControlResponse.builder()
+            .accessGranted(false)
+            .build());
+
+        DataSyncService service = new DataSyncService(
+            props,
+            loader,
+            embeddingService,
+            vectorManagementService,
+            accessControlService,
+            new DataSyncEntityNormalizer(props, null),
+            Clock.fixed(Instant.parse("2026-02-12T00:00:00Z"), ZoneOffset.UTC)
+        );
+
+        DataSyncTrace trace = verifiedTrace("system:platform-marketplace-dataset-sync", "verified-session", "req-platform-default-policy");
+        trace.getAuthContext().setDeploymentId("dep-123");
+        trace.getAuthContext().setIssuer("platform-marketplace-dataset-sync");
+        trace.getAuthContext().setGrantedScopes(List.of("data-sync:upsert", "vectorization:verification"));
+
+        DataSyncUpsertRequest request = new DataSyncUpsertRequest();
+        request.setVectorSpace("product");
+        request.setId("p-platform-default-policy");
+        request.setContent("hello");
+        request.setTrace(trace);
+
+        DataSyncOperationResponse response = service.upsert(request);
+
+        assertThat(response.getSuccess()).isFalse();
+        assertThat(response.getErrorCode()).isEqualTo("ACCESS_DENIED");
+        assertThat(response.getMetadata()).containsEntry("accessDecisionSource", "accessControlService");
+        verify(accessControlService).checkAccess(any());
+        verifyNoInteractions(embeddingService, vectorManagementService);
+    }
+
+    @Test
     void upsert_shouldNotBypassAccessControl_whenTrustedPlatformSyncScopeMissing() {
         AIDataSyncProperties props = new AIDataSyncProperties();
+        props.setAllowTrustedPlatformInternalSyncBypass(true);
         AIEntityConfigurationLoader loader = mock(AIEntityConfigurationLoader.class);
         AIEmbeddingService embeddingService = mock(AIEmbeddingService.class);
         VectorManagementService vectorManagementService = mock(VectorManagementService.class);
@@ -536,6 +584,7 @@ class DataSyncServiceTest {
     @Test
     void delete_shouldBypassAccessControl_forTrustedPlatformInternalSyncWithDeleteScope() {
         AIDataSyncProperties props = new AIDataSyncProperties();
+        props.setAllowTrustedPlatformInternalSyncBypass(true);
         AIEntityConfigurationLoader loader = mock(AIEntityConfigurationLoader.class);
         AIEmbeddingService embeddingService = mock(AIEmbeddingService.class);
         VectorManagementService vectorManagementService = mock(VectorManagementService.class);
@@ -610,6 +659,80 @@ class DataSyncServiceTest {
 
         assertThat(response.getSuccess()).isFalse();
         assertThat(response.getErrorCode()).isEqualTo("ACCESS_DENIED");
+    }
+
+    @Test
+    void batch_shouldFailClosedAndSkipSideEffects_whenVerifiedAuthContextSubjectMissing() {
+        AIDataSyncProperties props = new AIDataSyncProperties();
+        AIEntityConfigurationLoader loader = mock(AIEntityConfigurationLoader.class);
+        AIEmbeddingService embeddingService = mock(AIEmbeddingService.class);
+        VectorManagementService vectorManagementService = mock(VectorManagementService.class);
+        AIAccessControlService accessControlService = mock(AIAccessControlService.class);
+
+        when(loader.getEntityConfig("product")).thenReturn(AIEntityConfig.builder()
+            .entityType("product")
+            .indexable(true)
+            .build());
+
+        DataSyncService service = new DataSyncService(
+            props,
+            loader,
+            embeddingService,
+            vectorManagementService,
+            accessControlService,
+            new DataSyncEntityNormalizer(props, null),
+            Clock.fixed(Instant.parse("2026-02-12T00:00:00Z"), ZoneOffset.UTC)
+        );
+
+        DataSyncTrace trace = new DataSyncTrace();
+        trace.setRequestId("req-batch-missing-auth");
+
+        DataSyncOperation upsert = new DataSyncOperation(
+            DataSyncOperationType.UPSERT,
+            "product",
+            "sku-missing-auth",
+            "gaming laptop",
+            null,
+            null,
+            null
+        );
+        DataSyncOperation delete = new DataSyncOperation(
+            DataSyncOperationType.DELETE,
+            "product",
+            "sku-delete-missing-auth",
+            null,
+            null,
+            null,
+            null
+        );
+
+        DataSyncBatchResponse response = service.batch(new DataSyncBatchRequest(trace, List.of(upsert, delete)));
+
+        assertThat(response.getSuccess()).isFalse();
+        assertThat(response.getErrorCode()).isEqualTo("ACCESS_DENIED");
+        assertThat(response.getTotalOperations()).isEqualTo(2);
+        assertThat(response.getSucceededOperations()).isZero();
+        assertThat(response.getFailedOperations()).isEqualTo(2);
+        assertThat(response.getResults()).hasSize(1);
+        assertThat(response.getResults().get(0).getMetadata())
+            .containsKey("deniedOperationDetails");
+
+        Object details = response.getResults().get(0).getMetadata().get("deniedOperationDetails");
+        assertThat(details).asList().hasSize(2);
+        assertThat(((List<?>) details).get(0))
+            .asInstanceOf(MAP)
+            .containsEntry("index", 0)
+            .containsEntry("identitySource", "missingVerifiedAuthContext")
+            .containsEntry("accessDecisionSource", "dataSyncVerifiedAuthContext")
+            .containsEntry("accessEvaluationStatus", "missingSubject");
+        assertThat(((List<?>) details).get(1))
+            .asInstanceOf(MAP)
+            .containsEntry("index", 1)
+            .containsEntry("operationType", "DELETE")
+            .containsEntry("identitySource", "missingVerifiedAuthContext")
+            .containsEntry("accessDecisionSource", "dataSyncVerifiedAuthContext")
+            .containsEntry("accessEvaluationStatus", "missingSubject");
+        verifyNoInteractions(accessControlService, embeddingService, vectorManagementService);
     }
 
     @Test

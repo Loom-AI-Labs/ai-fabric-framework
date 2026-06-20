@@ -55,4 +55,21 @@ class VectorRecordLifecycleMetadataTest {
         assertThat(enriched.get(VectorRecordLifecycleMetadata.INDEXED_CREATED_AT_KEY)).isEqualTo(createdAt.toString());
         assertThat(VectorRecordLifecycleMetadata.readUpdatedAt(enriched)).isPresent();
     }
+
+    @Test
+    void enrichForUpdateRepairsInvalidCreatedAtUsingExistingRecordHint() {
+        LocalDateTime createdAt = LocalDateTime.parse("2026-06-19T10:00:00");
+        Map<String, Object> input = new LinkedHashMap<>();
+        input.put("tenant", "retail");
+        input.put(VectorRecordLifecycleMetadata.INDEXED_CREATED_AT_KEY, "bad-date");
+        input.put(VectorRecordLifecycleMetadata.INDEXED_UPDATED_AT_KEY, "2026-06-19T10:01:00");
+
+        Map<String, Object> enriched = VectorRecordLifecycleMetadata.enrichForUpdate(input, createdAt);
+
+        assertThat(enriched)
+            .containsEntry("tenant", "retail")
+            .containsEntry(VectorRecordLifecycleMetadata.INDEXED_CREATED_AT_KEY, createdAt.toString());
+        assertThat(VectorRecordLifecycleMetadata.readUpdatedAt(enriched).orElseThrow())
+            .isAfter(LocalDateTime.parse("2026-06-19T10:01:00"));
+    }
 }

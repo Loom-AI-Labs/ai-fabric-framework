@@ -1,5 +1,6 @@
 package ai.fabric.search;
 
+import ai.fabric.cache.AICacheNames;
 import ai.fabric.config.AIProviderConfig;
 import ai.fabric.dto.AISearchRequest;
 import ai.fabric.dto.AISearchResponse;
@@ -34,7 +35,7 @@ import java.util.concurrent.atomic.AtomicLong;
 @Slf4j
 public class VectorSearchService {
 
-    private static final String VECTOR_SEARCH_CACHE = "vectorSearch";
+    private static final String VECTOR_SEARCH_CACHE = AICacheNames.VECTOR_SEARCH;
     
     private final AIProviderConfig config;
     private final VectorDatabaseService vectorDatabaseService;

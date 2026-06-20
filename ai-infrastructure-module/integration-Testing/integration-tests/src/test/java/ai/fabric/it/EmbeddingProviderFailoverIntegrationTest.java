@@ -1,6 +1,7 @@
 package ai.fabric.it;
 
 import ai.fabric.cache.AICacheConfig;
+import ai.fabric.cache.AICacheNames;
 import ai.fabric.core.AIEmbeddingService;
 import ai.fabric.config.AIProviderConfig;
 import ai.fabric.dto.AIEmbeddingRequest;
@@ -63,7 +64,7 @@ class EmbeddingProviderFailoverIntegrationTest {
 
     @BeforeEach
     void setUp() {
-        cache = cacheManager.getCache("embeddings");
+        cache = cacheManager.getCache(AICacheNames.EMBEDDINGS);
         if (cache != null) {
             cache.clear();
         }

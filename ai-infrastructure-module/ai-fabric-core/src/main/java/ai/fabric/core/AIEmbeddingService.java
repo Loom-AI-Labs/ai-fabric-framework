@@ -1,5 +1,6 @@
 package ai.fabric.core;
 
+import ai.fabric.cache.AICacheNames;
 import ai.fabric.dto.AIEmbeddingRequest;
 import ai.fabric.dto.AIEmbeddingResponse;
 import ai.fabric.config.AIProviderConfig;
@@ -325,7 +326,7 @@ public class AIEmbeddingService {
     }
 
     private Cache getEmbeddingCache() {
-        return cacheManager != null ? cacheManager.getCache("embeddings") : null;
+        return cacheManager != null ? cacheManager.getCache(AICacheNames.EMBEDDINGS) : null;
     }
 
     private AIEmbeddingResponse getFromCache(Cache cache, String cacheKey) {

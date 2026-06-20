@@ -210,6 +210,11 @@ public class UserDataDeletionService {
                 if (vectorDatabaseService.removeVector(entityType, entityId)) {
                     vectorsDeleted.incrementAndGet();
                     vectorRemoved = true;
+                } else {
+                    failures.incrementAndGet();
+                    String message = "provider reported not found";
+                    log.warn("Vector removal failed for {}:{} - {}", entityType, entityId, message);
+                    failureMessages.add("vector removal failed for " + cacheKey + ": " + message);
                 }
             } catch (Exception ex) {
                 failures.incrementAndGet();

@@ -112,10 +112,11 @@ Common env vars:
 - `CONNECTOR_INDEXING_RUNTIME_BASE_URL=https://<rest-connector>.up.railway.app` (or runtime direct)
 - `CONNECTOR_INDEXING_API_KEY=<value>` (only if the rest connector inbound auth is enabled)
 - `CONNECTOR_INDEXING_API_KEY_HEADER=X-AIFABRIC-API-KEY`
-- Optional admin auth for store reset endpoints:
-  - `CONNECTOR_ADMIN_AUTH_ENABLED=true`
-  - `CONNECTOR_ADMIN_API_KEY=<value>`
-  - `CONNECTOR_ADMIN_API_KEY_HEADER=X-AIFABRIC-API-KEY`
+- Admin auth for store reset endpoints is enabled by default:
+  - Preferred: `APP_ADMIN_API_KEY=<value>`
+  - Preferred: `APP_ADMIN_API_KEY_HEADER=X-ADMIN-API-KEY`
+  - Compatibility aliases accepted by ecommerce-store: `CONNECTOR_ADMIN_API_KEY`, `CONNECTOR_ADMIN_API_KEY_HEADER`
+  - Local-only opt-out: `APP_ADMIN_AUTH_ENABLED=false` or `CONNECTOR_ADMIN_AUTH_ENABLED=false`
 
 ### 4.2 Generic REST Connector pattern (actions router + optional proxies)
 
@@ -179,8 +180,10 @@ Optional: browser cookies/session auth across origins:
 - Clear vectors (bulk wipe): `POST /api/admin/migration/clear?confirm=true`
 
 Admin auth:
-- If `APP_ADMIN_API_KEY` is blank, admin endpoints are allowed (demo default).
-- If set, callers must provide the header.
+- Runtime and real-app admin endpoints are protected by default.
+- If admin auth is enabled and `APP_ADMIN_API_KEY` is blank, admin requests are denied.
+- Callers must provide `APP_ADMIN_API_KEY_HEADER` with `APP_ADMIN_API_KEY`.
+- Use an explicit local-only opt-out such as `APP_ADMIN_AUTH_ENABLED=false` for no-key demos.
 
 ### 5.2 Generic REST Connector
 

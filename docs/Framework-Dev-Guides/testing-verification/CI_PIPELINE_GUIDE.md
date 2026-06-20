@@ -35,12 +35,14 @@ This is the default CI gate for framework code changes.
 | GitHub runner `ubuntu-latest` | all jobs | Uses the standard hosted runner image. |
 | repository checkout | all jobs | Every job starts from the current commit. |
 | Python 3.x + `pyyaml` | `Provider Registry` | Required by registry/release guard validation scripts. |
-| JDK 21 / Temurin | `Maven Build` | Required for the Spring Boot 4.1.x / Java 21 framework build. |
+| Python 3.x | `Maven Build` smoke scripts | Required by the ecommerce-to-chat data-sync smoke for JSON assertions. |
+| JDK 21 / Temurin | `Maven Build`, `Vector Provider Container Contracts` | Required for the Spring Boot 4.1.x / Java 21 framework build. |
 | Maven | `Maven Build` | Provided by the runner/JDK setup path. |
-| Docker daemon | `Maven Build` | Verified before Maven. Required by tests that use Testcontainers or Docker-aware fixtures. |
+| Docker daemon | `Maven Build`, `Vector Provider Container Contracts` | Verified before container-backed checks. Required by Testcontainers. |
 | `.github/scripts/*` guard scripts | `Provider Registry` | Must be executable and committed. |
 | `examples/minimal-spring-boot` | `Maven Build` | Used as a consumer compile check. |
-| `examples/real-apps` | `Maven Build` | Built and smoke-booted offline. |
+| `examples/real-apps` | `Maven Build` | Built, smoke-booted offline, and used for the ecommerce-to-chat data-sync proof. |
+| `.github/scripts/run-vector-container-contracts.sh` | `Vector Provider Container Contracts` | One-command runner for Qdrant REST/gRPC, Weaviate, and Milvus contract parity. |
 
 ### Job: Provider Registry
 
@@ -85,6 +87,7 @@ Step dependencies:
 | Compile minimal consumer example | Installed framework artifacts and example POM | A normal consumer app cannot compile. |
 | Build and install real apps suite | Installed framework artifacts and real-app modules | Real application examples fail to compile, test, or package. |
 | Smoke boot-test real apps | real-app artifacts and `.github/scripts/smoke-boot-realapps.sh` | Offline smoke profile startup fails. |
+| Smoke data-sync between ecommerce and chat runtime | real-app artifacts, `.github/scripts/smoke-ecommerce-chat-datasync.sh`, free local ports, Python 3 | Cross-app product upsert/search/delete/search proof fails or stale vector results survive delete. |
 
 It sets up JDK 21, confirms Docker is available, then runs the framework reactor:
 
@@ -113,6 +116,7 @@ Then it checks consumer/examples:
 mvn -B -V --no-transfer-progress -f examples/minimal-spring-boot/pom.xml compile
 mvn -B -V --no-transfer-progress -f examples/real-apps/pom.xml install
 .github/scripts/smoke-boot-realapps.sh
+.github/scripts/smoke-ecommerce-chat-datasync.sh
 ```
 
 So automatic CI verifies:
@@ -124,8 +128,60 @@ So automatic CI verifies:
 - minimal consumer compilation
 - real-app build/install
 - offline real-app smoke boot
+- deterministic ecommerce-store to chat-capabilities-demo data-sync upsert, runtime vector search,
+  delete propagation, and stale-result cache eviction
 
 It does not run the full RealAPI provider matrix automatically on every PR.
+
+### Job: Vector Provider Container Contracts
+
+Runs after the release guards pass and in parallel with the main Maven build.
+
+Step dependencies:
+
+| Step | Depends on | Fails when |
+| --- | --- | --- |
+| Set up JDK 21 | `actions/setup-java@v4`, Maven cache | Java 21 cannot be installed or Maven cache restore fails badly. |
+| Verify Docker is available | Docker service on `ubuntu-latest` | Docker is unavailable, so Testcontainers cannot start vector providers. |
+| Run vector provider container contracts | `.github/scripts/run-vector-container-contracts.sh`, Docker, Maven, vector provider modules | Qdrant REST/gRPC, Weaviate, or Milvus fail the shared lifecycle/admin contract. |
+| Upload vector contract reports | Failsafe/Surefire report output | Report upload failure; the test result is already decided by the contract step. |
+
+Command:
+
+```bash
+.github/scripts/run-vector-container-contracts.sh
+```
+
+Equivalent Maven command:
+
+```bash
+cd ai-infrastructure-module
+mvn -B -V --no-transfer-progress clean verify \
+  -Pcontainer-contract-tests \
+  -pl integration-Testing/vector-contract-tests \
+  -am
+```
+
+This starts Docker/Testcontainers providers and runs the shared `VectorDatabaseService` lifecycle
+contract against:
+
+- Qdrant REST
+- Qdrant gRPC
+- Weaviate
+- Milvus
+
+For local provider-version validation, override images through environment variables:
+
+```bash
+TESTCONTAINERS_QDRANT_IMAGE=qdrant/qdrant:v1.16.1 \
+TESTCONTAINERS_WEAVIATE_IMAGE=semitechnologies/weaviate:1.23.0 \
+TESTCONTAINERS_MILVUS_IMAGE=milvusdb/milvus:v2.4.0 \
+.github/scripts/run-vector-container-contracts.sh
+```
+
+This Docker-backed job does not replace live SaaS checks. Pinecone remains in the Pinecone live gate,
+and LLM/embedding vendors remain in the RealAPI provider matrix because Docker cannot reproduce those
+hosted APIs.
 
 ## 2. Manual Integration CI
 
@@ -267,8 +323,7 @@ Dependencies:
 Command:
 
 ```bash
-cd ai-infrastructure-module
-mvn verify -Pcontainer-contract-tests -pl integration-Testing/vector-contract-tests -am -B -V
+.github/scripts/run-vector-container-contracts.sh
 ```
 
 This starts Docker/Testcontainers providers and runs the shared `VectorDatabaseService` lifecycle
@@ -484,11 +539,7 @@ mvn -f ai-infrastructure-module/pom.xml \
 ```
 
 ```bash
-mvn -f ai-infrastructure-module/pom.xml \
-  -Pcontainer-contract-tests \
-  -pl integration-Testing/vector-contract-tests \
-  -am \
-  verify
+.github/scripts/run-vector-container-contracts.sh
 ```
 
 If Pinecone is part of the release claim, also run with real Pinecone credentials/index:

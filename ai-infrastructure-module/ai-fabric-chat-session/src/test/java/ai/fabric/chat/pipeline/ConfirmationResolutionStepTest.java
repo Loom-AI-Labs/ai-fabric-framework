@@ -3,6 +3,7 @@ package ai.fabric.chat.pipeline;
 import ai.fabric.chat.config.ChatSessionProperties;
 import ai.fabric.chat.domain.ChatSession;
 import ai.fabric.chat.domain.SessionStatus;
+import ai.fabric.chat.resolver.CompoundConfirmationResolver;
 import ai.fabric.chat.resolver.SingleConfirmationPositiveResolver;
 import ai.fabric.chat.service.ChatSessionService;
 import ai.fabric.chat.spi.IntentResolver;
@@ -23,6 +24,8 @@ import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class ConfirmationResolutionStepTest {
@@ -78,5 +81,98 @@ class ConfirmationResolutionStepTest {
         assertThat(resolved.isActionConfirmed("create_purchase_order")).isTrue();
         assertThat(resolved.getMetadata())
             .containsEntry(PendingAction.TRUSTED_EVIDENCE_METADATA_KEY, Map.of("sku", List.of("ELEC-LAPTOP-001")));
+    }
+
+    @Test
+    void shouldNotResolveExpiredSinglePositiveConfirmationIntoAction() {
+        ChatSessionService chatSessionService = sessionService("conv-1", "user-1");
+        PendingActionStore pendingActionStore = mock(PendingActionStore.class);
+        PendingAction expired = pending("create_purchase_order", Instant.now().minusSeconds(600));
+        when(pendingActionStore.peekPendingAction("conv-1", "user-1")).thenReturn(Optional.of(expired));
+
+        ConfirmationResolutionStep step = new ConfirmationResolutionStep(
+            chatSessionService,
+            enabledProperties(),
+            List.of(new SingleConfirmationPositiveResolver(pendingActionStore))
+        );
+
+        MultiIntentResponse extracted = MultiIntentResponse.builder()
+            .intents(List.of(Intent.builder().type(IntentType.CONFIRMATION_POSITIVE).confidence(1.0d).build()))
+            .build();
+        PipelineContext ctx = PipelineContext.from("yes", context("conv-1", "user-1")).toBuilder()
+            .intentResponse(extracted)
+            .build();
+
+        PipelineContext resolved = step.process(ctx);
+
+        assertThat(resolved.getIntentResponse()).isSameAs(extracted);
+        assertThat(resolved.getConfirmedActions()).isEmpty();
+        verify(pendingActionStore, never()).popPendingAction("conv-1", "user-1");
+    }
+
+    @Test
+    void shouldNotResolveExpiredCompoundConfirmationIntoAction() {
+        ChatSessionService chatSessionService = sessionService("conv-2", "user-1");
+        PendingActionStore pendingActionStore = mock(PendingActionStore.class);
+        PendingAction expired = pending("create_purchase_order", Instant.now().minusSeconds(600));
+        when(pendingActionStore.peekPendingAction("conv-2", "user-1")).thenReturn(Optional.of(expired));
+
+        ConfirmationResolutionStep step = new ConfirmationResolutionStep(
+            chatSessionService,
+            enabledProperties(),
+            List.of(new CompoundConfirmationResolver(pendingActionStore))
+        );
+
+        MultiIntentResponse extracted = MultiIntentResponse.builder()
+            .intents(List.of(
+                Intent.builder().type(IntentType.CONFIRMATION_POSITIVE).confidence(1.0d).build(),
+                Intent.builder().type(IntentType.INFORMATION).intent("show_status").confidence(0.8d).build()
+            ))
+            .build();
+        PipelineContext ctx = PipelineContext.from("yes and show status", context("conv-2", "user-1")).toBuilder()
+            .intentResponse(extracted)
+            .build();
+
+        PipelineContext resolved = step.process(ctx);
+
+        assertThat(resolved.getIntentResponse()).isSameAs(extracted);
+        assertThat(resolved.getConfirmedActions()).isEmpty();
+        verify(pendingActionStore, never()).popPendingAction("conv-2", "user-1");
+    }
+
+    private ChatSessionService sessionService(String conversationId, String ownerId) {
+        ChatSessionService chatSessionService = mock(ChatSessionService.class);
+        when(chatSessionService.getSession(anyString(), anyString())).thenReturn(ChatSession.builder()
+            .id(conversationId)
+            .ownerId(ownerId)
+            .status(SessionStatus.ACTIVE)
+            .createdAt(LocalDateTime.now())
+            .lastInteractionAt(LocalDateTime.now())
+            .sessionMetadata(Map.of())
+            .build());
+        return chatSessionService;
+    }
+
+    private ChatSessionProperties enabledProperties() {
+        ChatSessionProperties properties = new ChatSessionProperties();
+        properties.setEnabled(true);
+        return properties;
+    }
+
+    private OrchestrationContext context(String conversationId, String userId) {
+        return OrchestrationContext.builder()
+            .userId(userId)
+            .conversationId(conversationId)
+            .build();
+    }
+
+    private PendingAction pending(String action, Instant createdAt) {
+        return new PendingAction(
+            action,
+            Map.of("sku", "ELEC-LAPTOP-001", "quantity", 1),
+            "Create purchase order?",
+            createdAt,
+            Map.of("sku", List.of("ELEC-LAPTOP-001"))
+        );
     }
 }

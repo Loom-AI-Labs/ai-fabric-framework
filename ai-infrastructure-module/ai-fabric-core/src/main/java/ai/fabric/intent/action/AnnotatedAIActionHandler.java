@@ -8,6 +8,7 @@ import org.springframework.util.StringUtils;
 
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -136,24 +137,36 @@ final class AnnotatedAIActionHandler implements AIActionHandler {
                 return Optional.empty();
             }
             if (result instanceof Optional<?> optional) {
-                @SuppressWarnings("unchecked")
-                Optional<Map<String, Object>> typed = (Optional<Map<String, Object>>) optional;
-                return typed;
+                if (optional.isEmpty()) {
+                    return Optional.empty();
+                }
+                Object value = optional.get();
+                if (value instanceof Map<?, ?> map) {
+                    return normalizedFactsMap(map);
+                }
+                return Optional.empty();
             }
             if (result instanceof Map<?, ?> map) {
-                Map<String, Object> casted = new LinkedHashMap<>();
-                for (Map.Entry<?, ?> entry : map.entrySet()) {
-                    if (entry.getKey() != null) {
-                        casted.put(entry.getKey().toString(), entry.getValue());
-                    }
-                }
-                return Optional.of(Map.copyOf(casted));
+                return normalizedFactsMap(map);
             }
             return Optional.empty();
         } catch (Exception ex) {
             log.debug("Failed to build post-action facts for {}: {}", metadata != null ? metadata.getName() : "unknown", ex.getMessage());
             return Optional.empty();
         }
+    }
+
+    private Optional<Map<String, Object>> normalizedFactsMap(Map<?, ?> map) {
+        if (map == null) {
+            return Optional.empty();
+        }
+        Map<String, Object> casted = new LinkedHashMap<>();
+        for (Map.Entry<?, ?> entry : map.entrySet()) {
+            if (entry.getKey() != null && StringUtils.hasText(entry.getKey().toString())) {
+                casted.put(entry.getKey().toString(), entry.getValue());
+            }
+        }
+        return Optional.of(Collections.unmodifiableMap(casted));
     }
 
     private Method makeAccessible(Method method) {

@@ -1,5 +1,6 @@
 package ai.fabric.core;
 
+import ai.fabric.cache.AICacheNames;
 import ai.fabric.config.AIProviderConfig;
 import ai.fabric.dto.AIEmbeddingRequest;
 import ai.fabric.dto.AIEmbeddingResponse;
@@ -32,7 +33,7 @@ class AIEmbeddingServiceTest {
     void setUp() {
         config = mock(AIProviderConfig.class);
         provider = mock(EmbeddingProvider.class);
-        cacheManager = new ConcurrentMapCacheManager("embeddings");
+        cacheManager = new ConcurrentMapCacheManager(AICacheNames.EMBEDDINGS);
 
         when(provider.getProviderName()).thenReturn("openai");
         when(provider.isAvailable()).thenReturn(true);

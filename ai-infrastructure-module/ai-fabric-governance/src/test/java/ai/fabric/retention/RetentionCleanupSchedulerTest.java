@@ -149,6 +149,34 @@ class RetentionCleanupSchedulerTest {
     }
 
     @Test
+    void reportsPartialWhenEligibleVectorIsNotFoundDuringCleanup() {
+        IndexCatalogEntry oldEntry = IndexCatalogEntry.builder()
+            .entityType("product")
+            .entityId("p-1")
+            .indexedCreatedAt(LocalDateTime.of(2025, 1, 1, 0, 0))
+            .metadata(Map.of("dataClassification", "default"))
+            .build();
+
+        when(indexCatalog.scan(any(IndexCatalogScanRequest.class))).thenReturn(IndexCatalogScanPage.builder()
+            .entries(List.of(oldEntry))
+            .hasMore(false)
+            .nextCursor(null)
+            .build());
+        when(vectorDatabaseService.removeVector("product", "p-1")).thenReturn(false);
+
+        RetentionCleanupResult result = scheduler.runCleanupByRetentionPolicy();
+
+        assertThat(result.getStatus()).isEqualTo(RetentionCleanupResult.Status.PARTIAL);
+        assertThat(result.getEntriesEvaluated()).isEqualTo(1);
+        assertThat(result.getEntriesEligible()).isEqualTo(1);
+        assertThat(result.getVectorsDeleted()).isZero();
+        assertThat(result.getCleanupFailures()).isEqualTo(1);
+        assertThat(result.getFailureMessages())
+            .containsExactly("vector removal failed for product::p-1: provider reported not found");
+        assertThat(result.getMessage()).contains("Retention cleanup completed with 1 non-fatal failure");
+    }
+
+    @Test
     void reportsPartialWhenCatalogScanFails() {
         when(indexCatalog.scan(any(IndexCatalogScanRequest.class)))
             .thenThrow(new IllegalStateException("catalog unavailable"));

@@ -30,12 +30,15 @@ UI-facing maintenance endpoints:
 Both require a JSON body with at least:
 - `{"confirm": true}`
 
-Optional: protect these endpoints with an API key:
+These endpoints are protected by default. Configure an admin API key before calling them:
 ```bash
-export CONNECTOR_ADMIN_AUTH_ENABLED=true
-export CONNECTOR_ADMIN_API_KEY="..."
-export CONNECTOR_ADMIN_API_KEY_HEADER="X-AIFABRIC-API-KEY"
+export APP_ADMIN_API_KEY="..."
+export APP_ADMIN_API_KEY_HEADER="X-ADMIN-API-KEY"
 ```
+
+The ecommerce app also accepts the older compatibility aliases
+`CONNECTOR_ADMIN_API_KEY` and `CONNECTOR_ADMIN_API_KEY_HEADER`. For local-only no-key demos, set
+`APP_ADMIN_AUTH_ENABLED=false` explicitly.
 
 ## Event-Based Indexing (Products/Policies/Reviews)
 

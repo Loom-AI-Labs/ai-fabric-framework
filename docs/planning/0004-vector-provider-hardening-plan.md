@@ -695,13 +695,12 @@ mvn test -pl integration-Testing/vector-contract-tests -am
 Run the provider-container variant with:
 
 ```bash
-cd ai-infrastructure-module
-mvn verify -Pcontainer-contract-tests -pl integration-Testing/vector-contract-tests -am
+.github/scripts/run-vector-container-contracts.sh
 ```
 
 This requires a running Docker daemon. Images can be overridden with
-`-Dtestcontainers.qdrant.image=...`, `-Dtestcontainers.weaviate.image=...`, and
-`-Dtestcontainers.milvus.image=...`.
+`TESTCONTAINERS_QDRANT_IMAGE=...`, `TESTCONTAINERS_WEAVIATE_IMAGE=...`, and
+`TESTCONTAINERS_MILVUS_IMAGE=...`.
 
 ### Provider-specific tests
 
@@ -730,12 +729,11 @@ AI Fabric Chroma or pgvector vector provider modules in the current repository.
 Run the container-backed vector provider contract suite with:
 
 ```bash
-cd ai-infrastructure-module
-mvn verify -Pcontainer-contract-tests -pl integration-Testing/vector-contract-tests -am
+.github/scripts/run-vector-container-contracts.sh
 ```
 
-The manual `Framework Provider Matrix Suite` GitHub Actions workflow now runs this as the
-`Vector Provider Container Contracts` job unless `run_vector_contracts=false` is selected.
+The automatic `Framework Build` workflow and the manual `Framework Provider Matrix Suite` workflow
+run this as the `Vector Provider Container Contracts` job.
 
 Run the Pinecone live provider suite with:
 

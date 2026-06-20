@@ -21,5 +21,20 @@ public enum ActionAccessMode {
      * Write-only action that changes state (may still return data, but is considered side-effecting).
      */
     WRITE_ONLY
-}
 
+    ;
+
+    /**
+     * Whether this mode is safe to treat as a pure read helper.
+     */
+    public boolean isReadOnly() {
+        return this == READ;
+    }
+
+    /**
+     * Whether actions with this mode should be grounding-eligible without an explicit opt-in.
+     */
+    public boolean isGroundingEligibleByDefault() {
+        return isReadOnly();
+    }
+}

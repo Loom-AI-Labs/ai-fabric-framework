@@ -21,10 +21,31 @@ For INFORMATION + retrieval flows we treat queries as:
   - Not required to be semantic and is **not** the source of truth for embeddings once `embeddingQuery` is set.
 
 ## How embedding query composition works
-Implemented in `com.ai.infrastructure.intent.orchestration.rag.EmbeddingQueryComposer`.
+Implemented in `ai.fabric.intent.orchestration.rag.EmbeddingQueryComposer`.
 
 ### Base
-We start from the **user query** (PII‑processed) and (optionally) append the safe `retrievalQueryHint` (ADR‑0009 behavior).
+We keep separate retrieval, embedding, and generation query values:
+
+- Retrieval uses the current retrieval base query, usually the optimized query when the extractor
+  produced one, otherwise the processed user query.
+- Embedding uses the same retrieval base query plus any safe `retrievalQueryHint`, and then optional
+  pinned-target expansion.
+- Generation keeps the processed user question as the user-facing question.
+
+The optional `retrievalQueryHint` is appended only when ADR-0009 safety checks pass.
+
+### Retrieval query hint safety
+`metadata.retrievalQueryHint` is LLM-produced, so AI Fabric treats it as untrusted. It is applied only
+when:
+
+- the current intent requires retrieval;
+- the turn contains exactly one retrieval intent;
+- the applied hint is nonblank and at most 200 characters after trimming;
+- the applied hint has no leading/trailing whitespace, consecutive whitespace, tabs, or newlines;
+- the applied hint contains only letters, numbers, single spaces, and conservative identifier punctuation
+  (`-`, `_`, `.`, `#`, `/`, `'`);
+- prompt/markup/control-like characters such as `@`, `:`, braces, angle brackets, quotes, and
+  backticks are absent.
 
 ### Optional target hint (mode‑gated)
 If all of the following are true:

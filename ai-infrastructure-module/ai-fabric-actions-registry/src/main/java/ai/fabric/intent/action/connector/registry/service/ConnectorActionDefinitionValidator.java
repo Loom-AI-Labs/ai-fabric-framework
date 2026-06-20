@@ -40,6 +40,9 @@ public class ConnectorActionDefinitionValidator {
         if (definition.accessMode() == null) {
             throw new IllegalArgumentException("action.accessMode is required");
         }
+        if (definition.readActionResolutionEligible() && !definition.accessMode().isReadOnly()) {
+            throw new IllegalArgumentException("action.readActionResolutionEligible is only supported for READ actions");
+        }
         validateLength("action.name", definition.name().trim(), MAX_ACTION_NAME_LENGTH);
         validateLength("action.description", definition.description(), MAX_ACTION_DESCRIPTION_LENGTH);
         validateLength("action.category", definition.category(), MAX_ACTION_CATEGORY_LENGTH);

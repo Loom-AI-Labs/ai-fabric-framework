@@ -1,6 +1,7 @@
 package ai.fabric.it;
 
 import ai.fabric.cache.AICacheConfig;
+import ai.fabric.cache.AICacheNames;
 import ai.fabric.core.AIEmbeddingService;
 import ai.fabric.dto.AIEmbeddingRequest;
 import ai.fabric.dto.AIEmbeddingResponse;
@@ -46,7 +47,7 @@ class EmbeddingCachingIntegrationTest {
 
     @BeforeEach
     void setUp() {
-        cache = cacheManager.getCache("embeddings");
+        cache = cacheManager.getCache(AICacheNames.EMBEDDINGS);
         if (cache != null) {
             cache.clear();
         }
@@ -94,7 +95,7 @@ class EmbeddingCachingIntegrationTest {
         assertSame(firstResponse, cachedResponse, "Cached response should be the same instance as original response");
 
         assertNotNull(cache, "Embeddings cache should be available");
-        String cacheKey = request.getText() + "_" + request.getModel() + "_mock";
+        String cacheKey = request.getText() + "_" + request.getModel() + "_mock_";
         assertNotNull(cache.get(cacheKey), "Cache should contain stored embedding for subsequent hits");
 
         Map<String, Object> metrics = embeddingService.getPerformanceMetrics();

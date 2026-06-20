@@ -1,6 +1,7 @@
 package ai.fabric.provider;
 
 import ai.fabric.dto.AIGenerationRequest;
+import ai.fabric.dto.AIGenerationRequestContracts;
 import ai.fabric.dto.AIGenerationResponse;
 import ai.fabric.dto.AIEmbeddingRequest;
 import ai.fabric.dto.AIEmbeddingResponse;
@@ -68,6 +69,7 @@ public class AIProviderManager {
      */
     public AIGenerationResponse generateContent(AIGenerationRequest request, String providerOverride) {
         log.debug("Generating content with provider manager");
+        AIGenerationRequestContracts.validateStandardChatPrompting(request);
         
         List<AIProvider> availableProviders = getAvailableProviders();
         String configuredProvider = providerOverride != null && !providerOverride.isBlank()

@@ -65,6 +65,17 @@ class AIDataSyncAutoConfigurationTest {
     }
 
     @Test
+    void trustedPlatformInternalSyncBypassIsDisabledByDefault() {
+        contextRunner
+            .withPropertyValues(
+                "ai.data-sync.enabled=true",
+                "ai.vector-db.type=memory"
+            )
+            .run(context -> assertThat(context.getBean(AIDataSyncProperties.class)
+                .isAllowTrustedPlatformInternalSyncBypass()).isFalse());
+    }
+
+    @Test
     void backsOffWhenApplicationProvidesServiceAndControllerBeans() {
         DataSyncService service = mock(DataSyncService.class);
         DataSyncController controller = new DataSyncController(service);

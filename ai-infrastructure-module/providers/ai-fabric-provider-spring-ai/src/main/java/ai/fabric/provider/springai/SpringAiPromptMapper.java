@@ -5,6 +5,7 @@ import ai.fabric.dto.AIChatRole;
 import ai.fabric.dto.AIGenerationInputPart;
 import ai.fabric.dto.AIGenerationInputType;
 import ai.fabric.dto.AIGenerationRequest;
+import ai.fabric.dto.AIGenerationRequestContracts;
 import ai.fabric.provider.TransientInputSupport;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
@@ -32,6 +33,7 @@ final class SpringAiPromptMapper {
     }
 
     static Prompt toPrompt(SpringAiProviderFamily family, AIGenerationRequest request, ChatOptions options) {
+        AIGenerationRequestContracts.validateStandardChatPrompting(request);
         List<Message> messages = new ArrayList<>();
         if (hasText(request.getSystemPrompt())) {
             messages.add(new SystemMessage(request.getSystemPrompt().trim()));
@@ -75,13 +77,13 @@ final class SpringAiPromptMapper {
     private static Message toSpringMessage(AIChatMessage message) {
         AIChatRole role = message.getRole();
         String content = message.getContent().trim();
-        if (AIChatRole.SYSTEM.equals(role)) {
-            return new SystemMessage(content);
-        }
         if (AIChatRole.ASSISTANT.equals(role)) {
             return new AssistantMessage(content);
         }
-        return new UserMessage(content);
+        if (AIChatRole.USER.equals(role)) {
+            return new UserMessage(content);
+        }
+        throw new IllegalArgumentException("Unsupported AI chat message role for history: " + role);
     }
 
     private static void appendSupplementalUserMessage(SpringAiProviderFamily family,

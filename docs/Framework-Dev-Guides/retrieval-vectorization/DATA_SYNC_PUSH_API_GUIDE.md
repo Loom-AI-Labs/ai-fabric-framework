@@ -25,6 +25,8 @@ Related:
   - Normalization using `ai-entity-config.yml` (searchable fields + metadata fields)
   - Fail-closed access control via verified `trace.authContext` → `AIAccessControlService`
   - Batch preflight authorization that reuses the approved decisions during execution
+  - Trusted platform-internal policy bypass is explicit opt-in with
+    `ai.data-sync.allow-trusted-platform-internal-sync-bypass=true`
 
 Opt-in:
 - Add dependency `io.github.loom-ai-labs:ai-fabric-data-sync`
@@ -34,6 +36,10 @@ Prerequisites:
 - Managed vector DB configured (`ai.vector-db.type=...`)
 - Embeddings enabled (`ai.service.features.enable-embeddings=true`, the default)
 - `EntityAccessPolicy` bean present for non-platform callers (fail-closed)
+- For default production posture, keep
+  `ai.data-sync.allow-trusted-platform-internal-sync-bypass=false` and grant/deny through
+  `EntityAccessPolicy`. Enable the bypass only behind a trusted backend/runtime boundary that verifies
+  and injects `trace.authContext`.
 
 ---
 
@@ -235,7 +241,8 @@ Batch access-denied responses also include:
 - `deniedOperations` for backward-compatible human-readable entries
 - `deniedOperationDetails` for structured release/debug evidence
 
-Trusted platform-internal sync can bypass the policy only when all of these are true:
+Trusted platform-internal sync can bypass the policy only when
+`ai.data-sync.allow-trusted-platform-internal-sync-bypass=true` and all of these are true:
 - `subjectType=SYSTEM_PROCESS`
 - `authMode=PRIVATE_RUNTIME_BACKEND_MEDIATED`
 - `callerType=SYSTEM_PROCESS`
@@ -243,6 +250,10 @@ Trusted platform-internal sync can bypass the policy only when all of these are 
 - `issuer` starts with `platform-`
 - `deploymentId` is present
 - `grantedScopes` includes `data-sync:upsert` or `data-sync:delete` for the requested operation
+
+The bypass is disabled by default because this API accepts `trace.authContext` in the request DTO.
+Default behavior routes platform-shaped contexts through `AIAccessControlService`, preserving the
+fail-closed policy boundary.
 
 ---
 

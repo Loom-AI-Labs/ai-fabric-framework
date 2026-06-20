@@ -202,6 +202,66 @@ class ConnectorActionCatalogLoaderTest {
     }
 
     @Test
+    void loadActions_shouldTreatReadWriteActionsAsNonGroundingByDefault() {
+        ConnectorActionCatalogLoader loader = new ConnectorActionCatalogLoader(new DefaultResourceLoader());
+
+        AIActionCatalogProperties.ActionSourceProperties source = new AIActionCatalogProperties.ActionSourceProperties();
+        source.setType(AIActionCatalogProperties.ActionSourceType.FILE);
+        source.setPath("classpath:actions/valid-read-write-actions.yml");
+
+        List<ConnectorActionDefinition> actions = loader.loadActions(List.of(source));
+
+        assertThat(actions).hasSize(1);
+        ConnectorActionDefinition action = actions.getFirst();
+        assertThat(action.name()).isEqualTo("update_and_fetch_cart");
+        assertThat(action.accessMode()).isEqualTo(ActionAccessMode.READ_WRITE);
+        assertThat(action.groundingEligible()).isFalse();
+        assertThat(action.readActionResolutionEligible()).isFalse();
+    }
+
+    @Test
+    void loadActions_shouldRejectReadActionResolutionEligibilityForReadWriteActions() {
+        ConnectorActionCatalogLoader loader = new ConnectorActionCatalogLoader(new DefaultResourceLoader());
+
+        AIActionCatalogProperties.ActionSourceProperties source = new AIActionCatalogProperties.ActionSourceProperties();
+        source.setType(AIActionCatalogProperties.ActionSourceType.FILE);
+        source.setPath("classpath:actions/invalid-read-write-read-resolution.yml");
+
+        assertThatThrownBy(() -> loader.loadActions(List.of(source)))
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessageContaining("readActionResolutionEligible")
+            .hasMessageContaining("READ");
+    }
+
+    @Test
+    void metadataMapper_shouldRejectReadActionResolutionEligibilityForReadWriteDefinitions() {
+        ConnectorActionDefinition definition = new ConnectorActionDefinition(
+            "update_and_fetch_cart",
+            "Update And Fetch Cart",
+            "Apply a cart update and return the updated cart",
+            "commerce",
+            ActionAccessMode.READ_WRITE,
+            true,
+            null,
+            List.of(),
+            false,
+            false,
+            true,
+            ActionResultPresentationHint.DEFAULT,
+            null,
+            null,
+            null,
+            List.of(),
+            null
+        );
+
+        assertThatThrownBy(() -> ConnectorActionMetadataMapper.toMetadata(definition))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("readActionResolutionEligible")
+            .hasMessageContaining("READ");
+    }
+
+    @Test
     void loadActions_shouldPreserveMcpExecutionConfigForRuntimeTrace() {
         ConnectorActionCatalogLoader loader = new ConnectorActionCatalogLoader(new DefaultResourceLoader());
 

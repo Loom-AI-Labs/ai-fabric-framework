@@ -1,5 +1,6 @@
 ### Domain API — local smoke requests
 @baseUrl = http://localhost:8096
+@adminApiKey = dev-admin-key
 @userId = user-1
 @sessionId = user-1-session
 @conversationId = chat-user-1
@@ -70,6 +71,7 @@ GET {{baseUrl}}/api/orders?userId=user-1
 ### Reset demo data (UI maintenance)
 POST {{baseUrl}}/api/admin/demo/reset
 Content-Type: application/json
+X-ADMIN-API-KEY: {{adminApiKey}}
 
 {
   "confirm": true,
@@ -80,6 +82,7 @@ Content-Type: application/json
 ### Clear demo data (eventful; relies on delete-index events)
 POST {{baseUrl}}/api/admin/demo/clear
 Content-Type: application/json
+X-ADMIN-API-KEY: {{adminApiKey}}
 
 {
   "confirm": true

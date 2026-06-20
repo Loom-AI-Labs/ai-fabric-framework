@@ -163,6 +163,27 @@ class UserDataDeletionServiceTest {
     }
 
     @Test
+    void shouldReportPartialWhenIndexedVectorIsNotFoundDuringDeletion() {
+        when(provider.canDeleteUser(USER_ID)).thenReturn(true);
+        when(provider.findIndexedEntities(USER_ID))
+            .thenReturn(List.of(new UserEntityReference("doc", "id-1")));
+        when(vectorDatabaseService.removeVector("doc", "id-1")).thenReturn(false);
+
+        UserDataDeletionResult result = service.deleteUser(USER_ID);
+
+        assertThat(result.getStatus()).isEqualTo(UserDataDeletionResult.Status.PARTIAL);
+        assertThat(result.getIndexedEntitiesDeleted()).isEqualTo(1);
+        assertThat(result.getVectorsDeleted()).isZero();
+        assertThat(result.getDeletionFailures()).isEqualTo(1);
+        assertThat(result.getFailureMessages())
+            .containsExactly("vector removal failed for doc::id-1: provider reported not found");
+        assertThat(result.getMessage()).contains("Deletion completed with 1 non-fatal failure");
+
+        verify(indexCatalog).delete("doc", "id-1");
+        verify(provider).notifyAfterDeletion(USER_ID);
+    }
+
+    @Test
     void shouldReportPartialAndUseCatalogFallbackWhenProviderEntityDiscoveryFails() {
         when(provider.canDeleteUser(USER_ID)).thenReturn(true);
         when(provider.findIndexedEntities(USER_ID))

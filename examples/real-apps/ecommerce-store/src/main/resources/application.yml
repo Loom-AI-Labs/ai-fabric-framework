@@ -26,6 +26,10 @@ logging:
     com.ai.fabric.realapps.chat: INFO
 
 app:
+  admin:
+    enabled: ${APP_ADMIN_AUTH_ENABLED:${CONNECTOR_ADMIN_AUTH_ENABLED:true}}
+    api-key: ${APP_ADMIN_API_KEY:${CONNECTOR_ADMIN_API_KEY:}}
+    api-key-header: ${APP_ADMIN_API_KEY_HEADER:${CONNECTOR_ADMIN_API_KEY_HEADER:X-ADMIN-API-KEY}}
   demo:
     seed-data: ${APP_DEMO_SEED_DATA:true}
   cors:
@@ -39,9 +43,9 @@ app:
 connector:
   admin:
     auth:
-      enabled: ${CONNECTOR_ADMIN_AUTH_ENABLED:false}
-      api-key: ${CONNECTOR_ADMIN_API_KEY:}
-      api-key-header: ${CONNECTOR_ADMIN_API_KEY_HEADER:X-AIFABRIC-API-KEY}
+      enabled: ${CONNECTOR_ADMIN_AUTH_ENABLED:${APP_ADMIN_AUTH_ENABLED:true}}
+      api-key: ${CONNECTOR_ADMIN_API_KEY:${APP_ADMIN_API_KEY:}}
+      api-key-header: ${CONNECTOR_ADMIN_API_KEY_HEADER:${APP_ADMIN_API_KEY_HEADER:X-AIFABRIC-API-KEY}}
   indexing:
     enabled: ${CONNECTOR_INDEXING_ENABLED:false}
     # Should point at the Generic REST Connector (which may proxy to runtime).

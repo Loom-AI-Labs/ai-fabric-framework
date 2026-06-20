@@ -118,6 +118,15 @@ public class AIActionRegistry {
                 Method confirmationMethod = findOptionalSingleMethod(targetClass, ActionConfirmation.class, "@ActionConfirmation");
                 Method factsMethod = findOptionalSingleMethod(targetClass, ActionFacts.class, "@ActionFacts");
 
+                if (allowedMethod != null) {
+                    validateActionAllowedMethod(allowedMethod);
+                }
+                if (confirmationMethod != null) {
+                    validateActionConfirmationMethod(confirmationMethod);
+                }
+                if (factsMethod != null) {
+                    validateActionFactsMethod(factsMethod);
+                }
                 AIActionMetaData meta = buildMetadata(action, executeMethod);
                 String key = AIActionNames.normalize(meta.getName());
                 if (handlerMap.containsKey(key)) {
@@ -223,7 +232,109 @@ public class AIActionRegistry {
         return selected.keySet().iterator().next();
     }
 
+    private void validateActionAllowedMethod(Method allowedMethod) {
+        Class<?> returnType = allowedMethod.getReturnType();
+        if (returnType != boolean.class && returnType != Boolean.class) {
+            throw new IllegalStateException("AIAction @ActionAllowed method must return boolean or Boolean: "
+                + allowedMethod.getDeclaringClass().getName() + "#" + allowedMethod.getName());
+        }
+
+        for (Parameter parameter : allowedMethod.getParameters()) {
+            if (!ActionMethodArgumentBinder.isContextParameter(parameter.getType())) {
+                throw new IllegalStateException("AIAction @ActionAllowed method parameters must be framework context parameters only: "
+                    + allowedMethod.getDeclaringClass().getName() + "#" + allowedMethod.getName());
+            }
+            if (parameter.getAnnotation(Param.class) != null) {
+                throw new IllegalStateException("AIAction @ActionAllowed method must not declare @Param parameters: "
+                    + allowedMethod.getDeclaringClass().getName() + "#" + allowedMethod.getName());
+            }
+        }
+    }
+
+    private void validateActionConfirmationMethod(Method confirmationMethod) {
+        Class<?> returnType = confirmationMethod.getReturnType();
+        if (!CharSequence.class.isAssignableFrom(returnType)) {
+            throw new IllegalStateException("AIAction @ActionConfirmation method must return text: "
+                + confirmationMethod.getDeclaringClass().getName() + "#" + confirmationMethod.getName());
+        }
+
+        for (Parameter parameter : confirmationMethod.getParameters()) {
+            if (ActionMethodArgumentBinder.isContextParameter(parameter.getType())) {
+                continue;
+            }
+            Param param = parameter.getAnnotation(Param.class);
+            if (param == null) {
+                throw new IllegalStateException("AIAction @ActionConfirmation method parameter must be annotated with @Param: "
+                    + confirmationMethod.getDeclaringClass().getName() + "#" + confirmationMethod.getName());
+            }
+            String name = StringUtils.hasText(param.value()) ? param.value() : parameter.getName();
+            if (!StringUtils.hasText(name) || name.startsWith("arg")) {
+                throw new IllegalStateException("AIAction @ActionConfirmation parameter name is not available. "
+                    + "Compile with -parameters or set @Param(\"name\"). "
+                    + "Offending parameter in " + confirmationMethod.getDeclaringClass().getName() + "#" + confirmationMethod.getName());
+            }
+        }
+    }
+
+    private void validateActionFactsMethod(Method factsMethod) {
+        Class<?> returnType = factsMethod.getReturnType();
+        if (Map.class.isAssignableFrom(returnType)) {
+            validateActionFactsMapType(factsMethod.getGenericReturnType(), factsMethod);
+        } else if (Optional.class.isAssignableFrom(returnType)) {
+            validateActionFactsOptionalType(factsMethod);
+        } else {
+            throw new IllegalStateException("AIAction @ActionFacts method must return Map<String,Object> or Optional<Map<String,Object>>: "
+                + factsMethod.getDeclaringClass().getName() + "#" + factsMethod.getName());
+        }
+
+        Parameter[] parameters = factsMethod.getParameters();
+        if (parameters.length == 0) {
+            return;
+        }
+        if (parameters.length != 2
+            || parameters[0].getType() != ActionResult.class
+            || parameters[1].getType() != ActionContext.class) {
+            throw new IllegalStateException("AIAction @ActionFacts method parameters must be empty or exactly (ActionResult, ActionContext): "
+                + factsMethod.getDeclaringClass().getName() + "#" + factsMethod.getName());
+        }
+    }
+
+    private void validateActionFactsOptionalType(Method factsMethod) {
+        if (!(factsMethod.getGenericReturnType() instanceof ParameterizedType optionalType)) {
+            return;
+        }
+        Type[] args = optionalType.getActualTypeArguments();
+        if (args.length != 1) {
+            return;
+        }
+
+        Type optionalValueType = args[0];
+        Class<?> optionalValueRawType = rawClass(optionalValueType);
+        if (optionalValueRawType != null && !Map.class.isAssignableFrom(optionalValueRawType)) {
+            throw new IllegalStateException("AIAction @ActionFacts Optional value must be Map<String,Object>: "
+                + factsMethod.getDeclaringClass().getName() + "#" + factsMethod.getName());
+        }
+        validateActionFactsMapType(optionalValueType, factsMethod);
+    }
+
+    private void validateActionFactsMapType(Type mapType, Method factsMethod) {
+        if (!(mapType instanceof ParameterizedType parameterizedType)) {
+            return;
+        }
+        Type[] args = parameterizedType.getActualTypeArguments();
+        if (args.length == 0) {
+            return;
+        }
+        Class<?> keyType = rawClass(args[0]);
+        if (keyType != null && keyType != String.class) {
+            throw new IllegalStateException("AIAction @ActionFacts map keys must be String: "
+                + factsMethod.getDeclaringClass().getName() + "#" + factsMethod.getName());
+        }
+    }
+
     private AIActionMetaData buildMetadata(AIAction action, Method executeMethod) {
+        validateAccessModeContract(action, executeMethod);
+
         Map<String, String> parameters = new LinkedHashMap<>();
         Map<String, AIActionParamSchema> parameterSchemas = new LinkedHashMap<>();
         Set<String> requiredParameters = new LinkedHashSet<>();
@@ -304,7 +415,15 @@ public class AIActionRegistry {
     }
 
     private boolean defaultGroundingEligible(ActionAccessMode accessMode) {
-        return accessMode == ActionAccessMode.READ || accessMode == ActionAccessMode.READ_WRITE;
+        return accessMode != null && accessMode.isGroundingEligibleByDefault();
+    }
+
+    private void validateAccessModeContract(AIAction action, Method executeMethod) {
+        if (action.readActionResolutionEligible() && !action.accessMode().isReadOnly()) {
+            throw new IllegalStateException("AIAction readActionResolutionEligible is only supported for READ actions: "
+                + executeMethod.getDeclaringClass().getName() + "#" + executeMethod.getName()
+                + " declares accessMode=" + action.accessMode());
+        }
     }
 
     private ActionResultPresentationHint defaultPresentationHint(ActionAccessMode accessMode) {

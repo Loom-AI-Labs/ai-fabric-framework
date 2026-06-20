@@ -22,6 +22,7 @@ Thumbs.db
 *.secret
 *.key
 *.pem
+.private-release-materials/
 
 # Logs and temp files
 *.log

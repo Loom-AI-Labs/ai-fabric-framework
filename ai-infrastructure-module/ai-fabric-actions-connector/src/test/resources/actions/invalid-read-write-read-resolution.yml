@@ -1,0 +1,9 @@
+actions:
+  - name: update_and_fetch_cart
+    displayName: "Update And Fetch Cart"
+    description: "Apply a cart update and return the updated cart"
+    category: "commerce"
+    accessMode: READ_WRITE
+    requiresConfirmation: true
+    readActionResolutionEligible: true
+    params: []

@@ -88,6 +88,36 @@ class FaqQualityServiceTest {
             .allSatisfy(question -> assertThat(question.springEvaluation().status()).isEqualTo("UNAVAILABLE"));
     }
 
+    @Test
+    void goldenSetFailsClosedWithQuestionEvidenceWhenRetrievalThrows() {
+        FaqDemoCatalog.GoldenQuestion first = FaqDemoCatalog.goldenQuestions().getFirst();
+        when(faqArticleService.searchWithEvidence(eq(first.question()), anyInt(), anyDouble()))
+            .thenThrow(new IllegalStateException("vector index unavailable"));
+        FaqDemoCatalog.goldenQuestions().stream().skip(1).forEach(question ->
+            when(faqArticleService.searchWithEvidence(eq(question.question()), anyInt(), anyDouble()))
+                .thenReturn(List.of(hit(article(question.expectedTitle()), 0.91d)))
+        );
+
+        FaqQualityService.QualityReport report = service.runGoldenSet(new FaqQualityService.QualityRunOptions(
+            3,
+            0.1d,
+            false,
+            true
+        ));
+
+        assertThat(report.pass()).isFalse();
+        assertThat(report.failedQuestions()).isEqualTo(1);
+        assertThat(report.questions().getFirst().passed()).isFalse();
+        assertThat(report.questions().getFirst().expectedRetrieved()).isFalse();
+        assertThat(report.questions().getFirst().retrievedArticles()).isEmpty();
+        assertThat(report.questions().getFirst().feedback())
+            .contains("Retrieval failed")
+            .contains("vector index unavailable");
+        assertThat(report.questions().getFirst().springEvaluation().status()).isEqualTo("UNAVAILABLE");
+        assertThat(report.questions().getFirst().springEvaluation().message())
+            .contains("Retrieval failed before Spring AI evaluation");
+    }
+
     @SuppressWarnings("unchecked")
     private static <T> ObjectProvider<T> unavailableProvider() {
         ObjectProvider<T> provider = mock(ObjectProvider.class);

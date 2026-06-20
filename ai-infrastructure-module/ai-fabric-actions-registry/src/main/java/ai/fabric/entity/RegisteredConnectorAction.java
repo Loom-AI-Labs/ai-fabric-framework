@@ -119,7 +119,7 @@ public class RegisteredConnectorAction {
             confirmationMessage,
             paramDefs,
             anonymousAllowed,
-            accessMode == ActionAccessMode.READ || accessMode == ActionAccessMode.READ_WRITE,
+            accessMode != null && accessMode.isGroundingEligibleByDefault(),
             false,
             accessMode == ActionAccessMode.WRITE_ONLY
                 ? ActionResultPresentationHint.STATUS

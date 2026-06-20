@@ -52,7 +52,7 @@ public class ConfiguredConfirmationInterceptorsResolver extends ConfirmationReso
             return false;
         }
         PendingAction pending = peekPending(context);
-        if (pending == null || !StringUtils.hasText(pending.action())) {
+        if (pending == null || isExpired(pending) || !StringUtils.hasText(pending.action())) {
             return false;
         }
         Intent confirmationIntent = findFirstConfirmationIntent(intentResponse);
@@ -68,7 +68,7 @@ public class ConfiguredConfirmationInterceptorsResolver extends ConfirmationReso
                                    PipelineContext context) {
         PendingAction pending = peekPending(context);
         Intent confirmationIntent = findFirstConfirmationIntent(intentResponse);
-        if (pending == null || confirmationIntent == null) {
+        if (pending == null || isExpired(pending) || confirmationIntent == null) {
             return context;
         }
 

@@ -127,6 +127,34 @@ class ConnectorActionDefinitionValidatorTest {
     }
 
     @Test
+    void validate_rejectsReadActionResolutionEligibilityForReadWriteActions() {
+        ConnectorActionDefinition def = new ConnectorActionDefinition(
+            "a",
+            "a",
+            "desc",
+            "cat",
+            ActionAccessMode.READ_WRITE,
+            true,
+            null,
+            List.of(param("sku")),
+            false,
+            false,
+            true,
+            ActionResultPresentationHint.DEFAULT,
+            null,
+            null,
+            null,
+            List.of(),
+            null
+        );
+
+        assertThatThrownBy(() -> validator.validate(def))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("readActionResolutionEligible")
+            .hasMessageContaining("READ");
+    }
+
+    @Test
     void validate_rejectsUnsupportedDisplayNameForDbRegistry() {
         ConnectorActionDefinition def = action(List.of(param("sku")), builder -> builder.displayName = "Create Order");
 

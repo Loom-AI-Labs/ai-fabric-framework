@@ -14,10 +14,12 @@ import java.lang.annotation.Target;
  *   <li>{@code java.util.Map<String,Object>}</li>
  *   <li>{@code java.util.Optional<java.util.Map<String,Object>>}</li>
  * </ul>
+ *
+ * <p>The method may declare no parameters, or exactly
+ * {@code (ai.fabric.intent.action.ActionResult, ai.fabric.intent.action.ActionContext)}.</p>
  */
 @Target(ElementType.METHOD)
 @Retention(RetentionPolicy.RUNTIME)
 @Documented
 public @interface ActionFacts {
 }
-

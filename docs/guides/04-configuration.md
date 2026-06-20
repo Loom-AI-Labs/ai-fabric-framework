@@ -403,6 +403,7 @@ ai:
     max-content-chars: 8000
     max-field-value-chars: 2000
     max-metadata-keys: 75
+    allow-trusted-platform-internal-sync-bypass: false
 ```
 
 | Property | Default | Description |
@@ -413,6 +414,7 @@ ai:
 | `ai.data-sync.max-content-chars` | `8000` | Maximum normalized content length passed to embedding generation. |
 | `ai.data-sync.max-field-value-chars` | `2000` | Maximum field value length when building content from entity payloads. |
 | `ai.data-sync.max-metadata-keys` | `75` | Maximum metadata keys retained after normalization. |
+| `ai.data-sync.allow-trusted-platform-internal-sync-bypass` | `false` | Explicitly allows platform-internal sync callers with verified system context and matching data-sync scope to bypass application `EntityAccessPolicy`. Keep `false` unless a trusted backend/runtime boundary verifies and injects `trace.authContext`. |
 
 Data Sync is opt-in and only starts when embeddings are enabled and a vector database is configured
 or a `VectorDatabaseService` bean exists. It fails closed through verified `trace.authContext`

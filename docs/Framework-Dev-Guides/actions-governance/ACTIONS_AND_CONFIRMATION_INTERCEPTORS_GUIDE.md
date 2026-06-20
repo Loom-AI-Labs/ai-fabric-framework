@@ -21,6 +21,9 @@ Each action must declare an explicit **access mode**:
 - `READ_WRITE` (both; treated as non-READ for fallback rules)
 
 **READ actions are treated as helper tools:** if a READ action executes successfully but returns an “empty” payload (e.g., `count=0` / empty `results`), the orchestrator can replace that output with a RAG INFORMATION response.
+Planner-driven read-action resolution is stricter: only `READ` actions may opt in with
+`readActionResolutionEligible=true`. `READ_WRITE` and `WRITE_ONLY` actions fail startup if they opt
+into read-action resolution, and `READ_WRITE` actions are not grounding-eligible by default.
 
 Discovery and execution are backed by:
 - `AIActionRegistry` (runtime discovery + lookup)
@@ -147,6 +150,12 @@ action remains on top; if an interceptor keeps pushing nested confirmations past
 `max-pending-action-stack-depth`, the oldest pending actions are discarded so session metadata cannot
 grow without limit. Keep this value small enough for your UX, and design multi-step confirmation flows
 to finish or clear stale branches explicitly.
+
+Pending confirmations are also time-bounded. The built-in confirmation resolvers refuse to execute
+expired pending actions even if the separate expired-cleanup resolver is not present in a custom
+resolver list. Expired actions may be popped/cleaned, but they must not become executable ACTION
+intents. Custom `IntentResolver` implementations should extend `ConfirmationResolverSupport` and use
+the same expiration guard before converting yes/no intents into actions.
 
 ---
 
@@ -350,6 +359,9 @@ public class CancellationRetentionOffer {
 If you need full control (custom matching logic, compound confirmations, etc.), implement `IntentResolver`.
 For convenience, extend:
 - `ConfirmationResolverSupport`
+
+When implementing a resolver manually, treat an expired pending action as non-executable. Do not rely
+on resolver ordering alone for this safety check; the executable resolver should enforce it too.
 
 ---
 

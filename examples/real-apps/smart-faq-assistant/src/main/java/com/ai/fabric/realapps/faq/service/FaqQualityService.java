@@ -69,7 +69,15 @@ public class FaqQualityService {
                                             boolean requireTopMatch,
                                             boolean springAiEvaluationRequested,
                                             SpringAiRagEvaluationService evaluationService) {
-        List<FaqArticleService.SearchHit> hits = faqArticleService.searchWithEvidence(question.question(), limit, threshold);
+        List<FaqArticleService.SearchHit> hits;
+        try {
+            hits = faqArticleService.searchWithEvidence(question.question(), limit, threshold);
+        } catch (RuntimeException ex) {
+            return retrievalFailure(question, springAiEvaluationRequested, ex);
+        }
+        if (hits == null) {
+            hits = List.of();
+        }
         List<RetrievedArticle> retrievedArticles = hits.stream()
             .map(hit -> toRetrievedArticle(hit, question.expectedTitle()))
             .toList();
@@ -95,6 +103,36 @@ public class FaqQualityService {
             springEvaluation,
             feedback(expectedRetrieved, topExpected, requireTopMatch, question.expectedTitle())
         );
+    }
+
+    private QuestionResult retrievalFailure(FaqDemoCatalog.GoldenQuestion question,
+                                            boolean springAiEvaluationRequested,
+                                            RuntimeException ex) {
+        String message = "Retrieval failed for expected FAQ article '" + question.expectedTitle() + "': " + conciseError(ex);
+        return new QuestionResult(
+            question.id(),
+            question.question(),
+            question.expectedTitle(),
+            false,
+            false,
+            false,
+            List.of(),
+            springAiEvaluationRequested
+                ? SpringEvaluation.unavailable("Retrieval failed before Spring AI evaluation: " + conciseError(ex))
+                : SpringEvaluation.disabled(),
+            message
+        );
+    }
+
+    private String conciseError(Throwable ex) {
+        if (ex == null) {
+            return "unknown error";
+        }
+        String message = ex.getMessage();
+        if (!StringUtils.hasText(message)) {
+            message = ex.getClass().getSimpleName();
+        }
+        return message.length() <= 240 ? message : message.substring(0, 240);
     }
 
     private RetrievedArticle toRetrievedArticle(FaqArticleService.SearchHit hit, String expectedTitle) {

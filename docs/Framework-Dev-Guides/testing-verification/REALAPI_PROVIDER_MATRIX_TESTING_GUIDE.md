@@ -74,8 +74,7 @@ workflow. Each provider row first installs the current AI Fabric reactor with un
 By default, the workflow also runs the Docker-backed `Vector Provider Container Contracts` job:
 
 ```bash
-cd ai-infrastructure-module
-mvn verify -Pcontainer-contract-tests -pl integration-Testing/vector-contract-tests -am -B -V
+.github/scripts/run-vector-container-contracts.sh
 ```
 
 That job validates Qdrant REST, Qdrant gRPC, Weaviate, and Milvus against the shared

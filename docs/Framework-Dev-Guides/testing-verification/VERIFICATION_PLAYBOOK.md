@@ -74,20 +74,19 @@ update, batch remove, clear-by-entity-type isolation, and scoped-provider isolat
 For local real-provider parity with containers, run:
 
 ```bash
-cd ai-infrastructure-module
-mvn verify -Pcontainer-contract-tests -pl integration-Testing/vector-contract-tests -am
+.github/scripts/run-vector-container-contracts.sh
 ```
 
-This opt-in gate requires a running Docker daemon and covers Qdrant REST, Qdrant gRPC, Weaviate, and
-Milvus against the same contract, including scoped-provider isolation using two configured scopes in
-the same provider backend. Override images with `-Dtestcontainers.qdrant.image=...`,
-`-Dtestcontainers.weaviate.image=...`, or `-Dtestcontainers.milvus.image=...` when validating a
-specific provider version. Keep Pinecone in the managed/live provider verification path because it is
-a SaaS backend, not a local Testcontainers target.
+This automatic release gate requires a running Docker daemon and covers Qdrant REST, Qdrant gRPC,
+Weaviate, and Milvus against the same contract, including scoped-provider isolation using two
+configured scopes in the same provider backend. Override images with
+`TESTCONTAINERS_QDRANT_IMAGE=...`, `TESTCONTAINERS_WEAVIATE_IMAGE=...`, or
+`TESTCONTAINERS_MILVUS_IMAGE=...` when validating a specific provider version. Keep Pinecone in the
+managed/live provider verification path because it is a SaaS backend, not a local Testcontainers
+target.
 
-The manual `Framework Provider Matrix Suite` GitHub Actions workflow runs this as the
-`Vector Provider Container Contracts` job by default; set `run_vector_contracts=false` only when you are
-intentionally skipping the Docker-backed vector-provider release gate.
+The automatic `Framework Build` GitHub Actions workflow and the manual `Framework Provider Matrix
+Suite` workflow both run this as the `Vector Provider Container Contracts` job.
 
 For Pinecone provider-live parity, run the opt-in SaaS provider suite:
 
@@ -142,18 +141,18 @@ export CONNECTOR_BASE_URL="https://<connector>.up.railway.app"
 export RUNTIME_BASE_URL="https://<runtime>.up.railway.app"
 ```
 
-Optional: if you configured runtime admin auth (`APP_ADMIN_API_KEY`), set:
+Runtime admin endpoints are protected by default. Set the admin key used by the runtime:
 
 ```bash
 export RUNTIME_ADMIN_API_KEY_HEADER="X-ADMIN-API-KEY"
 export RUNTIME_ADMIN_API_KEY="<secret>"
 ```
 
-If you want to protect runtime admin endpoints (`/api/admin/*`), configure the runtime service with:
+Configure the runtime service with:
 - `APP_ADMIN_API_KEY=<same secret>`
 - Optional: `APP_ADMIN_API_KEY_HEADER=X-ADMIN-API-KEY`
 
-Optional helper: only send the runtime admin header when a key is set:
+Helper for adding the runtime admin header:
 
 ```bash
 RUNTIME_ADMIN_CURL_HEADER=()
@@ -162,17 +161,17 @@ if [ -n "${RUNTIME_ADMIN_API_KEY:-}" ]; then
 fi
 ```
 
-Optional: if you enabled connector admin auth (`connector.auth.api-key`), set:
+Connector/admin endpoints may use a separate key. If enabled, set:
 
 ```bash
 export CONNECTOR_ADMIN_API_KEY_HEADER="X-AIFABRIC-API-KEY"
 export CONNECTOR_ADMIN_API_KEY="<secret>"
 ```
 
-Optional: if you want connector demo reset endpoints to require the same API key as `/actions/execute`:
+For local-only connector demos that intentionally disable admin auth, set:
 
 ```bash
-export CONNECTOR_ADMIN_AUTH_ENABLED="true"
+export CONNECTOR_ADMIN_AUTH_ENABLED="false"
 ```
 
 ## 1) Health Checks
@@ -313,16 +312,18 @@ curl -sS -X POST "${RUNTIME_BASE_URL}/api/admin/migration/clear?confirm=true" \
 
 ### 6.2 Reset connector demo (connector endpoint, clears connector DB and can clear runtime vectors)
 
-This endpoint is protected only when:
+Demo reset endpoints are protected by default. Configure the service with:
 
-- `connector.auth.api-key` is set, and
-- `connector.admin.auth.enabled=true`
+- `APP_ADMIN_API_KEY=<secret>`
+- Optional: `APP_ADMIN_API_KEY_HEADER=X-ADMIN-API-KEY`
 
-To enable protection for demo resets, set:
+Ecommerce-store compatibility aliases are also accepted:
 
-- `CONNECTOR_ADMIN_AUTH_ENABLED=true`
+- `CONNECTOR_ADMIN_API_KEY=<secret>`
+- Optional: `CONNECTOR_ADMIN_API_KEY_HEADER=X-AIFABRIC-API-KEY`
 
-If you keep it public (default), you can omit the connector API key header.
+For local-only no-key demos, opt out explicitly with `APP_ADMIN_AUTH_ENABLED=false` or
+`CONNECTOR_ADMIN_AUTH_ENABLED=false`.
 
 To allow the connector reset endpoint to clear runtime vectors too, set these on the **connector** service:
 

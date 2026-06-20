@@ -1,10 +1,12 @@
 package ai.fabric.service;
 
+import ai.fabric.cache.AICacheNames;
 import ai.fabric.config.AIEntityConfigurationLoader;
 import ai.fabric.dto.AISearchRequest;
 import ai.fabric.dto.AISearchResponse;
 import ai.fabric.dto.VectorRecord;
 import ai.fabric.rag.VectorDatabaseService;
+import ai.fabric.util.VectorRecordLifecycleMetadata;
 import ai.fabric.vector.VectorProviderReadinessEvaluator;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.cache.Cache;
@@ -32,9 +34,7 @@ import java.util.Optional;
 @Slf4j
 public class VectorManagementService {
 
-    private static final String VECTOR_SEARCH_CACHE = "vectorSearch";
-    private static final String INDEXED_CREATED_AT_KEY = "_indexedCreatedAt";
-    private static final String INDEXED_UPDATED_AT_KEY = "_indexedUpdatedAt";
+    private static final String VECTOR_SEARCH_CACHE = AICacheNames.VECTOR_SEARCH;
     
     private final VectorDatabaseService vectorDatabaseService;
     private final AIEntityConfigurationLoader entityConfigurationLoader;
@@ -57,21 +57,6 @@ public class VectorManagementService {
         this.cacheManager = cacheManager;
     }
 
-    private Map<String, Object> ensureIndexTimestamps(Map<String, Object> metadata,
-                                                      LocalDateTime now,
-                                                      LocalDateTime createdAtHint) {
-        Map<String, Object> safeMetadata = metadata == null ? Map.of() : metadata;
-        Map<String, Object> enriched = new LinkedHashMap<>(safeMetadata);
-
-        if (!enriched.containsKey(INDEXED_CREATED_AT_KEY)) {
-            LocalDateTime createdAt = createdAtHint != null ? createdAtHint : now;
-            enriched.put(INDEXED_CREATED_AT_KEY, createdAt.toString());
-        }
-
-        enriched.put(INDEXED_UPDATED_AT_KEY, now.toString());
-        return enriched;
-    }
-    
     /**
      * Store a vector for an entity
      * 
@@ -87,8 +72,6 @@ public class VectorManagementService {
                              List<Double> embedding, Map<String, Object> metadata) {
         try {
             log.debug("Storing vector for entity {} of type {}", entityId, entityType);
-            LocalDateTime now = LocalDateTime.now(ZoneOffset.UTC);
-            
             // Check if vector already exists
             if (vectorDatabaseService.vectorExists(entityType, entityId)) {
                 log.debug("Vector already exists for entity {} of type {}, replacing with fresh vector", entityId, entityType);
@@ -96,7 +79,7 @@ public class VectorManagementService {
             }
             
             // Store new vector
-            Map<String, Object> enriched = ensureIndexTimestamps(metadata, now, now);
+            Map<String, Object> enriched = VectorRecordLifecycleMetadata.enrichForStore(metadata);
             String vectorId = vectorDatabaseService.storeVector(entityType, entityId, content, embedding, enriched);
             log.debug("Successfully stored vector {} for entity {} of type {}", vectorId, entityId, entityType);
             evictVectorSearchCache();
@@ -124,12 +107,10 @@ public class VectorManagementService {
                               List<Double> embedding, Map<String, Object> metadata) {
         try {
             log.debug("Updating vector for entity {} of type {}", entityId, entityType);
-            LocalDateTime now = LocalDateTime.now(ZoneOffset.UTC);
-            
             // Get existing vector (if any) to preserve vectorId when possible.
             Optional<VectorRecord> existingVectorOpt = vectorDatabaseService.getVectorByEntity(entityType, entityId);
             LocalDateTime createdAtHint = existingVectorOpt.map(VectorRecord::getCreatedAt).orElse(null);
-            Map<String, Object> enriched = ensureIndexTimestamps(metadata, now, createdAtHint);
+            Map<String, Object> enriched = VectorRecordLifecycleMetadata.enrichForUpdate(metadata, createdAtHint);
 
             // Prefer in-place update when provider supports it.
             if (existingVectorOpt.isPresent() && existingVectorOpt.get().getVectorId() != null) {
@@ -305,7 +286,7 @@ public class VectorManagementService {
                         return null;
                     }
                     LocalDateTime createdAt = record.getCreatedAt() != null ? record.getCreatedAt() : now;
-                    Map<String, Object> updatedMetadata = ensureIndexTimestamps(record.getMetadata(), now, createdAt);
+                    Map<String, Object> updatedMetadata = VectorRecordLifecycleMetadata.enrichForUpdate(record.getMetadata(), createdAt);
                     return VectorRecord.builder()
                         .vectorId(record.getVectorId())
                         .entityType(record.getEntityType())
@@ -356,7 +337,7 @@ public class VectorManagementService {
                         return null;
                     }
                     LocalDateTime createdAt = record.getCreatedAt() != null ? record.getCreatedAt() : now;
-                    Map<String, Object> updatedMetadata = ensureIndexTimestamps(record.getMetadata(), now, createdAt);
+                    Map<String, Object> updatedMetadata = VectorRecordLifecycleMetadata.enrichForUpdate(record.getMetadata(), createdAt);
                     return VectorRecord.builder()
                         .vectorId(record.getVectorId())
                         .entityType(record.getEntityType())

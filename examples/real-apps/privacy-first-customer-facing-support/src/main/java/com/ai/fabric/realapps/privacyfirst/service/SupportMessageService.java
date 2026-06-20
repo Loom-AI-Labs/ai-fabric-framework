@@ -42,8 +42,8 @@ public class SupportMessageService {
         SupportMessage record = new SupportMessage();
         record.setCustomerId(customerId);
         record.setChannel(channel);
-        record.setProcessedSubject(subjectResult.getProcessedQuery());
-        record.setProcessedMessage(messageResult.getProcessedQuery());
+        record.setProcessedSubject(safeProcessedText(subject, subjectResult));
+        record.setProcessedMessage(safeProcessedText(message, messageResult));
         record.setPiiDetected(subjectResult.isPiiDetected() || messageResult.isPiiDetected());
         record.setModeApplied(Objects.toString(messageResult.getModeApplied(), Objects.toString(subjectResult.getModeApplied(), null)));
 
@@ -78,8 +78,10 @@ public class SupportMessageService {
         if (aiCoreService == null) {
             throw new IllegalStateException("AICoreService is not available");
         }
+        PIIDetectionResult piiResult = piiDetectionService.detectAndProcess(query);
+        String safeQuery = safeProcessedText(query, piiResult);
         AISearchResponse response = aiCoreService.performSearch(AISearchRequest.builder()
-            .query(query)
+            .query(safeQuery)
             .entityType(ENTITY_TYPE)
             .limit(Math.max(1, Math.min(20, limit)))
             .threshold(0.0d)
@@ -102,6 +104,43 @@ public class SupportMessageService {
             return;
         }
         capabilityService.processEntityForAI(record, ENTITY_TYPE);
+    }
+
+    private String safeProcessedText(String original, PIIDetectionResult result) {
+        if (result == null) {
+            return original;
+        }
+        String processed = result.getProcessedQuery() != null ? result.getProcessedQuery() : original;
+        List<PIIDetection> detections = result.getDetections() != null ? result.getDetections() : List.of();
+        boolean hasPii = result.isPiiDetected() || !detections.isEmpty();
+        if (hasPii && Objects.equals(processed, original) && !detections.isEmpty()) {
+            return redact(original, detections);
+        }
+        return processed;
+    }
+
+    private String redact(String original, List<PIIDetection> detections) {
+        if (original == null || original.isEmpty() || detections == null || detections.isEmpty()) {
+            return original;
+        }
+        StringBuilder builder = new StringBuilder(original);
+        detections.stream()
+            .filter(detection -> canApply(detection, builder.length()))
+            .sorted(Comparator.comparingInt((PIIDetection detection) -> detection.getStartIndex()).reversed())
+            .forEach(detection -> {
+                int start = Math.min(detection.getStartIndex(), builder.length());
+                int end = Math.max(start, Math.min(detection.getEndIndex(), builder.length()));
+                builder.replace(start, end, detection.getMaskedValue());
+            });
+        return builder.toString();
+    }
+
+    private boolean canApply(PIIDetection detection, int inputLength) {
+        return detection != null
+            && detection.getMaskedValue() != null
+            && detection.getStartIndex() >= 0
+            && detection.getStartIndex() < inputLength
+            && detection.getEndIndex() > detection.getStartIndex();
     }
 
     private Optional<Long> extractEntityId(Map<String, Object> row) {

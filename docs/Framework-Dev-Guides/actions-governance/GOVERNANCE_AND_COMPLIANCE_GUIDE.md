@@ -75,7 +75,9 @@ Governance standardizes retention timing via vector metadata keys:
 - `_indexedCreatedAt`
 - `_indexedUpdatedAt`
 
-These are injected/updated automatically when governance is enabled.
+These are injected automatically on store/update paths. Valid `_indexedCreatedAt` values are preserved
+across updates, malformed internal lifecycle values are repaired from the existing vector record when
+available, and `_indexedUpdatedAt` is refreshed on every update.
 
 ---
 

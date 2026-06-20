@@ -14,11 +14,12 @@ We need a standard, production-safe way to apply this hint without:
 ## Decision
 When the request contains **exactly one** retrieval intent and the extractor provided a **safe** `retrievalQueryHint`, the orchestrator **appends the hint** to the retrieval query.
 
-Safety constraints:
+Safety constraints for the applied hint:
 - max length bound
-- no newlines
+- no leading/trailing whitespace, tabs, newlines, or consecutive whitespace
 - no `@` (email marker)
-- no consecutive whitespace
+- no prompt/markup/control-like punctuation such as `:`, braces, angle brackets, quotes, or backticks
+- only letters, numbers, single spaces, and conservative identifier punctuation (`-`, `_`, `.`, `#`, `/`, `'`)
 
 Observability:
 - The orchestrator writes `retrievalQueryHintApplied=true|false` into metadata.
@@ -32,7 +33,6 @@ Negative / tradeoffs:
 - The hint is intentionally **not** applied when multiple retrieval intents exist to avoid cross-intent contamination.
 
 ## Implementation
-- `com.ai.infrastructure.intent.orchestration.pipeline.steps.IntentHandlingStep`
+- `ai.fabric.intent.orchestration.pipeline.steps.RetrievalQueryHintSupport`
   - `resolveValidRetrievalQueryHint(...)`
   - `applyRetrievalQueryHint(...)`
-

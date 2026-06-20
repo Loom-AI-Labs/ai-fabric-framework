@@ -19,6 +19,7 @@ import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentCaptor.forClass;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -65,6 +66,42 @@ class SupportMessageServiceTest {
     }
 
     @Test
+    void createMasksDetectedPiiBeforePersistenceEvenWhenDetectorIsDetectOnly() {
+        String subject = "Billing update for sara@example.com";
+        String message = "Phone is +1 (555) 123-4567";
+        when(piiDetectionService.detectAndProcess(subject)).thenReturn(detectOnly(
+            subject,
+            "EMAIL",
+            "email",
+            subject.indexOf("sara@example.com"),
+            subject.indexOf("sara@example.com") + "sara@example.com".length(),
+            "[EMAIL]"
+        ));
+        when(piiDetectionService.detectAndProcess(message)).thenReturn(detectOnly(
+            message,
+            "PHONE",
+            "phone_number",
+            message.indexOf("+1 (555) 123-4567"),
+            message.indexOf("+1 (555) 123-4567") + "+1 (555) 123-4567".length(),
+            "[PHONE]"
+        ));
+        when(repository.save(any(SupportMessage.class))).thenAnswer(invocation -> {
+            SupportMessage saved = invocation.getArgument(0);
+            saved.setId(43L);
+            return saved;
+        });
+
+        SupportMessage saved = service.create("cust-1001", "webchat", subject, message);
+
+        assertThat(saved.getProcessedSubject()).isEqualTo("Billing update for [EMAIL]");
+        assertThat(saved.getProcessedMessage()).isEqualTo("Phone is [PHONE]");
+        assertThat(saved.getProcessedSubject()).doesNotContain("sara@example.com");
+        assertThat(saved.getProcessedMessage()).doesNotContain("+1 (555) 123-4567");
+        assertThat(saved.isPiiDetected()).isTrue();
+        verify(capabilityService).processEntityForAI(saved, "support-message");
+    }
+
+    @Test
     void semanticSearchResolvesSupportMessageIdsFromAiFabricResults() {
         SupportMessage message = new SupportMessage();
         message.setId(42L);
@@ -77,6 +114,28 @@ class SupportMessageServiceTest {
         List<SupportMessage> results = service.semanticSearch("billing email", 5);
 
         assertThat(results).containsExactly(message);
+    }
+
+    @Test
+    void semanticSearchMasksPiiBeforeSendingQueryToAiFabricSearch() {
+        String query = "find sara@example.com billing history";
+        when(piiDetectionService.detectAndProcess(query)).thenReturn(detectOnly(
+            query,
+            "EMAIL",
+            "email",
+            query.indexOf("sara@example.com"),
+            query.indexOf("sara@example.com") + "sara@example.com".length(),
+            "[EMAIL]"
+        ));
+        when(aiCoreService.performSearch(any(AISearchRequest.class))).thenReturn(AISearchResponse.builder()
+            .results(List.of())
+            .build());
+
+        service.semanticSearch(query, 5);
+
+        org.mockito.ArgumentCaptor<AISearchRequest> requestCaptor = forClass(AISearchRequest.class);
+        verify(aiCoreService).performSearch(requestCaptor.capture());
+        assertThat(requestCaptor.getValue().getQuery()).isEqualTo("find [EMAIL] billing history");
     }
 
     private static PIIDetectionResult clean(String text) {
@@ -98,6 +157,26 @@ class SupportMessageServiceTest {
                 .type("EMAIL")
                 .fieldName("email")
                 .maskedValue("[EMAIL]")
+                .build()))
+            .build();
+    }
+
+    private static PIIDetectionResult detectOnly(String text,
+                                                 String type,
+                                                 String fieldName,
+                                                 int startIndex,
+                                                 int endIndex,
+                                                 String maskedValue) {
+        return PIIDetectionResult.builder()
+            .processedQuery(text)
+            .piiDetected(true)
+            .modeApplied(PIIMode.DETECT_ONLY)
+            .detections(List.of(PIIDetection.builder()
+                .type(type)
+                .fieldName(fieldName)
+                .startIndex(startIndex)
+                .endIndex(endIndex)
+                .maskedValue(maskedValue)
                 .build()))
             .build();
     }

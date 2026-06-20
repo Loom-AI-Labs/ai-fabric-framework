@@ -199,9 +199,7 @@ jobs:
           docker info | head -5
 
       - name: Run vector provider container contracts
-        run: |
-          cd ai-infrastructure-module
-          mvn verify -Pcontainer-contract-tests -pl integration-Testing/vector-contract-tests -am -B -V
+        run: .github/scripts/run-vector-container-contracts.sh
 
       - name: Upload vector contract reports
         if: always()

@@ -491,7 +491,8 @@ public class DataSyncService {
             }
         }
 
-        if (isTrustedPlatformInternalSync(verifiedAuthContext, operationType)) {
+        if (properties.isAllowTrustedPlatformInternalSyncBypass()
+            && isTrustedPlatformInternalSync(verifiedAuthContext, operationType)) {
             meta.put("accessDecisionSource", "trustedPlatformInternalSync");
             meta.put("accessEvaluationStatus", "granted");
             return new AccessDecision(true, "OK", Collections.unmodifiableMap(meta));
