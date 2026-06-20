@@ -50,6 +50,46 @@ class IndexingWorkerRunnerTest {
     }
 
     @Test
+    void completionAcknowledgementFailureDoesNotMarkProcessingFailureOrStopBatch() throws Exception {
+        IndexingQueueService queueService = mock(IndexingQueueService.class);
+        IndexingWorkProcessor workProcessor = mock(IndexingWorkProcessor.class);
+        IndexingWorkerRunner runner = new IndexingWorkerRunner(queueService, workProcessor);
+        IndexingQueueEntry first = entry("entry-1");
+        IndexingQueueEntry second = entry("entry-2");
+
+        when(queueService.lease(IndexingStrategy.ASYNC, 10)).thenReturn(List.of(first, second));
+        doThrow(new IllegalStateException("database unavailable")).when(queueService).markCompleted(first);
+
+        runner.run(IndexingStrategy.ASYNC, 10, "Async");
+
+        verify(workProcessor).process(first);
+        verify(workProcessor).process(second);
+        verify(queueService).markCompleted(first);
+        verify(queueService).markCompleted(second);
+        verify(queueService, never()).markFailure(any(IndexingQueueEntry.class), any());
+    }
+
+    @Test
+    void failureAcknowledgementFailureDoesNotStopBatch() throws Exception {
+        IndexingQueueService queueService = mock(IndexingQueueService.class);
+        IndexingWorkProcessor workProcessor = mock(IndexingWorkProcessor.class);
+        IndexingWorkerRunner runner = new IndexingWorkerRunner(queueService, workProcessor);
+        IndexingQueueEntry first = entry("entry-1");
+        IndexingQueueEntry second = entry("entry-2");
+
+        when(queueService.lease(IndexingStrategy.ASYNC, 10)).thenReturn(List.of(first, second));
+        doThrow(new IllegalStateException("processor down")).when(workProcessor).process(first);
+        doThrow(new IllegalStateException("database unavailable")).when(queueService).markFailure(first, "processor down");
+
+        runner.run(IndexingStrategy.ASYNC, 10, "Async");
+
+        verify(queueService).markFailure(first, "processor down");
+        verify(queueService, never()).markCompleted(first);
+        verify(workProcessor).process(second);
+        verify(queueService).markCompleted(second);
+    }
+
+    @Test
     void normalizesConfiguredBatchSizeToAtLeastOne() {
         IndexingQueueService queueService = mock(IndexingQueueService.class);
         IndexingWorkProcessor workProcessor = mock(IndexingWorkProcessor.class);

@@ -68,6 +68,7 @@
         <module>victor-databases/ai-fabric-vector-weaviate</module>
         <module>victor-databases/ai-fabric-vector-qdrant</module>
         <module>victor-databases/ai-fabric-vector-milvus</module>
+        <module>integration-Testing/vector-contract-tests</module>
         <module>integration-Testing/testcontainers-support</module>
         <module>integration-Testing/integration-tests</module>
         <module>integration-Testing/relationship-query-integration-tests</module>

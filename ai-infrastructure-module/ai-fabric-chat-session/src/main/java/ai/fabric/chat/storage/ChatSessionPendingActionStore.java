@@ -1,5 +1,6 @@
 package ai.fabric.chat.storage;
 
+import ai.fabric.chat.config.ChatSessionProperties;
 import ai.fabric.chat.domain.ChatSession;
 import ai.fabric.chat.spi.ChatSessionStorageProvider;
 import ai.fabric.chat.util.ConfirmationStack;
@@ -16,10 +17,26 @@ import org.springframework.util.StringUtils;
  */
 public class ChatSessionPendingActionStore implements PendingActionStore {
 
+    static final int DEFAULT_MAX_STACK_DEPTH = 8;
+
     private final ChatSessionStorageProvider storageProvider;
+    private final int maxStackDepth;
 
     public ChatSessionPendingActionStore(ChatSessionStorageProvider storageProvider) {
+        this(storageProvider, DEFAULT_MAX_STACK_DEPTH);
+    }
+
+    public ChatSessionPendingActionStore(ChatSessionStorageProvider storageProvider,
+                                         ChatSessionProperties properties) {
+        this(
+            storageProvider,
+            properties != null ? properties.getMaxPendingActionStackDepth() : DEFAULT_MAX_STACK_DEPTH
+        );
+    }
+
+    ChatSessionPendingActionStore(ChatSessionStorageProvider storageProvider, int maxStackDepth) {
         this.storageProvider = storageProvider;
+        this.maxStackDepth = Math.max(1, maxStackDepth);
     }
 
     @Override
@@ -58,7 +75,7 @@ public class ChatSessionPendingActionStore implements PendingActionStore {
             .ifPresent(session -> {
                 Map<String, Object> metadata = session.getSessionMetadata();
                 Map<String, Object> mutable = metadata != null ? new HashMap<>(metadata) : new HashMap<>();
-                ConfirmationStack.push(mutable, pendingAction);
+                ConfirmationStack.push(mutable, pendingAction, maxStackDepth);
                 session.setSessionMetadata(mutable);
                 storageProvider.save(session);
             });
@@ -135,7 +152,7 @@ public class ChatSessionPendingActionStore implements PendingActionStore {
             .ifPresent(session -> {
                 Map<String, Object> metadata = session.getSessionMetadata();
                 Map<String, Object> mutable = metadata != null ? new HashMap<>(metadata) : new HashMap<>();
-                ConfirmationStack.replace(mutable, stackTopFirst);
+                ConfirmationStack.replace(mutable, stackTopFirst, maxStackDepth);
                 session.setSessionMetadata(mutable);
                 storageProvider.save(session);
             });

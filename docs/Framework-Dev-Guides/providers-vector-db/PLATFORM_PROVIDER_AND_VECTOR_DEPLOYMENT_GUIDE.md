@@ -48,6 +48,38 @@ The platform now supports the framework-backed matrix below in the structured `P
 
 The platform compiles these choices into managed Railway runtime env, validates the required non-secret fields, and checks the required secrets before release.
 
+`memory` is a development/test backend. If a runtime starts with the `prod` or `production` Spring
+profile and `ai.vector-db.type=memory`, startup fails unless
+`ai.vector-db.memory.allow-in-production=true` is set deliberately.
+
+### 1.4 Runtime Vector Capabilities
+
+The vector backend is not treated as a commodity similarity-search adapter. AI Fabric expects native
+providers to support storage, retrieval, admin scans, deletes, counts, and diagnostics around the same
+tenant/customer scoped data.
+
+Capability checks are intentionally split:
+
+- search metadata filtering: metadata filters during vector similarity search
+- scan metadata filtering: metadata filters during paged lifecycle/admin scans
+- exact fetch by id: direct vector-record lookup
+- clear by entity type: delete one entity type without a separate sidecar catalog
+- efficient entity-type count: safe count path for overview/readiness flows
+
+Provider posture for this release:
+
+| Backend | Search filter | Scan filter | Exact fetch | Clear entity type | Count posture |
+|---------|---------------|-------------|-------------|-------------------|---------------|
+| Lucene | Yes, scalar metadata | Yes, scalar metadata | Yes | Yes | Native local index count |
+| Memory | Yes | Yes | Yes | Yes | In-memory count |
+| Qdrant | Yes | Yes | Yes | Yes | Native count API |
+| Pinecone | Yes | Yes, client-side list/fetch | Yes | Yes | Namespace/index stats |
+| Weaviate | Yes | Yes | Yes | Yes | Native aggregate count with visible paged fallback |
+| Milvus | Yes | Yes | Yes | Yes | Native collection statistics with scan fallback |
+
+This split matters for governance. A provider that can filter similarity search is not automatically
+safe for governance catalog work unless it can also perform metadata-filtered scans.
+
 ## 2. Source Of Truth
 
 The platform separates provider configuration into two layers.

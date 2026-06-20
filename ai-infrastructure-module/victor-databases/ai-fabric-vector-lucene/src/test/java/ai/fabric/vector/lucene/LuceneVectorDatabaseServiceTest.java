@@ -76,6 +76,109 @@ class LuceneVectorDatabaseServiceTest {
     }
 
     @Test
+    void searchAppliesIndexedScalarMetadataFilters() {
+        service = createService();
+        service.storeVector("product", "public-1", "Public catalog item",
+            vector(1.0, 0.0, 0.0), Map.of("visibility", "public", "featured", true, "rank", 7));
+        service.storeVector("product", "private-1", "Private catalog item",
+            vector(1.0, 0.0, 0.0), Map.of("visibility", "private", "featured", false, "rank", 2));
+
+        AISearchResponse response = service.search(vector(1.0, 0.0, 0.0), AISearchRequest.builder()
+            .query("catalog")
+            .entityType("product")
+            .metadata(Map.of("visibility", "public", "featured", true, "rank", 7))
+            .limit(10)
+            .threshold(0.0d)
+            .build());
+
+        assertThat(service.supportsSearchMetadataFiltering()).isTrue();
+        assertThat(response.getResults()).hasSize(1);
+        assertThat(response.getResults().getFirst()).containsEntry("id", "public-1");
+    }
+
+    @Test
+    void adminDiagnosticsExposeStableCapabilityKeysAndIndexPath() {
+        service = createService();
+
+        assertThat(service.adminDiagnostics())
+            .containsEntry("provider", "lucene")
+            .containsEntry("persistent", true)
+            .containsEntry("sharedStorage", false)
+            .containsEntry("scopeType", "LOCAL_INDEX")
+            .containsEntry("supportsVectorScan", true)
+            .containsEntry("supportsSearchMetadataFiltering", true)
+            .containsEntry("supportsScanMetadataFiltering", true)
+            .containsEntry("supportsExactFetchById", true)
+            .containsEntry("supportsClearByEntityType", true)
+            .containsEntry("supportsEfficientEntityTypeCount", true)
+            .containsEntry("metadataFilteredSearch", true)
+            .containsEntry("metadataFilteredScan", true)
+            .containsEntry("searchFilterMode", "lucene-indexed-metadata-query")
+            .containsEntry("scanFilterMode", "lucene-indexed-metadata-query");
+        assertThat(service.adminDiagnostics().get("rootResourceValue").toString())
+            .contains(tempDir.toAbsolutePath().normalize().toString());
+    }
+
+    @Test
+    void unsupportedMetadataFiltersFailClosedInsteadOfBroadeningResults() {
+        service = createService();
+        service.storeVector("product", "public-1", "Public catalog item",
+            vector(1.0, 0.0, 0.0), Map.of("tags", List.of("public", "sale")));
+
+        AISearchResponse response = service.search(vector(1.0, 0.0, 0.0), AISearchRequest.builder()
+            .query("catalog")
+            .entityType("product")
+            .metadata(Map.of("tags", List.of("public", "sale")))
+            .limit(10)
+            .threshold(0.0d)
+            .build());
+
+        assertThat(response.getResults()).isEmpty();
+    }
+
+    @Test
+    void searchSupportsLuceneSpecificDecimalMetadataEquality() {
+        service = createService();
+        service.storeVector("product", "exact-score", "Exact score item",
+            vector(1.0, 0.0, 0.0), Map.of("qualityScore", 0.75d));
+        service.storeVector("product", "different-score", "Different score item",
+            vector(1.0, 0.0, 0.0), Map.of("qualityScore", 0.74d));
+
+        AISearchResponse response = service.search(vector(1.0, 0.0, 0.0), AISearchRequest.builder()
+            .query("catalog")
+            .entityType("product")
+            .metadata(Map.of("qualityScore", 0.75d))
+            .limit(10)
+            .threshold(0.0d)
+            .build());
+
+        assertThat(response.getResults())
+            .extracting(row -> row.get("id"))
+            .containsExactly("exact-score");
+        assertThat(service.adminDiagnostics())
+            .containsEntry("metadataFilterSubset", "scalar-string-boolean-integer-long-decimal");
+    }
+
+    @Test
+    void scanSupportsLuceneSpecificDecimalMetadataEquality() {
+        service = createService();
+        service.storeVector("document", "doc-good", "Good quality document",
+            vector(1.0, 0.0, 0.0), Map.of("qualityScore", 0.75d));
+        service.storeVector("document", "doc-other", "Other quality document",
+            vector(0.0, 1.0, 0.0), Map.of("qualityScore", 0.74d));
+
+        VectorScanPage page = service.scan(VectorScanRequest.builder()
+            .entityType("document")
+            .metadataEquals(Map.of("qualityScore", 0.75d))
+            .limit(10)
+            .build());
+
+        assertThat(page.getVectors())
+            .extracting(VectorRecord::getEntityId)
+            .containsExactly("doc-good");
+    }
+
+    @Test
     void removeVectorOnlyDeletesMatchingEntityTypeAndId() {
         service = createService();
         String productVectorId = service.storeVector("product", "shared-1", "Product profile",

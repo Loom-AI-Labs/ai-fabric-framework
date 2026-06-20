@@ -16,9 +16,10 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
-import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -70,6 +71,41 @@ class BehaviorProcessingManagerTest {
         assertThat(result.getErrorCount()).isZero();
         assertThat(meterRegistry.counter("ai.behavior.processing.processed").count()).isEqualTo(2.0);
         assertThat(meterRegistry.counter("ai.behavior.processing.errors").count()).isEqualTo(0.0);
+    }
+
+    @Test
+    void processBatchAllowsNullRequestAndUsesSafeDefaults() {
+        when(analysisService.processNextUser()).thenReturn(null);
+
+        BatchProcessingResult result = manager.processBatch(null);
+
+        assertThat(result.getProcessedCount()).isZero();
+        assertThat(result.getSuccessCount()).isZero();
+        assertThat(result.getErrorCount()).isZero();
+    }
+
+    @Test
+    void processBatchRejectsInvalidDirectRequestValues() {
+        BatchProcessingRequest request = new BatchProcessingRequest();
+        request.setMaxUsers(0);
+
+        assertThatThrownBy(() -> manager.processBatch(request))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("maxUsers");
+        verifyNoInteractions(analysisService);
+    }
+
+    @Test
+    void startContinuousRejectsInvalidDirectRequestBeforeSubmittingJob() {
+        ContinuousProcessingRequest request = new ContinuousProcessingRequest();
+        request.setUsersPerBatch(1);
+        request.setIntervalMinutes(-1);
+        request.setMaxIterations(1);
+
+        assertThatThrownBy(() -> manager.startContinuous(request))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("intervalMinutes");
+        verifyNoInteractions(analysisService);
     }
 
     @Test

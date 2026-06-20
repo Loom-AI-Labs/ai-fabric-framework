@@ -49,7 +49,8 @@ public class AIDataSyncAutoConfiguration {
                                            VectorManagementService vectorManagementService,
                                            AIAccessControlService accessControlService,
                                            DataSyncEntityNormalizer normalizer,
-                                           Clock clock) {
+                                           ObjectProvider<Clock> clockProvider) {
+        Clock clock = clockProvider.getIfAvailable(Clock::systemUTC);
         return new DataSyncService(
             properties,
             entityConfigurationLoader,

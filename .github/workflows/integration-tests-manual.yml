@@ -57,12 +57,17 @@ on:
         description: 'Pinecone index name (optional when pinecone_host is provided; derived from host if blank). If left blank, workflow will use repo variable PINECONE_INDEX_NAME (if set).'
         required: false
         type: string
-        default: 'ai-fabric'
+        default: ''
       pinecone_host:
         description: 'Pinecone index host URL (optional; recommended for serverless). Example: https://<index>.svc.<env>.pinecone.io. If left blank, workflow will use repo variable PINECONE_API_HOST (if set).'
         required: false
         type: string
-        default: 'https://ai-fabric-pwkuyn5.svc.aped-4627-b74a.pinecone.io'
+        default: ''
+      pinecone_environment:
+        description: 'Pinecone environment (required when deriving host from index name). If left blank, workflow will use repo variable PINECONE_ENVIRONMENT (if set).'
+        required: false
+        type: string
+        default: ''
       llm_provider:
         description: 'LLM Provider'
         required: true
@@ -87,6 +92,7 @@ on:
         type: choice
         options:
           - onnx
+          - spring-ai-onnx
           - openai
           - anthropic
           - gemini
@@ -232,9 +238,7 @@ jobs:
       - name: Build AI Fabric Framework
         run: |
           cd ai-infrastructure-module
-          # Skip tests during build - parent-verify workflow already runs all unit tests
-          # This workflow focuses on integration tests with real APIs
-          mvn clean install -DskipTests -B -V
+          mvn clean install -B -V
 
       - name: Validate Provider Availability
         uses: ./.github/actions/configure-providers
@@ -549,15 +553,19 @@ jobs:
           export MAVEN_LOGGING_LEVEL="$EFFECTIVE_MAVEN_LOGGING_LEVEL"
           echo "Using MAVEN_LOGGING_LEVEL=$MAVEN_LOGGING_LEVEL"
 
-          # Determine if Testcontainers should be enabled based on vector database selection
-          # Testcontainers-supported databases: milvus, qdrant, weaviate, chroma, pgvector
+          # Determine if Testcontainers should be enabled based on vector database selection.
+          # Module-backed Testcontainers databases: milvus, qdrant, weaviate.
           VECTOR_DB="${{ github.event.inputs.vector_database }}"
+          if [[ "$VECTOR_DB" == "pinecone" ]] && \
+             [[ -z "${PINECONE_API_HOST:-}" ]] && \
+             { [[ -z "${PINECONE_INDEX_NAME:-}" ]] || [[ -z "${PINECONE_ENVIRONMENT:-}" ]]; }; then
+            echo "::error::Pinecone requires PINECONE_API_HOST or both PINECONE_INDEX_NAME and PINECONE_ENVIRONMENT. Set workflow inputs or repository variables."
+            exit 1
+          fi
           SPRING_PROFILES="real-api-test"
           if [[ "$VECTOR_DB" == "milvus" ]] || \
              [[ "$VECTOR_DB" == "qdrant" ]] || \
-             [[ "$VECTOR_DB" == "weaviate" ]] || \
-             [[ "$VECTOR_DB" == "chroma" ]] || \
-             [[ "$VECTOR_DB" == "pgvector" ]]; then
+             [[ "$VECTOR_DB" == "weaviate" ]]; then
             SPRING_PROFILES="real-api-test,testcontainers"
             echo "✅ Testcontainers enabled for vector database: $VECTOR_DB"
           else
@@ -581,10 +589,12 @@ jobs:
           # Configure these under: Settings → Secrets and variables → Actions → Variables
           PINECONE_INDEX_NAME: ${{ github.event.inputs.pinecone_index_name || vars.PINECONE_INDEX_NAME }}
           PINECONE_API_HOST: ${{ github.event.inputs.pinecone_host || vars.PINECONE_API_HOST }}
+          PINECONE_ENVIRONMENT: ${{ github.event.inputs.pinecone_environment || vars.PINECONE_ENVIRONMENT }}
           AI_PROVIDERS_PINECONE_ENABLED: ${{ github.event.inputs.vector_database == 'pinecone' && 'true' || 'false' }}
           AI_PROVIDERS_PINECONE_API_KEY: ${{ github.event.inputs.pinecone_api_key || secrets.PINECONE_API_KEY }}
           AI_PROVIDERS_PINECONE_INDEX_NAME: ${{ github.event.inputs.pinecone_index_name || vars.PINECONE_INDEX_NAME }}
           AI_PROVIDERS_PINECONE_API_HOST: ${{ github.event.inputs.pinecone_host || vars.PINECONE_API_HOST }}
+          AI_PROVIDERS_PINECONE_ENVIRONMENT: ${{ github.event.inputs.pinecone_environment || vars.PINECONE_ENVIRONMENT }}
           AI_INFRASTRUCTURE_PERSISTENCE_DATABASE: ${{ github.event.inputs.persistence_database }}
           AI_PROVIDERS_REAL_API_MINIMUM_SUCCESS_RATE: ${{ github.event.inputs.realapi_minimum_success_rate }}
           AI_PROVIDERS_REAL_API_MINIMUM_CONSIDERED_TESTS: ${{ github.event.inputs.realapi_minimum_considered_tests }}
@@ -728,7 +738,7 @@ jobs:
       - name: Build AI Fabric Framework
         run: |
           cd ai-infrastructure-module
-          mvn clean install -DskipTests -B -V
+          mvn clean install -B -V
 
       - name: Validate Provider Availability
         uses: ./.github/actions/configure-providers
@@ -776,12 +786,16 @@ jobs:
 
           # Determine if Testcontainers should be enabled based on vector database selection
           VECTOR_DB="${{ github.event.inputs.vector_database }}"
+          if [[ "$VECTOR_DB" == "pinecone" ]] && \
+             [[ -z "${PINECONE_API_HOST:-}" ]] && \
+             { [[ -z "${PINECONE_INDEX_NAME:-}" ]] || [[ -z "${PINECONE_ENVIRONMENT:-}" ]]; }; then
+            echo "::error::Pinecone requires PINECONE_API_HOST or both PINECONE_INDEX_NAME and PINECONE_ENVIRONMENT. Set workflow inputs or repository variables."
+            exit 1
+          fi
           SPRING_PROFILES="realapi"
           if [[ "$VECTOR_DB" == "milvus" ]] || \
              [[ "$VECTOR_DB" == "qdrant" ]] || \
-             [[ "$VECTOR_DB" == "weaviate" ]] || \
-             [[ "$VECTOR_DB" == "chroma" ]] || \
-             [[ "$VECTOR_DB" == "pgvector" ]]; then
+             [[ "$VECTOR_DB" == "weaviate" ]]; then
             SPRING_PROFILES="realapi,testcontainers"
             echo "✅ Testcontainers enabled for vector database: $VECTOR_DB"
           else
@@ -814,10 +828,12 @@ jobs:
           PINECONE_API_KEY: ${{ github.event.inputs.pinecone_api_key || secrets.PINECONE_API_KEY }}
           PINECONE_INDEX_NAME: ${{ github.event.inputs.pinecone_index_name || vars.PINECONE_INDEX_NAME }}
           PINECONE_API_HOST: ${{ github.event.inputs.pinecone_host || vars.PINECONE_API_HOST }}
+          PINECONE_ENVIRONMENT: ${{ github.event.inputs.pinecone_environment || vars.PINECONE_ENVIRONMENT }}
           AI_PROVIDERS_PINECONE_ENABLED: ${{ github.event.inputs.vector_database == 'pinecone' && 'true' || 'false' }}
           AI_PROVIDERS_PINECONE_API_KEY: ${{ github.event.inputs.pinecone_api_key || secrets.PINECONE_API_KEY }}
           AI_PROVIDERS_PINECONE_INDEX_NAME: ${{ github.event.inputs.pinecone_index_name || vars.PINECONE_INDEX_NAME }}
           AI_PROVIDERS_PINECONE_API_HOST: ${{ github.event.inputs.pinecone_host || vars.PINECONE_API_HOST }}
+          AI_PROVIDERS_PINECONE_ENVIRONMENT: ${{ github.event.inputs.pinecone_environment || vars.PINECONE_ENVIRONMENT }}
           AI_INFRASTRUCTURE_PERSISTENCE_DATABASE: ${{ github.event.inputs.persistence_database }}
           COHERE_MODEL: ${{ github.event.inputs.llm_provider == 'cohere' && (github.event.inputs.llm_model || 'command-r7b-12-2024') || '' }}
           COHERE_EMBEDDING_MODEL: ${{ github.event.inputs.embedding_provider == 'cohere' && (github.event.inputs.embedding_model || 'embed-english-v3.0') || '' }}
@@ -1057,7 +1073,7 @@ jobs:
       - name: Build AI Fabric Framework
         run: |
           cd ai-infrastructure-module
-          mvn clean install -DskipTests -B -V
+          mvn clean install -B -V
 
       - name: Validate Provider Availability
         uses: ./.github/actions/configure-providers
@@ -1078,12 +1094,16 @@ jobs:
           cd ai-infrastructure-module/integration-Testing/chat-session-integration-tests
 
           VECTOR_DB="${{ github.event.inputs.vector_database }}"
+          if [[ "$VECTOR_DB" == "pinecone" ]] && \
+             [[ -z "${PINECONE_API_HOST:-}" ]] && \
+             { [[ -z "${PINECONE_INDEX_NAME:-}" ]] || [[ -z "${PINECONE_ENVIRONMENT:-}" ]]; }; then
+            echo "::error::Pinecone requires PINECONE_API_HOST or both PINECONE_INDEX_NAME and PINECONE_ENVIRONMENT. Set workflow inputs or repository variables."
+            exit 1
+          fi
           SPRING_PROFILES="realapi"
           if [[ "$VECTOR_DB" == "milvus" ]] || \
              [[ "$VECTOR_DB" == "qdrant" ]] || \
-             [[ "$VECTOR_DB" == "weaviate" ]] || \
-             [[ "$VECTOR_DB" == "chroma" ]] || \
-             [[ "$VECTOR_DB" == "pgvector" ]]; then
+             [[ "$VECTOR_DB" == "weaviate" ]]; then
             SPRING_PROFILES="realapi,testcontainers"
             echo "✅ Testcontainers enabled for vector database: $VECTOR_DB"
           else
@@ -1113,10 +1133,12 @@ jobs:
           PINECONE_API_KEY: ${{ github.event.inputs.pinecone_api_key || secrets.PINECONE_API_KEY }}
           PINECONE_INDEX_NAME: ${{ github.event.inputs.pinecone_index_name || vars.PINECONE_INDEX_NAME }}
           PINECONE_API_HOST: ${{ github.event.inputs.pinecone_host || vars.PINECONE_API_HOST }}
+          PINECONE_ENVIRONMENT: ${{ github.event.inputs.pinecone_environment || vars.PINECONE_ENVIRONMENT }}
           AI_PROVIDERS_PINECONE_ENABLED: ${{ github.event.inputs.vector_database == 'pinecone' && 'true' || 'false' }}
           AI_PROVIDERS_PINECONE_API_KEY: ${{ github.event.inputs.pinecone_api_key || secrets.PINECONE_API_KEY }}
           AI_PROVIDERS_PINECONE_INDEX_NAME: ${{ github.event.inputs.pinecone_index_name || vars.PINECONE_INDEX_NAME }}
           AI_PROVIDERS_PINECONE_API_HOST: ${{ github.event.inputs.pinecone_host || vars.PINECONE_API_HOST }}
+          AI_PROVIDERS_PINECONE_ENVIRONMENT: ${{ github.event.inputs.pinecone_environment || vars.PINECONE_ENVIRONMENT }}
           AI_INFRASTRUCTURE_PERSISTENCE_DATABASE: ${{ github.event.inputs.persistence_database }}
           COHERE_MODEL: ${{ github.event.inputs.llm_provider == 'cohere' && (github.event.inputs.llm_model || 'command-r7b-12-2024') || '' }}
           COHERE_EMBEDDING_MODEL: ${{ github.event.inputs.embedding_provider == 'cohere' && (github.event.inputs.embedding_model || 'embed-english-v3.0') || '' }}
@@ -1194,10 +1216,10 @@ jobs:
             ${{ runner.os }}-maven-behavior-
             ${{ runner.os }}-maven-
 
-      - name: Build AI Fabric Framework (skip unit tests)
+      - name: Build AI Fabric Framework
         run: |
           cd ai-infrastructure-module
-          mvn clean install -DskipTests -B -V
+          mvn clean install -B -V
 
       - name: Validate Provider Availability
         uses: ./.github/actions/configure-providers
@@ -1245,12 +1267,16 @@ jobs:
 
           # Determine if Testcontainers should be enabled based on vector database selection
           VECTOR_DB="${{ github.event.inputs.vector_database }}"
+          if [[ "$VECTOR_DB" == "pinecone" ]] && \
+             [[ -z "${PINECONE_API_HOST:-}" ]] && \
+             { [[ -z "${PINECONE_INDEX_NAME:-}" ]] || [[ -z "${PINECONE_ENVIRONMENT:-}" ]]; }; then
+            echo "::error::Pinecone requires PINECONE_API_HOST or both PINECONE_INDEX_NAME and PINECONE_ENVIRONMENT. Set workflow inputs or repository variables."
+            exit 1
+          fi
           SPRING_PROFILES="realapi"
           if [[ "$VECTOR_DB" == "milvus" ]] || \
              [[ "$VECTOR_DB" == "qdrant" ]] || \
-             [[ "$VECTOR_DB" == "weaviate" ]] || \
-             [[ "$VECTOR_DB" == "chroma" ]] || \
-             [[ "$VECTOR_DB" == "pgvector" ]]; then
+             [[ "$VECTOR_DB" == "weaviate" ]]; then
             SPRING_PROFILES="realapi,testcontainers"
             echo "✅ Testcontainers enabled for vector database: $VECTOR_DB"
           else
@@ -1277,6 +1303,15 @@ jobs:
           AZURE_DEPLOYMENT_NAME: ${{ github.event.inputs.azure_deployment_name }}
           AZURE_EMBEDDING_DEPLOYMENT_NAME: ${{ github.event.inputs.azure_embedding_deployment_name }}
           AZURE_ENABLED: ${{ (github.event.inputs.llm_provider == 'azure' || github.event.inputs.embedding_provider == 'azure') && 'true' || 'false' }}
+          PINECONE_API_KEY: ${{ github.event.inputs.pinecone_api_key || secrets.PINECONE_API_KEY }}
+          PINECONE_INDEX_NAME: ${{ github.event.inputs.pinecone_index_name || vars.PINECONE_INDEX_NAME }}
+          PINECONE_API_HOST: ${{ github.event.inputs.pinecone_host || vars.PINECONE_API_HOST }}
+          PINECONE_ENVIRONMENT: ${{ github.event.inputs.pinecone_environment || vars.PINECONE_ENVIRONMENT }}
+          AI_PROVIDERS_PINECONE_ENABLED: ${{ github.event.inputs.vector_database == 'pinecone' && 'true' || 'false' }}
+          AI_PROVIDERS_PINECONE_API_KEY: ${{ github.event.inputs.pinecone_api_key || secrets.PINECONE_API_KEY }}
+          AI_PROVIDERS_PINECONE_INDEX_NAME: ${{ github.event.inputs.pinecone_index_name || vars.PINECONE_INDEX_NAME }}
+          AI_PROVIDERS_PINECONE_API_HOST: ${{ github.event.inputs.pinecone_host || vars.PINECONE_API_HOST }}
+          AI_PROVIDERS_PINECONE_ENVIRONMENT: ${{ github.event.inputs.pinecone_environment || vars.PINECONE_ENVIRONMENT }}
           AI_INFRASTRUCTURE_PERSISTENCE_DATABASE: ${{ github.event.inputs.persistence_database }}
           COHERE_MODEL: ${{ github.event.inputs.llm_provider == 'cohere' && (github.event.inputs.llm_model || 'command-r7b-12-2024') || '' }}
           COHERE_EMBEDDING_MODEL: ${{ github.event.inputs.embedding_provider == 'cohere' && (github.event.inputs.embedding_model || 'embed-english-v3.0') || '' }}

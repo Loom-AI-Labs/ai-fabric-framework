@@ -9,8 +9,10 @@ import ai.fabric.dto.AISearchRequest;
 import ai.fabric.dto.AISearchResponse;
 import ai.fabric.dto.RAGRequest;
 import ai.fabric.dto.RAGResponse;
+import ai.fabric.dto.VectorRecord;
 import ai.fabric.exception.AIServiceException;
 import ai.fabric.rag.VectorDatabaseService;
+import ai.fabric.rag.config.RAGProperties;
 import ai.fabric.rag.source.SearchSourceRegistry;
 import ai.fabric.spi.RAGProvider;
 import ai.fabric.vector.VectorDatabase;
@@ -24,6 +26,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.HashMap;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 /**
@@ -61,6 +64,12 @@ public class RAGService implements RAGProvider {
     private static final String METADATA_KEY_SEARCH_SOURCE_FAILED_COUNT = "searchSourceFailedCount";
     private static final String METADATA_KEY_SEARCH_SOURCE_SKIPPED_COUNT = "searchSourceSkippedCount";
     private static final String METADATA_KEY_SEARCH_SOURCES_DEGRADED = "searchSourcesDegraded";
+    private static final String METADATA_KEY_SEARCH_EXECUTION_PATH = "searchExecutionPath";
+    private static final String METADATA_KEY_HYBRID_SEARCH_REQUESTED = "hybridSearchRequested";
+    private static final String METADATA_KEY_HYBRID_SEARCH_USED = "hybridSearchUsed";
+    private static final String METADATA_KEY_HYBRID_SEARCH_MODE = "hybridSearchMode";
+    private static final String METADATA_KEY_VECTOR_PROVIDER_SUPPORTS_HYBRID_SEARCH = "vectorProviderSupportsHybridSearch";
+    private static final String METADATA_KEY_CONTEXTUAL_SEARCH_USED = "contextualSearchUsed";
 
     private static final double DEFAULT_SEARCH_THRESHOLD = 0.7;
     private static final int DEFAULT_RESULT_LIMIT = 10;
@@ -72,6 +81,11 @@ public class RAGService implements RAGProvider {
     private final AISearchService searchService;
     private final RAGSearchExecutor searchExecutor;
     private final RAGDocumentMapper documentMapper;
+    private final int defaultResultLimit;
+    private final double defaultSearchThreshold;
+    private final boolean defaultHybridSearch;
+    private final boolean defaultContextualSearch;
+    private final int maxIndexContentLength;
 
     public RAGService(AIProviderConfig config,
                       AIEmbeddingService embeddingService,
@@ -79,6 +93,16 @@ public class RAGService implements RAGProvider {
                       VectorDatabase vectorDatabase,
                       AISearchService searchService,
                       SearchSourceRegistry searchSourceRegistry) {
+        this(config, embeddingService, vectorDatabaseService, vectorDatabase, searchService, searchSourceRegistry, legacyDefaults());
+    }
+
+    public RAGService(AIProviderConfig config,
+                      AIEmbeddingService embeddingService,
+                      VectorDatabaseService vectorDatabaseService,
+                      VectorDatabase vectorDatabase,
+                      AISearchService searchService,
+                      SearchSourceRegistry searchSourceRegistry,
+                      RAGProperties properties) {
         this.config = Objects.requireNonNull(config, "config must not be null");
         this.embeddingService = Objects.requireNonNull(embeddingService, "embeddingService must not be null");
         this.vectorDatabaseService = Objects.requireNonNull(vectorDatabaseService, "vectorDatabaseService must not be null");
@@ -86,6 +110,12 @@ public class RAGService implements RAGProvider {
         this.searchService = Objects.requireNonNull(searchService, "searchService must not be null");
         this.searchExecutor = new RAGSearchExecutor(vectorDatabaseService, searchService, searchSourceRegistry);
         this.documentMapper = new RAGDocumentMapper();
+        RAGProperties resolvedProperties = properties != null ? properties : legacyDefaults();
+        this.defaultResultLimit = normalizeDefaultLimit(resolvedProperties.getDefaultLimit());
+        this.defaultSearchThreshold = normalizeDefaultThreshold(resolvedProperties.getDefaultThreshold());
+        this.defaultHybridSearch = resolvedProperties.isEnableHybridSearch();
+        this.defaultContextualSearch = resolvedProperties.isEnableContextualSearch();
+        this.maxIndexContentLength = normalizeMaxIndexContentLength(resolvedProperties);
     }
 
     @Override
@@ -97,19 +127,20 @@ public class RAGService implements RAGProvider {
     public void indexContent(String entityType, String entityId, String content, Map<String, Object> metadata) {
         try {
             log.debug("Indexing content for entity {} of type {}", entityId, entityType);
+            String indexedContent = truncateIndexContent(content);
 
             AIEmbeddingRequest embeddingRequest = AIEmbeddingRequest.builder()
-                .text(content)
+                .text(indexedContent)
                 .entityType(entityType)
                 .entityId(entityId)
                 .metadata(metadata != null ? metadata.toString() : null)
                 .build();
 
             AIEmbeddingResponse embeddingResponse = embeddingService.generateEmbedding(embeddingRequest);
-            vectorDatabaseService.storeVector(
+            upsertIndexedVector(
                 entityType,
                 entityId,
-                content,
+                indexedContent,
                 embeddingResponse.getEmbedding(),
                 metadata
             );
@@ -119,6 +150,38 @@ public class RAGService implements RAGProvider {
             log.error("Error indexing content for entity {} of type {}", entityId, entityType, e);
             throw new AIServiceException("Failed to index content", e);
         }
+    }
+
+    private void upsertIndexedVector(String entityType,
+                                     String entityId,
+                                     String content,
+                                     List<Double> embedding,
+                                     Map<String, Object> metadata) {
+        Optional<VectorRecord> existing = vectorDatabaseService.getVectorByEntity(entityType, entityId);
+        if (existing.isPresent()) {
+            String vectorId = existing.get().getVectorId();
+            if (StringUtils.hasText(vectorId)) {
+                boolean updated = vectorDatabaseService.updateVector(vectorId, entityType, entityId, content, embedding, metadata);
+                if (updated) {
+                    log.debug("Updated existing vector {} for entity {} of type {}", vectorId, entityId, entityType);
+                    return;
+                }
+                log.warn("Existing vector {} for entity {} of type {} was not updated; storing a replacement",
+                    vectorId,
+                    entityId,
+                    entityType);
+                vectorDatabaseService.removeVector(entityType, entityId);
+            } else {
+                log.warn("Existing vector for entity {} of type {} has no vector id; removing by entity before re-indexing",
+                    entityId,
+                    entityType);
+                if (!vectorDatabaseService.removeVector(entityType, entityId)) {
+                    throw new AIServiceException("Cannot safely re-index content because existing vector has no vector id");
+                }
+            }
+        }
+
+        vectorDatabaseService.storeVector(entityType, entityId, content, embedding, metadata);
     }
 
     @Override
@@ -149,18 +212,19 @@ public class RAGService implements RAGProvider {
 
         try {
             long startTime = System.currentTimeMillis();
-            String processedQuery = request.getQuery();
-            String embeddingQuery = RAGMetadataSupport.resolveEmbeddingQuery(request.getMetadata(), processedQuery);
+            RAGRequest effectiveRequest = withEffectiveDefaults(request);
+            String processedQuery = effectiveRequest.getQuery();
+            String embeddingQuery = RAGMetadataSupport.resolveEmbeddingQuery(effectiveRequest.getMetadata(), processedQuery);
 
             log.debug("Performing RAG operation (entityType={}, requestId={})",
-                request.getEntityType(),
-                request.getRequestId());
+                effectiveRequest.getEntityType(),
+                effectiveRequest.getRequestId());
 
             AIEmbeddingService.EmbeddingExecution embeddingExecution = executeEmbedding(embeddingQuery, false);
-            AISearchRequest searchRequest = buildSearchRequest(request, embeddingQuery, true);
+            AISearchRequest searchRequest = buildSearchRequest(effectiveRequest, embeddingQuery, true);
             RAGSearchExecutor.SearchExecutionAggregate searchExecution = searchExecutor.performSearch(
                 embeddingExecution.response().getEmbedding(),
-                request,
+                effectiveRequest,
                 searchRequest,
                 false
             );
@@ -168,12 +232,12 @@ public class RAGService implements RAGProvider {
             AISearchResponse searchResponse = searchExecution.response();
             List<RAGResponse.RAGDocument> documents = documentMapper.toFilteredDocuments(
                 safeResults(searchResponse),
-                request.getFilters()
+                effectiveRequest.getFilters()
             );
             String context = documentMapper.buildContextFromDocuments(documents);
             long totalProcessingTimeMs = System.currentTimeMillis() - startTime;
             Map<String, Object> metadata = responseMetadata(
-                request,
+                effectiveRequest,
                 embeddingQuery,
                 embeddingExecution,
                 searchResponse,
@@ -181,7 +245,7 @@ public class RAGService implements RAGProvider {
                 totalProcessingTimeMs
             );
 
-            String originalUserQuery = RAGMetadataSupport.extractUserQuery(request.getMetadata());
+            String originalUserQuery = RAGMetadataSupport.extractUserQuery(effectiveRequest.getMetadata());
 
             return RAGResponse.builder()
                 .context(context)
@@ -201,11 +265,13 @@ public class RAGService implements RAGProvider {
                     .mapToDouble(doc -> doc.getScore() != null ? doc.getScore() : 0.0)
                     .average().orElse(0.0))
                 .processingTimeMs(totalProcessingTimeMs)
-                .requestId(request.getRequestId())
+                .requestId(effectiveRequest.getRequestId())
                 .originalQuery(StringUtils.hasText(originalUserQuery) ? originalUserQuery : processedQuery)
-                .entityType(request.getEntityType())
+                .entityType(effectiveRequest.getEntityType())
                 .model(config.resolveEmbeddingDefaults().model())
                 .timestamp(LocalDateTime.now())
+                .hybridSearchUsed(searchExecution.hybridSearchUsed())
+                .contextualSearchUsed(searchExecution.contextualSearchUsed())
                 .metadata(Collections.unmodifiableMap(metadata))
                 .build();
         } catch (Exception e) {
@@ -221,19 +287,20 @@ public class RAGService implements RAGProvider {
         }
 
         try {
-            String processedQuery = request.getQuery();
-            String embeddingQuery = RAGMetadataSupport.resolveEmbeddingQuery(request.getMetadata(), processedQuery);
+            RAGRequest effectiveRequest = withEffectiveDefaults(request);
+            String processedQuery = effectiveRequest.getQuery();
+            String embeddingQuery = RAGMetadataSupport.resolveEmbeddingQuery(effectiveRequest.getMetadata(), processedQuery);
 
             log.debug("Performing RAG query (entityType={}, requestId={})",
-                request.getEntityType(),
-                request.getRequestId());
+                effectiveRequest.getEntityType(),
+                effectiveRequest.getRequestId());
 
             long startTime = System.currentTimeMillis();
             AIEmbeddingService.EmbeddingExecution embeddingExecution = executeEmbedding(embeddingQuery, true);
-            AISearchRequest searchRequest = buildSearchRequest(request, embeddingQuery, false);
+            AISearchRequest searchRequest = buildSearchRequest(effectiveRequest, embeddingQuery, false);
             RAGSearchExecutor.SearchExecutionAggregate searchExecution = searchExecutor.performSearch(
                 embeddingExecution.response().getEmbedding(),
-                request,
+                effectiveRequest,
                 searchRequest,
                 true
             );
@@ -241,12 +308,12 @@ public class RAGService implements RAGProvider {
             AISearchResponse searchResponse = searchExecution.response();
             List<RAGResponse.RAGDocument> documents = documentMapper.toFilteredDocuments(
                 safeResults(searchResponse),
-                request.getFilters()
+                effectiveRequest.getFilters()
             );
             String context = documentMapper.buildContextFromDocuments(documents);
             long processingTime = System.currentTimeMillis() - startTime;
             Map<String, Object> metadata = responseMetadata(
-                request,
+                effectiveRequest,
                 embeddingQuery,
                 embeddingExecution,
                 searchResponse,
@@ -254,7 +321,7 @@ public class RAGService implements RAGProvider {
                 processingTime
             );
 
-            String originalUserQuery = RAGMetadataSupport.extractUserQuery(request.getMetadata());
+            String originalUserQuery = RAGMetadataSupport.extractUserQuery(effectiveRequest.getMetadata());
 
             return RAGResponse.builder()
                 .context(context)
@@ -266,14 +333,14 @@ public class RAGService implements RAGProvider {
                     .map(RAGResponse.RAGDocument::getSimilarity)
                     .collect(Collectors.toList()))
                 .processingTimeMs(processingTime)
-                .requestId(request.getRequestId())
+                .requestId(effectiveRequest.getRequestId())
                 .model(config.resolveEmbeddingDefaults().model())
                 .success(true)
-                .hybridSearchUsed(Boolean.TRUE.equals(request.getEnableHybridSearch()))
-                .contextualSearchUsed(Boolean.TRUE.equals(request.getEnableContextualSearch()))
+                .hybridSearchUsed(searchExecution.hybridSearchUsed())
+                .contextualSearchUsed(searchExecution.contextualSearchUsed())
                 .originalQuery(StringUtils.hasText(originalUserQuery) ? originalUserQuery : processedQuery)
-                .entityType(request.getEntityType())
-                .searchedCategories(request.getCategories())
+                .entityType(effectiveRequest.getEntityType())
+                .searchedCategories(effectiveRequest.getCategories())
                 .metadata(Collections.unmodifiableMap(metadata))
                 .build();
         } catch (Exception e) {
@@ -383,6 +450,13 @@ public class RAGService implements RAGProvider {
         metadata.put(METADATA_KEY_SEARCH_SOURCE_FAILED_COUNT, searchExecution.failedSourceCount());
         metadata.put(METADATA_KEY_SEARCH_SOURCE_SKIPPED_COUNT, searchExecution.skippedSourceCount());
         metadata.put(METADATA_KEY_SEARCH_SOURCES_DEGRADED, searchExecution.degraded());
+        metadata.put(METADATA_KEY_SEARCH_EXECUTION_PATH, searchExecution.searchExecutionPath());
+        metadata.put(METADATA_KEY_HYBRID_SEARCH_REQUESTED, searchExecution.hybridSearchRequested());
+        metadata.put(METADATA_KEY_HYBRID_SEARCH_USED, searchExecution.hybridSearchUsed());
+        metadata.put(METADATA_KEY_HYBRID_SEARCH_MODE, searchExecution.hybridSearchMode());
+        metadata.put(METADATA_KEY_VECTOR_PROVIDER_SUPPORTS_HYBRID_SEARCH,
+            searchExecution.vectorProviderSupportsHybridSearch());
+        metadata.put(METADATA_KEY_CONTEXTUAL_SEARCH_USED, searchExecution.contextualSearchUsed());
     }
 
     private void addIfPresent(LinkedHashSet<String> target, Object value) {
@@ -422,13 +496,83 @@ public class RAGService implements RAGProvider {
     private int effectiveLimit(RAGRequest request) {
         return request.getLimit() != null && request.getLimit() > 0
             ? request.getLimit()
-            : DEFAULT_RESULT_LIMIT;
+            : defaultResultLimit;
     }
 
     private double effectiveThreshold(RAGRequest request) {
         return request.getThreshold() != null
             ? request.getThreshold()
-            : DEFAULT_SEARCH_THRESHOLD;
+            : defaultSearchThreshold;
+    }
+
+    private RAGRequest withEffectiveDefaults(RAGRequest request) {
+        return RAGRequest.builder()
+            .query(request.getQuery())
+            .entityType(request.getEntityType())
+            .limit(effectiveLimit(request))
+            .threshold(effectiveThreshold(request))
+            .context(request.getContext())
+            .filters(request.getFilters())
+            .metadata(request.getMetadata())
+            .authContext(request.getAuthContext())
+            .includeEmbeddings(request.getIncludeEmbeddings())
+            .includeMetadata(request.getIncludeMetadata())
+            .language(request.getLanguage())
+            .searchFields(request.getSearchFields())
+            .sortBy(request.getSortBy())
+            .timeoutMs(request.getTimeoutMs())
+            .useHybridSearch(request.getUseHybridSearch())
+            .boostFactors(request.getBoostFactors())
+            .scoringFunction(request.getScoringFunction())
+            .requestId(request.getRequestId())
+            .timestamp(request.getTimestamp())
+            .priority(request.getPriority())
+            .cacheable(request.getCacheable())
+            .cacheTtlSeconds(request.getCacheTtlSeconds())
+            .enableHybridSearch(request.getEnableHybridSearch() != null
+                ? request.getEnableHybridSearch()
+                : defaultHybridSearch)
+            .enableContextualSearch(request.getEnableContextualSearch() != null
+                ? request.getEnableContextualSearch()
+                : defaultContextualSearch)
+            .categories(request.getCategories())
+            .build();
+    }
+
+    private String truncateIndexContent(String content) {
+        if (content == null || content.length() <= maxIndexContentLength) {
+            return content;
+        }
+        log.debug("Truncating indexed content from {} to {} characters", content.length(), maxIndexContentLength);
+        return content.substring(0, maxIndexContentLength);
+    }
+
+    private static RAGProperties legacyDefaults() {
+        RAGProperties properties = new RAGProperties();
+        properties.setDefaultLimit(DEFAULT_RESULT_LIMIT);
+        properties.setDefaultThreshold(DEFAULT_SEARCH_THRESHOLD);
+        properties.setEnableHybridSearch(true);
+        properties.setEnableContextualSearch(true);
+        properties.getIndexing().setMaxContentLength(10000);
+        return properties;
+    }
+
+    private static int normalizeDefaultLimit(int value) {
+        return value > 0 ? value : DEFAULT_RESULT_LIMIT;
+    }
+
+    private static double normalizeDefaultThreshold(double value) {
+        if (value < 0.0d || value > 1.0d) {
+            return DEFAULT_SEARCH_THRESHOLD;
+        }
+        return value;
+    }
+
+    private static int normalizeMaxIndexContentLength(RAGProperties properties) {
+        if (properties == null || properties.getIndexing() == null || properties.getIndexing().getMaxContentLength() <= 0) {
+            return 10000;
+        }
+        return properties.getIndexing().getMaxContentLength();
     }
 
     private RAGResponse failedRetrievalResponse(RAGRequest request, String message) {

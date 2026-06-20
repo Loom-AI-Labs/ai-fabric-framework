@@ -5,12 +5,14 @@ import ai.fabric.dto.AISearchRequest;
 import ai.fabric.dto.AISearchResponse;
 import ai.fabric.dto.VectorRecord;
 import ai.fabric.rag.VectorDatabaseService;
+import ai.fabric.vector.VectorProviderReadinessEvaluator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -275,6 +277,10 @@ public class VectorManagementService {
     @Transactional
     public List<String> batchStoreVectors(List<VectorRecord> vectors) {
         try {
+            if (vectors == null || vectors.isEmpty()) {
+                log.debug("Batch store requested with no vectors");
+                return List.of();
+            }
             log.debug("Batch storing {} vectors", vectors.size());
             LocalDateTime now = LocalDateTime.now(ZoneOffset.UTC);
             List<VectorRecord> enriched = vectors.stream()
@@ -321,6 +327,10 @@ public class VectorManagementService {
     @Transactional
     public int batchUpdateVectors(List<VectorRecord> vectors) {
         try {
+            if (vectors == null || vectors.isEmpty()) {
+                log.debug("Batch update requested with no vectors");
+                return 0;
+            }
             log.debug("Batch updating {} vectors", vectors.size());
             LocalDateTime now = LocalDateTime.now(ZoneOffset.UTC);
             List<VectorRecord> enriched = vectors.stream()
@@ -367,6 +377,10 @@ public class VectorManagementService {
     @Transactional
     public int batchRemoveVectors(List<String> vectorIds) {
         try {
+            if (vectorIds == null || vectorIds.isEmpty()) {
+                log.debug("Batch remove requested with no vector ids");
+                return 0;
+            }
             log.debug("Batch removing {} vectors", vectorIds.size());
             int removedCount = vectorDatabaseService.batchRemoveVectors(vectorIds);
             log.debug("Successfully batch removed {} vectors", removedCount);
@@ -437,6 +451,33 @@ public class VectorManagementService {
         } catch (Exception e) {
             log.error("Error getting vector database statistics", e);
             return Map.of("error", "Failed to get statistics");
+        }
+    }
+
+    /**
+     * Get provider capability and readiness diagnostics without running expensive vector scans.
+     *
+     * @return stable provider diagnostics suitable for health/admin responses
+     */
+    public Map<String, Object> getProviderDiagnostics() {
+        try {
+            log.debug("Getting vector provider diagnostics");
+            Map<String, Object> diagnostics = vectorDatabaseService.adminDiagnostics();
+            Map<String, Object> response = new LinkedHashMap<>();
+            response.put("diagnosticsAvailable", true);
+            if (diagnostics != null) {
+                response.putAll(diagnostics);
+            }
+            response.put("readiness", VectorProviderReadinessEvaluator.evaluate(response).toMap());
+            return Collections.unmodifiableMap(response);
+        } catch (Exception e) {
+            log.warn("Vector provider diagnostics unavailable: {}", e.getMessage());
+            log.debug("Vector provider diagnostics failure details", e);
+            Map<String, Object> response = new LinkedHashMap<>();
+            response.put("diagnosticsAvailable", false);
+            response.put("error", e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName());
+            response.put("readiness", VectorProviderReadinessEvaluator.evaluate(response).toMap());
+            return Collections.unmodifiableMap(response);
         }
     }
     

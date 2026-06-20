@@ -4,6 +4,11 @@
 
 The Testcontainers integration allows you to use real vector database containers in your tests while defaulting to Lucene for fast unit tests.
 
+Release-supported AI Fabric vector provider modules with container contract coverage are
+Qdrant, Weaviate, and Milvus. The shared Testcontainers support package also contains generic
+Chroma and pgvector container fixtures, but this repository does not currently ship AI Fabric
+Chroma or pgvector vector provider modules.
+
 ## Default Behavior
 
 **Unit tests default to Lucene** - fast, no containers, no Docker required.
@@ -24,9 +29,13 @@ mvn test -Dai.vector-db.type=lucene
 
 ### 2. Unit Tests with Testcontainers
 
-To use Testcontainers, you must:
+Recommended usage:
 1. Activate the `testcontainers` profile
-2. Specify a container-supported vector database type
+2. Specify a module-backed vector database type
+
+When the `TestcontainersInitializer` is registered, explicitly setting
+`-Dai.vector-db.type=milvus`, `qdrant`, or `weaviate` can also enable early container startup
+without adding the profile manually.
 
 ```bash
 # Use Milvus container
@@ -44,18 +53,14 @@ mvn test \
   -Dspring.profiles.active=testcontainers \
   -Dai.vector-db.type=weaviate
 
-# Use Chroma container
-mvn test \
-  -Dspring.profiles.active=testcontainers \
-  -Dai.vector-db.type=chroma
-
-# Use pgvector container
-mvn test \
-  -Dspring.profiles.active=testcontainers \
-  -Dai.vector-db.type=pgvector
+# Chroma and pgvector container fixtures exist for future provider work, but
+# they do not activate an AI Fabric vector provider module in the current repo.
 ```
 
 **Result:** Testcontainers starts the appropriate container, injects connection properties, and tests run against the containerized database.
+
+If Docker is unavailable or the selected container cannot start, the initializer fails fast
+before setting `testcontainers.enabled=true`. Use `lucene` or `memory` for no-Docker test runs.
 
 ### 3. Integration Tests
 
@@ -67,13 +72,16 @@ mvn verify \
   -Dai.vector-db.type=milvus
 ```
 
-## Supported Container Types
+## Supported Module-Backed Container Types
 
 - `milvus` - Milvus vector database
 - `qdrant` - Qdrant vector database
 - `weaviate` - Weaviate vector database
-- `chroma` - Chroma vector database
-- `pgvector` - PostgreSQL with pgvector extension
+
+## Generic Future-Provider Fixtures
+
+- `chroma` - Chroma container wiring only; no AI Fabric vector provider module currently ships; not auto-enabled by `TestcontainersInitializer`
+- `pgvector` - PostgreSQL with pgvector extension wiring only; no AI Fabric vector provider module currently ships; not auto-enabled by `TestcontainersInitializer`
 
 ## Non-Container Types (No Testcontainers)
 
@@ -84,13 +92,16 @@ These types do NOT use Testcontainers (even with the profile active):
 ## How It Works
 
 1. **TestcontainersInitializer** checks:
-   - Is `testcontainers` profile active?
-   - Is `ai.vector-db.type` set to a container type?
-   - If both yes → sets `testcontainers.enabled=true`
+   - Is `ai.vector-db.type` set to a module-backed container type?
+   - Is the `testcontainers` profile active, or was the type explicitly set through `-Dai.vector-db.type=...` / `VECTOR_DB_TYPE`?
+   - If yes → starts the container early and sets `testcontainers.enabled=true`
 
 2. **VectorDatabaseContainerAutoConfiguration** activates when:
    - `testcontainers.enabled=true`
    - AND `ai.vector-db.type` matches a container type
+   - Chroma/pgvector fixtures require this explicit property because the initializer only auto-enables shipped module-backed providers.
+   - For Milvus, Qdrant, and Weaviate, the auto-configuration reuses any container already started
+     by `TestcontainersInitializer` instead of starting a second container.
 
 3. **Container starts** and injects properties into Spring environment
 

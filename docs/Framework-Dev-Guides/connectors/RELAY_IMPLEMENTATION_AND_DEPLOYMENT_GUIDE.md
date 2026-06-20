@@ -9,13 +9,24 @@ Reference:
 
 ---
 
-## Status (as of 2026-02-13)
+## Status (as of 2026-06-19)
 
-- **Implemented in code (V1):** `ai-infrastructure-module/ai-infrastructure-relay` (runnable Spring Boot service).
+- **Implemented in code (V1):** `ai-infrastructure-module/ai-fabric-relay` (runnable Spring Boot service).
 - The AI Fabric runtime already supports calling a connector endpoint (so the Relay can be introduced without changing orchestration semantics).
 - Redis-backed nonce/idempotency/rate-limit stores are implemented and configurable (default remains in-memory for dev/single-instance).
 - Packaging examples shipped: Dockerfile + Compose quickstart + Helm example chart.
 - OpenAPI contract conformance tests shipped in the Relay module test suite (pinned to `changes/Productization/customer-connector-api.openapi.yml`).
+- Retrieval forwarding validates the documents-only contract and fails closed with
+  `INVALID_RESPONSE` when an internal retrieval service returns generated answer, prompt, message, or
+  tool-instruction fields.
+- Action forwarding validates successful upstream `ActionResult` payloads and fails closed with
+  `INVALID_RESPONSE` when an internal service returns malformed successful data.
+- Handled upstream failures (`success=false`) keep their stable `errorCode` and user-safe message even
+  when optional failure `data` is malformed.
+- Retrieval forwarding rejects unserializable relay requests instead of forwarding a synthetic empty
+  JSON object to the internal retrieval service.
+- Action and retrieval forwarding treat upstream HTTP status as authoritative: a non-2xx upstream
+  response is returned to AI Fabric as a failure even if the body claims `success=true`.
 - Still planned for production hardening: optional mTLS and additional operational controls.
 
 ---
@@ -23,10 +34,10 @@ Reference:
 ## Reference implementation (V1)
 
 Source:
-- `ai-infrastructure-module/ai-infrastructure-relay`
+- `ai-infrastructure-module/ai-fabric-relay`
 
 Local run:
-- `mvn -f ai-infrastructure-module/pom.xml -pl ai-infrastructure-relay spring-boot:run`
+- `mvn -f ai-infrastructure-module/pom.xml -pl ai-fabric-relay spring-boot:run`
 
 Core configuration keys:
 - `relay.auth.apiKey.*` and/or `relay.auth.hmac.*`
@@ -51,6 +62,13 @@ The Relay is responsible for:
 - SSRF-safe routing (`actionId → internal endpoint` or single dispatcher)
 - forwarding user/trace context for authorization and tracing
 - returning a valid `ActionResult` to AI Fabric
+- failing closed with `INVALID_RESPONSE` when an internal action service returns malformed successful
+  action data
+- enforcing the documents-only retrieval response boundary when `/retrieval/search` is enabled
+- rejecting requests that cannot be serialized exactly as received instead of forwarding a placeholder
+  body
+- mapping upstream non-2xx statuses to deterministic AI Fabric failures (`RATE_LIMITED`, `TIMEOUT`,
+  `SERVICE_UNAVAILABLE`, or the upstream structured failure code)
 
 The Relay is not responsible for:
 - defining action contracts (params, required fields, confirmation text)
@@ -99,7 +117,8 @@ Log fields (minimum):
 - timestamp
 - `actionId`
 - `trace.requestId`
-- stable `trace.userId` (avoid email/phone/address)
+- stable `trace.authContext.subjectId` or `trace.authContext.sessionId` (avoid email/phone/address)
+- `trace.authContext.tenantId` / `customerId` / `deploymentId` when relevant
 - outcome: success/failure + `errorCode`
 - latency
 
@@ -200,11 +219,11 @@ relay:
 - Expose only the relay port; keep internal services private.
 
 Build (from repo root):
-- `docker build -f ai-infrastructure-module/ai-infrastructure-relay/Dockerfile -t ai-fabric-relay:dev .`
+- `docker build -f ai-infrastructure-module/ai-fabric-relay/Dockerfile -t ai-fabric-relay:dev .`
 
 ### 5.2 Docker Compose (dev / quickstart)
 
-Quickstart (from `ai-infrastructure-module/ai-infrastructure-relay`):
+Quickstart (from `ai-infrastructure-module/ai-fabric-relay`):
 - `docker compose up --build`
 
 What the Compose quickstart includes:
@@ -230,7 +249,7 @@ Recommended:
 - Horizontal Pod Autoscaler (optional)
 
 Helm example chart:
-- `ai-infrastructure-module/ai-infrastructure-relay/deploy/helm/ai-fabric-relay/Chart.yaml`
+- `ai-infrastructure-module/ai-fabric-relay/deploy/helm/ai-fabric-relay/Chart.yaml`
 
 ---
 
@@ -238,6 +257,13 @@ Helm example chart:
 
 - Reject invalid/missing signature (401/403)
 - Reject requests outside clock skew window
+- Upstream non-2xx action/retrieval responses return `success=false`, even when the upstream body
+  incorrectly says `success=true`
+- Malformed successful action payloads return `success=false`, `errorCode=INVALID_RESPONSE`
+- Handled action failures preserve upstream `errorCode` and message even if optional failure `data` is
+  malformed
+- Retrieval requests that cannot be serialized are rejected and are not forwarded as `{}` or another
+  placeholder body
 - Rate limit by user + by action
 - Audit log written for every request (no PII)
 - SSRF-safe routing (no dynamic URLs)
@@ -245,4 +271,4 @@ Helm example chart:
 - Returns valid `ActionResult` for both success and failure
 
 Contract tests reference:
-- `ai-infrastructure-module/ai-infrastructure-relay/src/test/java/com/ai/infrastructure/relay/contract/RelayOpenApiContractTest.java`
+- `ai-infrastructure-module/ai-fabric-relay/src/test/java/ai/fabric/relay/contract/RelayOpenApiContractTest.java`

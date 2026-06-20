@@ -1,7 +1,7 @@
 package ai.fabric.intent.action.connector.registry.liquibase;
 
 import org.springframework.boot.SpringApplication;
-import org.springframework.boot.env.EnvironmentPostProcessor;
+import org.springframework.boot.EnvironmentPostProcessor;
 import org.springframework.core.Ordered;
 import org.springframework.core.env.ConfigurableEnvironment;
 import org.springframework.core.env.MapPropertySource;
@@ -17,9 +17,9 @@ import java.util.Map;
 /**
  * Ensures Spring Boot's Liquibase auto-config does not fail when this optional module is present.
  *
- * <p>If the host application already configures Liquibase (via {@code spring.liquibase.*} or by providing
- * a default master changelog at {@code classpath:/db/changelog/db.changelog-master.*}), this post-processor
- * does nothing.</p>
+ * <p>If the host application already configures a Liquibase changelog or provides a default master
+ * changelog at {@code classpath:/db/changelog/db.changelog-master.*}, this post-processor does nothing.
+ * Explicit {@code spring.liquibase.enabled=false} is also respected.</p>
  *
  * <p>Otherwise:
  * <ul>
@@ -56,9 +56,9 @@ public class AIActionDbRegistryLiquibaseEnvironmentPostProcessor implements Envi
             return;
         }
 
-        if (environment.containsProperty(PROPERTY_SPRING_LIQUIBASE_CHANGE_LOG)
-            || environment.containsProperty(PROPERTY_SPRING_LIQUIBASE_ENABLED)
-            || bootDefaultChangelogExists()) {
+        if (StringUtils.hasText(environment.getProperty(PROPERTY_SPRING_LIQUIBASE_CHANGE_LOG))
+            || bootDefaultChangelogExists()
+            || explicitSpringLiquibaseDisabled(environment)) {
             return;
         }
 
@@ -96,5 +96,11 @@ public class AIActionDbRegistryLiquibaseEnvironmentPostProcessor implements Envi
         }
         return false;
     }
-}
 
+    private boolean explicitSpringLiquibaseDisabled(ConfigurableEnvironment environment) {
+        if (environment == null || !environment.containsProperty(PROPERTY_SPRING_LIQUIBASE_ENABLED)) {
+            return false;
+        }
+        return !Boolean.parseBoolean(environment.getProperty(PROPERTY_SPRING_LIQUIBASE_ENABLED, "true"));
+    }
+}

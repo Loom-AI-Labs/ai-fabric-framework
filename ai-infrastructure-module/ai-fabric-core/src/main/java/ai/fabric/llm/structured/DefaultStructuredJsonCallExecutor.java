@@ -27,8 +27,8 @@ public class DefaultStructuredJsonCallExecutor implements StructuredJsonCallExec
         if (spec.getCaller() == null) {
             throw new IllegalArgumentException("StructuredJsonCallSpec.caller cannot be null");
         }
-        if (spec.getTargetType() == null) {
-            throw new IllegalArgumentException("StructuredJsonCallSpec.targetType cannot be null");
+        if (spec.getTargetType() == null && spec.getResponseConverter() == null) {
+            throw new IllegalArgumentException("StructuredJsonCallSpec.targetType or responseConverter must be supplied");
         }
 
         String callName = StringUtils.hasText(spec.getCallName()) ? spec.getCallName() : "structured_json";
@@ -122,7 +122,9 @@ public class DefaultStructuredJsonCallExecutor implements StructuredJsonCallExec
 
             T parsed;
             try {
-                parsed = mapper.readValue(extraction.payload(), spec.getTargetType());
+                parsed = spec.getResponseConverter() != null
+                    ? spec.getResponseConverter().apply(extraction.payload())
+                    : mapper.readValue(extraction.payload(), spec.getTargetType());
             } catch (Exception ex) {
                 StructuredJsonFailure failure = new StructuredJsonFailure(
                     StructuredJsonFailureType.PARSE_ERROR,

@@ -49,7 +49,8 @@ Typical access request:
 Typical access request:
 - `resourceId`: `vectorSpace:<entityType>` (example: `vectorSpace:product`)
 - `operationType`: `WRITE` for upserts, `DELETE` for deletes
-- `trace.userId`: required by the push API and becomes the actor id for authorization
+- `trace.authContext.subjectId`: required by the push API and becomes the canonical actor id for authorization
+- `trace.authContext`: passed through to `AIAccessControlService` as the verified subject context
 
 ### 1.3 Runtime Admin Endpoints
 
@@ -81,7 +82,7 @@ This is configured via `ai.fabric.runtime.authz.*` (see Option B below).
 The hook signature is:
 
 ```java
-boolean canUserAccessEntity(String userId, Map<String, Object> entity);
+boolean canAccess(AIAccessSubjectContext authContext, Map<String, Object> entity);
 ```
 
 The `entity` map is built by `AIAccessControlService` and typically contains:
@@ -92,6 +93,11 @@ The `entity` map is built by `AIAccessControlService` and typically contains:
 - `purpose` (String, optional)
 - `metadata` (Map, optional)
 - `userAttributes` (Map, optional)
+
+`metadata` and `userAttributes` are normalized before policy evaluation: null keys and values are
+dropped, strings are trimmed, blank strings are removed, nested maps/lists are recursively
+normalized, and unsupported object values are converted to strings. This keeps access decisions
+stable and prevents malformed optional context from bypassing the fail-closed policy path.
 
 Examples:
 
@@ -105,6 +111,7 @@ Data Sync example:
 - `operationType=WRITE`
 - `metadata.vectorSpace=product`
 - `metadata.entityId=SKU-123`
+- `metadata.authContext.subjectId=system_shopify_sync`
 - `metadata.tenantId=<from trace.metadata.tenantId if supplied>`
 
 ---
@@ -123,10 +130,10 @@ Add a file to your runtime deployment (mounted or baked) such as:
 app:
   authz:
     rules:
-      - userId: "system_shopify_sync"
+      - subjectId: "system_shopify_sync"
         resources: ["vectorSpace:*"]
         operations: ["WRITE", "DELETE"]
-      - userId: "support_agent"
+      - subjectId: "support_agent"
         resources: ["rag:intent"]
         operations: ["READ"]
 ```
@@ -142,18 +149,26 @@ public class ConfigFileEntityAccessPolicy implements EntityAccessPolicy {
   private final AuthzRulesProperties rules;
 
   @Override
-  public boolean canUserAccessEntity(String userId, Map<String, Object> entity) {
+  public boolean canAccess(AIAccessSubjectContext authContext, Map<String, Object> entity) {
+    String subjectId = authContext != null ? authContext.getSubjectId() : null;
     String resourceId = Objects.toString(entity.get("resourceId"), "");
     String op = Objects.toString(entity.get("operationType"), "");
-    return rules.allows(userId, resourceId, op);
+    return rules.allows(subjectId, resourceId, op);
   }
 }
 ```
 
 Recommended behavior:
 - Deny by default.
-- Treat missing/blank `userId` as denied.
+- Treat missing/blank `authContext.subjectId` as denied.
 - Keep rules small and auditable.
+
+### 4.3 Security Analyzer Audit Events
+
+`AISecurityService` also requires a verified `authContext.subjectId` or `authContext.sessionId`.
+Requests without either identity fail closed with a concise rejection message. Security audit event
+ids use the form `SEC_<epochSecond>_<serviceSequence>`, so multiple requests handled in the same
+second remain distinguishable in local event history.
 
 ---
 
@@ -261,8 +276,8 @@ If you are embedding the framework into your own Spring app, you can still imple
 ### 6.1 Data Sync
 
 For ingestion, prefer passing tenant context explicitly:
-- Set `trace.metadata.tenantId` in the push request.
-- Enforce tenant boundaries in `EntityAccessPolicy` using `entity.metadata.tenantId`.
+- Set `trace.authContext.tenantId` and, when useful for audit, `trace.metadata.tenantId` in the push request.
+- Enforce tenant boundaries in `EntityAccessPolicy` using the verified auth context plus `entity.metadata.tenantId`.
 
 ### 6.2 Chat
 
@@ -329,4 +344,4 @@ Production checklist:
 ## 8) Common Failure Modes
 
 - Everything becomes "Access denied by policy": no `EntityAccessPolicy` present and dev defaults disabled. Fix: ship a real policy or enable dev defaults in non-prod only.
-- Data Sync returns `ACCESS_DENIED`: `trace.userId` missing or policy denies `vectorSpace:<space>` writes. Fix: provide `trace.userId` and grant WRITE/DELETE where appropriate.
+- Data Sync returns `ACCESS_DENIED`: `trace.authContext.subjectId` missing, access evaluation failed closed, or policy denies `vectorSpace:<space>` writes. Fix: provide verified `trace.authContext` and grant WRITE/DELETE where appropriate.

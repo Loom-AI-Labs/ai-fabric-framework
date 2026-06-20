@@ -115,7 +115,8 @@ ai:
     pinecone:
       api-key: ${PINECONE_API_KEY:}
       environment: ${PINECONE_ENVIRONMENT:}
-      index-name: ${PINECONE_INDEX_NAME:chat-session-test}
+      index-name: ${PINECONE_INDEX_NAME:}
+      api-host: ${PINECONE_API_HOST:}
       dimensions: ${PINECONE_DIMENSIONS:384}
       metric: cosine
     qdrant:

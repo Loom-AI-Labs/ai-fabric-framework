@@ -8,6 +8,8 @@ import ai.fabric.dto.VectorScanPage;
 import ai.fabric.dto.VectorScanRequest;
 import ai.fabric.rag.VectorDatabaseService;
 import ai.fabric.exception.AIServiceException;
+import ai.fabric.util.VectorRecordInputValidation;
+import ai.fabric.util.VectorRecordProjection;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -15,6 +17,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.lucene.analysis.standard.StandardAnalyzer;
 import org.apache.lucene.document.Document;
+import org.apache.lucene.document.DoublePoint;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.document.KnnVectorField;
 import org.apache.lucene.document.LongPoint;
@@ -35,6 +38,7 @@ import org.apache.lucene.search.ScoreDoc;
 import org.apache.lucene.search.TopDocs;
 import org.apache.lucene.search.BooleanClause;
 import org.apache.lucene.search.BooleanQuery;
+import org.apache.lucene.search.MatchNoDocsQuery;
 import org.apache.lucene.search.TermQuery;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.FSDirectory;
@@ -46,6 +50,7 @@ import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -98,6 +103,10 @@ public class LuceneVectorDatabaseService implements VectorDatabaseService {
     private static final String UPDATED_AT_FIELD = "updatedAt";
     private static final String CREATED_AT_MILLIS_FIELD = "createdAtMillis";
     private static final String UPDATED_AT_MILLIS_FIELD = "updatedAtMillis";
+    private static final String META_STRING_PREFIX = "meta_s_";
+    private static final String META_BOOLEAN_PREFIX = "meta_b_";
+    private static final String META_LONG_PREFIX = "meta_l_";
+    private static final String META_DOUBLE_PREFIX = "meta_d_";
     
     private static final Map<Path, SharedIndex> INDEX_CACHE = new ConcurrentHashMap<>();
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
@@ -114,7 +123,7 @@ public class LuceneVectorDatabaseService implements VectorDatabaseService {
     public void initialize() {
         try {
             log.info("Initializing Lucene Vector Database at: {}", indexPath);
-            
+
             // Create index directory if it doesn't exist
             resolvedIndexPath = Paths.get(indexPath).toAbsolutePath().normalize();
             if (!Files.exists(resolvedIndexPath)) {
@@ -206,6 +215,7 @@ public class LuceneVectorDatabaseService implements VectorDatabaseService {
     @Override
     public String storeVector(String entityType, String entityId, String content, 
                              List<Double> embedding, Map<String, Object> metadata) {
+        VectorRecordInputValidation.requireStoreInputs("Lucene", entityType, entityId, embedding);
         try {
             log.debug("Storing vector in Lucene for entity {} of type {}", entityId, entityType);
 
@@ -250,11 +260,12 @@ public class LuceneVectorDatabaseService implements VectorDatabaseService {
             int k = Math.max(limit, Math.min(limit * 2, Math.max(limit, maxResults) * 2)); // Get more candidates for threshold filtering
             KnnVectorQuery vectorQuery = new KnnVectorQuery(VECTOR_FIELD, queryVectorArray, k);
             
-            // Apply entity type filter if specified
+            // Apply entity type and metadata filters if specified.
             Query filterQuery = null;
             String entityType = request != null ? request.getEntityType() : null;
-            if (entityType != null && !entityType.trim().isEmpty()) {
-                filterQuery = new TermQuery(new Term(ENTITY_TYPE_FIELD, entityType));
+            Optional<Query> requestedFilters = buildFilterQuery(entityType, request != null ? request.getMetadata() : null);
+            if (requestedFilters.isPresent()) {
+                filterQuery = requestedFilters.get();
             }
 
             // Perform k-NN search (Lucene handles similarity internally)
@@ -357,22 +368,31 @@ public class LuceneVectorDatabaseService implements VectorDatabaseService {
     public boolean removeVector(String entityType, String entityId) {
         try {
             log.debug("Removing vector from Lucene for entity {} of type {}", entityId, entityType);
+            if (!VectorRecordInputValidation.hasEntityIdentity(entityType, entityId)) {
+                return false;
+            }
             
             BooleanQuery.Builder deleteQuery = new BooleanQuery.Builder();
             deleteQuery.add(new TermQuery(new Term(ENTITY_TYPE_FIELD, entityType)), BooleanClause.Occur.MUST);
             deleteQuery.add(new TermQuery(new Term(ENTITY_ID_FIELD, entityId)), BooleanClause.Occur.MUST);
+            Query query = deleteQuery.build();
 
-            long deletedCount = indexWriter.deleteDocuments(deleteQuery.build());
+            long matchingDocuments = indexSearcher != null ? indexSearcher.count(query) : 0;
+            if (matchingDocuments == 0) {
+                log.debug("No Lucene vector found for entity {} of type {}", entityId, entityType);
+                return false;
+            }
+
+            indexWriter.deleteDocuments(query);
             indexWriter.commit();
             
             // Refresh reader
             refreshReader();
             
-            boolean removed = deletedCount > 0;
             log.debug("Successfully removed vector from Lucene for entity {} of type {}: {}", 
-                     entityId, entityType, removed);
+                     entityId, entityType, true);
             
-            return removed;
+            return true;
             
         } catch (Exception e) {
             log.error("Error removing vector from Lucene", e);
@@ -438,19 +458,23 @@ public class LuceneVectorDatabaseService implements VectorDatabaseService {
                                String content, List<Double> embedding, Map<String, Object> metadata) {
         try {
             log.debug("Updating vector {} in Lucene for entity {} of type {}", vectorId, entityId, entityType);
+            if (!VectorRecordInputValidation.hasVectorId(vectorId)
+                || !VectorRecordInputValidation.hasEntityIdentity(entityType, entityId)) {
+                return false;
+            }
+            VectorRecordInputValidation.requireEmbedding("Lucene", "updateVector", embedding);
 
-            long preservedCreatedAtMillis = findCreatedAtMillisByVectorId(vectorId).orElse(System.currentTimeMillis());
-            long nowMillis = System.currentTimeMillis();
-            
-            Term term = new Term(VECTOR_ID_FIELD, vectorId);
-            long deletedCount = indexWriter.deleteDocuments(term);
-
-            if (deletedCount == 0) {
+            Optional<Long> preservedCreatedAtMillis = findCreatedAtMillisByVectorId(vectorId);
+            if (preservedCreatedAtMillis.isEmpty()) {
                 log.warn("Vector {} not found for update", vectorId);
                 return false;
             }
+            long nowMillis = System.currentTimeMillis();
 
-            Document document = buildDocument(vectorId, entityType, entityId, content, embedding, metadata, preservedCreatedAtMillis, nowMillis);
+            Term term = new Term(VECTOR_ID_FIELD, vectorId);
+            indexWriter.deleteDocuments(term);
+
+            Document document = buildDocument(vectorId, entityType, entityId, content, embedding, metadata, preservedCreatedAtMillis.get(), nowMillis);
 
             indexWriter.addDocument(document);
             indexWriter.commit();
@@ -472,14 +496,140 @@ public class LuceneVectorDatabaseService implements VectorDatabaseService {
 
     @Override
     public boolean supportsMetadataFiltering() {
-        // Metadata is stored as JSON (StoredField) and not indexed for filtering yet.
-        // scan(...) uses the default in-memory filtering implementation.
-        return false;
+        return supportsScanMetadataFiltering();
+    }
+
+    @Override
+    public boolean supportsSearchMetadataFiltering() {
+        return true;
+    }
+
+    @Override
+    public boolean supportsScanMetadataFiltering() {
+        return true;
+    }
+
+    @Override
+    public boolean supportsExactFetchById() {
+        return true;
+    }
+
+    @Override
+    public boolean supportsClearByEntityType() {
+        return true;
+    }
+
+    @Override
+    public boolean supportsEfficientEntityTypeCount() {
+        return true;
+    }
+
+    @Override
+    public String vectorProviderName() {
+        return "lucene";
+    }
+
+    @Override
+    public String vectorNativeClient() {
+        return "apache-lucene";
+    }
+
+    @Override
+    public String vectorSearchFilterMode() {
+        return "lucene-indexed-metadata-query";
+    }
+
+    @Override
+    public String vectorScanFilterMode() {
+        return "lucene-indexed-metadata-query";
+    }
+
+    @Override
+    public String vectorMetadataFilterSubset() {
+        return "scalar-string-boolean-integer-long-decimal";
+    }
+
+    @Override
+    public String vectorEntityTypeCountMode() {
+        return "lucene-term-query-count";
+    }
+
+    @Override
+    public String vectorEntityTypeClearMode() {
+        return "lucene-delete-documents";
+    }
+
+    @Override
+    public String vectorConsistencyModel() {
+        return "local-commit-refresh";
+    }
+
+    @Override
+    public Map<String, Object> adminDiagnostics() {
+        Map<String, Object> diagnostics = VectorDatabaseService.super.adminDiagnostics();
+        diagnostics.put("provider", "lucene");
+        diagnostics.put("persistent", true);
+        diagnostics.put("sharedStorage", false);
+        diagnostics.put("scopeType", "LOCAL_INDEX");
+        diagnostics.put("rootResourceLabel", "Index path");
+        diagnostics.put("rootResourceValue", resolvedIndexPath != null ? resolvedIndexPath.toString() : indexPath);
+        diagnostics.put("metadataFilterSubset", "scalar-string-boolean-integer-long-decimal");
+        diagnostics.put("searchFilterMode", "lucene-indexed-metadata-query");
+        diagnostics.put("scanFilterMode", "lucene-indexed-metadata-query");
+        return diagnostics;
     }
 
     @Override
     public VectorScanPage scan(VectorScanRequest request) {
-        return VectorDatabaseService.super.scan(request);
+        if (request == null || request.getEntityType() == null || request.getEntityType().isBlank()) {
+            return VectorScanPage.builder()
+                .vectors(List.of())
+                .nextCursor(null)
+                .hasMore(false)
+                .build();
+        }
+
+        try {
+            int limit = request.getLimit() != null && request.getLimit() > 0 ? request.getLimit() : 200;
+            int offset = decodeScanOffsetCursor(request.getCursor());
+            Query filterQuery = buildFilterQuery(request.getEntityType(), request.getMetadataEquals())
+                .orElseGet(() -> new TermQuery(new Term(ENTITY_TYPE_FIELD, request.getEntityType())));
+
+            TopDocs topDocs = indexSearcher.search(filterQuery, Integer.MAX_VALUE);
+            List<VectorRecord> records = new ArrayList<>();
+            for (ScoreDoc hit : topDocs.scoreDocs) {
+                Document doc = indexSearcher.doc(hit.doc);
+                convertDocumentToVectorRecord(doc)
+                    .map(record -> applyScanProjection(record, request))
+                    .ifPresent(records::add);
+            }
+
+            records.sort(Comparator
+                .comparing((VectorRecord record) -> record.getUpdatedAt() != null ? record.getUpdatedAt() : record.getCreatedAt(),
+                    Comparator.nullsLast(Comparator.naturalOrder()))
+                .thenComparing(record -> record.getVectorId() != null ? record.getVectorId() : ""));
+
+            if (offset >= records.size()) {
+                return VectorScanPage.builder()
+                    .vectors(List.of())
+                    .nextCursor(null)
+                    .hasMore(false)
+                    .build();
+            }
+
+            int end = Math.min(records.size(), offset + limit);
+            List<VectorRecord> page = new ArrayList<>(records.subList(offset, end));
+            boolean hasMore = end < records.size();
+
+            return VectorScanPage.builder()
+                .vectors(page)
+                .hasMore(hasMore)
+                .nextCursor(hasMore ? encodeScanOffsetCursor(end) : null)
+                .build();
+        } catch (Exception e) {
+            log.error("Error scanning Lucene vectors", e);
+            throw new AIServiceException("Failed to scan Lucene vectors", e);
+        }
     }
 
     private Document buildDocument(String vectorId, String entityType, String entityId, String content,
@@ -504,6 +654,7 @@ public class LuceneVectorDatabaseService implements VectorDatabaseService {
         doc.add(new StoredField("embedding", embeddingText));
 
         serializeMetadata(metadata).ifPresent(metadataJson -> doc.add(new StoredField("metadata", metadataJson)));
+        indexScalarMetadata(doc, metadata);
 
         doc.add(new StringField("storedAt", String.valueOf(updatedAtMillis), Field.Store.YES));
         doc.add(new StringField(CREATED_AT_FIELD, String.valueOf(createdAtMillis), Field.Store.YES));
@@ -515,6 +666,118 @@ public class LuceneVectorDatabaseService implements VectorDatabaseService {
         doc.add(new NumericDocValuesField(UPDATED_AT_MILLIS_FIELD, updatedAtMillis));
 
         return doc;
+    }
+
+    private void indexScalarMetadata(Document doc, Map<String, Object> metadata) {
+        if (doc == null || metadata == null || metadata.isEmpty()) {
+            return;
+        }
+
+        metadata.forEach((key, value) -> metadataFieldSuffix(key).ifPresent(suffix -> {
+            if (value instanceof Boolean bool) {
+                doc.add(new StringField(META_BOOLEAN_PREFIX + suffix, Boolean.toString(bool), Field.Store.NO));
+            } else if (value instanceof Byte || value instanceof Short || value instanceof Integer || value instanceof Long) {
+                doc.add(new LongPoint(META_LONG_PREFIX + suffix, ((Number) value).longValue()));
+            } else if (value instanceof Float || value instanceof Double) {
+                double numeric = ((Number) value).doubleValue();
+                if (Double.isFinite(numeric)) {
+                    doc.add(new DoublePoint(META_DOUBLE_PREFIX + suffix, numeric));
+                }
+            } else if (value instanceof CharSequence sequence) {
+                doc.add(new StringField(META_STRING_PREFIX + suffix, sequence.toString(), Field.Store.NO));
+            }
+        }));
+    }
+
+    private Optional<Query> buildFilterQuery(String entityType, Map<String, Object> metadataEquals) {
+        BooleanQuery.Builder builder = new BooleanQuery.Builder();
+        boolean hasFilter = false;
+
+        if (entityType != null && !entityType.trim().isEmpty()) {
+            builder.add(new TermQuery(new Term(ENTITY_TYPE_FIELD, entityType)), BooleanClause.Occur.FILTER);
+            hasFilter = true;
+        }
+
+        if (metadataEquals != null && !metadataEquals.isEmpty()) {
+            for (Map.Entry<String, Object> entry : metadataEquals.entrySet()) {
+                builder.add(metadataEqualityQuery(entry.getKey(), entry.getValue()), BooleanClause.Occur.FILTER);
+                hasFilter = true;
+            }
+        }
+
+        return hasFilter ? Optional.of(builder.build()) : Optional.empty();
+    }
+
+    private Query metadataEqualityQuery(String key, Object value) {
+        Optional<String> suffix = metadataFieldSuffix(key);
+        if (suffix.isEmpty() || value == null) {
+            return new MatchNoDocsQuery("Unsupported or null metadata filter: " + key);
+        }
+
+        String fieldSuffix = suffix.get();
+        if (value instanceof Boolean bool) {
+            return new TermQuery(new Term(META_BOOLEAN_PREFIX + fieldSuffix, Boolean.toString(bool)));
+        }
+        if (value instanceof Byte || value instanceof Short || value instanceof Integer || value instanceof Long) {
+            return LongPoint.newExactQuery(META_LONG_PREFIX + fieldSuffix, ((Number) value).longValue());
+        }
+        if (value instanceof Float || value instanceof Double) {
+            double numeric = ((Number) value).doubleValue();
+            return Double.isFinite(numeric)
+                ? DoublePoint.newExactQuery(META_DOUBLE_PREFIX + fieldSuffix, numeric)
+                : new MatchNoDocsQuery("Non-finite numeric metadata filter: " + key);
+        }
+        if (value instanceof CharSequence sequence) {
+            return new TermQuery(new Term(META_STRING_PREFIX + fieldSuffix, sequence.toString()));
+        }
+        return new MatchNoDocsQuery("Unsupported metadata filter value for key: " + key);
+    }
+
+    private Optional<String> metadataFieldSuffix(String key) {
+        if (key == null || key.trim().isEmpty()) {
+            return Optional.empty();
+        }
+        String normalized = key.trim().toLowerCase(Locale.ROOT);
+        String base = normalized.replaceAll("[^a-z0-9_]", "_")
+            .replaceAll("_+", "_")
+            .replaceAll("^_+", "")
+            .replaceAll("_+$", "");
+        if (base.isEmpty()) {
+            base = "key";
+        }
+        if (!Character.isLetter(base.charAt(0))) {
+            base = "k_" + base;
+        }
+        String hash = UUID.nameUUIDFromBytes(normalized.getBytes(StandardCharsets.UTF_8))
+            .toString()
+            .replace("-", "")
+            .substring(0, 8);
+        String suffix = base + "_" + hash;
+        return suffix.length() > 72 ? Optional.of(suffix.substring(0, 63) + "_" + hash) : Optional.of(suffix);
+    }
+
+    private VectorRecord applyScanProjection(VectorRecord record, VectorScanRequest request) {
+        return VectorRecordProjection.projectForScan(record, request);
+    }
+
+    private static String encodeScanOffsetCursor(int offset) {
+        String raw = "offset:" + offset;
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(raw.getBytes(StandardCharsets.UTF_8));
+    }
+
+    private static int decodeScanOffsetCursor(String cursor) {
+        if (cursor == null || cursor.isBlank()) {
+            return 0;
+        }
+        try {
+            String raw = new String(Base64.getUrlDecoder().decode(cursor), StandardCharsets.UTF_8);
+            if (raw.startsWith("offset:")) {
+                return Math.max(0, Integer.parseInt(raw.substring("offset:".length())));
+            }
+            return 0;
+        } catch (Exception ignored) {
+            return 0;
+        }
     }
 
     private int resolveResultLimit(AISearchRequest request) {
@@ -596,6 +859,9 @@ public class LuceneVectorDatabaseService implements VectorDatabaseService {
     public Optional<VectorRecord> getVectorByEntity(String entityType, String entityId) {
         try {
             log.debug("Getting vector from Lucene for entity {} of type {}", entityId, entityType);
+            if (!VectorRecordInputValidation.hasEntityIdentity(entityType, entityId)) {
+                return Optional.empty();
+            }
             
             BooleanQuery.Builder builder = new BooleanQuery.Builder();
             builder.add(new TermQuery(new Term(ENTITY_TYPE_FIELD, entityType)), BooleanClause.Occur.MUST);
@@ -634,16 +900,22 @@ public class LuceneVectorDatabaseService implements VectorDatabaseService {
             log.debug("Removing vector {} from Lucene", vectorId);
             
             Term term = new Term(VECTOR_ID_FIELD, vectorId);
-            long deletedCount = indexWriter.deleteDocuments(term);
+            Query query = new TermQuery(term);
+            long matchingDocuments = indexSearcher != null ? indexSearcher.count(query) : 0;
+            if (matchingDocuments == 0) {
+                log.debug("No Lucene vector found for vectorId {}", vectorId);
+                return false;
+            }
+
+            indexWriter.deleteDocuments(term);
             indexWriter.commit();
             
             // Refresh reader
             refreshReader();
             
-            boolean removed = deletedCount > 0;
-            log.debug("Successfully removed vector {} from Lucene: {}", vectorId, removed);
+            log.debug("Successfully removed vector {} from Lucene: {}", vectorId, true);
             
-            return removed;
+            return true;
             
         } catch (Exception e) {
             log.error("Error removing vector by ID from Lucene", e);
@@ -733,6 +1005,9 @@ public class LuceneVectorDatabaseService implements VectorDatabaseService {
     public List<VectorRecord> getVectorsByEntityType(String entityType) {
         try {
             log.debug("Getting all vectors for entity type {} from Lucene", entityType);
+            if (!VectorRecordInputValidation.hasText(entityType)) {
+                return List.of();
+            }
             
             Query query = new TermQuery(new Term(ENTITY_TYPE_FIELD, entityType));
 
@@ -756,6 +1031,9 @@ public class LuceneVectorDatabaseService implements VectorDatabaseService {
     @Override
     public long getVectorCountByEntityType(String entityType) {
         try {
+            if (!VectorRecordInputValidation.hasText(entityType)) {
+                return 0;
+            }
             Query query = new TermQuery(new Term(ENTITY_TYPE_FIELD, entityType));
 
             if (indexSearcher == null) {
@@ -787,6 +1065,9 @@ public class LuceneVectorDatabaseService implements VectorDatabaseService {
     @Override
     public boolean vectorExists(String entityType, String entityId) {
         try {
+            if (!VectorRecordInputValidation.hasEntityIdentity(entityType, entityId)) {
+                return false;
+            }
             if (indexSearcher == null) {
                 log.debug("IndexSearcher not initialized; vector for entity {} of type {} does not exist", entityId, entityType);
                 return false;
@@ -821,6 +1102,9 @@ public class LuceneVectorDatabaseService implements VectorDatabaseService {
     public long clearVectorsByEntityType(String entityType) {
         try {
             log.debug("Clearing all vectors for entity type {} from Lucene", entityType);
+            if (!VectorRecordInputValidation.hasText(entityType)) {
+                return 0;
+            }
             if (indexWriter == null) {
                 log.debug("IndexWriter not initialized; nothing to clear for entity type {}", entityType);
                 return 0;

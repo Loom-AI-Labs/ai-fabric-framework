@@ -30,10 +30,10 @@ import java.lang.reflect.Field;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
-import java.util.stream.Collectors;
 
 @Slf4j
 public class DataMigrationService {
@@ -99,18 +99,19 @@ public class DataMigrationService {
      * Starts a migration job asynchronously.
      */
     public MigrationJob startMigration(@Valid MigrationRequest request) {
-        AIEntityConfig config = configLoader.getEntityConfig(request.getEntityType());
+        String entityType = requireEntityType(request);
+        AIEntityConfig config = configLoader.getEntityConfig(entityType);
         if (config == null) {
-            throw new IllegalArgumentException("No ai-entity-config entry found for entity type: " + request.getEntityType());
+            throw new IllegalArgumentException("No ai-entity-config entry found for entity type: " + entityType);
         }
 
-        EntityRegistration registration = repositoryRegistry.getRegistration(request.getEntityType());
+        EntityRegistration registration = repositoryRegistry.getRegistration(entityType);
         JpaRepository<?, ?> repository = registration.repository();
 
-        enforceFilterSupport(request.getEntityType());
+        enforceFilterSupport(entityType);
 
         long total = repository.count();
-        MigrationJob job = createJob(request, total);
+        MigrationJob job = createJob(request, entityType, total);
         jobRepository.save(job);
 
         executorService.submit(() -> processJob(job.getId(), request, registration, config));
@@ -125,14 +126,18 @@ public class DataMigrationService {
 
     @Transactional
     public void pauseMigration(String jobId) {
-        updateStatus(jobId, MigrationStatus.PAUSED);
+        updateStatus(jobId, MigrationStatus.PAUSED, MigrationStatus.RUNNING);
     }
 
     @Transactional
     public void resumeMigration(String jobId) {
-        MigrationJob job = updateStatus(jobId, MigrationStatus.RUNNING);
+        MigrationJob job = findJob(jobId);
+        validateTransition(job, MigrationStatus.RUNNING, MigrationStatus.PAUSED);
         EntityRegistration registration = repositoryRegistry.getRegistration(job.getEntityType());
         AIEntityConfig config = configLoader.getEntityConfig(job.getEntityType());
+        if (config == null) {
+            throw new IllegalArgumentException("No ai-entity-config entry found for entity type: " + job.getEntityType());
+        }
         MigrationRequest resumeRequest = MigrationRequest.builder()
             .entityType(job.getEntityType())
             .batchSize(job.getBatchSize())
@@ -141,12 +146,21 @@ public class DataMigrationService {
             .filters(job.getFilters())
             .createdBy(job.getCreatedBy())
             .build();
+        job.setStatus(MigrationStatus.RUNNING);
+        job.setLastUpdatedAt(LocalDateTime.now(clock));
+        jobRepository.save(job);
         executorService.submit(() -> processJob(job.getId(), resumeRequest, registration, config));
     }
 
     @Transactional
     public void cancelMigration(String jobId) {
-        MigrationJob job = updateStatus(jobId, MigrationStatus.CANCELLED);
+        MigrationJob job = updateStatus(
+            jobId,
+            MigrationStatus.CANCELLED,
+            MigrationStatus.PENDING,
+            MigrationStatus.RUNNING,
+            MigrationStatus.PAUSED
+        );
         job.setCompletedAt(LocalDateTime.now(clock));
         jobRepository.save(job);
     }
@@ -155,11 +169,11 @@ public class DataMigrationService {
         return jobRepository.findAll();
     }
 
-    private MigrationJob createJob(MigrationRequest request, long totalCount) {
+    private MigrationJob createJob(MigrationRequest request, String entityType, long totalCount) {
         LocalDateTime now = LocalDateTime.now(clock);
         return MigrationJob.builder()
             .id("mig-" + UUID.randomUUID())
-            .entityType(request.getEntityType())
+            .entityType(entityType)
             .status(MigrationStatus.RUNNING)
             .totalEntities(totalCount)
             .processedEntities(0L)
@@ -204,13 +218,14 @@ public class DataMigrationService {
                     return;
                 }
 
-                int successes = 0;
+                int processed = 0;
                 int failures = 0;
 
                 MigrationFieldConfig fieldConfig = migrationProperties.getEntityFields().get(job.getEntityType());
                 MigrationFilterPolicy policy = resolvePolicy(job.getEntityType());
 
                 for (Object entity : page.getContent()) {
+                    processed++;
                     try {
                         if (!matchesFilters(entity, request, config, fieldConfig, policy)) {
                             continue;
@@ -228,14 +243,13 @@ public class DataMigrationService {
                         }
 
                         enqueueForIndexing(entity, config);
-                        successes++;
                     } catch (Exception ex) {
                         log.warn("Failed to enqueue entity for migration", ex);
                         failures++;
                     }
                 }
 
-                job.setProcessedEntities(job.getProcessedEntities() + successes);
+                job.setProcessedEntities(job.getProcessedEntities() + processed);
                 job.setFailedEntities(job.getFailedEntities() + failures);
                 job.setCurrentPage(job.getCurrentPage() + 1);
                 job.setLastUpdatedAt(LocalDateTime.now(clock));
@@ -248,7 +262,7 @@ public class DataMigrationService {
             MigrationJob job = jobRepository.findById(jobId).orElse(null);
             if (job != null) {
                 job.setStatus(MigrationStatus.FAILED);
-                job.setErrorMessage(ex.getMessage());
+                job.setErrorMessage(exceptionSummary(ex));
                 job.setLastUpdatedAt(LocalDateTime.now(clock));
                 jobRepository.save(job);
             }
@@ -384,11 +398,46 @@ public class DataMigrationService {
         }
     }
 
-    private MigrationJob updateStatus(String jobId, MigrationStatus status) {
-        MigrationJob job = jobRepository.findById(jobId)
-            .orElseThrow(() -> new IllegalArgumentException("Job not found: " + jobId));
+    private MigrationJob updateStatus(String jobId, MigrationStatus status, MigrationStatus... allowedCurrentStatuses) {
+        MigrationJob job = findJob(jobId);
+        validateTransition(job, status, allowedCurrentStatuses);
         job.setStatus(status);
         job.setLastUpdatedAt(LocalDateTime.now(clock));
         return jobRepository.save(job);
+    }
+
+    private MigrationJob findJob(String jobId) {
+        return jobRepository.findById(jobId)
+            .orElseThrow(() -> new IllegalArgumentException("Job not found: " + jobId));
+    }
+
+    private void validateTransition(MigrationJob job,
+                                    MigrationStatus targetStatus,
+                                    MigrationStatus... allowedCurrentStatuses) {
+        MigrationStatus currentStatus = job.getStatus();
+        if (currentStatus == null) {
+            throw new IllegalStateException("Migration job " + job.getId() + " has no current status.");
+        }
+        boolean allowed = Arrays.asList(allowedCurrentStatuses).contains(currentStatus);
+        if (!allowed) {
+            throw new IllegalStateException("Cannot transition migration job %s from %s to %s."
+                .formatted(job.getId(), currentStatus, targetStatus));
+        }
+    }
+
+    private String requireEntityType(MigrationRequest request) {
+        if (request == null || request.getEntityType() == null || request.getEntityType().isBlank()) {
+            throw new IllegalArgumentException("entityType is required for migration.");
+        }
+        return request.getEntityType().trim();
+    }
+
+    private String exceptionSummary(Exception ex) {
+        if (ex == null) {
+            return "Exception";
+        }
+        return ex.getMessage() == null || ex.getMessage().isBlank()
+            ? ex.getClass().getSimpleName()
+            : ex.getMessage().trim();
     }
 }

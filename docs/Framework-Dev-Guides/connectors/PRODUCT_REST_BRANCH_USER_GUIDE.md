@@ -1,23 +1,30 @@
-# Product_Rest Branch User Guide (Runtime + Generic REST Connector + Ecommerce Store)
+# Product_Rest Branch User Guide (Historical Draft)
 
-Status: draft (2026-03-27)
+Status: historical draft (updated 2026-06-19)
+
+Release note: the current AI Fabric reactor does **not** ship a runnable Generic REST Connector
+module. Treat this guide as branch history and a topology sketch. For the supported release path,
+use `ai-fabric-actions-connector` in the runtime plus either `ai-fabric-relay` or a customer-owned
+implementation of the Customer Connector API.
 
 This branch turns the commerce demo into a 3-service topology:
 
 - **AI Fabric Runtime**: chat orchestration, RAG, action dispatch, managed vector index (Data Sync push API).
-- **Generic REST Connector**: implements the Customer Connector API (`POST /actions/execute`) by routing `actionId -> upstream REST endpoint` via config (no custom code), and can optionally proxy a small set of runtime APIs for “single base URL” demos.
+- **Generic REST Connector pattern**: a planned/custom connector that implements the Customer Connector API (`POST /actions/execute`) by routing `actionId -> upstream REST endpoint` via config, and can optionally proxy a small set of runtime APIs for “single base URL” demos.
 - **Ecommerce Store** (`Real_Apps/ecommerce-store`): domain APIs (products/carts/orders/reviews/policies), event-based indexing calls to runtime, demo reset tools, and a demo authz endpoint.
 
-If you previously used `Real_Apps/chat-capabilities-connector-demo`, it has been renamed to **Ecommerce Store** and is now intended to be domain APIs first. Runtime action execution should go through the **Generic REST Connector**.
+If you previously used `Real_Apps/chat-capabilities-connector-demo`, it has been renamed to **Ecommerce Store** and is now intended to be domain APIs first. Runtime action execution should go through a supported Customer Connector API implementation.
 
 ---
 
 ## 1) What Changed (High Signal)
 
-### 1.1 Generic REST Connector (new “bridge” service)
+### 1.1 Generic REST Connector pattern
 
 Module:
-- `ai-infrastructure-module/ai-infrastructure-generic-rest-connector`
+- No runnable generic REST connector module is shipped in the current reactor.
+- Current supported customer-side runtime: `ai-infrastructure-module/ai-fabric-relay`.
+- Pattern guide: `docs/Framework-Dev-Guides/connectors/GENERIC_REST_API_CONNECTOR_GUIDE.md`.
 
 Key capabilities:
 - `POST /actions/execute` (runtime-compatible) routes `actionId -> {method,url/path,headers,query,body}`.
@@ -110,11 +117,11 @@ Common env vars:
   - `CONNECTOR_ADMIN_API_KEY=<value>`
   - `CONNECTOR_ADMIN_API_KEY_HEADER=X-AIFABRIC-API-KEY`
 
-### 4.2 Generic REST Connector (actions router + optional proxies)
+### 4.2 Generic REST Connector pattern (actions router + optional proxies)
 
 Dockerfile options:
-- Base: `ai-infrastructure-module/ai-infrastructure-generic-rest-connector/Dockerfile`
-- Railway: `ai-infrastructure-module/ai-infrastructure-generic-rest-connector/deploy/railway/Dockerfile` (bakes template config at `/config/actions-routing.yml`)
+- No generic REST connector Dockerfile is shipped in this repository today.
+- Use `ai-infrastructure-module/ai-fabric-relay/Dockerfile` for the supported relay service, or provide a customer-owned connector image.
 
 Minimum env vars (recommended):
 - `CONNECTOR_API_KEY=<strong-secret>`
@@ -294,14 +301,10 @@ Behavior:
 
 ## 9) Related Docs (Deep Dives)
 
-- Generic REST connector guide:
-  - `changes/Productization/GENERIC_REST_API_CONNECTOR_GUIDE.md`
-- REST connector adoption roadmap:
-  - `changes/Productization/GENERIC_REST_CONNECTOR_ADOPTION_ROADMAP.md`
-- REST connector Railway guide:
-  - `ai-infrastructure-module/ai-infrastructure-generic-rest-connector/deploy/railway/RAILWAY_DEPLOYMENT_GUIDE.md`
-- Runtime Dockerfiles (base vs Railway):
-  - `ai-infrastructure-module/ai-fabric-runtime/deploy/railway/BASE_VS_RAILWAY_DOCKERFILES.md`
+- Generic REST connector pattern guide:
+  - `docs/Framework-Dev-Guides/connectors/GENERIC_REST_API_CONNECTOR_GUIDE.md`
+- Relay deployment guide:
+  - `docs/Framework-Dev-Guides/connectors/RELAY_IMPLEMENTATION_AND_DEPLOYMENT_GUIDE.md`
 - Remote authz plan:
   - `changes/Productization/REMOTE_ACCESS_CONTROL_VIA_REST_CONNECTOR_PLAN.md`
 - Verification checklist:

@@ -55,6 +55,13 @@ class RetrievalConnectorRAGProviderTest {
                 .subjectType("END_USER")
                 .authMode("PUBLIC_RUNTIME_AUTHENTICATED")
                 .callerType("PUBLIC_BROWSER")
+                .deploymentId("dep-1")
+                .customerId("cust-1")
+                .tenantId("tenant-1")
+                .issuer("runtime")
+                .grantedScopes(List.of("retrieval:search", " "))
+                .audiences(List.of("retrieval-connector"))
+                .expiresAt("2026-02-11T01:00:00Z")
                 .build())
             .build());
 
@@ -69,6 +76,21 @@ class RetrievalConnectorRAGProviderTest {
         assertThat(trace)
             .containsEntry(RetrievalConnectorProtocol.TRACE_REQUEST_ID, "req-1")
             .doesNotContainKeys("userId", "sessionId");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> authContext = (Map<String, Object>) trace.get(RetrievalConnectorProtocol.TRACE_AUTH_CONTEXT);
+        assertThat(authContext)
+            .containsEntry("subjectId", "verified-user")
+            .containsEntry("sessionId", "verified-session")
+            .containsEntry("subjectType", "END_USER")
+            .containsEntry("authMode", "PUBLIC_RUNTIME_AUTHENTICATED")
+            .containsEntry("callerType", "PUBLIC_BROWSER")
+            .containsEntry("deploymentId", "dep-1")
+            .containsEntry("customerId", "cust-1")
+            .containsEntry("tenantId", "tenant-1")
+            .containsEntry("issuer", "runtime")
+            .containsEntry("expiresAt", "2026-02-11T01:00:00Z");
+        assertThat(authContext.get("grantedScopes")).isEqualTo(List.of("retrieval:search"));
+        assertThat(authContext.get("audiences")).isEqualTo(List.of("retrieval-connector"));
     }
 
     @Test
@@ -173,6 +195,112 @@ class RetrievalConnectorRAGProviderTest {
         assertThat(response.getDocuments()).isEmpty();
         assertThat(response.getErrorMessage()).contains("HTTP 500");
         assertThat(response.getMetadata()).containsEntry("errorCode", "SERVICE_UNAVAILABLE");
+    }
+
+    @Test
+    void performRag_shouldFailClosedWhenSuccessfulResponseOmitsDocumentsArray() {
+        FakeHttpClient fake = new FakeHttpClient(List.of(
+            ResponseEntity.ok("{\"success\":true,\"count\":1}")
+        ));
+        RetrievalConnectorRAGProvider provider = new RetrievalConnectorRAGProvider(
+            props("https://example", 1, Duration.ZERO),
+            factory(fake),
+            null,
+            fixedClock()
+        );
+
+        RAGResponse response = provider.performRag(RAGRequest.builder()
+            .query("q")
+            .entityType("vs")
+            .limit(1)
+            .build());
+
+        assertThat(response.getSuccess()).isFalse();
+        assertThat(response.getDocuments()).isEmpty();
+        assertThat(response.getErrorMessage()).contains("documents must be an array");
+        assertThat(response.getMetadata()).containsEntry("errorCode", "INVALID_RESPONSE");
+    }
+
+    @Test
+    void performRag_shouldFailClosedWhenSuccessfulResponseContainsGeneratedContent() {
+        FakeHttpClient fake = new FakeHttpClient(List.of(
+            ResponseEntity.ok("""
+                {"success":true,"answer":"Use this generated answer","systemPrompt":"hidden","documents":[{"id":"d1","content":"c1","score":0.9}],"count":1}
+                """.trim())
+        ));
+        RetrievalConnectorRAGProvider provider = new RetrievalConnectorRAGProvider(
+            props("https://example", 1, Duration.ZERO),
+            factory(fake),
+            null,
+            fixedClock()
+        );
+
+        RAGResponse response = provider.performRag(RAGRequest.builder()
+            .query("q")
+            .entityType("vs")
+            .limit(1)
+            .build());
+
+        assertThat(response.getSuccess()).isFalse();
+        assertThat(response.getDocuments()).isEmpty();
+        assertThat(response.getMetadata()).containsEntry("errorCode", "INVALID_RESPONSE");
+        assertThat(response.getErrorMessage())
+            .contains("documents-only")
+            .contains("answer")
+            .contains("systemPrompt");
+    }
+
+    @Test
+    void performRag_shouldSkipInvalidDocumentsWhenAtLeastOneDocumentIsValid() {
+        FakeHttpClient fake = new FakeHttpClient(List.of(
+            ResponseEntity.ok("""
+                {"success":true,"documents":[{"id":"d1","content":"c1","score":0.9},{"id":"missing-content","score":0.8},"bad"],"count":3}
+                """.trim())
+        ));
+        RetrievalConnectorRAGProvider provider = new RetrievalConnectorRAGProvider(
+            props("https://example", 1, Duration.ZERO),
+            factory(fake),
+            null,
+            fixedClock()
+        );
+
+        RAGResponse response = provider.performRag(RAGRequest.builder()
+            .query("q")
+            .entityType("vs")
+            .limit(3)
+            .build());
+
+        assertThat(response.getSuccess()).isTrue();
+        assertThat(response.getDocuments()).hasSize(1);
+        assertThat(response.getDocuments().get(0).getId()).isEqualTo("d1");
+        assertThat(response.getWarnings()).contains("Retrieval connector skipped 2 invalid document(s).");
+    }
+
+    @Test
+    void performRag_shouldFailClosedWhenAllReturnedDocumentsAreInvalid() {
+        FakeHttpClient fake = new FakeHttpClient(List.of(
+            ResponseEntity.ok("""
+                {"success":true,"documents":[{"id":"missing-content","score":0.8},{"content":"missing-id","score":0.7}],"count":2}
+                """.trim())
+        ));
+        RetrievalConnectorRAGProvider provider = new RetrievalConnectorRAGProvider(
+            props("https://example", 1, Duration.ZERO),
+            factory(fake),
+            null,
+            fixedClock()
+        );
+
+        RAGResponse response = provider.performRag(RAGRequest.builder()
+            .query("q")
+            .entityType("vs")
+            .limit(2)
+            .build());
+
+        assertThat(response.getSuccess()).isFalse();
+        assertThat(response.getDocuments()).isEmpty();
+        assertThat(response.getMetadata()).containsEntry("errorCode", "INVALID_RESPONSE");
+        assertThat(response.getWarnings()).contains("Retrieval connector skipped 2 invalid document(s).");
+        assertThat(response.getErrorMessage()).contains("did not include any valid documents");
     }
 
     @Test

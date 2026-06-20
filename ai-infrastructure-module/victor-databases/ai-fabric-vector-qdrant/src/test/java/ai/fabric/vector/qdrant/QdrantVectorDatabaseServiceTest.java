@@ -1,17 +1,27 @@
 package ai.fabric.vector.qdrant;
 
 import ai.fabric.config.AIProviderConfig;
+import ai.fabric.config.VectorDatabaseConfig;
 import ai.fabric.dto.AISearchRequest;
 import ai.fabric.dto.AISearchResponse;
 import ai.fabric.dto.VectorRecord;
+import ai.fabric.dto.VectorScanPage;
+import ai.fabric.dto.VectorScanRequest;
+import ai.fabric.exception.AIServiceException;
+import ai.fabric.vector.VectorProviderMetrics;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.util.concurrent.Futures;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
+import io.qdrant.client.PointIdFactory;
 import io.qdrant.client.QdrantClient;
+import io.qdrant.client.ValueFactory;
+import io.qdrant.client.grpc.Common;
 import io.qdrant.client.grpc.Collections;
 import io.qdrant.client.grpc.Points;
+import io.micrometer.core.instrument.Metrics;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
@@ -21,16 +31,22 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.atLeast;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 class QdrantVectorDatabaseServiceTest {
@@ -75,11 +91,29 @@ class QdrantVectorDatabaseServiceTest {
         QdrantVectorDatabaseService service = new QdrantVectorDatabaseService(config);
 
         assertThat(service.adminDiagnostics())
+            .containsEntry("provider", "qdrant")
             .containsEntry("sharedStorage", true)
             .containsEntry("scopeType", "COLLECTION_PREFIX")
             .containsEntry("rootResourceValue", "qdrant.internal")
             .containsEntry("scopePrefix", "customer_a__tenant_b__")
-            .containsEntry("scopePattern", "customer_a__tenant_b__<entity_type>");
+            .containsEntry("scopePattern", "customer_a__tenant_b__<entity_type>")
+            .containsEntry("supportsVectorScan", true)
+            .containsEntry("supportsSearchMetadataFiltering", true)
+            .containsEntry("supportsScanMetadataFiltering", true)
+            .containsEntry("supportsExactFetchById", true)
+            .containsEntry("supportsClearByEntityType", true)
+            .containsEntry("supportsEfficientEntityTypeCount", true)
+            .containsEntry("metadataFilteredSearch", true)
+            .containsEntry("metadataFilteredScan", true)
+            .containsEntry("searchFilterMode", "qdrant-payload-filter-with-client-side-fallback")
+            .containsEntry("scanFilterMode", "qdrant-payload-filter")
+            .containsEntry("requiredPayloadIndexFields", List.of("knowledgeSourceHandleRef"))
+            .containsEntry("payloadIndexReadinessSource", "lazy-cache")
+            .containsEntry("verifiedPayloadIndexes", List.of())
+            .containsEntry("payloadIndexesSeenMissing", List.of())
+            .containsEntry("payloadIndexCreateAttempts", Map.of())
+            .containsEntry("payloadIndexCreateFailures", Map.of())
+            .containsEntry("metadataFilterFallbacks", Map.of());
     }
 
     @Test
@@ -151,7 +185,18 @@ class QdrantVectorDatabaseServiceTest {
             assertThat(point.path("payload").path("entityType").asText()).isEqualTo("product");
             assertThat(point.path("payload").path("entityId").asText()).isEqualTo("commerce://resource/Product/1");
             assertThat(point.path("payload").path("knowledgeSourceHandleRef").asText()).isEqualTo("plugin/mkp-data-commerce-catalog");
+            assertThat(point.path("payload").path("_indexedCreatedAt").asText()).isNotBlank();
+            assertThat(point.path("payload").path("_indexedUpdatedAt").asText()).isNotBlank();
             assertThat(point.path("vector")).hasSize(2);
+
+            assertThat(service.adminDiagnostics())
+                .containsEntry("transport", "rest")
+                .containsEntry("verifiedPayloadIndexes",
+                    List.of("customer_a__tenant_b__product::knowledgeSourceHandleRef"))
+                .containsEntry("payloadIndexCreateAttempts",
+                    Map.of("customer_a__tenant_b__product::knowledgeSourceHandleRef", 1))
+                .containsEntry("payloadIndexesSeenMissing", List.of())
+                .containsEntry("payloadIndexCreateFailures", Map.of());
         } finally {
             server.stop(0);
         }
@@ -213,6 +258,62 @@ class QdrantVectorDatabaseServiceTest {
     }
 
     @Test
+    void restSearchPreservesEmptyStringMetadataFilterValue() throws Exception {
+        List<String> searchBodies = new CopyOnWriteArrayList<>();
+
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/", exchange -> {
+            String method = exchange.getRequestMethod();
+            String path = exchange.getRequestURI().getPath();
+
+            if ("GET".equals(method) && "/collections".equals(path)) {
+                writeJson(exchange, 200,
+                    "{\"result\":{\"collections\":[{\"name\":\"customer_a__tenant_b__faq-article\"}]},\"status\":\"ok\"}");
+                return;
+            }
+            if ("GET".equals(method) && "/collections/customer_a__tenant_b__faq-article".equals(path)) {
+                writeJson(exchange, 200,
+                    "{\"result\":{\"payload_schema\":{\"knowledgeSourceHandleRef\":{}}},\"status\":\"ok\"}");
+                return;
+            }
+            if ("POST".equals(method) && "/collections/customer_a__tenant_b__faq-article/points/search".equals(path)) {
+                searchBodies.add(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+                writeJson(exchange, 200, "{\"result\":[],\"status\":\"ok\"}");
+                return;
+            }
+            writeJson(exchange, 404, "{\"status\":\"error\",\"result\":null}");
+        });
+        server.start();
+
+        try {
+            AIProviderConfig config = baseConfig();
+            AIProviderConfig.QdrantConfig qdrant = config.getQdrant();
+            qdrant.setHost("http://127.0.0.1:" + server.getAddress().getPort());
+            qdrant.setPreferGrpc(false);
+
+            QdrantVectorDatabaseService service = new QdrantVectorDatabaseService(config);
+
+            service.search(List.of(0.1d, 0.2d), AISearchRequest.builder()
+                .query("reset password")
+                .entityType("faq-article")
+                .limit(5)
+                .metadata(Map.of("status", ""))
+                .build());
+
+            assertThat(searchBodies).hasSize(1);
+            JsonNode must = OBJECT_MAPPER.readTree(searchBodies.getFirst())
+                .path("filter")
+                .path("must");
+            assertThat(must).hasSize(1);
+            assertThat(must.get(0).path("key").asText()).isEqualTo("status");
+            assertThat(must.get(0).path("match").has("value")).isTrue();
+            assertThat(must.get(0).path("match").path("value").asText()).isEqualTo("");
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
     void searchEnsuresKnowledgeSourceHandlePayloadIndexForExistingCollection() {
         AIProviderConfig config = baseConfig();
         QdrantClient client = mock(QdrantClient.class);
@@ -247,6 +348,53 @@ class QdrantVectorDatabaseServiceTest {
             isNull(),
             isNull()
         );
+        assertThat(service.adminDiagnostics())
+            .containsEntry("transport", "grpc")
+            .containsEntry("verifiedPayloadIndexes",
+                List.of("customer_a__tenant_b__faq-article::knowledgeSourceHandleRef"))
+            .containsEntry("payloadIndexCreateAttempts",
+                Map.of("customer_a__tenant_b__faq-article::knowledgeSourceHandleRef", 1))
+            .containsEntry("payloadIndexesSeenMissing", List.of())
+            .containsEntry("payloadIndexCreateFailures", Map.of());
+    }
+
+    @Test
+    void grpcPayloadIndexCreationFailureIsExposedInDiagnostics() {
+        AIProviderConfig config = baseConfig();
+        QdrantClient client = mock(QdrantClient.class);
+        String collection = "customer_a__tenant_b__faq-article";
+        String cacheKey = collection + "::knowledgeSourceHandleRef";
+        when(client.listCollectionsAsync()).thenReturn(Futures.immediateFuture(List.of(collection)));
+        when(client.getCollectionInfoAsync(collection))
+            .thenReturn(Futures.immediateFuture(Collections.CollectionInfo.newBuilder().build()));
+        when(client.createPayloadIndexAsync(
+            eq(collection),
+            eq("knowledgeSourceHandleRef"),
+            eq(Collections.PayloadSchemaType.Keyword),
+            isNull(),
+            eq(true),
+            isNull(),
+            isNull()
+        )).thenReturn(Futures.immediateFailedFuture(new RuntimeException("permission denied")));
+
+        QdrantVectorDatabaseService service = new QdrantVectorDatabaseService(config, null, client);
+
+        assertThatThrownBy(() -> service.search(List.of(0.1d, 0.2d), AISearchRequest.builder()
+            .query("reset password")
+            .entityType("faq-article")
+            .limit(5)
+            .build()))
+            .isInstanceOf(AIServiceException.class)
+            .hasMessageContaining("create payload index");
+
+        Map<String, Object> diagnostics = service.adminDiagnostics();
+        assertThat(diagnostics.get("verifiedPayloadIndexes")).isEqualTo(List.of());
+        assertThat(diagnostics.get("payloadIndexesSeenMissing")).isEqualTo(List.of(cacheKey));
+        assertThat(diagnostics.get("payloadIndexCreateAttempts")).isEqualTo(Map.of(cacheKey, 1));
+        assertThat(diagnostics.get("payloadIndexCreateFailures")).isInstanceOfSatisfying(Map.class, failures -> {
+            assertThat(failures).containsKey(cacheKey);
+            assertThat(String.valueOf(failures.get(cacheKey))).contains("permission denied");
+        });
     }
 
     @Test
@@ -273,6 +421,41 @@ class QdrantVectorDatabaseServiceTest {
         ArgumentCaptor<Points.SearchPoints> searchCaptor = ArgumentCaptor.forClass(Points.SearchPoints.class);
         verify(client).searchAsync(searchCaptor.capture());
         assertThat(searchCaptor.getValue().getLimit()).isEqualTo(100);
+    }
+
+    @Test
+    void grpcSearchPreservesEmptyStringMetadataFilterValue() {
+        AIProviderConfig config = baseConfig();
+        QdrantClient client = mock(QdrantClient.class);
+        when(client.listCollectionsAsync()).thenReturn(Futures.immediateFuture(List.of("customer_a__tenant_b__faq-article")));
+        when(client.getCollectionInfoAsync("customer_a__tenant_b__faq-article"))
+            .thenReturn(Futures.immediateFuture(
+                Collections.CollectionInfo.newBuilder()
+                    .putPayloadSchema("knowledgeSourceHandleRef", Collections.PayloadSchemaInfo.getDefaultInstance())
+                    .build()
+            ));
+        when(client.searchAsync(any())).thenReturn(Futures.immediateFuture(List.of()));
+
+        QdrantVectorDatabaseService service = new QdrantVectorDatabaseService(config, null, client);
+
+        service.search(List.of(0.1d, 0.2d), AISearchRequest.builder()
+            .query("reset password")
+            .entityType("faq-article")
+            .limit(5)
+            .metadata(Map.of("status", ""))
+            .build());
+
+        ArgumentCaptor<Points.SearchPoints> searchCaptor = ArgumentCaptor.forClass(Points.SearchPoints.class);
+        verify(client).searchAsync(searchCaptor.capture());
+        Points.SearchPoints search = searchCaptor.getValue();
+
+        assertThat(search.hasFilter()).isTrue();
+        assertThat(search.getFilter().getMustList()).hasSize(1);
+        Common.FieldCondition field = search.getFilter().getMust(0).getField();
+        assertThat(field.getKey()).isEqualTo("status");
+        assertThat(field.hasMatch()).isTrue();
+        assertThat(field.getMatch().hasKeyword()).isTrue();
+        assertThat(field.getMatch().getKeyword()).isEqualTo("");
     }
 
     @Test
@@ -309,6 +492,8 @@ class QdrantVectorDatabaseServiceTest {
 
     @Test
     void searchFallsBackToUnfilteredQueryWhenPayloadIndexIsStillMissing() {
+        UUID vectorId = UUID.fromString("16d5a5d3-8c90-41d1-8c7f-17d4bd84615f");
+        UUID filteredOutVectorId = UUID.fromString("26d5a5d3-8c90-41d1-8c7f-17d4bd84615f");
         AIProviderConfig config = baseConfig();
         QdrantClient client = mock(QdrantClient.class);
         when(client.listCollectionsAsync()).thenReturn(Futures.immediateFuture(List.of("customer_a__tenant_b__faq-article")));
@@ -328,19 +513,348 @@ class QdrantVectorDatabaseServiceTest {
                 Futures.immediateFailedFuture(new RuntimeException(
                     "INVALID_ARGUMENT: Bad request: Index required but not found for \"knowledgeSourceHandleRef\""
                 )),
-                Futures.immediateFuture(List.of())
+                Futures.immediateFuture(List.of(Points.ScoredPoint.newBuilder()
+                    .setId(PointIdFactory.id(vectorId))
+                    .setScore(0.92f)
+                    .putPayload("entityType", ValueFactory.value("faq-article"))
+                    .putPayload("entityId", ValueFactory.value("kb://reset"))
+                    .putPayload("content", ValueFactory.value("Reset instructions"))
+                    .putPayload("knowledgeSourceHandleRef", ValueFactory.value("plugin/mkp-data-help-center"))
+                    .build(),
+                    Points.ScoredPoint.newBuilder()
+                        .setId(PointIdFactory.id(filteredOutVectorId))
+                        .setScore(0.91f)
+                        .putPayload("entityType", ValueFactory.value("faq-article"))
+                        .putPayload("entityId", ValueFactory.value("kb://other"))
+                        .putPayload("content", ValueFactory.value("Other instructions"))
+                        .putPayload("knowledgeSourceHandleRef", ValueFactory.value("plugin/other-source"))
+                        .build()))
             );
 
         QdrantVectorDatabaseService service = new QdrantVectorDatabaseService(config, null, client);
+        SimpleMeterRegistry registry = new SimpleMeterRegistry();
+        Metrics.addRegistry(registry);
 
-        service.search(List.of(0.1d, 0.2d), AISearchRequest.builder()
+        try {
+            AISearchResponse response = service.search(List.of(0.1d, 0.2d), AISearchRequest.builder()
+                .query("reset password")
+                .entityType("faq-article")
+                .limit(5)
+                .metadata(java.util.Map.of("knowledgeSourceHandleRef", "plugin/mkp-data-help-center"))
+                .build());
+
+            assertThat(response.getResults()).hasSize(1);
+            Map<String, Object> row = response.getResults().getFirst();
+            assertThat(row).containsEntry("entityId", "kb://reset");
+            assertThat(row).containsEntry("metadataFilterFallback", true);
+            assertThat(row.get("metadata")).isInstanceOfSatisfying(Map.class,
+                metadata -> assertThat(metadata)
+                    .containsEntry("knowledgeSourceHandleRef", "plugin/mkp-data-help-center")
+                    .containsEntry("metadataFilterFallback", true));
+            assertThat(service.adminDiagnostics())
+                .containsEntry("metadataFilterFallbacks",
+                    Map.of("customer_a__tenant_b__faq-article", 1));
+            assertThat(registry.counter(
+                VectorProviderMetrics.FALLBACK_COUNTER,
+                "provider", "qdrant",
+                "operation", "search",
+                "reason", "missing_payload_index"
+            ).count()).isEqualTo(1.0d);
+            verify(client, atLeast(2)).searchAsync(any());
+        } finally {
+            Metrics.removeRegistry(registry);
+            registry.close();
+        }
+    }
+
+    @Test
+    void restSearchMarksResultsWhenPayloadIndexFallbackIsUsed() throws Exception {
+        List<String> searchBodies = new CopyOnWriteArrayList<>();
+        AtomicInteger searchCount = new AtomicInteger();
+
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/", exchange -> {
+            String method = exchange.getRequestMethod();
+            String path = exchange.getRequestURI().getPath();
+
+            if ("GET".equals(method) && "/collections".equals(path)) {
+                writeJson(exchange, 200,
+                    "{\"result\":{\"collections\":[{\"name\":\"customer_a__tenant_b__faq-article\"}]},\"status\":\"ok\"}");
+                return;
+            }
+            if ("GET".equals(method) && "/collections/customer_a__tenant_b__faq-article".equals(path)) {
+                writeJson(exchange, 200,
+                    "{\"result\":{\"payload_schema\":{}},\"status\":\"ok\"}");
+                return;
+            }
+            if ("PUT".equals(method) && "/collections/customer_a__tenant_b__faq-article/index".equals(path)) {
+                writeJson(exchange, 200, "{\"result\":{},\"status\":\"ok\"}");
+                return;
+            }
+            if ("POST".equals(method) && "/collections/customer_a__tenant_b__faq-article/points/search".equals(path)) {
+                String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+                searchBodies.add(body);
+                if (searchCount.incrementAndGet() == 1) {
+                    writeJson(exchange, 400,
+                        "{\"status\":{\"error\":\"Index required but not found for \\\"knowledgeSourceHandleRef\\\"\"}}");
+                    return;
+                }
+                writeJson(exchange, 200, """
+                    {"result":[{"id":"16d5a5d3-8c90-41d1-8c7f-17d4bd84615f","score":0.92,
+                    "payload":{"entityType":"faq-article","entityId":"kb://reset","content":"Reset instructions",
+                    "knowledgeSourceHandleRef":"plugin/mkp-data-help-center"},
+                    "vector":[0.1,0.2]},
+                    {"id":"26d5a5d3-8c90-41d1-8c7f-17d4bd84615f","score":0.91,
+                    "payload":{"entityType":"faq-article","entityId":"kb://other","content":"Other instructions",
+                    "knowledgeSourceHandleRef":"plugin/other-source"},
+                    "vector":[0.2,0.1]}],"status":"ok"}""");
+                return;
+            }
+            writeJson(exchange, 404, "{\"status\":\"error\",\"result\":null}");
+        });
+        server.start();
+
+        try {
+            AIProviderConfig config = baseConfig();
+            AIProviderConfig.QdrantConfig qdrant = config.getQdrant();
+            qdrant.setHost("http://127.0.0.1:" + server.getAddress().getPort());
+            qdrant.setPreferGrpc(false);
+
+            QdrantVectorDatabaseService service = new QdrantVectorDatabaseService(config);
+            SimpleMeterRegistry registry = new SimpleMeterRegistry();
+            Metrics.addRegistry(registry);
+
+            try {
+                AISearchResponse response = service.search(List.of(0.1d, 0.2d), AISearchRequest.builder()
+                    .query("reset password")
+                    .entityType("faq-article")
+                    .limit(5)
+                    .metadata(java.util.Map.of("knowledgeSourceHandleRef", "plugin/mkp-data-help-center"))
+                    .build());
+
+                assertThat(searchBodies).hasSize(2);
+                assertThat(OBJECT_MAPPER.readTree(searchBodies.getFirst()).has("filter")).isTrue();
+                assertThat(OBJECT_MAPPER.readTree(searchBodies.get(1)).has("filter")).isFalse();
+                assertThat(response.getResults()).hasSize(1);
+                Map<String, Object> row = response.getResults().getFirst();
+                assertThat(row).containsEntry("entityId", "kb://reset");
+                assertThat(row).containsEntry("metadataFilterFallback", true);
+                assertThat(row.get("metadata")).isInstanceOfSatisfying(Map.class,
+                    metadata -> assertThat(metadata)
+                        .containsEntry("knowledgeSourceHandleRef", "plugin/mkp-data-help-center")
+                        .containsEntry("metadataFilterFallback", true));
+                assertThat(service.adminDiagnostics())
+                    .containsEntry("metadataFilterFallbacks",
+                        Map.of("customer_a__tenant_b__faq-article", 1));
+                assertThat(registry.counter(
+                    VectorProviderMetrics.FALLBACK_COUNTER,
+                    "provider", "qdrant",
+                    "operation", "search",
+                    "reason", "missing_payload_index"
+                ).count()).isEqualTo(1.0d);
+            } finally {
+                Metrics.removeRegistry(registry);
+                registry.close();
+            }
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
+    void searchFailsClosedWhenPayloadIndexIsMissingAndConfiguredToFail() {
+        AIProviderConfig config = baseConfig();
+        VectorDatabaseConfig vectorDatabaseConfig = new VectorDatabaseConfig();
+        vectorDatabaseConfig.getOperations().setFailOnMissingPayloadIndex(true);
+
+        QdrantClient client = mock(QdrantClient.class);
+        when(client.listCollectionsAsync()).thenReturn(Futures.immediateFuture(List.of("customer_a__tenant_b__faq-article")));
+        when(client.getCollectionInfoAsync("customer_a__tenant_b__faq-article"))
+            .thenReturn(Futures.immediateFuture(Collections.CollectionInfo.newBuilder().build()));
+        when(client.createPayloadIndexAsync(
+            eq("customer_a__tenant_b__faq-article"),
+            eq("knowledgeSourceHandleRef"),
+            eq(Collections.PayloadSchemaType.Keyword),
+            isNull(),
+            eq(true),
+            isNull(),
+            isNull()
+        )).thenReturn(Futures.immediateFuture(Points.UpdateResult.getDefaultInstance()));
+        when(client.searchAsync(any()))
+            .thenReturn(Futures.immediateFailedFuture(new RuntimeException(
+                "INVALID_ARGUMENT: Bad request: Index required but not found for \"knowledgeSourceHandleRef\""
+            )));
+
+        QdrantVectorDatabaseService service = new QdrantVectorDatabaseService(config, vectorDatabaseConfig, client);
+
+        assertThatThrownBy(() -> service.search(List.of(0.1d, 0.2d), AISearchRequest.builder()
             .query("reset password")
             .entityType("faq-article")
             .limit(5)
             .metadata(java.util.Map.of("knowledgeSourceHandleRef", "plugin/mkp-data-help-center"))
+            .build()))
+            .isInstanceOf(AIServiceException.class)
+            .hasMessageContaining("payload index");
+
+        verify(client).searchAsync(any());
+    }
+
+    @Test
+    void grpcSearchFailsClosedForUnsupportedMetadataFilterWithoutProviderCall() {
+        AIProviderConfig config = baseConfig();
+        QdrantClient client = mock(QdrantClient.class);
+        QdrantVectorDatabaseService service = new QdrantVectorDatabaseService(config, null, client);
+
+        AISearchResponse response = service.search(List.of(0.1d, 0.2d), AISearchRequest.builder()
+            .query("reset password")
+            .entityType("faq-article")
+            .limit(5)
+            .metadata(Map.of("tags", List.of("password", "security")))
             .build());
 
-        verify(client, atLeast(2)).searchAsync(any());
+        assertThat(response.getResults()).isEmpty();
+        assertThat(response.getTotalResults()).isZero();
+        verify(client, never()).listCollectionsAsync();
+        verify(client, never()).searchAsync(any());
+    }
+
+    @Test
+    void grpcScanFailsClosedForUnsupportedMetadataFilterWithoutProviderCall() {
+        AIProviderConfig config = baseConfig();
+        QdrantClient client = mock(QdrantClient.class);
+        QdrantVectorDatabaseService service = new QdrantVectorDatabaseService(config, null, client);
+
+        VectorScanPage page = service.scan(VectorScanRequest.builder()
+            .entityType("faq-article")
+            .metadataEquals(Map.of("tags", List.of("password", "security")))
+            .build());
+
+        assertThat(page.getVectors()).isEmpty();
+        assertThat(page.isHasMore()).isFalse();
+        verify(client, never()).listCollectionsAsync();
+        verify(client, never()).scrollAsync(any());
+    }
+
+    @Test
+    void restSearchFailsClosedForUnsupportedMetadataFilterWithoutHttpCall() throws Exception {
+        AtomicInteger httpCalls = new AtomicInteger();
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/", exchange -> {
+            httpCalls.incrementAndGet();
+            writeJson(exchange, 500, "{\"status\":\"error\",\"result\":null}");
+        });
+        server.start();
+
+        try {
+            AIProviderConfig config = baseConfig();
+            AIProviderConfig.QdrantConfig qdrant = config.getQdrant();
+            qdrant.setHost("http://127.0.0.1:" + server.getAddress().getPort());
+            qdrant.setPreferGrpc(false);
+
+            QdrantVectorDatabaseService service = new QdrantVectorDatabaseService(config);
+
+            AISearchResponse response = service.search(List.of(0.1d, 0.2d), AISearchRequest.builder()
+                .query("reset password")
+                .entityType("faq-article")
+                .limit(5)
+                .metadata(Map.of("tags", List.of("password", "security")))
+                .build());
+
+            assertThat(response.getResults()).isEmpty();
+            assertThat(response.getTotalResults()).isZero();
+            assertThat(httpCalls).hasValue(0);
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
+    void restScanFailsClosedForUnsupportedMetadataFilterWithoutHttpCall() throws Exception {
+        AtomicInteger httpCalls = new AtomicInteger();
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/", exchange -> {
+            httpCalls.incrementAndGet();
+            writeJson(exchange, 500, "{\"status\":\"error\",\"result\":null}");
+        });
+        server.start();
+
+        try {
+            AIProviderConfig config = baseConfig();
+            AIProviderConfig.QdrantConfig qdrant = config.getQdrant();
+            qdrant.setHost("http://127.0.0.1:" + server.getAddress().getPort());
+            qdrant.setPreferGrpc(false);
+
+            QdrantVectorDatabaseService service = new QdrantVectorDatabaseService(config);
+
+            VectorScanPage page = service.scan(VectorScanRequest.builder()
+                .entityType("faq-article")
+                .metadataEquals(Map.of("tags", List.of("password", "security")))
+                .build());
+
+            assertThat(page.getVectors()).isEmpty();
+            assertThat(page.isHasMore()).isFalse();
+            assertThat(httpCalls).hasValue(0);
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
+    void restScanProjectionReturnsNullForSuppressedFields() throws Exception {
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/", exchange -> {
+            String path = exchange.getRequestURI().getPath();
+            if ("GET".equals(exchange.getRequestMethod()) && "/collections".equals(path)) {
+                writeJson(exchange, 200, """
+                    {"result":{"collections":[{"name":"customer_a__tenant_b__product"}]}}
+                    """);
+                return;
+            }
+            if ("POST".equals(exchange.getRequestMethod())
+                && "/collections/customer_a__tenant_b__product/points/scroll".equals(path)) {
+                writeJson(exchange, 200, """
+                    {"result":{"points":[{
+                      "id":"product-vector-1",
+                      "payload":{
+                        "entityType":"product",
+                        "entityId":"product-1",
+                        "content":"Waterproof shell jacket",
+                        "category":"outerwear",
+                        "raw":"{\\"category\\":\\"outerwear\\"}",
+                        "_ai_fabric_embedding":[0.1,0.2]
+                      },
+                      "vector":[0.1,0.2]
+                    }]}}
+                    """);
+                return;
+            }
+            writeJson(exchange, 404, "{\"status\":\"not_found\"}");
+        });
+        server.start();
+
+        try {
+            AIProviderConfig config = baseConfig();
+            AIProviderConfig.QdrantConfig qdrant = config.getQdrant();
+            qdrant.setHost("http://127.0.0.1:" + server.getAddress().getPort());
+            qdrant.setPreferGrpc(false);
+
+            QdrantVectorDatabaseService service = new QdrantVectorDatabaseService(config);
+
+            VectorScanPage page = service.scan(VectorScanRequest.builder()
+                .entityType("product")
+                .limit(1)
+                .includeContent(false)
+                .includeEmbedding(false)
+                .includeMetadata(false)
+                .build());
+
+            assertThat(page.getVectors()).hasSize(1);
+            assertThat(page.getVectors().getFirst().getContent()).isNull();
+            assertThat(page.getVectors().getFirst().getEmbedding()).isNull();
+            assertThat(page.getVectors().getFirst().getMetadata()).isNull();
+        } finally {
+            server.stop(0);
+        }
     }
 
     @Test
@@ -371,6 +885,194 @@ class QdrantVectorDatabaseServiceTest {
         assertThat(service.getVectorCountByEntityType("product")).isZero();
 
         verify(client, never()).listCollectionsAsync();
+    }
+
+    @Test
+    void grpcGetVectorByRawIdPropagatesProviderFailures() {
+        AIProviderConfig config = baseConfig();
+        QdrantClient client = mock(QdrantClient.class);
+        String collection = "customer_a__tenant_b__product";
+        String vectorId = UUID.randomUUID().toString();
+
+        when(client.listCollectionsAsync()).thenReturn(Futures.immediateFuture(List.of(collection)));
+        when(client.retrieveAsync(eq(collection), anyList(), any(), any(), isNull()))
+            .thenReturn(Futures.immediateFailedFuture(new RuntimeException("UNAVAILABLE: backend down")));
+
+        QdrantVectorDatabaseService service = new QdrantVectorDatabaseService(config, null, client);
+
+        assertThatThrownBy(() -> service.getVector(vectorId))
+            .isInstanceOf(AIServiceException.class)
+            .hasMessageContaining("retrieve point");
+    }
+
+    @Test
+    void grpcGetVectorByRawIdPropagatesCandidateCollectionListFailures() {
+        AIProviderConfig config = baseConfig();
+        QdrantClient client = mock(QdrantClient.class);
+        String vectorId = UUID.randomUUID().toString();
+
+        when(client.listCollectionsAsync())
+            .thenReturn(Futures.immediateFailedFuture(new RuntimeException("UNAVAILABLE: list failed")));
+
+        QdrantVectorDatabaseService service = new QdrantVectorDatabaseService(config, null, client);
+
+        assertThatThrownBy(() -> service.getVector(vectorId))
+            .isInstanceOf(AIServiceException.class)
+            .hasMessageContaining("list candidate collections for getVector");
+    }
+
+    @Test
+    void grpcGetVectorByRawIdTreatsMissingCandidateCollectionAsAbsent() {
+        AIProviderConfig config = baseConfig();
+        QdrantClient client = mock(QdrantClient.class);
+        String collection = "customer_a__tenant_b__product";
+        String vectorId = UUID.randomUUID().toString();
+
+        when(client.listCollectionsAsync()).thenReturn(Futures.immediateFuture(List.of(collection)));
+        when(client.retrieveAsync(eq(collection), anyList(), any(), any(), isNull()))
+            .thenReturn(Futures.immediateFailedFuture(new RuntimeException(
+                "NOT_FOUND: Collection `customer_a__tenant_b__product` does not exist"
+            )));
+
+        QdrantVectorDatabaseService service = new QdrantVectorDatabaseService(config, null, client);
+
+        assertThat(service.getVector(vectorId)).isEmpty();
+    }
+
+    @Test
+    void grpcRemoveVectorByRawIdPropagatesProviderFailures() {
+        AIProviderConfig config = baseConfig();
+        QdrantClient client = mock(QdrantClient.class);
+        String collection = "customer_a__tenant_b__product";
+        String vectorId = UUID.randomUUID().toString();
+
+        when(client.listCollectionsAsync()).thenReturn(Futures.immediateFuture(List.of(collection)));
+        when(client.retrieveAsync(eq(collection), anyList(), any(), any(), isNull()))
+            .thenReturn(Futures.immediateFuture(List.of(
+                Points.RetrievedPoint.newBuilder()
+                    .setId(PointIdFactory.id(UUID.fromString(vectorId)))
+                    .build()
+            )));
+        when(client.deleteAsync(eq(collection), anyList()))
+            .thenReturn(Futures.immediateFailedFuture(new RuntimeException("PERMISSION_DENIED: delete denied")));
+
+        QdrantVectorDatabaseService service = new QdrantVectorDatabaseService(config, null, client);
+
+        assertThatThrownBy(() -> service.removeVectorById(vectorId))
+            .isInstanceOf(AIServiceException.class)
+            .hasMessageContaining("delete point");
+    }
+
+    @Test
+    void grpcRemoveVectorByRawIdPropagatesCandidateCollectionListFailures() {
+        AIProviderConfig config = baseConfig();
+        QdrantClient client = mock(QdrantClient.class);
+        String vectorId = UUID.randomUUID().toString();
+
+        when(client.listCollectionsAsync())
+            .thenReturn(Futures.immediateFailedFuture(new RuntimeException("UNAVAILABLE: list failed")));
+
+        QdrantVectorDatabaseService service = new QdrantVectorDatabaseService(config, null, client);
+
+        assertThatThrownBy(() -> service.removeVectorById(vectorId))
+            .isInstanceOf(AIServiceException.class)
+            .hasMessageContaining("list candidate collections for removeVectorById");
+    }
+
+    @Test
+    void grpcRemoveVectorByRawIdTreatsMissingCandidateCollectionAsAbsent() {
+        AIProviderConfig config = baseConfig();
+        QdrantClient client = mock(QdrantClient.class);
+        String collection = "customer_a__tenant_b__product";
+        String vectorId = UUID.randomUUID().toString();
+
+        when(client.listCollectionsAsync()).thenReturn(Futures.immediateFuture(List.of(collection)));
+        when(client.retrieveAsync(eq(collection), anyList(), any(), any(), isNull()))
+            .thenReturn(Futures.immediateFailedFuture(new RuntimeException(
+                "NOT_FOUND: Collection `customer_a__tenant_b__product` does not exist"
+            )));
+
+        QdrantVectorDatabaseService service = new QdrantVectorDatabaseService(config, null, client);
+
+        assertThat(service.removeVectorById(vectorId)).isFalse();
+        verify(client, never()).deleteAsync(eq(collection), anyList());
+    }
+
+    @Test
+    void grpcRemoveVectorByRawIdReturnsFalseWhenPointIsMissingInScopedCollection() {
+        AIProviderConfig config = baseConfig();
+        QdrantClient client = mock(QdrantClient.class);
+        String collection = "customer_a__tenant_b__product";
+        String vectorId = UUID.randomUUID().toString();
+
+        when(client.listCollectionsAsync()).thenReturn(Futures.immediateFuture(List.of(collection)));
+        when(client.retrieveAsync(eq(collection), anyList(), any(), any(), isNull()))
+            .thenReturn(Futures.immediateFuture(List.of()));
+
+        QdrantVectorDatabaseService service = new QdrantVectorDatabaseService(config, null, client);
+
+        assertThat(service.removeVectorById(vectorId)).isFalse();
+        verify(client, never()).deleteAsync(eq(collection), anyList());
+    }
+
+    @Test
+    void grpcSearchWithoutEntityTypePropagatesCandidateCollectionListFailures() {
+        AIProviderConfig config = baseConfig();
+        QdrantClient client = mock(QdrantClient.class);
+
+        when(client.listCollectionsAsync())
+            .thenReturn(Futures.immediateFailedFuture(new RuntimeException("UNAVAILABLE: list failed")));
+
+        QdrantVectorDatabaseService service = new QdrantVectorDatabaseService(config, null, client);
+
+        assertThatThrownBy(() -> service.search(List.of(0.1d, 0.2d), AISearchRequest.builder()
+            .query("find anything")
+            .limit(5)
+            .build()))
+            .isInstanceOf(AIServiceException.class)
+            .hasMessageContaining("list candidate collections for search collections");
+    }
+
+    @Test
+    void grpcClearVectorsPropagatesCandidateCollectionListFailures() {
+        AIProviderConfig config = baseConfig();
+        QdrantClient client = mock(QdrantClient.class);
+
+        when(client.listCollectionsAsync())
+            .thenReturn(Futures.immediateFailedFuture(new RuntimeException("UNAVAILABLE: list failed")));
+
+        QdrantVectorDatabaseService service = new QdrantVectorDatabaseService(config, null, client);
+
+        assertThatThrownBy(service::clearVectors)
+            .isInstanceOf(AIServiceException.class)
+            .hasMessageContaining("list candidate collections for clearVectors");
+    }
+
+    @Test
+    void grpcUpdateVectorReturnsFalseWhenTargetPointIsMissing() {
+        AIProviderConfig config = baseConfig();
+        QdrantClient client = mock(QdrantClient.class);
+        String collection = "customer_a__tenant_b__product";
+        String vectorId = UUID.randomUUID().toString();
+
+        when(client.listCollectionsAsync()).thenReturn(Futures.immediateFuture(List.of(collection)));
+        when(client.retrieveAsync(eq(collection), anyList(), any(), any(), isNull()))
+            .thenReturn(Futures.immediateFuture(List.of()));
+
+        QdrantVectorDatabaseService service = new QdrantVectorDatabaseService(config, null, client);
+
+        boolean updated = service.updateVector(
+            vectorId,
+            "product",
+            "missing-product",
+            "Updated product",
+            List.of(0.1d, 0.2d),
+            Map.of("category", "watches")
+        );
+
+        assertThat(updated).isFalse();
+        verify(client).retrieveAsync(eq(collection), anyList(), any(), any(), isNull());
+        verify(client, never()).upsertAsync(anyString(), anyList());
     }
 
     @Test
@@ -414,6 +1116,28 @@ class QdrantVectorDatabaseServiceTest {
         removeIds.add(" ");
         removeIds.add("vector-1");
         assertThat(service.batchRemoveVectors(removeIds)).isEqualTo(1);
+    }
+
+    @Test
+    void directLifecycleRejectsBlankIdentityBeforeNativeClientCalls() {
+        QdrantClient client = mock(QdrantClient.class);
+        QdrantVectorDatabaseService service = new QdrantVectorDatabaseService(baseConfig(), null, client);
+
+        assertThatThrownBy(() -> service.storeVector(" ", "product-1", "Invalid product",
+            List.of(0.1d, 0.2d), Map.of()))
+            .isInstanceOf(AIServiceException.class)
+            .hasMessageContaining("entityType");
+        assertThatThrownBy(() -> service.storeVector("product", " ", "Invalid product",
+            List.of(0.1d, 0.2d), Map.of()))
+            .isInstanceOf(AIServiceException.class)
+            .hasMessageContaining("entityId");
+
+        assertThat(service.updateVector("vector-1", " ", "product-1", "Invalid product",
+            List.of(0.1d, 0.2d), Map.of())).isFalse();
+        assertThat(service.getVectorByEntity(" ", "product-1")).isEmpty();
+        assertThat(service.removeVector("product", " ")).isFalse();
+        assertThat(service.clearVectorsByEntityType(" ")).isZero();
+        verifyNoInteractions(client);
     }
 
     private static AIProviderConfig baseConfig() {

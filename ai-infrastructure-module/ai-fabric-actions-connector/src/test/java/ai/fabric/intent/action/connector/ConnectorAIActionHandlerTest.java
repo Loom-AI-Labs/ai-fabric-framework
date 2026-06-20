@@ -1,23 +1,36 @@
 package ai.fabric.intent.action.connector;
 
 import ai.fabric.intent.action.AIActionMetaData;
+import ai.fabric.intent.action.AIActionParamSchema;
+import ai.fabric.intent.action.AIActionParamType;
+import ai.fabric.intent.action.AIActionRegistry;
 import ai.fabric.intent.action.ActionAccessMode;
 import ai.fabric.intent.action.ActionContext;
 import ai.fabric.intent.action.ActionPayload;
 import ai.fabric.intent.action.ActionResult;
+import ai.fabric.intent.action.tool.AIActionToolCallbackFactory;
 import ai.fabric.intent.orchestration.OrchestrationContext;
 import ai.fabric.intent.orchestration.pipeline.PipelineContext;
+import ai.fabric.http.OutboundHttpExecutionRequest;
+import ai.fabric.http.OutboundHttpExecutionResponse;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 
 import java.time.Clock;
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
 
 class ConnectorAIActionHandlerTest {
+
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     @Test
     void shouldRenderConfirmationTemplateWithFallbackPlaceholder() {
@@ -66,6 +79,80 @@ class ConnectorAIActionHandlerTest {
         assertThat(result.isSuccess()).isFalse();
         assertThat(result.getErrorCode()).isEqualTo("ACTION_EXECUTION_FAILED");
         assertThat(result.getMessage()).contains("access mode");
+    }
+
+    @Test
+    void springAiToolBridgeShouldReturnConnectorFailureWithoutLeakingHiddenParams() throws Exception {
+        AtomicReference<OutboundHttpExecutionRequest> outboundRequest = new AtomicReference<>();
+        AIActionConnectorProperties properties = new AIActionConnectorProperties();
+        properties.setBaseUrl("https://connector.example");
+        properties.setMaxAttempts(1);
+        properties.setInitialBackoff(Duration.ZERO);
+        ActionConnectorExecutor executor = new ActionConnectorExecutor(
+            properties,
+            request -> {
+                outboundRequest.set(request);
+                return new OutboundHttpExecutionResponse(
+                    503,
+                    "{\"success\":false,\"message\":\"Connector offline\",\"errorCode\":\"SERVICE_UNAVAILABLE\"}",
+                    Map.of()
+                );
+            },
+            null,
+            Clock.systemUTC()
+        );
+        ConnectorAIActionHandler handler = new ConnectorAIActionHandler(
+            AIActionMetaData.builder()
+                .name("connector_search")
+                .category("connector")
+                .accessMode(ActionAccessMode.READ)
+                .anonymousAllowed(false)
+                .parameters(Map.of(
+                    "query", "Search query",
+                    "apiToken", "Connector API token"
+                ))
+                .parameterSchemas(Map.of(
+                    "query", AIActionParamSchema.builder()
+                        .type(AIActionParamType.STRING)
+                        .description("Search query")
+                        .build(),
+                    "apiToken", AIActionParamSchema.builder()
+                        .type(AIActionParamType.STRING)
+                        .description("Connector API token")
+                        .visibility("SECRET")
+                        .askUser(false)
+                        .build()
+                ))
+                .requiredParameters(Set.of("query"))
+                .build(),
+            false,
+            null,
+            Set.of("apiToken"),
+            executor
+        );
+        var callback = new AIActionToolCallbackFactory(mock(AIActionRegistry.class), OBJECT_MAPPER)
+            .createCallback(handler, new ActionContext(OrchestrationContext.forUser("user-1"), null));
+
+        String raw = callback.call("""
+            {
+              "query": "refund policy",
+              "apiToken": "model-supplied-secret",
+              "ignored": "model-only"
+            }
+            """);
+        Map<String, Object> output = OBJECT_MAPPER.readValue(raw, new TypeReference<>() {
+        });
+
+        assertThat(output)
+            .containsEntry("actionName", "connector_search")
+            .containsEntry("toolName", "connector_search")
+            .containsEntry("success", false)
+            .containsEntry("errorCode", "SERVICE_UNAVAILABLE")
+            .containsEntry("message", "Connector offline");
+        assertThat(raw).doesNotContain("model-supplied-secret");
+        assertThat(outboundRequest.get()).isNotNull();
+        assertThat(outboundRequest.get().body()).contains("refund policy");
+        assertThat(outboundRequest.get().body()).doesNotContain("model-supplied-secret", "model-only");
     }
 
     @Test

@@ -12,7 +12,6 @@ import ai.fabric.repository.IndexingQueueRepository;
 import ai.fabric.service.VectorManagementService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -31,10 +30,11 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.verify;
 
-@Disabled("Disabled due to ApplicationContext loading failures - table creation issues")
 @SpringBootTest(classes = TestApplication.class)
 @ActiveProfiles("test")
 @TestPropertySource(properties = {
+    "ai.indexing.enabled=true",
+    "ai.config.default-file=ai-entity-config-indexing-strategy.yml",
     "ai.indexing.async-worker.enabled=false",
     "ai.indexing.batch-worker.enabled=false",
     "ai.indexing.cleanup.enabled=false"

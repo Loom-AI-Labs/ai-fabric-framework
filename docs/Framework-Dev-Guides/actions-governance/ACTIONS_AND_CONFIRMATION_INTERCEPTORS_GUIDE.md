@@ -25,6 +25,90 @@ Each action must declare an explicit **access mode**:
 Discovery and execution are backed by:
 - `AIActionRegistry` (runtime discovery + lookup)
 - `AnnotatedAIActionHandler` (invocation adapter)
+- `AIActionToolCallbackFactory` (optional Spring AI `ToolCallback` bridge)
+
+### Spring AI tool-calling bridge
+When Spring AI is on the classpath, core auto-configures `AIActionToolCallbackFactory`. Use it when
+you want to expose selected AI Fabric actions to a Spring AI `ChatClient` / tool-calling advisor
+without bypassing AI Fabric governance.
+
+The Spring AI provider attaches these callbacks only when the generation request opts in with
+`AIActionToolCallbackFactory.requestParameters(actionContext, actionNames)`. If `actionNames` is
+empty, the factory can expose all registered actions visible to that runtime context; production
+flows should prefer passing an explicit action allowlist.
+
+```java
+import ai.fabric.core.AICoreService;
+import ai.fabric.dto.AIGenerationRequest;
+import ai.fabric.dto.AIGenerationResponse;
+import ai.fabric.intent.action.ActionContext;
+import ai.fabric.intent.action.tool.AIActionToolCallbackFactory;
+import ai.fabric.intent.orchestration.OrchestrationContext;
+
+import java.util.List;
+
+public class OrderAssistant {
+
+    private final AICoreService aiCoreService;
+
+    public OrderAssistant(AICoreService aiCoreService) {
+        this.aiCoreService = aiCoreService;
+    }
+
+    public AIGenerationResponse answerWithReadTools(String userId, String prompt) {
+        ActionContext actionContext = new ActionContext(
+            OrchestrationContext.forUser(userId),
+            null
+        );
+
+        return aiCoreService.generateContent(AIGenerationRequest.builder()
+            .prompt(prompt)
+            .parameters(AIActionToolCallbackFactory.requestParameters(
+                actionContext,
+                List.of("lookup_order", "list_recent_orders")
+            ))
+            .build());
+    }
+}
+```
+
+The bridge is deliberately guarded:
+- model-facing JSON schemas include only declared public action parameters
+- system, internal, secret, and `askUser=false` parameters are hidden
+- undeclared or hidden model-supplied arguments are dropped before execution
+- trusted `ActionContext.actionParams()` may provide hidden/system values such as session context
+- anonymous calls are denied unless the action declares `anonymousAllowed=true`
+- `@ActionAllowed` / `validateActionAllowed` still run before execution
+- confirmation-required actions return `CONFIRMATION_REQUIRED` instead of executing immediately
+
+This bridge does not replace the normal confirmation pipeline or pending-action store. It is the safe
+adapter for provider-native tool-calling paths; AI Fabric still decides whether an action can run.
+When callbacks are attached, Spring AI provider responses include safe metadata with the callback
+count and public tool names. Tool arguments, hidden context values, and connector secrets are not
+copied into response metadata.
+
+For customer-facing flows, start with an explicit read-only allowlist. Commerce examples use actions
+such as `get_order_details`, `list_orders`, and `view_cart`:
+
+```java
+ActionContext actionContext = new ActionContext(
+    OrchestrationContext.forUser(shopperId),
+    null,
+    Map.of("shopperSessionId", shopperSessionId)
+);
+
+AIGenerationResponse response = aiCoreService.generateContent(AIGenerationRequest.builder()
+    .prompt(prompt)
+    .parameters(AIActionToolCallbackFactory.requestParameters(
+        actionContext,
+        List.of("get_order_details", "list_orders", "view_cart")
+    ))
+    .build());
+```
+
+The model can provide public parameters, for example `orderNumberOrId`, but hidden/system parameters
+come only from trusted `ActionContext.actionParams()`. The provider module keeps an executable
+example in `SpringAiReadOnlyActionToolExampleTest`.
 
 ### Confirmation interceptors (“intent resolvers”)
 When chat sessions are enabled, a dedicated pipeline step resolves confirmation intents (e.g. *yes/no*) into the **correct action execution**.
@@ -53,9 +137,16 @@ To enable conversation-aware confirmation handling:
 ai:
   chat:
     enabled: true
+    max-pending-action-stack-depth: 8
 ```
 
 Resolvers are just Spring beans that implement `IntentResolver`.
+
+Pending confirmations are stored in conversation metadata as a bounded stack. The newest pending
+action remains on top; if an interceptor keeps pushing nested confirmations past
+`max-pending-action-stack-depth`, the oldest pending actions are discarded so session metadata cannot
+grow without limit. Keep this value small enough for your UX, and design multi-step confirmation flows
+to finish or clear stale branches explicitly.
 
 ---
 

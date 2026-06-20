@@ -14,7 +14,7 @@
     <artifactId>ai-fabric-actions-connector</artifactId>
     <packaging>jar</packaging>
 
-    <name>AI Infrastructure Actions Connector Module</name>
+    <name>AI Fabric Actions Connector Module</name>
     <description>Optional connector-backed actions support (Customer Connector API + file-based action catalogs).</description>
 
     <dependencies>

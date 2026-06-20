@@ -172,6 +172,88 @@ class DataMigrationServiceTest {
     }
 
     @Test
+    void pauseMigrationOnlyAllowsRunningJobs() {
+        MigrationJob job = baseJob("demo");
+        job.setStatus(MigrationStatus.RUNNING);
+        persistedJob.set(job);
+
+        DataMigrationService service = service();
+        service.pauseMigration(job.getId());
+
+        assertThat(persistedJob.get().getStatus()).isEqualTo(MigrationStatus.PAUSED);
+        assertThat(persistedJob.get().getLastUpdatedAt()).isEqualTo(clock.instant().atZone(clock.getZone()).toLocalDateTime());
+    }
+
+    @Test
+    void pauseMigrationRejectsCompletedJobs() {
+        MigrationJob job = baseJob("demo");
+        job.setStatus(MigrationStatus.COMPLETED);
+        persistedJob.set(job);
+
+        DataMigrationService service = service();
+
+        assertThatThrownBy(() -> service.pauseMigration(job.getId()))
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessageContaining("Cannot transition migration job")
+            .hasMessageContaining("COMPLETED")
+            .hasMessageContaining("PAUSED");
+        assertThat(persistedJob.get().getStatus()).isEqualTo(MigrationStatus.COMPLETED);
+    }
+
+    @Test
+    void resumeMigrationOnlyAllowsPausedJobsAndSubmitsWorker() {
+        MigrationJob job = baseJob("demo");
+        job.setStatus(MigrationStatus.PAUSED);
+        job.setFilters(ai.fabric.migration.domain.MigrationFilters.builder()
+            .entityIds(List.of("resume-1"))
+            .build());
+        persistedJob.set(job);
+        when(configLoader.getEntityConfig("demo")).thenReturn(aiConfig());
+        JpaRepository<DemoEntity, String> repo = mockRepoWithEntities(new DemoEntity("resume-1"));
+        when(repositoryRegistry.getRegistration("demo"))
+            .thenReturn(new EntityRegistration("demo", DemoEntity.class, repo));
+
+        DataMigrationService service = service();
+        service.resumeMigration(job.getId());
+
+        assertThat(persistedJob.get().getStatus()).isEqualTo(MigrationStatus.RUNNING);
+        verify(executorService).submit(runnableCaptor.capture());
+    }
+
+    @Test
+    void resumeMigrationRejectsCancelledJobsWithoutSubmittingWorker() {
+        MigrationJob job = baseJob("demo");
+        job.setStatus(MigrationStatus.CANCELLED);
+        persistedJob.set(job);
+
+        DataMigrationService service = service();
+
+        assertThatThrownBy(() -> service.resumeMigration(job.getId()))
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessageContaining("Cannot transition migration job")
+            .hasMessageContaining("CANCELLED")
+            .hasMessageContaining("RUNNING");
+        verify(executorService, never()).submit(any(Runnable.class));
+        assertThat(persistedJob.get().getStatus()).isEqualTo(MigrationStatus.CANCELLED);
+    }
+
+    @Test
+    void cancelMigrationRejectsTerminalJobs() {
+        MigrationJob job = baseJob("demo");
+        job.setStatus(MigrationStatus.COMPLETED);
+        persistedJob.set(job);
+
+        DataMigrationService service = service();
+
+        assertThatThrownBy(() -> service.cancelMigration(job.getId()))
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessageContaining("Cannot transition migration job")
+            .hasMessageContaining("COMPLETED")
+            .hasMessageContaining("CANCELLED");
+        assertThat(persistedJob.get().getCompletedAt()).isNull();
+    }
+
+    @Test
     void skipsEntitiesWithBlankResolvedId() {
         DemoEntity entity = new DemoEntity("id-blank");
         JpaRepository<DemoEntity, String> repo = mockRepoWithEntities(entity);
@@ -186,7 +268,7 @@ class DataMigrationServiceTest {
         runnableCaptor.getValue().run();
 
         verify(queueService, never()).enqueue(any());
-        assertThat(persistedJob.get().getProcessedEntities()).isZero();
+        assertThat(persistedJob.get().getProcessedEntities()).isEqualTo(1);
     }
 
     @Test
@@ -251,7 +333,7 @@ class DataMigrationServiceTest {
         runnableCaptor.getValue().run();
 
         assertThat(persistedJob.get().getFailedEntities()).isEqualTo(1);
-        assertThat(persistedJob.get().getProcessedEntities()).isZero();
+        assertThat(persistedJob.get().getProcessedEntities()).isEqualTo(1);
         assertThat(persistedJob.get().getStatus()).isEqualTo(MigrationStatus.COMPLETED);
     }
 
@@ -271,7 +353,7 @@ class DataMigrationServiceTest {
         runnableCaptor.getValue().run();
 
         verify(queueService, never()).enqueue(any());
-        assertThat(persistedJob.get().getProcessedEntities()).isZero();
+        assertThat(persistedJob.get().getProcessedEntities()).isEqualTo(1);
     }
 
     @Test
@@ -337,7 +419,7 @@ class DataMigrationServiceTest {
         runnableCaptor.getValue().run();
 
         assertThat(persistedJob.get().getFailedEntities()).isEqualTo(1);
-        assertThat(persistedJob.get().getProcessedEntities()).isZero();
+        assertThat(persistedJob.get().getProcessedEntities()).isEqualTo(1);
     }
 
     @Test
@@ -367,6 +449,18 @@ class DataMigrationServiceTest {
 
         assertThatThrownBy(() -> service.startMigration(MigrationRequest.builder().entityType("demo").batchSize(10).build()))
             .isInstanceOf(IllegalStateException.class);
+    }
+
+    @Test
+    void startMigrationRejectsMissingRequestOrEntityType() {
+        DataMigrationService service = service();
+
+        assertThatThrownBy(() -> service.startMigration(null))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("entityType is required");
+        assertThatThrownBy(() -> service.startMigration(MigrationRequest.builder().entityType(" ").batchSize(10).build()))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("entityType is required");
     }
 
     @Test
@@ -426,7 +520,7 @@ class DataMigrationServiceTest {
         runnableCaptor.getValue().run();
 
         verify(queueService, never()).enqueue(any(IndexingRequest.class));
-        assertThat(persistedJob.get().getProcessedEntities()).isZero();
+        assertThat(persistedJob.get().getProcessedEntities()).isEqualTo(1);
     }
 
     @Test

@@ -6,6 +6,8 @@ import lombok.Data;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 
+import java.util.Map;
+
 /**
  * Request DTO for AI embedding generation
  * 
@@ -27,4 +29,6 @@ public class AIEmbeddingRequest {
     private String entityId;
     
     private String metadata;
+
+    private Map<String, Object> parameters;
 }

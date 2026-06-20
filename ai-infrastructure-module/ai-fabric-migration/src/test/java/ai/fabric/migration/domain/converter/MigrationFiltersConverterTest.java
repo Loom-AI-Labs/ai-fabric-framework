@@ -7,6 +7,7 @@ import java.time.LocalDate;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class MigrationFiltersConverterTest {
 
@@ -30,9 +31,15 @@ class MigrationFiltersConverterTest {
     }
 
     @Test
-    void treatsBlankOrMalformedJsonAsAbsentFilters() {
+    void treatsBlankJsonAsAbsentFilters() {
         assertThat(converter.convertToDatabaseColumn(null)).isNull();
         assertThat(converter.convertToEntityAttribute(" ")).isNull();
-        assertThat(converter.convertToEntityAttribute("{not-json")).isNull();
+    }
+
+    @Test
+    void rejectsMalformedJsonInsteadOfDroppingFilters() {
+        assertThatThrownBy(() -> converter.convertToEntityAttribute("{not-json"))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("Invalid migration filters JSON");
     }
 }

@@ -27,4 +27,5 @@ public final class RetrievalConnectorProtocol {
 
     public static final String TRACE_REQUEST_ID = "requestId";
     public static final String TRACE_CONVERSATION_ID = "conversationId";
+    public static final String TRACE_AUTH_CONTEXT = "authContext";
 }

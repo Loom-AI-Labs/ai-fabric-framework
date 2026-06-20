@@ -15,7 +15,7 @@ AI Fabric callers
   -> AICoreService / AIEmbeddingService
   -> AIProviderManager / embedding fallback and cache
   -> ai-fabric-provider-spring-ai
-  -> Spring AI ChatModel / EmbeddingModel
+  -> Spring AI ChatClient / ChatModel / EmbeddingModel
   -> Spring AI provider integrations and vendor SDKs
 ```
 
@@ -97,6 +97,7 @@ Spring AI implementation:
 
 - `ai-infrastructure-module/providers/ai-fabric-provider-spring-ai/pom.xml`
 - `ai-infrastructure-module/providers/ai-fabric-provider-spring-ai/src/main/java/ai/fabric/provider/springai/SpringAiProviderAutoConfiguration.java`
+- `ai-infrastructure-module/providers/ai-fabric-provider-spring-ai/src/main/java/ai/fabric/provider/springai/SpringAiChatClientFactory.java`
 - `ai-infrastructure-module/providers/ai-fabric-provider-spring-ai/src/main/java/ai/fabric/provider/springai/SpringAiChatProvider.java`
 - `ai-infrastructure-module/providers/ai-fabric-provider-spring-ai/src/main/java/ai/fabric/provider/springai/SpringAiEmbeddingProvider.java`
 - `ai-infrastructure-module/providers/ai-fabric-provider-spring-ai/src/main/java/ai/fabric/provider/springai/SpringAiModelResolver.java`
@@ -144,6 +145,17 @@ Per-request settings remain request options:
 
 This keeps dynamic endpoint flexibility without keeping native provider implementations.
 
+### Chat execution facade
+
+`SpringAiChatProvider` now executes chat requests through `SpringAiChatClientFactory` and Spring AI
+`ChatClient`, while `SpringAiModelResolver` still owns model/client identity and connection cache
+keys. The factory builds clients from the resolved `ChatModel`, uses the configured
+`ObservationRegistry`, and applies Spring AI `ChatClientBuilderCustomizer` beans.
+
+This gives AI Fabric a production landing point for advisor chains, observation customization,
+streaming-ready execution, and the future action/tool bridge without changing the public
+`AIProvider` contract or provider selection behavior.
+
 ### Per-request endpoint override
 
 AI Fabric already carries trusted provider connection overrides through `ProviderRequestOverrideSupport`.
@@ -159,6 +171,20 @@ AICoreService purpose defaults / request override
 ```
 
 This handles internal purpose routing and managed endpoint profiles without exposing raw endpoint switching as an uncontrolled user feature.
+Purpose-scoped connection overrides are merged independently from model, token, and temperature
+defaults, so callers can provide explicit generation options without losing the trusted endpoint/API
+key/deployment override selected by AI Fabric.
+Spring AI chat availability is request-aware for these trusted overrides: a purpose-scoped API key,
+base URL, deployment, or API version can make that request available without mutating global provider
+configuration.
+Embedding availability now follows the same rule for single embedding requests. AI Fabric can attach
+trusted embedding API key, base URL, deployment, and API-version overrides to `AIEmbeddingRequest`
+without changing the global embedding provider configuration, and the Spring AI resolver includes that
+effective connection in the cached `EmbeddingModel` identity.
+`AIProviderManager` preserves that path by allowing a request carrying AI Fabric's internal connection
+override to reach the configured registered provider even when that provider is not globally available
+from static credentials. Requests without a trusted override still use the normal global availability
+filter and fail closed when no provider is available.
 
 ### Transient file URL policy
 
@@ -172,6 +198,12 @@ Transient file policy remains an AI Fabric policy layer.
 - adds document-usage instructions without exposing raw file URLs in logs or persistent data
 
 `AIProviderManager` still owns fail-closed behavior and no-fallback semantics for transient file inputs.
+For direct provider calls, `SpringAiChatProvider` checks provider availability before resolving or
+calling a Spring AI model, so missing credentials, disabled providers, or missing endpoint/deployment
+configuration fail with an AI Fabric `AIServiceException` instead of an SDK/null-resolution error.
+The `AIProvider.generateEmbedding(...)` compatibility path checks embedding availability separately
+from chat availability so dedicated embedding credentials can work even when chat credentials are not
+configured.
 
 ### Embeddings
 
@@ -187,6 +219,20 @@ AI Fabric keeps:
 
 Spring AI handles provider-specific embedding request execution.
 
+Adapter hardening in the current branch:
+
+- direct single embedding calls reject null, blank, and over-8000-character text before calling Spring AI;
+- batch embedding calls reject null, blank, and over-8000-character entries before calling Spring AI;
+- direct single and batch embedding calls check provider availability before resolving or calling a
+  Spring AI model;
+- single embedding calls support trusted request-scoped connection overrides, including API key, base
+  URL, Azure deployment, and API version;
+- `AIEmbeddingService` includes a sanitized connection discriminator in its cache key so the same
+  text/model/provider does not reuse vectors across different trusted embedding endpoints;
+- batch embedding calls fail closed if Spring AI returns a different number of vectors than requested;
+- batch responses fall back to the configured AI Fabric embedding model when Spring AI response
+  metadata omits the model name.
+
 ### ONNX
 
 Native ONNX remains in `providers/ai-fabric-onnx-starter` and stays the default local embedding provider.
@@ -195,6 +241,14 @@ Spring AI ONNX is available beside it as `spring-ai-onnx` through `ai-fabric-pro
 It uses Spring AI's `TransformersEmbeddingModel` and the `spring-ai-transformers` dependency. This is useful for Spring AI parity, framework experimentation, and users who want Spring AI's bundled transformer path.
 
 It is not the default and does not replace AI Fabric native ONNX, because native ONNX already carries AI Fabric's current local embedding behavior and tests.
+
+Native ONNX hardening in the current branch:
+
+- direct single and batch embedding calls reject null, blank, and over-8000-character text before
+  checking runtime availability or touching ONNX Runtime;
+- valid direct calls still report an AI Fabric provider-unavailable error when no model/session is
+  initialized;
+- batch inference closes the ONNX result in a `finally` block and returns an immutable response list.
 
 ### Cohere
 

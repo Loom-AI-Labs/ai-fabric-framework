@@ -121,21 +121,15 @@ public class AIAccessControlService {
             context.put("purpose", request.getPurpose());
         }
         if (request.getMetadata() != null && !request.getMetadata().isEmpty()) {
-            // Filter out null values before copying to immutable map (Map.copyOf doesn't accept nulls)
-            Map<String, Object> filteredMetadata = request.getMetadata().entrySet().stream()
-                .filter(entry -> entry.getValue() != null)
-                .collect(java.util.stream.Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
-            if (!filteredMetadata.isEmpty()) {
-                context.put("metadata", Map.copyOf(filteredMetadata));
+            Map<String, Object> normalizedMetadata = normalizeMap(request.getMetadata());
+            if (!normalizedMetadata.isEmpty()) {
+                context.put("metadata", normalizedMetadata);
             }
         }
         if (request.getUserAttributes() != null && !request.getUserAttributes().isEmpty()) {
-            // Filter out null values before copying to immutable map (Map.copyOf doesn't accept nulls)
-            Map<String, Object> filteredAttributes = request.getUserAttributes().entrySet().stream()
-                .filter(entry -> entry.getValue() != null)
-                .collect(java.util.stream.Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
-            if (!filteredAttributes.isEmpty()) {
-                context.put("userAttributes", Map.copyOf(filteredAttributes));
+            Map<String, Object> normalizedAttributes = normalizeMap(request.getUserAttributes());
+            if (!normalizedAttributes.isEmpty()) {
+                context.put("userAttributes", normalizedAttributes);
             }
         }
         if (request.getAuthContext() != null) {

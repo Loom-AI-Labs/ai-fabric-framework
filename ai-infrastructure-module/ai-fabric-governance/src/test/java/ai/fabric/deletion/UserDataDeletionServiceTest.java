@@ -96,6 +96,72 @@ class UserDataDeletionServiceTest {
     }
 
     @Test
+    void shouldReportPartialWhenVectorDeletionFails() {
+        when(provider.canDeleteUser(USER_ID)).thenReturn(true);
+        when(provider.findIndexedEntities(USER_ID))
+            .thenReturn(List.of(new UserEntityReference("doc", "id-1")));
+        when(vectorDatabaseService.removeVector("doc", "id-1"))
+            .thenThrow(new IllegalStateException("vector backend unavailable"));
+
+        UserDataDeletionResult result = service.deleteUser(USER_ID);
+
+        assertThat(result.getStatus()).isEqualTo(UserDataDeletionResult.Status.PARTIAL);
+        assertThat(result.getIndexedEntitiesDeleted()).isEqualTo(1);
+        assertThat(result.getVectorsDeleted()).isZero();
+        assertThat(result.getDeletionFailures()).isEqualTo(1);
+        assertThat(result.getFailureMessages())
+            .containsExactly("vector removal failed for doc::id-1: vector backend unavailable");
+        assertThat(result.getMessage()).contains("Deletion completed with 1 non-fatal failure");
+
+        verify(indexCatalog).delete("doc", "id-1");
+        verify(provider).notifyAfterDeletion(USER_ID);
+    }
+
+    @Test
+    void shouldReportPartialWhenCatalogDeletionFails() {
+        when(provider.canDeleteUser(USER_ID)).thenReturn(true);
+        when(provider.findIndexedEntities(USER_ID))
+            .thenReturn(List.of(new UserEntityReference("doc", "id-1")));
+        when(vectorDatabaseService.removeVector("doc", "id-1")).thenReturn(true);
+        doThrow(new IllegalStateException("catalog unavailable"))
+            .when(indexCatalog).delete("doc", "id-1");
+
+        UserDataDeletionResult result = service.deleteUser(USER_ID);
+
+        assertThat(result.getStatus()).isEqualTo(UserDataDeletionResult.Status.PARTIAL);
+        assertThat(result.getIndexedEntitiesDeleted()).isZero();
+        assertThat(result.getVectorsDeleted()).isEqualTo(1);
+        assertThat(result.getDeletionFailures()).isEqualTo(1);
+        assertThat(result.getFailureMessages())
+            .containsExactly("catalog deletion failed for doc::id-1: catalog unavailable");
+    }
+
+    @Test
+    void shouldReportPartialAndUseCatalogFallbackWhenProviderEntityDiscoveryFails() {
+        when(provider.canDeleteUser(USER_ID)).thenReturn(true);
+        when(provider.findIndexedEntities(USER_ID))
+            .thenThrow(new IllegalStateException("provider lookup failed"));
+        when(indexCatalog.findByMetadataContainingSnippet("\"" + USER_ID + "\"", 2_000))
+            .thenReturn(List.of(IndexCatalogEntry.builder()
+                .entityType("doc")
+                .entityId("id-9")
+                .vectorId("vec-9")
+                .build()));
+        when(vectorDatabaseService.removeVector("doc", "id-9")).thenReturn(true);
+
+        UserDataDeletionResult result = service.deleteUser(USER_ID);
+
+        assertThat(result.getStatus()).isEqualTo(UserDataDeletionResult.Status.PARTIAL);
+        assertThat(result.getIndexedEntitiesDeleted()).isEqualTo(1);
+        assertThat(result.getVectorsDeleted()).isEqualTo(1);
+        assertThat(result.getDeletionFailures()).isEqualTo(1);
+        assertThat(result.getFailureMessages())
+            .containsExactly("indexed entity discovery failed: provider lookup failed");
+
+        verify(indexCatalog).delete("doc", "id-9");
+    }
+
+    @Test
     void shouldSkipWhenProviderBlocksDeletion() {
         when(provider.canDeleteUser(USER_ID)).thenReturn(false);
 

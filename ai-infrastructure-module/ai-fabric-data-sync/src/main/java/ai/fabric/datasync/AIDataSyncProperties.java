@@ -27,6 +27,11 @@ public class AIDataSyncProperties {
     private int maxBatchSize = 200;
 
     /**
+     * Base path for the data sync REST API.
+     */
+    private String basePath = "/api/ai/data-sync";
+
+    /**
      * Max chars allowed for normalized content passed to embedding generation.
      *
      * <p>This should not exceed the limit enforced by {@code AIEmbeddingRequest}.</p>
@@ -63,6 +68,14 @@ public class AIDataSyncProperties {
 
     public void setMaxBatchSize(int maxBatchSize) {
         this.maxBatchSize = maxBatchSize;
+    }
+
+    public String getBasePath() {
+        return basePath;
+    }
+
+    public void setBasePath(String basePath) {
+        this.basePath = basePath;
     }
 
     public int getMaxContentChars() {

@@ -24,7 +24,6 @@ import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.Disabled;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -36,7 +35,6 @@ import org.springframework.transaction.annotation.Transactional;
 /**
  * Integration tests covering lifecycle behaviour for persisted intent history entries.
  */
-@Disabled("Disabled due to ApplicationContext loading failures - table creation issues")
 @SpringBootTest(classes = TestApplication.class)
 @ActiveProfiles("test")
 @TestPropertySource(properties = {

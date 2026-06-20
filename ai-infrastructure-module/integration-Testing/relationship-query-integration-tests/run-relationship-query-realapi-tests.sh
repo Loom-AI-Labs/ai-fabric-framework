@@ -308,8 +308,8 @@ else
     if [ ! -d "$CORE_TARGET" ] || [ ! -f "$CORE_TARGET/ai-fabric-core-*.jar" ] 2>/dev/null; then
         print_warning "Dependencies may not be built. Attempting to build..."
         cd "$PARENT_DIR" || exit 1
-        if ! mvn clean install -DskipTests -B -q; then
-            print_error "Failed to build dependencies. Please run 'mvn clean install -DskipTests' from the parent module first."
+        if ! mvn clean install -B -q; then
+            print_error "Failed to build dependencies. Please run 'mvn clean install' from the parent module first."
             exit 1
         fi
         cd "$SCRIPT_DIR" || exit 1

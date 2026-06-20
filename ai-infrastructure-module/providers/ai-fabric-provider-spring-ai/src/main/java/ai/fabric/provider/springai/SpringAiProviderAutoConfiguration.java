@@ -2,9 +2,13 @@ package ai.fabric.provider.springai;
 
 import ai.fabric.config.AIProviderConfig;
 import ai.fabric.embedding.EmbeddingProvider;
+import ai.fabric.intent.action.tool.AIActionToolCallbackFactory;
 import ai.fabric.provider.AIProvider;
+import io.micrometer.observation.ObservationRegistry;
+import org.springframework.ai.chat.client.ChatClientBuilderCustomizer;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.embedding.EmbeddingModel;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
@@ -19,14 +23,55 @@ public class SpringAiProviderAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
-    public SpringAiModelResolver springAiModelResolver(AIProviderConfig providerConfig) {
-        return new SpringAiModelResolver(providerConfig);
+    public SpringAiObservationDiagnostics springAiObservationDiagnostics() {
+        return new SpringAiObservationDiagnostics();
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    public SpringAiObservationHandler springAiObservationHandler(SpringAiObservationDiagnostics diagnostics) {
+        return new SpringAiObservationHandler(diagnostics);
+    }
+
+    @Bean
+    public SpringAiObservationRegistration springAiObservationRegistration(
+        ObjectProvider<ObservationRegistry> observationRegistry,
+        SpringAiObservationHandler observationHandler
+    ) {
+        return new SpringAiObservationRegistration(
+            observationRegistry.getIfAvailable(),
+            observationHandler
+        );
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    public SpringAiModelResolver springAiModelResolver(AIProviderConfig providerConfig,
+                                                       ObjectProvider<ObservationRegistry> observationRegistry) {
+        return new SpringAiModelResolver(
+            providerConfig,
+            observationRegistry.getIfAvailable(() -> ObservationRegistry.NOOP)
+        );
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    public SpringAiChatClientFactory springAiChatClientFactory(
+        ObjectProvider<ObservationRegistry> observationRegistry,
+        ObjectProvider<ChatClientBuilderCustomizer> builderCustomizers
+    ) {
+        return new SpringAiChatClientFactory(
+            observationRegistry.getIfAvailable(() -> ObservationRegistry.NOOP),
+            builderCustomizers.orderedStream().toList()
+        );
     }
 
     @Bean
     @ConditionalOnProperty(prefix = "ai.providers.openai", name = "enabled", havingValue = "true", matchIfMissing = true)
-    public AIProvider openAiSpringAiProvider(SpringAiModelResolver resolver) {
-        return new SpringAiChatProvider("openai", resolver);
+    public AIProvider openAiSpringAiProvider(SpringAiModelResolver resolver,
+                                             SpringAiChatClientFactory chatClientFactory,
+                                             ObjectProvider<AIActionToolCallbackFactory> actionToolCallbackFactory) {
+        return new SpringAiChatProvider("openai", resolver, chatClientFactory, actionToolCallbackFactory.getIfAvailable());
     }
 
     @Bean
@@ -37,8 +82,10 @@ public class SpringAiProviderAutoConfiguration {
 
     @Bean
     @ConditionalOnProperty(prefix = "ai.providers.azure", name = "enabled", havingValue = "true")
-    public AIProvider azureSpringAiProvider(SpringAiModelResolver resolver) {
-        return new SpringAiChatProvider("azure", resolver);
+    public AIProvider azureSpringAiProvider(SpringAiModelResolver resolver,
+                                            SpringAiChatClientFactory chatClientFactory,
+                                            ObjectProvider<AIActionToolCallbackFactory> actionToolCallbackFactory) {
+        return new SpringAiChatProvider("azure", resolver, chatClientFactory, actionToolCallbackFactory.getIfAvailable());
     }
 
     @Bean
@@ -49,14 +96,18 @@ public class SpringAiProviderAutoConfiguration {
 
     @Bean
     @ConditionalOnProperty(prefix = "ai.providers.anthropic", name = "enabled", havingValue = "true")
-    public AIProvider anthropicSpringAiProvider(SpringAiModelResolver resolver) {
-        return new SpringAiChatProvider("anthropic", resolver);
+    public AIProvider anthropicSpringAiProvider(SpringAiModelResolver resolver,
+                                                SpringAiChatClientFactory chatClientFactory,
+                                                ObjectProvider<AIActionToolCallbackFactory> actionToolCallbackFactory) {
+        return new SpringAiChatProvider("anthropic", resolver, chatClientFactory, actionToolCallbackFactory.getIfAvailable());
     }
 
     @Bean
     @ConditionalOnProperty(prefix = "ai.providers.gemini", name = "enabled", havingValue = "true")
-    public AIProvider geminiSpringAiProvider(SpringAiModelResolver resolver) {
-        return new SpringAiChatProvider("gemini", resolver);
+    public AIProvider geminiSpringAiProvider(SpringAiModelResolver resolver,
+                                             SpringAiChatClientFactory chatClientFactory,
+                                             ObjectProvider<AIActionToolCallbackFactory> actionToolCallbackFactory) {
+        return new SpringAiChatProvider("gemini", resolver, chatClientFactory, actionToolCallbackFactory.getIfAvailable());
     }
 
     @Bean

@@ -32,8 +32,8 @@ jobs:
       - name: Install YAML parser
         run: python3 -m pip install --disable-pip-version-check --quiet pyyaml
 
-      - name: Validate provider registry and workflow choices
-        run: .github/scripts/validate-provider-registry.sh
+      - name: Validate framework release guards
+        run: .github/scripts/validate-framework-release-guards.sh
 
   maven-build:
     name: Maven Build
@@ -69,7 +69,6 @@ jobs:
       - name: Compile restored integration test suites
         run: |
           mvn ${MAVEN_ARGS} -f ai-infrastructure-module/pom.xml \
-            -DskipTests \
             -pl integration-Testing/testcontainers-support,integration-Testing/integration-tests,integration-Testing/relationship-query-integration-tests,integration-Testing/chat-session-integration-tests,integration-Testing/behavior-integration-tests \
             -am \
             test-compile
@@ -79,13 +78,11 @@ jobs:
       - name: Compile minimal consumer example
         run: |
           mvn ${MAVEN_ARGS} -f examples/minimal-spring-boot/pom.xml \
-            -DskipTests \
             compile
 
       - name: Build and install real apps suite
         run: |
           mvn ${MAVEN_ARGS} -f examples/real-apps/pom.xml \
-            -DskipTests \
             install
 
       - name: Smoke boot-test real apps (offline 'smoke' profile)

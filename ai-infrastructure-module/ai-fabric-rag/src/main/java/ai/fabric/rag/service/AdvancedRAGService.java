@@ -4,15 +4,16 @@ import ai.fabric.core.AICoreService;
 import ai.fabric.core.AIEmbeddingService;
 import ai.fabric.core.AISearchService;
 import ai.fabric.dto.AIEmbeddingRequest;
+import ai.fabric.dto.AIEmbeddingResponse;
 import ai.fabric.dto.AdvancedRAGRequest;
 import ai.fabric.dto.AdvancedRAGResponse;
 import ai.fabric.dto.RAGRequest;
 import ai.fabric.dto.RAGResponse;
 import ai.fabric.prompt.PromptRenderer;
 import ai.fabric.prompt.PromptTemplateResolver;
+import ai.fabric.rag.config.RAGProperties;
 import ai.fabric.spi.AdvancedRAGProvider;
 import ai.fabric.spi.RAGProvider;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.ArrayList;
@@ -26,6 +27,8 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
+import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 
@@ -60,7 +63,6 @@ import java.util.stream.Collectors;
  * @since 1.0
  */
 @Slf4j
-@RequiredArgsConstructor
 public class AdvancedRAGService implements AdvancedRAGProvider {
 
     // =========================================================================
@@ -90,6 +92,7 @@ public class AdvancedRAGService implements AdvancedRAGProvider {
     private static final String TEMPLATE_OPTIMIZE = "optimize";
     private static final String TEMPLATE_GENERATE = "generate";
     private static final String TEMPLATE_GENERATE_AUTHORITATIVE = "generate-authoritative";
+    private static final String SEMANTIC_RERANK_ENTITY_TYPE = "advanced-rag-rerank";
 
     private static final String PLACEHOLDER_EXPANSION_LEVEL = "expansion_level";
     private static final String PLACEHOLDER_QUERY = "query";
@@ -121,6 +124,15 @@ public class AdvancedRAGService implements AdvancedRAGProvider {
     private final RAGProvider ragProvider;
     private final PromptTemplateResolver promptTemplateResolver;
     private final PromptRenderer promptRenderer;
+    private final Executor searchExecutor;
+    private final int defaultExpansionLevel;
+    private final String defaultRerankingStrategy;
+    private final String defaultContextOptimizationLevel;
+    private final int defaultMaxDocuments;
+    private final int defaultMaxResultsPerQuery;
+    private final int defaultMaxSemanticRerankDocuments;
+    private final boolean defaultHybridSearch;
+    private final boolean defaultContextualSearch;
 
     private final AtomicLong totalRequests = new AtomicLong();
     private final AtomicLong successfulRequests = new AtomicLong();
@@ -129,6 +141,56 @@ public class AdvancedRAGService implements AdvancedRAGProvider {
     private final AtomicLong lastProcessingTimeMs = new AtomicLong();
     private final AtomicLong lastRequestTimestamp = new AtomicLong();
     private volatile String lastErrorMessage;
+
+    public AdvancedRAGService(AISearchService aiSearchService,
+                              AIEmbeddingService aiEmbeddingService,
+                              AICoreService aiCoreService,
+                              RAGProvider ragProvider,
+                              PromptTemplateResolver promptTemplateResolver,
+                              PromptRenderer promptRenderer) {
+        this(aiSearchService, aiEmbeddingService, aiCoreService, ragProvider, promptTemplateResolver, promptRenderer, legacyDefaults());
+    }
+
+    public AdvancedRAGService(AISearchService aiSearchService,
+                              AIEmbeddingService aiEmbeddingService,
+                              AICoreService aiCoreService,
+                              RAGProvider ragProvider,
+                              PromptTemplateResolver promptTemplateResolver,
+                              PromptRenderer promptRenderer,
+                              RAGProperties properties) {
+        this(aiSearchService, aiEmbeddingService, aiCoreService, ragProvider, promptTemplateResolver, promptRenderer, properties, ForkJoinPool.commonPool());
+    }
+
+    public AdvancedRAGService(AISearchService aiSearchService,
+                              AIEmbeddingService aiEmbeddingService,
+                              AICoreService aiCoreService,
+                              RAGProvider ragProvider,
+                              PromptTemplateResolver promptTemplateResolver,
+                              PromptRenderer promptRenderer,
+                              RAGProperties properties,
+                              Executor searchExecutor) {
+        this.aiSearchService = aiSearchService;
+        this.aiEmbeddingService = aiEmbeddingService;
+        this.aiCoreService = Objects.requireNonNull(aiCoreService, "aiCoreService must not be null");
+        this.ragProvider = Objects.requireNonNull(ragProvider, "ragProvider must not be null");
+        this.promptTemplateResolver = Objects.requireNonNull(promptTemplateResolver, "promptTemplateResolver must not be null");
+        this.promptRenderer = Objects.requireNonNull(promptRenderer, "promptRenderer must not be null");
+        this.searchExecutor = Objects.requireNonNull(searchExecutor, "searchExecutor must not be null");
+
+        RAGProperties fallbackProperties = legacyDefaults();
+        RAGProperties resolvedProperties = properties != null ? properties : fallbackProperties;
+        RAGProperties.AdvancedProperties advanced = resolvedProperties.getAdvanced() != null
+            ? resolvedProperties.getAdvanced()
+            : fallbackProperties.getAdvanced();
+        this.defaultExpansionLevel = normalizePositive(advanced.getDefaultExpansionLevel(), 2);
+        this.defaultRerankingStrategy = nonBlankOrDefault(advanced.getDefaultRerankingStrategy(), STRATEGY_HYBRID);
+        this.defaultContextOptimizationLevel = nonBlankOrDefault(advanced.getDefaultContextOptimizationLevel(), LEVEL_MEDIUM);
+        this.defaultMaxDocuments = normalizePositive(advanced.getMaxDocuments(), 5);
+        this.defaultMaxResultsPerQuery = normalizePositive(advanced.getMaxResultsPerQuery(), 10);
+        this.defaultMaxSemanticRerankDocuments = normalizePositive(advanced.getMaxSemanticRerankDocuments(), 100);
+        this.defaultHybridSearch = resolvedProperties.isEnableHybridSearch();
+        this.defaultContextualSearch = resolvedProperties.isEnableContextualSearch();
+    }
 
     // =========================================================================
     // Public Methods
@@ -276,7 +338,7 @@ public class AdvancedRAGService implements AdvancedRAGProvider {
             AdvancedRAGRequest request) {
         List<CompletableFuture<RAGResponse>> futures = queries.stream()
             .map(query -> CompletableFuture.supplyAsync(() -> 
-                executeSearch(query, request)))
+                executeSearch(query, request), searchExecutor))
             .collect(Collectors.toList());
         
         return futures.stream()
@@ -291,8 +353,8 @@ public class AdvancedRAGService implements AdvancedRAGProvider {
             RAGRequest.RAGRequestBuilder ragRequestBuilder = RAGRequest.builder()
                 .query(query)
                 .limit(maxResults(request))
-                .enableHybridSearch(request.getEnableHybridSearch())
-                .enableContextualSearch(request.getEnableContextualSearch())
+                .enableHybridSearch(enableHybridSearch(request))
+                .enableContextualSearch(enableContextualSearch(request))
                 .categories(request.getCategories())
                 .filters(request.getFilters())
                 .authContext(request.getAuthContext());
@@ -349,36 +411,53 @@ public class AdvancedRAGService implements AdvancedRAGProvider {
 
     private List<RAGResponse.RAGDocument> rerankBySemanticSimilarity(
             List<RAGResponse.RAGDocument> documents, String query) {
-        
+        if (documents.isEmpty()) {
+            return documents;
+        }
+
         try {
             AIEmbeddingRequest queryRequest = AIEmbeddingRequest.builder()
                 .text(query)
                 .build();
             List<Double> queryEmbedding = aiEmbeddingService.generateEmbedding(queryRequest)
                 .getEmbedding();
-            
-            return documents.stream()
-                .map(doc -> {
-                    try {
-                        AIEmbeddingRequest docRequest = AIEmbeddingRequest.builder()
-                            .text(doc.getContent())
-                            .build();
-                        List<Double> docEmbedding = aiEmbeddingService
-                            .generateEmbedding(docRequest).getEmbedding();
-                        double similarity = calculateCosineSimilarity(queryEmbedding, docEmbedding);
-                        doc.setSimilarity(similarity);
-                        return doc;
-                    } catch (Exception e) {
-                        log.warn("Failed to calculate similarity for document: {}", doc.getId(), e);
-                        return doc;
-                    }
-                })
+            if (!hasEmbedding(queryEmbedding)) {
+                return documents;
+            }
+
+            List<RAGResponse.RAGDocument> candidates = documents.stream()
+                .sorted(Comparator.comparingDouble(this::candidateScore).reversed())
+                .limit(defaultMaxSemanticRerankDocuments)
+                .collect(Collectors.toList());
+
+            Map<Integer, List<Double>> candidateEmbeddings = resolveDocumentEmbeddings(candidates);
+            List<RAGResponse.RAGDocument> rerankedCandidates = new ArrayList<>(candidates.size());
+
+            for (int index = 0; index < candidates.size(); index++) {
+                RAGResponse.RAGDocument doc = candidates.get(index);
+                List<Double> docEmbedding = candidateEmbeddings.get(index);
+                if (hasEmbedding(docEmbedding)) {
+                    double similarity = calculateCosineSimilarity(queryEmbedding, docEmbedding);
+                    doc.setSimilarity(similarity);
+                }
+                rerankedCandidates.add(doc);
+            }
+
+            List<RAGResponse.RAGDocument> reranked = rerankedCandidates.stream()
                 .sorted(Comparator.comparingDouble((RAGResponse.RAGDocument doc) -> safeDouble(doc.getSimilarity()))
                     .reversed())
                 .collect(Collectors.toList());
+
+            documents.stream()
+                .filter(doc -> !candidates.contains(doc))
+                .sorted(Comparator.comparingDouble(this::candidateScore).reversed())
+                .forEach(reranked::add);
+
+            return reranked;
                 
         } catch (Exception e) {
-            log.warn("Semantic re-ranking failed, using original order", e);
+            log.warn("Semantic re-ranking failed, using original order: {}", e.getMessage());
+            log.debug("Semantic re-ranking failure details", e);
             return documents;
         }
     }
@@ -586,8 +665,8 @@ public class AdvancedRAGService implements AdvancedRAGProvider {
         metadata.put(METADATA_KEY_RERANKING_STRATEGY, rerankingStrategy(request));
         metadata.put(METADATA_KEY_CONTEXT_OPTIMIZATION_LEVEL, contextOptimizationLevel(request));
         metadata.put(METADATA_KEY_MAX_DOCUMENTS, maxDocuments(request));
-        metadata.put(METADATA_KEY_ENABLE_HYBRID_SEARCH, request.getEnableHybridSearch());
-        metadata.put(METADATA_KEY_ENABLE_CONTEXTUAL_SEARCH, request.getEnableContextualSearch());
+        metadata.put(METADATA_KEY_ENABLE_HYBRID_SEARCH, enableHybridSearch(request));
+        metadata.put(METADATA_KEY_ENABLE_CONTEXTUAL_SEARCH, enableContextualSearch(request));
         return metadata;
     }
 
@@ -634,19 +713,19 @@ public class AdvancedRAGService implements AdvancedRAGProvider {
     }
 
     private int expansionLevel(AdvancedRAGRequest request) {
-        return request.getExpansionLevel() != null ? request.getExpansionLevel() : 2;
+        return request.getExpansionLevel() != null ? request.getExpansionLevel() : defaultExpansionLevel;
     }
 
     private int maxDocuments(AdvancedRAGRequest request) {
         return request.getMaxDocuments() != null && request.getMaxDocuments() > 0
             ? request.getMaxDocuments()
-            : 5;
+            : defaultMaxDocuments;
     }
 
     private int maxResults(AdvancedRAGRequest request) {
         return request.getMaxResults() != null && request.getMaxResults() > 0
             ? request.getMaxResults()
-            : 10;
+            : defaultMaxResultsPerQuery;
     }
 
     private String rerankingStrategy(AdvancedRAGRequest request) {
@@ -654,7 +733,7 @@ public class AdvancedRAGService implements AdvancedRAGProvider {
     }
 
     private String rerankingStrategy(String strategy) {
-        return strategy != null && !strategy.isBlank() ? strategy : STRATEGY_HYBRID;
+        return strategy != null && !strategy.isBlank() ? strategy : defaultRerankingStrategy;
     }
 
     private String contextOptimizationLevel(AdvancedRAGRequest request) {
@@ -662,6 +741,81 @@ public class AdvancedRAGService implements AdvancedRAGProvider {
     }
 
     private String contextOptimizationLevel(String level) {
-        return level != null && !level.isBlank() ? level : LEVEL_MEDIUM;
+        return level != null && !level.isBlank() ? level : defaultContextOptimizationLevel;
+    }
+
+    private boolean enableHybridSearch(AdvancedRAGRequest request) {
+        return request.getEnableHybridSearch() != null ? request.getEnableHybridSearch() : defaultHybridSearch;
+    }
+
+    private boolean enableContextualSearch(AdvancedRAGRequest request) {
+        return request.getEnableContextualSearch() != null
+            ? request.getEnableContextualSearch()
+            : defaultContextualSearch;
+    }
+
+    private static RAGProperties legacyDefaults() {
+        RAGProperties properties = new RAGProperties();
+        properties.setEnableHybridSearch(true);
+        properties.setEnableContextualSearch(true);
+        properties.getAdvanced().setDefaultExpansionLevel(2);
+        properties.getAdvanced().setDefaultRerankingStrategy(STRATEGY_HYBRID);
+        properties.getAdvanced().setDefaultContextOptimizationLevel(LEVEL_MEDIUM);
+        properties.getAdvanced().setMaxDocuments(5);
+        properties.getAdvanced().setMaxResultsPerQuery(10);
+        properties.getAdvanced().setMaxSemanticRerankDocuments(100);
+        return properties;
+    }
+
+    private static int normalizePositive(int value, int fallback) {
+        return value > 0 ? value : fallback;
+    }
+
+    private static String nonBlankOrDefault(String value, String fallback) {
+        return value != null && !value.isBlank() ? value : fallback;
+    }
+
+    private Map<Integer, List<Double>> resolveDocumentEmbeddings(List<RAGResponse.RAGDocument> candidates) {
+        Map<Integer, List<Double>> resolved = new HashMap<>();
+        List<Integer> missingIndexes = new ArrayList<>();
+        List<String> missingTexts = new ArrayList<>();
+
+        for (int index = 0; index < candidates.size(); index++) {
+            RAGResponse.RAGDocument doc = candidates.get(index);
+            if (hasEmbedding(doc.getEmbeddings())) {
+                resolved.put(index, doc.getEmbeddings());
+            } else {
+                missingIndexes.add(index);
+                missingTexts.add(doc.getContent() != null ? doc.getContent() : "");
+            }
+        }
+
+        if (missingTexts.isEmpty()) {
+            return resolved;
+        }
+
+        List<AIEmbeddingResponse> responses = aiEmbeddingService.generateEmbeddings(missingTexts, SEMANTIC_RERANK_ENTITY_TYPE);
+        if (responses == null || responses.size() != missingTexts.size()) {
+            throw new IllegalStateException("Batch embedding response count did not match semantic rerank candidate count");
+        }
+
+        for (int i = 0; i < responses.size(); i++) {
+            AIEmbeddingResponse response = responses.get(i);
+            if (response != null && hasEmbedding(response.getEmbedding())) {
+                resolved.put(missingIndexes.get(i), response.getEmbedding());
+            }
+        }
+
+        return resolved;
+    }
+
+    private double candidateScore(RAGResponse.RAGDocument doc) {
+        double score = safeDouble(doc.getScore());
+        double similarity = safeDouble(doc.getSimilarity());
+        return Math.max(score, similarity);
+    }
+
+    private boolean hasEmbedding(List<Double> embedding) {
+        return embedding != null && !embedding.isEmpty();
     }
 }

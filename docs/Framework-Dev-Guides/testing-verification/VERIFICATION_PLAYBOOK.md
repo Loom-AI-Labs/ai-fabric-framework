@@ -59,6 +59,80 @@ For direct managed-provider verification of Pinecone, Qdrant Cloud, Zilliz Cloud
 
 - `scripts/verify-managed-vector-providers.sh`
 
+For local vector provider contract parity, run the shared `VectorDatabaseService` contract suite:
+
+```bash
+cd ai-infrastructure-module
+mvn test -pl integration-Testing/vector-contract-tests -am
+```
+
+This is an offline gate. It covers the local memory and Lucene providers against the same lifecycle
+contract: capability flags, store/get/search, metadata-filtered scans with cursors, projection flags,
+update, batch remove, clear-by-entity-type isolation, and scoped-provider isolation with the same
+`entityType`/`entityId` stored under two independent provider scopes.
+
+For local real-provider parity with containers, run:
+
+```bash
+cd ai-infrastructure-module
+mvn verify -Pcontainer-contract-tests -pl integration-Testing/vector-contract-tests -am
+```
+
+This opt-in gate requires a running Docker daemon and covers Qdrant REST, Qdrant gRPC, Weaviate, and
+Milvus against the same contract, including scoped-provider isolation using two configured scopes in
+the same provider backend. Override images with `-Dtestcontainers.qdrant.image=...`,
+`-Dtestcontainers.weaviate.image=...`, or `-Dtestcontainers.milvus.image=...` when validating a
+specific provider version. Keep Pinecone in the managed/live provider verification path because it is
+a SaaS backend, not a local Testcontainers target.
+
+The manual `Framework Provider Matrix Suite` GitHub Actions workflow runs this as the
+`Vector Provider Container Contracts` job by default; set `run_vector_contracts=false` only when you are
+intentionally skipping the Docker-backed vector-provider release gate.
+
+For Pinecone provider-live parity, run the opt-in SaaS provider suite:
+
+```bash
+cd ai-infrastructure-module
+PINECONE_API_KEY=... \
+PINECONE_API_HOST=https://<index-host>.pinecone.io \
+PINECONE_INDEX_NAME=<index-name> \
+PINECONE_LIVE_REQUIRED=true \
+mvn verify -Ppinecone-live-tests -pl victor-databases/ai-fabric-vector-pinecone -am
+```
+
+This test uses an isolated namespace prefix and validates real store/fetch/search/update/clear behavior
+with metadata filtering and eventual-consistency polling. If the configured Pinecone index is sparse, it
+also validates sparse embedding roundtrip behavior. `PINECONE_INDEX_NAME` is optional when it can be
+derived from `PINECONE_API_HOST`; otherwise provide `PINECONE_INDEX_NAME` and `PINECONE_ENVIRONMENT`.
+`PINECONE_LIVE_REQUIRED=true` makes missing credentials or location configuration fail the release
+gate instead of skipping the live tests.
+
+The manual `Framework Provider Matrix Suite` GitHub Actions workflow runs this direct gate
+automatically for the Pinecone matrix row before the broader application-level RealAPI suites.
+Configure `PINECONE_API_HOST`, or configure both `PINECONE_INDEX_NAME` and `PINECONE_ENVIRONMENT`,
+as repository variables or workflow inputs; the workflow does not include a built-in Pinecone index
+default.
+
+For deployed runtime vector readiness, run the lightweight health verifier:
+
+```bash
+RUNTIME_BASE_URL="https://<runtime>.up.railway.app" \
+.github/scripts/verify-vector-readiness-health.sh
+```
+
+This checks `/actuator/health/vectorProvider` and fails unless the vector provider reports a clean
+`READY` / `productionReady=true` verdict. To allow operational `WARN` states during non-release
+diagnostics:
+
+```bash
+RUNTIME_BASE_URL="https://<runtime>.up.railway.app" \
+VECTOR_READINESS_ALLOW_WARN=true \
+.github/scripts/verify-vector-readiness-health.sh
+```
+
+The verifier also accepts `VECTOR_READINESS_URL` for a custom health URL and
+`VECTOR_READINESS_JSON_FILE` for offline validation against a saved health response.
+
 ## 0) Fill These In
 
 Set the two base URLs you are verifying:

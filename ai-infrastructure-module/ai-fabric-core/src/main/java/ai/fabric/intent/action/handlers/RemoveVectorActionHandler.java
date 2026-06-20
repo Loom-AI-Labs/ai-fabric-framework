@@ -16,6 +16,7 @@ import org.springframework.context.annotation.Conditional;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.util.StringUtils;
 
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 @Slf4j
@@ -43,6 +44,24 @@ public class RemoveVectorActionHandler {
     public ActionResult execute(@Param(required = true, description = "Entity type") String entityType,
                                 @Param(required = true, description = "Entity id") String entityId,
                                 ActionContext context) {
+        if (!StringUtils.hasText(entityType) || !StringUtils.hasText(entityId)) {
+            Map<String, Object> data = new LinkedHashMap<>();
+            if (entityType != null) {
+                data.put("entityType", entityType);
+            }
+            if (entityId != null) {
+                data.put("entityId", entityId);
+            }
+            data.put("removed", false);
+            data.put("reason", "entityType and entityId are required");
+            return ActionResult.builder()
+                .success(false)
+                .message("Entity type and entity id are required.")
+                .errorCode("INVALID_VECTOR_REFERENCE")
+                .data(ActionResultContracts.object(data))
+                .build();
+        }
+
         boolean removed = vectorDatabaseService.removeVector(entityType, entityId);
         log.info("Remove vector request entityType={} entityId={} user={} removed={}",
             entityType, entityId, context != null ? context.identifier() : "unknown", removed);

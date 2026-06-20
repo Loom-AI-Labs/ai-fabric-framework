@@ -14,7 +14,7 @@
     <artifactId>ai-fabric-onnx-starter</artifactId>
     <packaging>jar</packaging>
 
-    <name>AI Infrastructure ONNX Starter</name>
+    <name>AI Fabric ONNX Starter</name>
     <description>Optional starter for ONNX Runtime embedding support and auto-configuration</description>
 
     <dependencies>

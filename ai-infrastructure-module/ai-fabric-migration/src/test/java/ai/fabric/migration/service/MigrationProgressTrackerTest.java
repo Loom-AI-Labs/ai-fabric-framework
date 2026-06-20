@@ -45,6 +45,20 @@ class MigrationProgressTrackerTest {
         assertThat(progress.getEstimatedTimeRemaining()).isNull();
     }
 
+    @Test
+    void completedJobsReportFullProgressEvenWhenRowsWereSkipped() {
+        MigrationJob job = baseJob();
+        job.setStatus(MigrationStatus.COMPLETED);
+        job.setTotalEntities(10L);
+        job.setProcessedEntities(2L);
+        job.setFailedEntities(1L);
+
+        MigrationProgress progress = tracker.toProgress(job);
+
+        assertThat(progress.getPercentComplete()).isEqualTo(100.0);
+        assertThat(progress.getEstimatedTimeRemaining()).isEqualTo(Duration.ZERO);
+    }
+
     private MigrationJob baseJob() {
         return MigrationJob.builder()
             .id("mig-test")

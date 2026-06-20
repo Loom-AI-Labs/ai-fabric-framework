@@ -13,7 +13,7 @@
     <artifactId>ai-fabric-behavior</artifactId>
     <packaging>jar</packaging>
 
-    <name>AI Infrastructure Behavior Module</name>
+    <name>AI Fabric Behavior Module</name>
     <description>Behavior analysis and insight generation extension for AI Fabric.</description>
 
     <dependencies>

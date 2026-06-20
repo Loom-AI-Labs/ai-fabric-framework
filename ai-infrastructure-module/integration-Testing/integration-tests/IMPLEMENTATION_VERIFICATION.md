@@ -2,11 +2,16 @@
 
 ## ✅ Implementation Status: COMPLETE
 
+Release accuracy note: the repository currently ships AI Fabric vector provider modules for
+Milvus, Qdrant, Weaviate, Pinecone, Lucene, and memory. Chroma and pgvector support in this
+Testcontainers package is generic container wiring only; there are no AI Fabric Chroma or
+pgvector vector provider modules yet.
+
 ### Files Created
 
 1. ✅ **VectorDatabaseContainerAutoConfiguration.java**
    - Location: `src/test/java/ai/fabric/it/config/`
-   - Status: Complete with all 5 providers (Milvus, Qdrant, Weaviate, Chroma, pgvector)
+   - Status: Complete for module-backed containers (Milvus, Qdrant, Weaviate) plus generic future-provider fixtures (Chroma, pgvector)
    - Framework Standards: ✅ All followed (constants, JavaDoc, thread-safety, error handling)
 
 2. ✅ **TestcontainersInitializer.java**
@@ -37,8 +42,8 @@
 - Milvus: `ai.providers.milvus.{host,port,database-name,username,password,secure,enabled}`
 - Qdrant: `ai.providers.qdrant.{host,port,grpc-port,api-key,prefer-grpc,enabled}`
 - Weaviate: `ai.providers.weaviate.{scheme,host,port,api-key,enabled}`
-- Chroma: `ai.providers.chroma.{host,port,enabled}`
-- pgvector: `ai.providers.pgvector.{host,port,database,username,password}`
+- Chroma fixture: `ai.providers.chroma.{host,port,enabled}` (no AI Fabric provider module yet)
+- pgvector fixture: `ai.providers.pgvector.{host,port,database,username,password}` (no AI Fabric provider module yet)
 
 ### Framework Standards Compliance
 
@@ -80,7 +85,7 @@
 **Usage in GitHub Actions:**
 ```yaml
 # To use Testcontainers in manual workflow:
-# 1. Select vector_database: milvus (or qdrant, weaviate, chroma, pgvector)
+# 1. Select vector_database: milvus (or qdrant, weaviate)
 # 2. Tests will automatically use Testcontainers when:
 #    - spring.profiles.active includes "testcontainers"
 #    - ai.vector-db.type matches the selected provider
@@ -102,7 +107,8 @@ env:
 - [x] Dependencies added to pom.xml
 - [x] Configuration classes created
 - [x] Property keys match service expectations
-- [x] All providers supported (Milvus, Qdrant, Weaviate, Chroma, pgvector)
+- [x] Module-backed providers supported for Testcontainers (Milvus, Qdrant, Weaviate)
+- [x] Generic Chroma/pgvector container fixtures retained for future provider modules
 - [x] Framework standards followed
 - [x] Documentation complete
 

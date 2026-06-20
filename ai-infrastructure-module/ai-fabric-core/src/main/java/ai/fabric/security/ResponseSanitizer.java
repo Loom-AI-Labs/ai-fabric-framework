@@ -4,6 +4,7 @@ import ai.fabric.config.ResponseSanitizationProperties;
 import ai.fabric.dto.NextStepRecommendation;
 import ai.fabric.dto.PIIDetection;
 import ai.fabric.dto.PIIDetectionResult;
+import ai.fabric.dto.RAGResponse;
 import ai.fabric.intent.action.ActionResult;
 import ai.fabric.intent.orchestration.OrchestrationResult;
 import ai.fabric.privacy.pii.PIIDetectionService;
@@ -313,6 +314,14 @@ public class ResponseSanitizer {
             return sanitizeActionResult(actionResult, userId);
         }
 
+        if (value instanceof RAGResponse ragResponse) {
+            return sanitizeRagResponse(ragResponse, userId);
+        }
+
+        if (value instanceof RAGResponse.RAGDocument ragDocument) {
+            return sanitizeRagDocument(ragDocument, userId);
+        }
+
         if (value instanceof OrchestrationResult orchestrationResult) {
             return sanitizeNestedOrchestrationResult(orchestrationResult, userId);
         }
@@ -322,6 +331,78 @@ public class ResponseSanitizer {
         }
 
         return SanitizationOutcome.of(value, RiskLevel.NONE, List.of());
+    }
+
+    private SanitizationOutcome<Object> sanitizeRagResponse(RAGResponse response, String userId) {
+        Map<String, Object> raw = new LinkedHashMap<>();
+        putIfNonNull(raw, "documents", response.getDocuments());
+        putIfNonNull(raw, "context", response.getContext());
+        putIfNonNull(raw, "totalDocuments", response.getTotalDocuments());
+        putIfNonNull(raw, "usedDocuments", response.getUsedDocuments());
+        putIfNonNull(raw, "relevanceScores", response.getRelevanceScores());
+        putIfNonNull(raw, "success", response.getSuccess());
+        putIfNonNull(raw, "hybridSearchUsed", response.getHybridSearchUsed());
+        putIfNonNull(raw, "contextualSearchUsed", response.getContextualSearchUsed());
+        putIfNonNull(raw, "searchedCategories", response.getSearchedCategories());
+        putIfNonNull(raw, "totalResults", response.getTotalResults());
+        putIfNonNull(raw, "returnedResults", response.getReturnedResults());
+        putIfNonNull(raw, "maxScore", response.getMaxScore());
+        putIfNonNull(raw, "averageScore", response.getAverageScore());
+        putIfNonNull(raw, "processingTimeMs", response.getProcessingTimeMs());
+        putIfNonNull(raw, "requestId", response.getRequestId());
+        putIfNonNull(raw, "originalQuery", response.getOriginalQuery());
+        putIfNonNull(raw, "entityType", response.getEntityType());
+        putIfNonNull(raw, "model", response.getModel());
+        putIfNonNull(raw, "timestamp", response.getTimestamp());
+        putIfNonNull(raw, "metadata", response.getMetadata());
+        putIfNonNull(raw, "fromCache", response.getFromCache());
+        putIfNonNull(raw, "cacheHitRate", response.getCacheHitRate());
+        putIfNonNull(raw, "errorMessage", response.getErrorMessage());
+        putIfNonNull(raw, "warnings", response.getWarnings());
+        putIfNonNull(raw, "suggestions", response.getSuggestions());
+        putIfNonNull(raw, "relatedQueries", response.getRelatedQueries());
+        putIfNonNull(raw, "facets", response.getFacets());
+        putIfNonNull(raw, "aggregations", response.getAggregations());
+        putIfNonNull(raw, "confidenceScore", response.getConfidenceScore());
+        putIfNonNull(raw, "qualityThresholdMet", response.getQualityThresholdMet());
+
+        SanitizationOutcome<Map<String, Object>> outcome = sanitizeMap(raw, userId);
+        return SanitizationOutcome.of(outcome.value(), outcome.riskLevel(), outcome.detectedTypes());
+    }
+
+    private SanitizationOutcome<Object> sanitizeRagDocument(RAGResponse.RAGDocument document, String userId) {
+        Map<String, Object> raw = new LinkedHashMap<>();
+        putIfNonNull(raw, "id", document.getId());
+        putIfNonNull(raw, "content", document.getContent());
+        putIfNonNull(raw, "title", document.getTitle());
+        putIfNonNull(raw, "type", document.getType());
+        putIfNonNull(raw, "score", document.getScore());
+        putIfNonNull(raw, "similarity", document.getSimilarity());
+        putIfNonNull(raw, "metadata", document.getMetadata());
+        putIfNonNull(raw, "embeddings", document.getEmbeddings());
+        putIfNonNull(raw, "highlightedContent", document.getHighlightedContent());
+        putIfNonNull(raw, "source", document.getSource());
+        putIfNonNull(raw, "url", document.getUrl());
+        putIfNonNull(raw, "createdAt", document.getCreatedAt());
+        putIfNonNull(raw, "modifiedAt", document.getModifiedAt());
+        putIfNonNull(raw, "author", document.getAuthor());
+        putIfNonNull(raw, "tags", document.getTags());
+        putIfNonNull(raw, "language", document.getLanguage());
+        putIfNonNull(raw, "size", document.getSize());
+        putIfNonNull(raw, "wordCount", document.getWordCount());
+        putIfNonNull(raw, "readingTimeMinutes", document.getReadingTimeMinutes());
+        putIfNonNull(raw, "qualityScore", document.getQualityScore());
+        putIfNonNull(raw, "freshnessScore", document.getFreshnessScore());
+        putIfNonNull(raw, "authorityScore", document.getAuthorityScore());
+
+        SanitizationOutcome<Map<String, Object>> outcome = sanitizeMap(raw, userId);
+        return SanitizationOutcome.of(outcome.value(), outcome.riskLevel(), outcome.detectedTypes());
+    }
+
+    private void putIfNonNull(Map<String, Object> target, String key, Object value) {
+        if (value != null) {
+            target.put(key, value);
+        }
     }
 
     private SanitizationOutcome<Object> sanitizeNestedOrchestrationResult(OrchestrationResult result, String userId) {

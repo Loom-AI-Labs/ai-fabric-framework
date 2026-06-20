@@ -112,6 +112,39 @@ class ActionConnectorExecutorTest {
     }
 
     @Test
+    void execute_shouldSignRequestsWithDefaultHmacHeaderNamesWhenConfiguredNamesAreBlank() {
+        FakeHttpClient fake = new FakeHttpClient(List.of(
+            new OutboundHttpExecutionResponse(200, "{\"success\":true,\"message\":\"ok\",\"data\":{}}", Map.of())
+        ));
+        AIActionConnectorProperties props = connectorProps("https://example", 1, Duration.ZERO);
+        props.getHmac().setSecret("secret");
+        props.getHmac().setTimestampHeader(" ");
+        props.getHmac().setNonceHeader("");
+        props.getHmac().setSignatureHeader(null);
+        ActionConnectorExecutor executor = new ActionConnectorExecutor(
+            props,
+            fake,
+            null,
+            fixedClock()
+        );
+
+        ActionResult result = executor.execute(
+            "read_order",
+            ActionAccessMode.READ,
+            Map.of("orderId", "order-1"),
+            testContext()
+        );
+
+        assertThat(result.isSuccess()).isTrue();
+        assertThat(fake.lastRequest().headers()).containsKeys(
+            "X-AIFABRIC-TIMESTAMP",
+            "X-AIFABRIC-NONCE",
+            "X-AIFABRIC-SIGNATURE"
+        );
+        assertThat(fake.lastRequest().headers().get("X-AIFABRIC-TIMESTAMP")).isEqualTo("1770768000");
+    }
+
+    @Test
     void execute_shouldIncludeRuntimeActionConfigInTrace() {
         FakeHttpClient fake = new FakeHttpClient(List.of(
             new OutboundHttpExecutionResponse(200, "{\"success\":true,\"message\":\"ok\",\"data\":{}}", Map.of())
@@ -320,6 +353,173 @@ class ActionConnectorExecutorTest {
         );
 
         assertThat(result.isSuccess()).isTrue();
+        assertThat(fake.callCount()).isEqualTo(2);
+    }
+
+    @Test
+    void execute_shouldFailClosedWhenNon2xxBodyClaimsSuccess() {
+        FakeHttpClient fake = new FakeHttpClient(List.of(
+            new OutboundHttpExecutionResponse(500, "{\"success\":true,\"message\":\"not ok\",\"data\":{\"orderRef\":\"PO-3\"}}", Map.of())
+        ));
+
+        ActionConnectorExecutor executor = new ActionConnectorExecutor(
+            connectorProps("https://example", 1, Duration.ZERO),
+            fake,
+            null,
+            fixedClock()
+        );
+
+        ActionResult result = executor.execute(
+            "create_purchase_order",
+            ActionAccessMode.WRITE_ONLY,
+            Map.of("sku", "SKU-3", "quantity", 1),
+            testContext()
+        );
+
+        assertThat(result.isSuccess()).isFalse();
+        assertThat(result.getErrorCode()).isEqualTo("SERVICE_UNAVAILABLE");
+        assertThat(result.getMessage()).contains("HTTP 500");
+        assertThat(result.getData()).isNull();
+    }
+
+    @Test
+    void execute_shouldFailClosedWithInvalidResponseForMalformedSuccessfulPayload() {
+        FakeHttpClient fake = new FakeHttpClient(List.of(
+            new OutboundHttpExecutionResponse(
+                200,
+                "{\"success\":true,\"message\":\"ok\",\"data\":{\"_items\":[{\"id\":\"p1\"}],\"_count\":\"one\"}}",
+                Map.of()
+            )
+        ));
+
+        ActionConnectorExecutor executor = new ActionConnectorExecutor(
+            connectorProps("https://example", 1, Duration.ZERO),
+            fake,
+            null,
+            fixedClock()
+        );
+
+        ActionResult result = executor.execute(
+            "list_products",
+            ActionAccessMode.READ,
+            Map.of("q", "sony"),
+            testContext()
+        );
+
+        assertThat(result.isSuccess()).isFalse();
+        assertThat(result.getErrorCode()).isEqualTo("INVALID_RESPONSE");
+        assertThat(result.getMessage()).contains("_count must be a number");
+    }
+
+    @Test
+    void execute_shouldPreserveHandledFailureWhenFailurePayloadIsMalformed() {
+        FakeHttpClient fake = new FakeHttpClient(List.of(
+            new OutboundHttpExecutionResponse(
+                200,
+                "{\"success\":false,\"message\":\"No access.\",\"errorCode\":\"FORBIDDEN\",\"data\":{\"_items\":[{\"id\":\"p1\"}],\"_count\":\"one\"}}",
+                Map.of()
+            )
+        ));
+
+        ActionConnectorExecutor executor = new ActionConnectorExecutor(
+            connectorProps("https://example", 1, Duration.ZERO),
+            fake,
+            null,
+            fixedClock()
+        );
+
+        ActionResult result = executor.execute(
+            "list_products",
+            ActionAccessMode.READ,
+            Map.of("q", "sony"),
+            testContext()
+        );
+
+        assertThat(result.isSuccess()).isFalse();
+        assertThat(result.getErrorCode()).isEqualTo("FORBIDDEN");
+        assertThat(result.getMessage()).isEqualTo("No access.");
+        assertThat(result.getData()).isNull();
+    }
+
+    @Test
+    void execute_shouldPreserveStructuredFailureForNon2xxResponses() {
+        FakeHttpClient fake = new FakeHttpClient(List.of(
+            new OutboundHttpExecutionResponse(
+                403,
+                "{\"success\":false,\"message\":\"No access.\",\"errorCode\":\"FORBIDDEN\",\"data\":{\"resource\":\"order-1\"}}",
+                Map.of()
+            )
+        ));
+
+        ActionConnectorExecutor executor = new ActionConnectorExecutor(
+            connectorProps("https://example", 1, Duration.ZERO),
+            fake,
+            null,
+            fixedClock()
+        );
+
+        ActionResult result = executor.execute(
+            "read_order",
+            ActionAccessMode.READ,
+            Map.of("orderId", "order-1"),
+            testContext()
+        );
+
+        assertThat(result.isSuccess()).isFalse();
+        assertThat(result.getErrorCode()).isEqualTo("FORBIDDEN");
+        assertThat(result.getMessage()).isEqualTo("No access.");
+        assertThat(result.getData()).isInstanceOf(ActionObjectPayload.class);
+        assertThat(result.getData().toMap()).containsEntry("resource", "order-1");
+    }
+
+    @Test
+    void execute_shouldMapEmptyHttp429ResponseToRateLimited() {
+        FakeHttpClient fake = new FakeHttpClient(List.of(
+            new OutboundHttpExecutionResponse(429, "", Map.of())
+        ));
+
+        ActionConnectorExecutor executor = new ActionConnectorExecutor(
+            connectorProps("https://example", 1, Duration.ZERO),
+            fake,
+            null,
+            fixedClock()
+        );
+
+        ActionResult result = executor.execute(
+            "read_order",
+            ActionAccessMode.READ,
+            Map.of("orderId", "order-1"),
+            testContext()
+        );
+
+        assertThat(result.isSuccess()).isFalse();
+        assertThat(result.getErrorCode()).isEqualTo("RATE_LIMITED");
+        assertThat(result.getMessage()).contains("HTTP 429");
+    }
+
+    @Test
+    void execute_shouldRetryMappedHttp503WhenActionIsIdempotent() {
+        FakeHttpClient fake = new FakeHttpClient(List.of(
+            new OutboundHttpExecutionResponse(503, "", Map.of()),
+            new OutboundHttpExecutionResponse(200, "{\"success\":true,\"message\":\"ok\",\"data\":{\"orderRef\":\"PO-4\"}}", Map.of())
+        ));
+
+        ActionConnectorExecutor executor = new ActionConnectorExecutor(
+            connectorProps("https://example", 2, Duration.ZERO),
+            fake,
+            null,
+            fixedClock()
+        );
+
+        ActionResult result = executor.execute(
+            "create_purchase_order",
+            ActionAccessMode.WRITE_ONLY,
+            Map.of("sku", "SKU-4", "quantity", 1),
+            testContext()
+        );
+
+        assertThat(result.isSuccess()).isTrue();
+        assertThat(result.getData().toMap()).containsEntry("orderRef", "PO-4");
         assertThat(fake.callCount()).isEqualTo(2);
     }
 

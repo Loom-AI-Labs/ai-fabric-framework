@@ -6,7 +6,7 @@
 # a deterministic in-process embedding provider, an in-memory vector store and H2.
 #
 # Expects the real-apps suite to be packaged first (jars present under each module's target/), e.g.:
-#   mvn -f examples/real-apps/pom.xml -DskipTests install
+#   mvn -f examples/real-apps/pom.xml install
 #
 set -uo pipefail
 

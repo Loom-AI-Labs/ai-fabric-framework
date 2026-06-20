@@ -21,6 +21,10 @@ public class PIIDetectionResult {
 
     /**
      * Original payload that entered the detection pipeline.
+     *
+     * <p>Implementations may set this to {@code null} when PII was detected and
+     * raw result exposure is disabled. Use {@link #encryptedOriginalQuery} for
+     * recoverable original-payload storage.</p>
      */
     private String originalQuery;
 
@@ -50,7 +54,8 @@ public class PIIDetectionResult {
     /**
      * Optional encrypted or hashed representation of the original payload when
      * {@code store-encrypted-original=true}. The module never persists the raw
-     * payload outside the detection layer.
+     * payload outside the detection layer unless raw result exposure is explicitly
+     * enabled.
      */
     private String encryptedOriginalQuery;
 

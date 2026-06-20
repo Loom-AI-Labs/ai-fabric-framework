@@ -34,7 +34,6 @@ import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.Disabled;
 import org.mockito.InOrder;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -42,12 +41,15 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.TestPropertySource;
 
-@Disabled("Disabled due to ApplicationContext loading failures - table creation issues")
 @SpringBootTest(classes = TestApplication.class)
 @ActiveProfiles("test")
 @TestPropertySource(properties = {
     "ai.pii-detection.enabled=false",
-    "ai.smart-suggestions.enabled=false"
+    "ai.intent-extraction.progressive.enabled=false",
+    "ai.governance.enabled=true",
+    "ai.governance.compliance.enabled=true",
+    "ai.smart-suggestions.enabled=false",
+    "spring.task.scheduling.enabled=false"
 })
 class RAGOrchestratorIntegrationTest {
 
@@ -69,7 +71,7 @@ class RAGOrchestratorIntegrationTest {
     @MockitoBean
     private AIActionRegistry actionHandlerRegistry;
 
-    @MockitoBean
+    @MockitoBean(name = "ragService")
     private RAGProvider ragProvider;
 
     @MockitoBean
@@ -112,7 +114,9 @@ class RAGOrchestratorIntegrationTest {
         Intent informationIntent = Intent.builder()
             .type(IntentType.INFORMATION)
             .intent("find_data")
-            .vectorSpace("default")
+            .vectorSpace("product")
+            .requiresRetrieval(true)
+            .requiresGeneration(false)
             .build();
 
         when(intentQueryExtractor.extract(any(IntentExtractionInput.class), any(OrchestrationContext.class))).thenReturn(

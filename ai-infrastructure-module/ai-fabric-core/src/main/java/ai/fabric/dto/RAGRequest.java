@@ -38,15 +38,15 @@ public class RAGRequest {
     
     /**
      * Maximum number of results to retrieve
+     * <p>When null, the active RAG provider applies its configured default.</p>
      */
-    @Builder.Default
-    private Integer limit = 10;
+    private Integer limit;
     
     /**
      * Similarity threshold for results (0.0 to 1.0)
+     * <p>When null, the active RAG provider applies its configured default.</p>
      */
-    @Builder.Default
-    private Double threshold = 0.7;
+    private Double threshold;
     
     /**
      * Context parameters for enhanced retrieval
@@ -146,10 +146,8 @@ public class RAGRequest {
     private Long cacheTtlSeconds = 3600L;
     
     // Additional fields for compatibility
-    @Builder.Default
-    private Boolean enableHybridSearch = true;
-    @Builder.Default
-    private Boolean enableContextualSearch = true;
+    private Boolean enableHybridSearch;
+    private Boolean enableContextualSearch;
     private List<String> categories;
     
     // Manual getters/setters for Lombok compatibility

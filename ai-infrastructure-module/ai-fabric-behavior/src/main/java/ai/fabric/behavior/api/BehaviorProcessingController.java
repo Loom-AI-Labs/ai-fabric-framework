@@ -7,6 +7,7 @@ import ai.fabric.behavior.api.dto.ContinuousProcessingResponse;
 import ai.fabric.behavior.api.dto.ScheduledControlResponse;
 import ai.fabric.behavior.entity.BehaviorInsights;
 import ai.fabric.behavior.service.BehaviorProcessingManager;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -36,12 +37,12 @@ public class BehaviorProcessingController {
     }
 
     @PostMapping("/batch")
-    public ResponseEntity<BatchProcessingResult> processBatch(@RequestBody(required = false) BatchProcessingRequest request) {
+    public ResponseEntity<BatchProcessingResult> processBatch(@Valid @RequestBody(required = false) BatchProcessingRequest request) {
         return ResponseEntity.ok(processingManager.processBatch(request != null ? request : new BatchProcessingRequest()));
     }
 
     @PostMapping("/continuous")
-    public ResponseEntity<ContinuousProcessingResponse> startContinuous(@RequestBody ContinuousProcessingRequest request) {
+    public ResponseEntity<ContinuousProcessingResponse> startContinuous(@Valid @RequestBody ContinuousProcessingRequest request) {
         return ResponseEntity.ok(processingManager.startContinuous(request != null ? request : new ContinuousProcessingRequest()));
     }
 

@@ -3,6 +3,7 @@ package ai.fabric.chat.util;
 import ai.fabric.intent.action.PendingAction;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -30,24 +31,27 @@ public final class ConfirmationStack {
     public static PendingAction pop(Map<String, Object> metadata) {
         List<Map<String, Object>> stack = getStack(metadata);
         if (stack.isEmpty()) {
+            if (metadata != null && metadata.containsKey(METADATA_KEY_STACK)) {
+                metadata.remove(METADATA_KEY_STACK);
+            }
             return null;
         }
         Map<String, Object> top = stack.remove(stack.size() - 1);
-        if (stack.isEmpty()) {
-            metadata.remove(METADATA_KEY_STACK);
-        } else {
-            metadata.put(METADATA_KEY_STACK, stack);
-        }
+        persistStack(metadata, stack, Integer.MAX_VALUE);
         return PendingAction.fromMap(top);
     }
 
     public static void push(Map<String, Object> metadata, PendingAction pendingAction) {
+        push(metadata, pendingAction, Integer.MAX_VALUE);
+    }
+
+    public static void push(Map<String, Object> metadata, PendingAction pendingAction, int maxDepth) {
         if (metadata == null || pendingAction == null) {
             return;
         }
         List<Map<String, Object>> stack = getStack(metadata);
         stack.add(pendingAction.toMap());
-        metadata.put(METADATA_KEY_STACK, stack);
+        persistStack(metadata, stack, maxDepth);
     }
 
     public static void clear(Map<String, Object> metadata) {
@@ -73,6 +77,10 @@ public final class ConfirmationStack {
     }
 
     public static void replace(Map<String, Object> metadata, List<PendingAction> stackTopFirst) {
+        replace(metadata, stackTopFirst, Integer.MAX_VALUE);
+    }
+
+    public static void replace(Map<String, Object> metadata, List<PendingAction> stackTopFirst, int maxDepth) {
         if (metadata == null) {
             return;
         }
@@ -91,10 +99,9 @@ public final class ConfirmationStack {
             clear(metadata);
             return;
         }
-        metadata.put(METADATA_KEY_STACK, persisted);
+        persistStack(metadata, persisted, maxDepth);
     }
 
-    @SuppressWarnings("unchecked")
     private static List<Map<String, Object>> getStack(Map<String, Object> metadata) {
         if (metadata == null) {
             return new ArrayList<>();
@@ -104,11 +111,41 @@ public final class ConfirmationStack {
             List<Map<String, Object>> out = new ArrayList<>();
             for (Object entry : list) {
                 if (entry instanceof Map<?, ?> map) {
-                    out.add((Map<String, Object>) map);
+                    out.add(copyMap(map));
                 }
             }
             return out;
         }
         return new ArrayList<>();
+    }
+
+    private static Map<String, Object> copyMap(Map<?, ?> map) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        if (map == null || map.isEmpty()) {
+            return out;
+        }
+        for (Map.Entry<?, ?> entry : map.entrySet()) {
+            if (entry == null || entry.getKey() == null) {
+                continue;
+            }
+            out.put(String.valueOf(entry.getKey()), entry.getValue());
+        }
+        return Collections.unmodifiableMap(out);
+    }
+
+    private static void persistStack(Map<String, Object> metadata, List<Map<String, Object>> stack, int maxDepth) {
+        if (metadata == null) {
+            return;
+        }
+        if (stack == null || stack.isEmpty()) {
+            metadata.remove(METADATA_KEY_STACK);
+            return;
+        }
+        int boundedDepth = maxDepth > 0 ? maxDepth : 1;
+        List<Map<String, Object>> bounded = new ArrayList<>(stack);
+        while (bounded.size() > boundedDepth) {
+            bounded.remove(0);
+        }
+        metadata.put(METADATA_KEY_STACK, Collections.unmodifiableList(bounded));
     }
 }

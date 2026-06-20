@@ -105,6 +105,22 @@ class AIActionDbRegistryLiquibaseEnvironmentPostProcessorTest {
     }
 
     @Test
+    void postProcessEnvironment_setsActionRegistryChangeLog_whenOnlySpringLiquibaseEnabledTrueIsConfigured() {
+        ConfigurableEnvironment env = new StandardEnvironment();
+        env.getPropertySources().addFirst(new MapPropertySource("test", Map.of(
+            "ai.actions.db.enabled", "true",
+            "spring.liquibase.enabled", "true"
+        )));
+
+        AIActionDbRegistryLiquibaseEnvironmentPostProcessor pp = new AIActionDbRegistryLiquibaseEnvironmentPostProcessor();
+        pp.postProcessEnvironment(env, new SpringApplication());
+
+        assertThat(env.getProperty("spring.liquibase.enabled")).isEqualTo("true");
+        assertThat(env.getProperty("spring.liquibase.change-log"))
+            .isEqualTo("classpath:db/changelog/ai-actions-registry-changelog.yaml");
+    }
+
+    @Test
     void actionsRegistryChangeLog_isAvailableOnClasspathThroughModuleDependency() {
         assertThat(new ClassPathResource("db/changelog/ai-actions-registry-changelog.yaml").exists())
             .isTrue();
@@ -114,7 +130,7 @@ class AIActionDbRegistryLiquibaseEnvironmentPostProcessorTest {
     void springFactories_registersEnvironmentPostProcessor() throws Exception {
         Properties factories = PropertiesLoaderUtils.loadProperties(new ClassPathResource("META-INF/spring.factories"));
 
-        assertThat(factories.getProperty("org.springframework.boot.env.EnvironmentPostProcessor"))
+        assertThat(factories.getProperty("org.springframework.boot.EnvironmentPostProcessor"))
             .contains(AIActionDbRegistryLiquibaseEnvironmentPostProcessor.class.getName());
     }
 }

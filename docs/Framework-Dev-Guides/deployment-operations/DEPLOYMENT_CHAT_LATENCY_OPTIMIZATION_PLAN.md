@@ -286,12 +286,15 @@ Before the optimization:
 - overview also walked full vector lists to derive `lastIndexUpdateTime`
 - the same overview could be recomputed multiple times in the same request window
 
-That particularly hurt:
+Before provider count hardening, that particularly hurt:
 
 - Weaviate
 - Milvus
 
-because their current count fallback path is materially more expensive than Pinecone/Qdrant/Lucene.
+because their count fallback path was materially more expensive than Pinecone/Qdrant/Lucene. Current
+provider hardening changed that release posture: Weaviate now uses native aggregate count with a
+guarded paged fallback, and Milvus uses native collection statistics with scan fallback only when
+Milvus omits `row_count`.
 
 ## Already Landed Fixes
 
@@ -310,7 +313,9 @@ These should be deployed before starting a new optimization round:
 That optimization changed:
 
 - introduced a generic `supportsEfficientEntityTypeCount()` capability on [VectorDatabaseService.java](/Users/mahmoudashraf/Downloads/Projects/TheBaseRepo/ai-infrastructure-module/ai-infrastructure-core/src/main/java/com/ai/infrastructure/rag/VectorDatabaseService.java)
-- marked Weaviate and Milvus as expensive-count providers
+- treated Weaviate and Milvus through lightweight presence checks at the time, before the later native
+  Weaviate aggregate-count and Milvus collection-statistics hardening removed the request-path count
+  limitation
 - made [KnowledgeBaseOverviewService.java](/Users/mahmoudashraf/Downloads/Projects/TheBaseRepo/ai-infrastructure-module/ai-infrastructure-core/src/main/java/com/ai/infrastructure/intent/KnowledgeBaseOverviewService.java) use lightweight presence checks instead of full count enumeration for those providers
 - removed the full-vector `lastIndexUpdateTime` walk from the hot path unless a provider exposes a direct timestamp in stats
 - added a short-lived overview cache so repeated prompt/routing lookups in the same request window do not recompute the same overview

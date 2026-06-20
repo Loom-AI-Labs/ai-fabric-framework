@@ -10,6 +10,7 @@ import ai.fabric.datasync.service.DataSyncService;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.RequestMapping;
 
 import java.util.List;
 
@@ -18,6 +19,13 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 class DataSyncControllerTest {
+
+    @Test
+    void requestMappingUsesConfigurableBasePathWithDefault() {
+        RequestMapping mapping = DataSyncController.class.getAnnotation(RequestMapping.class);
+
+        assertThat(mapping.value()).containsExactly("${ai.data-sync.base-path:/api/ai/data-sync}");
+    }
 
     @Test
     void listVectorSpacesReturnsOkResponse() {

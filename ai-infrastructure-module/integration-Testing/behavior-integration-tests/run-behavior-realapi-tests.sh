@@ -185,8 +185,8 @@ if [ "${CI:-false}" != "true" ] && [ "${GITHUB_ACTIONS:-false}" != "true" ]; the
   PARENT_DIR="${PROJECT_ROOT}"
   CORE_TARGET="${PARENT_DIR}/ai-fabric-core/target"
   if [ ! -d "$CORE_TARGET" ]; then
-    print_warning "Dependencies not built; running mvn clean install -DskipTests"
-    cd "$PARENT_DIR" && mvn clean install -DskipTests -B -q
+    print_warning "Dependencies not built; running mvn clean install"
+    cd "$PARENT_DIR" && mvn clean install -B -q
     print_success "Dependencies built"
   fi
 else

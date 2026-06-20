@@ -32,7 +32,11 @@ class PIIDetectionServiceTest {
             .doesNotContain("4532-9876-1234-5678")
             .contains("***@***.***")
             .contains("****-****-****-****");
+        assertThat(result.getOriginalQuery()).isNull();
         assertThat(result.getEncryptedOriginalQuery()).isNotNull();
+        assertThat(result.getMetadata())
+            .containsEntry("originalPayloadExposed", false)
+            .containsEntry("originalPayloadProtected", true);
     }
 
     @Test
@@ -51,6 +55,8 @@ class PIIDetectionServiceTest {
         assertThat(result.getProcessedQuery()).isEqualTo(query);
         assertThat(result.getDetections()).hasSize(1);
         assertThat(result.getDetections().getFirst().getMaskedValue()).isEqualTo("***-***-****");
+        assertThat(result.getOriginalQuery()).isNull();
+        assertThat(result.getMetadata()).containsEntry("originalPayloadExposed", false);
     }
 
     @Test
@@ -88,6 +94,8 @@ class PIIDetectionServiceTest {
         assertThat(analysis.getDetections()).hasSize(1);
         assertThat(analysis.getDetections().getFirst().getType()).isEqualTo("EMAIL");
         assertThat(analysis.getModeApplied()).isEqualTo(PIIMode.DETECT_ONLY);
+        assertThat(analysis.getOriginalQuery()).isNull();
+        assertThat(analysis.getMetadata()).containsEntry("originalPayloadExposed", false);
     }
 
     @Test
@@ -134,6 +142,25 @@ class PIIDetectionServiceTest {
     }
 
     @Test
+    void shouldExposeOriginalPayloadOnlyWhenExplicitlyOptedIn() {
+        PIIDetectionProperties properties = new PIIDetectionProperties();
+        properties.setEnabled(true);
+        properties.setMode(PIIMode.REDACT);
+        properties.setExposeOriginalPayloadInResult(true);
+
+        PIIDetectionService service = new DefaultPIIDetectionService(properties);
+
+        String query = "Contact user@example.com.";
+        PIIDetectionResult result = service.detectAndProcess(query);
+
+        assertThat(result.isPiiDetected()).isTrue();
+        assertThat(result.getOriginalQuery()).isEqualTo(query);
+        assertThat(result.getProcessedQuery()).isEqualTo("Contact ***@***.***.");
+        assertThat(result.getMetadata()).containsEntry("originalPayloadExposed", true);
+        assertThat(result.getMetadata()).doesNotContainKey("originalPayloadProtected");
+    }
+
+    @Test
     void shouldRejectBlankRegexForEnabledPattern() {
         PIIDetectionProperties.PatternConfig blankPattern = PIIDetectionProperties.PatternConfig.builder()
             .regex(" ")
@@ -161,5 +188,20 @@ class PIIDetectionServiceTest {
             .isInstanceOf(IllegalArgumentException.class)
             .hasMessageContaining("BROKEN")
             .hasMessageContaining("Invalid PII detection regex");
+    }
+
+    @Test
+    void shouldRejectRegexThatCanProduceZeroLengthMatches() {
+        PIIDetectionProperties.PatternConfig invalidPattern = PIIDetectionProperties.PatternConfig.builder()
+            .regex("(?=sk-)")
+            .build();
+
+        PIIDetectionProperties properties = new PIIDetectionProperties();
+        properties.setPatterns(Map.of("ZERO_LENGTH", invalidPattern));
+
+        assertThatThrownBy(() -> new DefaultPIIDetectionService(properties))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("ZERO_LENGTH")
+            .hasMessageContaining("zero-length");
     }
 }

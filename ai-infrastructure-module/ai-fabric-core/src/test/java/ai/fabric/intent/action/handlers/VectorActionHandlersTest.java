@@ -11,6 +11,7 @@ import org.mockito.Mockito;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -48,6 +49,21 @@ class VectorActionHandlersTest {
         verify(vectorDatabaseService).removeVector("doc", "123");
         assertThat(result.isSuccess()).isTrue();
         assertThat(result.getMessage()).isEqualTo("Vector removed.");
+    }
+
+    @Test
+    void removeHandlerShouldRejectBlankReferencesWithoutCallingVectorService() {
+        ActionResult result = removeHandler.execute(" ", null, new ActionContext(OrchestrationContext.forUser("user"), null));
+
+        verify(vectorDatabaseService, never()).removeVector(Mockito.any(), Mockito.any());
+        assertThat(result.isSuccess()).isFalse();
+        assertThat(result.getMessage()).isEqualTo("Entity type and entity id are required.");
+        assertThat(result.getErrorCode()).isEqualTo("INVALID_VECTOR_REFERENCE");
+        assertThat(result.getData().toMap())
+            .containsEntry("entityType", " ")
+            .containsEntry("removed", false)
+            .containsEntry("reason", "entityType and entityId are required")
+            .doesNotContainKey("entityId");
     }
 
     @Test

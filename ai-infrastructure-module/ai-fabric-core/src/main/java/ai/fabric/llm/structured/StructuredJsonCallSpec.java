@@ -28,9 +28,14 @@ public class StructuredJsonCallSpec<T> {
     private final Function<StructuredJsonAttemptContext, AIGenerationResponse> caller;
 
     /**
-     * Target type for JSON parsing.
+     * Target type for default Jackson JSON parsing. Optional when a response converter is supplied.
      */
     private final Class<T> targetType;
+
+    /**
+     * Optional parser/converter for the extracted JSON payload.
+     */
+    private final Function<String, T> responseConverter;
 
     /**
      * Optional ObjectMapper override (e.g., lenient parsing for specific schemas).
@@ -64,6 +69,10 @@ public class StructuredJsonCallSpec<T> {
         return targetType;
     }
 
+    public Function<String, T> getResponseConverter() {
+        return responseConverter;
+    }
+
     public ObjectMapper getObjectMapper() {
         return objectMapper;
     }
@@ -76,4 +85,3 @@ public class StructuredJsonCallSpec<T> {
         return retryOnCallError;
     }
 }
-

@@ -125,6 +125,12 @@
             <artifactId>spring-cloud-context</artifactId>
         </dependency>
 
+        <!-- Spring AI structured output converters; no provider SDKs are pulled into core. -->
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-model</artifactId>
+        </dependency>
+
         <!-- Spring Boot Test -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

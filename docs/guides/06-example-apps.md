@@ -12,8 +12,8 @@ in-process embeddings, an in-memory vector store, and H2).
 
 ```bash
 # build the framework and the suite once
-mvn -f ai-infrastructure-module/pom.xml -q -DskipTests install
-mvn -f examples/real-apps/pom.xml -q -DskipTests install
+mvn -f ai-infrastructure-module/pom.xml -q install
+mvn -f examples/real-apps/pom.xml -q install
 
 # run an app under the smoke profile
 mvn -pl <app> -f examples/real-apps/pom.xml spring-boot:run -Dspring-boot.run.profiles=smoke

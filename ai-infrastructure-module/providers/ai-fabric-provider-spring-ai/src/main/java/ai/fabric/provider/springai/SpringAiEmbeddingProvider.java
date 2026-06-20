@@ -3,6 +3,7 @@ package ai.fabric.provider.springai;
 import ai.fabric.dto.AIEmbeddingRequest;
 import ai.fabric.dto.AIEmbeddingResponse;
 import ai.fabric.embedding.EmbeddingProvider;
+import ai.fabric.exception.AIServiceException;
 import ai.fabric.provider.ProviderStatus;
 import org.springframework.ai.embedding.Embedding;
 import org.springframework.ai.embedding.EmbeddingModel;
@@ -46,12 +47,14 @@ public class SpringAiEmbeddingProvider implements EmbeddingProvider {
     public AIEmbeddingResponse generateEmbedding(AIEmbeddingRequest request) {
         long start = System.nanoTime();
         try {
+            String text = requireEmbeddingText(request);
+            ensureAvailable(request);
             EmbeddingModel model = resolver.resolveEmbeddingModel(family.providerName(), request);
             EmbeddingOptions options = resolver.resolveEmbeddingOptions(family.providerName(), request);
-            EmbeddingResponse response = model.call(new EmbeddingRequest(List.of(request.getText()), options));
+            EmbeddingResponse response = model.call(new EmbeddingRequest(List.of(text), options));
             long elapsedMs = elapsedMs(start);
             metrics.recordSuccess(elapsedMs);
-            return toResponse(request, response, elapsedMs);
+            return toResponse(request, response, fallbackEmbeddingModel(request), elapsedMs);
         } catch (RuntimeException ex) {
             metrics.recordFailure(ex);
             throw ex;
@@ -63,15 +66,17 @@ public class SpringAiEmbeddingProvider implements EmbeddingProvider {
         if (texts == null || texts.isEmpty()) {
             return List.of();
         }
+        List<String> validatedTexts = requireEmbeddingTexts(texts);
         long start = System.nanoTime();
         try {
-            AIEmbeddingRequest request = AIEmbeddingRequest.builder().text(texts.getFirst()).build();
+            AIEmbeddingRequest request = AIEmbeddingRequest.builder().text(validatedTexts.getFirst()).build();
+            ensureAvailable(request);
             EmbeddingModel model = resolver.resolveEmbeddingModel(family.providerName(), request);
             EmbeddingOptions options = resolver.resolveEmbeddingOptions(family.providerName(), request);
-            EmbeddingResponse response = model.call(new EmbeddingRequest(List.copyOf(texts), options));
+            EmbeddingResponse response = model.call(new EmbeddingRequest(validatedTexts, options));
             long elapsedMs = elapsedMs(start);
             metrics.recordSuccess(elapsedMs);
-            return toBatchResponses(response, elapsedMs);
+            return toBatchResponses(response, validatedTexts.size(), fallbackEmbeddingModel(request), elapsedMs);
         } catch (RuntimeException ex) {
             metrics.recordFailure(ex);
             throw ex;
@@ -100,30 +105,41 @@ public class SpringAiEmbeddingProvider implements EmbeddingProvider {
         return Map.copyOf(value);
     }
 
-    private AIEmbeddingResponse toResponse(AIEmbeddingRequest request, EmbeddingResponse response, long elapsedMs) {
+    private AIEmbeddingResponse toResponse(AIEmbeddingRequest request,
+                                           EmbeddingResponse response,
+                                           String fallbackModel,
+                                           long elapsedMs) {
         Embedding result = response != null ? response.getResult() : null;
         List<Double> vector = result != null ? toDoubleList(result.getOutput()) : List.of();
         String responseModel = response != null && response.getMetadata() != null ? response.getMetadata().getModel() : null;
         return AIEmbeddingResponse.builder()
             .embedding(vector)
-            .model(responseModel != null ? responseModel : request.getModel())
+            .model(responseModel != null ? responseModel : fallbackModel)
             .dimensions(vector.size())
             .processingTimeMs(elapsedMs)
             .requestId(UUID.randomUUID().toString())
             .build();
     }
 
-    private List<AIEmbeddingResponse> toBatchResponses(EmbeddingResponse response, long elapsedMs) {
+    private List<AIEmbeddingResponse> toBatchResponses(EmbeddingResponse response,
+                                                       int expectedCount,
+                                                       String fallbackModel,
+                                                       long elapsedMs) {
         if (response == null || response.getResults() == null || response.getResults().isEmpty()) {
-            return List.of();
+            throw new IllegalStateException("Spring AI embedding response did not contain any embeddings");
+        }
+        if (response.getResults().size() != expectedCount) {
+            throw new IllegalStateException("Spring AI embedding response count "
+                + response.getResults().size() + " did not match request count " + expectedCount);
         }
         String responseModel = response.getMetadata() != null ? response.getMetadata().getModel() : null;
-        List<AIEmbeddingResponse> results = new ArrayList<>();
+        String model = responseModel != null ? responseModel : fallbackModel;
+        List<AIEmbeddingResponse> results = new ArrayList<>(response.getResults().size());
         for (Embedding embedding : response.getResults()) {
             List<Double> vector = embedding != null ? toDoubleList(embedding.getOutput()) : List.of();
             results.add(AIEmbeddingResponse.builder()
                 .embedding(vector)
-                .model(responseModel)
+                .model(model)
                 .dimensions(vector.size())
                 .processingTimeMs(elapsedMs)
                 .requestId(UUID.randomUUID().toString())
@@ -136,14 +152,53 @@ public class SpringAiEmbeddingProvider implements EmbeddingProvider {
         if (values == null || values.length == 0) {
             return List.of();
         }
-        Double[] converted = new Double[values.length];
+        List<Double> converted = new ArrayList<>(values.length);
         for (int i = 0; i < values.length; i++) {
-            converted[i] = (double) values[i];
+            converted.add((double) values[i]);
         }
-        return List.of(converted);
+        return List.copyOf(converted);
     }
 
     private long elapsedMs(long startNanos) {
         return (System.nanoTime() - startNanos) / 1_000_000L;
+    }
+
+    private String requireEmbeddingText(AIEmbeddingRequest request) {
+        if (request == null || request.getText() == null || request.getText().isBlank()) {
+            throw new IllegalArgumentException("Embedding text cannot be blank");
+        }
+        if (request.getText().length() > 8000) {
+            throw new IllegalArgumentException("Embedding text cannot exceed 8000 characters");
+        }
+        return request.getText();
+    }
+
+    private List<String> requireEmbeddingTexts(List<String> texts) {
+        List<String> validated = new ArrayList<>(texts.size());
+        for (int i = 0; i < texts.size(); i++) {
+            String text = texts.get(i);
+            if (text == null || text.isBlank()) {
+                throw new IllegalArgumentException("Embedding text at index " + i + " cannot be blank");
+            }
+            if (text.length() > 8000) {
+                throw new IllegalArgumentException("Embedding text at index " + i + " cannot exceed 8000 characters");
+            }
+            validated.add(text);
+        }
+        return List.copyOf(validated);
+    }
+
+    private String fallbackEmbeddingModel(AIEmbeddingRequest request) {
+        if (request != null && request.getModel() != null && !request.getModel().isBlank()) {
+            return request.getModel();
+        }
+        return resolver.providerConfig(family.providerName()).getDefaultEmbeddingModel();
+    }
+
+    private void ensureAvailable(AIEmbeddingRequest request) {
+        if (!resolver.isEmbeddingAvailable(family.providerName(), request)) {
+            throw new AIServiceException("Spring AI embedding provider '" + family.providerName()
+                + "' is not available. Check provider enablement, credentials, endpoint/deployment configuration, and model availability.");
+        }
     }
 }

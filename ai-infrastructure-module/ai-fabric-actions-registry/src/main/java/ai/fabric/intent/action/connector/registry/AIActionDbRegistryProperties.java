@@ -23,7 +23,7 @@ public class AIActionDbRegistryProperties {
     /**
      * Liquibase integration for the registry schema.
      *
-     * <p>When using the optional module {@code ai-infrastructure-actions-registry-liquibase}, these properties
+     * <p>When using the optional module {@code ai-fabric-actions-registry-liquibase}, these properties
      * are used to provide safe defaults for {@code spring.liquibase.*} when the host application does not already
      * configure Liquibase.</p>
      */

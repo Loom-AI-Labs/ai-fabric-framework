@@ -122,6 +122,11 @@ ai:
 - `planner.fail-on-parse-error`: set `true` if you prefer fail-closed instead of degraded fallback plans.
 - `enable-vector-search`: allows the module to use vector reranking when the LLM indicates it’s needed.
 
+`ReliableRelationshipQueryService` is the public safe boundary for application and action callers:
+blank queries and execution failures return `RAGResponse.success=false` with `metadata.errorCode`.
+Structured planner failures preserve execution stage, candidate entity types, fallback status, and
+provider-specific error attributes in response metadata.
+
 ---
 
 ## 4) Prompt Template Externalization (Planned)

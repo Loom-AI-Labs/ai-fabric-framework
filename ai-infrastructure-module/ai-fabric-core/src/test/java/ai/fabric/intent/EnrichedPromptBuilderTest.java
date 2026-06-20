@@ -92,7 +92,7 @@ class EnrichedPromptBuilderTest {
             new PromptRenderer()
         );
 
-        String prompt = promptBuilder.buildSystemPrompt("user-123");
+        String prompt = promptBuilder.buildSystemPrompt(OrchestrationContext.forUser("user-123"));
 
         assertThat(prompt)
             .contains("AVAILABLE ACTIONS")

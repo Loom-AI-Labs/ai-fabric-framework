@@ -16,6 +16,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.ObjectProvider;
 
 import java.time.LocalDateTime;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -41,8 +42,40 @@ public class GovernanceVectorDatabaseServiceDecorator implements VectorDatabaseS
     }
 
     @Override
+    public boolean supportsSearchMetadataFiltering() {
+        return delegate.supportsSearchMetadataFiltering();
+    }
+
+    @Override
+    public boolean supportsScanMetadataFiltering() {
+        return delegate.supportsScanMetadataFiltering();
+    }
+
+    @Override
+    public boolean supportsExactFetchById() {
+        return delegate.supportsExactFetchById();
+    }
+
+    @Override
+    public boolean supportsClearByEntityType() {
+        return delegate.supportsClearByEntityType();
+    }
+
+    @Override
     public boolean supportsEfficientEntityTypeCount() {
         return delegate.supportsEfficientEntityTypeCount();
+    }
+
+    @Override
+    public Map<String, Object> adminDiagnostics() {
+        Map<String, Object> delegateDiagnostics = delegate.adminDiagnostics();
+        Map<String, Object> diagnostics = delegateDiagnostics == null
+            ? new LinkedHashMap<>()
+            : new LinkedHashMap<>(delegateDiagnostics);
+        diagnostics.put("governanceDecorated", true);
+        diagnostics.put("governanceDecoratorClass", getClass().getName());
+        diagnostics.put("governanceCatalogWriteThrough", sqlCatalogOrNull() != null);
+        return diagnostics;
     }
 
     @Override

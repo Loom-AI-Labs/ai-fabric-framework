@@ -36,7 +36,7 @@
 # Prerequisites:
 #   - Java 21+
 #   - Maven 3.8+
-#   - Dependencies must be built and installed (run 'mvn clean install -DskipTests' from parent)
+#   - Dependencies must be built and installed (run 'mvn clean install' from parent)
 #   - API key environment variable set based on selected providers:
 #     * OPENAI_API_KEY (for OpenAI)
 #     * ANTHROPIC_API_KEY (for Anthropic)
@@ -46,7 +46,7 @@
 #   - ONNX provider doesn't require API keys
 #
 # Note: This script assumes dependencies are already built. In CI/CD workflows,
-#       the build step should run 'mvn clean install -DskipTests' first.
+#       the build step should run 'mvn clean install' first.
 #
 # Environment Variables:
 #   OPENAI_API_KEY           - OpenAI API key (required if using OpenAI)
@@ -57,7 +57,6 @@
 #   AZURE_ENDPOINT            - Azure endpoint URL (required if using Azure)
 #   AZURE_DEPLOYMENT_NAME     - Azure deployment name (required if using Azure for LLM)
 #   AZURE_EMBEDDING_DEPLOYMENT_NAME - Azure embedding deployment (required if using Azure for Embedding)
-#   SKIP_TESTS               - Set to skip tests (default: false)
 #   MAVEN_LOGGING_LEVEL      - Maven logging level: quiet, normal, verbose, debug (default: quiet)
 #   AI_PROVIDERS_REAL_API_TEST_CHUNK - Test chunk: core, vector, intent-actions, advanced, all (default: all)
 #
@@ -92,7 +91,6 @@ LOGGING_LEVEL="${MAVEN_LOGGING_LEVEL:-quiet}"
 PROFILE="${SPRING_PROFILES_ACTIVE:-real-api-test}"
 TEST_CLASS="RealAPIProviderMatrixIntegrationTest"
 CONNECTIVITY_TEST_CLASS="RealApiConnectivityVerificationTest"
-SKIP_TESTS="${SKIP_TESTS:-false}"
 
 # Local convenience: allow loading OPENAI_API_KEY from an ignored file so developers
 # don't have to export secrets manually (CI should use GitHub Secrets/Vars).
@@ -354,8 +352,8 @@ else
         if [ "$LOGGING_LEVEL" == "verbose" ] || [ "$LOGGING_LEVEL" == "debug" ]; then
             BUILD_LOG_FLAG=""
         fi
-        if ! mvn clean install -DskipTests -B $BUILD_LOG_FLAG; then
-            print_error "Failed to build dependencies. Please run 'mvn clean install -DskipTests' from the parent module first."
+        if ! mvn clean install -B $BUILD_LOG_FLAG; then
+            print_error "Failed to build dependencies. Please run 'mvn clean install' from the parent module first."
             exit 1
         fi
         cd "$SCRIPT_DIR" || exit 1
@@ -406,7 +404,7 @@ TEST_DIR="$SCRIPT_DIR"
 cd "$TEST_DIR"
 
 # Note: This assumes dependencies are already built and installed.
-# The workflow should run 'mvn clean install -DskipTests' from the parent module first.
+# The workflow should run 'mvn clean install' from the parent module first.
 #
 # Maven CLI verbosity is separate from Spring logging. Map MAVEN_LOGGING_LEVEL to
 # Maven flags so providers (including OpenAI) respect quiet/verbose consistently.
@@ -565,11 +563,6 @@ case "$LOGGING_LEVEL" in
         MAVEN_COMMAND="$MAVEN_COMMAND -Dlogging.level.ai.fabric=DEBUG"
         ;;
 esac
-
-# Add optional flags
-if [ "$SKIP_TESTS" == "true" ]; then
-    MAVEN_COMMAND="$MAVEN_COMMAND -DskipTests"
-fi
 
 if [ "${DEBUG:-false}" == "true" ] && [ "$LOGGING_LEVEL" != "debug" ]; then
     MAVEN_COMMAND="$MAVEN_COMMAND -X"

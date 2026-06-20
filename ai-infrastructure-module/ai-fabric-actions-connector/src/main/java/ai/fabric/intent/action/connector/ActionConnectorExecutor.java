@@ -56,7 +56,13 @@ public class ActionConnectorExecutor {
     private static final String ERROR_SERVICE_UNAVAILABLE = "SERVICE_UNAVAILABLE";
     private static final String ERROR_TIMEOUT = "TIMEOUT";
     private static final String ERROR_RATE_LIMITED = "RATE_LIMITED";
+    private static final String ERROR_ACTION_EXECUTION_FAILED = "ACTION_EXECUTION_FAILED";
     private static final String ERROR_INVALID_CONFIGURATION = "INVALID_CONFIGURATION";
+    private static final String ERROR_INVALID_RESPONSE = "INVALID_RESPONSE";
+
+    private static final String HEADER_HMAC_TIMESTAMP = "X-AIFABRIC-TIMESTAMP";
+    private static final String HEADER_HMAC_NONCE = "X-AIFABRIC-NONCE";
+    private static final String HEADER_HMAC_SIGNATURE = "X-AIFABRIC-SIGNATURE";
 
     private static final Set<String> RETRYABLE_ERROR_CODES = Set.of(
         ERROR_TIMEOUT,
@@ -426,12 +432,16 @@ public class ActionConnectorExecutor {
             String timestamp = String.valueOf(Instant.now(clock).getEpochSecond());
             String nonce = ulidGenerator.nextUlid();
             String signature = sign(hmac.getSecret(), timestamp, nonce, body);
-            headers.set(hmac.getTimestampHeader(), timestamp);
-            headers.set(hmac.getNonceHeader(), nonce);
-            headers.set(hmac.getSignatureHeader(), signature);
+            headers.set(headerOrDefault(hmac.getTimestampHeader(), HEADER_HMAC_TIMESTAMP), timestamp);
+            headers.set(headerOrDefault(hmac.getNonceHeader(), HEADER_HMAC_NONCE), nonce);
+            headers.set(headerOrDefault(hmac.getSignatureHeader(), HEADER_HMAC_SIGNATURE), signature);
         }
 
         return headers;
+    }
+
+    private String headerOrDefault(String configured, String fallback) {
+        return StringUtils.hasText(configured) ? configured.trim() : fallback;
     }
 
     private HttpHeaders buildMcpGatewayHeaders() {
@@ -493,6 +503,11 @@ public class ActionConnectorExecutor {
         }
 
         String body = response.body();
+        int statusCode = response.statusCode();
+        if (statusCode < 200 || statusCode >= 300) {
+            return failureForHttpStatus(statusCode, body, actionId);
+        }
+
         if (!StringUtils.hasText(body)) {
             return failure(ERROR_SERVICE_UNAVAILABLE, "Connector returned an empty response.");
         }
@@ -512,18 +527,76 @@ public class ActionConnectorExecutor {
 
         ActionPayload payload = null;
         if (dataRaw != null) {
-            payload = toActionPayload(dataRaw, actionId);
+            if (success) {
+                try {
+                    payload = toActionPayload(dataRaw, actionId);
+                } catch (Exception ex) {
+                    return failure(ERROR_INVALID_RESPONSE, ex.getMessage());
+                }
+            } else {
+                payload = safeActionPayload(dataRaw, actionId);
+            }
         }
 
         List<ActionTargetRef> pinnedTargets = toPinnedTargets(pinnedRaw);
 
         return ActionResult.builder()
             .success(success)
-            .message(message)
+            .message(StringUtils.hasText(message) ? message : (success ? null : "Connector action failed."))
             .data(payload)
             .pinnedTargets(pinnedTargets)
-            .errorCode(errorCode)
+            .errorCode(success ? errorCode : (StringUtils.hasText(errorCode) ? errorCode : ERROR_ACTION_EXECUTION_FAILED))
             .build();
+    }
+
+    private ActionResult failureForHttpStatus(int statusCode, String body, String actionId) {
+        if (StringUtils.hasText(body)) {
+            try {
+                Map<String, Object> parsed = objectMapper.readValue(body, new TypeReference<Map<String, Object>>() {});
+                if (parsed != null && !readBoolean(parsed.get(ActionConnectorProtocol.KEY_SUCCESS), false)) {
+                    String errorCode = readString(parsed.get(ActionConnectorProtocol.KEY_ERROR_CODE));
+                    String message = readString(parsed.get(ActionConnectorProtocol.KEY_MESSAGE));
+                    Object dataRaw = parsed.get(ActionConnectorProtocol.KEY_DATA);
+                    Object pinnedRaw = parsed.get(ActionConnectorProtocol.KEY_PINNED_TARGETS);
+                    ActionPayload payload = safeActionPayload(dataRaw, actionId);
+                    return ActionResult.builder()
+                        .success(false)
+                        .message(StringUtils.hasText(message) ? message : "Connector returned HTTP " + statusCode + ".")
+                        .data(payload)
+                        .pinnedTargets(toPinnedTargets(pinnedRaw))
+                        .errorCode(StringUtils.hasText(errorCode) ? errorCode : errorCodeForStatus(statusCode))
+                        .build();
+                }
+            } catch (Exception ignored) {
+                // Fall through to deterministic status mapping.
+            }
+        }
+        return failure(errorCodeForStatus(statusCode), "Connector returned HTTP " + statusCode + ".");
+    }
+
+    private ActionPayload safeActionPayload(Object dataRaw, String actionId) {
+        if (dataRaw == null) {
+            return null;
+        }
+        try {
+            return toActionPayload(dataRaw, actionId);
+        } catch (Exception ex) {
+            log.debug("Ignoring invalid connector failure payload for action '{}': {}", actionId, ex.getMessage());
+            return null;
+        }
+    }
+
+    private String errorCodeForStatus(int statusCode) {
+        if (statusCode == 408) {
+            return ERROR_TIMEOUT;
+        }
+        if (statusCode == 429) {
+            return ERROR_RATE_LIMITED;
+        }
+        if (statusCode >= 500 || statusCode <= 0) {
+            return ERROR_SERVICE_UNAVAILABLE;
+        }
+        return ERROR_ACTION_EXECUTION_FAILED;
     }
 
     private ActionPayload toActionPayload(Object raw, String actionId) {

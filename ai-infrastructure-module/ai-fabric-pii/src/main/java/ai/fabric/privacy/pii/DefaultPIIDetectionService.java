@@ -166,15 +166,20 @@ public class DefaultPIIDetectionService implements PIIDetectionService {
         Map<String, Object> additionalMetadata
     ) {
         Map<String, Object> metadata = new LinkedHashMap<>();
+        boolean exposeOriginalPayload = shouldExposeOriginalPayload(hasPii);
         metadata.put("piiDetected", hasPii);
         metadata.put("modeApplied", mode.name());
         metadata.put("timestamp", Instant.now().toString());
         if (additionalMetadata != null) {
             metadata.putAll(additionalMetadata);
         }
+        metadata.put("originalPayloadExposed", exposeOriginalPayload);
+        if (hasPii && !exposeOriginalPayload) {
+            metadata.put("originalPayloadProtected", true);
+        }
 
         return PIIDetectionResult.builder()
-            .originalQuery(original)
+            .originalQuery(exposeOriginalPayload ? original : null)
             .processedQuery(processed)
             .piiDetected(hasPii)
             .modeApplied(mode)
@@ -201,6 +206,9 @@ public class DefaultPIIDetectionService implements PIIDetectionService {
             Matcher matcher = pattern.pattern().matcher(query);
             while (matcher.find()) {
                 DetectionMatch match = pattern.createMatch(matcher);
+                if (match.startIndex() >= match.endIndex()) {
+                    continue;
+                }
                 if (!overlapsExistingMatch(match, matches)) {
                     matches.add(match);
                 }
@@ -328,10 +336,28 @@ public class DefaultPIIDetectionService implements PIIDetectionService {
 
     private Pattern compilePattern(String type, String regex) {
         try {
-            return Pattern.compile(regex, Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
+            Pattern pattern = Pattern.compile(regex, Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
+            if (canProduceZeroLengthMatch(pattern)) {
+                throw new IllegalArgumentException(
+                    "PII detection regex for pattern '" + type + "' must not produce zero-length matches"
+                );
+            }
+            return pattern;
         } catch (PatternSyntaxException ex) {
             throw new IllegalArgumentException("Invalid PII detection regex for pattern '" + type + "'", ex);
         }
+    }
+
+    private boolean canProduceZeroLengthMatch(Pattern pattern) {
+        for (String sample : List.of("", "A", "1", "sk-token", "user@example.com")) {
+            Matcher matcher = pattern.matcher(sample);
+            while (matcher.find()) {
+                if (matcher.start() == matcher.end()) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     private String maskValue(String replacement) {
@@ -347,6 +373,10 @@ public class DefaultPIIDetectionService implements PIIDetectionService {
 
     private List<String> configuredSensitiveFields() {
         return properties.getSensitiveFields() != null ? properties.getSensitiveFields() : List.of();
+    }
+
+    private boolean shouldExposeOriginalPayload(boolean hasPii) {
+        return !hasPii || properties.isExposeOriginalPayloadInResult();
     }
 
     private record DetectionPattern(

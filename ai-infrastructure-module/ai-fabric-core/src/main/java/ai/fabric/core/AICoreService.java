@@ -12,10 +12,17 @@ import ai.fabric.provider.AIProviderManager;
 import ai.fabric.provider.ProviderRequestOverrideSupport;
 import ai.fabric.prompt.PromptRenderer;
 import ai.fabric.prompt.PromptTemplateResolver;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -48,6 +55,26 @@ public class AICoreService {
     private final ObjectProvider<AISearchService> searchServiceProvider;
     private final PromptTemplateResolver promptTemplateResolver;
     private final PromptRenderer promptRenderer;
+    private final ObjectMapper objectMapper;
+
+    @Autowired
+    public AICoreService(AIProviderConfig aiProviderConfig,
+                         AIProviderManager providerManager,
+                         ObjectProvider<AIEmbeddingService> embeddingServiceProvider,
+                         ObjectProvider<AISearchService> searchServiceProvider,
+                         PromptTemplateResolver promptTemplateResolver,
+                         PromptRenderer promptRenderer,
+                         ObjectProvider<ObjectMapper> objectMapperProvider) {
+        this.aiProviderConfig = aiProviderConfig;
+        this.providerManager = providerManager;
+        this.embeddingServiceProvider = embeddingServiceProvider;
+        this.searchServiceProvider = searchServiceProvider;
+        this.promptTemplateResolver = promptTemplateResolver;
+        this.promptRenderer = promptRenderer;
+        this.objectMapper = objectMapperProvider != null
+            ? objectMapperProvider.getIfAvailable(this::defaultObjectMapper)
+            : defaultObjectMapper();
+    }
 
     public AICoreService(AIProviderConfig aiProviderConfig,
                          AIProviderManager providerManager,
@@ -55,12 +82,8 @@ public class AICoreService {
                          ObjectProvider<AISearchService> searchServiceProvider,
                          PromptTemplateResolver promptTemplateResolver,
                          PromptRenderer promptRenderer) {
-        this.aiProviderConfig = aiProviderConfig;
-        this.providerManager = providerManager;
-        this.embeddingServiceProvider = embeddingServiceProvider;
-        this.searchServiceProvider = searchServiceProvider;
-        this.promptTemplateResolver = promptTemplateResolver;
-        this.promptRenderer = promptRenderer;
+        this(aiProviderConfig, providerManager, embeddingServiceProvider, searchServiceProvider,
+            promptTemplateResolver, promptRenderer, null);
     }
     
     /**
@@ -252,23 +275,104 @@ public class AICoreService {
      * Parse validation result from AI response
      */
     private Map<String, Object> parseValidationResult(String aiResponse) {
-        // Simple JSON parsing - in production, use proper JSON parser
         try {
-            // This is a simplified implementation
-            // In production, use Jackson or Gson for proper JSON parsing
-            return Map.of(
-                "valid", aiResponse.contains("\"valid\": true"),
-                "errors", List.of(),
-                "suggestions", List.of(aiResponse)
-            );
-        } catch (Exception e) {
-            log.warn("Failed to parse AI validation result", e);
-            return Map.of(
-                "valid", false,
-                "errors", List.of("Failed to parse validation result"),
-                "suggestions", List.of("Please check the content manually")
+            if (!hasText(aiResponse)) {
+                return invalidValidationResult(
+                    "AI validation response was empty",
+                    "Review the content manually because AI validation returned no JSON result."
+                );
+            }
+
+            JsonNode root = readValidationJson(aiResponse);
+            if (root == null || !root.isObject()) {
+                return invalidValidationResult(
+                    "AI validation response was not a JSON object",
+                    "Review the content manually because AI validation returned an unsupported shape."
+                );
+            }
+
+            Map<String, Object> result = new LinkedHashMap<>();
+            boolean hasValid = root.has("valid") && !root.get("valid").isNull();
+            result.put("valid", hasValid && root.get("valid").asBoolean(false));
+            result.put("errors", stringList(root.get("errors")));
+            result.put("suggestions", stringList(root.get("suggestions")));
+
+            Iterator<Map.Entry<String, JsonNode>> fields = root.fields();
+            while (fields.hasNext()) {
+                Map.Entry<String, JsonNode> field = fields.next();
+                if (!result.containsKey(field.getKey())) {
+                    result.put(field.getKey(), objectMapper.convertValue(field.getValue(), Object.class));
+                }
+            }
+
+            if (!hasValid) {
+                @SuppressWarnings("unchecked")
+                List<String> errors = new ArrayList<>((List<String>) result.get("errors"));
+                errors.add("AI validation response did not include required 'valid' field");
+                result.put("errors", List.copyOf(errors));
+            }
+            return result;
+        } catch (JsonProcessingException e) {
+            log.warn("Failed to parse AI validation JSON: {}", e.getOriginalMessage());
+            return invalidValidationResult(
+                "Failed to parse AI validation JSON",
+                "Review the content manually because AI validation returned malformed JSON."
             );
         }
+    }
+
+    private JsonNode readValidationJson(String aiResponse) throws JsonProcessingException {
+        return objectMapper.readTree(extractJsonObject(aiResponse));
+    }
+
+    private String extractJsonObject(String aiResponse) {
+        String trimmed = aiResponse.trim();
+        int firstObject = trimmed.indexOf('{');
+        int lastObject = trimmed.lastIndexOf('}');
+        if (firstObject >= 0 && lastObject > firstObject) {
+            return trimmed.substring(firstObject, lastObject + 1);
+        }
+        return trimmed;
+    }
+
+    private List<String> stringList(JsonNode node) throws JsonProcessingException {
+        if (node == null || node.isNull() || node.isMissingNode()) {
+            return List.of();
+        }
+        if (node.isArray()) {
+            List<String> values = new ArrayList<>();
+            for (JsonNode item : node) {
+                values.add(stringValue(item));
+            }
+            return List.copyOf(values);
+        }
+        return List.of(stringValue(node));
+    }
+
+    private String stringValue(JsonNode node) throws JsonProcessingException {
+        if (node == null || node.isNull()) {
+            return "";
+        }
+        if (node.isTextual()) {
+            return node.asText();
+        }
+        return objectMapper.writeValueAsString(node);
+    }
+
+    private Map<String, Object> invalidValidationResult(String error, String suggestion) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("valid", false);
+        result.put("errors", List.of(error));
+        result.put("suggestions", List.of(suggestion));
+        return result;
+    }
+
+    private ObjectMapper defaultObjectMapper() {
+        return new ObjectMapper().findAndRegisterModules();
+    }
+
+    private boolean hasText(String value) {
+        return value != null && !value.trim().isEmpty();
     }
     
     /**
@@ -329,8 +433,10 @@ public class AICoreService {
         boolean requiresDefaults = request.getModel() == null
             || request.getMaxTokens() == null
             || request.getTemperature() == null;
+        Map<String, Object> mergedParameters = applyPurposeConnectionOverrides(request.getParameters(), purpose);
+        boolean parametersChanged = mergedParameters != request.getParameters();
 
-        if (!requiresDefaults) {
+        if (!requiresDefaults && !parametersChanged) {
             return request;
         }
 
@@ -345,7 +451,7 @@ public class AICoreService {
             .inputParts(request.getInputParts())
             .transientInputPolicy(request.getTransientInputPolicy())
             .purpose(request.getPurpose())
-            .parameters(applyPurposeConnectionOverrides(request.getParameters(), purpose))
+            .parameters(mergedParameters)
             .authContext(request.getAuthContext())
             .model(request.getModel() != null ? request.getModel() : defaults.model())
             .maxTokens(request.getMaxTokens() != null ? request.getMaxTokens() : defaults.maxTokens())
@@ -375,7 +481,13 @@ public class AICoreService {
             throw new AIServiceException("Embedding request cannot be null");
         }
 
-        if (request.getModel() != null) {
+        Map<String, Object> mergedParameters = ProviderRequestOverrideSupport.mergeEmbeddingConnectionOverride(
+            request.getParameters(),
+            aiProviderConfig
+        );
+        boolean parametersChanged = mergedParameters != request.getParameters();
+
+        if (request.getModel() != null && !parametersChanged) {
             return request;
         }
 
@@ -386,7 +498,8 @@ public class AICoreService {
             .entityType(request.getEntityType())
             .entityId(request.getEntityId())
             .metadata(request.getMetadata())
-            .model(defaults.model())
+            .parameters(mergedParameters)
+            .model(request.getModel() != null ? request.getModel() : defaults.model())
             .build();
     }
 

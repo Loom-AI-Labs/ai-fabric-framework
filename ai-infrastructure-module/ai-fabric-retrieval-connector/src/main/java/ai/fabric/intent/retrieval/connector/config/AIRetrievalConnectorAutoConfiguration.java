@@ -4,11 +4,13 @@ import ai.fabric.config.AIInfrastructureAutoConfiguration;
 import ai.fabric.intent.retrieval.connector.AIRetrievalConnectorProperties;
 import ai.fabric.intent.retrieval.connector.RetrievalConnectorRAGProvider;
 import ai.fabric.http.AIHttpClientFactory;
+import ai.fabric.spi.RAGProvider;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.AutoConfigureAfter;
 import org.springframework.boot.autoconfigure.AutoConfigureBefore;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
@@ -31,10 +33,12 @@ public class AIRetrievalConnectorAutoConfiguration {
 
     @Bean
     @Primary
+    @ConditionalOnMissingBean(RAGProvider.class)
     public RetrievalConnectorRAGProvider retrievalConnectorRAGProvider(AIRetrievalConnectorProperties properties,
                                                                        AIHttpClientFactory httpClientFactory,
                                                                        ObjectProvider<ObjectMapper> objectMapperProvider,
-                                                                       Clock clock) {
+                                                                       ObjectProvider<Clock> clockProvider) {
+        Clock clock = clockProvider.getIfAvailable(Clock::systemUTC);
         return new RetrievalConnectorRAGProvider(properties, httpClientFactory, objectMapperProvider, clock);
     }
 }

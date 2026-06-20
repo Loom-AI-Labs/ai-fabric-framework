@@ -1,55 +1,70 @@
 # ADR 0001 — Adopt mature libraries for commodity layers; keep the differentiated layer
 
-- **Status:** Proposed
+- **Status:** Accepted, amended by ADR 0004 for vector providers
 - **Date:** 2026-06-16
 - **Deciders:** maintainers
-- **Context version:** AI Fabric `0.2.1`, Spring Boot `3.2.0`
+- **Context version:** AI Fabric `0.2.1`, Java `21`, Spring Boot `4.1.0`, Spring AI `2.0.0`
 
 ## Context
 
 A capability review (see `RELEASE_READINESS_AND_CLEANUP_PLAN.md` §9) found that AI Fabric's depth and
-differentiation live in its **orchestration / actions / governance** layer, while its **least-tested,
-most duplicated** code is the commodity infrastructure it hand-rolls: five vendor HTTP provider
-clients, six vector-store integrations, a custom HTTP abstraction, hand-written retry, a DIY rate
-limiter, a bespoke batch/migration engine, and custom "JSON-out-of-an-LLM" parsing.
+differentiation live in its **orchestration / actions / governance** layer, while several
+commodity layers were duplicated in-house: vendor LLM/embedding provider calls, custom HTTP/retry
+helpers, rate limiting, a bespoke batch/migration engine, and custom "JSON-out-of-an-LLM" parsing.
 
-These commodity layers are exactly what mature, maintained libraries already provide better:
-**Spring AI** (`ChatModel`, `EmbeddingModel`, `VectorStore`, structured output, tool calling,
-observability — GA since 2025), **LangChain4j**, **Resilience4j**, **Spring Batch**.
+Many of these commodity layers are exactly what mature, maintained libraries already provide better:
+**Spring AI** (`ChatModel`, `EmbeddingModel`, structured output, tool calling, observability),
+**LangChain4j**, **Resilience4j**, and **Spring Batch**.
 
-Crucially, the heavy commodity pieces already sit behind AI Fabric's own SPIs
+The vector layer was re-evaluated after this ADR. ADR 0004 keeps AI Fabric's native vector
+providers for the release path because `VectorDatabaseService` is broader than Spring AI
+`VectorStore`: exact fetch, lifecycle update/delete, entity-type clear, scans, counts, diagnostics,
+and governance/admin readiness all have to be preserved without sidecar storage.
+
+Crucially, the heavy pieces already sit behind AI Fabric's own SPIs
 (`ai.fabric.provider.AIProvider`, `ai.fabric.embedding.EmbeddingProvider`,
-`ai.fabric.rag.VectorDatabaseService`), so they can be replaced by **adapters** with no change to the
-differentiated layer above them.
+`ai.fabric.rag.VectorDatabaseService`), so commodity execution can be replaced or hardened behind
+those seams without changing the differentiated layer above them.
 
 ## Decision
 
-Stop maintaining commodity infrastructure in-house. Implement AI Fabric's existing SPIs as **thin
-adapters over mature libraries**, and reinvest the freed effort into the differentiated layer. Do not
-rewrite the differentiated layer.
+Stop maintaining commodity LLM/embedding execution in-house. Implement AI Fabric's
+`AIProvider` and `EmbeddingProvider` SPIs over Spring AI, and reinvest the freed effort into the
+differentiated layer. Do not rewrite the differentiated layer.
+
+Keep the native vector providers for full lifecycle/admin support. Spring AI `VectorStore` may still
+be added later as an optional simple-RAG adapter, but it is not the implementation for the current
+production `VectorDatabaseService` contract.
 
 ### Keep / Replace
 
-| Area | Today | Decision | Replacement |
-|------|-------|----------|-------------|
-| LLM / embedding providers (≈5k LOC, lightly tested, no native tool-calling) | Hand-rolled HTTP per vendor | **Replace** behind `AIProvider`/`EmbeddingProvider` | Spring AI `ChatModel`/`EmbeddingModel` (or LangChain4j) |
-| Cloud vector stores: qdrant/pinecone/weaviate/milvus (≈6.8k LOC, weakest tests) | Wrappers over official gRPC/clients | **Replace** behind `VectorDatabaseService` | Spring AI `VectorStore` |
-| Local vector stores: lucene/memory | Own impl | **Keep** (or back with Spring AI `SimpleVectorStore`) | — |
-| `ai.fabric.http` (9 files) + per-provider retry | Custom HTTP + `exchangeWithRetry` | **Replace** | Spring `RestClient`/`WebClient` + Resilience4j |
-| `relay` rate limiting (`FixedWindowRateLimiter`, `Hashing`) | DIY | **Replace** | Resilience4j RateLimiter / Bucket4j + Guava `Hashing` |
-| Migration engine (pause/resume/progress; 0 Spring Batch) | Hand-rolled batch | **Evaluate → likely Replace** | Spring Batch |
-| `llm.structured` / `StructuredJsonExtractor` (10 files) | Custom typed-JSON-from-LLM | **Partial replace** — keep repair/fallback | Spring AI structured output (`BeanOutputConverter`) |
-| `ai.fabric.cache` | Caffeine + Spring `CacheManager` | **Keep** — already standard | — |
-| `ai.fabric.event` | Spring `ApplicationEvent` | **Keep** — standard mechanism, domain content | — |
-| Orchestration pipeline, actions/connector/**MCP**/interception, governance (GDPR/retention/compliance/catalog), relationship-query (NL→JPQL), annotation model + processors, intent extraction, PII / prompt-injection analysis | Own impl | **Keep — this is the moat** | — |
+- **LLM / embedding providers:** replace hand-rolled HTTP provider execution behind
+  `AIProvider`/`EmbeddingProvider` with Spring AI `ChatModel`/`EmbeddingModel` adapters.
+- **Cloud vector stores:** keep and harden the native Pinecone, Qdrant, Weaviate, and Milvus
+  providers behind `VectorDatabaseService`; there is no Spring AI replacement for the full
+  lifecycle/admin contract in this release.
+- **Local vector stores:** keep Lucene and memory. Lucene is suitable for local/small deployments;
+  memory is dev/test only.
+- **Custom HTTP/retry helpers:** replace with Spring `RestClient`/`WebClient` plus Resilience4j.
+- **Relay rate limiting/hash helpers:** replace `FixedWindowRateLimiter` and local hashing helpers
+  with Resilience4j/Bucket4j and Guava where appropriate.
+- **Migration engine:** evaluate Spring Batch; adopt only if the job semantics justify the weight.
+- **Structured JSON from LLMs:** partially replace with Spring AI structured output while keeping
+  AI Fabric's repair/fallback layer.
+- **Cache and events:** keep Caffeine/Spring `CacheManager` and Spring `ApplicationEvent`.
+- **Differentiated layer:** keep orchestration, actions/connectors/MCP, governance, relationship
+  query, annotation processing, intent extraction, PII, and prompt-injection analysis.
 
 ## Prerequisite / hard constraint
 
-**Spring AI 1.0 GA requires Spring Boot 3.4.x; AI Fabric is on 3.2.0.** Therefore the provider/vector
-replacements are **gated on a Spring Boot 3.2 → 3.4 upgrade** (or, as an interim, a Boot-3.2-compatible
-pre-GA Spring AI milestone — not recommended for a release). The Boot upgrade should be treated as the
-first phase and validated independently (it touches the whole reactor and the examples, which use
-`spring-boot-starter-parent:3.2.0`).
+The Spring platform upgrade has happened in the current release branch:
+
+- Java `21`
+- Spring Boot `4.1.0`
+- Spring AI `2.0.0`
+
+Release verification must validate the full reactor and examples on this platform. Do not use
+`-DskipTests` or `maven.test.skip` for release verification.
 
 ## Consequences
 
@@ -60,30 +75,39 @@ first phase and validated independently (it touches the whole reactor and the ex
 - Reposition from *competing with* Spring AI on plumbing to *building on it*: "governed orchestration,
   an MCP-capable actions platform, and data governance **on top of** Spring AI." Potential adoption
   channel (Spring AI users add the AI Fabric layer).
+- Keep AI Fabric differentiated where the provider contract is broader than the commodity abstraction:
+  native vector lifecycle/admin providers remain first-class.
 
 **Negative / risks**
 - New hard dependency on the Spring AI ecosystem and its release cadence.
-- **Requires a Spring Boot 3.4 upgrade first** (non-trivial; affects the whole reactor + examples).
-- Migration + re-test effort; reimplement `ProviderStatus`/fallback/bounded-facts and the broad
-  `VectorDatabaseService` surface (~20 methods) at the adapter layer.
+- Migration + re-test effort; reimplement `ProviderStatus`/fallback/bounded-facts at the Spring AI
+  provider adapter layer.
+- Native vector providers remain AI Fabric-owned code, so they need explicit capability diagnostics,
+  shared contracts, and provider-specific mocked/live coverage.
 - Spring Batch is heavyweight — adopt only if the migration job semantics justify it.
 
 ## Alternatives considered
 
-- **Keep hand-rolling.** Rejected: highest maintenance, weakest tests, no native tool calling, and it
-  pits the project against Spring AI on its strongest ground.
+- **Keep hand-rolling all providers.** Rejected for LLM/embedding execution: highest maintenance,
+  weakest tests, no native tool calling, and it pits the project against Spring AI on its strongest
+  ground.
+- **Replace native vector providers with Spring AI VectorStore.** Rejected for the current release:
+  it does not cover AI Fabric's full lifecycle/admin contract without extra sidecar storage or
+  provider-specific workarounds.
 - **LangChain4j instead of Spring AI.** Viable for the same role (broad model coverage, less
   Spring-opinionated); fits the same SPI-adapter approach. Decision: prefer Spring AI for Spring-Boot
   alignment, but the SPI seam keeps either option open and avoids lock-in.
 
 ## Migration plan (phased, low-risk because of the SPIs)
 
-1. **Phase 0 — Spring Boot 3.4 upgrade** (prerequisite; validate the full reactor + examples).
-2. **Phase 1 — Vector adapter:** `ai-fabric-vector-springai` implementing `VectorDatabaseService` over
-   Spring AI `VectorStore`; prove against an example; then deprecate the cloud vector modules.
-3. **Phase 2 — Provider adapter:** `ai-fabric-provider-springai` implementing
+1. **Phase 0 — Spring Boot/Spring AI upgrade:** complete in the current branch; validate the full
+   reactor and examples.
+2. **Phase 1 — Provider adapter:** `ai-fabric-provider-springai` implementing
    `AIProvider`/`EmbeddingProvider` over `ChatModel`/`EmbeddingModel`; deprecate the hand-rolled
    providers (keep as optional/legacy for one cycle).
+3. **Phase 2 — Vector hardening:** keep native vector providers, add explicit capability flags,
+   fail-closed metadata filters, shared lifecycle contracts, Testcontainers coverage, and live
+   Pinecone verification.
 4. **Phase 3 — Cross-cutting:** Resilience4j for retry/rate-limit; evaluate Spring Batch for migration;
    adopt Spring AI structured output, keeping the repair layer.
 5. Keep every SPI as the seam throughout, so consumers are insulated and the project stays

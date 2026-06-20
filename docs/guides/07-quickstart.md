@@ -6,7 +6,7 @@ works against real providers when you're ready.
 
 ## 1. Create a Spring Boot project
 
-A standard Spring Boot 3.2.x app on Java 21. Add the AI Fabric BOM and the modules you need.
+A standard Spring Boot 4.1.x app on Java 21. Add the AI Fabric BOM and the modules you need.
 
 ```xml
 <project>

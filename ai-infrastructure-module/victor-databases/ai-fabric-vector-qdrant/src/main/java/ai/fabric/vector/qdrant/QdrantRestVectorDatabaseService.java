@@ -10,6 +10,11 @@ import ai.fabric.dto.VectorScanRequest;
 import ai.fabric.exception.AIServiceException;
 import ai.fabric.rag.VectorDatabaseService;
 import ai.fabric.util.MetadataJsonSerializer;
+import ai.fabric.util.VectorMetadataFilterSupport;
+import ai.fabric.util.VectorRecordLifecycleMetadata;
+import ai.fabric.util.VectorRecordInputValidation;
+import ai.fabric.util.VectorRecordProjection;
+import ai.fabric.vector.VectorProviderMetrics;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -49,6 +54,7 @@ final class QdrantRestVectorDatabaseService implements VectorDatabaseService, Au
 
     private static final String EMBEDDING_PAYLOAD_FIELD = "embedding";
     private static final String KNOWLEDGE_SOURCE_HANDLE_REF_FIELD = "knowledgeSourceHandleRef";
+    private static final String METADATA_FILTER_FALLBACK_FIELD = "metadataFilterFallback";
     private static final Set<String> RESERVED_PAYLOAD_FIELDS = Set.of("entityType", "entityId", "content", EMBEDDING_PAYLOAD_FIELD);
     private static final List<String> REQUIRED_KEYWORD_PAYLOAD_INDEX_FIELDS = List.of(KNOWLEDGE_SOURCE_HANDLE_REF_FIELD);
 
@@ -62,6 +68,10 @@ final class QdrantRestVectorDatabaseService implements VectorDatabaseService, Au
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final ConcurrentMap<String, Boolean> collectionCache = new ConcurrentHashMap<>();
     private final ConcurrentMap<String, Boolean> payloadIndexCache = new ConcurrentHashMap<>();
+    private final ConcurrentMap<String, Integer> payloadIndexCreateAttempts = new ConcurrentHashMap<>();
+    private final ConcurrentMap<String, String> payloadIndexCreateFailures = new ConcurrentHashMap<>();
+    private final ConcurrentMap<String, Integer> metadataFilterFallbacks = new ConcurrentHashMap<>();
+    private final Set<String> payloadIndexesSeenMissing = ConcurrentHashMap.newKeySet();
 
     QdrantRestVectorDatabaseService(AIProviderConfig providerConfig, VectorDatabaseConfig vectorDatabaseConfig) {
         this.config = Objects.requireNonNull(providerConfig.getQdrant(), "Qdrant configuration must be present");
@@ -87,8 +97,74 @@ final class QdrantRestVectorDatabaseService implements VectorDatabaseService, Au
     }
 
     @Override
+    public boolean supportsSearchMetadataFiltering() {
+        return true;
+    }
+
+    @Override
+    public boolean supportsScanMetadataFiltering() {
+        return true;
+    }
+
+    @Override
+    public boolean supportsExactFetchById() {
+        return true;
+    }
+
+    @Override
+    public boolean supportsClearByEntityType() {
+        return true;
+    }
+
+    @Override
+    public boolean supportsEfficientEntityTypeCount() {
+        return true;
+    }
+
+    @Override
+    public String vectorProviderName() {
+        return "qdrant";
+    }
+
+    @Override
+    public String vectorNativeClient() {
+        return "qdrant-rest-api";
+    }
+
+    @Override
+    public String vectorSearchFilterMode() {
+        return "qdrant-payload-filter-with-client-side-fallback";
+    }
+
+    @Override
+    public String vectorScanFilterMode() {
+        return "qdrant-payload-filter";
+    }
+
+    @Override
+    public String vectorMetadataFilterSubset() {
+        return "portable-scalar-exact-match";
+    }
+
+    @Override
+    public String vectorEntityTypeCountMode() {
+        return "qdrant-count-api";
+    }
+
+    @Override
+    public String vectorEntityTypeClearMode() {
+        return "qdrant-delete-collection";
+    }
+
+    @Override
+    public String vectorConsistencyModel() {
+        return "provider-durable-lazy-payload-index-readiness";
+    }
+
+    @Override
     public Map<String, Object> adminDiagnostics() {
-        Map<String, Object> diagnostics = new LinkedHashMap<>();
+        Map<String, Object> diagnostics = VectorDatabaseService.super.adminDiagnostics();
+        diagnostics.put("provider", "qdrant");
         diagnostics.put("sharedStorage", !collectionPrefix.isBlank());
         diagnostics.put("scopeType", collectionPrefix.isBlank() ? "COLLECTION" : "COLLECTION_PREFIX");
         diagnostics.put("rootResourceLabel", "Endpoint");
@@ -100,13 +176,25 @@ final class QdrantRestVectorDatabaseService implements VectorDatabaseService, Au
         }
         diagnostics.put("preferGrpc", false);
         diagnostics.put("transport", "rest");
+        diagnostics.put("metadataFilteredSearch", supportsSearchMetadataFiltering());
+        diagnostics.put("metadataFilteredScan", supportsScanMetadataFiltering());
+        diagnostics.put("searchFilterMode", "qdrant-payload-filter-with-client-side-fallback");
+        diagnostics.put("scanFilterMode", "qdrant-payload-filter");
+        diagnostics.put("failOnMissingPayloadIndex", failOnMissingPayloadIndex());
+        diagnostics.put("requiredPayloadIndexFields", REQUIRED_KEYWORD_PAYLOAD_INDEX_FIELDS);
+        diagnostics.put("payloadIndexReadinessSource", "lazy-cache");
+        diagnostics.put("verifiedPayloadIndexes", sortedKeys(payloadIndexCache));
+        diagnostics.put("payloadIndexesSeenMissing", sortedValues(payloadIndexesSeenMissing));
+        diagnostics.put("payloadIndexCreateAttempts", sortedMap(payloadIndexCreateAttempts));
+        diagnostics.put("payloadIndexCreateFailures", sortedMap(payloadIndexCreateFailures));
+        diagnostics.put("metadataFilterFallbacks", sortedMap(metadataFilterFallbacks));
         return diagnostics;
     }
 
     @Override
     public String storeVector(String entityType, String entityId, String content, List<Double> embedding, Map<String, Object> metadata) {
         ensureEnabled();
-        requireEmbedding("storeVector", embedding);
+        VectorRecordInputValidation.requireStoreInputs("Qdrant", entityType, entityId, embedding);
 
         String collection = collectionName(entityType);
         ensureCollection(collection, embedding.size());
@@ -126,18 +214,28 @@ final class QdrantRestVectorDatabaseService implements VectorDatabaseService, Au
     @Override
     public boolean updateVector(String vectorId, String entityType, String entityId, String content, List<Double> embedding, Map<String, Object> metadata) {
         ensureEnabled();
-        if (vectorId == null || vectorId.isBlank()) {
+        if (!VectorRecordInputValidation.hasVectorId(vectorId)
+            || !VectorRecordInputValidation.hasEntityIdentity(entityType, entityId)) {
             return false;
         }
-        requireEmbedding("updateVector", embedding);
+        VectorRecordInputValidation.requireEmbedding("Qdrant", "updateVector", embedding);
 
         String collection = collectionName(entityType);
+        if (!collectionExists(collection)) {
+            return false;
+        }
+        String parsedVectorId = parseVectorUuid(vectorId).toString();
+        Optional<VectorRecord> existing = retrievePoint(collection, parsedVectorId, "retrieve point before update");
+        if (existing.isEmpty()) {
+            return false;
+        }
         ensureCollection(collection, embedding.size());
 
         ObjectNode point = objectMapper.createObjectNode();
-        point.put("id", parseVectorUuid(vectorId).toString());
+        point.put("id", parsedVectorId);
         point.set("vector", toArrayNode(embedding));
-        point.set("payload", buildPayload(entityType, entityId, content, embedding, metadata));
+        point.set("payload", buildPayload(entityType, entityId, content, embedding,
+            VectorRecordLifecycleMetadata.enrichForUpdate(metadata, existing.get().getCreatedAt())));
 
         ObjectNode body = objectMapper.createObjectNode();
         body.set("points", objectMapper.createArrayNode().add(point));
@@ -168,6 +266,9 @@ final class QdrantRestVectorDatabaseService implements VectorDatabaseService, Au
     @Override
     public Optional<VectorRecord> getVectorByEntity(String entityType, String entityId) {
         ensureEnabled();
+        if (!VectorRecordInputValidation.hasEntityIdentity(entityType, entityId)) {
+            return Optional.empty();
+        }
         String collection = collectionName(entityType);
         if (!collectionExists(collection)) {
             return Optional.empty();
@@ -181,11 +282,15 @@ final class QdrantRestVectorDatabaseService implements VectorDatabaseService, Au
         if (request == null) {
             throw new AIServiceException("Qdrant search requires a request");
         }
-        requireEmbedding("search", queryVector);
+        VectorRecordInputValidation.requireEmbedding("Qdrant", "search", queryVector);
 
         String entityType = request.getEntityType();
         int limit = QdrantVectorDatabaseService.normalizeSearchLimit(request.getLimit());
         double threshold = QdrantVectorDatabaseService.normalizeScoreThreshold(request.getThreshold());
+
+        if (hasRejectedMetadataFilter(request.getMetadata())) {
+            return emptySearchResponse(request);
+        }
 
         List<String> collections = resolveSearchCollections(entityType);
         if (collections.isEmpty()) {
@@ -205,20 +310,33 @@ final class QdrantRestVectorDatabaseService implements VectorDatabaseService, Au
             filter.ifPresent(value -> body.set("filter", value));
 
             JsonNode result;
+            boolean metadataFilterFallback = false;
             try {
                 result = request("POST", "/collections/" + pathSegment(collection) + "/points/search", body, "search points");
             } catch (AIServiceException ex) {
                 if (filter.isEmpty() || !isMissingPayloadIndexFailure(ex)) {
                     throw ex;
                 }
+                if (failOnMissingPayloadIndex()) {
+                    throw new AIServiceException(
+                        "Qdrant REST metadata-filtered search requires a payload index for the requested metadata fields. "
+                            + "Create the payload index or set ai.vector-db.operations.fail-on-missing-payload-index=false "
+                            + "to allow compatibility fallback.",
+                        ex
+                    );
+                }
                 log.warn(
                     "Qdrant REST filtered search for collection '{}' failed because a required payload index is missing. "
-                        + "Retrying without server-side metadata filtering and relying on client-side source scoping.",
+                        + "Retrying without server-side metadata filtering and re-applying the portable metadata "
+                        + "predicate client-side.",
                     collection
                 );
                 body.remove("filter");
                 result = request("POST", "/collections/" + pathSegment(collection) + "/points/search", body,
                     "search points without metadata filter");
+                metadataFilterFallback = true;
+                metadataFilterFallbacks.merge(collection, 1, Integer::sum);
+                VectorProviderMetrics.recordFallback("qdrant", "search", "missing_payload_index");
             }
 
             JsonNode points = result.path("result");
@@ -230,7 +348,11 @@ final class QdrantRestVectorDatabaseService implements VectorDatabaseService, Au
                 if (score < threshold) {
                     continue;
                 }
-                allResults.add(toVectorRecord(collection, point, score));
+                VectorRecord record = toVectorRecord(collection, point, score);
+                if (metadataFilterFallback && !matchesMetadata(record, request.getMetadata())) {
+                    continue;
+                }
+                allResults.add(metadataFilterFallback ? withMetadataFilterFallback(record) : record);
             }
         }
 
@@ -265,6 +387,9 @@ final class QdrantRestVectorDatabaseService implements VectorDatabaseService, Au
     @Override
     public boolean removeVector(String entityType, String entityId) {
         ensureEnabled();
+        if (!VectorRecordInputValidation.hasEntityIdentity(entityType, entityId)) {
+            return false;
+        }
         String collection = collectionName(entityType);
         if (!collectionExists(collection)) {
             return false;
@@ -287,10 +412,16 @@ final class QdrantRestVectorDatabaseService implements VectorDatabaseService, Au
         boolean removed = false;
         for (String collection : listCandidateCollections()) {
             try {
+                if (retrievePoint(collection, id, "retrieve point before delete").isEmpty()) {
+                    continue;
+                }
                 deletePointIds(collection, List.of(id));
                 removed = true;
-            } catch (AIServiceException ignored) {
-                // Best-effort delete across scoped collections.
+            } catch (AIServiceException ex) {
+                if (isCollectionNotFoundFailure(ex)) {
+                    continue;
+                }
+                throw ex;
             }
         }
         return removed;
@@ -348,24 +479,20 @@ final class QdrantRestVectorDatabaseService implements VectorDatabaseService, Au
     public VectorScanPage scan(VectorScanRequest request) {
         ensureEnabled();
         if (request == null || request.getEntityType() == null || request.getEntityType().isBlank()) {
-            return VectorScanPage.builder()
-                .vectors(List.of())
-                .hasMore(false)
-                .nextCursor(null)
-                .build();
+            return emptyScanPage();
+        }
+
+        if (hasRejectedMetadataFilter(request.getMetadataEquals())) {
+            return emptyScanPage();
         }
 
         String collection = collectionName(request.getEntityType());
         if (!collectionExists(collection)) {
-            return VectorScanPage.builder()
-                .vectors(List.of())
-                .hasMore(false)
-                .nextCursor(null)
-                .build();
+            return emptyScanPage();
         }
 
         int limit = request.getLimit() != null && request.getLimit() > 0 ? request.getLimit() : 200;
-        int pageSize = limit + 1;
+        int pageSize = limit;
         Optional<JsonNode> offset = decodeScrollCursor(request.getCursor());
         Optional<JsonNode> filter = buildMetadataFilter(request.getMetadataEquals());
 
@@ -386,12 +513,17 @@ final class QdrantRestVectorDatabaseService implements VectorDatabaseService, Au
                 .build();
         }
 
-        List<JsonNode> pointNodes = new ArrayList<>();
-        pointsNode.forEach(pointNodes::add);
-        boolean hasMore = pointNodes.size() > limit || !result.path("result").path("next_page_offset").isMissingNode()
+        List<JsonNode> fetchedPoints = new ArrayList<>();
+        pointsNode.forEach(fetchedPoints::add);
+        boolean overFetched = fetchedPoints.size() > limit;
+        boolean hasMore = overFetched || !result.path("result").path("next_page_offset").isMissingNode()
             && !result.path("result").path("next_page_offset").isNull();
-        if (pointNodes.size() > limit) {
-            pointNodes = pointNodes.subList(0, limit);
+        JsonNode syntheticOffset = overFetched && limit > 0
+            ? fetchedPoints.get(limit - 1).path("id")
+            : null;
+        List<JsonNode> pointNodes = fetchedPoints;
+        if (overFetched) {
+            pointNodes = fetchedPoints.subList(0, limit);
         }
 
         List<VectorRecord> records = pointNodes.stream()
@@ -400,7 +532,7 @@ final class QdrantRestVectorDatabaseService implements VectorDatabaseService, Au
             .toList();
 
         JsonNode nextOffset = result.path("result").path("next_page_offset");
-        String nextCursor = encodeScrollCursor(nextOffset).orElse(null);
+        String nextCursor = encodeScrollCursor(nextOffset).or(() -> encodeScrollCursor(syntheticOffset)).orElse(null);
 
         return VectorScanPage.builder()
             .vectors(records)
@@ -412,6 +544,9 @@ final class QdrantRestVectorDatabaseService implements VectorDatabaseService, Au
     @Override
     public List<VectorRecord> getVectorsByEntityType(String entityType) {
         ensureEnabled();
+        if (!VectorRecordInputValidation.hasText(entityType)) {
+            return Collections.emptyList();
+        }
         String collection = collectionName(entityType);
         if (!collectionExists(collection)) {
             return Collections.emptyList();
@@ -447,6 +582,9 @@ final class QdrantRestVectorDatabaseService implements VectorDatabaseService, Au
     @Override
     public long getVectorCountByEntityType(String entityType) {
         ensureEnabled();
+        if (!VectorRecordInputValidation.hasText(entityType)) {
+            return 0L;
+        }
         String collection = collectionName(entityType);
         try {
             return countCollection(collection);
@@ -488,6 +626,9 @@ final class QdrantRestVectorDatabaseService implements VectorDatabaseService, Au
     @Override
     public long clearVectorsByEntityType(String entityType) {
         ensureEnabled();
+        if (!VectorRecordInputValidation.hasText(entityType)) {
+            return 0L;
+        }
         String collection = collectionName(entityType);
         if (!collectionExists(collection)) {
             return 0L;
@@ -503,12 +644,6 @@ final class QdrantRestVectorDatabaseService implements VectorDatabaseService, Au
     private void ensureEnabled() {
         if (!config.isEnabled()) {
             throw new AIServiceException("Qdrant vector provider is disabled");
-        }
-    }
-
-    private void requireEmbedding(String action, List<Double> embedding) {
-        if (embedding == null || embedding.isEmpty()) {
-            throw new AIServiceException("Qdrant " + action + " requires a non-empty embedding vector");
         }
     }
 
@@ -560,6 +695,8 @@ final class QdrantRestVectorDatabaseService implements VectorDatabaseService, Au
                 return;
             }
             if (!payloadSchemaExists(collection, fieldName)) {
+                payloadIndexesSeenMissing.add(cacheKey);
+                payloadIndexCreateAttempts.merge(cacheKey, 1, Integer::sum);
                 ObjectNode body = objectMapper.createObjectNode();
                 body.put("field_name", fieldName);
                 body.put("field_schema", "keyword");
@@ -568,17 +705,47 @@ final class QdrantRestVectorDatabaseService implements VectorDatabaseService, Au
                         "create payload index '" + fieldName + "' for collection " + collection);
                 } catch (AIServiceException ex) {
                     if (!isAlreadyExistsFailure(ex) && !payloadSchemaExists(collection, fieldName)) {
+                        payloadIndexCreateFailures.put(cacheKey, failureSummary(ex));
                         throw ex;
                     }
                 }
             }
             payloadIndexCache.put(cacheKey, Boolean.TRUE);
+            payloadIndexesSeenMissing.remove(cacheKey);
+            payloadIndexCreateFailures.remove(cacheKey);
         }
     }
 
     private boolean payloadSchemaExists(String collection, String fieldName) {
         JsonNode result = request("GET", "/collections/" + pathSegment(collection), null, "get collection info for " + collection);
         return result.path("result").path("payload_schema").has(fieldName);
+    }
+
+    private static List<String> sortedKeys(Map<String, ?> values) {
+        return values.keySet().stream().sorted().toList();
+    }
+
+    private static List<String> sortedValues(Set<String> values) {
+        return values.stream().sorted().toList();
+    }
+
+    private static <T> Map<String, T> sortedMap(Map<String, T> values) {
+        return values.entrySet().stream()
+            .sorted(Map.Entry.comparingByKey())
+            .collect(Collectors.toMap(
+                Map.Entry::getKey,
+                Map.Entry::getValue,
+                (left, right) -> left,
+                LinkedHashMap::new
+            ));
+    }
+
+    private static String failureSummary(Throwable ex) {
+        String message = ex.getMessage();
+        if (message == null || message.isBlank()) {
+            return ex.getClass().getName();
+        }
+        return message;
     }
 
     private boolean collectionExists(String collection) {
@@ -591,6 +758,12 @@ final class QdrantRestVectorDatabaseService implements VectorDatabaseService, Au
             return true;
         }
         return false;
+    }
+
+    private boolean failOnMissingPayloadIndex() {
+        return vectorDatabaseConfig != null
+            && vectorDatabaseConfig.getOperations() != null
+            && Boolean.TRUE.equals(vectorDatabaseConfig.getOperations().getFailOnMissingPayloadIndex());
     }
 
     private List<String> listCollections() {
@@ -717,7 +890,7 @@ final class QdrantRestVectorDatabaseService implements VectorDatabaseService, Au
             payload.put("content", content);
         }
 
-        Map<String, Object> safeMetadata = metadata == null ? Collections.emptyMap() : metadata;
+        Map<String, Object> safeMetadata = VectorRecordLifecycleMetadata.enrichForStore(metadata);
         String rawMetadata = MetadataJsonSerializer.serialize(stripRaw(safeMetadata));
         payload.put("raw", rawMetadata);
         payload.set(EMBEDDING_PAYLOAD_FIELD, toArrayNode(embedding));
@@ -732,22 +905,26 @@ final class QdrantRestVectorDatabaseService implements VectorDatabaseService, Au
     }
 
     private Optional<JsonNode> buildMetadataFilter(Map<String, Object> metadata) {
-        if (metadata == null || metadata.isEmpty()) {
+        VectorMetadataFilterSupport.ValidationResult validation =
+            VectorMetadataFilterSupport.validatePortableEquals(metadata);
+        if (validation.isEmpty()) {
             return Optional.empty();
+        }
+        if (validation.hasRejectedFilters()) {
+            return Optional.of(impossibleMetadataFilter());
         }
 
         ArrayNode must = objectMapper.createArrayNode();
-        metadata.forEach((key, value) -> {
-            if (key == null || value == null) {
-                return;
-            }
+        validation.terms().forEach(term -> {
             ObjectNode condition = objectMapper.createObjectNode();
-            condition.put("key", key);
+            condition.put("key", term.key());
             ObjectNode match = objectMapper.createObjectNode();
-            if (value instanceof Boolean bool) {
+            Object value = term.value();
+            if (term.kind() == VectorMetadataFilterSupport.ValueKind.BOOLEAN) {
+                Boolean bool = (Boolean) value;
                 match.put("value", bool);
-            } else if (value instanceof Number number) {
-                match.put("value", number.longValue());
+            } else if (term.kind() == VectorMetadataFilterSupport.ValueKind.INTEGRAL_NUMBER) {
+                match.put("value", (Long) value);
             } else {
                 match.put("value", String.valueOf(value));
             }
@@ -761,6 +938,19 @@ final class QdrantRestVectorDatabaseService implements VectorDatabaseService, Au
         ObjectNode filter = objectMapper.createObjectNode();
         filter.set("must", must);
         return Optional.of(filter);
+    }
+
+    private JsonNode impossibleMetadataFilter() {
+        ArrayNode must = objectMapper.createArrayNode();
+        ObjectNode condition = objectMapper.createObjectNode();
+        condition.put("key", VectorMetadataFilterSupport.IMPOSSIBLE_FILTER_FIELD);
+        ObjectNode match = objectMapper.createObjectNode();
+        match.put("value", VectorMetadataFilterSupport.IMPOSSIBLE_FILTER_VALUE);
+        condition.set("match", match);
+        must.add(condition);
+        ObjectNode filter = objectMapper.createObjectNode();
+        filter.set("must", must);
+        return filter;
     }
 
     private JsonNode buildPayloadSelector(VectorScanRequest request) {
@@ -813,8 +1003,8 @@ final class QdrantRestVectorDatabaseService implements VectorDatabaseService, Au
             .content(content)
             .embedding(embedding)
             .metadata(metadata)
-            .createdAt(readTimestamp(metadata, "_indexedCreatedAt").orElse(null))
-            .updatedAt(readTimestamp(metadata, "_indexedUpdatedAt").orElse(null))
+            .createdAt(VectorRecordLifecycleMetadata.readCreatedAt(metadata).orElse(null))
+            .updatedAt(VectorRecordLifecycleMetadata.readUpdatedAt(metadata).orElse(null))
             .similarityScore(scoreOverride)
             .build();
     }
@@ -847,23 +1037,7 @@ final class QdrantRestVectorDatabaseService implements VectorDatabaseService, Au
     }
 
     private VectorRecord applyScanProjection(VectorRecord record, VectorScanRequest request) {
-        if (record == null || request == null) {
-            return record;
-        }
-        if (request.isIncludeContent() && request.isIncludeEmbedding() && request.isIncludeMetadata()) {
-            return record;
-        }
-        return VectorRecord.builder()
-            .vectorId(record.getVectorId())
-            .entityType(record.getEntityType())
-            .entityId(record.getEntityId())
-            .content(request.isIncludeContent() ? record.getContent() : null)
-            .embedding(request.isIncludeEmbedding() ? record.getEmbedding() : List.of())
-            .metadata(request.isIncludeMetadata() ? record.getMetadata() : Map.of())
-            .createdAt(record.getCreatedAt())
-            .updatedAt(record.getUpdatedAt())
-            .similarityScore(record.getSimilarityScore())
-            .build();
+        return VectorRecordProjection.projectForScan(record, request);
     }
 
     private Map<String, Object> toSearchRow(VectorRecord record) {
@@ -875,9 +1049,45 @@ final class QdrantRestVectorDatabaseService implements VectorDatabaseService, Au
         row.put("vectorSpace", record.getEntityType());
         row.put("content", record.getContent());
         row.put("metadata", record.getMetadata());
+        if (isMetadataFilterFallback(record)) {
+            row.put(METADATA_FILTER_FALLBACK_FIELD, true);
+        }
         row.put("score", record.getSimilarityScore());
         row.put("similarity", record.getSimilarityScore());
         return row;
+    }
+
+    private VectorRecord withMetadataFilterFallback(VectorRecord record) {
+        Map<String, Object> metadata = new LinkedHashMap<>();
+        if (record.getMetadata() != null) {
+            metadata.putAll(record.getMetadata());
+        }
+        metadata.put(METADATA_FILTER_FALLBACK_FIELD, true);
+        return VectorRecord.builder()
+            .vectorId(record.getVectorId())
+            .entityType(record.getEntityType())
+            .entityId(record.getEntityId())
+            .content(record.getContent())
+            .embedding(record.getEmbedding())
+            .metadata(metadata)
+            .aiAnalysis(record.getAiAnalysis())
+            .createdAt(record.getCreatedAt())
+            .updatedAt(record.getUpdatedAt())
+            .vectorMetadata(record.getVectorMetadata())
+            .similarityScore(record.getSimilarityScore())
+            .active(record.getActive())
+            .version(record.getVersion())
+            .build();
+    }
+
+    private boolean matchesMetadata(VectorRecord record, Map<String, Object> metadataEquals) {
+        return record != null && VectorMetadataFilterSupport.matchesPortableEquals(record.getMetadata(), metadataEquals);
+    }
+
+    private boolean isMetadataFilterFallback(VectorRecord record) {
+        return record != null
+            && record.getMetadata() != null
+            && Boolean.TRUE.equals(record.getMetadata().get(METADATA_FILTER_FALLBACK_FIELD));
     }
 
     private AISearchResponse emptySearchResponse(AISearchRequest request) {
@@ -888,6 +1098,18 @@ final class QdrantRestVectorDatabaseService implements VectorDatabaseService, Au
             .maxScore(0.0)
             .model("qdrant")
             .build();
+    }
+
+    private VectorScanPage emptyScanPage() {
+        return VectorScanPage.builder()
+            .vectors(List.of())
+            .hasMore(false)
+            .nextCursor(null)
+            .build();
+    }
+
+    private boolean hasRejectedMetadataFilter(Map<String, Object> metadata) {
+        return VectorMetadataFilterSupport.validatePortableEquals(metadata).hasRejectedFilters();
     }
 
     private List<String> resolveSearchCollections(String entityType) {

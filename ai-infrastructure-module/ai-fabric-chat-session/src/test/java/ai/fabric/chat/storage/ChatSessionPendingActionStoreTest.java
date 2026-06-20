@@ -65,6 +65,44 @@ class ChatSessionPendingActionStoreTest {
     }
 
     @Test
+    void shouldTrimOldestPendingActionsWhenStackDepthLimitIsExceeded() {
+        InMemoryStorage storage = new InMemoryStorage();
+        ChatSession session = session("conv-1", "user-1", Map.of("existing", "kept"));
+        storage.save(session);
+        ChatSessionPendingActionStore store = new ChatSessionPendingActionStore(storage, 2);
+
+        store.pushPendingAction("conv-1", "user-1", pending("first_action"));
+        store.pushPendingAction("conv-1", "user-1", pending("second_action"));
+        store.pushPendingAction("conv-1", "user-1", pending("third_action"));
+
+        assertThat(store.getPendingActionStack("conv-1", "user-1"))
+            .extracting(PendingAction::action)
+            .containsExactly("third_action", "second_action");
+        assertThat(session.getSessionMetadata()).containsEntry("existing", "kept");
+
+        assertThat(store.popPendingAction("conv-1", "user-1").orElseThrow().action()).isEqualTo("third_action");
+        assertThat(store.popPendingAction("conv-1", "user-1").orElseThrow().action()).isEqualTo("second_action");
+        assertThat(store.popPendingAction("conv-1", "user-1")).isEmpty();
+    }
+
+    @Test
+    void shouldClearMalformedConfirmationStackOnPop() {
+        InMemoryStorage storage = new InMemoryStorage();
+        ChatSession session = session("conv-1", "user-1", Map.of(
+            "existing", "kept",
+            ConfirmationStack.METADATA_KEY_STACK, "not-a-stack"
+        ));
+        storage.save(session);
+        ChatSessionPendingActionStore store = new ChatSessionPendingActionStore(storage);
+
+        assertThat(store.popPendingAction("conv-1", "user-1")).isEmpty();
+
+        assertThat(session.getSessionMetadata())
+            .containsEntry("existing", "kept")
+            .doesNotContainKey(ConfirmationStack.METADATA_KEY_STACK);
+    }
+
+    @Test
     void shouldIgnoreSessionsOwnedByAnotherUser() {
         InMemoryStorage storage = new InMemoryStorage();
         ChatSession session = session("conv-1", "owner-1", Map.of());

@@ -6,6 +6,8 @@ import ai.fabric.config.AIIndexingProperties;
 import ai.fabric.config.AIInfrastructureAutoConfiguration;
 import ai.fabric.config.condition.EmbeddingsFeatureEnabledCondition;
 import ai.fabric.config.condition.VectorDbConfiguredCondition;
+import ai.fabric.indexing.document.springai.SpringAiDocumentIndexingAdapter;
+import ai.fabric.indexing.document.springai.SpringAiDocumentReaderFactory;
 import ai.fabric.indexing.IndexingCoordinator;
 import ai.fabric.indexing.IndexingStrategyResolver;
 import ai.fabric.indexing.queue.IndexingQueueService;
@@ -19,11 +21,13 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Clock;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.AutoConfigureAfter;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Conditional;
+import org.springframework.context.annotation.Configuration;
 import org.springframework.scheduling.annotation.EnableScheduling;
 
 @AutoConfiguration
@@ -120,5 +124,30 @@ public class AIIndexingAutoConfiguration {
         IndexingCoordinator indexingCoordinator
     ) {
         return new AICapableAspect(configLoader, aiCapabilityService, indexingCoordinator);
+    }
+
+    @Configuration(proxyBeanMethods = false)
+    @ConditionalOnClass(name = "org.springframework.ai.document.Document")
+    static class SpringAiDocumentIndexingConfiguration {
+
+        @Bean
+        @ConditionalOnMissingBean
+        SpringAiDocumentIndexingAdapter springAiDocumentIndexingAdapter(
+            ObjectMapper objectMapper,
+            IndexingQueueService indexingQueueService,
+            AIEntityConfigurationLoader configurationLoader
+        ) {
+            return new SpringAiDocumentIndexingAdapter(
+                objectMapper,
+                indexingQueueService,
+                configurationLoader
+            );
+        }
+
+        @Bean
+        @ConditionalOnMissingBean
+        SpringAiDocumentReaderFactory springAiDocumentReaderFactory() {
+            return new SpringAiDocumentReaderFactory();
+        }
     }
 }

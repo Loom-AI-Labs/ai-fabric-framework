@@ -73,7 +73,7 @@ class AIGovernanceAutoConfigurationTest {
     void autoModePrefersVectorCatalogWhenVectorScanAndMetadataFilteringAreSupported() {
         VectorDatabaseService vectorDatabaseService = mock(VectorDatabaseService.class);
         when(vectorDatabaseService.supportsVectorScan()).thenReturn(true);
-        when(vectorDatabaseService.supportsMetadataFiltering()).thenReturn(true);
+        when(vectorDatabaseService.supportsScanMetadataFiltering()).thenReturn(true);
 
         contextRunner
             .withBean(VectorDatabaseService.class, () -> vectorDatabaseService)
@@ -81,6 +81,24 @@ class AIGovernanceAutoConfigurationTest {
             .run(context -> {
                 assertThat(context).hasSingleBean(IndexCatalog.class);
                 assertThat(context.getBean(IndexCatalog.class)).isInstanceOf(VectorIndexCatalog.class);
+            });
+    }
+
+    @Test
+    void autoModeDoesNotUseVectorCatalogWhenOnlySearchMetadataFilteringIsSupported() {
+        IndexCatalogRepository repository = mock(IndexCatalogRepository.class);
+        VectorDatabaseService vectorDatabaseService = mock(VectorDatabaseService.class);
+        when(vectorDatabaseService.supportsVectorScan()).thenReturn(true);
+        when(vectorDatabaseService.supportsSearchMetadataFiltering()).thenReturn(true);
+        when(vectorDatabaseService.supportsScanMetadataFiltering()).thenReturn(false);
+
+        contextRunner
+            .withBean(VectorDatabaseService.class, () -> vectorDatabaseService)
+            .withBean(IndexCatalogRepository.class, () -> repository)
+            .withPropertyValues("ai.governance.enabled=true")
+            .run(context -> {
+                assertThat(context).hasSingleBean(IndexCatalog.class);
+                assertThat(context.getBean(IndexCatalog.class)).isInstanceOf(JpaIndexCatalog.class);
             });
     }
 

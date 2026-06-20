@@ -5,7 +5,7 @@ AI Fabric Framework publishes to **Maven Central** via the Sonatype Central Port
 - Group: `io.github.loom-ai-labs`
 - BOM artifact: `ai-fabric-bom`
 - Release tag format: `ai-fabric-framework-v<version>`
-- First release: `0.2.0`
+- Current release: `0.2.1`
 
 ## Consume From Maven Central
 
@@ -18,7 +18,7 @@ Maven repository.
     <dependency>
       <groupId>io.github.loom-ai-labs</groupId>
       <artifactId>ai-fabric-bom</artifactId>
-      <version>0.2.0</version>
+      <version>0.2.1</version>
       <type>pom</type>
       <scope>import</scope>
     </dependency>
@@ -46,8 +46,8 @@ as GitHub Actions repository secrets:
 ## Verify Before Release
 
 ```bash
-mvn -B -V --no-transfer-progress -f ai-infrastructure-module/pom.xml validate
-mvn -B -V --no-transfer-progress -f ai-infrastructure-module/pom.xml -DskipTests compile
+mvn -B -V --no-transfer-progress -f ai-infrastructure-module/pom.xml clean install
+mvn -B -V --no-transfer-progress -f examples/real-apps/pom.xml install
 ```
 
 ## Release
@@ -59,14 +59,14 @@ uploads them through the `central-publishing-maven-plugin`. The `release` profil
 Tag and create a GitHub Release; the release workflow publishes automatically:
 
 ```bash
-git tag ai-fabric-framework-v0.1.0
-git push origin ai-fabric-framework-v0.1.0
+git tag ai-fabric-framework-v0.2.1
+git push origin ai-fabric-framework-v0.2.1
 ```
 
 Then create a GitHub Release from the tag. The workflow runs:
 
 ```bash
-mvn -B -V -f ai-infrastructure-module/pom.xml -Prelease,central -DskipTests deploy
+mvn -B -V -f ai-infrastructure-module/pom.xml -Prelease,central deploy
 ```
 
 With `autoPublish` enabled, the deployment is validated and released to Central without a manual

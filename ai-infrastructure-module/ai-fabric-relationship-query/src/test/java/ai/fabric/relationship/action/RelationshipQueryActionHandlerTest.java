@@ -137,6 +137,34 @@ class RelationshipQueryActionHandlerTest {
     }
 
     @Test
+    void executeShouldPropagateFailedQueryResponse() {
+        when(queryService.execute(any(), anyList(), any(QueryOptions.class)))
+            .thenReturn(RAGResponse.builder()
+                .success(false)
+                .errorMessage("Relationship query text is required.")
+                .documents(List.of())
+                .totalResults(0)
+                .returnedResults(0)
+                .metadata(Map.of("errorCode", "INVALID_QUERY", "provider", "relationship-query"))
+                .warnings(List.of("Relationship query text is required."))
+                .build());
+
+        ActionResult result = handler.execute(
+            " ",
+            List.of("user"),
+            null,
+            null,
+            null,
+            actionContext("user-123")
+        );
+
+        assertThat(result.isSuccess()).isFalse();
+        assertThat(result.getErrorCode()).isEqualTo("INVALID_QUERY");
+        assertThat(result.getMessage()).isEqualTo("Relationship query text is required.");
+        assertThat(result.getData().toMap()).containsKeys("metadata", "warnings", "documents");
+    }
+
+    @Test
     void allowedRequiresUserId() {
         assertThat(handler.allowed(actionContext(null))).isFalse();
         assertThat(handler.allowed(actionContext(""))).isFalse();

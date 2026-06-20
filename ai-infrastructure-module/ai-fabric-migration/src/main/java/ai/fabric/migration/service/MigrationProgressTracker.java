@@ -2,6 +2,7 @@ package ai.fabric.migration.service;
 
 import ai.fabric.migration.domain.MigrationJob;
 import ai.fabric.migration.domain.MigrationProgress;
+import ai.fabric.migration.domain.MigrationStatus;
 
 import java.time.Clock;
 import java.time.Duration;
@@ -36,6 +37,9 @@ public class MigrationProgressTracker {
     }
 
     private double calculatePercent(MigrationJob job) {
+        if (job.getStatus() == MigrationStatus.COMPLETED) {
+            return 100.0;
+        }
         Long total = job.getTotalEntities();
         Long processed = job.getProcessedEntities();
         if (total == null || total <= 0) {
@@ -48,6 +52,9 @@ public class MigrationProgressTracker {
     }
 
     private Optional<Duration> calculateEta(MigrationJob job) {
+        if (job.getStatus() == MigrationStatus.COMPLETED) {
+            return Optional.of(Duration.ZERO);
+        }
         Long total = job.getTotalEntities();
         Long processed = job.getProcessedEntities();
         if (job.getStartedAt() == null

@@ -22,6 +22,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -44,6 +45,7 @@ public class AISecurityService {
 
     private final Map<String, List<AISecurityEvent>> securityEvents = new ConcurrentHashMap<>();
     private final Map<String, RateCounter> accessAttempts = new ConcurrentHashMap<>();
+    private final AtomicLong eventSequence = new AtomicLong();
 
     @Autowired(required = false)
     private SecurityAnalysisPolicy securityPolicy;
@@ -104,16 +106,12 @@ public class AISecurityService {
                 .timestamp(timestamp)
                 .success(true)
                 .build();
+        } catch (IllegalArgumentException | NullPointerException ex) {
+            log.warn("Security request rejected: {}", ex.getMessage());
+            return failedClosedResponse(request, ex.getMessage());
         } catch (Exception ex) {
             log.error("Security analysis failed", ex);
-            return AISecurityResponse.builder()
-                .requestId(request != null ? request.getRequestId() : null)
-                .subjectId(request != null ? resolveSubjectId(request) : null)
-                .accessAllowed(false)
-                .shouldBlock(true)
-                .success(false)
-                .errorMessage(ex.getMessage())
-                .build();
+            return failedClosedResponse(request, ex.getMessage());
         }
     }
 
@@ -291,7 +289,7 @@ public class AISecurityService {
         boolean blocked) {
         String actorId = resolveSubjectId(request);
         AISecurityEvent event = AISecurityEvent.builder()
-            .eventId("SEC_" + timestamp.toEpochSecond(clock.getZone().getRules().getOffset(timestamp)))
+            .eventId(nextEventId(timestamp))
             .subjectId(actorId)
             .requestId(request.getRequestId())
             .eventType(blocked ? "BLOCKED_REQUEST" : "SECURITY_CHECK")
@@ -315,6 +313,22 @@ public class AISecurityService {
         }
 
         return event;
+    }
+
+    private String nextEventId(LocalDateTime timestamp) {
+        long epochSecond = timestamp.toEpochSecond(clock.getZone().getRules().getOffset(timestamp));
+        return "SEC_" + epochSecond + "_" + eventSequence.incrementAndGet();
+    }
+
+    private AISecurityResponse failedClosedResponse(AISecurityRequest request, String errorMessage) {
+        return AISecurityResponse.builder()
+            .requestId(request != null ? request.getRequestId() : null)
+            .subjectId(request != null ? resolveSubjectId(request) : null)
+            .accessAllowed(false)
+            .shouldBlock(true)
+            .success(false)
+            .errorMessage(errorMessage)
+            .build();
     }
 
     private boolean hasText(String value) {

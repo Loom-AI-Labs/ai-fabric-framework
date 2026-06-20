@@ -4,7 +4,11 @@ import ai.fabric.core.AICoreService;
 import ai.fabric.config.PromptBundleProperties;
 import ai.fabric.dto.AIGenerationRequest;
 import ai.fabric.dto.AIGenerationResponse;
+import ai.fabric.llm.structured.DefaultStructuredJsonCallExecutor;
+import ai.fabric.llm.structured.StructuredJsonCallExecutor;
+import ai.fabric.llm.structured.StructuredJsonCallSpec;
 import ai.fabric.llm.structured.StructuredJsonExtractor;
+import ai.fabric.llm.structured.StructuredJsonResult;
 import ai.fabric.prompt.ClasspathPromptTemplateStore;
 import ai.fabric.prompt.PromptRenderer;
 import ai.fabric.prompt.PromptTemplateResolver;
@@ -97,9 +101,58 @@ class RelationshipQueryPlannerTest {
         RelationshipQueryPlan result = planner.planQuery("Find docs", List.of("document"));
 
         assertThat(result.getPrimaryEntityType()).isEqualTo("document");
+        assertThat(result.getConfidenceScore()).isEqualTo(0.8d);
         verify(validator).validate(any(RelationshipQueryPlan.class));
         verify(queryCache).putPlan(anyString(), any(RelationshipQueryPlan.class));
         verify(queryMetrics).recordPlan(any(Long.class), any(Boolean.class), any(Boolean.class));
+    }
+
+    @Test
+    void shouldParsePlanThroughStructuredJsonExecutor() {
+        ObjectMapper objectMapper = new ObjectMapper();
+        StructuredJsonExtractor extractor = new StructuredJsonExtractor();
+        RecordingStructuredJsonCallExecutor recordingExecutor = new RecordingStructuredJsonCallExecutor(
+            new DefaultStructuredJsonCallExecutor(extractor, objectMapper)
+        );
+        planner = new RelationshipQueryPlanner(
+            aiCoreService,
+            schemaProvider,
+            new RelationshipQueryProperties(),
+            validator,
+            queryCache,
+            queryMetrics,
+            objectMapper,
+            extractor,
+            recordingExecutor,
+            promptTemplateResolver(),
+            new PromptRenderer()
+        );
+
+        when(queryCache.getPlan(anyString())).thenReturn(Optional.empty());
+        when(aiCoreService.generateContent(any()))
+            .thenReturn(AIGenerationResponse.builder()
+                .content("""
+                    Here is the plan:
+                    ```json
+                    {
+                      "originalQuery": "Find docs",
+                      "primaryEntityType": "document",
+                      "candidateEntityTypes": ["document"],
+                      "relationshipPaths": [],
+                      "directFilters": {},
+                      "relationshipFilters": {},
+                      "needsSemanticSearch": false,
+                      "confidence": 0.8
+                    }
+                    ```
+                    """)
+                .build());
+
+        RelationshipQueryPlan result = planner.planQuery("Find docs", List.of("document"));
+
+        assertThat(recordingExecutor.calls).isEqualTo(1);
+        assertThat(result.getPrimaryEntityType()).isEqualTo("document");
+        assertThat(result.getConfidenceScore()).isEqualTo(0.8d);
     }
 
     @Test
@@ -191,5 +244,20 @@ class RelationshipQueryPlannerTest {
             new ClasspathPromptTemplateStore(new DefaultResourceLoader()),
             new PromptBundleProperties()
         );
+    }
+
+    private static final class RecordingStructuredJsonCallExecutor implements StructuredJsonCallExecutor {
+        private final StructuredJsonCallExecutor delegate;
+        private int calls;
+
+        private RecordingStructuredJsonCallExecutor(StructuredJsonCallExecutor delegate) {
+            this.delegate = delegate;
+        }
+
+        @Override
+        public <T> StructuredJsonResult<T> execute(StructuredJsonCallSpec<T> spec) {
+            calls += 1;
+            return delegate.execute(spec);
+        }
     }
 }

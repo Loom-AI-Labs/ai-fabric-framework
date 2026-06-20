@@ -1,6 +1,7 @@
 package ai.fabric.vector.memory;
 
 import ai.fabric.config.AIProviderConfig;
+import ai.fabric.config.VectorDatabaseConfig;
 import ai.fabric.rag.VectorDatabaseService;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
@@ -48,6 +49,38 @@ class MemoryVectorAutoConfigurationTest {
                 assertThat(context).doesNotHaveBean(InMemoryVectorDatabaseService.class);
                 assertThat(context).hasSingleBean(VectorDatabaseService.class);
                 assertThat(context.getBean(VectorDatabaseService.class)).isSameAs(customService);
+            });
+    }
+
+    @Test
+    void failsFastWhenMemoryProviderIsSelectedWithProductionProfile() {
+        contextRunner
+            .withPropertyValues(
+                "ai.vector-db.type=memory",
+                "spring.profiles.active=prod"
+            )
+            .run(context -> {
+                assertThat(context).hasFailed();
+                assertThat(context.getStartupFailure())
+                    .hasRootCauseInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("ai.vector-db.type=memory");
+            });
+    }
+
+    @Test
+    void allowsMemoryProviderInProductionOnlyWithExplicitOverride() {
+        VectorDatabaseConfig vectorDatabaseConfig = new VectorDatabaseConfig();
+        vectorDatabaseConfig.getMemory().setAllowInProduction(true);
+
+        contextRunner
+            .withBean(VectorDatabaseConfig.class, () -> vectorDatabaseConfig)
+            .withPropertyValues(
+                "ai.vector-db.type=memory",
+                "spring.profiles.active=prod"
+            )
+            .run(context -> {
+                assertThat(context).hasSingleBean(InMemoryVectorDatabaseService.class);
+                assertThat(context).hasSingleBean(VectorDatabaseService.class);
             });
     }
 }

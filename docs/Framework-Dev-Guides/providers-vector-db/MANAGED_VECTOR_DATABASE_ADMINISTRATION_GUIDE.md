@@ -355,6 +355,77 @@ Do not:
 - paste a database API key into the management-key slot
 - manually change managed cluster identity outside the platform and then expect no drift
 
+Runtime hardening:
+
+- Qdrant declares both search and scan metadata filtering because the provider uses native filtered
+  search/scroll operations.
+- Filtered operations depend on payload indexes. By default, AI Fabric keeps the historical tolerant
+  path and can retry without server-side metadata filtering when Qdrant reports a missing payload index.
+- Compatibility retry re-applies the original portable metadata predicate inside AI Fabric before
+  returning rows, so the retry path does not broaden metadata-filtered results.
+- When that compatibility retry is used, affected search rows include
+  `metadataFilterFallback=true` at the row level and inside the row `metadata` map.
+- Qdrant `adminDiagnostics()` exposes lazy payload-index readiness evidence through
+  `requiredPayloadIndexFields`, `verifiedPayloadIndexes`, `payloadIndexesSeenMissing`,
+  `payloadIndexCreateAttempts`, and `payloadIndexCreateFailures`.
+- Qdrant `adminDiagnostics().metadataFilterFallbacks` exposes a per-collection count of compatibility
+  fallback searches, so an operator can see that a missing payload index affected runtime search even
+  after the individual response rows have been consumed.
+- Set `ai.vector-db.operations.fail-on-missing-payload-index=true` for stricter production or release
+  verification. In that mode, missing payload-index drift fails closed with a clear runtime error.
+
+Operator check:
+
+```bash
+curl -sS "${RUNTIME_BASE_URL}/api/ai/advanced-rag/health"
+```
+
+When the web module and advanced RAG controller are enabled, the response includes
+`vectorDatabase` diagnostics from the active `VectorManagementService`. Use this lightweight runtime
+check to confirm the active provider class, capability flags, filter modes, payload-index readiness,
+and fallback counters without triggering scans or count operations.
+The `vectorDatabase.capabilities` object is the typed release descriptor for this evidence. It
+includes the provider name, provider class, native client path, lifecycle/admin capability flags,
+search and scan filter modes, metadata filter subset, entity-type count mode, clear-by-entity-type
+mode, consistency model, durability, production-profile safety, and the computed
+`lifecycleAdminCompatible` flag. The older flat diagnostic keys remain for compatibility, but new
+release checks should read the nested descriptor first.
+For count-path release review, also inspect standardized `countFallbacks` and
+`countFallbackReasons`. A positive counter means the provider had to leave its native count/statistics
+path and use a compatibility count path.
+For operational alerting, AI Fabric also publishes low-cardinality Micrometer counters:
+`ai.fabric.vector.provider.fallbacks` for compatibility fallback events and
+`ai.fabric.vector.provider.retries` for transient provider retry events. Both counters use only
+`provider`, `operation`, and `reason` tags. Scope identifiers such as tenant, namespace, collection,
+entity type, and entity id stay out of metric tags; use readiness diagnostics for those details after
+an alert fires.
+For standard Spring Boot health integration, AI Fabric also registers `vectorProviderHealthIndicator`
+when actuator health classes and `VectorManagementService` are available. Check it with:
+
+```bash
+curl -sS "${RUNTIME_BASE_URL}/actuator/health/vectorProvider"
+```
+
+The actuator component is `UP` for `READY` and `WARN`, and `DOWN` for `NOT_READY`. Disable it with
+`management.health.ai-fabric.vector.enabled=false` if another deployment health policy owns vector
+readiness.
+For release smoke checks, prefer the repository verifier because it fails on `WARN` unless explicitly
+allowed:
+
+```bash
+RUNTIME_BASE_URL="${RUNTIME_BASE_URL}" \
+.github/scripts/verify-vector-readiness-health.sh
+```
+
+The nested `vectorDatabase.readiness` object gives the operator-facing verdict:
+
+- `READY`: clean production-ready provider evidence
+- `WARN`: operational with warnings that should be reviewed before release
+- `NOT_READY`: missing diagnostics, missing lifecycle/admin capability evidence, or provider drift
+  such as Qdrant payload-index creation failures
+
+Treat `productionReady=false` as a release review item even when `operational=true`.
+
 ### 7.2 Pinecone
 
 Pinecone serverless indexes are the managed resource unit.
@@ -365,10 +436,71 @@ Important operational detail:
 
 The platform already handles this during governed recreate and cleanup flows.
 
+Runtime hardening:
+
+- Pinecone declares metadata filtering for similarity search and scan. Search uses provider-side
+  metadata filters; scan uses list/fetch plus AI Fabric's portable scalar predicate.
+- Pinecone `adminDiagnostics()` reports `searchFilterMode=provider-side-portable-scalar` and
+  `scanFilterMode=client-side-list-fetch-portable-scalar` so operators can distinguish the two paths.
+- Pinecone search filters preserve portable exact string values, including empty strings, instead of
+  treating blank strings as unsupported provider filters.
+- Pinecone retries transient rate-limit, availability, and deadline failures across search, stats,
+  upsert, list/fetch scan, delete, and deterministic clear lifecycle paths.
+- Clear-by-entity-type uses provider delete paths and waits for eventual consistency when
+  `ai.vector-db.operations.await-clear-consistency=true`.
+
 Do not:
 
 - manually swap the serving host in runtime env outside the platform
 - manually rename managed indexes without redeploying through the platform
+
+### 7.3 Weaviate
+
+Runtime hardening:
+
+- Weaviate uses native GraphQL aggregate count for entity-type counts when supported by the target.
+- If aggregate count is not supported by the deployment, the provider falls back only for that
+  unsupported-aggregate case and counts through paged scan results; ordinary provider failures remain
+  visible.
+- Weaviate `adminDiagnostics()` reports `countMode=native-aggregate-with-safe-fallback` and records
+  per-class fallback evidence in `aggregateCountFallbacks` and `aggregateCountFallbackReasons`.
+- Weaviate declares search metadata filtering, scan metadata filtering, exact fetch, and clear by entity
+  type.
+- Weaviate portable metadata filters use exact text-backed equality because AI Fabric stores metadata
+  properties as text in the Weaviate class schema; string, boolean, integer, and empty-string filters
+  are encoded to the same stored text representation.
+
+### 7.4 Lucene
+
+Runtime hardening:
+
+- Lucene indexes portable scalar metadata fields alongside the stored metadata JSON.
+- Search and scan filters support exact equality for strings, booleans, integer/long numbers, and
+  Lucene-local float/double numbers. Treat decimal exact equality as provider-specific in portable
+  code.
+- Unsupported filter shapes return no matches instead of widening the query.
+
+### 7.5 Milvus
+
+Runtime hardening:
+
+- Milvus declares search and scan metadata filtering through native search/query expressions.
+- Metadata filters are generated against the same stored metadata JSON-string shape used by writes, so
+  boolean and integer filters match the persisted representation.
+- String metadata filters escape Milvus `LIKE` wildcard characters (`%` and `_`) before building the
+  native expression, preserving exact-match semantics instead of widening results.
+- Unsupported filter shapes become impossible metadata expressions instead of dropped conditions.
+- Milvus uses native collection statistics for entity-type counts and reports
+  `countMode=milvus-collection-statistics-with-scan-fallback`; it scans only when Milvus omits
+  `row_count` from the statistics response.
+
+### 7.6 Memory
+
+Runtime hardening:
+
+- The in-memory provider remains useful for tests, demos, and quick local feedback.
+- It is not durable. Production Spring profiles reject `ai.vector-db.type=memory` unless
+  `ai.vector-db.memory.allow-in-production=true` is set deliberately.
 
 ---
 

@@ -2,7 +2,7 @@
 
 - **Date:** 2026-06-15
 - **First release version:** `0.1.0` (published to Maven Central)
-- **Current release version:** `0.2.0` (naming normalization — see note below)
+- **Current release version:** `0.2.1` (Spring AI provider execution and vector-provider hardening)
 - **groupId:** `io.github.loom-ai-labs`
 - **Target repository:** `loom-ai-labs/ai-fabric-framework`
 - **Reviewed branch:** `claude/framework-release-check-3tma5g`
@@ -37,8 +37,8 @@ polish (O1–O3).
 
 | Area | Status |
 |------|--------|
-| Full reactor build (`mvn clean install -DskipTests`, Java 21) | ✅ **PASS** — all 33 modules build & install |
-| Module/version consistency (`0.1.0-preview`, `com.ai.fabric`) | ✅ PASS |
+| Full reactor build (`mvn clean install`, Java 21 / Spring Boot 4.1) | ✅ **PASS** — all 33 modules build & install |
+| Module/version consistency (`0.2.1`, `ai.fabric`) | ✅ PASS |
 | Secret / credential scan | ✅ PASS — no real secrets, only `sk-test-key` placeholders |
 | Leaked internal/private references | ✅ PASS — runtime/managed-product code cleanly removed |
 | OSS governance (LICENSE, SECURITY, CONTRIBUTING, COC) | ✅ PASS |
@@ -56,8 +56,8 @@ polish (O1–O3).
 ## 2. What was verified
 
 ### Build (live, with network)
-- `mvn -f ai-infrastructure-module/pom.xml clean install -DskipTests` → **BUILD SUCCESS** (exit 0).
-- Toolchain: **Java 21**, **Spring Boot 3.2.0**, `maven-compiler-plugin` 3.13.0, consistent across all modules.
+- `mvn -f ai-infrastructure-module/pom.xml clean install` → **BUILD SUCCESS** (exit 0).
+- Toolchain: **Java 21**, **Spring Boot 4.1.0**, `maven-compiler-plugin` 3.13.0, consistent across all modules.
 - No `SNAPSHOT` dependencies anywhere.
 - All 33 `<module>` entries in the parent BOM resolve to real directories with correct
   `<parent>` references; the parent module list and the release workflow's
@@ -67,7 +67,7 @@ polish (O1–O3).
 - **192 test classes** across 30 of 33 modules.
 - Two integration tests and `run-real-api-tests.sh` need live external services/API keys —
   these are correctly gated and not part of the default build.
-- **CI currently builds with `-DskipTests`** — see §4.
+- CI now builds without Maven test-skipping flags through `framework-verify.yml`; see §4.
 
 ### Security / leakage
 - No real API keys, tokens, private keys, `.env` files, or customer data.
@@ -120,7 +120,7 @@ on `main` independently of any cleanup in this branch:
 
 Why it matters:
 - `CONTRIBUTING.md` instructs contributors to run `mvn -f ai-infrastructure-module/pom.xml clean verify` — which **fails out of the box**.
-- CI currently masks this by building with `-DskipTests` (see C3).
+- CI previously masked this by building with `-DskipTests` (see C3).
 - The published *artifacts* still compile and deploy; this does not block producing packages, but it is a real quality signal for a public release.
 
 **Root cause (resolved): all three were stale tests, not production regressions.**
@@ -139,7 +139,7 @@ Why it matters:
   aligned the assertion with the default template's actual wording. Test-only.
 
 A fourth pre-existing failure was masked behind the core failures (the reactor stops at the
-first failing module): `RelayOpenApiContractTest` in `ai-infrastructure-relay` errored with
+first failing module): `RelayOpenApiContractTest` in `ai-fabric-relay` errored with
 `OpenAPI spec not found on disk … changes/Productization/customer-connector-api.openapi.yml`.
 The spec was never part of this repo (it lived in the private monorepo under `Productization/`),
 and this test file was the **only** place the private `Productization/` path name appeared in
@@ -182,7 +182,7 @@ Minor, non-blocking:
   use `${mapstruct.version}`.
 - `ai-infrastructure-core/pom.xml` — `jsr305:3.0.2` and `spring-cloud-context:4.0.4`
   hardcoded; promote to BOM `dependencyManagement` / properties.
-- `ai-infrastructure-relay/pom.xml` — `swagger-request-validator-mockmvc:2.40.0` (test) hardcoded.
+- `ai-fabric-relay/pom.xml` — `swagger-request-validator-mockmvc:2.40.0` (test) hardcoded.
 - `surefire 3.0.0` hardcoded in a couple of child modules; centralize via a property.
 
 *(Low effort, quality only.)*

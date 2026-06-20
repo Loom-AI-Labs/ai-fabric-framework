@@ -2,7 +2,12 @@
 
 ## Status: READY FOR USE
 
-All requirements from the plan have been implemented and verified.
+The shared Testcontainers helper is available for integration-test wiring.
+
+Release-supported AI Fabric vector provider modules are Milvus, Qdrant, Weaviate, Pinecone,
+Lucene, and memory. Chroma and pgvector entries in this helper are generic container
+fixtures retained for future provider work; they are not implemented AI Fabric vector
+provider modules in this repository.
 
 ---
 
@@ -17,13 +22,14 @@ All requirements from the plan have been implemented and verified.
   - `junit-jupiter` module (already present)
 
 - [x] **Auto-Configuration Class** (`VectorDatabaseContainerAutoConfiguration.java`)
-  - All 5 providers: Milvus, Qdrant, Weaviate, Chroma, pgvector
+  - AI Fabric module-backed containers: Milvus, Qdrant, Weaviate
+  - Generic future-provider fixtures: Chroma, pgvector
   - Thread-safe container storage
   - Error handling with clear messages
   - Property injection working
 
 - [x] **Testcontainers Initializer** (`TestcontainersInitializer.java`)
-  - Enables Testcontainers when profile active
+  - Enables Testcontainers when a module-backed container type is selected through profile or explicit type
   - Sets `testcontainers.enabled=true`
 
 - [x] **Test Profile** (`application-testcontainers.yml`)
@@ -37,7 +43,7 @@ All requirements from the plan have been implemented and verified.
 ### GitHub Actions Integration ✅
 
 - [x] **Workflow Enhanced** (`.github/workflows/integration-tests-manual.yml`)
-  - Auto-detects Testcontainers-supported databases
+  - Auto-detects module-backed Testcontainers databases
   - Automatically enables `testcontainers` profile
   - Applied to all 3 test jobs
 
@@ -102,7 +108,7 @@ mvn verify \
 ### GitHub Actions
 
 1. Go to Actions → Integration Tests (Manual Trigger)
-2. Select vector database: `milvus`, `qdrant`, `weaviate`, `chroma`, or `pgvector`
+2. Select a module-backed vector database: `milvus`, `qdrant`, or `weaviate`
 3. Testcontainers will automatically enable
 4. Container starts automatically
 5. Tests run against containerized database
@@ -135,7 +141,7 @@ mvn verify \
 | Requirement | Status | Notes |
 |------------|--------|-------|
 | Dependencies | ✅ Complete | All modules added |
-| Auto-Configuration | ✅ Complete | All 5 providers |
+| Auto-Configuration | ✅ Complete | Milvus, Qdrant, Weaviate module-backed; Chroma/pgvector generic fixtures |
 | Initializer | ✅ Complete | Profile-based activation |
 | Test Profile | ✅ Complete | Timeouts and logging configured |
 | pgvector Script | ✅ Complete | Extension and indexes |

@@ -13,6 +13,7 @@ import org.springframework.ai.anthropic.AnthropicChatModel;
 import org.springframework.ai.anthropic.AnthropicChatOptions;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.prompt.ChatOptions;
+import org.springframework.ai.document.MetadataMode;
 import org.springframework.ai.embedding.EmbeddingModel;
 import org.springframework.ai.embedding.EmbeddingOptions;
 import org.springframework.ai.google.genai.GoogleGenAiChatModel;
@@ -26,6 +27,7 @@ import org.springframework.ai.openai.OpenAiEmbeddingModel;
 import org.springframework.ai.openai.OpenAiEmbeddingOptions;
 import org.springframework.ai.transformers.TransformersEmbeddingModel;
 import org.springframework.beans.factory.DisposableBean;
+import org.springframework.core.retry.RetryTemplate;
 import org.springframework.util.StringUtils;
 
 import java.nio.charset.StandardCharsets;
@@ -51,11 +53,17 @@ public class SpringAiModelResolver implements DisposableBean {
     private static final double DEFAULT_TEMPERATURE = 0.3d;
 
     private final AIProviderConfig providerConfig;
+    private final ObservationRegistry observationRegistry;
     private final Map<ModelCacheKey, ChatModel> chatModels = new ConcurrentHashMap<>();
     private final Map<ModelCacheKey, EmbeddingModel> embeddingModels = new ConcurrentHashMap<>();
 
     public SpringAiModelResolver(AIProviderConfig providerConfig) {
+        this(providerConfig, ObservationRegistry.NOOP);
+    }
+
+    public SpringAiModelResolver(AIProviderConfig providerConfig, ObservationRegistry observationRegistry) {
         this.providerConfig = providerConfig;
+        this.observationRegistry = observationRegistry != null ? observationRegistry : ObservationRegistry.NOOP;
     }
 
     public ChatModel resolveChatModel(String providerName, AIGenerationRequest request) {
@@ -89,7 +97,7 @@ public class SpringAiModelResolver implements DisposableBean {
         if (!supportsEmbedding(family)) {
             throw new UnsupportedOperationException("Provider " + providerName + " does not expose embeddings through Spring AI.");
         }
-        EmbeddingConnection connection = embeddingConnection(family);
+        EmbeddingConnection connection = embeddingConnection(family, request);
         return embeddingModels.computeIfAbsent(connection.cacheKey(), key -> buildEmbeddingModel(connection));
     }
 
@@ -97,7 +105,8 @@ public class SpringAiModelResolver implements DisposableBean {
         SpringAiProviderFamily family = requireFamily(providerName);
         return switch (family) {
             case OPENAI -> openAiEmbeddingOptions(openAiEmbeddingModel(request), providerConfig.getOpenai().getEmbeddingDimensions());
-            case AZURE -> azureEmbeddingOptions(azureEmbeddingDeployment(request), azureEmbeddingApiVersion(), azureNative(embeddingBaseUrl(family)));
+            case AZURE -> azureEmbeddingOptions(azureEmbeddingDeployment(request),
+                azureEmbeddingApiVersion(request), azureNative(embeddingBaseUrl(family, request)));
             case GEMINI -> geminiEmbeddingOptions(firstText(request != null ? request.getModel() : null,
                 providerConfig.getGemini().getEmbeddingModel(), DEFAULT_GEMINI_EMBEDDING_MODEL));
             case ANTHROPIC -> throw new UnsupportedOperationException("Anthropic embeddings are not supported by Spring AI.");
@@ -106,21 +115,29 @@ public class SpringAiModelResolver implements DisposableBean {
     }
 
     public boolean isChatAvailable(String providerName) {
+        return isChatAvailable(providerName, null);
+    }
+
+    public boolean isChatAvailable(String providerName, AIGenerationRequest request) {
         return SpringAiProviderFamily.from(providerName)
             .filter(this::chatEnabled)
-            .filter(family -> hasText(chatApiKey(family, null)))
+            .filter(family -> hasText(chatApiKey(family, request)))
             .filter(family -> !SpringAiProviderFamily.AZURE.equals(family)
-                || (hasText(chatBaseUrl(family, null)) && hasText(azureDeployment(null))))
+                || (hasText(chatBaseUrl(family, request)) && hasText(azureDeployment(request))))
             .isPresent();
     }
 
     public boolean isEmbeddingAvailable(String providerName) {
+        return isEmbeddingAvailable(providerName, null);
+    }
+
+    public boolean isEmbeddingAvailable(String providerName, AIEmbeddingRequest request) {
         return SpringAiProviderFamily.from(providerName)
             .filter(this::embeddingEnabled)
             .filter(this::supportsEmbedding)
-            .filter(family -> SpringAiProviderFamily.SPRING_AI_ONNX.equals(family) || hasText(embeddingApiKey(family)))
+            .filter(family -> SpringAiProviderFamily.SPRING_AI_ONNX.equals(family) || hasText(embeddingApiKey(family, request)))
             .filter(family -> !SpringAiProviderFamily.AZURE.equals(family)
-                || (hasText(embeddingBaseUrl(family)) && hasText(azureEmbeddingDeployment(null))))
+                || (hasText(embeddingBaseUrl(family, request)) && hasText(azureEmbeddingDeployment(request))))
             .isPresent();
     }
 
@@ -229,16 +246,16 @@ public class SpringAiModelResolver implements DisposableBean {
         return switch (connection.family()) {
             case OPENAI, AZURE -> OpenAiChatModel.builder()
                 .options(openAiConnectionOptions(connection))
-                .observationRegistry(ObservationRegistry.NOOP)
+                .observationRegistry(observationRegistry)
                 .build();
             case ANTHROPIC -> AnthropicChatModel.builder()
                 .options(anthropicConnectionOptions(connection))
-                .observationRegistry(ObservationRegistry.NOOP)
+                .observationRegistry(observationRegistry)
                 .build();
             case GEMINI -> GoogleGenAiChatModel.builder()
                 .genAiClient(Client.builder().apiKey(connection.apiKey()).build())
                 .options(GoogleGenAiChatOptions.builder().build())
-                .observationRegistry(ObservationRegistry.NOOP)
+                .observationRegistry(observationRegistry)
                 .build();
             case SPRING_AI_ONNX -> throw new UnsupportedOperationException("Spring AI ONNX is embedding-only.");
         };
@@ -248,11 +265,13 @@ public class SpringAiModelResolver implements DisposableBean {
         return switch (connection.family()) {
             case OPENAI, AZURE -> OpenAiEmbeddingModel.builder()
                 .options(openAiEmbeddingConnectionOptions(connection))
-                .observationRegistry(ObservationRegistry.NOOP)
+                .observationRegistry(observationRegistry)
                 .build();
             case GEMINI -> new GoogleGenAiTextEmbeddingModel(
                 GoogleGenAiEmbeddingConnectionDetails.builder().apiKey(connection.apiKey()).build(),
-                GoogleGenAiTextEmbeddingOptions.builder().build());
+                GoogleGenAiTextEmbeddingOptions.builder().build(),
+                new RetryTemplate(),
+                observationRegistry);
             case ANTHROPIC -> throw new UnsupportedOperationException("Anthropic embeddings are not supported by Spring AI.");
             case SPRING_AI_ONNX -> transformersEmbeddingModel(connection);
         };
@@ -373,7 +392,7 @@ public class SpringAiModelResolver implements DisposableBean {
     }
 
     private EmbeddingModel transformersEmbeddingModel(EmbeddingConnection connection) {
-        TransformersEmbeddingModel model = new TransformersEmbeddingModel();
+        TransformersEmbeddingModel model = new TransformersEmbeddingModel(MetadataMode.EMBED, observationRegistry);
 
         if (hasText(connection.modelUri())) {
             model.setModelResource(connection.modelUri());
@@ -414,15 +433,15 @@ public class SpringAiModelResolver implements DisposableBean {
         );
     }
 
-    private EmbeddingConnection embeddingConnection(SpringAiProviderFamily family) {
-        String baseUrl = embeddingBaseUrl(family);
+    private EmbeddingConnection embeddingConnection(SpringAiProviderFamily family, AIEmbeddingRequest request) {
+        String baseUrl = embeddingBaseUrl(family, request);
         AIProviderConfig.SpringAiOnnxConfig onnxConfig = providerConfig.getSpringAiOnnx();
         boolean springAiOnnx = SpringAiProviderFamily.SPRING_AI_ONNX.equals(family);
         return new EmbeddingConnection(
             family,
-            embeddingApiKey(family),
+            embeddingApiKey(family, request),
             baseUrl,
-            SpringAiProviderFamily.AZURE.equals(family) ? azureEmbeddingApiVersion() : null,
+            SpringAiProviderFamily.AZURE.equals(family) ? azureEmbeddingApiVersion(request) : null,
             SpringAiProviderFamily.AZURE.equals(family) && azureNative(baseUrl),
             embeddingTimeout(family),
             springAiOnnx ? onnxConfig.getModelUri() : null,
@@ -493,7 +512,13 @@ public class SpringAiModelResolver implements DisposableBean {
         };
     }
 
-    private String embeddingApiKey(SpringAiProviderFamily family) {
+    private String embeddingApiKey(SpringAiProviderFamily family, AIEmbeddingRequest request) {
+        ProviderRequestOverrideSupport.LlmConnectionOverride override =
+            request != null ? ProviderRequestOverrideSupport.read(request.getParameters())
+                : ProviderRequestOverrideSupport.LlmConnectionOverride.empty();
+        if (hasText(override.apiKey())) {
+            return override.apiKey();
+        }
         return switch (family) {
             case OPENAI -> firstText(providerConfig.getEmbeddingApiKey(),
                 providerConfig.getOpenai().getEmbeddingApiKey(), providerConfig.getOpenai().getApiKey());
@@ -505,7 +530,13 @@ public class SpringAiModelResolver implements DisposableBean {
         };
     }
 
-    private String embeddingBaseUrl(SpringAiProviderFamily family) {
+    private String embeddingBaseUrl(SpringAiProviderFamily family, AIEmbeddingRequest request) {
+        ProviderRequestOverrideSupport.LlmConnectionOverride override =
+            request != null ? ProviderRequestOverrideSupport.read(request.getParameters())
+                : ProviderRequestOverrideSupport.LlmConnectionOverride.empty();
+        if (hasText(override.baseUrl())) {
+            return override.baseUrl();
+        }
         return switch (family) {
             case OPENAI -> firstText(providerConfig.getEmbeddingBaseUrl(),
                 providerConfig.getOpenai().getEmbeddingBaseUrl(), providerConfig.getOpenai().getBaseUrl(), DEFAULT_OPENAI_BASE_URL);
@@ -536,7 +567,10 @@ public class SpringAiModelResolver implements DisposableBean {
     }
 
     private String azureEmbeddingDeployment(AIEmbeddingRequest request) {
-        return firstText(request != null ? request.getModel() : null,
+        ProviderRequestOverrideSupport.LlmConnectionOverride override =
+            request != null ? ProviderRequestOverrideSupport.read(request.getParameters())
+                : ProviderRequestOverrideSupport.LlmConnectionOverride.empty();
+        return firstText(override.deploymentName(), request != null ? request.getModel() : null,
             providerConfig.getEmbeddingDeploymentName(),
             providerConfig.getAzure().getEmbeddingDeploymentName(),
             providerConfig.getAzure().getDeploymentName());
@@ -549,8 +583,11 @@ public class SpringAiModelResolver implements DisposableBean {
         return firstText(override.apiVersion(), providerConfig.getAzure().getApiVersion());
     }
 
-    private String azureEmbeddingApiVersion() {
-        return firstText(providerConfig.getEmbeddingApiVersion(),
+    private String azureEmbeddingApiVersion(AIEmbeddingRequest request) {
+        ProviderRequestOverrideSupport.LlmConnectionOverride override =
+            request != null ? ProviderRequestOverrideSupport.read(request.getParameters())
+                : ProviderRequestOverrideSupport.LlmConnectionOverride.empty();
+        return firstText(override.apiVersion(), providerConfig.getEmbeddingApiVersion(),
             providerConfig.getAzure().getEmbeddingApiVersion(), providerConfig.getAzure().getApiVersion());
     }
 

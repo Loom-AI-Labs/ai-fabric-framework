@@ -2,7 +2,6 @@ package ai.fabric.it;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 
@@ -15,15 +14,18 @@ import ai.fabric.dto.AIComplianceResponse;
 import java.time.LocalDateTime;
 import java.util.List;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.Disabled;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.TestPropertySource;
 
-@Disabled("Disabled due to ApplicationContext loading failures - table creation issues")
 @SpringBootTest(classes = TestApplication.class)
 @ActiveProfiles("test")
+@TestPropertySource(properties = {
+    "ai.governance.enabled=true",
+    "ai.governance.compliance.enabled=true"
+})
 class AIComplianceServiceIntegrationTest {
 
     @Autowired
@@ -48,12 +50,14 @@ class AIComplianceServiceIntegrationTest {
     }
 
     @Test
-    void compliantWhenHookReturnsNull() {
+    void failClosedWhenHookReturnsNull() {
         when(complianceCheckProvider.checkCompliance(any())).thenReturn(null);
 
         AIComplianceResponse response = complianceService.checkCompliance(request("user-2", "content"));
 
-        assertTrue(Boolean.TRUE.equals(response.getOverallCompliant()));
+        assertFalse(Boolean.TRUE.equals(response.getOverallCompliant()));
+        assertFalse(Boolean.TRUE.equals(response.getSuccess()));
+        assertEquals(List.of("COMPLIANCE_PROVIDER_EMPTY_RESULT"), response.getViolations());
     }
 
     private AIComplianceRequest request(String userId, String content) {

@@ -54,8 +54,9 @@ class ChatSessionBaseConfiguration {
 
     @Bean
     @Primary
-    PendingActionStore pendingActionStore(ChatSessionStorageProvider storageProvider) {
-        return new ChatSessionPendingActionStore(storageProvider);
+    PendingActionStore pendingActionStore(ChatSessionStorageProvider storageProvider,
+                                          ChatSessionProperties properties) {
+        return new ChatSessionPendingActionStore(storageProvider, properties);
     }
 
     @Bean

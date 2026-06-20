@@ -26,6 +26,7 @@ on:
           - gemini
           - onnx
           - openai
+          - spring-ai-onnx
 
 permissions:
   contents: read

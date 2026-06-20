@@ -6,7 +6,7 @@ This guide gets AI Fabric onto your build path and your first AI-enabled bean wi
 
 - **Java 21**
 - **Maven 3.9+**
-- **Spring Boot 3.2.x**
+- **Spring Boot 4.1.x**
 
 AI Fabric is distributed as ordinary Maven artifacts on **Maven Central** under the group
 `io.github.loom-ai-labs` — no extra repository configuration is needed.

@@ -16,16 +16,22 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Initializer that enables Testcontainers when the 'testcontainers' profile is active
- * and a container-supported vector database type is specified.
+ * Initializer that enables Testcontainers when a module-backed vector database
+ * container is selected for a test run.
  *
  * <p>This initializer checks if:
  * <ul>
- *   <li>The {@code testcontainers} Spring profile is active</li>
- *   <li>The {@code ai.vector-db.type} is set to a container-supported type
- *       (milvus, qdrant, weaviate, chroma, pgvector)</li>
+ *   <li>The {@code ai.vector-db.type} is set to a shipped, module-backed container type.</li>
+ *   <li>Either the {@code testcontainers} Spring profile is active, or the vector
+ *       database type was explicitly provided through {@code -Dai.vector-db.type=...}
+ *       or {@code VECTOR_DB_TYPE}.</li>
+ *   <li>
+ *       Milvus, Qdrant, and Weaviate are backed by shipped AI Fabric vector
+ *       provider modules. Chroma and pgvector are generic fixtures retained
+ *       for future provider modules and are not auto-enabled by this initializer.</li>
  * </ul>
- * If both conditions are met, it sets {@code testcontainers.enabled=true}.
+ * If these conditions are met, it starts the supported container early and sets
+ * {@code testcontainers.enabled=true}.
  * This property is then used by {@link VectorDatabaseContainerAutoConfiguration}
  * to conditionally enable container auto-configuration.</p>
  *
@@ -41,7 +47,10 @@ import java.util.concurrent.ConcurrentHashMap;
  * mvn test -Dspring.profiles.active=testcontainers -Dai.vector-db.type=qdrant
  * </pre>
  *
- * <p><strong>Supported Container Types:</strong> milvus, qdrant, weaviate, chroma, pgvector</p>
+ * <p><strong>Module-backed Container Types:</strong> milvus, qdrant, weaviate</p>
+ * <p><strong>Generic Future-provider Fixtures:</strong> chroma, pgvector. Use explicit
+ * {@code testcontainers.enabled=true} with {@link VectorDatabaseContainerAutoConfiguration}
+ * if a future-provider test needs one of these fixture containers.</p>
  *
  * <p><strong>Default Behavior:</strong> If no container type is specified or type is
  * lucene/memory, Testcontainers will not activate, and tests will use Lucene (fast).</p>
@@ -62,12 +71,10 @@ public class TestcontainersInitializer
     private static final String PROP_VECTOR_DB_TYPE = "ai.vector-db.type";
     private static final String PROP_SOURCE_TESTCONTAINERS_ENABLED = "testcontainersEnabled";
 
-    // Container-supported vector database types
+    // Auto-started vector database types. These have shipped AI Fabric provider modules.
     private static final String TYPE_MILVUS = "milvus";
     private static final String TYPE_QDRANT = "qdrant";
     private static final String TYPE_WEAVIATE = "weaviate";
-    private static final String TYPE_CHROMA = "chroma";
-    private static final String TYPE_PGVECTOR = "pgvector";
 
     // Container constants (shared with VectorDatabaseContainerAutoConfiguration)
     private static final String DEFAULT_IMAGE_MILVUS = "milvusdb/milvus:v2.4.0";
@@ -98,9 +105,10 @@ public class TestcontainersInitializer
     private static final Map<String, GenericContainer<?>> earlyStartedContainers = new ConcurrentHashMap<>();
 
     /**
-     * Initializes the application context by enabling Testcontainers if:
-     * 1. The testcontainers profile is active
-     * 2. A container-supported vector database type is specified
+     * Initializes the application context by enabling Testcontainers if a
+     * module-backed vector database type is selected and either the
+     * testcontainers profile is active or the type was explicitly specified
+     * through the command line/environment.
      *
      * @param context The application context to initialize
      */
@@ -119,14 +127,14 @@ public class TestcontainersInitializer
 
         log.debug("TestcontainersInitializer: Active profiles: {}", java.util.Arrays.toString(env.getActiveProfiles()));
 
-        // Check if a container-supported vector database type is specified
+        // Check if a shipped module-backed vector database type is specified.
         String vectorDbType = env.getProperty(PROP_VECTOR_DB_TYPE, String.class, "lucene");
         log.info("TestcontainersInitializer: Vector DB type: {}", vectorDbType);
-        boolean isContainerType = isContainerSupportedType(vectorDbType);
+        boolean isModuleBackedContainerType = isModuleBackedContainerType(vectorDbType);
 
         // Start containers if: (1) testcontainers profile is active, OR (2) a container type is explicitly specified
         // This allows tests to use containers even if they have @ActiveProfiles that don't include testcontainers
-        if (isContainerType && (testcontainersActive || isExplicitlySpecified(env, vectorDbType))) {
+        if (isModuleBackedContainerType && (testcontainersActive || isExplicitlySpecified(env, vectorDbType))) {
             log.info("TestcontainersInitializer: Container type detected, starting container early...");
             Map<String, Object> props = new HashMap<>();
             props.put(PROP_TESTCONTAINERS_ENABLED, true);
@@ -142,7 +150,8 @@ public class TestcontainersInitializer
 
             log.info("Testcontainers enabled for vector DB type: {}. Container started early.", vectorDbType);
         }
-        // If not a container type (e.g., lucene, memory), Testcontainers stays disabled
+        // If not a module-backed container type (e.g., lucene, memory, chroma, pgvector),
+        // Testcontainers stays disabled unless explicitly configured elsewhere.
         // Tests will use the specified type (Lucene by default)
     }
 
@@ -160,7 +169,6 @@ public class TestcontainersInitializer
         } else if (TYPE_WEAVIATE.equals(normalizedType)) {
             startWeaviateContainerEarly(env, props);
         }
-        // Add other container types as needed
     }
 
     /**
@@ -177,17 +185,8 @@ public class TestcontainersInitializer
         }
 
         log.info("Starting Milvus container early (before Spring beans are created)...");
+        verifyDockerAvailableOrFail("Milvus");
         try {
-            // Check if Docker is available before attempting to start container
-            try {
-                org.testcontainers.DockerClientFactory.instance().client();
-            } catch (Exception dockerCheckException) {
-                log.warn("Docker is not available. Skipping Milvus container startup. Error: {}", dockerCheckException.getMessage());
-                log.warn("Tests will fall back to Lucene vector database. To use Milvus, ensure Docker is running.");
-                // Don't throw - let tests run with default configuration
-                return;
-            }
-
             // Wait a bit for Docker to be fully ready (especially on Windows)
             // This helps avoid connection issues when Docker Desktop is still initializing
             try {
@@ -266,6 +265,7 @@ public class TestcontainersInitializer
         }
 
         log.info("Starting Qdrant container early (before Spring beans are created)...");
+        verifyDockerAvailableOrFail("Qdrant");
         try {
             try {
                 Thread.sleep(1000); // 1 second delay
@@ -327,6 +327,7 @@ public class TestcontainersInitializer
         }
 
         log.info("Starting Weaviate container early (before Spring beans are created)...");
+        verifyDockerAvailableOrFail("Weaviate");
         try {
             try {
                 Thread.sleep(1000); // 1 second delay
@@ -389,10 +390,35 @@ public class TestcontainersInitializer
     }
 
     /**
+     * Verifies Docker availability before enabling a container-backed provider.
+     * Failing fast avoids partially enabling Testcontainers without connection properties.
+     */
+    protected void verifyDockerAvailable() {
+        org.testcontainers.DockerClientFactory.instance().client();
+    }
+
+    private void verifyDockerAvailableOrFail(String containerType) {
+        try {
+            verifyDockerAvailable();
+        } catch (Exception e) {
+            log.warn("Docker is unavailable for {} container startup: {}", containerType, e.getMessage());
+            throw new IllegalStateException("Failed to start " + containerType + " container early: " + e.getMessage() +
+                ". If you see Docker connectivity issues, try using Lucene instead: -Dai.vector-db.type=lucene", e);
+        }
+    }
+
+    /**
      * Gets an early-started container (used by bean methods to reuse containers).
      */
     public static GenericContainer<?> getEarlyStartedContainer(String type) {
         return earlyStartedContainers.get(type);
+    }
+
+    static void removeEarlyStartedContainer(GenericContainer<?> container) {
+        if (container == null) {
+            return;
+        }
+        earlyStartedContainers.entrySet().removeIf(entry -> entry.getValue() == container);
     }
 
     /**
@@ -414,20 +440,19 @@ public class TestcontainersInitializer
     }
 
     /**
-     * Checks if the specified vector database type is supported by Testcontainers.
+     * Checks if the specified vector database type has a shipped AI Fabric provider module
+     * and can be auto-started by this initializer.
      *
      * @param type Vector database type to check
-     * @return true if the type is container-supported, false otherwise
+     * @return true if the type is module-backed and auto-startable, false otherwise
      */
-    private boolean isContainerSupportedType(String type) {
+    private boolean isModuleBackedContainerType(String type) {
         if (type == null) {
             return false;
         }
         String normalizedType = type.toLowerCase().trim();
         return TYPE_MILVUS.equals(normalizedType)
             || TYPE_QDRANT.equals(normalizedType)
-            || TYPE_WEAVIATE.equals(normalizedType)
-            || TYPE_CHROMA.equals(normalizedType)
-            || TYPE_PGVECTOR.equals(normalizedType);
+            || TYPE_WEAVIATE.equals(normalizedType);
     }
 }

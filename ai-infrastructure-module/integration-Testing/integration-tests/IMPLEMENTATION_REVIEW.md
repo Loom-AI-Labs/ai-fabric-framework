@@ -5,6 +5,11 @@
 
 ## Implementation vs Plan Comparison
 
+Release accuracy note: this review covers the shared Testcontainers helper. The repository
+currently ships AI Fabric vector provider modules for Milvus, Qdrant, Weaviate, Pinecone,
+Lucene, and memory. Chroma and pgvector are generic Testcontainers fixtures only; they are
+not implemented AI Fabric vector provider modules in this repository.
+
 ### ✅ Step 1: Add Dependencies - COMPLETE
 
 **Plan Requirement:**
@@ -28,14 +33,15 @@
 
 **Plan Requirement:**
 - Location: `src/test/java/ai/fabric/it/config/VectorDatabaseContainerAutoConfiguration.java`
-- Support: Milvus, Qdrant, Weaviate, Chroma, pgvector
+- Support: Milvus, Qdrant, Weaviate, plus generic Chroma/pgvector fixtures
 - Thread-safe container storage
 - Error handling with clear messages
 - Property injection into Spring environment
 
 **Implementation Status:**
 - ✅ File created at correct location
-- ✅ All 5 providers implemented (Milvus, Qdrant, Weaviate, Chroma, pgvector)
+- ✅ Module-backed providers implemented for Milvus, Qdrant, and Weaviate
+- ✅ Generic Chroma and pgvector container fixtures retained for future provider modules
 - ✅ Thread-safe using `ConcurrentHashMap`
 - ✅ Comprehensive error handling with `IllegalStateException`
 - ✅ Properties injected into Spring environment
@@ -81,13 +87,15 @@ properties.put("ai.providers.milvus.enabled", true);
 
 **Plan Requirement:**
 - Location: `src/test/java/ai/fabric/it/config/TestcontainersInitializer.java`
-- Enable Testcontainers when `testcontainers` profile is active
+- Enable Testcontainers when a module-backed container type is selected and the profile is active or the type was explicitly specified
 - Set `testcontainers.enabled=true` property
 
 **Implementation Status:**
 - ✅ File created at correct location
-- ✅ Checks for `testcontainers` profile
-- ✅ Sets `testcontainers.enabled=true` when profile active
+- ✅ Checks for `testcontainers` profile and explicit `ai.vector-db.type` / `VECTOR_DB_TYPE`
+- ✅ Sets `testcontainers.enabled=true` when a shipped module-backed container type should start
+- ✅ Leaves generic Chroma/pgvector fixtures behind explicit `testcontainers.enabled=true`
+- ✅ Fails fast before enabling Testcontainers when Docker/container startup is unavailable
 - ✅ Thread-safe and stateless
 - ✅ Comprehensive JavaDoc
 
@@ -163,7 +171,7 @@ public class RealAPIIntegrationTest {
 - Automatically enable Testcontainers for supported vector databases
 
 **Implementation Status:**
-- ✅ Workflow updated to detect Testcontainers-supported databases
+- ✅ Workflow updated to detect module-backed Testcontainers databases
 - ✅ Automatically sets `SPRING_PROFILES_ACTIVE` with `testcontainers` profile
 - ✅ Test scripts updated to respect `SPRING_PROFILES_ACTIVE` environment variable
 - ✅ Applied to all three test jobs (ai-infrastructure, relationship-query, behavior)
@@ -172,7 +180,7 @@ public class RealAPIIntegrationTest {
 **Workflow Enhancement:**
 ```yaml
 # Automatically detects and enables Testcontainers for:
-# - milvus, qdrant, weaviate, chroma, pgvector
+# - milvus, qdrant, weaviate
 # Does NOT enable for:
 # - lucene, memory, pinecone
 ```
@@ -253,7 +261,8 @@ All required items from the plan are implemented and working.
 ### Core Functionality
 - [x] Dependencies added to pom.xml
 - [x] Auto-configuration class created
-- [x] All 5 providers supported
+- [x] Module-backed providers supported: Milvus, Qdrant, Weaviate
+- [x] Future-provider fixtures retained: Chroma, pgvector
 - [x] Property injection working
 - [x] Container lifecycle management
 - [x] Error handling implemented

@@ -24,45 +24,45 @@ public class AdvancedRAGRequest {
     
     /**
      * Maximum number of results to return
+     * <p>When null, the active Advanced RAG provider applies its configured default.</p>
      */
-    @Builder.Default
-    private Integer maxResults = 10;
+    private Integer maxResults;
     
     /**
      * Maximum number of documents to use for context
+     * <p>When null, the active Advanced RAG provider applies its configured default.</p>
      */
-    @Builder.Default
-    private Integer maxDocuments = 5;
+    private Integer maxDocuments;
     
     /**
      * Query expansion level (1-5)
+     * <p>When null, the active Advanced RAG provider applies its configured default.</p>
      */
-    @Builder.Default
-    private Integer expansionLevel = 2;
+    private Integer expansionLevel;
     
     /**
      * Re-ranking strategy: semantic, hybrid, diversity, score
+     * <p>When blank or null, the active Advanced RAG provider applies its configured default.</p>
      */
-    @Builder.Default
-    private String rerankingStrategy = "hybrid";
+    private String rerankingStrategy;
     
     /**
      * Context optimization level: high, medium, low
+     * <p>When blank or null, the active Advanced RAG provider applies its configured default.</p>
      */
-    @Builder.Default
-    private String contextOptimizationLevel = "medium";
+    private String contextOptimizationLevel;
     
     /**
      * Enable hybrid search
+     * <p>When null, the active Advanced RAG provider applies its configured default.</p>
      */
-    @Builder.Default
-    private Boolean enableHybridSearch = true;
+    private Boolean enableHybridSearch;
     
     /**
      * Enable contextual search
+     * <p>When null, the active Advanced RAG provider applies its configured default.</p>
      */
-    @Builder.Default
-    private Boolean enableContextualSearch = true;
+    private Boolean enableContextualSearch;
     
     /**
      * Categories to search in

@@ -20,6 +20,35 @@ LLM answer generation; those are handled by the orchestration and provider layer
 | Ongoing change propagation | `ai-fabric-data-sync` |
 | Final user-facing generation | core orchestration/provider layer |
 
+## Configuration Defaults
+
+`ai.infrastructure.rag` owns RAG runtime defaults. Request fields such as limit, threshold,
+hybrid/contextual mode, and advanced expansion/reranking options are overrides; when they are omitted,
+the service applies the configured module defaults.
+
+```yaml
+ai:
+  infrastructure:
+    rag:
+      default-limit: 10
+      default-threshold: 0.7
+      enable-hybrid-search: false
+      enable-contextual-search: false
+      indexing:
+        max-content-length: 10000
+      advanced:
+        default-expansion-level: 3
+        default-reranking-strategy: semantic
+        default-context-optimization-level: medium
+        max-documents: 10
+        max-results-per-query: 20
+        max-parallel-searches: 4
+        max-semantic-rerank-documents: 100
+```
+
+Use request-level values only for per-call overrides. This keeps deployment defaults centralized and
+prevents DTO construction defaults from silently changing production retrieval behavior.
+
 ## Lifecycle
 
 ### 1. Annotate
@@ -51,6 +80,33 @@ Recommended metadata keys:
 | `knowledgeSourceAttributionLabel` | User-safe label shown as document source. |
 | `tenantId` or equivalent | Tenant isolation and filtering. |
 | `category` | Lightweight result filtering/faceting. |
+
+#### Spring AI Document Ingestion
+
+`ai-fabric-indexing` includes an optional Spring AI document bridge for trusted ingestion jobs. It
+uses Spring AI `DocumentReader` and `DocumentTransformer` APIs for parsing and chunking, then turns
+the resulting text chunks into normal AI Fabric `IndexingRequest` rows. AI Fabric still owns vector
+space validation, queueing, retry/dead-letter handling, embedding generation, and vector writes.
+
+```java
+SpringAiTrustedResourcePolicy policy = SpringAiTrustedResourcePolicy.trustedRoot(Path.of("/srv/kb"));
+DocumentReader reader = readerFactory.textReader(new FileSystemResource("/srv/kb/policy.txt"), policy);
+
+adapter.enqueue(reader, SpringAiDocumentIndexingOptions.builder()
+    .entityType("faq")
+    .sourceId("policy-handbook")
+    .sourceName("Policy Handbook")
+    .build());
+```
+
+Release rules for this bridge:
+
+- `entityType` must already exist in AI Fabric configuration and be indexable.
+- Remote URL resources are rejected; file resources must sit under configured trusted roots.
+- Spring AI document metadata is bounded and sanitized before queueing. URL/path/secret-like keys and
+  unsupported nested values are dropped instead of persisted.
+- Chunk IDs are deterministic from source id, document id, and chunk index, so repeated ingestion
+  updates the same logical chunks.
 
 ### 3. Embed
 
@@ -87,6 +143,12 @@ The memory vector store is suitable for tests and demos. Lucene is suitable for 
 development. Qdrant, Pinecone, Weaviate, and Milvus are production-path stores depending on deployment
 requirements.
 
+`RAGService.indexContent(...)` is entity-idempotent. Re-indexing the same `entityType` and `entityId`
+first looks up the existing vector, updates it by vector id when possible, and only stores a new vector
+when no existing record is present. If a provider reports an existing entity without a usable vector
+id, RAG removes the entity record before storing the replacement so release paths do not knowingly
+create duplicate retrieval rows for one source entity.
+
 ### 5. Retrieve
 
 `performRag(...)` runs the retrieval-focused path:
@@ -100,7 +162,44 @@ requirements.
 6. Return documents and a context string.
 
 `performRAGQuery(...)` keeps compatibility with hybrid/contextual search flags and returns context for
-downstream generation.
+downstream generation. Hybrid search is provider-dependent:
+
+- `hybridSearchRequested` records whether the request asked for hybrid retrieval.
+- `hybridSearchUsed` records whether AI Fabric can prove a native/provider or search-source hybrid
+  path was used.
+- `hybridSearchMode` is `native`, `search_source`, `fallback_vector`, `not_reported_by_sources`, or
+  `not_requested`.
+- `searchExecutionPath` identifies the path, such as `vector_database_hybrid`,
+  `search_source_registry`, `vector_database_contextual`, or `default_semantic`.
+- `vectorProviderSupportsHybridSearch` mirrors the active vector provider capability for direct vector
+  provider execution.
+
+When a provider does not advertise `supportsHybridSearch()`, AI Fabric preserves safe retrieval by
+falling back to vector search and reports `hybridSearchMode=fallback_vector`.
+
+### 5.1 Evaluate
+
+RAG quality checks are opt-in test/release gates, not part of the default retrieval hot path. When
+`spring-ai-client-chat` and a Spring AI `ChatClient.Builder` are available, enable the helper with:
+
+```yaml
+ai:
+  infrastructure:
+    rag:
+      evaluation:
+        enabled: true
+```
+
+`SpringAiRagEvaluationService` maps retrieved `RAGResponse` documents into Spring AI
+`EvaluationRequest` instances and can run Spring AI relevancy and fact-checking evaluators. The
+service bounds document content, drops embedding/url/path/secret-like metadata, and returns an AI
+Fabric result shape with evaluator name, document count, pass/fail, score, and feedback.
+
+Use it in tests to check:
+
+- whether retrieved documents are relevant to the user query
+- whether a generated answer is supported by the retrieved context
+- whether regressions lowered evaluator score below an application-defined release threshold
 
 ### 6. Update
 
@@ -108,7 +207,8 @@ Updates should preserve the same `entityType` and `entityId`:
 
 - Re-extract content from the latest source record.
 - Re-embed the new text.
-- Update the existing vector when supported, or store a replacement and remove the old vector.
+- Update the existing vector when supported, or remove the old entity record before storing a
+  replacement.
 - Refresh `_indexedUpdatedAt` or equivalent metadata through the indexing/data-sync layer.
 
 ### 7. Delete
@@ -136,6 +236,24 @@ Backfill belongs to `ai-fabric-migration` or application-owned migration jobs:
 For release validation, use the memory vector store and deterministic embeddings first, then repeat with
 the production vector provider.
 
+For detailed job lifecycle, pause/resume/cancel, filtering, and progress semantics, see
+`MIGRATION_BACKFILL_GUIDE.md`.
+
+### 9. Queue Worker Semantics
+
+`ai-fabric-indexing` workers lease queue rows, execute the requested action plan, and then acknowledge
+the row as completed or failed.
+
+Release expectations:
+
+- Processing failures are recorded through `IndexingQueueService.markFailure(...)`, which handles retry
+  scheduling and dead-letter transition.
+- Completion acknowledgement failures are not reclassified as processing failures; the entry remains
+  recoverable through visibility-timeout reset rather than being marked as a failed indexing attempt.
+- Failure acknowledgement failures are logged per entry and do not stop the rest of the leased batch.
+- The cleanup scheduler resets expired `PROCESSING` entries so transient database or worker crashes do not
+  strand work permanently.
+
 ## Verification
 
 Targeted module verification:
@@ -147,11 +265,15 @@ mvn -f ai-infrastructure-module/pom.xml -pl ai-fabric-rag -am test
 The RAG module test suite should prove:
 
 - indexing and retrieval through an in-memory vector store
+- re-indexing the same entity updates one vector instead of appending duplicates
+- Spring AI document ingestion converts trusted text/JSON resources into bounded indexing requests
+  and rejects untrusted URL/outside-root resources
 - deterministic offline embedding behavior
 - metadata filtering and attribution
 - optimized/embedding query selection
 - search-source aggregation, skip, and degraded failure behavior
 - Spring Boot auto-configuration activation and custom-provider backoff
+- opt-in Spring AI RAG evaluation helpers map documents safely and stay disabled by default
 - null/partial request safety
 
 ## Operational Notes

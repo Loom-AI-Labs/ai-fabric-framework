@@ -68,7 +68,7 @@ public class AIGovernanceAutoConfiguration {
         IndexCatalogRepository repository = repositoryProvider.getIfAvailable();
         boolean vectorCapable = vectorDatabaseService != null
             && vectorDatabaseService.supportsVectorScan()
-            && vectorDatabaseService.supportsMetadataFiltering();
+            && vectorDatabaseService.supportsScanMetadataFiltering();
         boolean sqlCapable = repository != null;
 
         AIGovernanceProperties.CatalogProperties.Mode resolved = switch (mode) {
@@ -86,7 +86,7 @@ public class AIGovernanceAutoConfiguration {
             }
             if (!vectorCapable) {
                 throw new IllegalStateException(
-                    "ai.governance.catalog.mode=VECTOR requires VectorDatabaseService to support vector scan and metadata filtering");
+                    "ai.governance.catalog.mode=VECTOR requires VectorDatabaseService to support vector scan and scan metadata filtering");
             }
             return new VectorIndexCatalog(vectorDatabaseService);
         }

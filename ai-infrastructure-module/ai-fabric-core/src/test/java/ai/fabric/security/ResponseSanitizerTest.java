@@ -2,6 +2,7 @@ package ai.fabric.security;
 
 import ai.fabric.config.ResponseSanitizationProperties;
 import ai.fabric.dto.NextStepRecommendation;
+import ai.fabric.dto.RAGResponse;
 import ai.fabric.intent.action.ActionResult;
 import ai.fabric.intent.action.ActionResultContracts;
 import ai.fabric.intent.orchestration.OrchestrationResult;
@@ -30,10 +31,11 @@ class ResponseSanitizerTest {
 
     private ResponseSanitizer sanitizer;
     private ApplicationEventPublisher eventPublisher;
+    private ResponseSanitizationProperties sanitizationProperties;
 
     @BeforeEach
     void setUp() {
-        ResponseSanitizationProperties sanitizationProperties = new ResponseSanitizationProperties();
+        sanitizationProperties = new ResponseSanitizationProperties();
         sanitizationProperties.setSuggestionLimit(3);
         sanitizationProperties.setHighRiskTypes(Set.of("CREDIT_CARD"));
         sanitizationProperties.setGuidanceMessage("Please avoid sharing card numbers.");
@@ -294,6 +296,60 @@ class ResponseSanitizerTest {
 
         assertThat(payload.get("message"))
             .isEqualTo("The product card says \"feel free to ask\" in its footer. Live store data does not include safety certifications.");
+    }
+
+    @Test
+    void shouldSanitizeRagResponseAndDocumentsAsStructuredData() {
+        sanitizationProperties.setFilteredDataKeys(List.of("metadata", "debug", "internalContext"));
+
+        RAGResponse.RAGDocument document = RAGResponse.RAGDocument.builder()
+            .id("doc-1")
+            .title("Receipt for user@example.com")
+            .content("Card 4111-1111-1111-1111 belongs to user@example.com.")
+            .metadata(Map.of("owner", "user@example.com"))
+            .highlightedContent("Matched card 4111-1111-1111-1111")
+            .build();
+
+        RAGResponse ragResponse = RAGResponse.builder()
+            .context("Use receipt for user@example.com and card 4111-1111-1111-1111.")
+            .documents(List.of(document))
+            .success(true)
+            .originalQuery("find receipt for user@example.com")
+            .build();
+
+        OrchestrationResult result = OrchestrationResult.builder()
+            .type(OrchestrationResultType.INFORMATION_PROVIDED)
+            .success(true)
+            .message("Search completed.")
+            .data(Map.of(
+                "ragResponse", ragResponse,
+                "documents", List.of(document)
+            ))
+            .build();
+
+        Map<String, Object> payload = sanitizer.sanitize(result, "user-789");
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> data = (Map<String, Object>) payload.get("data");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> sanitizedRagResponse = (Map<String, Object>) data.get("ragResponse");
+        assertThat(String.valueOf(sanitizedRagResponse.get("context")))
+            .doesNotContain("user@example.com")
+            .doesNotContain("4111-1111-1111-1111");
+
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> documents = (List<Map<String, Object>>) sanitizedRagResponse.get("documents");
+        Map<String, Object> sanitizedDocument = documents.getFirst();
+        assertThat(String.valueOf(sanitizedDocument.get("title"))).doesNotContain("user@example.com");
+        assertThat(String.valueOf(sanitizedDocument.get("content")))
+            .doesNotContain("user@example.com")
+            .doesNotContain("4111-1111-1111-1111");
+        assertThat(String.valueOf(sanitizedDocument.get("metadata"))).doesNotContain("user@example.com");
+        assertThat(String.valueOf(sanitizedDocument.get("highlightedContent"))).doesNotContain("4111-1111-1111-1111");
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> sanitization = (Map<String, Object>) payload.get("sanitization");
+        assertThat(String.valueOf(sanitization.get("detectedTypes"))).contains("EMAIL", "CREDIT_CARD");
     }
 
     private Map<String, Object> buildData() {
