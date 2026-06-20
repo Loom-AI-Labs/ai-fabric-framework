@@ -222,9 +222,9 @@ public class AIInfrastructureAutoConfiguration {
     @Bean
     @ConditionalOnClass(ToolCallback.class)
     @ConditionalOnMissingBean
-    public AIActionToolCallbackFactory aiActionToolCallbackFactory(AIActionRegistry actionRegistry,
+    public AIActionToolCallbackFactory aiActionToolCallbackFactory(ObjectProvider<AIActionRegistry> actionRegistry,
                                                                   ObjectMapper objectMapper) {
-        return new AIActionToolCallbackFactory(actionRegistry, objectMapper);
+        return new AIActionToolCallbackFactory(actionRegistry::getIfAvailable, objectMapper);
     }
 
     @Bean

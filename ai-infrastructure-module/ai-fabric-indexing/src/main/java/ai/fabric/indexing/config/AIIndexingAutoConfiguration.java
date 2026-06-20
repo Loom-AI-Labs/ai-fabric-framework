@@ -128,6 +128,8 @@ public class AIIndexingAutoConfiguration {
 
     @Configuration(proxyBeanMethods = false)
     @ConditionalOnClass(name = "org.springframework.ai.document.Document")
+    @ConditionalOnProperty(prefix = "ai.indexing", name = "enabled", havingValue = "true", matchIfMissing = true)
+    @Conditional({VectorDbConfiguredCondition.class, EmbeddingsFeatureEnabledCondition.class})
     static class SpringAiDocumentIndexingConfiguration {
 
         @Bean

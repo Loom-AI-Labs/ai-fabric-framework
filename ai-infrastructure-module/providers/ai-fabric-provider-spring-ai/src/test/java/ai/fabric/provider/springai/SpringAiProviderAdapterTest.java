@@ -149,6 +149,33 @@ class SpringAiProviderAdapterTest {
     }
 
     @Test
+    void chatProviderResolvesActionToolFactoryOnlyForOptInRequests() {
+        RecordingChatModel chatModel = new RecordingChatModel();
+        StubResolver resolver = new StubResolver(chatModel, null);
+        RecordingChatClientFactory chatClientFactory = new RecordingChatClientFactory();
+        AtomicInteger callbackFactoryLookups = new AtomicInteger();
+        SpringAiChatProvider provider = new SpringAiChatProvider(
+            "openai",
+            resolver,
+            chatClientFactory,
+            () -> {
+                callbackFactoryLookups.incrementAndGet();
+                return new AIActionToolCallbackFactory(
+                    actionRegistryWithLookupOrder(),
+                    new ObjectMapper().findAndRegisterModules()
+                );
+            }
+        );
+
+        var response = provider.generateContent(AIGenerationRequest.builder()
+            .prompt("Summarize this.")
+            .build());
+
+        assertThat(response.getStatus()).isEqualTo("SUCCESS");
+        assertThat(callbackFactoryLookups).hasValue(0);
+    }
+
+    @Test
     void chatProviderAttachesTrustedSpringAiRequestAdvisorsToChatClient() {
         RecordingChatModel chatModel = new RecordingChatModel();
         StubResolver resolver = new StubResolver(chatModel, null);

@@ -33,4 +33,36 @@ class AIIndexingAutoConfigurationTest {
             assertThat(context).hasSingleBean(SpringAiDocumentReaderFactory.class);
         });
     }
+
+    @Test
+    void doesNotRegisterSpringAiDocumentIndexingAdapterWithoutQueueService() {
+        new ApplicationContextRunner()
+            .withConfiguration(AutoConfigurations.of(AIIndexingAutoConfiguration.class))
+            .withPropertyValues(
+                "ai.service.features.enable-search=false",
+                "ai.service.features.enable-embeddings=false"
+            )
+            .withBean(AIEntityConfigurationLoader.class, () -> mock(AIEntityConfigurationLoader.class))
+            .withBean(ObjectMapper.class, ObjectMapper::new)
+            .run(context -> {
+                assertThat(context).doesNotHaveBean(SpringAiDocumentIndexingAdapter.class);
+                assertThat(context).doesNotHaveBean(SpringAiDocumentReaderFactory.class);
+            });
+    }
+
+    @Test
+    void doesNotRegisterSpringAiDocumentIndexingAdapterWhenIndexingDisabled() {
+        new ApplicationContextRunner()
+            .withConfiguration(AutoConfigurations.of(AIIndexingAutoConfiguration.class))
+            .withPropertyValues(
+                "ai.indexing.enabled=false",
+                "ai.vector-db.type=memory"
+            )
+            .withBean(AIEntityConfigurationLoader.class, () -> mock(AIEntityConfigurationLoader.class))
+            .withBean(ObjectMapper.class, ObjectMapper::new)
+            .run(context -> {
+                assertThat(context).doesNotHaveBean(SpringAiDocumentIndexingAdapter.class);
+                assertThat(context).doesNotHaveBean(SpringAiDocumentReaderFactory.class);
+            });
+    }
 }

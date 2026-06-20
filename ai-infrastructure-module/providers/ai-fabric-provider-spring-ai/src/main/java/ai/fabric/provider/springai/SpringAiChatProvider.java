@@ -32,13 +32,14 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.function.Supplier;
 
 public class SpringAiChatProvider implements AIProvider {
 
     private final SpringAiProviderFamily family;
     private final SpringAiModelResolver resolver;
     private final SpringAiChatClientFactory chatClientFactory;
-    private final AIActionToolCallbackFactory actionToolCallbackFactory;
+    private final Supplier<AIActionToolCallbackFactory> actionToolCallbackFactorySupplier;
     private final ProviderMetrics metrics;
 
     public SpringAiChatProvider(String providerName, SpringAiModelResolver resolver) {
@@ -48,18 +49,25 @@ public class SpringAiChatProvider implements AIProvider {
     public SpringAiChatProvider(String providerName,
                                 SpringAiModelResolver resolver,
                                 SpringAiChatClientFactory chatClientFactory) {
-        this(providerName, resolver, chatClientFactory, null);
+        this(providerName, resolver, chatClientFactory, (Supplier<AIActionToolCallbackFactory>) null);
     }
 
     public SpringAiChatProvider(String providerName,
                                 SpringAiModelResolver resolver,
                                 SpringAiChatClientFactory chatClientFactory,
                                 AIActionToolCallbackFactory actionToolCallbackFactory) {
+        this(providerName, resolver, chatClientFactory, () -> actionToolCallbackFactory);
+    }
+
+    public SpringAiChatProvider(String providerName,
+                                SpringAiModelResolver resolver,
+                                SpringAiChatClientFactory chatClientFactory,
+                                Supplier<AIActionToolCallbackFactory> actionToolCallbackFactorySupplier) {
         this.family = SpringAiProviderFamily.from(providerName)
             .orElseThrow(() -> new IllegalArgumentException("Unsupported Spring AI provider: " + providerName));
         this.resolver = resolver;
         this.chatClientFactory = chatClientFactory != null ? chatClientFactory : SpringAiChatClientFactory.noOp();
-        this.actionToolCallbackFactory = actionToolCallbackFactory;
+        this.actionToolCallbackFactorySupplier = actionToolCallbackFactorySupplier;
         this.metrics = new ProviderMetrics(family.providerName());
     }
 
@@ -213,8 +221,11 @@ public class SpringAiChatProvider implements AIProvider {
     }
 
     private List<ToolCallback> resolveActionToolCallbacks(AIGenerationRequest request) {
-        if (actionToolCallbackFactory == null || request == null
-            || !AIActionToolCallbackFactory.isActionToolBridgeEnabled(request.getParameters())) {
+        if (request == null || !AIActionToolCallbackFactory.isActionToolBridgeEnabled(request.getParameters())) {
+            return List.of();
+        }
+        AIActionToolCallbackFactory actionToolCallbackFactory = resolveActionToolCallbackFactory();
+        if (actionToolCallbackFactory == null) {
             return List.of();
         }
         ActionContext actionContext = AIActionToolCallbackFactory.actionContextFrom(request.getParameters())
@@ -231,6 +242,10 @@ public class SpringAiChatProvider implements AIProvider {
             actionToolCallbackFactory.createCallback(actionName, actionContext).ifPresent(callbacks::add);
         }
         return callbacks.isEmpty() ? List.of() : List.copyOf(callbacks);
+    }
+
+    private AIActionToolCallbackFactory resolveActionToolCallbackFactory() {
+        return actionToolCallbackFactorySupplier != null ? actionToolCallbackFactorySupplier.get() : null;
     }
 
     private List<Advisor> resolveRequestAdvisors(AIGenerationRequest request) {

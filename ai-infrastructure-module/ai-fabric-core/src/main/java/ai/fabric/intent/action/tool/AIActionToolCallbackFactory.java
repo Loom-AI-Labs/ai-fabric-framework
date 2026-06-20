@@ -26,6 +26,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Supplier;
 
 public class AIActionToolCallbackFactory {
 
@@ -40,11 +41,15 @@ public class AIActionToolCallbackFactory {
     );
     private static final Set<String> HIDDEN_VISIBILITY = Set.of("INTERNAL", "SECRET", "SYSTEM");
 
-    private final AIActionRegistry actionRegistry;
+    private final Supplier<AIActionRegistry> actionRegistrySupplier;
     private final ObjectMapper objectMapper;
 
     public AIActionToolCallbackFactory(AIActionRegistry actionRegistry, ObjectMapper objectMapper) {
-        this.actionRegistry = Objects.requireNonNull(actionRegistry, "actionRegistry");
+        this(() -> actionRegistry, objectMapper);
+    }
+
+    public AIActionToolCallbackFactory(Supplier<AIActionRegistry> actionRegistrySupplier, ObjectMapper objectMapper) {
+        this.actionRegistrySupplier = actionRegistrySupplier != null ? actionRegistrySupplier : () -> null;
         this.objectMapper = objectMapper != null ? objectMapper : new ObjectMapper().findAndRegisterModules();
     }
 
@@ -99,6 +104,10 @@ public class AIActionToolCallbackFactory {
     }
 
     public List<ToolCallback> createCallbacks(ActionContext actionContext) {
+        AIActionRegistry actionRegistry = resolveActionRegistry();
+        if (actionRegistry == null) {
+            return List.of();
+        }
         List<AIActionMetaData> metadata = actionRegistry.getAllMetadata();
         if (metadata == null || metadata.isEmpty()) {
             return List.of();
@@ -119,8 +128,16 @@ public class AIActionToolCallbackFactory {
         if (!StringUtils.hasText(actionName)) {
             return Optional.empty();
         }
+        AIActionRegistry actionRegistry = resolveActionRegistry();
+        if (actionRegistry == null) {
+            return Optional.empty();
+        }
         return actionRegistry.findHandler(actionName)
             .map(handler -> createCallback(handler, actionContext));
+    }
+
+    private AIActionRegistry resolveActionRegistry() {
+        return actionRegistrySupplier.get();
     }
 
     public ToolCallback createCallback(AIActionHandler handler, ActionContext actionContext) {

@@ -151,6 +151,23 @@ class AIActionToolCallbackFactoryTest {
         assertThat(handler.executions.get()).isZero();
     }
 
+    @Test
+    void registrySupplierIsResolvedOnlyForRegistryBackedLookups() {
+        AtomicInteger registryLookups = new AtomicInteger();
+        AIActionToolCallbackFactory factory = new AIActionToolCallbackFactory(() -> {
+            registryLookups.incrementAndGet();
+            return mock(AIActionRegistry.class);
+        }, objectMapper);
+
+        factory.createCallback(new RecordingActionHandler(actionMetadata(), false), anonymousContext());
+
+        assertThat(registryLookups).hasValue(0);
+
+        factory.createCallbacks(anonymousContext());
+
+        assertThat(registryLookups).hasValue(1);
+    }
+
     private AIActionToolCallbackFactory newFactory() {
         return new AIActionToolCallbackFactory(mock(AIActionRegistry.class), objectMapper);
     }

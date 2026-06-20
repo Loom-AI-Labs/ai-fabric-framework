@@ -71,7 +71,7 @@ public class SpringAiProviderAutoConfiguration {
     public AIProvider openAiSpringAiProvider(SpringAiModelResolver resolver,
                                              SpringAiChatClientFactory chatClientFactory,
                                              ObjectProvider<AIActionToolCallbackFactory> actionToolCallbackFactory) {
-        return new SpringAiChatProvider("openai", resolver, chatClientFactory, actionToolCallbackFactory.getIfAvailable());
+        return new SpringAiChatProvider("openai", resolver, chatClientFactory, actionToolCallbackFactory::getIfAvailable);
     }
 
     @Bean
@@ -85,7 +85,7 @@ public class SpringAiProviderAutoConfiguration {
     public AIProvider azureSpringAiProvider(SpringAiModelResolver resolver,
                                             SpringAiChatClientFactory chatClientFactory,
                                             ObjectProvider<AIActionToolCallbackFactory> actionToolCallbackFactory) {
-        return new SpringAiChatProvider("azure", resolver, chatClientFactory, actionToolCallbackFactory.getIfAvailable());
+        return new SpringAiChatProvider("azure", resolver, chatClientFactory, actionToolCallbackFactory::getIfAvailable);
     }
 
     @Bean
@@ -99,7 +99,7 @@ public class SpringAiProviderAutoConfiguration {
     public AIProvider anthropicSpringAiProvider(SpringAiModelResolver resolver,
                                                 SpringAiChatClientFactory chatClientFactory,
                                                 ObjectProvider<AIActionToolCallbackFactory> actionToolCallbackFactory) {
-        return new SpringAiChatProvider("anthropic", resolver, chatClientFactory, actionToolCallbackFactory.getIfAvailable());
+        return new SpringAiChatProvider("anthropic", resolver, chatClientFactory, actionToolCallbackFactory::getIfAvailable);
     }
 
     @Bean
@@ -107,7 +107,7 @@ public class SpringAiProviderAutoConfiguration {
     public AIProvider geminiSpringAiProvider(SpringAiModelResolver resolver,
                                              SpringAiChatClientFactory chatClientFactory,
                                              ObjectProvider<AIActionToolCallbackFactory> actionToolCallbackFactory) {
-        return new SpringAiChatProvider("gemini", resolver, chatClientFactory, actionToolCallbackFactory.getIfAvailable());
+        return new SpringAiChatProvider("gemini", resolver, chatClientFactory, actionToolCallbackFactory::getIfAvailable);
     }
 
     @Bean
