@@ -1137,8 +1137,8 @@ Philosophy check:
 Status: completed for the deterministic packaged real-app P1 lane and wired into automatic CI. This
 closes the packaged smoke rows for RAG quality, privacy/governance deletion, relationship-query,
 behavior signals, migration/backfill, and action confirmation plus confirmation interceptors.
-Connector-backed actions, DB action registry, relay, retrieval connector, and Spring AI tool-calling
-remain separate P1 hardening rows outside this packaged real-app smoke.
+Connector-backed actions, DB action registry, relay, retrieval connector, and Spring AI bridge rows
+are handled by the follow-up framework module/relay P1 slice below.
 
 Code evidence:
 
@@ -1210,7 +1210,88 @@ Philosophy check:
 - Supports fail-closed release hygiene: the new lane has deterministic pass/fail JSON assertions and
   does not require provider secrets.
 - Supports modularity: the packaged real-app lane covers scenarios already represented by real apps,
-  while connector, relay, registry, and Spring AI bridge work stay explicit as separate P1 rows.
+  while connector, relay, registry, and Spring AI bridge work have explicit module and packaged-relay
+  proof instead of being hidden inside the app smoke.
+
+### 2026-06-21: Framework Module And Relay P1 Hardening
+
+Status: completed for the remaining framework-owned P1 module rows that do not require live provider
+credentials. No LLM API keys were needed for this slice because Spring AI provider behavior is covered
+through deterministic model/test doubles and the relay/connector paths use local HTTP stubs.
+
+P1 implementation checklist:
+
+| P1 Area | Release Proof | Status |
+| --- | --- | --- |
+| Connector-backed actions through Customer Connector API | `ActionConnectorExecutorTest`, `ConnectorAIActionHandlerTest`, `ConnectorActionsRegistryContributorTest` | Closed by module tests |
+| File-based connector action catalog loading and validation | `ConnectorActionCatalogLoaderTest` and YAML fixture matrix | Closed by module tests |
+| Connector action idempotency, retry, and error contract | `ActionConnectorExecutorTest` retry/error assertions plus relay idempotency smoke | Closed by module tests and packaged relay smoke |
+| DB-backed action registry | `RegisteredConnectorActionMappingTest`, `ConnectorActionRegistryServiceTest`, `DbConnectorActionsRegistryContributorTest`, `ConnectorActionDefinitionValidatorTest` | Closed by module tests |
+| Action registry Liquibase helper | `AIActionDbRegistryLiquibaseEnvironmentPostProcessorTest` | Closed by module tests |
+| AI Fabric Relay `/actions/execute` | relay service/controller/OpenAPI tests plus `.github/scripts/smoke-p1-relay-local.sh` | Closed by packaged relay smoke |
+| Relay auth, replay protection, rate limiting, idempotency | `RelayAuthenticatorTest`, `FixedWindowRateLimiterTest`, `IdempotencyStoreTest`, relay smoke API-key/idempotency assertions | Closed by module tests and packaged relay smoke |
+| Retrieval connector `/retrieval/search` documents-only boundary | `RetrievalConnectorRAGProviderTest`, `AIRetrievalConnectorAutoConfigurationTest`, relay smoke documents-only rejection | Closed by module tests and packaged relay smoke |
+| Spring AI guarded action tool-calling bridge | `SpringAiProviderAdapterTest`, `SpringAiReadOnlyActionToolExampleTest`, `AIActionToolCallbackFactoryTest` | Closed by provider/core tests |
+| Request-scoped Spring AI advisors | `SpringAiProviderAdapterTest` advisor bridge coverage | Closed by provider tests |
+| Redacted Spring AI observation diagnostics | `SpringAiObservationDiagnosticsTest` | Closed by provider tests |
+| Indexing queue, retry, dead-letter, worker behavior | `IndexingQueueServiceTest`, `IndexingWorkerRunnerTest`, `IndexingWorkProcessorTest`, cleanup/strategy tests | Closed by indexing tests |
+| Spring AI document reader/chunker ingestion bridge | `SpringAiDocumentReaderFactoryTest`, `SpringAiDocumentIndexingAdapterTest` | Closed by indexing tests |
+| Packaged real-app scenario rows | `.github/scripts/smoke-p1-realapp-scenarios.sh` | Closed by automatic CI smoke |
+| Runtime/public auth, anonymous policy gates, curated modes, chat UI contract, compliance/retention rows | Existing P0 release gates and real-app/controller tests listed above | Carried by the P0 automatic gate; no additional live-provider proof required for P1 |
+
+Code evidence:
+
+- `ai-fabric-relay/pom.xml` now binds `spring-boot:repackage`, producing an executable relay boot jar
+  for Docker, local smoke, and customer-side deployment.
+- `ai-fabric-relay/Dockerfile` now builds the relay package without `-DskipTests`, so container builds
+  run the relay unit/contract tests before copying the artifact.
+- `RelayContainerPackagingTest` now verifies the relay POM keeps the executable-jar repackage contract
+  and the Docker package command does not skip tests.
+- `.github/scripts/smoke-p1-relay-local.sh` starts a packaged relay jar and a local internal stub,
+  then proves API-key auth, action forwarding, idempotency replay/conflict, retrieval forwarding, and
+  documents-only retrieval rejection.
+- `.github/workflows/framework-verify.yml` runs the relay smoke immediately after the framework
+  reactor build/install, before integration-suite compilation and real-app smokes.
+- `CI_PIPELINE_GUIDE.md` documents the relay smoke dependencies, command, and failure modes.
+
+Test evidence:
+
+- Clean connector/registry verification command run without `-DskipTests`:
+  `mvn -B -V --no-transfer-progress -f ai-infrastructure-module/pom.xml -pl ai-fabric-actions-registry -am clean test`
+- Result: curated-default ran 3 tests, core ran 586 tests, actions-connector ran 50 tests, and
+  actions-registry ran 25 tests; 0 failures, 0 errors, 0 skipped.
+- Clean P1 module verification command run without `-DskipTests`:
+  `mvn -B -V --no-transfer-progress -f ai-infrastructure-module/pom.xml -pl ai-fabric-actions-registry-liquibase,ai-fabric-relay,ai-fabric-retrieval-connector,providers/ai-fabric-provider-spring-ai,ai-fabric-indexing -am clean test`
+- Result: curated-default ran 3 tests, core ran 586 tests,
+  actions-connector ran 50 tests, actions-registry ran 25 tests, actions-registry-liquibase ran 9
+  tests, retrieval-connector ran 17 tests, relay ran 35 tests, indexing ran 49 tests, and Spring AI
+  provider ran 40 tests; 0 failures, 0 errors, 0 skipped.
+- Focused relay clean package command run without `-DskipTests` after the packaging fix:
+  `mvn -B -V --no-transfer-progress -f ai-infrastructure-module/pom.xml -pl ai-fabric-relay -am clean package`
+- Result: relay ran 35 tests, produced an executable Spring Boot jar, and repackaged
+  `ai-fabric-relay-0.2.1.jar`; 0 failures, 0 errors, 0 skipped.
+- Packaged relay local smoke command:
+  `.github/scripts/smoke-p1-relay-local.sh`
+- Result: relay booted from the packaged jar and passed API-key rejection, action forwarding,
+  idempotent replay, idempotency conflict, retrieval forwarding, and generated-response rejection.
+
+Verification note:
+
+- A non-clean local P1 reactor run initially exposed stale target classes in
+  `ai-fabric-actions-registry`. Clean verification passed. The release-facing command for local P1
+  module proof therefore uses `clean test`, and automatic CI starts from a fresh checkout.
+- The first packaged relay smoke exposed that the relay jar was not executable. Binding
+  `spring-boot:repackage` in the relay module fixed the deployability gap and is now guarded by both
+  packaging tests and the packaged relay smoke.
+
+Philosophy check:
+
+- Supports "frameworks teach": the relay is no longer only a documented component; it boots as a
+  packaged jar and demonstrates the exact Customer Connector API shape.
+- Supports fail-closed boundaries: generated retrieval responses are rejected at the relay boundary,
+  and idempotency conflicts return deterministic failure evidence.
+- Supports correctness before convenience: the Docker package build now runs tests instead of using
+  skipped-test packaging.
 
 ## Philosophy Alignment Check
 

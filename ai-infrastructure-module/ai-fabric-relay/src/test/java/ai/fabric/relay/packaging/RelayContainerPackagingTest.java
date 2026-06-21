@@ -18,7 +18,20 @@ class RelayContainerPackagingTest {
             "-pl ai-fabric-relay",
             "ai-infrastructure-module/ai-fabric-relay/target/ai-fabric-relay-*.jar"
         );
+        assertThat(dockerfile).contains("mvn -f ai-infrastructure-module/pom.xml -pl ai-fabric-relay -am package");
+        assertThat(dockerfile).doesNotContain("-DskipTests");
         assertThat(dockerfile).doesNotContain("ai-infrastructure-relay");
+    }
+
+    @Test
+    void pomShouldBuildExecutableSpringBootJar() throws Exception {
+        String pom = Files.readString(moduleFile("pom.xml"));
+
+        assertThat(pom).contains(
+            "<artifactId>spring-boot-maven-plugin</artifactId>",
+            "<skip>false</skip>",
+            "<goal>repackage</goal>"
+        );
     }
 
     @Test

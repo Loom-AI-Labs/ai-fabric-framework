@@ -10,12 +10,12 @@ WORKDIR /workspace
 COPY ai-infrastructure-module/pom.xml ai-infrastructure-module/pom.xml
 COPY ai-infrastructure-module/ai-fabric-relay/pom.xml ai-infrastructure-module/ai-fabric-relay/pom.xml
 
-RUN mvn -f ai-infrastructure-module/pom.xml -pl ai-fabric-relay -am -DskipTests dependency:go-offline
+RUN mvn -f ai-infrastructure-module/pom.xml -pl ai-fabric-relay -am dependency:go-offline
 
 # Copy the sources needed to build the relay (and its parents/modules)
 COPY ai-infrastructure-module ai-infrastructure-module
 
-RUN mvn -f ai-infrastructure-module/pom.xml -pl ai-fabric-relay -am -DskipTests package
+RUN mvn -f ai-infrastructure-module/pom.xml -pl ai-fabric-relay -am package
 
 FROM eclipse-temurin:21-jre
 
