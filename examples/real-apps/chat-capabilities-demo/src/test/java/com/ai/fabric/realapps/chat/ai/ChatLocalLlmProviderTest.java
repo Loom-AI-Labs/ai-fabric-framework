@@ -60,6 +60,28 @@ class ChatLocalLlmProviderTest {
     }
 
     @Test
+    void returnsSuggestionJsonForSuggestionGeneration() throws Exception {
+        AIGenerationResponse response = provider.generateContent(AIGenerationRequest.builder()
+            .entityId("suggestions-1")
+            .entityType("suggestions")
+            .generationType("suggestions")
+            .prompt("""
+                Return exactly 3 suggestions (no more, no less).
+
+                User context (optional):
+                (none)
+
+                Attached items (may be empty):
+                {"id":"att-1","contentText":"P1 Action Smoke Backpack","source":"ui-card"}
+                """)
+            .build());
+
+        JsonNode suggestions = objectMapper.readTree(response.getContent());
+        assertThat(suggestions).hasSize(3);
+        assertThat(suggestions.get(0).asText()).contains("P1 Action Smoke Backpack");
+    }
+
+    @Test
     void returnsConfirmationForPendingActionFollowUp() throws Exception {
         AIGenerationResponse response = provider.generateContent(AIGenerationRequest.builder()
             .entityId("intent-2")

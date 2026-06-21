@@ -464,6 +464,7 @@ chat_action_smoke() {
   local port="${P1_CHAT_ACTION_PORT:-19206}"
   local base="http://127.0.0.1:${port}"
   local product_body="${work_dir}/chat-product.json"
+  local suggestions_body="${work_dir}/chat-suggestions.json"
   local add_cart_body="${work_dir}/chat-add-cart.json"
   local checkout_body="${work_dir}/chat-checkout.json"
   local read_orders_body="${work_dir}/chat-read-orders.json"
@@ -495,6 +496,11 @@ chat_action_smoke() {
     "{\"sku\":\"${sku}\",\"name\":\"P1 Action Smoke Backpack\",\"description\":\"Durable smoke-test backpack for action confirmation flows.\",\"category\":\"Bags\",\"tags\":\"p1,actions,smoke\",\"price\":79.00,\"currency\":\"USD\",\"inStockQty\":10}" \
     "${product_body}"
   assert_json "${product_body}" "Chat action smoke creates product" "payload.get('sku') == '${sku}' and payload.get('inStockQty') == 10"
+
+  http_json POST "${base}/api/chat/suggestions" \
+    "{\"maxSuggestions\":3,\"attachments\":[{\"id\":\"p1-suggestion-card\",\"vectorSpace\":\"product\",\"contentText\":\"P1 Action Smoke Backpack\",\"source\":\"ui-card\",\"metadata\":{\"sku\":\"${sku}\"}}]}" \
+    "${suggestions_body}"
+  assert_json "${suggestions_body}" "Chat suggestions use attachment-aware request contract" "payload.get('success') is True and len(payload.get('suggestions', [])) == 3 and any('P1 Action Smoke Backpack' in suggestion for suggestion in payload.get('suggestions', [])) and str(payload.get('raw', '')).startswith('[')"
 
   create_order() {
     local owner="$1"

@@ -38,6 +38,17 @@ public class ChatLocalLlmProvider implements AIProvider {
     private static final Pattern ORDER_NUMBER_PATTERN = Pattern.compile(
         "\\bPO-[A-Za-z0-9][A-Za-z0-9\\-]*\\b"
     );
+    private static final Pattern CONTENT_TEXT_PATTERN = Pattern.compile(
+        "\"contentText\"\\s*:\\s*\"([^\"]+)\""
+    );
+    private static final Pattern USER_CONTEXT_PATTERN = Pattern.compile(
+        "User context \\(optional\\):\\s*(.*?)\\s*\\n\\s*Attached items",
+        Pattern.DOTALL
+    );
+    private static final Pattern MAX_SUGGESTIONS_PATTERN = Pattern.compile(
+        "Return exactly\\s+(\\d+)\\s+suggestions",
+        Pattern.CASE_INSENSITIVE
+    );
 
     @Override
     public String getProviderName() {
@@ -52,8 +63,9 @@ public class ChatLocalLlmProvider implements AIProvider {
     @Override
     public AIGenerationResponse generateContent(AIGenerationRequest request) {
         String prompt = request != null ? request.getPrompt() : "";
-        String userMessage = extractUserMessage(prompt);
-        String intentJson = buildIntentJson(userMessage);
+        String content = isSuggestionsRequest(request)
+            ? buildSuggestionsJson(prompt)
+            : buildIntentJson(extractUserMessage(prompt));
 
         return AIGenerationResponse.builder()
             .id("chat-local-" + UUID.randomUUID())
@@ -61,9 +73,9 @@ public class ChatLocalLlmProvider implements AIProvider {
             .entityId(request != null ? request.getEntityId() : null)
             .entityType(request != null ? request.getEntityType() : null)
             .generationType(request != null ? request.getGenerationType() : null)
-            .content(intentJson)
+            .content(content)
             .model(PROVIDER_NAME)
-            .tokensUsed(intentJson.length())
+            .tokensUsed(content.length())
             .confidence(1.0d)
             .processingTimeMs(0L)
             .generatedAt(LocalDateTime.now())
@@ -133,6 +145,69 @@ public class ChatLocalLlmProvider implements AIProvider {
         }
 
         return informationIntent();
+    }
+
+    private boolean isSuggestionsRequest(AIGenerationRequest request) {
+        if (request == null) {
+            return false;
+        }
+        return "suggestions".equalsIgnoreCase(request.getGenerationType())
+            || "suggestions".equalsIgnoreCase(request.getEntityType());
+    }
+
+    private String buildSuggestionsJson(String prompt) {
+        int max = extractMaxSuggestions(prompt);
+        String hint = extractSuggestionHint(prompt);
+        List<String> suggestions = List.of(
+            "Show me products related to " + hint,
+            "Compare the top options for " + hint,
+            "Show my recent orders",
+            "Show my saved addresses",
+            "Tell me more about " + hint
+        );
+
+        StringBuilder json = new StringBuilder("[");
+        for (int i = 0; i < max; i++) {
+            if (i > 0) {
+                json.append(',');
+            }
+            json.append('"').append(escapeJson(suggestions.get(i % suggestions.size()))).append('"');
+        }
+        json.append(']');
+        return json.toString();
+    }
+
+    private int extractMaxSuggestions(String prompt) {
+        if (!StringUtils.hasText(prompt)) {
+            return 5;
+        }
+        Matcher matcher = MAX_SUGGESTIONS_PATTERN.matcher(prompt);
+        if (matcher.find()) {
+            try {
+                return Math.max(1, Math.min(10, Integer.parseInt(matcher.group(1))));
+            } catch (NumberFormatException ignored) {
+                return 5;
+            }
+        }
+        return 5;
+    }
+
+    private String extractSuggestionHint(String prompt) {
+        if (!StringUtils.hasText(prompt)) {
+            return "your request";
+        }
+        Matcher contentMatcher = CONTENT_TEXT_PATTERN.matcher(prompt);
+        if (contentMatcher.find() && StringUtils.hasText(contentMatcher.group(1))) {
+            return contentMatcher.group(1).trim();
+        }
+        Matcher contextMatcher = USER_CONTEXT_PATTERN.matcher(prompt);
+        if (contextMatcher.find() && StringUtils.hasText(contextMatcher.group(1))) {
+            String context = contextMatcher.group(1).trim();
+            if (!"(none)".equalsIgnoreCase(context)) {
+                return context.length() <= 60 ? context : context.substring(0, 60).trim();
+            }
+        }
+        return "your request";
     }
 
     private String extractUserMessage(String prompt) {
