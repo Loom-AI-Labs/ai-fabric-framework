@@ -90,7 +90,7 @@ Step dependencies:
 | Build and install real apps suite | Installed framework artifacts and real-app modules | Real application examples fail to compile, test, or package. |
 | Smoke boot-test real apps | real-app artifacts and `.github/scripts/smoke-boot-realapps.sh` | Offline smoke profile startup fails. |
 | Smoke data-sync between ecommerce and chat runtime | real-app artifacts, `.github/scripts/smoke-ecommerce-chat-datasync.sh`, free local ports, Python 3 | Cross-app product upsert/search/delete/search proof fails or stale vector results survive delete. |
-| P1 deterministic real-app scenario smoke | real-app artifacts, `.github/scripts/smoke-p1-realapp-scenarios.sh`, free local ports, Python 3 | Product-shaped P1 flows fail: RAG quality, privacy deletion, relationship query, behavior signals, migration/backfill, or chat action confirmation/interceptor behavior. |
+| P1 deterministic real-app scenario smoke | real-app artifacts, `.github/scripts/smoke-p1-realapp-scenarios.sh`, free local ports, Python 3 | Product-shaped P1 flows fail: RAG quality, privacy deletion, relationship query, behavior signals, support action authorization/confirmation, migration/backfill, or chat action confirmation/interceptor behavior. |
 
 It sets up JDK 21, confirms Docker is available, then runs the framework reactor:
 

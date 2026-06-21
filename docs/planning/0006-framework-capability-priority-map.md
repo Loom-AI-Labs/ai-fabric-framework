@@ -1136,14 +1136,15 @@ Philosophy check:
 
 Status: completed for the deterministic packaged real-app P1 lane and wired into automatic CI. This
 closes the packaged smoke rows for RAG quality, privacy/governance deletion, relationship-query,
-behavior signals, migration/backfill, and action confirmation plus confirmation interceptors.
+behavior signals, support/action bot authorization, migration/backfill, and action confirmation plus
+confirmation interceptors.
 Connector-backed actions, DB action registry, relay, retrieval connector, and Spring AI bridge rows
 are handled by the follow-up framework module/relay P1 slice below.
 
 Code evidence:
 
 - `.github/scripts/smoke-p1-realapp-scenarios.sh` starts packaged real-app jars under the offline
-  `smoke` profile and asserts concrete HTTP JSON evidence for six product-shaped scenarios.
+  `smoke` profile and asserts concrete HTTP JSON evidence for seven product-shaped scenarios.
 - `.github/workflows/framework-verify.yml` now runs the P1 smoke after the real-app boot smoke and
   ecommerce-to-chat data-sync smoke, so the lane is part of automatic PR/push CI.
 - `docs/Framework-Dev-Guides/testing-verification/CI_PIPELINE_GUIDE.md` documents the new CI step,
@@ -1160,6 +1161,12 @@ Code evidence:
   delaying migration/backfill smoke indexing.
 - `DataMigrationServiceTest` asserts the migration queue uses the injected clock when setting
   `scheduledFor`.
+- `it-support-action-bot` now exposes a smoke-profile-only `SmokeActionController` that exercises the
+  real `AIActionRegistry` handlers directly, proving action metadata, `@ActionAllowed`, confirmation
+  message generation, and confirmed execution without live LLM credentials.
+- `SmokeActionControllerTest` covers missing-identity denial, allowed non-confirmable ticket
+  creation, confirmable assignment gating, and confirmed assignment execution against the app's H2
+  state.
 
 Scenario evidence:
 
@@ -1171,6 +1178,9 @@ Scenario evidence:
   and verifies an impossible query remains bounded.
 - Behavior signal analysis: seeds user events and verifies churn, sentiment, trend, and next-action
   evidence.
+- Support/action bot authorization: verifies discovered write-action contracts, denies a write action
+  without identity, executes an allowed non-confirmable create action, gates assignment behind
+  confirmation, then executes the confirmed assignment and verifies ticket state.
 - Migration/backfill lifecycle: seeds products, runs migration, waits for completion, checks progress,
   and verifies indexed search results.
 - Action confirmation and confirmation interceptor: creates real carts/orders, triggers
@@ -1193,12 +1203,12 @@ Test evidence:
 - Result: smoke-support ran 8 tests and chat-capabilities-demo ran 28 tests; 0 failures, 0 errors,
   0 skipped.
 - Selected P1 real-app package command run without `-DskipTests`:
-  `mvn -B -V --no-transfer-progress -f examples/real-apps/pom.xml -pl smoke-support,smart-faq-assistant,privacy-first-customer-facing-support,relationship-query-crm-insights,behavior-churn-signals,migration-enabled-product-catalog,chat-capabilities-demo -am clean package`
-- Result: seven selected modules rebuilt and packaged, 70 tests ran; 0 failures, 0 errors,
+  `mvn -B -V --no-transfer-progress -f examples/real-apps/pom.xml -pl smoke-support,smart-faq-assistant,privacy-first-customer-facing-support,relationship-query-crm-insights,behavior-churn-signals,migration-enabled-product-catalog,chat-capabilities-demo,it-support-action-bot -am clean package`
+- Result: eight selected modules rebuilt and packaged, 73 tests ran; 0 failures, 0 errors,
   0 skipped.
 - P1 packaged real-app HTTP smoke command:
   `.github/scripts/smoke-p1-realapp-scenarios.sh`
-- Result: all six P1 product-shaped scenarios passed against the freshly packaged jars.
+- Result: all seven P1 product-shaped scenarios passed against the freshly packaged jars.
 - Release guard commands run after adding the CI step:
   `bash -n .github/scripts/smoke-p1-realapp-scenarios.sh && .github/scripts/validate-workflow-test-policy.sh && .github/scripts/validate-release-doc-policy.sh`
 - Result: script syntax, workflow test policy, and release documentation policy all passed.

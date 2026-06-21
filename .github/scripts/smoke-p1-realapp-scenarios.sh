@@ -311,6 +311,55 @@ behavior_smoke() {
   assert_json "${summary_body}" "Behavior summary includes churn, sentiment, and trend evidence" "payload.get('userId') == 'user-1001' and payload.get('churnRisk', 0) > 0.5 and payload.get('sentimentLabel') and payload.get('trend') == 'DECLINING'"
 }
 
+support_action_bot_smoke() {
+  local port="${P1_SUPPORT_ACTION_BOT_PORT:-19207}"
+  local base="http://127.0.0.1:${port}"
+  local seed_body="${work_dir}/support-action-seed.json"
+  local actions_body="${work_dir}/support-action-actions.json"
+  local deny_body="${work_dir}/support-action-deny.json"
+  local create_body="${work_dir}/support-action-create.json"
+  local assign_prompt_body="${work_dir}/support-action-assign-prompt.json"
+  local assign_body="${work_dir}/support-action-assign.json"
+  local ticket_body="${work_dir}/support-action-ticket.json"
+
+  echo "P1 smoke: Support action bot authorization and confirmation"
+  start_app it-support-action-bot "${port}" \
+    "--spring.datasource.url=jdbc:h2:mem:it_support_p1_${run_id};DB_CLOSE_DELAY=-1;MODE=PostgreSQL" \
+    "--spring.jpa.hibernate.ddl-auto=create-drop" \
+    "--ai.providers.llm-provider=smoke" \
+    "--ai.providers.embedding-provider=smoke" \
+    "--ai.vector-db.type=false"
+
+  http_json POST "${base}/api/demo/seed" "" "${seed_body}"
+  assert_json "${seed_body}" "Support bot demo seed is available" "payload.get('seeded') is True"
+
+  http_get "${base}/api/smoke/actions" "${actions_body}"
+  assert_json "${actions_body}" "Support bot exposes write action contracts" "payload.get('actions', {}).get('create_ticket', {}).get('accessMode') == 'WRITE_ONLY' and payload.get('actions', {}).get('assign_ticket', {}).get('confirmationRequired') is True"
+
+  http_json POST "${base}/api/smoke/actions/create_ticket" \
+    '{"params":{"title":"P1 smoke laptop setup","description":"Provision a laptop for a new starter.","priority":"HIGH"}}' \
+    "${deny_body}"
+  assert_json "${deny_body}" "Support bot denies write action without identity" "payload.get('success') is False and payload.get('allowed') is False and payload.get('outcome') == 'ACTION_NOT_ALLOWED'"
+
+  http_json POST "${base}/api/smoke/actions/create_ticket" \
+    '{"userId":"agent_alex","sessionId":"agent-alex-p1","params":{"title":"P1 smoke laptop setup","description":"Provision a laptop for a new starter.","priority":"HIGH"}}' \
+    "${create_body}"
+  assert_json "${create_body}" "Support bot executes allowed non-confirmable write action" "payload.get('success') is True and payload.get('allowed') is True and payload.get('outcome') == 'ACTION_EXECUTED' and payload.get('result', {}).get('data', {}).get('priority') == 'HIGH'"
+
+  http_json POST "${base}/api/smoke/actions/assign_ticket" \
+    '{"userId":"agent_alex","sessionId":"agent-alex-p1","params":{"ticketNumber":1001,"assigneeUsername":"agent_maya"}}' \
+    "${assign_prompt_body}"
+  assert_json "${assign_prompt_body}" "Support bot gates assign action behind confirmation" "payload.get('success') is True and payload.get('allowed') is True and payload.get('outcome') == 'CONFIRMATION_REQUIRED' and 'Assign ticket 1001 to agent_maya' in payload.get('confirmationMessage', '')"
+
+  http_json POST "${base}/api/smoke/actions/assign_ticket" \
+    '{"userId":"agent_alex","sessionId":"agent-alex-p1","confirmed":true,"params":{"ticketNumber":1001,"assigneeUsername":"agent_maya"}}' \
+    "${assign_body}"
+  assert_json "${assign_body}" "Support bot executes confirmed assign action" "payload.get('success') is True and payload.get('outcome') == 'ACTION_EXECUTED' and payload.get('result', {}).get('data', {}).get('assignedTo') == 'agent_maya' and payload.get('result', {}).get('data', {}).get('status') == 'IN_PROGRESS'"
+
+  http_get "${base}/api/tickets/1001" "${ticket_body}"
+  assert_json "${ticket_body}" "Support bot ticket state reflects confirmed action" "payload.get('ticketNumber') == 1001 and payload.get('assignedTo') == 'agent_maya' and payload.get('status') == 'IN_PROGRESS'"
+}
+
 migration_smoke() {
   local port="${P1_MIGRATION_PORT:-19205}"
   local base="http://127.0.0.1:${port}"
@@ -534,6 +583,7 @@ smart_faq_smoke
 privacy_smoke
 crm_smoke
 behavior_smoke
+support_action_bot_smoke
 migration_smoke
 chat_action_smoke
 stop_current_app
