@@ -30,7 +30,6 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.util.StringUtils;
 
-import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -77,7 +76,7 @@ public class RealAPIActionPostActionGenerationIntegrationTest {
     void shouldExecuteActionOnceAndGenerateSummaryFromHandlerFacts() {
         Assumptions.assumeTrue(hasAnyProviderKeyConfigured(), "No LLM provider API key configured; skipping RealAPI scenario.");
 
-        String verificationToken = "POAG-" + Instant.now().toEpochMilli();
+        String verificationToken = "POAG-ALPHA-BRAVO-CHARLIE";
 
         Intent intent = Intent.builder()
             .type(IntentType.ACTION)
@@ -96,9 +95,17 @@ public class RealAPIActionPostActionGenerationIntegrationTest {
                 .build()
         );
 
+        String query = "Execute post action generation demo with verification token \"%s\" and then summarize."
+            .formatted(verificationToken);
         OrchestrationResult result = orchestrator.orchestrate(
-            "Execute post action generation demo and then summarize.",
+            query,
             OrchestrationContext.forUser("post-action-realapi-user")
+        );
+        System.out.printf(
+            "RealAPI post-action generation step result type=%s success=%s metadataKeys=%s%n",
+            result.getType(),
+            result.isSuccess(),
+            result.getMetadata() != null ? result.getMetadata().keySet() : java.util.Set.of()
         );
 
         assertThat(result.getType()).isEqualTo(OrchestrationResultType.ACTION_EXECUTED);

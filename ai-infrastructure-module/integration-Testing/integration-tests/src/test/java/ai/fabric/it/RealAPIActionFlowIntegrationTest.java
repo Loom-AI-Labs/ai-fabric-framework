@@ -19,6 +19,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.TestPropertySource;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
@@ -36,6 +37,9 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 @Slf4j
 @SpringBootTest(classes = TestApplication.class)
 @ActiveProfiles("real-api-test")
+@TestPropertySource(properties = {
+    "ai.actions.builtin.vector-management.enabled=true"
+})
 @Transactional
 public class RealAPIActionFlowIntegrationTest {
 
@@ -96,6 +100,7 @@ public class RealAPIActionFlowIntegrationTest {
             Confirm the purge and propose the next follow-up remediation step.""".formatted(legacyDevice.getName(), entityId);
 
         OrchestrationResult result = orchestrateOrSkip(query, userId);
+        logOrchestrationStep("remove_vector action flow", result);
         assertNotNull(result, "Orchestrator should return a result");
         // Provider-agnostic contract: compound wrappers are normalized into the primary intent type.
         assertThat(result.getType())
@@ -258,6 +263,7 @@ public class RealAPIActionFlowIntegrationTest {
             Close with a recommended high-confidence validation to run next.""";
 
         OrchestrationResult result = orchestrateOrSkip(query, userId);
+        logOrchestrationStep("compound information + clear_vector_index action flow", result);
         assertNotNull(result, "Orchestrator should return a result");
         // Provider-agnostic contract: compound wrappers are normalized into the primary intent type.
         assertThat(result.getType()).isEqualTo(OrchestrationResultType.ACTION_EXECUTED);
@@ -407,5 +413,24 @@ public class RealAPIActionFlowIntegrationTest {
                 "Skipping real API action flow test because intent orchestration failed: " + ex.getMessage());
             return null;
         }
+    }
+
+    private void logOrchestrationStep(String step, OrchestrationResult result) {
+        if (result == null) {
+            log.info("RealAPI action-flow step '{}' returned null result", step);
+            return;
+        }
+        List<String> childTypes = result.getChildren() == null
+            ? List.of()
+            : result.getChildren().stream()
+                .map(child -> child.getType() + "/success=" + child.isSuccess())
+                .toList();
+        log.info("RealAPI action-flow step '{}' result type={}, success={}, message='{}', metadataKeys={}, childTypes={}",
+            step,
+            result.getType(),
+            result.isSuccess(),
+            result.getMessage(),
+            result.getMetadata() != null ? result.getMetadata().keySet() : List.of(),
+            childTypes);
     }
 }

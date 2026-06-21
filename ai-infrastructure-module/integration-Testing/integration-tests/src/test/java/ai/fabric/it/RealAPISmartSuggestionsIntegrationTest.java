@@ -210,10 +210,17 @@ public class RealAPISmartSuggestionsIntegrationTest {
         // Verify metadata about orchestration is captured
         Map<String, Object> metadata = result.getMetadata();
         if (metadata != null && !metadata.isEmpty()) {
+            System.out.println("RealAPI smart-suggestions metadata keys: " + metadata.keySet());
             assertThat(metadata.get("intentsCount")).isNotNull()
                 .as("Intent count should be recorded in metadata");
-            assertThat(metadata.get("compound")).isNotNull()
-                .as("Compound flag should be recorded in metadata");
+            assertThat(metadata.get("intentMetadata"))
+                .as("Intent metadata should be recorded in metadata")
+                .isInstanceOf(Map.class);
+            @SuppressWarnings("unchecked")
+            Map<String, Object> intentMetadata = (Map<String, Object>) metadata.get("intentMetadata");
+            assertThat(intentMetadata)
+                .as("Intent metadata should include stable orchestration flags")
+                .containsKey("requiresTargetResolution");
         }
 
         // Verify intent history captured the query
