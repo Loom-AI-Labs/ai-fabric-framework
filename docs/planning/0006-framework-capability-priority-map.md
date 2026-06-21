@@ -1261,7 +1261,11 @@ P1 implementation checklist:
 | Public anonymous action policy gates | `IntentHandlingStepAnonymousActionPolicyTest` plus `.github/scripts/smoke-p1-realapp-scenarios.sh` chat denial assertion | Closed by core tests and packaged chat smoke |
 | Smart suggestions and chat UI request contract, attachments, pinned targets | `ChatControllerSuggestionsTest`, core attachment/target tests, and `.github/scripts/smoke-p1-realapp-scenarios.sh` suggestions assertion | Closed by controller/core tests and packaged chat smoke |
 | Curated modes and packs: default, commerce, support | `DefaultCuratedPackTest`, `CuratedPackEnvironmentPostProcessorTest`, `CommerceCuratedPackTest`, `SupportCuratedPackTest` | Closed by focused curated module tests and full framework reactor CI |
-| Runtime/public auth and compliance/retention rows | Existing P0 release gates and real-app/controller/governance tests listed above | Carried by the P0/P1 automatic gate; no additional live-provider proof required for P1 |
+| Private runtime customer integration | `DataSyncServiceTest`, `RestConnectorDataSyncClientTest`, and ecommerce-to-chat data-sync smoke | Closed for framework-owned verified-auth-context consumption and propagation |
+| Public runtime browser-token integration | `SecurityAnalysisStepTest`, `AccessControlStepTest`, `AuthzControllerTest`, `RelayTraceContextSupportTest`, relay OpenAPI contract tests | Closed for framework-owned token-claim consumption, auth-context propagation, and policy behavior |
+| Public runtime bootstrap/token issuer | `PUBLIC_RUNTIME_BROWSER_TOKEN_INTEGRATION_GUIDE.md` platform route `POST /api/public/chat/session` | Platform/runtime deployment responsibility; not a framework module implementation in this repo |
+| Compliance checks and content filtering | `ComplianceCheckStepTest`, `AIComplianceServiceTest`, `AIContentFilterServiceTest` | Closed by governance tests |
+| Retention cleanup | `RetentionCleanupSchedulerTest`, `UserDataDeletionServiceTest`, privacy app service tests, packaged privacy smoke | Closed by governance tests and packaged privacy smoke |
 
 Code evidence:
 
@@ -1277,6 +1281,24 @@ Code evidence:
 - `.github/workflows/framework-verify.yml` runs the relay smoke immediately after the framework
   reactor build/install, before integration-suite compilation and real-app smokes.
 - `CI_PIPELINE_GUIDE.md` documents the relay smoke dependencies, command, and failure modes.
+- Framework-owned private runtime auth is covered at the point where the framework consumes trusted
+  caller context: `DataSyncServiceTest` requires `PRIVATE_RUNTIME_BACKEND_MEDIATED` auth context, and
+  `RestConnectorDataSyncClientTest` proves the ecommerce app sends canonical data-sync scopes and
+  system subject metadata.
+- Framework-owned public runtime auth is covered at the claim-consumption and propagation boundary:
+  `SecurityAnalysisStepTest` and `AccessControlStepTest` preserve public runtime metadata,
+  `AuthzControllerTest` proves anonymous/authenticated public authz outcomes, and relay tests prove
+  public auth context becomes the forwarded `X-AIFABRIC-AUTH-*` contract.
+- The public anonymous policy path has both unit proof and packaged app proof: anonymous READ/safe
+  actions are allowed only when declared safe, while an anonymous support-ticket WRITE action returns
+  `ACTION_DENIED` before confirmation or handler execution.
+- Governance P1 rows are covered by the governance module plus the privacy real app:
+  compliance/content filtering fail closed, retention reports completed/skipped/partial outcomes, and
+  deletion removes catalog/vector evidence through the packaged privacy smoke.
+- The public bootstrap/token issuer described in `PUBLIC_RUNTIME_BROWSER_TOKEN_INTEGRATION_GUIDE.md`
+  remains a platform/runtime deployment boundary. This repo proves how AI Fabric consumes verified
+  public-token claims and propagates them, but it does not implement the token-issuing
+  `POST /api/public/chat/session` route as a framework module.
 
 Test evidence:
 
@@ -1302,6 +1324,14 @@ Test evidence:
   `.github/scripts/smoke-p1-relay-local.sh`
 - Result: relay booted from the packaged jar and passed API-key rejection, action forwarding,
   idempotent replay, idempotency conflict, retrieval forwarding, and generated-response rejection.
+- Focused runtime/auth/compliance framework verification command run without `-DskipTests`:
+  `mvn -B -V --no-transfer-progress -f ai-infrastructure-module/pom.xml -pl ai-fabric-core,ai-fabric-data-sync,ai-fabric-governance,ai-fabric-relay,ai-fabric-actions-connector,ai-fabric-retrieval-connector -am -Dtest=AccessControlStepTest,SecurityAnalysisStepTest,IntentHandlingStepAnonymousActionPolicyTest,ActionContextTest,DataSyncServiceTest,ComplianceCheckStepTest,AIComplianceServiceTest,AIContentFilterServiceTest,RetentionCleanupSchedulerTest,UserDataDeletionServiceTest,RelayTraceContextSupportTest,RelayActionServiceTest,RelayRetrievalServiceTest,RelayOpenApiContractTest,ActionConnectorExecutorTest,RetrievalConnectorRAGProviderTest -Dsurefire.failIfNoSpecifiedTests=false test`
+- Result: curated-default, core, actions-connector, retrieval-connector, data-sync, relay, and
+  governance focused tests passed; 0 failures, 0 errors, 0 skipped.
+- Focused real-app runtime/auth/privacy verification command run without `-DskipTests`:
+  `mvn -B -V --no-transfer-progress -f examples/real-apps/pom.xml -pl smoke-support,ecommerce-store,privacy-first-customer-facing-support -am -Dtest=AuthzControllerTest,RestConnectorDataSyncClientTest,PrivacyGovernanceServiceTest,SupportMessageDeletionProviderTest,SupportMessageServiceTest -Dsurefire.failIfNoSpecifiedTests=false test`
+- Result: ecommerce ran 7 focused auth/data-sync tests and privacy-first support ran 8 focused
+  privacy/governance tests; 0 failures, 0 errors, 0 skipped.
 
 Verification note:
 
