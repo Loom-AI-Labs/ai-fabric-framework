@@ -1263,7 +1263,7 @@ P1 implementation checklist:
 | Curated modes and packs: default, commerce, support | `DefaultCuratedPackTest`, `CuratedPackEnvironmentPostProcessorTest`, `CommerceCuratedPackTest`, `SupportCuratedPackTest` | Closed by focused curated module tests and full framework reactor CI |
 | Private runtime customer integration | `DataSyncServiceTest`, `RestConnectorDataSyncClientTest`, and ecommerce-to-chat data-sync smoke | Closed for framework-owned verified-auth-context consumption and propagation |
 | Public runtime browser-token integration | `SecurityAnalysisStepTest`, `AccessControlStepTest`, `AuthzControllerTest`, `RelayTraceContextSupportTest`, relay OpenAPI contract tests | Closed for framework-owned token-claim consumption, auth-context propagation, and policy behavior |
-| Public runtime bootstrap/token issuer | `PUBLIC_RUNTIME_BROWSER_TOKEN_INTEGRATION_GUIDE.md` platform route `POST /api/public/chat/session` | Platform/runtime deployment responsibility; not a framework module implementation in this repo |
+| Public runtime bootstrap/token issuer | `PUBLIC_RUNTIME_BROWSER_TOKEN_INTEGRATION_GUIDE.md` platform route `POST /api/public/chat/session` | Boundary documented; no framework module implementation required for P1 |
 | Compliance checks and content filtering | `ComplianceCheckStepTest`, `AIComplianceServiceTest`, `AIContentFilterServiceTest` | Closed by governance tests |
 | Retention cleanup | `RetentionCleanupSchedulerTest`, `UserDataDeletionServiceTest`, privacy app service tests, packaged privacy smoke | Closed by governance tests and packaged privacy smoke |
 
