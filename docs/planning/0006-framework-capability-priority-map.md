@@ -1260,7 +1260,8 @@ P1 implementation checklist:
 | Packaged real-app scenario rows | `.github/scripts/smoke-p1-realapp-scenarios.sh` | Closed by automatic CI smoke |
 | Public anonymous action policy gates | `IntentHandlingStepAnonymousActionPolicyTest` plus `.github/scripts/smoke-p1-realapp-scenarios.sh` chat denial assertion | Closed by core tests and packaged chat smoke |
 | Smart suggestions and chat UI request contract, attachments, pinned targets | `ChatControllerSuggestionsTest`, core attachment/target tests, and `.github/scripts/smoke-p1-realapp-scenarios.sh` suggestions assertion | Closed by controller/core tests and packaged chat smoke |
-| Runtime/public auth, curated modes, compliance/retention rows | Existing P0 release gates and real-app/controller tests listed above | Carried by the P0/P1 automatic gate; no additional live-provider proof required for P1 |
+| Curated modes and packs: default, commerce, support | `DefaultCuratedPackTest`, `CuratedPackEnvironmentPostProcessorTest`, `CommerceCuratedPackTest`, `SupportCuratedPackTest` | Closed by focused curated module tests and full framework reactor CI |
+| Runtime/public auth and compliance/retention rows | Existing P0 release gates and real-app/controller/governance tests listed above | Carried by the P0/P1 automatic gate; no additional live-provider proof required for P1 |
 
 Code evidence:
 
@@ -1289,6 +1290,10 @@ Test evidence:
   actions-connector ran 50 tests, actions-registry ran 25 tests, actions-registry-liquibase ran 9
   tests, retrieval-connector ran 17 tests, relay ran 35 tests, indexing ran 49 tests, and Spring AI
   provider ran 40 tests; 0 failures, 0 errors, 0 skipped.
+- Focused curated pack verification command run without `-DskipTests`:
+  `mvn -B -V --no-transfer-progress -f ai-infrastructure-module/pom.xml -pl curated/ai-fabric-curated-default,curated/ai-fabric-curated-commerce,curated/ai-fabric-curated-support -am test`
+- Result: curated-default ran 3 tests, core ran 586 tests, curated-commerce ran 2 tests, and
+  curated-support ran 1 test; 0 failures, 0 errors, 0 skipped.
 - Focused relay clean package command run without `-DskipTests` after the packaging fix:
   `mvn -B -V --no-transfer-progress -f ai-infrastructure-module/pom.xml -pl ai-fabric-relay -am clean package`
 - Result: relay ran 35 tests, produced an executable Spring Boot jar, and repackaged
