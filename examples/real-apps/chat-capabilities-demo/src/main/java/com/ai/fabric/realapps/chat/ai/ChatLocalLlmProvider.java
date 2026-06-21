@@ -125,6 +125,12 @@ public class ChatLocalLlmProvider implements AIProvider {
             && lower.contains("order")) {
             return actionIntent("list_orders", "\"limit\":5");
         }
+        if (lower.contains("support ticket") || lower.contains("create ticket")) {
+            return actionIntent(
+                "create_support_ticket",
+                "\"issueType\":\"billing\",\"description\":\"Smoke support ticket request\""
+            );
+        }
 
         return informationIntent();
     }

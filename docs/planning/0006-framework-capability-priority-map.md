@@ -1137,7 +1137,8 @@ Philosophy check:
 Status: completed for the deterministic packaged real-app P1 lane and wired into automatic CI. This
 closes the packaged smoke rows for RAG quality, privacy/governance deletion, relationship-query,
 behavior signals, support/action bot authorization, migration/backfill, and action confirmation plus
-confirmation interceptors.
+confirmation interceptors. It now also gives `chat-capabilities-demo` proof for public anonymous
+write-action policy gates.
 Connector-backed actions, DB action registry, relay, retrieval connector, and Spring AI bridge rows
 are handled by the follow-up framework module/relay P1 slice below.
 
@@ -1153,7 +1154,8 @@ Code evidence:
   provider for action extraction and yes/no confirmation turns. It keeps the app flow offline while
   still exercising the real chat-session/action pipeline.
 - `ChatLocalLlmProviderTest` preserves cancel-action extraction, `list_orders` READ-action
-  extraction, negative confirmation detection, and deterministic embedding behavior.
+  extraction, support-ticket WRITE-action extraction for anonymous policy smoke, negative
+  confirmation detection, and deterministic embedding behavior.
 - `CartItem` now ignores its parent `Cart` during JSON serialization, and `CartSerializationTest`
   prevents recursive cart/item responses from breaking the real checkout smoke.
 - `DataMigrationService`, `IndexingRequest`, and `SpringAiDocumentIndexingOptions` now schedule
@@ -1187,6 +1189,9 @@ Scenario evidence:
   `list_orders` READ action without confirmation, triggers `cancel_purchase_order`, verifies the
   first confirmation, verifies the retention-offer interceptor, proves rejecting the offer executes
   cancellation, and proves accepting the offer keeps the order active through the discount action.
+- Public anonymous action policy gates: the same packaged chat app asks for a support-ticket WRITE
+  action without `userId`, receives the framework `ACTION_DENIED` result, and proves the denial
+  happens before confirmation or handler execution.
 
 Test evidence:
 
@@ -1204,12 +1209,13 @@ Test evidence:
   0 skipped.
 - Selected P1 real-app package command run without `-DskipTests`:
   `mvn -B -V --no-transfer-progress -f examples/real-apps/pom.xml -pl smoke-support,smart-faq-assistant,privacy-first-customer-facing-support,relationship-query-crm-insights,behavior-churn-signals,migration-enabled-product-catalog,chat-capabilities-demo,it-support-action-bot -am clean package`
-- Result: eight selected modules rebuilt and packaged, 74 tests ran; 0 failures, 0 errors,
+- Result: eight selected modules rebuilt and packaged, 75 tests ran; 0 failures, 0 errors,
   0 skipped.
 - P1 packaged real-app HTTP smoke command:
   `.github/scripts/smoke-p1-realapp-scenarios.sh`
 - Result: all seven P1 product-shaped scenarios passed against the freshly packaged jars, including
-  support action authorization/confirmation and chat READ-action execution.
+  support action authorization/confirmation, chat READ-action execution, and chat anonymous
+  WRITE-action denial.
 - Release guard commands run after adding the CI step:
   `bash -n .github/scripts/smoke-p1-realapp-scenarios.sh && .github/scripts/validate-workflow-test-policy.sh && .github/scripts/validate-release-doc-policy.sh`
 - Result: script syntax, workflow test policy, and release documentation policy all passed.
@@ -1248,7 +1254,8 @@ P1 implementation checklist:
 | Indexing queue, retry, dead-letter, worker behavior | `IndexingQueueServiceTest`, `IndexingWorkerRunnerTest`, `IndexingWorkProcessorTest`, cleanup/strategy tests | Closed by indexing tests |
 | Spring AI document reader/chunker ingestion bridge | `SpringAiDocumentReaderFactoryTest`, `SpringAiDocumentIndexingAdapterTest` | Closed by indexing tests |
 | Packaged real-app scenario rows | `.github/scripts/smoke-p1-realapp-scenarios.sh` | Closed by automatic CI smoke |
-| Runtime/public auth, anonymous policy gates, curated modes, chat UI contract, compliance/retention rows | Existing P0 release gates and real-app/controller tests listed above | Carried by the P0 automatic gate; no additional live-provider proof required for P1 |
+| Public anonymous action policy gates | `IntentHandlingStepAnonymousActionPolicyTest` plus `.github/scripts/smoke-p1-realapp-scenarios.sh` chat denial assertion | Closed by core tests and packaged chat smoke |
+| Runtime/public auth, curated modes, chat UI contract, compliance/retention rows | Existing P0 release gates and real-app/controller tests listed above | Carried by the P0/P1 automatic gate; no additional live-provider proof required for P1 |
 
 Code evidence:
 

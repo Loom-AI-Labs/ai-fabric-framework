@@ -45,6 +45,21 @@ class ChatLocalLlmProviderTest {
     }
 
     @Test
+    void returnsSupportTicketWriteActionIntent() throws Exception {
+        AIGenerationResponse response = provider.generateContent(AIGenerationRequest.builder()
+            .entityId("intent-write")
+            .entityType("intent_extraction")
+            .generationType("intent_extraction")
+            .prompt("User's question is: (Create a support ticket for billing help)")
+            .build());
+
+        JsonNode intent = objectMapper.readTree(response.getContent()).path("intents").get(0);
+        assertThat(intent.path("type").asText()).isEqualTo("ACTION");
+        assertThat(intent.path("action").asText()).isEqualTo("create_support_ticket");
+        assertThat(intent.path("actionParams").path("issueType").asText()).isEqualTo("billing");
+    }
+
+    @Test
     void returnsConfirmationForPendingActionFollowUp() throws Exception {
         AIGenerationResponse response = provider.generateContent(AIGenerationRequest.builder()
             .entityId("intent-2")
