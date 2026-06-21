@@ -158,8 +158,9 @@ smoke. The final cross-app smoke is `.github/scripts/smoke-ecommerce-chat-datasy
 4. Use `smart-faq-assistant` as the P0 RAG quality proof.
 5. Use `privacy-first-customer-facing-support` as the P0 privacy/governance proof.
 6. Promote deterministic packaged real-app HTTP smokes into the P1 verification lane for actions,
-   relationship-query, migration/backfill, RAG quality, behavior signals, and privacy deletion. These
-   should run without provider secrets and should become automatic CI candidates once stable.
+   relationship-query, migration/backfill, RAG quality, behavior signals, and privacy deletion. The
+   first packaged suite now runs without provider secrets in automatic CI through
+   `.github/scripts/smoke-p1-realapp-scenarios.sh`.
 7. Move connector actions, DB action registry, relay, retrieval connector, and Spring AI tool-calling
    into the same P1 verification lane.
 8. Keep secret-backed RealAPI provider smokes, managed vector provisioning, platform workflows,
@@ -175,7 +176,7 @@ the P0 unit/module proof because they validate the framework in product-shaped f
 
 P1 smokes should run the packaged application jars under the deterministic `smoke` profile, use local
 H2/local deterministic providers, and expose pass/fail evidence through HTTP responses or a script
-summary. They are good candidates for automatic CI after the current P0 gate.
+summary. The initial packaged suite is wired into automatic CI after the P0 boot/data-sync smokes.
 
 | Scenario | App / Existing Code Evidence | Smoke Proof |
 | --- | --- | --- |
@@ -1128,6 +1129,88 @@ Philosophy check:
 - Supports framework examples as teaching material: the chat app admin test now avoids fragile
   mocking of optional framework internals and keeps its assertion focused on the public admin
   boundary.
+
+## P1 Progress Evidence
+
+### 2026-06-21: Packaged Real-App P1 Scenario Smoke Lane
+
+Status: completed for the deterministic packaged real-app P1 lane and wired into automatic CI. This
+closes the packaged smoke rows for RAG quality, privacy/governance deletion, relationship-query,
+behavior signals, migration/backfill, and action confirmation plus confirmation interceptors.
+Connector-backed actions, DB action registry, relay, retrieval connector, and Spring AI tool-calling
+remain separate P1 hardening rows outside this packaged real-app smoke.
+
+Code evidence:
+
+- `.github/scripts/smoke-p1-realapp-scenarios.sh` starts packaged real-app jars under the offline
+  `smoke` profile and asserts concrete HTTP JSON evidence for six product-shaped scenarios.
+- `.github/workflows/framework-verify.yml` now runs the P1 smoke after the real-app boot smoke and
+  ecommerce-to-chat data-sync smoke, so the lane is part of automatic PR/push CI.
+- `docs/Framework-Dev-Guides/testing-verification/CI_PIPELINE_GUIDE.md` documents the new CI step,
+  dependencies, failure modes, and local command.
+- `chat-capabilities-demo` now has `ChatLocalLlmProvider`, a deterministic smoke-profile-capable
+  provider for action extraction and yes/no confirmation turns. It keeps the app flow offline while
+  still exercising the real chat-session/action pipeline.
+- `ChatLocalLlmProviderTest` preserves cancel-action extraction, negative confirmation detection,
+  and deterministic embedding behavior.
+- `CartItem` now ignores its parent `Cart` during JSON serialization, and `CartSerializationTest`
+  prevents recursive cart/item responses from breaking the real checkout smoke.
+- `DataMigrationService`, `IndexingRequest`, and `SpringAiDocumentIndexingOptions` now schedule
+  indexing work with the framework UTC clock boundary. This prevents local timezone drift from
+  delaying migration/backfill smoke indexing.
+- `DataMigrationServiceTest` asserts the migration queue uses the injected clock when setting
+  `scheduledFor`.
+
+Scenario evidence:
+
+- Smart FAQ golden-answer quality: seeds the FAQ demo set and fails closed when expected quality
+  evidence is missing.
+- Privacy/governance deletion: stores masked support data, verifies it is searchable, deletes the
+  customer inventory, and proves the deleted customer no longer appears in search.
+- Relationship-query CRM: seeds accounts/deals, verifies a structured successful relationship answer,
+  and verifies an impossible query remains bounded.
+- Behavior signal analysis: seeds user events and verifies churn, sentiment, trend, and next-action
+  evidence.
+- Migration/backfill lifecycle: seeds products, runs migration, waits for completion, checks progress,
+  and verifies indexed search results.
+- Action confirmation and confirmation interceptor: creates real carts/orders, triggers
+  `cancel_purchase_order`, verifies the first confirmation, verifies the retention-offer interceptor,
+  proves rejecting the offer executes cancellation, and proves accepting the offer keeps the order
+  active through the discount action.
+
+Test evidence:
+
+- Framework UTC scheduling focused verification command run without `-DskipTests`:
+  `mvn -B -V --no-transfer-progress -f ai-infrastructure-module/pom.xml -pl ai-fabric-indexing,ai-fabric-migration -am test`
+- Result: core ran 586 tests, indexing and migration ran their focused suites, migration ran 30
+  tests; 0 failures, 0 errors, 0 skipped.
+- Framework local install command run without `-DskipTests`:
+  `mvn -B -V --no-transfer-progress -f ai-infrastructure-module/pom.xml -pl ai-fabric-indexing,ai-fabric-migration -am install`
+- Result: curated-default ran 3 tests, core ran 586 tests, indexing ran 49 tests, migration ran 30
+  tests; 0 failures, 0 errors, 0 skipped.
+- Focused chat real-app package command run without `-DskipTests`:
+  `mvn -B -V --no-transfer-progress -f examples/real-apps/pom.xml -pl smoke-support,chat-capabilities-demo -am package`
+- Result: smoke-support ran 8 tests and chat-capabilities-demo ran 28 tests; 0 failures, 0 errors,
+  0 skipped.
+- Selected P1 real-app package command run without `-DskipTests`:
+  `mvn -B -V --no-transfer-progress -f examples/real-apps/pom.xml -pl smoke-support,smart-faq-assistant,privacy-first-customer-facing-support,relationship-query-crm-insights,behavior-churn-signals,migration-enabled-product-catalog,chat-capabilities-demo -am clean package`
+- Result: seven selected modules rebuilt and packaged, 70 tests ran; 0 failures, 0 errors,
+  0 skipped.
+- P1 packaged real-app HTTP smoke command:
+  `.github/scripts/smoke-p1-realapp-scenarios.sh`
+- Result: all six P1 product-shaped scenarios passed against the freshly packaged jars.
+- Release guard commands run after adding the CI step:
+  `bash -n .github/scripts/smoke-p1-realapp-scenarios.sh && .github/scripts/validate-workflow-test-policy.sh && .github/scripts/validate-release-doc-policy.sh`
+- Result: script syntax, workflow test policy, and release documentation policy all passed.
+
+Philosophy check:
+
+- Supports "frameworks teach": the examples now prove real product flows from packaged artifacts
+  rather than only unit-level fragments.
+- Supports fail-closed release hygiene: the new lane has deterministic pass/fail JSON assertions and
+  does not require provider secrets.
+- Supports modularity: the packaged real-app lane covers scenarios already represented by real apps,
+  while connector, relay, registry, and Spring AI bridge work stay explicit as separate P1 rows.
 
 ## Philosophy Alignment Check
 

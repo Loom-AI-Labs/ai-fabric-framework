@@ -379,6 +379,7 @@ class DataMigrationServiceTest {
         assertThat(req.operation()).isEqualTo(IndexingOperation.CREATE);
         assertThat(req.actionPlan().generateEmbedding()).isTrue();
         assertThat(req.actionPlan().indexForSearch()).isTrue();
+        assertThat(req.scheduledFor()).isEqualTo(clock.instant().atZone(clock.getZone()).toLocalDateTime());
         assertThat(req.maxRetries()).isEqualTo(indexingProperties.getQueue().getMaxRetries());
         assertThat(req.payload()).contains("e-1");
     }

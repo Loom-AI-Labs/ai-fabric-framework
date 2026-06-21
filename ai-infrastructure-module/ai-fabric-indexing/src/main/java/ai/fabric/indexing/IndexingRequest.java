@@ -1,6 +1,7 @@
 package ai.fabric.indexing;
 
 import ai.fabric.indexing.api.IndexingStrategy;
+import java.time.Clock;
 import java.time.LocalDateTime;
 import java.util.Objects;
 
@@ -41,7 +42,7 @@ public record IndexingRequest(
         private IndexingStrategy strategy = IndexingStrategy.ASYNC;
         private IndexingActionPlan actionPlan = new IndexingActionPlan(true, true, false, false, false);
         private String payload;
-        private LocalDateTime scheduledFor = LocalDateTime.now();
+        private LocalDateTime scheduledFor;
         private int maxRetries = 5;
 
         public Builder entityType(String entityType) {
@@ -98,7 +99,7 @@ public record IndexingRequest(
                 strategy,
                 actionPlan,
                 payload,
-                scheduledFor != null ? scheduledFor : LocalDateTime.now(),
+                scheduledFor != null ? scheduledFor : LocalDateTime.now(Clock.systemUTC()),
                 maxRetries <= 0 ? 5 : maxRetries
             );
         }

@@ -38,7 +38,7 @@ jobs:
   maven-build:
     name: Maven Build
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     needs:
       - provider-registry
     steps:
@@ -90,6 +90,9 @@ jobs:
 
       - name: Smoke data-sync between ecommerce and chat runtime
         run: .github/scripts/smoke-ecommerce-chat-datasync.sh
+
+      - name: P1 deterministic real-app scenario smoke
+        run: .github/scripts/smoke-p1-realapp-scenarios.sh
 
   vector-provider-contracts:
     name: Vector Provider Container Contracts

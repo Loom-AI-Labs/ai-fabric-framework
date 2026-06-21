@@ -379,6 +379,7 @@ public class DataMigrationService {
             .strategy(IndexingStrategy.ASYNC)
             .actionPlan(new IndexingActionPlan(true, true, false, false, false))
             .payload(payload)
+            .scheduledFor(LocalDateTime.now(clock))
             .maxRetries(indexingProperties.getQueue().getMaxRetries())
             .build();
 

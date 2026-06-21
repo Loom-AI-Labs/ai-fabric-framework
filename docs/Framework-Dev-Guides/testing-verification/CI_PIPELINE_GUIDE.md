@@ -35,13 +35,13 @@ This is the default CI gate for framework code changes.
 | GitHub runner `ubuntu-latest` | all jobs | Uses the standard hosted runner image. |
 | repository checkout | all jobs | Every job starts from the current commit. |
 | Python 3.x + `pyyaml` | `Provider Registry` | Required by registry/release guard validation scripts. |
-| Python 3.x | `Maven Build` smoke scripts | Required by the ecommerce-to-chat data-sync smoke for JSON assertions. |
+| Python 3.x | `Maven Build` smoke scripts | Required by the ecommerce-to-chat data-sync smoke and P1 real-app scenario smoke for JSON assertions. |
 | JDK 21 / Temurin | `Maven Build`, `Vector Provider Container Contracts` | Required for the Spring Boot 4.1.x / Java 21 framework build. |
 | Maven | `Maven Build` | Provided by the runner/JDK setup path. |
 | Docker daemon | `Maven Build`, `Vector Provider Container Contracts` | Verified before container-backed checks. Required by Testcontainers. |
 | `.github/scripts/*` guard scripts | `Provider Registry` | Must be executable and committed. |
 | `examples/minimal-spring-boot` | `Maven Build` | Used as a consumer compile check. |
-| `examples/real-apps` | `Maven Build` | Built, smoke-booted offline, and used for the ecommerce-to-chat data-sync proof. |
+| `examples/real-apps` | `Maven Build` | Built, smoke-booted offline, used for the ecommerce-to-chat data-sync proof, and used for deterministic P1 product-flow smokes. |
 | `.github/scripts/run-vector-container-contracts.sh` | `Vector Provider Container Contracts` | One-command runner for Qdrant REST/gRPC, Weaviate, and Milvus contract parity. |
 
 ### Job: Provider Registry
@@ -88,6 +88,7 @@ Step dependencies:
 | Build and install real apps suite | Installed framework artifacts and real-app modules | Real application examples fail to compile, test, or package. |
 | Smoke boot-test real apps | real-app artifacts and `.github/scripts/smoke-boot-realapps.sh` | Offline smoke profile startup fails. |
 | Smoke data-sync between ecommerce and chat runtime | real-app artifacts, `.github/scripts/smoke-ecommerce-chat-datasync.sh`, free local ports, Python 3 | Cross-app product upsert/search/delete/search proof fails or stale vector results survive delete. |
+| P1 deterministic real-app scenario smoke | real-app artifacts, `.github/scripts/smoke-p1-realapp-scenarios.sh`, free local ports, Python 3 | Product-shaped P1 flows fail: RAG quality, privacy deletion, relationship query, behavior signals, migration/backfill, or chat action confirmation/interceptor behavior. |
 
 It sets up JDK 21, confirms Docker is available, then runs the framework reactor:
 
@@ -117,6 +118,7 @@ mvn -B -V --no-transfer-progress -f examples/minimal-spring-boot/pom.xml compile
 mvn -B -V --no-transfer-progress -f examples/real-apps/pom.xml install
 .github/scripts/smoke-boot-realapps.sh
 .github/scripts/smoke-ecommerce-chat-datasync.sh
+.github/scripts/smoke-p1-realapp-scenarios.sh
 ```
 
 So automatic CI verifies:
@@ -130,6 +132,9 @@ So automatic CI verifies:
 - offline real-app smoke boot
 - deterministic ecommerce-store to chat-capabilities-demo data-sync upsert, runtime vector search,
   delete propagation, and stale-result cache eviction
+- deterministic P1 real-app product flows for RAG quality, privacy/governance deletion,
+  relationship query, behavior analysis, migration/backfill, and chat action
+  confirmation/interceptor behavior
 
 It does not run the full RealAPI provider matrix automatically on every PR.
 

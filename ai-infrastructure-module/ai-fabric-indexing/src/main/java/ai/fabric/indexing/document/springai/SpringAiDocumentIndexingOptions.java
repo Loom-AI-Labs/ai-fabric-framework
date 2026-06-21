@@ -5,6 +5,7 @@ import ai.fabric.indexing.IndexingOperation;
 import ai.fabric.indexing.api.IndexingStrategy;
 import org.springframework.ai.document.DocumentTransformer;
 
+import java.time.Clock;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -59,7 +60,7 @@ public record SpringAiDocumentIndexingOptions(
         metadata = metadata == null
             ? Map.of()
             : Collections.unmodifiableMap(new LinkedHashMap<>(metadata));
-        scheduledFor = scheduledFor != null ? scheduledFor : LocalDateTime.now();
+        scheduledFor = scheduledFor != null ? scheduledFor : LocalDateTime.now(Clock.systemUTC());
         maxRetries = maxRetries > 0 ? maxRetries : 5;
     }
 
