@@ -1152,8 +1152,8 @@ Code evidence:
 - `chat-capabilities-demo` now has `ChatLocalLlmProvider`, a deterministic smoke-profile-capable
   provider for action extraction and yes/no confirmation turns. It keeps the app flow offline while
   still exercising the real chat-session/action pipeline.
-- `ChatLocalLlmProviderTest` preserves cancel-action extraction, negative confirmation detection,
-  and deterministic embedding behavior.
+- `ChatLocalLlmProviderTest` preserves cancel-action extraction, `list_orders` READ-action
+  extraction, negative confirmation detection, and deterministic embedding behavior.
 - `CartItem` now ignores its parent `Cart` during JSON serialization, and `CartSerializationTest`
   prevents recursive cart/item responses from breaking the real checkout smoke.
 - `DataMigrationService`, `IndexingRequest`, and `SpringAiDocumentIndexingOptions` now schedule
@@ -1183,10 +1183,10 @@ Scenario evidence:
   confirmation, then executes the confirmed assignment and verifies ticket state.
 - Migration/backfill lifecycle: seeds products, runs migration, waits for completion, checks progress,
   and verifies indexed search results.
-- Action confirmation and confirmation interceptor: creates real carts/orders, triggers
-  `cancel_purchase_order`, verifies the first confirmation, verifies the retention-offer interceptor,
-  proves rejecting the offer executes cancellation, and proves accepting the offer keeps the order
-  active through the discount action.
+- Action confirmation and confirmation interceptor: creates real carts/orders, executes the
+  `list_orders` READ action without confirmation, triggers `cancel_purchase_order`, verifies the
+  first confirmation, verifies the retention-offer interceptor, proves rejecting the offer executes
+  cancellation, and proves accepting the offer keeps the order active through the discount action.
 
 Test evidence:
 
@@ -1198,17 +1198,18 @@ Test evidence:
   `mvn -B -V --no-transfer-progress -f ai-infrastructure-module/pom.xml -pl ai-fabric-indexing,ai-fabric-migration -am install`
 - Result: curated-default ran 3 tests, core ran 586 tests, indexing ran 49 tests, migration ran 30
   tests; 0 failures, 0 errors, 0 skipped.
-- Focused chat real-app package command run without `-DskipTests`:
-  `mvn -B -V --no-transfer-progress -f examples/real-apps/pom.xml -pl smoke-support,chat-capabilities-demo -am package`
-- Result: smoke-support ran 8 tests and chat-capabilities-demo ran 28 tests; 0 failures, 0 errors,
+- Focused chat deterministic provider verification command run without `-DskipTests`:
+  `mvn -B -V --no-transfer-progress -f examples/real-apps/pom.xml -pl smoke-support,chat-capabilities-demo -am -Dtest=ChatLocalLlmProviderTest -Dsurefire.failIfNoSpecifiedTests=false test`
+- Result: chat-capabilities-demo ran `ChatLocalLlmProviderTest` with 4 tests; 0 failures, 0 errors,
   0 skipped.
 - Selected P1 real-app package command run without `-DskipTests`:
   `mvn -B -V --no-transfer-progress -f examples/real-apps/pom.xml -pl smoke-support,smart-faq-assistant,privacy-first-customer-facing-support,relationship-query-crm-insights,behavior-churn-signals,migration-enabled-product-catalog,chat-capabilities-demo,it-support-action-bot -am clean package`
-- Result: eight selected modules rebuilt and packaged, 73 tests ran; 0 failures, 0 errors,
+- Result: eight selected modules rebuilt and packaged, 74 tests ran; 0 failures, 0 errors,
   0 skipped.
 - P1 packaged real-app HTTP smoke command:
   `.github/scripts/smoke-p1-realapp-scenarios.sh`
-- Result: all seven P1 product-shaped scenarios passed against the freshly packaged jars.
+- Result: all seven P1 product-shaped scenarios passed against the freshly packaged jars, including
+  support action authorization/confirmation and chat READ-action execution.
 - Release guard commands run after adding the CI step:
   `bash -n .github/scripts/smoke-p1-realapp-scenarios.sh && .github/scripts/validate-workflow-test-policy.sh && .github/scripts/validate-release-doc-policy.sh`
 - Result: script syntax, workflow test policy, and release documentation policy all passed.

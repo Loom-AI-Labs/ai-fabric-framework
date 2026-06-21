@@ -30,6 +30,21 @@ class ChatLocalLlmProviderTest {
     }
 
     @Test
+    void returnsReadActionIntentForRecentOrders() throws Exception {
+        AIGenerationResponse response = provider.generateContent(AIGenerationRequest.builder()
+            .entityId("intent-read")
+            .entityType("intent_extraction")
+            .generationType("intent_extraction")
+            .prompt("User's question is: (Show my recent orders)")
+            .build());
+
+        JsonNode intent = objectMapper.readTree(response.getContent()).path("intents").get(0);
+        assertThat(intent.path("type").asText()).isEqualTo("ACTION");
+        assertThat(intent.path("action").asText()).isEqualTo("list_orders");
+        assertThat(intent.path("actionParams").path("limit").asInt()).isEqualTo(5);
+    }
+
+    @Test
     void returnsConfirmationForPendingActionFollowUp() throws Exception {
         AIGenerationResponse response = provider.generateContent(AIGenerationRequest.builder()
             .entityId("intent-2")

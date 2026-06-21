@@ -121,6 +121,10 @@ public class ChatLocalLlmProvider implements AIProvider {
                 return actionIntent("cancel_purchase_order", "\"orderNumber\":\"" + escapeJson(orderNumber) + "\"");
             }
         }
+        if ((lower.contains("show") || lower.contains("list") || lower.contains("recent"))
+            && lower.contains("order")) {
+            return actionIntent("list_orders", "\"limit\":5");
+        }
 
         return informationIntent();
     }

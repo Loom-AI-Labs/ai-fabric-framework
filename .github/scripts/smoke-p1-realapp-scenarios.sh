@@ -466,6 +466,7 @@ chat_action_smoke() {
   local product_body="${work_dir}/chat-product.json"
   local add_cart_body="${work_dir}/chat-add-cart.json"
   local checkout_body="${work_dir}/chat-checkout.json"
+  local read_orders_body="${work_dir}/chat-read-orders.json"
   local cancel_prompt_body="${work_dir}/chat-cancel-prompt.json"
   local offer_prompt_body="${work_dir}/chat-offer-prompt.json"
   local reject_offer_body="${work_dir}/chat-reject-offer.json"
@@ -529,6 +530,11 @@ PY
     cat "${checkout_body}" >&2 || true
     fail "Chat action smoke order reference was not returned"
   fi
+
+  http_json POST "${base}/api/chat/query" \
+    "{\"query\":\"Show my recent orders\",\"userId\":\"${user_id}\",\"sessionId\":\"p1-read-action-session-${run_id}\",\"conversationId\":\"p1-read-action-conversation-${run_id}\",\"mode\":\"executor\"}" \
+    "${read_orders_body}"
+  assert_json "${read_orders_body}" "Chat read action executes without confirmation" "payload.get('success') is True and payload.get('result', {}).get('type') == 'ACTION_EXECUTED' and payload.get('result', {}).get('data', {}).get('action') == 'list_orders' and payload.get('result', {}).get('data', {}).get('actionResult', {}).get('success') is True and '${order_number}' in str(payload.get('result', {}).get('data', {}).get('actionResult', {}).get('data', {}))"
 
   http_json POST "${base}/api/chat/query" \
     "{\"query\":\"Cancel order ${order_number}\",\"userId\":\"${user_id}\",\"sessionId\":\"p1-action-session-${run_id}\",\"conversationId\":\"p1-action-conversation-${run_id}\",\"mode\":\"executor\"}" \
