@@ -291,6 +291,11 @@ jobs:
           cd ai-infrastructure-module
           mvn install -B -V
 
+      - name: Prepare ONNX model assets
+        if: matrix.embedding == 'onnx'
+        run: |
+          bash ai-infrastructure-module/scripts/download-onnx-model.sh all-MiniLM-L6-v2 ai-infrastructure-module/models/embeddings
+
       - name: Run Pinecone provider-live suite
         if: matrix.vector_db == 'pinecone'
         env:

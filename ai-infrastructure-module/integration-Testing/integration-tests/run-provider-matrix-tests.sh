@@ -59,6 +59,8 @@
 #   AZURE_EMBEDDING_DEPLOYMENT_NAME - Azure embedding deployment (required if using Azure for Embedding)
 #   MAVEN_LOGGING_LEVEL      - Maven logging level: quiet, normal, verbose, debug (default: quiet)
 #   AI_PROVIDERS_REAL_API_TEST_CHUNK - Test chunk: core, vector, intent-actions, advanced, all (default: all)
+#   AI_PROVIDERS_REAL_API_SKIP_DEPENDENCY_BUILD - Set true to skip the local dependency build check
+#   AI_PROVIDERS_REAL_API_AUTO_BUILD_IF_MISSING - Set false to fail fast if local artifacts are missing (default: true)
 #
 # Test Chunks:
 #   core            - Core functionality (3 test classes)
@@ -335,6 +337,8 @@ fi
 # Check if dependencies are built (skip in CI/CD - already built by workflow)
 if [ "${CI:-false}" == "true" ] || [ "${GITHUB_ACTIONS:-false}" == "true" ]; then
     print_info "Running in CI/CD - skipping dependency build check (already built by workflow)"
+elif [ "${AI_PROVIDERS_REAL_API_SKIP_DEPENDENCY_BUILD:-false}" == "true" ]; then
+    print_info "Skipping dependency build check because AI_PROVIDERS_REAL_API_SKIP_DEPENDENCY_BUILD=true"
 else
     # Build dependencies from the Maven reactor root.
     PARENT_DIR="${PROJECT_ROOT}/ai-infrastructure-module"
@@ -344,16 +348,22 @@ else
     fi
 
     CORE_TARGET="${PARENT_DIR}/ai-fabric-core/target"
-    if [ ! -d "$CORE_TARGET" ] || [ ! -f "$CORE_TARGET/ai-fabric-core-*.jar" ] 2>/dev/null; then
-        print_warning "Dependencies may not be built. Attempting to build..."
+    CORE_JAR_PATTERN="${CORE_TARGET}/ai-fabric-core-*.jar"
+    if [ ! -d "$CORE_TARGET" ] || ! compgen -G "$CORE_JAR_PATTERN" > /dev/null; then
+        if [ "${AI_PROVIDERS_REAL_API_AUTO_BUILD_IF_MISSING:-true}" != "true" ]; then
+            print_error "Dependencies are not built. Run 'mvn -B --no-transfer-progress -DskipITs install' from ai-infrastructure-module first."
+            exit 1
+        fi
+
+        print_warning "Dependencies may not be built. Running a local unit-test build with integration tests skipped..."
         cd "$PARENT_DIR" || exit 1
         # Use quiet logging for dependency build unless debug is requested
         BUILD_LOG_FLAG="-q"
         if [ "$LOGGING_LEVEL" == "verbose" ] || [ "$LOGGING_LEVEL" == "debug" ]; then
             BUILD_LOG_FLAG=""
         fi
-        if ! mvn clean install -B $BUILD_LOG_FLAG; then
-            print_error "Failed to build dependencies. Please run 'mvn clean install' from the parent module first."
+        if ! mvn -B $BUILD_LOG_FLAG --no-transfer-progress -DskipITs install; then
+            print_error "Failed to build dependencies. Please run 'mvn -B --no-transfer-progress -DskipITs install' from ai-infrastructure-module first."
             exit 1
         fi
         cd "$SCRIPT_DIR" || exit 1
@@ -395,6 +405,21 @@ COMBO_COUNT=$(echo "$MATRIX_SPEC" | awk -F',' '{print NF}')
 print_info "Total Combinations: $COMBO_COUNT"
 print_info "Test Chunk: $TEST_CHUNK"
 print_info "Logging Level: $LOGGING_LEVEL"
+
+FIRST_COMBO=$(echo "$MATRIX_SPEC" | awk -F',' '{print $1}' | xargs)
+FIRST_LLM_PROVIDER=""
+FIRST_EMBEDDING_PROVIDER=""
+FIRST_VECTOR_DB=""
+if [[ "$FIRST_COMBO" =~ ^([^:]+):([^:]+):?([^:]*) ]]; then
+    FIRST_LLM_PROVIDER="${BASH_REMATCH[1]}"
+    FIRST_EMBEDDING_PROVIDER="${BASH_REMATCH[2]}"
+    FIRST_VECTOR_DB="${BASH_REMATCH[3]}"
+fi
+
+USES_ONNX_EMBEDDINGS=false
+if echo "$MATRIX_SPEC" | grep -qE "(^|,)([^:]+:)\bonnx\b(:|,|$)"; then
+    USES_ONNX_EMBEDDINGS=true
+fi
 
 # Build Maven command
 print_header "Building Maven Command"
@@ -484,6 +509,32 @@ if [ -n "$EMBEDDING_MODEL" ]; then
     print_info "Using custom Embedding model: $EMBEDDING_MODEL for provider: $embedding_provider"
 fi
 
+if [ "$USES_ONNX_EMBEDDINGS" = "true" ]; then
+    ONNX_MODEL_EFFECTIVE="${ONNX_MODEL_PATH:-${AI_FABRIC_ONNX_MODEL_PATH:-}}"
+    ONNX_TOKENIZER_EFFECTIVE="${ONNX_TOKENIZER_PATH:-${AI_FABRIC_ONNX_TOKENIZER_PATH:-}}"
+    DEFAULT_ONNX_MODEL="${PROJECT_ROOT}/ai-infrastructure-module/models/embeddings/all-MiniLM-L6-v2.onnx"
+    DEFAULT_ONNX_TOKENIZER="${PROJECT_ROOT}/ai-infrastructure-module/models/embeddings/tokenizer.json"
+
+    if [ -z "$ONNX_MODEL_EFFECTIVE" ] && [ -f "$DEFAULT_ONNX_MODEL" ]; then
+        ONNX_MODEL_EFFECTIVE="$DEFAULT_ONNX_MODEL"
+    fi
+    if [ -z "$ONNX_TOKENIZER_EFFECTIVE" ] && [ -f "$DEFAULT_ONNX_TOKENIZER" ]; then
+        ONNX_TOKENIZER_EFFECTIVE="$DEFAULT_ONNX_TOKENIZER"
+    fi
+
+    if [ -n "$ONNX_MODEL_EFFECTIVE" ]; then
+        MAVEN_COMMAND="$MAVEN_COMMAND -DONNX_MODEL_PATH=$ONNX_MODEL_EFFECTIVE"
+        print_info "Using ONNX model path: $ONNX_MODEL_EFFECTIVE"
+    else
+        print_warning "ONNX embedding selected but no ONNX model file was found. Run ai-infrastructure-module/scripts/download-onnx-model.sh first."
+    fi
+
+    if [ -n "$ONNX_TOKENIZER_EFFECTIVE" ]; then
+        MAVEN_COMMAND="$MAVEN_COMMAND -DONNX_TOKENIZER_PATH=$ONNX_TOKENIZER_EFFECTIVE"
+        print_info "Using ONNX tokenizer path: $ONNX_TOKENIZER_EFFECTIVE"
+    fi
+fi
+
 # Add any additional Maven options from environment (set by workflow)
 if [ -n "$MAVEN_OPTS" ]; then
     MAVEN_COMMAND="$MAVEN_COMMAND $MAVEN_OPTS"
@@ -505,15 +556,29 @@ fi
 # Matrix spec format: "llm:embedding" or "llm:embedding:vectordb" (optional deprecated ":storageStrategy" is ignored)
 # Check if embedding provider is "openai" (second field in colon-separated spec)
 if [ "$AI_INFRASTRUCTURE_VECTOR_DATABASE" == "lucene" ]; then
+    LUCENE_EMBEDDING_SUFFIX="${FIRST_EMBEDDING_PROVIDER:-default}"
+    LUCENE_EMBEDDING_SUFFIX="$(printf '%s' "$LUCENE_EMBEDDING_SUFFIX" | tr -c 'A-Za-z0-9._-' '-')"
+    LUCENE_INDEX_PATH="${AI_PROVIDERS_REAL_API_LUCENE_INDEX_PATH:-${SCRIPT_DIR}/data/provider-matrix-lucene-${LUCENE_EMBEDDING_SUFFIX}}"
+    rm -rf "$LUCENE_INDEX_PATH"
+    MAVEN_COMMAND="$MAVEN_COMMAND -Dai.vector-db.lucene.index-path=$LUCENE_INDEX_PATH"
+    print_info "Using clean Lucene index path: $LUCENE_INDEX_PATH"
+
+    if [ "$USES_ONNX_EMBEDDINGS" = "true" ]; then
+        MAVEN_COMMAND="$MAVEN_COMMAND -Dai.vector-db.lucene.vector-dimension=384"
+        print_info "Auto-configured Lucene vector dimension to 384 for ONNX embeddings"
+    fi
+
     # Check if EMBEDDING_PROVIDER is explicitly set to "openai"
     if [ "$EMBEDDING_PROVIDER" == "openai" ]; then
         MAVEN_COMMAND="$MAVEN_COMMAND -Dai.providers.openai.embedding-dimensions=512"
+        MAVEN_COMMAND="$MAVEN_COMMAND -Dai.vector-db.lucene.vector-dimension=512"
         print_info "Auto-configured OpenAI embedding dimensions to 512 for Lucene compatibility"
     # Otherwise, check matrix spec for any combination with "openai" as embedding provider (2nd field)
     # Format: "something:openai" or "something:openai:something" (embedding is 2nd field)
     # Pattern matches: start or comma, then any chars, then colon, then "openai" as whole word, then colon/comma/end
     elif echo "$MATRIX_SPEC" | grep -qE "(^|,)([^:]+:)\bopenai\b(:|,|$)"; then
         MAVEN_COMMAND="$MAVEN_COMMAND -Dai.providers.openai.embedding-dimensions=512"
+        MAVEN_COMMAND="$MAVEN_COMMAND -Dai.vector-db.lucene.vector-dimension=512"
         print_info "Auto-configured OpenAI embedding dimensions to 512 for Lucene compatibility (detected in matrix spec)"
     fi
 fi
@@ -581,7 +646,6 @@ print_header "Connectivity Verification"
 # (Most manual runs use a single combination.)
 CONNECTIVITY_LLM_PROVIDER=""
 CONNECTIVITY_EMBEDDING_PROVIDER=""
-FIRST_COMBO=$(echo "$MATRIX_SPEC" | awk -F',' '{print $1}' | xargs)
 if [[ "$FIRST_COMBO" =~ ^([^:]+):([^:]+) ]]; then
     CONNECTIVITY_LLM_PROVIDER="${BASH_REMATCH[1]}"
     CONNECTIVITY_EMBEDDING_PROVIDER="${BASH_REMATCH[2]}"
@@ -599,6 +663,20 @@ if [ -n "$CONNECTIVITY_LLM_PROVIDER" ]; then
 fi
 if [ -n "$CONNECTIVITY_EMBEDDING_PROVIDER" ]; then
     CONNECTIVITY_COMMAND="$CONNECTIVITY_COMMAND -Dai.providers.embedding-provider=$CONNECTIVITY_EMBEDDING_PROVIDER"
+fi
+if [ "$USES_ONNX_EMBEDDINGS" = "true" ]; then
+    if [ -n "${ONNX_MODEL_EFFECTIVE:-}" ]; then
+        CONNECTIVITY_COMMAND="$CONNECTIVITY_COMMAND -DONNX_MODEL_PATH=$ONNX_MODEL_EFFECTIVE"
+    fi
+    if [ -n "${ONNX_TOKENIZER_EFFECTIVE:-}" ]; then
+        CONNECTIVITY_COMMAND="$CONNECTIVITY_COMMAND -DONNX_TOKENIZER_PATH=$ONNX_TOKENIZER_EFFECTIVE"
+    fi
+fi
+if [ "${AI_INFRASTRUCTURE_VECTOR_DATABASE:-}" = "lucene" ] && [ -n "${LUCENE_INDEX_PATH:-}" ]; then
+    CONNECTIVITY_COMMAND="$CONNECTIVITY_COMMAND -Dai.vector-db.type=lucene -Dai.vector-db.lucene.index-path=$LUCENE_INDEX_PATH"
+    if [ "$USES_ONNX_EMBEDDINGS" = "true" ]; then
+        CONNECTIVITY_COMMAND="$CONNECTIVITY_COMMAND -Dai.vector-db.lucene.vector-dimension=384"
+    fi
 fi
 
 # Ensure required model properties exist for fail-fast config validation.

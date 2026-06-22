@@ -305,11 +305,12 @@ else
     # not integration-Testing. Run builds from there so local execution matches CI.
     PARENT_DIR="$PROJECT_ROOT"
     CORE_TARGET="${PROJECT_ROOT}/ai-fabric-core/target"
-    if [ ! -d "$CORE_TARGET" ] || [ ! -f "$CORE_TARGET/ai-fabric-core-*.jar" ] 2>/dev/null; then
-        print_warning "Dependencies may not be built. Attempting to build..."
+    CORE_JAR_PATTERN="${CORE_TARGET}/ai-fabric-core-*.jar"
+    if [ ! -d "$CORE_TARGET" ] || ! compgen -G "$CORE_JAR_PATTERN" > /dev/null; then
+        print_warning "Dependencies may not be built. Running a local unit-test build with integration tests skipped..."
         cd "$PARENT_DIR" || exit 1
-        if ! mvn clean install -B -q; then
-            print_error "Failed to build dependencies. Please run 'mvn clean install' from the parent module first."
+        if ! mvn -B -q --no-transfer-progress -DskipITs install; then
+            print_error "Failed to build dependencies. Please run 'mvn -B --no-transfer-progress -DskipITs install' from ai-infrastructure-module first."
             exit 1
         fi
         cd "$SCRIPT_DIR" || exit 1
@@ -323,6 +324,9 @@ fi
 print_header "Building Maven Command"
 
 cd "$SCRIPT_DIR"
+
+print_info "Refreshing compiled test module classes"
+mvn -q --no-transfer-progress -DskipTests -DskipITs clean test-compile
 
 MAVEN_COMMAND="mvn -P${MAVEN_PROFILE}"
 MAVEN_COMMAND="$MAVEN_COMMAND -Dspring.profiles.active=${SPRING_PROFILE}"
@@ -517,6 +521,12 @@ fi
 
 print_info "RealAPI thresholds: minSuccessRate=${AI_PROVIDERS_REAL_API_MINIMUM_SUCCESS_RATE:-0.85}, minConsideredTests=${AI_PROVIDERS_REAL_API_MINIMUM_CONSIDERED_TESTS:-20}"
 
+REPORTS_DIR="${SCRIPT_DIR}/target/failsafe-reports"
+SCORECARD_DIR="${SCRIPT_DIR}/target/provider-matrix-reports"
+SCORECARD_FILE="relationship-query-realapi-${AI_INFRASTRUCTURE_LLM_PROVIDER}-${AI_INFRASTRUCTURE_EMBEDDING_PROVIDER}-${AI_INFRASTRUCTURE_VECTOR_DATABASE:-none}.json"
+SCORECARD_PATH="${SCORECARD_DIR}/${SCORECARD_FILE}"
+rm -rf "$REPORTS_DIR" "$SCORECARD_DIR"
+
 set +e
 eval "$MAVEN_COMMAND -Dmaven.test.failure.ignore=true"
 mvn_exit=$?
@@ -530,11 +540,6 @@ if [ $mvn_exit -ne 0 ]; then
     print_error "Maven execution failed (${duration}s)"
     exit $mvn_exit
 fi
-
-REPORTS_DIR="${SCRIPT_DIR}/target/failsafe-reports"
-SCORECARD_DIR="${SCRIPT_DIR}/target/provider-matrix-reports"
-SCORECARD_FILE="relationship-query-realapi-${AI_INFRASTRUCTURE_LLM_PROVIDER}-${AI_INFRASTRUCTURE_EMBEDDING_PROVIDER}-${AI_INFRASTRUCTURE_VECTOR_DATABASE:-none}.json"
-SCORECARD_PATH="${SCORECARD_DIR}/${SCORECARD_FILE}"
 
 set +e
 bash "$FAILSAFE_EVALUATOR" \

@@ -14,6 +14,10 @@
 #   - Java 21+
 #   - Maven 3.8+
 #   - Provider credentials via env vars (e.g., OPENAI_API_KEY)
+#
+# Optional env:
+#   AI_PROVIDERS_REAL_API_SKIP_DEPENDENCY_BUILD - Set true to skip installing local framework modules first
+#   AI_CHAT_REAL_API_DEPENDENCY_MODULES - Comma-separated Maven module list to install before the smoke run
 ###############################################################################
 
 set -euo pipefail
@@ -108,7 +112,27 @@ check_provider_api_keys() {
 
 check_provider_api_keys "$AI_INFRASTRUCTURE_LLM_PROVIDER" "$AI_INFRASTRUCTURE_EMBEDDING_PROVIDER"
 
+if [ "${AI_PROVIDERS_REAL_API_SKIP_DEPENDENCY_BUILD:-false}" == "true" ]; then
+  print_info "Skipping dependency build because AI_PROVIDERS_REAL_API_SKIP_DEPENDENCY_BUILD=true"
+else
+  DEPENDENCY_MODULES="${AI_CHAT_REAL_API_DEPENDENCY_MODULES:-ai-fabric-chat-session,ai-fabric-pii,ai-fabric-governance,providers/ai-fabric-provider-spring-ai,providers/ai-fabric-onnx-starter,victor-databases/ai-fabric-vector-lucene,integration-Testing/testcontainers-support}"
+  print_info "Installing local framework dependencies for chat-session RealAPI smoke"
+  if ! (cd "$PROJECT_ROOT" && mvn -B -q --no-transfer-progress -pl "$DEPENDENCY_MODULES" -am -DskipITs clean install); then
+    print_error "Failed to install local dependencies. Re-run from ai-infrastructure-module with: mvn -B --no-transfer-progress -pl \"$DEPENDENCY_MODULES\" -am -DskipITs clean install"
+    exit 1
+  fi
+fi
+
 cd "$SCRIPT_DIR"
+
+REPORTS_DIR="${SCRIPT_DIR}/target/failsafe-reports"
+SCORECARD_DIR="${SCRIPT_DIR}/target/provider-matrix-reports"
+SCORECARD_FILE="chat-session-realapi-${AI_INFRASTRUCTURE_LLM_PROVIDER}-${AI_INFRASTRUCTURE_EMBEDDING_PROVIDER}-${AI_INFRASTRUCTURE_VECTOR_DATABASE:-none}.json"
+SCORECARD_PATH="${SCORECARD_DIR}/${SCORECARD_FILE}"
+rm -rf "$REPORTS_DIR" "$SCORECARD_DIR"
+
+print_info "Refreshing compiled test module classes"
+mvn -q --no-transfer-progress -DskipTests -DskipITs clean test-compile
 
 print_header "Connectivity Verification"
 CONNECTIVITY_COMMAND="mvn -P${MAVEN_PROFILE} -Dspring.profiles.active=${SPRING_PROFILE} -Dai.realapi.connectivity.check=true -Dtest=RealApiConnectivityVerificationTest"
@@ -120,6 +144,9 @@ if [ -n "$AI_INFRASTRUCTURE_EMBEDDING_PROVIDER" ]; then
 fi
 if [ -n "$AI_INFRASTRUCTURE_LLM_PROVIDER" ]; then
   CONNECTIVITY_COMMAND="$CONNECTIVITY_COMMAND -Dai.providers.llm-provider=$AI_INFRASTRUCTURE_LLM_PROVIDER"
+fi
+if [ "$AI_INFRASTRUCTURE_EMBEDDING_PROVIDER" = "openai" ] && [ "${AI_INFRASTRUCTURE_VECTOR_DATABASE:-}" = "lucene" ]; then
+  CONNECTIVITY_COMMAND="$CONNECTIVITY_COMMAND -Dai.providers.openai.embedding-dimensions=512"
 fi
 
 print_info "Connectivity command:"
@@ -166,6 +193,11 @@ case "${AI_INFRASTRUCTURE_VECTOR_DATABASE:-}" in
   milvus) MAVEN_COMMAND="$MAVEN_COMMAND -Dai.providers.milvus.enabled=true" ;;
 esac
 
+if [ "$AI_INFRASTRUCTURE_EMBEDDING_PROVIDER" = "openai" ] && [ "${AI_INFRASTRUCTURE_VECTOR_DATABASE:-}" = "lucene" ]; then
+  MAVEN_COMMAND="$MAVEN_COMMAND -Dai.providers.openai.embedding-dimensions=512"
+  print_info "Auto-configured OpenAI embedding dimensions to 512 for Lucene compatibility"
+fi
+
 MAVEN_COMMAND="$MAVEN_COMMAND failsafe:integration-test failsafe:verify"
 
 print_info "Command:"
@@ -193,11 +225,6 @@ if [ $mvn_exit -ne 0 ]; then
   print_error "Chat-session RealAPI tests failed to execute (${duration}s)"
   exit $mvn_exit
 fi
-
-REPORTS_DIR="${SCRIPT_DIR}/target/failsafe-reports"
-SCORECARD_DIR="${SCRIPT_DIR}/target/provider-matrix-reports"
-SCORECARD_FILE="chat-session-realapi-${AI_INFRASTRUCTURE_LLM_PROVIDER}-${AI_INFRASTRUCTURE_EMBEDDING_PROVIDER}-${AI_INFRASTRUCTURE_VECTOR_DATABASE:-none}.json"
-SCORECARD_PATH="${SCORECARD_DIR}/${SCORECARD_FILE}"
 
 set +e
 bash "$FAILSAFE_EVALUATOR" \

@@ -26,15 +26,16 @@ class PendingActionPromptAugmentationStepTest {
             .conversationId("conv-1")
             .build();
 
-        PipelineContext context = PipelineContext.from("Yes, confirm", orchContext);
+        PipelineContext context = PipelineContext.from("confirmation turn", orchContext);
 
         PendingActionPromptAugmentationStep step = new PendingActionPromptAugmentationStep(store);
         PipelineContext updated = step.process(context);
 
         assertThat(updated.getPinnedTargetsContext())
             .contains("PENDING ACTION")
-            .contains("action=add_to_cart");
+            .contains("action=add_to_cart")
+            .contains("Decide from the whole user turn whether the user intends to approve, reject, or ignore")
+            .contains("classify the new request normally");
         assertThat(updated.getMetadata()).containsKey("pendingActionPrompt");
     }
 }
-

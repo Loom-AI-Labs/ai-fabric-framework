@@ -2,8 +2,11 @@ package ai.fabric.relationship.dto;
 
 import ai.fabric.relationship.model.QueryMode;
 import ai.fabric.relationship.model.ReturnMode;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.annotation.JsonSetter;
+import com.fasterxml.jackson.annotation.Nulls;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -23,6 +26,7 @@ import java.util.Map;
 @NoArgsConstructor
 @AllArgsConstructor
 @JsonInclude(JsonInclude.Include.NON_NULL)
+@JsonIgnoreProperties(ignoreUnknown = true)
 public class RelationshipQueryPlan {
 
     @JsonProperty("originalQuery")
@@ -36,22 +40,27 @@ public class RelationshipQueryPlan {
 
     @Builder.Default
     @JsonProperty("candidateEntityTypes")
+    @JsonSetter(nulls = Nulls.AS_EMPTY)
     private List<String> candidateEntityTypes = new ArrayList<>();
 
     @Builder.Default
     @JsonProperty("relationshipPaths")
+    @JsonSetter(nulls = Nulls.AS_EMPTY)
     private List<RelationshipPath> relationshipPaths = new ArrayList<>();
 
     @Builder.Default
     @JsonProperty("directFilters")
+    @JsonSetter(nulls = Nulls.AS_EMPTY)
     private Map<String, List<FilterCondition>> directFilters = new LinkedHashMap<>();
 
     @Builder.Default
     @JsonProperty("relationshipFilters")
+    @JsonSetter(nulls = Nulls.AS_EMPTY)
     private Map<String, List<FilterCondition>> relationshipFilters = new LinkedHashMap<>();
 
     @Builder.Default
     @JsonProperty("metadataFilters")
+    @JsonSetter(nulls = Nulls.AS_EMPTY)
     private Map<String, Object> metadataFilters = new LinkedHashMap<>();
 
     @JsonProperty("queryStrategy")
@@ -59,7 +68,8 @@ public class RelationshipQueryPlan {
 
     @Builder.Default
     @JsonProperty("needsSemanticSearch")
-    private boolean needsSemanticSearch = false;
+    @JsonSetter(nulls = Nulls.SKIP)
+    private Boolean needsSemanticSearch = false;
 
     @JsonProperty("confidence")
     private Double confidenceScore;
@@ -87,5 +97,10 @@ public class RelationshipQueryPlan {
      */
     @Builder.Default
     @JsonProperty("context")
+    @JsonSetter(nulls = Nulls.AS_EMPTY)
     private Map<String, Object> additionalContext = new LinkedHashMap<>();
+
+    public boolean isNeedsSemanticSearch() {
+        return Boolean.TRUE.equals(needsSemanticSearch);
+    }
 }

@@ -15,6 +15,8 @@ Output MUST be valid JSON and MUST match:
 }
 
 Rules:
+- The decision value must be exactly one of the uppercase enum values: POSITIVE, NEGATIVE, UNKNOWN.
+- Do not output synonyms or natural-language labels in the decision field.
 - POSITIVE only when the user clearly approves/affirms/proceeds.
 - NEGATIVE only when the user clearly rejects/cancels/stops.
 - UNKNOWN for anything else (questions, new requests, parameter changes, unclear replies).

@@ -1351,6 +1351,75 @@ Philosophy check:
 - Supports correctness before convenience: the Docker package build now runs tests instead of using
   skipped-test packaging.
 
+### 2026-06-22: P2 Secret-Backed And Docker Provider Verification
+
+Status: completed for the framework-owned P2 lanes that can be proven from this repository with the
+available live LLM key material and local Docker. Hosted control-plane/platform rows remain
+separate keyed/operator verification because they require managed deployment endpoints or hosted
+provider administration outside this repo.
+
+P2 implementation and runner hardening:
+
+- `run-provider-matrix-tests.sh` now supports clean local dependency-build behavior, auto-detects
+  local native ONNX model/tokenizer assets, and passes those paths into both the connectivity
+  pre-check and the main provider-matrix run.
+- The provider-matrix runner now gives Lucene a clean embedding-provider-specific index path for
+  Lucene matrix runs and sets Lucene vector dimension to `384` for native ONNX embeddings or `512`
+  for OpenAI embeddings. This prevents stale-index dimension conflicts when switching embedding
+  providers locally or in keyed CI.
+- `.github/workflows/provider-suite-keys-only.yml` now downloads the local ONNX model assets before
+  any `embedding=onnx` keyed provider lane, so the ONNX rows are runnable in CI instead of depending
+  on pre-existing workspace files.
+- `PendingActionPromptAugmentationStep` now frames pending-action confirmation as an LLM whole-turn
+  decision: approve, reject, or ignore. The chat confirmation path no longer uses backend raw
+  user-text cue matching for action/confirmation routing; it trusts structured LLM intents and
+  pending-action state.
+- `ConfirmationDecisionSupport` now accepts only the canonical structured decision enum values
+  `POSITIVE`, `NEGATIVE`, and `UNKNOWN` from the dedicated confirmation-resolution LLM prompt.
+  Synonyms or natural-language labels in the model output fail closed as `UNKNOWN`.
+
+P2 release proof:
+
+| P2 Area | Verification | Result |
+| --- | --- | --- |
+| Provider matrix baseline | `run-provider-matrix-tests.sh "openai:openai:lucene" "" "all"` | Scorecard: 30 succeeded, 0 failed, 0 skipped, success rate 1.0 |
+| Provider matrix ONNX lane | `run-provider-matrix-tests.sh "openai:onnx:lucene" "" "all"` | Scorecard: 30 succeeded, 0 failed, 0 skipped, success rate 1.0 |
+| Native ONNX fallback | `RealAPIONNXFallbackIntegrationTest` with OpenAI LLM, native ONNX embeddings, Lucene | 1 test passed; 3/3 live orchestrations succeeded; local embeddings generated 384-dimensional vectors |
+| Spring AI provider/adapters | Focused Spring AI reactor test for transient inputs, RAG generation support, prompt mapping, provider adapter | Core ran 9 focused tests and Spring AI provider ran 34 focused tests; 0 failures |
+| Chat-session RealAPI | `run-chat-session-realapi-tests.sh "openai:openai:lucene"` | Scorecard: 14 passed, 0 failed, 0 skipped, success rate 1.0 |
+| Relationship-query RealAPI | `run-relationship-query-realapi-tests.sh "openai:openai:lucene"` | Scorecard: 29 passed, 0 failed, 0 skipped, success rate 1.0 |
+| Behavior RealAPI | `run-behavior-realapi-tests.sh "openai:openai:lucene"` | Scorecard: 10 passed, 0 failed, 0 skipped, success rate 1.0 |
+| Docker vector provider contracts | `.github/scripts/run-vector-container-contracts.sh` | Clean reactor passed; core 586, memory 16, Lucene 9, Weaviate 25, Qdrant 34, Milvus 24, contract unit 16, and container contracts 8; 0 failures |
+
+Evidence files produced locally:
+
+- `ai-infrastructure-module/integration-Testing/integration-tests/target/provider-matrix-reports/realapiprovidermatrixintegrationtest-provider-matrix-scorecard-1782090996520.json`
+- `ai-infrastructure-module/integration-Testing/chat-session-integration-tests/target/provider-matrix-reports/chat-session-realapi-openai-openai-lucene.json`
+- `ai-infrastructure-module/integration-Testing/relationship-query-integration-tests/target/provider-matrix-reports/relationship-query-realapi-openai-openai-lucene.json`
+- `ai-infrastructure-module/integration-Testing/behavior-integration-tests/target/provider-matrix-reports/behavior-realapi-openai-openai-lucene.json`
+
+Verification commands run after the runner changes:
+
+- `bash -n ai-infrastructure-module/integration-Testing/integration-tests/run-provider-matrix-tests.sh`
+- `bash -n ai-infrastructure-module/integration-Testing/integration-tests/run-all-realapi-tests-openai-onnx-lucene.sh`
+- `bash -n ai-infrastructure-module/integration-Testing/chat-session-integration-tests/run-chat-session-realapi-tests.sh`
+- `bash -n ai-infrastructure-module/integration-Testing/relationship-query-integration-tests/run-relationship-query-realapi-tests.sh`
+- `bash -n ai-infrastructure-module/integration-Testing/behavior-integration-tests/run-behavior-realapi-tests.sh`
+- `bash -n scripts/evaluate-failsafe-success-rate.sh`
+- `mvn -q --no-transfer-progress -pl ai-fabric-chat-session,ai-fabric-core -am -Dtest=ConfirmationDecisionSupportTest,ConfirmationResolutionSupportTest,ConfirmationResolutionStepTest,PendingActionPromptAugmentationStepTest -Dsurefire.failIfNoSpecifiedTests=false test`
+- `git diff --check`
+
+Philosophy check:
+
+- Supports "LLM decides, configuration constrains": action confirmation routing now depends on
+  structured LLM intent and pending-action state, while the framework applies timeout, ownership,
+  authorization, and execution safety constraints. The framework does not infer confirmation from
+  raw user words or decision-label aliases.
+- Supports fail-closed provider verification: ONNX/Lucene now uses isolated indexes and explicit
+  dimensions, so stale local state cannot silently corrupt a provider-matrix result.
+- Supports "frameworks teach": the keyed CI workflow now prepares ONNX assets explicitly, which is
+  the repeatable pattern users should copy for local embedding lanes.
+
 ## Philosophy Alignment Check
 
 Source checked: `docs/Framework-Dev-Guides/LLM-guides/AI_FABRIC_FRAMEWORK_PHILOSOPHY.md`.

@@ -14,6 +14,7 @@ import ai.fabric.prompt.PromptRenderer;
 import ai.fabric.prompt.PromptTemplateResolver;
 import ai.fabric.relationship.cache.QueryCache;
 import ai.fabric.relationship.config.RelationshipQueryProperties;
+import ai.fabric.relationship.dto.FilterOperator;
 import ai.fabric.relationship.dto.RelationshipQueryPlan;
 import ai.fabric.relationship.metrics.QueryMetrics;
 import ai.fabric.relationship.validation.RelationshipQueryValidator;
@@ -153,6 +154,64 @@ class RelationshipQueryPlannerTest {
         assertThat(recordingExecutor.calls).isEqualTo(1);
         assertThat(result.getPrimaryEntityType()).isEqualTo("document");
         assertThat(result.getConfidenceScore()).isEqualTo(0.8d);
+    }
+
+    @Test
+    void shouldTolerateNullOptionalFieldsFromRealLlmPlans() {
+        when(queryCache.getPlan(anyString())).thenReturn(Optional.empty());
+        when(aiCoreService.generateContent(any()))
+            .thenReturn(AIGenerationResponse.builder()
+                .content("""
+                    {
+                      "originalQuery": "Find archived contracts",
+                      "primaryEntityType": "document",
+                      "candidateEntityTypes": null,
+                      "relationshipPaths": [
+                        {
+                          "fromEntityType": "document",
+                          "relationshipType": "author",
+                          "toEntityType": "user",
+                          "direction": null,
+                          "optional": null,
+                          "conditions": null
+                        }
+                      ],
+                      "directFilters": {
+                        "document": [
+                          {
+                            "field": "document.title",
+                            "operator": null,
+                            "value": "Archive",
+                            "caseSensitive": null
+                          }
+                        ]
+                      },
+                      "relationshipFilters": null,
+                      "metadataFilters": null,
+                      "needsSemanticSearch": null,
+                      "confidence": 0.72,
+                      "context": null
+                    }
+                    """)
+                .build());
+
+        RelationshipQueryPlan result = planner.planQuery("Find archived contracts", List.of("document"));
+
+        assertThat(result.getCandidateEntityTypes()).containsExactly("document");
+        assertThat(result.getRelationshipFilters()).isEmpty();
+        assertThat(result.getMetadataFilters()).isEmpty();
+        assertThat(result.getAdditionalContext()).isEmpty();
+        assertThat(result.isNeedsSemanticSearch()).isFalse();
+        assertThat(result.getRelationshipPaths()).singleElement().satisfies(path -> {
+            assertThat(path.getDirection()).isNotNull();
+            assertThat(path.isOptional()).isFalse();
+            assertThat(path.getConditions()).isEmpty();
+        });
+        assertThat(result.getDirectFilters()).containsKey("document");
+        assertThat(result.getDirectFilters().get("document")).singleElement().satisfies(filter -> {
+            assertThat(filter.getOperator()).isEqualTo(FilterOperator.EQUALS);
+            assertThat(filter.isCaseSensitive()).isTrue();
+        });
     }
 
     @Test

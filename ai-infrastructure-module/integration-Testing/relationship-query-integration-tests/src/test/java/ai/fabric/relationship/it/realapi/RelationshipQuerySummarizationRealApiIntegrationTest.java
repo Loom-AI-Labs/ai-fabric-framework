@@ -52,7 +52,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 })
 class RelationshipQuerySummarizationRealApiIntegrationTest {
 
-    private static final String QUERY_WITH_SUMMARY = "relationship_query: Show me blue shoes under $100 from Nike and then summarize the results. "
+    private static final String QUERY_WITH_SUMMARY = "relationship_query: Show me blue shoes under $100 from Nike with entityTypes [product] "
+        + "and returnMode FULL, then summarize the results. "
         + "In the summary, list the product name(s) and price(s).";
 
     @Autowired

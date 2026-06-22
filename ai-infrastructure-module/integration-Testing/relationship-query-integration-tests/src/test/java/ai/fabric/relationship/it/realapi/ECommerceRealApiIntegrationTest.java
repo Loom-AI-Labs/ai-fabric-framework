@@ -13,6 +13,7 @@ import ai.fabric.rag.VectorDatabaseService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureTestRestTemplate;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.resttestclient.TestRestTemplate;
 import org.springframework.context.annotation.Import;
@@ -34,6 +35,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 )
 @ActiveProfiles("realapi")
 @Import(BackendEnvTestConfiguration.class)
+@AutoConfigureTestRestTemplate
 class ECommerceRealApiIntegrationTest {
 
     private static final String QUERY = "Show me blue shoes under $100 from Nike";

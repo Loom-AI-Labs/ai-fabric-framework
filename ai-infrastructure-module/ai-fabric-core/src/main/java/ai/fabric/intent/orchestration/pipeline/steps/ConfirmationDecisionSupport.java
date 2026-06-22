@@ -10,7 +10,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Pure helpers for confirmation-loop parameter matching and LLM decision parsing.
+ * Pure helpers for confirmation-loop parameter matching and canonical LLM decision parsing.
  */
 final class ConfirmationDecisionSupport {
 
@@ -99,12 +99,10 @@ final class ConfirmationDecisionSupport {
             if (!(value instanceof String text) || !StringUtils.hasText(text)) {
                 return ConfirmationResolutionDecision.UNKNOWN;
             }
-            String normalized = text.trim().toUpperCase(java.util.Locale.ROOT);
-            return switch (normalized) {
-                case "POSITIVE", "CONFIRM", "CONFIRMED", "YES", "APPROVE", "APPROVED" ->
-                    ConfirmationResolutionDecision.POSITIVE;
-                case "NEGATIVE", "REJECT", "REJECTED", "NO", "CANCEL", "CANCELLED" ->
-                    ConfirmationResolutionDecision.NEGATIVE;
+            return switch (text.trim().toUpperCase(java.util.Locale.ROOT)) {
+                case "POSITIVE" -> ConfirmationResolutionDecision.POSITIVE;
+                case "NEGATIVE" -> ConfirmationResolutionDecision.NEGATIVE;
+                case "UNKNOWN" -> ConfirmationResolutionDecision.UNKNOWN;
                 default -> ConfirmationResolutionDecision.UNKNOWN;
             };
         } catch (Exception ignored) {

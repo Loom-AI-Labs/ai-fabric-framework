@@ -69,7 +69,7 @@ class ConfirmationResolutionStepTest {
             .intents(List.of(Intent.builder().type(IntentType.CONFIRMATION_POSITIVE).confidence(1.0d).build()))
             .build();
 
-        PipelineContext ctx = PipelineContext.from("yes", orch).toBuilder()
+        PipelineContext ctx = PipelineContext.from("structured confirmation turn", orch).toBuilder()
             .intentResponse(extracted)
             .build();
 
@@ -99,7 +99,7 @@ class ConfirmationResolutionStepTest {
         MultiIntentResponse extracted = MultiIntentResponse.builder()
             .intents(List.of(Intent.builder().type(IntentType.CONFIRMATION_POSITIVE).confidence(1.0d).build()))
             .build();
-        PipelineContext ctx = PipelineContext.from("yes", context("conv-1", "user-1")).toBuilder()
+        PipelineContext ctx = PipelineContext.from("structured confirmation turn", context("conv-1", "user-1")).toBuilder()
             .intentResponse(extracted)
             .build();
 
@@ -129,7 +129,7 @@ class ConfirmationResolutionStepTest {
                 Intent.builder().type(IntentType.INFORMATION).intent("show_status").confidence(0.8d).build()
             ))
             .build();
-        PipelineContext ctx = PipelineContext.from("yes and show status", context("conv-2", "user-1")).toBuilder()
+        PipelineContext ctx = PipelineContext.from("expired compound confirmation turn", context("conv-2", "user-1")).toBuilder()
             .intentResponse(extracted)
             .build();
 
@@ -138,6 +138,44 @@ class ConfirmationResolutionStepTest {
         assertThat(resolved.getIntentResponse()).isSameAs(extracted);
         assertThat(resolved.getConfirmedActions()).isEmpty();
         verify(pendingActionStore, never()).popPendingAction("conv-2", "user-1");
+    }
+
+    @Test
+    void shouldResolveCompoundStructuredConfirmationAndFollowUpIntent() {
+        ChatSessionService chatSessionService = sessionService("conv-5", "user-1");
+        PendingActionStore pendingActionStore = mock(PendingActionStore.class);
+        PendingAction pending = pending("create_purchase_order", Instant.now());
+        when(pendingActionStore.peekPendingAction("conv-5", "user-1")).thenReturn(Optional.of(pending));
+        when(pendingActionStore.popPendingAction("conv-5", "user-1")).thenReturn(Optional.of(pending));
+
+        ConfirmationResolutionStep step = new ConfirmationResolutionStep(
+            chatSessionService,
+            enabledProperties(),
+            List.of(new CompoundConfirmationResolver(pendingActionStore))
+        );
+
+        Intent followUp = Intent.builder()
+            .type(IntentType.INFORMATION)
+            .intent("show_status")
+            .confidence(0.8d)
+            .build();
+        MultiIntentResponse extracted = MultiIntentResponse.builder()
+            .intents(List.of(
+                Intent.builder().type(IntentType.CONFIRMATION_POSITIVE).confidence(1.0d).build(),
+                followUp
+            ))
+            .build();
+        PipelineContext ctx = PipelineContext.from("compound confirmation turn", context("conv-5", "user-1")).toBuilder()
+            .intentResponse(extracted)
+            .build();
+
+        PipelineContext resolved = step.process(ctx);
+
+        assertThat(resolved.getIntentResponse().getIntents()).hasSize(2);
+        assertThat(resolved.getIntentResponse().getIntents().getFirst().getType()).isEqualTo(IntentType.ACTION);
+        assertThat(resolved.getIntentResponse().getIntents().getFirst().getAction()).isEqualTo("create_purchase_order");
+        assertThat(resolved.getIntentResponse().getIntents().get(1)).isSameAs(followUp);
+        assertThat(resolved.isActionConfirmed("create_purchase_order")).isTrue();
     }
 
     private ChatSessionService sessionService(String conversationId, String ownerId) {

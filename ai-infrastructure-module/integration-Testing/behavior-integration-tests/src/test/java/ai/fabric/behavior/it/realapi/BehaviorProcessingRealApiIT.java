@@ -15,6 +15,7 @@ import org.mockito.ArgumentMatchers;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureTestRestTemplate;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.boot.resttestclient.TestRestTemplate;
@@ -42,6 +43,7 @@ import static org.mockito.Mockito.when;
         "ai.behavior.processing.api-max-batch-size=5"
     }
 )
+@AutoConfigureTestRestTemplate
 @ActiveProfiles("integration")
 class BehaviorProcessingRealApiIT {
 

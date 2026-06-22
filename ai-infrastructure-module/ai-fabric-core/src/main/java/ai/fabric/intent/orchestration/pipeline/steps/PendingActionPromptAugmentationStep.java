@@ -16,8 +16,8 @@ import org.springframework.util.StringUtils;
 /**
  * Injects a bounded "PENDING ACTION" section into the LLM-visible prompt context.
  *
- * <p>This helps the LLM output {@code CONFIRMATION_POSITIVE/NEGATIVE} for short follow-ups like
- * "yes/confirm" or "no/cancel" without backend string-matching heuristics.</p>
+ * <p>This helps the LLM decide whether the current turn approves, rejects, or ignores the pending
+ * action without backend string-matching heuristics.</p>
  *
  * <p><strong>Order:</strong> 27 (after attachment prompt augmentation, before intent extraction)</p>
  */
@@ -95,7 +95,8 @@ public class PendingActionPromptAugmentationStep implements PipelineStep {
         return """
             PENDING ACTION (requires confirmation):
             - action=%s
+            - Decide from the whole user turn whether the user intends to approve, reject, or ignore this pending action.
+            - If the user requests another action or asks a new question instead of approving/rejecting, classify the new request normally and leave this pending action unresolved.
             """.formatted(action.trim()).trim();
     }
 }
-
