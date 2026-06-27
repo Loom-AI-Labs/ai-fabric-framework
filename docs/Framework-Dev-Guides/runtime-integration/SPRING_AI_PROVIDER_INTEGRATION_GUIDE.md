@@ -239,6 +239,9 @@ Executable coverage:
 - Request advisors are trusted Java objects, not user-supplied names.
 - Invalid advisor parameter values are ignored instead of converted to advisors.
 - Action tool callbacks require an explicit trusted `ActionContext`.
+- Action tool callbacks execute only actions that do not require confirmation. Guarded or mutating
+  actions that require confirmation return `CONFIRMATION_REQUIRED` from the tool callback and must
+  continue through AI Fabric's normal confirmation/action execution flow.
 - Observation diagnostics record counters, timing, provider/operation names, component names, token
   totals, and error type only.
 - Observation diagnostics do not record prompt/completion text, tool arguments, tool results, tool

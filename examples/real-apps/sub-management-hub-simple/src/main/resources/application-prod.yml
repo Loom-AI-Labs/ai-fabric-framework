@@ -24,14 +24,14 @@ spring:
 ai:
   enabled: true
   providers:
-    llm-provider: cohere
+    llm-provider: openai
     embedding-provider: simple
 
-    cohere:
-      enabled: ${COHERE_ENABLED:true}
-      model: command-r-plus
-      api-key: ${COHERE_API_KEY:}
-      base-url: https://api.cohere.ai/v1
+    openai:
+      enabled: ${OPENAI_ENABLED:true}
+      model: ${OPENAI_MODEL:gpt-4o-mini}
+      api-key: ${OPENAI_API_KEY:}
+      base-url: https://api.openai.com/v1
 
   vector-db:
     type: ${AI_VECTOR_DB_TYPE:lucene}

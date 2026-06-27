@@ -17,7 +17,11 @@ for relative in ["README.md", "docs"]:
     if path.is_file():
         doc_paths.append(path)
     elif path.is_dir():
-        doc_paths.extend(sorted(path.rglob("*.md")))
+        doc_paths.extend(
+            document
+            for document in sorted(path.rglob("*.md"))
+            if "reviews" not in document.relative_to(path).parts
+        )
 
 skip_flags = re.compile(r"(?:-DskipTests(?:\b|=)|-Dmaven\.test\.skip(?:\b|=)|\bskipTests\b|\bmaven\.test\.skip\b)", re.IGNORECASE)
 stale_boot = [

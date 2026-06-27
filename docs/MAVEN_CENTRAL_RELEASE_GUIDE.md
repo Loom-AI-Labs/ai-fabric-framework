@@ -66,11 +66,28 @@ git push origin ai-fabric-framework-v0.3.0
 Then create a GitHub Release from the tag. The workflow runs:
 
 ```bash
-mvn -B -V -f ai-infrastructure-module/pom.xml -Prelease,central deploy
+mvn -B -V --no-transfer-progress -f ai-infrastructure-module/pom.xml \
+  -Prelease,central \
+  -pl '!integration-Testing/vector-contract-tests,!integration-Testing/testcontainers-support,!integration-Testing/integration-tests,!integration-Testing/relationship-query-integration-tests,!integration-Testing/chat-session-integration-tests,!integration-Testing/behavior-integration-tests' \
+  deploy
 ```
 
 With `autoPublish` enabled, the deployment is validated and released to Central without a manual
 portal step.
+
+## Patch Releases And Published Tags
+
+Maven Central releases are immutable. If a release tag has already triggered publication or a
+version is visible on Central, do not move or recreate that tag. Make the correction on the release
+branch, bump Maven versions to the next patch version, and publish a new tag such as
+`ai-fabric-framework-v0.3.1`.
+
+Use `curl` before publishing to confirm whether a version already exists:
+
+```bash
+curl -s -o /dev/null -w '%{http_code}\n' \
+  https://repo1.maven.org/maven2/io/github/loom-ai-labs/ai-fabric-bom/0.3.1/ai-fabric-bom-0.3.1.pom
+```
 
 ## Boundary
 

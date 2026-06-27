@@ -37,7 +37,7 @@ configuration/keys instead.
 | **migration-enabled-product-catalog** | Bulk backfill indexing | migration, indexing, vector-lucene | None (H2 + local embeddings) |
 | **behavior-churn-signals** | Churn + sentiment insights | behavior | None (offline local LLM) |
 | **ecommerce-store** | Domain API used as a base for AI demos | (domain only) | None |
-| **sub-management-hub** / **-simple** | AI-powered subscription management | rag, provider-cohere, vector-lucene | A Cohere key |
+| **sub-management-hub** / **-simple** | AI-powered subscription management | rag, provider-spring-ai, vector-lucene | An OpenAI key for live LLM behavior |
 
 > `smoke-support` is a shared helper module, not a runnable app.
 

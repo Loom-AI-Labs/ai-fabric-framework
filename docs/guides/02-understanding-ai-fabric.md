@@ -16,7 +16,7 @@ backend does it. You depend on stable interfaces; you select concrete providers 
         ▼                            ▼
   AIProvider (LLM)          EmbeddingProvider
   openai / anthropic /      onnx / openai /
-  cohere / gemini / azure   cohere / gemini / azure
+  gemini / azure            gemini / azure / spring-ai-onnx
         │                            │
         └──────────┬─────────────────┘
                    ▼
@@ -25,7 +25,8 @@ backend does it. You depend on stable interfaces; you select concrete providers 
 ```
 
 Switching from OpenAI to Anthropic, or from Lucene to Qdrant, is a dependency + configuration
-change — not a code change.
+change — not a code change. Cohere configuration remains modeled for compatibility, but it is not
+an active Spring AI execution provider in the 0.3.x line.
 
 ## The key abstractions
 

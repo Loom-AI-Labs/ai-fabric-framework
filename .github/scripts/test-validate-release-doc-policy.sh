@@ -21,6 +21,17 @@ DOC
 
 "$script_dir/validate-release-doc-policy.sh" "$tmp_root" >/dev/null
 
+mkdir -p "$tmp_root/docs/reviews"
+cat > "$tmp_root/docs/reviews/review-note.md" <<'DOC'
+Review notes can quote rejected commands:
+
+```bash
+mvn -DskipTests test
+```
+DOC
+"$script_dir/validate-release-doc-policy.sh" "$tmp_root" >/dev/null
+rm -rf "$tmp_root/docs/reviews"
+
 cat > "$tmp_root/docs/vectorstore-overclaim.md" <<'DOC'
 Spring AI VectorStore replaces the full AI Fabric vector lifecycle/admin API.
 DOC

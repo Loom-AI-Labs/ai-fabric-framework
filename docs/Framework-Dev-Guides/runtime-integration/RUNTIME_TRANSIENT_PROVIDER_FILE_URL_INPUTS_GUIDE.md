@@ -104,7 +104,7 @@ Provider fallback is disabled when transient file URLs are present. A second pro
 | Azure OpenAI | Uses Responses input parts. PDFs are fetched transiently and sent as base64 `file_data`; supported images use native image URL inputs. Other types fail closed. |
 | Anthropic | Uses native URL blocks for PDFs and supported images only. Text, Office, audio, video, and other types fail closed unless Anthropic support is added later. |
 | Gemini | Fetches approved HTTPS URLs transiently and sends supported text, PDF, image, audio, and video bytes as `inlineData`. Unsupported types fail closed. |
-| Cohere | Fetches text-like files and PDFs transiently, extracts readable text, and sends it through Cohere `documents`. Images, Office binaries, audio, video, and unsupported files fail closed. |
+| Cohere | Not active in the AI Fabric 0.3.x Spring AI execution path. Cohere configuration remains modeled for compatibility only. |
 | ONNX starter | Not a chat/document analysis provider. Fail closed if selected for generation with transient file URLs. |
 
 Text-like means `text/*`, JSON, XML, XHTML, YAML, CSV, and Markdown MIME types. Supported image types are JPEG, PNG, WebP, and GIF. OpenAI Office-style support includes Word, Excel, and PowerPoint MIME types.

@@ -3,9 +3,9 @@
 
 **Document Purpose:** The philosophical foundation and core principles guiding AI Fabric Framework development
 
-**Version:** 1.0  
-**Date:** January 2026  
-**Project:** AI Fabric Framework (Open Source)  
+**Version:** 1.0
+**Date:** January 2026
+**Project:** AI Fabric Framework (Open Source)
 **Status:** Living Document
 
 ---
@@ -148,10 +148,10 @@ List<Document> allowed = filterByPermissions(user, requested);
 
 if (allowed.size() < requested.size()) {
     List<Document> denied = getDenied(requested, allowed);
-    
-    log.warn("Access denied: user {} requested unauthorized documents: {}", 
+
+    log.warn("Access denied: user {} requested unauthorized documents: {}",
         user, denied);
-    
+
     return Result.accessDenied(
         "You do not have permission to access some of the requested documents",
         Map.of(
@@ -225,7 +225,7 @@ if (llmRecommendation == Mode.ENHANCED) {
         log.warn("LLM recommended ENHANCED but vector DB unavailable");
         return Mode.STANDALONE;
     }
-    
+
     // We CAN do it, and LLM thinks we SHOULD
     return Mode.ENHANCED;
 }
@@ -243,10 +243,10 @@ return llmRecommendation;  // Respect the LLM's analysis
 
 The same respect applies to human intelligence:
 
-**LLM extracts from user:** `query`, `entityTypes`, `filters`  
+**LLM extracts from user:** `query`, `entityTypes`, `filters`
 **Application provides:** `limit`, `returnMode`, `timeout`
 
-**We NEVER:** Have the application guess what the user meant  
+**We NEVER:** Have the application guess what the user meant
 **We ALWAYS:** Trust the LLM to extract user intent accurately
 
 ```java
@@ -287,7 +287,7 @@ public Set<String> getData() {
     if (initialized) {
         return cachedResult;  // ~0.0001ms (10,000x faster!)
     }
-    
+
     synchronized (this) {
         if (initialized) return cachedResult;
         cachedResult = reflectionCall();  // ~2ms (only once)
@@ -544,7 +544,7 @@ Notice convenience is LAST. We choose correct-but-verbose over convenient-but-wr
 
 **Situation:** Should we allow applications to override LLM's query mode decision?
 
-**Convenient:** Yes, add `queryMode` parameter  
+**Convenient:** Yes, add `queryMode` parameter
 **Correct:** No, LLM analyzed the query—respect that decision
 
 **Decision:** Remove `forceMode`, keep only configuration constraints
@@ -659,7 +659,7 @@ if (llmRecommendation == X && !configAllowsX) {
 
 ### Lesson 1: Fail Fast, Fix Bugs
 
-**Old mindset:** Add fallbacks everywhere for "robustness"  
+**Old mindset:** Add fallbacks everywhere for "robustness"
 **New mindset:** Fail fast, fix bugs properly
 
 **Example:**
@@ -680,7 +680,7 @@ if (result == null) {
 
 ### Lesson 2: Configuration is Not Control
 
-**Old mindset:** Give users lots of configuration options  
+**Old mindset:** Give users lots of configuration options
 **New mindset:** Make intelligent decisions, allow constraints
 
 **Example:**
@@ -700,7 +700,7 @@ enable-vector-search: true  # LLM decides when to use it
 
 ### Lesson 3: Trust Creates Better Code
 
-**Old mindset:** Provide all storage implementations  
+**Old mindset:** Provide all storage implementations
 **New mindset:** Trust users to implement storage
 
 **Example:**
@@ -720,7 +720,7 @@ interface StorageProvider { }
 
 ### Lesson 4: Separate Modules, Separate Concerns
 
-**Old thinking:** Put everything in core  
+**Old thinking:** Put everything in core
 **New thinking:** Separate modules for separate concerns
 
 ```
@@ -891,7 +891,7 @@ Complex code feels smart but:
 
 ### Real Example: Access Control for Entity Types
 
-**User requests:** `["customer", "order", "product"]`  
+**User requests:** `["customer", "order", "product"]`
 **User allowed:** `["customer"]`
 
 **What most frameworks do:**
@@ -942,7 +942,7 @@ When in doubt, we ask:
 
 **"If 1,000 production applications use this code, serving millions of users, processing sensitive data—would I be proud of what we built?"**
 
-If the answer is yes, we merge.  
+If the answer is yes, we merge.
 If the answer is no, we fix it.
 
 **No exceptions. No compromises. No shortcuts.**
@@ -971,22 +971,22 @@ Not just code. Not just features.
 
 ---
 
-**Written by:** The AI Fabric Framework Team  
-**For:** Current and future contributors  
-**Purpose:** To preserve the "why" behind our "how"  
+**Written by:** The AI Fabric Framework Team
+**For:** Current and future contributors
+**Purpose:** To preserve the "why" behind our "how"
 **Status:** Living document—will evolve as we learn
 
 **Remember:** We're building what we wish existed. Let's build it right.
 
 ---
 
-**Version:** 1.0  
-**Date:** January 2026  
-**Next Review:** Quarterly  
+**Version:** 1.0
+**Date:** January 2026
+**Next Review:** Quarterly
 
 ---
 
-*"In a world of compromise, we choose correctness.  
-In a world of shortcuts, we choose quality.  
-In a world of quick fixes, we choose foundations.  
+*"In a world of compromise, we choose correctness.
+In a world of shortcuts, we choose quality.
+In a world of quick fixes, we choose foundations.
 This is how we build."*

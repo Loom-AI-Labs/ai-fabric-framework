@@ -29,8 +29,18 @@ with open(workflow_file, "r", encoding="utf-8") as handle:
     workflow = yaml.safe_load(handle) or {}
 
 providers = registry.get("providers", {})
-registry_llm = sorted((providers.get("llm") or {}).keys())
-registry_embedding = sorted((providers.get("embedding") or {}).keys())
+registry_llm_all = sorted((providers.get("llm") or {}).keys())
+registry_embedding_all = sorted((providers.get("embedding") or {}).keys())
+registry_llm_enabled = sorted(
+    name
+    for name, definition in (providers.get("llm") or {}).items()
+    if (definition or {}).get("enabled", True)
+)
+registry_embedding_enabled = sorted(
+    name
+    for name, definition in (providers.get("embedding") or {}).items()
+    if (definition or {}).get("enabled", True)
+)
 
 on_block = workflow.get("on") or workflow.get(True) or {}
 dispatch = on_block.get("workflow_dispatch") or {}
@@ -40,16 +50,16 @@ workflow_llm = sorted((inputs.get("llm_provider") or {}).get("options") or [])
 workflow_embedding = sorted((inputs.get("embedding_provider") or {}).get("options") or [])
 
 errors = []
-if registry_llm != workflow_llm:
+if registry_llm_enabled != workflow_llm:
     errors.append(
-        "LLM provider mismatch. Registry=%s Workflow=%s"
-        % (", ".join(registry_llm), ", ".join(workflow_llm))
+        "Enabled LLM provider mismatch. Registry=%s Workflow=%s"
+        % (", ".join(registry_llm_enabled), ", ".join(workflow_llm))
     )
 
-if registry_embedding != workflow_embedding:
+if registry_embedding_enabled != workflow_embedding:
     errors.append(
-        "Embedding provider mismatch. Registry=%s Workflow=%s"
-        % (", ".join(registry_embedding), ", ".join(workflow_embedding))
+        "Enabled embedding provider mismatch. Registry=%s Workflow=%s"
+        % (", ".join(registry_embedding_enabled), ", ".join(workflow_embedding))
     )
 
 if errors:
@@ -58,6 +68,8 @@ if errors:
     sys.exit(1)
 
 print("Provider registry validation passed.")
-print("LLM providers:", ", ".join(registry_llm))
-print("Embedding providers:", ", ".join(registry_embedding))
+print("Modeled LLM providers:", ", ".join(registry_llm_all))
+print("Enabled LLM providers:", ", ".join(registry_llm_enabled))
+print("Modeled embedding providers:", ", ".join(registry_embedding_all))
+print("Enabled embedding providers:", ", ".join(registry_embedding_enabled))
 PY

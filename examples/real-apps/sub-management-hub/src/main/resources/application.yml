@@ -28,14 +28,14 @@ ai:
     default-file: ai-entity-config.yml
 
   providers:
-    llm-provider: cohere
+    llm-provider: openai
     embedding-provider: simple
 
-    cohere:
-      enabled: ${COHERE_ENABLED:false}
-      api-key: ${COHERE_API_KEY:}
-      base-url: https://api.cohere.ai/v1
-      model: command-r-plus
+    openai:
+      enabled: ${OPENAI_ENABLED:false}
+      api-key: ${OPENAI_API_KEY:}
+      base-url: https://api.openai.com/v1
+      model: gpt-4o-mini
 
   vector-db:
     type: lucene

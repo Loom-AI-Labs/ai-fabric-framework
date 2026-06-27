@@ -37,5 +37,26 @@ if violations:
         print(f"{workflow}:{line_number}: {line}", file=sys.stderr)
     sys.exit(1)
 
+release_workflow = workflow_dir / "maven-central-release.yml"
+if release_workflow.exists():
+    release_text = release_workflow.read_text(encoding="utf-8")
+    required_exclusions = [
+        "!integration-Testing/vector-contract-tests",
+        "!integration-Testing/testcontainers-support",
+        "!integration-Testing/integration-tests",
+        "!integration-Testing/relationship-query-integration-tests",
+        "!integration-Testing/chat-session-integration-tests",
+        "!integration-Testing/behavior-integration-tests",
+    ]
+    missing = [exclusion for exclusion in required_exclusions if exclusion not in release_text]
+    if missing:
+        print(
+            "Workflow release reactor policy violation: Maven Central deploy must not publish integration test modules.",
+            file=sys.stderr,
+        )
+        for exclusion in missing:
+            print(f"{release_workflow}: missing release deploy exclusion {exclusion}", file=sys.stderr)
+        sys.exit(1)
+
 print("Workflow test policy validation passed.")
 PY

@@ -119,8 +119,23 @@ class ProviderRegistryServiceTest {
     void testGetEnabledProviderNames() {
         List<String> enabledLLM = registry.getEnabledProviderNames(ProviderType.LLM);
         assertNotNull(enabledLLM);
-        // All providers in registry should be enabled by default
         assertFalse(enabledLLM.isEmpty());
+        assertTrue(enabledLLM.contains("openai"));
+        assertTrue(enabledLLM.contains("anthropic"));
+        assertTrue(enabledLLM.contains("gemini"));
+        assertTrue(enabledLLM.contains("azure"));
+        assertFalse(enabledLLM.contains("cohere"), "Cohere remains modeled but is not active in the Spring AI execution path");
+
+        List<String> enabledEmbedding = registry.getEnabledProviderNames(ProviderType.EMBEDDING);
+        assertNotNull(enabledEmbedding);
+        assertFalse(enabledEmbedding.isEmpty());
+        assertTrue(enabledEmbedding.contains("onnx"));
+        assertTrue(enabledEmbedding.contains("spring-ai-onnx"));
+        assertTrue(enabledEmbedding.contains("openai"));
+        assertTrue(enabledEmbedding.contains("gemini"));
+        assertTrue(enabledEmbedding.contains("azure"));
+        assertFalse(enabledEmbedding.contains("anthropic"), "Anthropic embeddings are not active in the Spring AI execution path");
+        assertFalse(enabledEmbedding.contains("cohere"), "Cohere embeddings remain modeled but are not active in the Spring AI execution path");
     }
 
     @Test

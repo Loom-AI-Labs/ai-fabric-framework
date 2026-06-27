@@ -1,7 +1,7 @@
 # AI Fabric Framework Capability Priority Map
 
-Status: draft for release planning  
-Date: 2026-06-20  
+Status: draft for release planning
+Date: 2026-06-20
 Sources: `docs/Framework-Dev-Guides/**`, `docs/guides/03-modules.md`, and current real apps under `examples/real-apps`
 
 ## Purpose
