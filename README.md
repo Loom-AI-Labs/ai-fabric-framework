@@ -5,8 +5,8 @@ AI Fabric Framework is an open-source Java/Spring Boot framework for building AI
 This repository contains the framework only. It does not include private managed-product code, deployment operations, customer configuration, or commercial product code.
 
 **New to AI Fabric?** Start with the [user guides](docs/guides/README.md) (installation → concepts →
-modules → use cases → examples → quickstart). Latest release: **0.3.0** — see the
-[release notes](docs/release-notes/0.3.0.md).
+modules → use cases → examples → quickstart). Latest release: **0.3.1** — see the
+[release notes](docs/release-notes/0.3.1.md).
 
 ## What Is Included
 
@@ -43,7 +43,7 @@ extra repository configuration is needed. The BOM artifact is:
     <dependency>
       <groupId>io.github.loom-ai-labs</groupId>
       <artifactId>ai-fabric-bom</artifactId>
-      <version>0.3.0</version>
+      <version>0.3.1</version>
       <type>pom</type>
       <scope>import</scope>
     </dependency>

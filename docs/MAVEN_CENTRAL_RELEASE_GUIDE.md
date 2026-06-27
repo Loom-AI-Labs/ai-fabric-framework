@@ -5,7 +5,7 @@ AI Fabric Framework publishes to **Maven Central** via the Sonatype Central Port
 - Group: `io.github.loom-ai-labs`
 - BOM artifact: `ai-fabric-bom`
 - Release tag format: `ai-fabric-framework-v<version>`
-- Current release: `0.3.0`
+- Current release: `0.3.1`
 
 ## Consume From Maven Central
 
@@ -18,7 +18,7 @@ Maven repository.
     <dependency>
       <groupId>io.github.loom-ai-labs</groupId>
       <artifactId>ai-fabric-bom</artifactId>
-      <version>0.3.0</version>
+      <version>0.3.1</version>
       <type>pom</type>
       <scope>import</scope>
     </dependency>
@@ -46,7 +46,13 @@ as GitHub Actions repository secrets:
 ## Verify Before Release
 
 ```bash
-mvn -B -V --no-transfer-progress -f ai-infrastructure-module/pom.xml clean install
+.github/scripts/validate-framework-release-guards.sh
+mvn -B -V --no-transfer-progress -f ai-infrastructure-module/pom.xml \
+  -Dai.vector-db.lucene.cleanup-on-close=true \
+  -Prelease \
+  -pl '!integration-Testing/testcontainers-support,!integration-Testing/integration-tests,!integration-Testing/relationship-query-integration-tests,!integration-Testing/chat-session-integration-tests,!integration-Testing/behavior-integration-tests' \
+  install
+mvn -B -V --no-transfer-progress -f examples/minimal-spring-boot/pom.xml compile
 mvn -B -V --no-transfer-progress -f examples/real-apps/pom.xml install
 ```
 
@@ -59,8 +65,8 @@ uploads them through the `central-publishing-maven-plugin`. The `release` profil
 Tag and create a GitHub Release; the release workflow publishes automatically:
 
 ```bash
-git tag ai-fabric-framework-v0.3.0
-git push origin ai-fabric-framework-v0.3.0
+git tag -a ai-fabric-framework-v0.3.1 -m "AI Fabric Framework 0.3.1"
+git push origin ai-fabric-framework-v0.3.1
 ```
 
 Then create a GitHub Release from the tag. The workflow runs:
@@ -80,13 +86,13 @@ portal step.
 Maven Central releases are immutable. If a release tag has already triggered publication or a
 version is visible on Central, do not move or recreate that tag. Make the correction on the release
 branch, bump Maven versions to the next patch version, and publish a new tag such as
-`ai-fabric-framework-v0.3.1`.
+`ai-fabric-framework-v0.3.2`.
 
 Use `curl` before publishing to confirm whether a version already exists:
 
 ```bash
 curl -s -o /dev/null -w '%{http_code}\n' \
-  https://repo1.maven.org/maven2/io/github/loom-ai-labs/ai-fabric-bom/0.3.1/ai-fabric-bom-0.3.1.pom
+  https://repo1.maven.org/maven2/io/github/loom-ai-labs/ai-fabric-bom/0.3.2/ai-fabric-bom-0.3.2.pom
 ```
 
 ## Boundary
