@@ -30,13 +30,13 @@ public class DemoResetAdminController {
     private final DemoResetService demoResetService;
     private final RestConnectorVectorClearClient vectorClearClient;
 
-    @Value("${connector.admin.auth.api-key:}")
+    @Value("${app.admin.api-key:}")
     private String adminApiKey;
 
-    @Value("${connector.admin.auth.api-key-header:X-AIFABRIC-API-KEY}")
+    @Value("${app.admin.api-key-header:X-ADMIN-API-KEY}")
     private String adminApiKeyHeader;
 
-    @Value("${connector.admin.auth.enabled:false}")
+    @Value("${app.admin.enabled:true}")
     private boolean adminAuthEnabled;
 
     /**

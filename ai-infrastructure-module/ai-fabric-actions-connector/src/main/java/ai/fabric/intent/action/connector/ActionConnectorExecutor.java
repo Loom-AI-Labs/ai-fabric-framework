@@ -16,6 +16,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
@@ -56,7 +57,13 @@ public class ActionConnectorExecutor {
     private static final String ERROR_SERVICE_UNAVAILABLE = "SERVICE_UNAVAILABLE";
     private static final String ERROR_TIMEOUT = "TIMEOUT";
     private static final String ERROR_RATE_LIMITED = "RATE_LIMITED";
+    private static final String ERROR_ACTION_EXECUTION_FAILED = "ACTION_EXECUTION_FAILED";
     private static final String ERROR_INVALID_CONFIGURATION = "INVALID_CONFIGURATION";
+    private static final String ERROR_INVALID_RESPONSE = "INVALID_RESPONSE";
+
+    private static final String HEADER_HMAC_TIMESTAMP = "X-AIFABRIC-TIMESTAMP";
+    private static final String HEADER_HMAC_NONCE = "X-AIFABRIC-NONCE";
+    private static final String HEADER_HMAC_SIGNATURE = "X-AIFABRIC-SIGNATURE";
 
     private static final Set<String> RETRYABLE_ERROR_CODES = Set.of(
         ERROR_TIMEOUT,
@@ -70,11 +77,35 @@ public class ActionConnectorExecutor {
     private final ObjectMapper objectMapper;
     private final UlidGenerator ulidGenerator;
     private final Clock clock;
+    private final McpActionExecutor mcpActionExecutor;
 
     public ActionConnectorExecutor(AIActionConnectorProperties properties,
                                    OutboundHttpExecutor outboundHttpExecutor,
                                    ObjectProvider<ObjectMapper> objectMapperProvider,
                                    Clock clock) {
+        this(properties, outboundHttpExecutor, objectMapperProvider, clock, (McpActionExecutor) null);
+    }
+
+    @Autowired
+    public ActionConnectorExecutor(AIActionConnectorProperties properties,
+                                   OutboundHttpExecutor outboundHttpExecutor,
+                                   ObjectProvider<ObjectMapper> objectMapperProvider,
+                                   Clock clock,
+                                   ObjectProvider<McpActionExecutor> mcpActionExecutorProvider) {
+        this(
+            properties,
+            outboundHttpExecutor,
+            objectMapperProvider,
+            clock,
+            mcpActionExecutorProvider != null ? mcpActionExecutorProvider.getIfAvailable() : null
+        );
+    }
+
+    public ActionConnectorExecutor(AIActionConnectorProperties properties,
+                                   OutboundHttpExecutor outboundHttpExecutor,
+                                   ObjectProvider<ObjectMapper> objectMapperProvider,
+                                   Clock clock,
+                                   McpActionExecutor mcpActionExecutor) {
         this.properties = properties;
         this.outboundHttpExecutor = outboundHttpExecutor;
         this.objectMapper = objectMapperProvider != null
@@ -82,6 +113,11 @@ public class ActionConnectorExecutor {
             : new ObjectMapper();
         this.clock = clock != null ? clock : Clock.systemUTC();
         this.ulidGenerator = new UlidGenerator(this.clock);
+        this.mcpActionExecutor = mcpActionExecutor;
+    }
+
+    public boolean hasMcpActionExecutor() {
+        return mcpActionExecutor != null && mcpActionExecutor.isAvailable();
     }
 
     /**
@@ -113,6 +149,15 @@ public class ActionConnectorExecutor {
         }
 
         boolean mcpToolAction = isMcpToolAction(actionConfig);
+        if (mcpToolAction && hasMcpActionExecutor()) {
+            ActionResult mcpResult = mcpActionExecutor.execute(actionId, accessMode, params, context, actionConfig);
+            if (mcpResult != null && (mcpResult.isSuccess()
+                || !McpActionExecutor.ERROR_MCP_TOOL_NOT_AVAILABLE.equals(mcpResult.getErrorCode())
+                || !hasConfiguredMcpGateway())) {
+                return mcpResult;
+            }
+            log.debug("Spring AI MCP bridge could not resolve action '{}'; falling back to the configured MCP gateway.", actionId);
+        }
         String url;
         try {
             url = mcpToolAction ? buildMcpGatewayExecuteUrl() : buildExecuteUrl();
@@ -426,12 +471,16 @@ public class ActionConnectorExecutor {
             String timestamp = String.valueOf(Instant.now(clock).getEpochSecond());
             String nonce = ulidGenerator.nextUlid();
             String signature = sign(hmac.getSecret(), timestamp, nonce, body);
-            headers.set(hmac.getTimestampHeader(), timestamp);
-            headers.set(hmac.getNonceHeader(), nonce);
-            headers.set(hmac.getSignatureHeader(), signature);
+            headers.set(headerOrDefault(hmac.getTimestampHeader(), HEADER_HMAC_TIMESTAMP), timestamp);
+            headers.set(headerOrDefault(hmac.getNonceHeader(), HEADER_HMAC_NONCE), nonce);
+            headers.set(headerOrDefault(hmac.getSignatureHeader(), HEADER_HMAC_SIGNATURE), signature);
         }
 
         return headers;
+    }
+
+    private String headerOrDefault(String configured, String fallback) {
+        return StringUtils.hasText(configured) ? configured.trim() : fallback;
     }
 
     private HttpHeaders buildMcpGatewayHeaders() {
@@ -467,6 +516,13 @@ public class ActionConnectorExecutor {
         return false;
     }
 
+    private boolean hasConfiguredMcpGateway() {
+        AIActionConnectorProperties.McpGatewayProperties gateway = properties != null ? properties.getMcpGateway() : null;
+        return gateway != null
+            && StringUtils.hasText(gateway.getBaseUrl())
+            && StringUtils.hasText(gateway.getApiKey());
+    }
+
     private String sign(String secret, String timestamp, String nonce, String body) {
         try {
             String message = timestamp + "\n" + nonce + "\n" + (body != null ? body : "");
@@ -493,6 +549,11 @@ public class ActionConnectorExecutor {
         }
 
         String body = response.body();
+        int statusCode = response.statusCode();
+        if (statusCode < 200 || statusCode >= 300) {
+            return failureForHttpStatus(statusCode, body, actionId);
+        }
+
         if (!StringUtils.hasText(body)) {
             return failure(ERROR_SERVICE_UNAVAILABLE, "Connector returned an empty response.");
         }
@@ -512,18 +573,76 @@ public class ActionConnectorExecutor {
 
         ActionPayload payload = null;
         if (dataRaw != null) {
-            payload = toActionPayload(dataRaw, actionId);
+            if (success) {
+                try {
+                    payload = toActionPayload(dataRaw, actionId);
+                } catch (Exception ex) {
+                    return failure(ERROR_INVALID_RESPONSE, ex.getMessage());
+                }
+            } else {
+                payload = safeActionPayload(dataRaw, actionId);
+            }
         }
 
         List<ActionTargetRef> pinnedTargets = toPinnedTargets(pinnedRaw);
 
         return ActionResult.builder()
             .success(success)
-            .message(message)
+            .message(StringUtils.hasText(message) ? message : (success ? null : "Connector action failed."))
             .data(payload)
             .pinnedTargets(pinnedTargets)
-            .errorCode(errorCode)
+            .errorCode(success ? errorCode : (StringUtils.hasText(errorCode) ? errorCode : ERROR_ACTION_EXECUTION_FAILED))
             .build();
+    }
+
+    private ActionResult failureForHttpStatus(int statusCode, String body, String actionId) {
+        if (StringUtils.hasText(body)) {
+            try {
+                Map<String, Object> parsed = objectMapper.readValue(body, new TypeReference<Map<String, Object>>() {});
+                if (parsed != null && !readBoolean(parsed.get(ActionConnectorProtocol.KEY_SUCCESS), false)) {
+                    String errorCode = readString(parsed.get(ActionConnectorProtocol.KEY_ERROR_CODE));
+                    String message = readString(parsed.get(ActionConnectorProtocol.KEY_MESSAGE));
+                    Object dataRaw = parsed.get(ActionConnectorProtocol.KEY_DATA);
+                    Object pinnedRaw = parsed.get(ActionConnectorProtocol.KEY_PINNED_TARGETS);
+                    ActionPayload payload = safeActionPayload(dataRaw, actionId);
+                    return ActionResult.builder()
+                        .success(false)
+                        .message(StringUtils.hasText(message) ? message : "Connector returned HTTP " + statusCode + ".")
+                        .data(payload)
+                        .pinnedTargets(toPinnedTargets(pinnedRaw))
+                        .errorCode(StringUtils.hasText(errorCode) ? errorCode : errorCodeForStatus(statusCode))
+                        .build();
+                }
+            } catch (Exception ignored) {
+                // Fall through to deterministic status mapping.
+            }
+        }
+        return failure(errorCodeForStatus(statusCode), "Connector returned HTTP " + statusCode + ".");
+    }
+
+    private ActionPayload safeActionPayload(Object dataRaw, String actionId) {
+        if (dataRaw == null) {
+            return null;
+        }
+        try {
+            return toActionPayload(dataRaw, actionId);
+        } catch (Exception ex) {
+            log.debug("Ignoring invalid connector failure payload for action '{}': {}", actionId, ex.getMessage());
+            return null;
+        }
+    }
+
+    private String errorCodeForStatus(int statusCode) {
+        if (statusCode == 408) {
+            return ERROR_TIMEOUT;
+        }
+        if (statusCode == 429) {
+            return ERROR_RATE_LIMITED;
+        }
+        if (statusCode >= 500 || statusCode <= 0) {
+            return ERROR_SERVICE_UNAVAILABLE;
+        }
+        return ERROR_ACTION_EXECUTION_FAILED;
     }
 
     private ActionPayload toActionPayload(Object raw, String actionId) {

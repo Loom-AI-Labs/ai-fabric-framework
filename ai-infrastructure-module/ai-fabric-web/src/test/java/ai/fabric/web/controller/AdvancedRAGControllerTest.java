@@ -3,6 +3,7 @@ package ai.fabric.web.controller;
 import ai.fabric.dto.AdvancedRAGRequest;
 import ai.fabric.dto.AdvancedRAGResponse;
 import ai.fabric.rag.service.AdvancedRAGService;
+import ai.fabric.service.VectorManagementService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
@@ -20,6 +21,9 @@ class AdvancedRAGControllerTest {
 
     @Mock
     private AdvancedRAGService advancedRAGService;
+
+    @Mock
+    private VectorManagementService vectorManagementService;
 
     @Test
     void performAdvancedRAGReturnsServiceResponse() {
@@ -74,7 +78,63 @@ class AdvancedRAGControllerTest {
             .containsKey("timestamp");
     }
 
+    @Test
+    void healthCheckIncludesVectorProviderDiagnosticsWhenAvailable() {
+        when(vectorManagementService.getProviderDiagnostics()).thenReturn(Map.of(
+            "diagnosticsAvailable", true,
+            "providerClass", "ai.fabric.vector.pinecone.PineconeVectorDatabaseService",
+            "supportsSearchMetadataFiltering", true,
+            "scanFilterMode", "client-side-list-fetch-portable-scalar",
+            "readiness", Map.of(
+                "status", "READY",
+                "operational", true,
+                "productionReady", true
+            )
+        ));
+
+        ResponseEntity<Map<String, Object>> response = controllerWithVectorManagement().healthCheck();
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody())
+            .containsEntry("status", "UP")
+            .containsEntry("service", "AdvancedRAGService")
+            .containsKey("timestamp");
+        assertThat(response.getBody().get("vectorDatabase"))
+            .isInstanceOfSatisfying(Map.class, diagnostics -> assertThat(diagnostics)
+                .containsEntry("available", true)
+                .containsEntry("diagnosticsAvailable", true)
+                .containsEntry("providerClass", "ai.fabric.vector.pinecone.PineconeVectorDatabaseService")
+                .containsEntry("supportsSearchMetadataFiltering", true)
+                .containsEntry("scanFilterMode", "client-side-list-fetch-portable-scalar")
+                .containsKey("readiness"));
+        @SuppressWarnings("unchecked")
+        Map<String, Object> vectorDiagnostics = (Map<String, Object>) response.getBody().get("vectorDatabase");
+        assertThat(vectorDiagnostics.get("readiness"))
+            .isInstanceOfSatisfying(Map.class, readiness -> assertThat(readiness)
+                .containsEntry("status", "READY")
+                .containsEntry("operational", true)
+                .containsEntry("productionReady", true));
+    }
+
+    @Test
+    void healthCheckReportsMissingVectorManagementWithoutFailingController() {
+        ResponseEntity<Map<String, Object>> response = controller().healthCheck();
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().get("vectorDatabase"))
+            .isInstanceOfSatisfying(Map.class, diagnostics -> assertThat(diagnostics)
+                .containsEntry("available", false)
+                .containsEntry("diagnosticsAvailable", false)
+                .containsEntry("reason", "VectorManagementService bean not available"));
+    }
+
     private AdvancedRAGController controller() {
         return new AdvancedRAGController(advancedRAGService);
+    }
+
+    private AdvancedRAGController controllerWithVectorManagement() {
+        return new AdvancedRAGController(advancedRAGService, vectorManagementService);
     }
 }

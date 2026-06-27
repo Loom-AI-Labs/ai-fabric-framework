@@ -31,11 +31,29 @@ final class IndexingWorkerRunner {
         for (IndexingQueueEntry entry : entries) {
             try {
                 workProcessor.process(entry);
-                queueService.markCompleted(entry);
             } catch (Exception ex) {
                 log.error("{} indexing failed for entry {}", workerName, entry.getId(), ex);
-                queueService.markFailure(entry, ex.getMessage());
+                markFailure(entry, ex, workerName);
+                continue;
+            }
+
+            try {
+                queueService.markCompleted(entry);
+            } catch (Exception ex) {
+                log.error("{} indexing completed but acknowledgement failed for entry {}", workerName, entry.getId(), ex);
             }
         }
+    }
+
+    private void markFailure(IndexingQueueEntry entry, Exception cause, String workerName) {
+        try {
+            queueService.markFailure(entry, safeMessage(cause));
+        } catch (Exception ex) {
+            log.error("{} indexing failed and failure acknowledgement also failed for entry {}", workerName, entry.getId(), ex);
+        }
+    }
+
+    private static String safeMessage(Exception ex) {
+        return ex.getMessage() != null ? ex.getMessage() : ex.getClass().getSimpleName();
     }
 }

@@ -3,8 +3,10 @@ package ai.fabric.web.controller;
 import ai.fabric.dto.AdvancedRAGRequest;
 import ai.fabric.dto.AdvancedRAGResponse;
 import ai.fabric.rag.service.AdvancedRAGService;
-import lombok.RequiredArgsConstructor;
+import ai.fabric.service.VectorManagementService;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -17,13 +19,25 @@ import java.util.Map;
  */
 @Slf4j
 @RestController
-@RequestMapping("/api/ai/advanced-rag")
-@RequiredArgsConstructor
+@RequestMapping("${ai.web.base-path:/api/ai}/advanced-rag")
+@ConditionalOnBean(AdvancedRAGService.class)
+@ConditionalOnProperty(prefix = "ai.web.controllers", name = "advanced-rag", havingValue = "true", matchIfMissing = true)
 public class AdvancedRAGController {
 
     private static final String UNKNOWN_QUERY = "unknown";
 
     private final AdvancedRAGService advancedRAGService;
+    private final VectorManagementService vectorManagementService;
+
+    public AdvancedRAGController(AdvancedRAGService advancedRAGService) {
+        this(advancedRAGService, null);
+    }
+
+    public AdvancedRAGController(AdvancedRAGService advancedRAGService,
+                                 VectorManagementService vectorManagementService) {
+        this.advancedRAGService = advancedRAGService;
+        this.vectorManagementService = vectorManagementService;
+    }
 
     /**
      * Perform advanced RAG with query expansion and re-ranking
@@ -74,11 +88,11 @@ public class AdvancedRAGController {
         log.info("Performing advanced RAG health check");
         
         try {
-            Map<String, Object> health = Map.of(
-                "status", "UP",
-                "service", "AdvancedRAGService",
-                "timestamp", System.currentTimeMillis()
-            );
+            Map<String, Object> health = new LinkedHashMap<>();
+            health.put("status", "UP");
+            health.put("service", "AdvancedRAGService");
+            health.put("vectorDatabase", vectorDatabaseDiagnostics());
+            health.put("timestamp", System.currentTimeMillis());
             return ResponseEntity.ok(health);
         } catch (Exception e) {
             log.error("Error performing advanced RAG health check", e);
@@ -90,6 +104,20 @@ public class AdvancedRAGController {
                     "timestamp", System.currentTimeMillis()
                 ));
         }
+    }
+
+    private Map<String, Object> vectorDatabaseDiagnostics() {
+        if (vectorManagementService == null) {
+            return Map.of(
+                "available", false,
+                "diagnosticsAvailable", false,
+                "reason", "VectorManagementService bean not available"
+            );
+        }
+
+        Map<String, Object> diagnostics = new LinkedHashMap<>(vectorManagementService.getProviderDiagnostics());
+        diagnostics.putIfAbsent("available", true);
+        return diagnostics;
     }
 
     private String resolveQuery(AdvancedRAGRequest request) {

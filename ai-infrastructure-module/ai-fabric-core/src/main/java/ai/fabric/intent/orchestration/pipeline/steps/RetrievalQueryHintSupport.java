@@ -28,7 +28,9 @@ final class RetrievalQueryHintSupport {
 
         String hint = resolveValidRetrievalQueryHint(pipelineContext, intent);
         if (StringUtils.hasText(hint)) {
-            result = baseQuery + " " + hint;
+            result = StringUtils.hasText(baseQuery)
+                ? baseQuery.trim() + " " + hint
+                : hint;
             applied = true;
         }
 
@@ -40,6 +42,9 @@ final class RetrievalQueryHintSupport {
 
     static String resolveValidRetrievalQueryHint(PipelineContext pipelineContext, Intent currentIntent) {
         if (pipelineContext == null || currentIntent == null) {
+            return null;
+        }
+        if (!Boolean.TRUE.equals(currentIntent.getRequiresRetrieval())) {
             return null;
         }
 
@@ -94,13 +99,25 @@ final class RetrievalQueryHintSupport {
         if (hint.length() > MAX_RETRIEVAL_QUERY_HINT_LENGTH) {
             return false;
         }
-        if (hint.indexOf('@') >= 0) {
+        if (!hint.equals(hint.trim())) {
             return false;
         }
-        if (hint.indexOf('\n') >= 0 || hint.indexOf('\r') >= 0) {
-            return false;
+        for (int i = 0; i < hint.length(); i++) {
+            if (!isAllowedHintCharacter(hint.charAt(i))) {
+                return false;
+            }
         }
         return !hasConsecutiveWhitespace(hint);
+    }
+
+    private static boolean isAllowedHintCharacter(char ch) {
+        if (Character.isLetterOrDigit(ch)) {
+            return true;
+        }
+        return switch (ch) {
+            case ' ', '-', '_', '.', '#', '/', '\'' -> true;
+            default -> false;
+        };
     }
 
     private static boolean hasConsecutiveWhitespace(String value) {

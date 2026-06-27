@@ -5,6 +5,7 @@ import ai.fabric.dto.AIEntityConfig;
 import ai.fabric.entity.IndexingQueueEntry;
 import ai.fabric.indexing.IndexingActionPlan;
 import ai.fabric.service.AICapabilityService;
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 
@@ -60,6 +61,8 @@ public class IndexingWorkProcessor {
 
     private Object deserialize(IndexingQueueEntry entry) throws Exception {
         Class<?> entityClass = Class.forName(entry.getEntityClass());
-        return objectMapper.readValue(entry.getPayload(), entityClass);
+        return objectMapper.readerFor(entityClass)
+            .without(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
+            .readValue(entry.getPayload());
     }
 }

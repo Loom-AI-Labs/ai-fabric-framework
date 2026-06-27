@@ -7,7 +7,7 @@
 
     <groupId>io.github.loom-ai-labs</groupId>
     <artifactId>ai-fabric-bom</artifactId>
-    <version>0.2.1</version>
+    <version>0.3.0</version>
     <packaging>pom</packaging>
 
     <name>AI Fabric Framework BOM</name>
@@ -56,11 +56,7 @@
         <module>curated/ai-fabric-curated-support</module>
         <module>ai-fabric-rag</module>
         <module>ai-fabric-web</module>
-        <module>providers/ai-fabric-provider-openai</module>
-        <module>providers/ai-fabric-provider-azure</module>
-        <module>providers/ai-fabric-provider-cohere</module>
-        <module>providers/ai-fabric-provider-anthropic</module>
-        <module>providers/ai-fabric-provider-gemini</module>
+        <module>providers/ai-fabric-provider-spring-ai</module>
         <module>providers/ai-fabric-onnx-starter</module>
         <module>ai-fabric-relationship-query</module>
         <module>ai-fabric-chat-session</module>
@@ -72,6 +68,7 @@
         <module>victor-databases/ai-fabric-vector-weaviate</module>
         <module>victor-databases/ai-fabric-vector-qdrant</module>
         <module>victor-databases/ai-fabric-vector-milvus</module>
+        <module>integration-Testing/vector-contract-tests</module>
         <module>integration-Testing/testcontainers-support</module>
         <module>integration-Testing/integration-tests</module>
         <module>integration-Testing/relationship-query-integration-tests</module>
@@ -89,11 +86,12 @@
         <maven-source-plugin.version>3.3.1</maven-source-plugin.version>
         <maven-javadoc-plugin.version>3.6.3</maven-javadoc-plugin.version>
         <maven-gpg-plugin.version>3.2.4</maven-gpg-plugin.version>
-        <central-publishing-maven-plugin.version>0.7.0</central-publishing-maven-plugin.version>
+        <central-publishing-maven-plugin.version>0.11.0</central-publishing-maven-plugin.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <spring-boot.version>3.2.0</spring-boot.version>
-        <spring-cloud-context.version>4.0.4</spring-cloud-context.version>
-        <openai.version>0.18.2</openai.version>
+        <spring-boot.version>4.1.0</spring-boot.version>
+        <spring-cloud-context.version>5.0.2</spring-cloud-context.version>
+        <spring-ai.version>2.0.0</spring-ai.version>
+        <onnxruntime.version>1.20.0</onnxruntime.version>
         <lucene.version>9.10.0</lucene.version>
         <lombok.version>1.18.38</lombok.version>
         <mapstruct.version>1.5.5.Final</mapstruct.version>
@@ -104,10 +102,6 @@
         <jmh.version>1.37</jmh.version>
         <javafaker.version>1.0.2</javafaker.version>
         <swagger-request-validator.version>2.40.0</swagger-request-validator.version>
-        <!-- Align gRPC versions across vector DB SDKs (Qdrant/Pinecone/Weaviate/Milvus). -->
-        <grpc.version>1.68.2</grpc.version>
-        <!-- Align protobuf across SDKs (Pinecone/Milvus/Qdrant/Weaviate) to avoid runtime CNF errors. -->
-        <protobuf.version>3.25.3</protobuf.version>
     </properties>
 
     <dependencyManagement>
@@ -120,17 +114,18 @@
                 <scope>import</scope>
             </dependency>
             <dependency>
-                <groupId>io.grpc</groupId>
-                <artifactId>grpc-bom</artifactId>
-                <version>${grpc.version}</version>
+                <groupId>org.springframework.ai</groupId>
+                <artifactId>spring-ai-bom</artifactId>
+                <version>${spring-ai.version}</version>
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>
-
             <dependency>
-                <groupId>com.google.protobuf</groupId>
-                <artifactId>protobuf-java</artifactId>
-                <version>${protobuf.version}</version>
+                <groupId>org.testcontainers</groupId>
+                <artifactId>testcontainers-bom</artifactId>
+                <version>${testcontainers.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
             </dependency>
             <dependency>
                 <groupId>com.google.code.findbugs</groupId>
@@ -263,27 +258,7 @@
             <!-- Provider Modules -->
             <dependency>
                 <groupId>io.github.loom-ai-labs</groupId>
-                <artifactId>ai-fabric-provider-openai</artifactId>
-                <version>${project.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>io.github.loom-ai-labs</groupId>
-                <artifactId>ai-fabric-provider-azure</artifactId>
-                <version>${project.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>io.github.loom-ai-labs</groupId>
-                <artifactId>ai-fabric-provider-cohere</artifactId>
-                <version>${project.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>io.github.loom-ai-labs</groupId>
-                <artifactId>ai-fabric-provider-anthropic</artifactId>
-                <version>${project.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>io.github.loom-ai-labs</groupId>
-                <artifactId>ai-fabric-provider-gemini</artifactId>
+                <artifactId>ai-fabric-provider-spring-ai</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
@@ -353,13 +328,6 @@
                 <groupId>org.apache.lucene</groupId>
                 <artifactId>lucene-misc</artifactId>
                 <version>${lucene.version}</version>
-            </dependency>
-
-            <!-- OpenAI -->
-            <dependency>
-                <groupId>com.theokanning.openai-gpt3-java</groupId>
-                <artifactId>service</artifactId>
-                <version>${openai.version}</version>
             </dependency>
 
             <!-- Utilities -->

@@ -19,6 +19,7 @@ import ai.fabric.relationship.service.RelationshipTraversalService;
 import ai.fabric.relationship.service.ReliableRelationshipQueryService;
 import ai.fabric.relationship.spi.RelationshipQueryAccessControlPolicy;
 import ai.fabric.relationship.validation.RelationshipQueryValidator;
+import ai.fabric.llm.structured.StructuredJsonCallExecutor;
 import ai.fabric.llm.structured.StructuredJsonExtractor;
 import ai.fabric.prompt.PromptRenderer;
 import ai.fabric.prompt.PromptTemplateResolver;
@@ -94,6 +95,7 @@ class RelationshipQueryConfiguration {
                                                       QueryMetrics queryMetrics,
                                                       ObjectMapper objectMapper,
                                                       StructuredJsonExtractor structuredJsonExtractor,
+                                                      StructuredJsonCallExecutor structuredJsonCallExecutor,
                                                       PromptTemplateResolver promptTemplateResolver,
                                                       PromptRenderer promptRenderer) {
         return new RelationshipQueryPlanner(
@@ -105,6 +107,7 @@ class RelationshipQueryConfiguration {
             queryMetrics,
             objectMapper,
             structuredJsonExtractor,
+            structuredJsonCallExecutor,
             promptTemplateResolver,
             promptRenderer
         );

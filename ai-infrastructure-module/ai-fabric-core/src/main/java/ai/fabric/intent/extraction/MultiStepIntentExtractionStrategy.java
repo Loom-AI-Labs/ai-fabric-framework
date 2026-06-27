@@ -234,10 +234,9 @@ public class MultiStepIntentExtractionStrategy implements IntentExtractionStrate
                 response != null ? response.getModel() : null
             );
         }
-        String sanitized = jsonSupport.stripCodeFences(content);
         try {
             return new ClassificationResult(
-                jsonSupport.objectMapper().readValue(sanitized, ClassificationResponse.class),
+                jsonSupport.parsePayload(content, ClassificationResponse.class),
                 llmCalls,
                 elapsedMs,
                 response != null ? response.getProcessingTimeMs() : null,
@@ -332,10 +331,9 @@ public class MultiStepIntentExtractionStrategy implements IntentExtractionStrate
             );
         }
 
-        String sanitized = jsonSupport.stripCodeFences(content);
         ActionSelectionResponse parsed;
         try {
-            parsed = jsonSupport.objectMapper().readValue(sanitized, ActionSelectionResponse.class);
+            parsed = jsonSupport.parsePayload(content, ActionSelectionResponse.class);
         } catch (Exception ex) {
             log.warn("Failed to parse action selection JSON: {}", ex.getMessage());
             return new ActionSelectionResult(
@@ -502,10 +500,9 @@ public class MultiStepIntentExtractionStrategy implements IntentExtractionStrate
             );
         }
 
-        String sanitized = jsonSupport.stripCodeFences(content);
         ActionParamsFillResponse parsed;
         try {
-            parsed = jsonSupport.objectMapper().readValue(sanitized, ActionParamsFillResponse.class);
+            parsed = jsonSupport.parsePayload(content, ActionParamsFillResponse.class);
         } catch (Exception ex) {
             log.warn("Failed to parse actionParams fill JSON: {}", ex.getMessage());
             return new ActionParamsFillResult(

@@ -55,6 +55,12 @@ public class VectorDatabaseConfig {
          * Maximum time (ms) to wait for clear operations to become visible.
          */
         private Long awaitClearTimeoutMs = 30_000L;
+
+        /**
+         * When true, Qdrant metadata-filtered operations fail closed if a required payload index is
+         * missing instead of retrying without the provider-side metadata filter.
+         */
+        private Boolean failOnMissingPayloadIndex = false;
     }
     
     @Data
@@ -169,5 +175,11 @@ public class VectorDatabaseConfig {
          * Maximum age of vectors in minutes before cleanup
          */
         private Integer maxVectorAgeMinutes = 1440; // 24 hours
+
+        /**
+         * Explicit override that allows the in-memory vector provider to start when a production
+         * Spring profile is active. This should remain false for real deployments.
+         */
+        private Boolean allowInProduction = false;
     }
 }

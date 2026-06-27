@@ -57,6 +57,9 @@ public final class ConnectorActionMetadataMapper {
         }
 
         ActionAccessMode accessMode = definition.accessMode() != null ? definition.accessMode() : ActionAccessMode.READ;
+        if (definition.readActionResolutionEligible() && !accessMode.isReadOnly()) {
+            throw new IllegalArgumentException("definition.readActionResolutionEligible is only supported for READ actions");
+        }
         return AIActionMetaData.builder()
             .name(definition.name().trim())
             .displayName(StringUtils.hasText(definition.displayName()) ? definition.displayName().trim() : definition.name().trim())

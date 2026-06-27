@@ -44,7 +44,9 @@ These are enriched by the governance `VectorDatabaseService` decorator.
    - Lets governance adapt to capabilities while keeping semantics consistent.
 
 ## Implementation Notes
-- Mode selection depends on `VectorDatabaseService.supportsVectorScan()` and `supportsMetadataFiltering()`.
+- Mode selection depends on `VectorDatabaseService.supportsVectorScan()` and
+  `supportsScanMetadataFiltering()`. The legacy broad `supportsMetadataFiltering()` flag is not
+  specific enough for governance catalog selection because similarity-search filters and paged
+  scan/admin filters can differ by provider.
 - Stable timestamps are injected into metadata on store/update and preserved across updates.
 - SQL catalog scan uses a cursor based on indexed-updated timestamp for paging.
-

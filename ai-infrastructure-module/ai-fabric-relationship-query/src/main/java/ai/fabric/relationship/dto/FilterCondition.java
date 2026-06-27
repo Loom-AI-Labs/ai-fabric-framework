@@ -2,6 +2,8 @@ package ai.fabric.relationship.dto;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.annotation.JsonSetter;
+import com.fasterxml.jackson.annotation.Nulls;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -31,6 +33,7 @@ public class FilterCondition {
      */
     @Builder.Default
     @JsonProperty("operator")
+    @JsonSetter(nulls = Nulls.SKIP)
     private FilterOperator operator = FilterOperator.EQUALS;
 
     /**
@@ -57,9 +60,18 @@ public class FilterCondition {
      */
     @Builder.Default
     @JsonProperty("caseSensitive")
-    private boolean caseSensitive = true;
+    @JsonSetter(nulls = Nulls.SKIP)
+    private Boolean caseSensitive = true;
+
+    public FilterOperator getOperator() {
+        return operator != null ? operator : FilterOperator.EQUALS;
+    }
 
     public boolean isRangeComparison() {
-        return operator == FilterOperator.BETWEEN;
+        return getOperator() == FilterOperator.BETWEEN;
+    }
+
+    public boolean isCaseSensitive() {
+        return !Boolean.FALSE.equals(caseSensitive);
     }
 }

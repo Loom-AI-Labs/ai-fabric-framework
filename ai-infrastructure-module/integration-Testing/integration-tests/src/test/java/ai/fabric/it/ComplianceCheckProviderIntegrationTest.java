@@ -21,20 +21,23 @@ import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.Disabled;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.TestPropertySource;
 
 /**
  * Integration coverage for {@link ComplianceCheckProvider} hook as described in the
  * infrastructure integration test blueprint.
  */
-@Disabled("Disabled due to ApplicationContext loading failures - table creation issues")
 @SpringBootTest(classes = TestApplication.class)
 @ActiveProfiles("test")
+@TestPropertySource(properties = {
+    "ai.governance.enabled=true",
+    "ai.governance.compliance.enabled=true"
+})
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_EACH_TEST_METHOD)
 class ComplianceCheckProviderIntegrationTest {
 
@@ -44,7 +47,7 @@ class ComplianceCheckProviderIntegrationTest {
     @Autowired
     private Clock clock;
 
-    @MockBean
+    @MockitoBean
     private ComplianceCheckProvider complianceCheckProvider;
 
     @BeforeEach

@@ -328,13 +328,22 @@ public class AICapabilityService {
     
     private String getFieldValue(Object entity, String fieldName) {
         try {
-            Field field = entity.getClass().getDeclaredField(fieldName);
-            field.setAccessible(true);
-            Object value = field.get(entity);
+            Object value = getRawFieldValue(entity, fieldName);
             return value != null ? value.toString() : "";
         } catch (Exception e) {
             log.debug("Field not found or accessible: {}", fieldName);
             return "";
+        }
+    }
+
+    private Object getRawFieldValue(Object entity, String fieldName) {
+        try {
+            Field field = entity.getClass().getDeclaredField(fieldName);
+            field.setAccessible(true);
+            return field.get(entity);
+        } catch (Exception e) {
+            log.debug("Field not found or accessible: {}", fieldName);
+            return null;
         }
     }
     
@@ -400,8 +409,8 @@ public class AICapabilityService {
             // Extract metadata from fields
             for (AIMetadataField field : config.getMetadataFields()) {
                 try {
-                    String value = getFieldValue(entity, field.getName());
-                    if (value != null && !value.trim().isEmpty()) {
+                    Object value = coerceMetadataValue(getRawFieldValue(entity, field.getName()), field);
+                    if (value != null && !(value instanceof String stringValue && stringValue.trim().isEmpty())) {
                         metadata.putIfAbsent(field.getName(), value);
                         log.debug("Extracted metadata field {}: {}", field.getName(), value);
                     }
@@ -415,6 +424,36 @@ public class AICapabilityService {
         }
         
         return metadata;
+    }
+
+    private Object coerceMetadataValue(Object rawValue, AIMetadataField field) {
+        if (rawValue == null) {
+            return null;
+        }
+
+        String type = field != null && field.getType() != null
+            ? field.getType().trim().toUpperCase(Locale.ROOT)
+            : "STRING";
+
+        try {
+            return switch (type) {
+                case "BOOLEAN", "BOOL" -> rawValue instanceof Boolean bool
+                    ? bool
+                    : Boolean.parseBoolean(rawValue.toString());
+                case "INTEGER", "INT", "LONG" -> rawValue instanceof Number number
+                    ? number.longValue()
+                    : Long.parseLong(rawValue.toString());
+                case "DOUBLE", "FLOAT", "DECIMAL", "NUMBER" -> rawValue instanceof Number number
+                    ? number.doubleValue()
+                    : Double.parseDouble(rawValue.toString());
+                default -> rawValue.toString();
+            };
+        } catch (RuntimeException ex) {
+            String fieldName = field != null ? field.getName() : "unknown";
+            log.warn("Unable to coerce metadata field {} value {} to configured type {}; storing as string",
+                fieldName, rawValue, type);
+            return rawValue.toString();
+        }
     }
     
     private void persistAnalysisToVector(Object entity, AIEntityConfig config, String analysis) {

@@ -52,6 +52,16 @@ public class PIIDetectionProperties {
     private boolean storeEncryptedOriginal = false;
 
     /**
+     * When {@code true}, detection results may include the raw original payload in
+     * {@code originalQuery} even when PII was detected.
+     *
+     * <p>Defaults to {@code false} so accidental result logging or serialization
+     * does not expose sensitive text. Callers that need recoverability should prefer
+     * {@link #storeEncryptedOriginal}.</p>
+     */
+    private boolean exposeOriginalPayloadInResult = false;
+
+    /**
      * Optional secret used to derive an AES key for encrypting the original
      * payload. When absent, the detector stores a salted SHA-256 hash instead of
      * an encrypted payload.
@@ -187,4 +197,3 @@ public class PIIDetectionProperties {
         INPUT_OUTPUT
     }
 }
-

@@ -2,6 +2,7 @@ package ai.fabric.intent;
 
 import ai.fabric.intent.action.ActionInfo;
 import ai.fabric.intent.action.AvailableActionsRegistry;
+import ai.fabric.intent.orchestration.OrchestrationContext;
 import ai.fabric.spi.BehaviorContextProvider;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
@@ -57,7 +58,7 @@ class SystemContextBuilderTest {
             beanFactoryProvider
         );
 
-        SystemContext context = builder.buildContext("user-123");
+        SystemContext context = builder.buildContext(OrchestrationContext.forUser("user-123"));
 
         assertThat(context.getAvailableActions()).hasSize(1);
         assertThat(context.getKnowledgeBaseOverview().getTotalIndexedDocuments()).isEqualTo(42);

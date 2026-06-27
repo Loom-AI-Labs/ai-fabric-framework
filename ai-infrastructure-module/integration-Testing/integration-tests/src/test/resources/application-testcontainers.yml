@@ -8,14 +8,34 @@
 testcontainers:
   enabled: true
 
+spring:
+  autoconfigure:
+    exclude:
+      - org.springframework.ai.model.google.genai.autoconfigure.chat.GoogleGenAiChatAutoConfiguration
+      - org.springframework.ai.model.google.genai.autoconfigure.embedding.GoogleGenAiEmbeddingConnectionAutoConfiguration
+      - org.springframework.ai.model.google.genai.autoconfigure.embedding.GoogleGenAiTextEmbeddingAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiAudioSpeechAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiAudioTranscriptionAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiChatAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiEmbeddingAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiImageAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiModerationAutoConfiguration
+      - org.springframework.ai.model.anthropic.autoconfigure.AnthropicChatAutoConfiguration
+  ai:
+    model:
+      chat: none
+      embedding: none
+      embedding.text: none
+
 # Vector database type - defaults to lucene if not specified
-# To use Testcontainers, specify a container type: -Dai.vector-db.type=milvus
-# Supported container types: milvus, qdrant, weaviate, chroma, pgvector
+# To use Testcontainers with a shipped AI Fabric vector provider module, specify:
+# -Dai.vector-db.type=milvus, qdrant, or weaviate
+# Chroma and pgvector entries below are generic future-provider fixtures only.
 # If not specified or set to lucene/memory, Testcontainers will not activate
 ai:
   providers:
-    # Enable all vector database providers for integration tests
-    # This allows Testcontainers to use any provider without additional configuration
+    # Enable vector provider configuration blocks for integration tests.
+    # Chroma/pgvector do not currently have AI Fabric vector provider modules.
     milvus:
       enabled: true
     qdrant:

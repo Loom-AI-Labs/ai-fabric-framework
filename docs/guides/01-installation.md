@@ -6,7 +6,7 @@ This guide gets AI Fabric onto your build path and your first AI-enabled bean wi
 
 - **Java 21**
 - **Maven 3.9+**
-- **Spring Boot 3.2.x**
+- **Spring Boot 4.1.x**
 
 AI Fabric is distributed as ordinary Maven artifacts on **Maven Central** under the group
 `io.github.loom-ai-labs` — no extra repository configuration is needed.
@@ -22,7 +22,7 @@ versions on individual dependencies. Import it in `dependencyManagement`:
     <dependency>
       <groupId>io.github.loom-ai-labs</groupId>
       <artifactId>ai-fabric-bom</artifactId>
-      <version>0.2.1</version>
+      <version>0.3.0</version>
       <type>pom</type>
       <scope>import</scope>
     </dependency>
@@ -46,7 +46,7 @@ The **starter** brings in the core auto-configuration. Then add one **LLM provid
   <!-- An LLM provider (choose one or more) -->
   <dependency>
     <groupId>io.github.loom-ai-labs</groupId>
-    <artifactId>ai-fabric-provider-openai</artifactId>
+    <artifactId>ai-fabric-provider-spring-ai</artifactId>
   </dependency>
 
   <!-- Local embeddings via ONNX (no API calls) -->

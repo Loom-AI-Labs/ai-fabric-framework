@@ -341,17 +341,18 @@ public class ONNXEmbeddingProvider implements EmbeddingProvider {
     
     @Override
     public AIEmbeddingResponse generateEmbedding(AIEmbeddingRequest request) {
+        String text = requireEmbeddingText(request);
         sessionLock.lock();
         try {
             if (!isAvailable()) {
                 throw new AIServiceException("ONNX Embedding Provider is not available");
             }
             
-            log.debug("Generating embedding using ONNX for text: {}", request.getText());
+            log.debug("Generating embedding using ONNX for text: {}", text);
             
             long startTime = System.currentTimeMillis();
             
-            TokenizationResult tokenization = tokenizeText(request.getText());
+            TokenizationResult tokenization = tokenizeText(text);
             long[] inputIds = tokenization.getInputIds();
             long[] attentionMask = tokenization.getAttentionMask();
             long[] tokenTypeIds = tokenization.getTokenTypeIds();
@@ -412,6 +413,8 @@ public class ONNXEmbeddingProvider implements EmbeddingProvider {
                 }
             }
             
+        } catch (AIServiceException e) {
+            throw e;
         } catch (Exception e) {
             log.error("Error generating ONNX embedding", e);
             throw new AIServiceException("Failed to generate ONNX embedding", e);
@@ -425,11 +428,12 @@ public class ONNXEmbeddingProvider implements EmbeddingProvider {
         if (texts == null || texts.isEmpty()) {
             return Collections.emptyList();
         }
+        List<String> validatedTexts = requireEmbeddingTexts(texts);
         
-        if (texts.size() == 1) {
+        if (validatedTexts.size() == 1) {
             // Single item - use single embedding method
             AIEmbeddingRequest request = AIEmbeddingRequest.builder()
-                .text(texts.get(0))
+                .text(validatedTexts.getFirst())
                 .model("onnx")
                 .build();
             return Collections.singletonList(generateEmbedding(request));
@@ -442,12 +446,12 @@ public class ONNXEmbeddingProvider implements EmbeddingProvider {
                 throw new AIServiceException("ONNX Embedding Provider is not available");
             }
             
-            log.debug("Generating {} embeddings using ONNX batch processing", texts.size());
+            log.debug("Generating {} embeddings using ONNX batch processing", validatedTexts.size());
             
             long startTime = System.currentTimeMillis();
             
-            List<TokenizationResult> tokenizations = new ArrayList<>(texts.size());
-            for (String text : texts) {
+            List<TokenizationResult> tokenizations = new ArrayList<>(validatedTexts.size());
+            for (String text : validatedTexts) {
                 tokenizations.add(tokenizeText(text));
             }
 
@@ -486,20 +490,22 @@ public class ONNXEmbeddingProvider implements EmbeddingProvider {
                 batchInputs.put("attention_mask", attentionMaskTensor);
                 batchInputs.put("token_type_ids", tokenTypeIdsTensor);
                 
-                // Run batch inference (single call for all texts)
-                OrtSession.Result batchOutput = ortSession.run(batchInputs);
-                
-                // Extract batch embeddings
-                OnnxValue embeddingValue = batchOutput.get(0);
                 float[][] batchEmbeddings;
+                OrtSession.Result batchOutput = ortSession.run(batchInputs);
                 try {
-                    batchEmbeddings = extractBatchEmbeddings(embeddingValue, tokenizations);
-                } catch (OrtException ex) {
-                    throw new AIServiceException("Failed to extract ONNX batch embedding output", ex);
+                    // Extract batch embeddings
+                    OnnxValue embeddingValue = batchOutput.get(0);
+                    try {
+                        batchEmbeddings = extractBatchEmbeddings(embeddingValue, tokenizations);
+                    } catch (OrtException ex) {
+                        throw new AIServiceException("Failed to extract ONNX batch embedding output", ex);
+                    }
+                } finally {
+                    batchOutput.close();
                 }
                 
                 // Convert to responses
-                List<AIEmbeddingResponse> responses = new ArrayList<>();
+                List<AIEmbeddingResponse> responses = new ArrayList<>(batchSize);
                 long processingTime = System.currentTimeMillis() - startTime;
                 
                 for (int i = 0; i < batchSize; i++) {
@@ -516,14 +522,10 @@ public class ONNXEmbeddingProvider implements EmbeddingProvider {
                         .requestId(UUID.randomUUID().toString())
                         .build());
                 }
-                
-                // Cleanup
-                batchOutput.close();
-                
                 log.debug("Successfully generated {} ONNX embeddings in batch in {}ms (avg {}ms per embedding)", 
                          batchSize, processingTime, processingTime / batchSize);
                 
-                return responses;
+                return List.copyOf(responses);
                 
             } finally {
                 // Cleanup tensors
@@ -532,6 +534,8 @@ public class ONNXEmbeddingProvider implements EmbeddingProvider {
                 if (tokenTypeIdsTensor != null) tokenTypeIdsTensor.close();
             }
             
+        } catch (AIServiceException e) {
+            throw e;
         } catch (Exception e) {
             log.error("Error generating batch ONNX embeddings", e);
             throw new AIServiceException("Failed to generate batch ONNX embeddings", e);
@@ -710,6 +714,31 @@ public class ONNXEmbeddingProvider implements EmbeddingProvider {
             }
         }
         return fallbackTokenize(text);
+    }
+
+    private String requireEmbeddingText(AIEmbeddingRequest request) {
+        if (request == null || request.getText() == null || request.getText().isBlank()) {
+            throw new IllegalArgumentException("Embedding text cannot be blank");
+        }
+        if (request.getText().length() > 8000) {
+            throw new IllegalArgumentException("Embedding text cannot exceed 8000 characters");
+        }
+        return request.getText();
+    }
+
+    private List<String> requireEmbeddingTexts(List<String> texts) {
+        List<String> validated = new ArrayList<>(texts.size());
+        for (int i = 0; i < texts.size(); i++) {
+            String text = texts.get(i);
+            if (text == null || text.isBlank()) {
+                throw new IllegalArgumentException("Embedding text at index " + i + " cannot be blank");
+            }
+            if (text.length() > 8000) {
+                throw new IllegalArgumentException("Embedding text at index " + i + " cannot exceed 8000 characters");
+            }
+            validated.add(text);
+        }
+        return List.copyOf(validated);
     }
 
     private TokenizationResult tokenizeWithTokenizer(String text) throws Exception {

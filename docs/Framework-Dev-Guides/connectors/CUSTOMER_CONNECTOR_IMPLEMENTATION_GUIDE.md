@@ -11,11 +11,11 @@ Reference:
 
 ---
 
-## Status (as of 2026-02-13)
+## Status (as of 2026-06-19)
 
-- **Implemented in AI Fabric:** `ai-infrastructure-actions-connector` calls `/actions/execute`, parses the `ActionResult` contract, generates idempotency keys, and performs bounded retries.
-- **Implemented in AI Fabric:** `ai-infrastructure-retrieval-connector` calls `/retrieval/search` and returns documents/chunks via the `RAGProvider` contract.
-- **Reference implementation available:** `ai-infrastructure-relay` implements the Customer Connector API with inbound auth + replay protection + rate limits + idempotency (in-memory by default; Redis backend supported).
+- **Implemented in AI Fabric:** `ai-fabric-actions-connector` calls `/actions/execute`, parses the `ActionResult` contract, generates idempotency keys, and performs bounded retries.
+- **Implemented in AI Fabric:** `ai-fabric-retrieval-connector` calls `/retrieval/search` and returns documents/chunks via the `RAGProvider` contract.
+- **Reference implementation available:** `ai-fabric-relay` implements the Customer Connector API with inbound auth + replay protection + rate limits + idempotency (in-memory by default; Redis backend supported).
 
 ---
 
@@ -38,8 +38,10 @@ Request fields:
 ### 1.2 (Optional) `POST /retrieval/search` (documents only)
 
 If you want to own retrieval:
-- return **documents/chunks only** (no generated answer)
+- return **documents/chunks only**; do not return generated answers, prompt fields, or tool instructions
 - AI Fabric will generate and orchestrate
+- AI Fabric rejects successful retrieval responses that include top-level generation/prompt/tool fields
+  with `errorCode=INVALID_RESPONSE`
 
 ---
 
@@ -119,6 +121,8 @@ Guidelines:
 - `message` must be user-safe
 - `errorCode` must be stable
 - avoid stack traces and internal error details
+- prefer HTTP 200 for handled business failures and encode the failure in the `ActionResult` body
+- reserve non-2xx HTTP statuses for protocol/auth/transport failures
 
 Recommended `errorCode`s:
 - `INVALID_PARAMETER`
@@ -130,6 +134,7 @@ Recommended `errorCode`s:
 - `RATE_LIMITED`
 - `TIMEOUT`
 - `SERVICE_UNAVAILABLE`
+- `INVALID_RESPONSE`
 - `IDEMPOTENCY_CONFLICT`
 - `ACTION_EXECUTION_FAILED`
 
@@ -137,6 +142,10 @@ AI Fabric hosted runtime derives retry behavior from `errorCode` + idempotency s
 
 Note:
 - The `ActionResult` contract does **not** include a `retriable` boolean. Do not add custom fields; keep the response strictly compatible with the OpenAPI schema.
+- AI Fabric treats non-2xx HTTP status as authoritative. A non-2xx response with `success=true` is still handled as a failure; a non-2xx response with `success=false` preserves the structured `errorCode` and user-safe `message` when possible.
+- AI Fabric validates `HTTP 200` + `success=true` payloads. Malformed successful `data` fails closed
+  as `INVALID_RESPONSE`; malformed optional `data` on `success=false` is ignored so the original
+  handled failure remains visible.
 
 ---
 
@@ -157,6 +166,9 @@ If you return a list-style result, you must use the reserved keys:
 - optional `_totalCount`, `_cursor` for pagination
 
 Do not invent custom pagination keys.
+
+Malformed list payloads on successful responses are treated as connector contract bugs, not transient
+outages. Fix the connector response shape rather than retrying.
 
 ---
 
@@ -191,6 +203,7 @@ Rule:
 - PII safety: `message` never leaks secrets, logs don’t contain sensitive params
 
 ### Retrieval (optional)
-- Always returns documents/chunks only (no generated answers)
+- Always returns documents/chunks only; no generated answers, prompt fields, or tool instructions
+- Forbidden generation/prompt/tool fields fail closed with `INVALID_RESPONSE`
 - Ordering is stable (score descending)
 - Cursor pagination works (when implemented)

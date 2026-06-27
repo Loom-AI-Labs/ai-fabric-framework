@@ -11,7 +11,7 @@ The foundational structure of the Subscription Management Hub has been implement
 ## What Has Been Implemented
 
 ### ✅ 1. Project Structure
-- Maven-based Spring Boot 3.2.0 project
+- Maven-based Spring Boot 4.1.0 project
 - Java 21
 - AI Fabric Framework dependencies configured
 - Application configuration files

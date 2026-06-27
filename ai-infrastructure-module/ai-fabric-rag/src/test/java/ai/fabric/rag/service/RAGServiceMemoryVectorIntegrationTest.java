@@ -7,6 +7,7 @@ import ai.fabric.dto.AIEmbeddingRequest;
 import ai.fabric.dto.AIEmbeddingResponse;
 import ai.fabric.dto.RAGRequest;
 import ai.fabric.dto.RAGResponse;
+import ai.fabric.dto.VectorRecord;
 import ai.fabric.embedding.EmbeddingProvider;
 import ai.fabric.search.VectorSearchService;
 import ai.fabric.service.VectorManagementService;
@@ -103,7 +104,47 @@ class RAGServiceMemoryVectorIntegrationTest {
         assertThat(response.getContext()).isEqualTo("No relevant context found.");
     }
 
+    @Test
+    void reindexingSameEntityUpdatesMemoryVectorInsteadOfDuplicating() {
+        OfflineRagHarness harness = offlineRagHarness();
+
+        harness.ragService().indexContent(
+            "faq",
+            "faq-headset",
+            "Wireless headset Bluetooth setup guide with old details.",
+            Map.of("category", "audio", "revision", "old")
+        );
+        harness.ragService().indexContent(
+            "faq",
+            "faq-headset",
+            "Wireless headset Bluetooth setup guide with updated warranty details.",
+            Map.of("category", "audio", "revision", "updated")
+        );
+
+        assertThat(harness.vectorStore().getVectorCountByEntityType("faq")).isEqualTo(1);
+        VectorRecord stored = harness.vectorStore().getVectorByEntity("faq", "faq-headset").orElseThrow();
+        assertThat(stored.getContent()).contains("updated warranty");
+        assertThat(stored.getMetadata()).containsEntry("revision", "updated");
+        assertThat(stored.getVersion()).isEqualTo(2);
+
+        RAGResponse response = harness.ragService().performRag(RAGRequest.builder()
+            .query("wireless headset bluetooth warranty")
+            .entityType("faq")
+            .limit(10)
+            .threshold(0.0)
+            .build());
+
+        assertThat(response.getSuccess()).isTrue();
+        assertThat(response.getDocuments()).hasSize(1);
+        assertThat(response.getDocuments().get(0).getContent()).contains("updated warranty");
+        assertThat(response.getDocuments().get(0).getMetadata()).containsEntry("revision", "updated");
+    }
+
     private RAGService offlineRagService() {
+        return offlineRagHarness().ragService();
+    }
+
+    private OfflineRagHarness offlineRagHarness() {
         AIProviderConfig config = new AIProviderConfig();
         config.setEmbeddingProvider("smoke");
 
@@ -123,7 +164,13 @@ class RAGServiceMemoryVectorIntegrationTest {
         AISearchService searchService = new AISearchService(config, vectorSearchService, vectorManagementService);
         VectorDatabase vectorDatabase = new VectorDatabaseServiceAdapter(vectorStore);
 
-        return new RAGService(config, embeddingService, vectorStore, vectorDatabase, searchService, null);
+        return new OfflineRagHarness(
+            new RAGService(config, embeddingService, vectorStore, vectorDatabase, searchService, null),
+            vectorStore
+        );
+    }
+
+    private record OfflineRagHarness(RAGService ragService, InMemoryVectorDatabaseService vectorStore) {
     }
 
     private static final class SmokeKeywordEmbeddingProvider implements EmbeddingProvider {

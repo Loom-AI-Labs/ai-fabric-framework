@@ -19,8 +19,8 @@ cd ai-infrastructure-module/integration-Testing/integration-tests
 ```bash
 cd ai-infrastructure-module
 
-# Install dependencies first (skip tests) so running a single module doesn't trigger unrelated module tests.
-mvn clean install -DskipTests
+# Install dependencies first with normal unit tests.
+mvn clean install
 
 # Clean up any existing Lucene locks
 rm -rf integration-Testing/integration-tests/data/lucene-vector-index \
@@ -50,7 +50,7 @@ mvn -pl integration-Testing/integration-tests test \
 ```bash
 cd ai-infrastructure-module
 
-mvn clean install -DskipTests
+mvn clean install
 
 rm -rf integration-Testing/integration-tests/data/lucene-vector-index \
        integration-Testing/integration-tests/data/test-lucene-index \

@@ -21,12 +21,12 @@ Read them in order, or jump to what you need.
 ## At a glance
 
 - **Coordinates:** group `io.github.loom-ai-labs`, BOM `ai-fabric-bom`, modules `ai-fabric-*`.
-- **Latest version:** `0.2.1`.
+- **Latest version:** `0.3.0`.
 - **Java packages:** `ai.fabric.*`.
-- **Requirements:** Java 21, Maven 3.9+, Spring Boot 3.2.x.
+- **Requirements:** Java 21, Maven 3.9+, Spring Boot 4.1.x.
 - **Entry point:** annotate a Spring Boot app with `@EnableAIInfrastructure` and add the starter.
 
-## Try it in 30 seconds (no keys required)
+## Try it locally (no keys required)
 
 Every bundled example can boot fully offline with the `smoke` profile — no API keys, no external
 services:
@@ -34,8 +34,8 @@ services:
 ```bash
 git clone https://github.com/loom-ai-labs/ai-fabric-framework.git
 cd ai-fabric-framework
-mvn -f ai-infrastructure-module/pom.xml -q -DskipTests install
-mvn -f examples/real-apps/pom.xml -q -DskipTests install
+mvn -f ai-infrastructure-module/pom.xml -q install
+mvn -f examples/real-apps/pom.xml -q install
 mvn -pl smart-faq-assistant -f examples/real-apps/pom.xml \
     spring-boot:run -Dspring-boot.run.profiles=smoke
 ```

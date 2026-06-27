@@ -7,14 +7,14 @@
     <parent>
         <groupId>io.github.loom-ai-labs</groupId>
         <artifactId>ai-fabric-bom</artifactId>
-        <version>0.2.1</version>
+        <version>0.3.0</version>
         <relativePath>../pom.xml</relativePath>
     </parent>
 
     <artifactId>ai-fabric-pii</artifactId>
     <packaging>jar</packaging>
 
-    <name>AI Infrastructure PII Module</name>
+    <name>AI Fabric PII Module</name>
     <description>Optional PII detection auto-configuration for AI Fabric.</description>
 
     <dependencies>
@@ -27,6 +27,11 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-autoconfigure</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-api</artifactId>
         </dependency>
 
         <dependency>
@@ -48,4 +53,3 @@
         </dependency>
     </dependencies>
 </project>
-

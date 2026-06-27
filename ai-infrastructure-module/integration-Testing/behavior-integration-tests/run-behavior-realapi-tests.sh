@@ -185,8 +185,8 @@ if [ "${CI:-false}" != "true" ] && [ "${GITHUB_ACTIONS:-false}" != "true" ]; the
   PARENT_DIR="${PROJECT_ROOT}"
   CORE_TARGET="${PARENT_DIR}/ai-fabric-core/target"
   if [ ! -d "$CORE_TARGET" ]; then
-    print_warning "Dependencies not built; running mvn clean install -DskipTests"
-    cd "$PARENT_DIR" && mvn clean install -DskipTests -B -q
+    print_warning "Dependencies not built; running mvn clean install"
+    cd "$PARENT_DIR" && mvn clean install -B -q
     print_success "Dependencies built"
   fi
 else
@@ -195,6 +195,9 @@ fi
 
 print_header "Executing Tests"
 cd "$SCRIPT_DIR"
+
+print_info "Refreshing compiled test module classes"
+mvn -q --no-transfer-progress -DskipTests -DskipITs clean test-compile
 
 # Build Maven command
 CMD="mvn -P${MAVEN_PROFILE} -Dspring.profiles.active=${MAVEN_PROFILE} -DforkCount=1 -DreuseForks=false"
@@ -268,6 +271,12 @@ fi
 
 print_info "RealAPI thresholds: minSuccessRate=${AI_PROVIDERS_REAL_API_MINIMUM_SUCCESS_RATE:-0.85}, minConsideredTests=${AI_PROVIDERS_REAL_API_MINIMUM_CONSIDERED_TESTS:-20}"
 
+REPORTS_DIR="${SCRIPT_DIR}/target/failsafe-reports"
+SCORECARD_DIR="${SCRIPT_DIR}/target/provider-matrix-reports"
+SCORECARD_FILE="behavior-realapi-${AI_INFRASTRUCTURE_LLM_PROVIDER}-${AI_INFRASTRUCTURE_EMBEDDING_PROVIDER}-${AI_INFRASTRUCTURE_VECTOR_DATABASE:-none}.json"
+SCORECARD_PATH="${SCORECARD_DIR}/${SCORECARD_FILE}"
+rm -rf "$REPORTS_DIR" "$SCORECARD_DIR"
+
 start_time=$(date +%s)
 set +e
 eval "$CMD -Dmaven.test.failure.ignore=true"
@@ -281,11 +290,6 @@ if [ $mvn_exit -ne 0 ]; then
   print_error "Behavior RealAPI suite failed to execute (${duration}s)"
   exit $mvn_exit
 fi
-
-REPORTS_DIR="${SCRIPT_DIR}/target/failsafe-reports"
-SCORECARD_DIR="${SCRIPT_DIR}/target/provider-matrix-reports"
-SCORECARD_FILE="behavior-realapi-${AI_INFRASTRUCTURE_LLM_PROVIDER}-${AI_INFRASTRUCTURE_EMBEDDING_PROVIDER}-${AI_INFRASTRUCTURE_VECTOR_DATABASE:-none}.json"
-SCORECARD_PATH="${SCORECARD_DIR}/${SCORECARD_FILE}"
 
 set +e
 bash "$FAILSAFE_EVALUATOR" \

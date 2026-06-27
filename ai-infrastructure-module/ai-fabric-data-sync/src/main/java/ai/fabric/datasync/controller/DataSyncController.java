@@ -24,7 +24,7 @@ import org.slf4j.LoggerFactory;
  * Push-based data sync API for managed vector databases.
  */
 @RestController
-@RequestMapping("/api/ai/data-sync")
+@RequestMapping("${ai.data-sync.base-path:/api/ai/data-sync}")
 @ConditionalOnProperty(prefix = "ai.data-sync", name = "enabled", havingValue = "true")
 @ConditionalOnBean(DataSyncService.class)
 public class DataSyncController {

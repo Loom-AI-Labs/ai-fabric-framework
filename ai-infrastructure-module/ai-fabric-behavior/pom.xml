@@ -7,13 +7,13 @@
     <parent>
         <groupId>io.github.loom-ai-labs</groupId>
         <artifactId>ai-fabric-bom</artifactId>
-        <version>0.2.1</version>
+        <version>0.3.0</version>
     </parent>
 
     <artifactId>ai-fabric-behavior</artifactId>
     <packaging>jar</packaging>
 
-    <name>AI Infrastructure Behavior Module</name>
+    <name>AI Fabric Behavior Module</name>
     <description>Behavior analysis and insight generation extension for AI Fabric.</description>
 
     <dependencies>
@@ -63,6 +63,11 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-jpa-test</artifactId>
             <scope>test</scope>
         </dependency>
         <dependency>

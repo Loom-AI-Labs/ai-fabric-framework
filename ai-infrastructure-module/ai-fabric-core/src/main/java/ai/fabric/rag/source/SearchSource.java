@@ -26,6 +26,10 @@ public interface SearchSource {
         return source().getAttributionLabel();
     }
 
+    default boolean supportsHybridSearch() {
+        return false;
+    }
+
     boolean isEligible(RAGRequest request);
 
     AISearchResponse search(List<Double> queryVector, RAGRequest ragRequest, AISearchRequest baseSearchRequest);

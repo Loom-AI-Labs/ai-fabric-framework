@@ -312,6 +312,7 @@ public class ConnectorActionCatalogLoader {
             ? readBoolean(raw, KEY_GROUNDING_ELIGIBLE, false)
             : defaultGroundingEligible(accessMode);
         boolean readActionResolutionEligible = readBoolean(raw, KEY_READ_ACTION_RESOLUTION_ELIGIBLE, false);
+        validateReadActionResolutionEligibility(accessMode, readActionResolutionEligible, label, name);
         ActionResultPresentationHint resultPresentationHint = parseResultPresentationHint(
             readString(raw, KEY_RESULT_PRESENTATION_HINT),
             accessMode,
@@ -677,7 +678,18 @@ public class ConnectorActionCatalogLoader {
     }
 
     private boolean defaultGroundingEligible(ActionAccessMode accessMode) {
-        return accessMode == ActionAccessMode.READ || accessMode == ActionAccessMode.READ_WRITE;
+        return accessMode != null && accessMode.isGroundingEligibleByDefault();
+    }
+
+    private void validateReadActionResolutionEligibility(ActionAccessMode accessMode,
+                                                         boolean readActionResolutionEligible,
+                                                         String label,
+                                                         String actionName) {
+        if (readActionResolutionEligible && (accessMode == null || !accessMode.isReadOnly())) {
+            throw new IllegalStateException("Invalid action contract in " + label
+                + " for action '" + actionName
+                + "': readActionResolutionEligible is only supported for READ actions.");
+        }
     }
 
     private ActionResultPresentationHint parseResultPresentationHint(String raw,

@@ -24,6 +24,15 @@ final class RAGSearchExecutor {
     private static final int DEFAULT_RESULT_LIMIT = 10;
     private static final int MAX_MERGED_RESULTS_MULTIPLIER = 20;
     private static final int MAX_MERGED_RESULTS_CAP = 250;
+    private static final String SEARCH_PATH_DEFAULT_SEMANTIC = "default_semantic";
+    private static final String SEARCH_PATH_VECTOR_DATABASE_HYBRID = "vector_database_hybrid";
+    private static final String SEARCH_PATH_VECTOR_DATABASE_CONTEXTUAL = "vector_database_contextual";
+    private static final String SEARCH_PATH_SEARCH_SOURCE_REGISTRY = "search_source_registry";
+    private static final String HYBRID_MODE_NOT_REQUESTED = "not_requested";
+    private static final String HYBRID_MODE_NATIVE = "native";
+    private static final String HYBRID_MODE_FALLBACK_VECTOR = "fallback_vector";
+    private static final String HYBRID_MODE_SEARCH_SOURCE = "search_source";
+    private static final String HYBRID_MODE_NOT_REPORTED_BY_SOURCES = "not_reported_by_sources";
 
     private final VectorDatabaseService vectorDatabaseService;
     private final AISearchService searchService;
@@ -43,23 +52,48 @@ final class RAGSearchExecutor {
                                             boolean honorSearchMode) {
         if (searchSourceRegistry == null) {
             if (honorSearchMode && Boolean.TRUE.equals(ragRequest.getEnableHybridSearch())) {
+                boolean providerSupportsHybrid = vectorDatabaseService.supportsHybridSearch();
                 AISearchResponse response = vectorDatabaseService.hybridSearch(
                     queryVector,
                     ragRequest.getQuery(),
                     baseSearchRequest
                 );
-                return SearchExecutionAggregate.singleResponse(response);
+                return SearchExecutionAggregate.singleResponse(
+                    response,
+                    SEARCH_PATH_VECTOR_DATABASE_HYBRID,
+                    providerSupportsHybrid ? HYBRID_MODE_NATIVE : HYBRID_MODE_FALLBACK_VECTOR,
+                    true,
+                    providerSupportsHybrid,
+                    false,
+                    providerSupportsHybrid
+                );
             }
             if (honorSearchMode && Boolean.TRUE.equals(ragRequest.getEnableContextualSearch())) {
                 AISearchRequest contextualRequest = contextualSearchRequest(baseSearchRequest, ragRequest);
-                return SearchExecutionAggregate.singleResponse(vectorDatabaseService.search(queryVector, contextualRequest));
+                return SearchExecutionAggregate.singleResponse(
+                    vectorDatabaseService.search(queryVector, contextualRequest),
+                    SEARCH_PATH_VECTOR_DATABASE_CONTEXTUAL,
+                    HYBRID_MODE_NOT_REQUESTED,
+                    false,
+                    false,
+                    true,
+                    vectorDatabaseService.supportsHybridSearch()
+                );
             }
-            return SearchExecutionAggregate.singleResponse(searchService.search(queryVector, baseSearchRequest));
+            return SearchExecutionAggregate.singleResponse(
+                searchService.search(queryVector, baseSearchRequest),
+                SEARCH_PATH_DEFAULT_SEMANTIC,
+                HYBRID_MODE_NOT_REQUESTED,
+                false,
+                false,
+                false,
+                vectorDatabaseService.supportsHybridSearch()
+            );
         }
 
         List<SearchSource> sources = searchSourceRegistry.resolveSearchSources(ragRequest);
         if (sources == null || sources.isEmpty()) {
-            return SearchExecutionAggregate.empty(baseSearchRequest);
+            return SearchExecutionAggregate.empty(baseSearchRequest, ragRequest);
         }
 
         long startTime = System.currentTimeMillis();
@@ -72,9 +106,14 @@ final class RAGSearchExecutor {
         int succeededCount = 0;
         int failedCount = 0;
         int skippedCount = 0;
+        boolean hybridRequested = Boolean.TRUE.equals(ragRequest.getEnableHybridSearch());
+        boolean sourceHybridSucceeded = false;
 
         for (SearchSource source : sources) {
             Map<String, Object> diagnostic = baseSearchSourceDiagnostic(source);
+            boolean sourceSupportsHybrid = source.supportsHybridSearch();
+            diagnostic.put("supportsHybridSearch", sourceSupportsHybrid);
+            diagnostic.put("hybridSearchRequested", hybridRequested);
             if (!source.isEligible(ragRequest)) {
                 diagnostic.put("eligible", false);
                 diagnostic.put("status", "SKIPPED");
@@ -108,16 +147,23 @@ final class RAGSearchExecutor {
                 if (response.getMaxScore() != null) {
                     diagnostic.put("maxScore", response.getMaxScore());
                 }
+                if (hybridRequested && sourceSupportsHybrid) {
+                    sourceHybridSucceeded = true;
+                    diagnostic.put("hybridSearchUsed", true);
+                } else {
+                    diagnostic.put("hybridSearchUsed", false);
+                }
                 sourceDiagnostics.add(immutableDiagnostic(diagnostic));
                 succeededCount++;
             } catch (Exception ex) {
                 long sourceProcessingTimeMs = System.currentTimeMillis() - sourceStartTime;
                 log.warn(
-                    "Search source {} ({}) failed; continuing degraded retrieval",
+                    "Search source {} ({}) failed; continuing degraded retrieval: {}",
                     source.sourceId(),
                     source.adapterType(),
-                    ex
+                    ex.getMessage()
                 );
+                log.debug("Search source failure details", ex);
                 diagnostic.put("eligible", true);
                 diagnostic.put("status", "FAILED");
                 diagnostic.put("reason", "search_error");
@@ -151,7 +197,14 @@ final class RAGSearchExecutor {
             succeededCount,
             failedCount,
             skippedCount,
-            failedCount > 0
+            failedCount > 0,
+            SEARCH_PATH_SEARCH_SOURCE_REGISTRY,
+            hybridRequested && sourceHybridSucceeded ? HYBRID_MODE_SEARCH_SOURCE :
+                (hybridRequested ? HYBRID_MODE_NOT_REPORTED_BY_SOURCES : HYBRID_MODE_NOT_REQUESTED),
+            hybridRequested,
+            hybridRequested && sourceHybridSucceeded,
+            false,
+            false
         );
         searchSourceRegistry.recordSearchExecution(aggregate.sourceDiagnostics(), aggregate.degraded());
         return aggregate;
@@ -245,9 +298,33 @@ final class RAGSearchExecutor {
                                     int succeededSourceCount,
                                     int failedSourceCount,
                                     int skippedSourceCount,
-                                    boolean degraded) {
+                                    boolean degraded,
+                                    String searchExecutionPath,
+                                    String hybridSearchMode,
+                                    boolean hybridSearchRequested,
+                                    boolean hybridSearchUsed,
+                                    boolean contextualSearchUsed,
+                                    boolean vectorProviderSupportsHybridSearch) {
 
         static SearchExecutionAggregate singleResponse(AISearchResponse response) {
+            return singleResponse(
+                response,
+                SEARCH_PATH_DEFAULT_SEMANTIC,
+                HYBRID_MODE_NOT_REQUESTED,
+                false,
+                false,
+                false,
+                false
+            );
+        }
+
+        static SearchExecutionAggregate singleResponse(AISearchResponse response,
+                                                       String searchExecutionPath,
+                                                       String hybridSearchMode,
+                                                       boolean hybridSearchRequested,
+                                                       boolean hybridSearchUsed,
+                                                       boolean contextualSearchUsed,
+                                                       boolean vectorProviderSupportsHybridSearch) {
             return new SearchExecutionAggregate(
                 response,
                 List.of(),
@@ -257,11 +334,18 @@ final class RAGSearchExecutor {
                 0,
                 0,
                 0,
-                false
+                false,
+                searchExecutionPath,
+                hybridSearchMode,
+                hybridSearchRequested,
+                hybridSearchUsed,
+                contextualSearchUsed,
+                vectorProviderSupportsHybridSearch
             );
         }
 
-        static SearchExecutionAggregate empty(AISearchRequest request) {
+        static SearchExecutionAggregate empty(AISearchRequest request, RAGRequest ragRequest) {
+            boolean hybridRequested = Boolean.TRUE.equals(ragRequest.getEnableHybridSearch());
             return new SearchExecutionAggregate(
                 AISearchResponse.builder()
                     .results(List.of())
@@ -277,6 +361,12 @@ final class RAGSearchExecutor {
                 0,
                 0,
                 0,
+                false,
+                SEARCH_PATH_SEARCH_SOURCE_REGISTRY,
+                hybridRequested ? HYBRID_MODE_NOT_REPORTED_BY_SOURCES : HYBRID_MODE_NOT_REQUESTED,
+                hybridRequested,
+                false,
+                false,
                 false
             );
         }

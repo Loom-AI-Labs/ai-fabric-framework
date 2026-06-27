@@ -12,8 +12,8 @@ in-process embeddings, an in-memory vector store, and H2).
 
 ```bash
 # build the framework and the suite once
-mvn -f ai-infrastructure-module/pom.xml -q -DskipTests install
-mvn -f examples/real-apps/pom.xml -q -DskipTests install
+mvn -f ai-infrastructure-module/pom.xml -q install
+mvn -f examples/real-apps/pom.xml -q install
 
 # run an app under the smoke profile
 mvn -pl <app> -f examples/real-apps/pom.xml spring-boot:run -Dspring-boot.run.profiles=smoke
@@ -37,7 +37,7 @@ configuration/keys instead.
 | **migration-enabled-product-catalog** | Bulk backfill indexing | migration, indexing, vector-lucene | None (H2 + local embeddings) |
 | **behavior-churn-signals** | Churn + sentiment insights | behavior | None (offline local LLM) |
 | **ecommerce-store** | Domain API used as a base for AI demos | (domain only) | None |
-| **sub-management-hub** / **-simple** | AI-powered subscription management | rag, provider-cohere, vector-lucene | A Cohere key |
+| **sub-management-hub** / **-simple** | AI-powered subscription management | rag, provider-spring-ai, vector-lucene | An OpenAI key for live LLM behavior |
 
 > `smoke-support` is a shared helper module, not a runnable app.
 

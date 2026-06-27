@@ -30,6 +30,8 @@ import org.springframework.validation.annotation.Validated;
  *     enabled: true
  *     default-expansion-level: 3
  *     default-reranking-strategy: semantic
+ *     max-parallel-searches: 4
+ *     max-semantic-rerank-documents: 100
  * }</pre>
  * 
  * @author AI Infrastructure Team
@@ -179,6 +181,23 @@ public class RAGProperties {
         @Min(1)
         @Max(100)
         private int maxResultsPerQuery = 20;
+
+        /**
+         * Maximum number of expanded-query searches to run concurrently.
+         * Default: 4
+         */
+        @Min(1)
+        @Max(64)
+        private int maxParallelSearches = 4;
+
+        /**
+         * Maximum number of retrieved documents to embed during semantic re-ranking.
+         * Documents beyond this cap are preserved after the semantically scored candidates.
+         * Default: 100
+         */
+        @Min(1)
+        @Max(1000)
+        private int maxSemanticRerankDocuments = 100;
     }
     
     // =========================================================================

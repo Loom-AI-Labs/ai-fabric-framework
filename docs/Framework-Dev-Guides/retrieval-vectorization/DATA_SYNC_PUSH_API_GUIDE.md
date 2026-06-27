@@ -18,20 +18,28 @@ Related:
 
 ---
 
-## Status (as of 2026-02-12)
+## Status (as of 2026-06-19)
 
-- **Implemented in code (opt-in module):** `ai-infrastructure-data-sync`
+- **Implemented in code (opt-in module):** `ai-fabric-data-sync`
   - REST endpoints under `/api/ai/data-sync/*`
   - Normalization using `ai-entity-config.yml` (searchable fields + metadata fields)
-  - Fail-closed access control via `EntityAccessPolicy` → `AIAccessControlService`
+  - Fail-closed access control via verified `trace.authContext` → `AIAccessControlService`
+  - Batch preflight authorization that reuses the approved decisions during execution
+  - Trusted platform-internal policy bypass is explicit opt-in with
+    `ai.data-sync.allow-trusted-platform-internal-sync-bypass=true`
 
 Opt-in:
-- Add dependency `com.ai.fabric:ai-infrastructure-data-sync`
+- Add dependency `io.github.loom-ai-labs:ai-fabric-data-sync`
 - Enable with `ai.data-sync.enabled=true`
 
 Prerequisites:
 - Managed vector DB configured (`ai.vector-db.type=...`)
-- `EntityAccessPolicy` bean present (fail-closed)
+- Embeddings enabled (`ai.service.features.enable-embeddings=true`, the default)
+- `EntityAccessPolicy` bean present for non-platform callers (fail-closed)
+- For default production posture, keep
+  `ai.data-sync.allow-trusted-platform-internal-sync-bypass=false` and grant/deny through
+  `EntityAccessPolicy`. Enable the bypass only behind a trusted backend/runtime boundary that verifies
+  and injects `trace.authContext`.
 
 ---
 
@@ -61,7 +69,7 @@ Returns the configured vector spaces (entity types) from `ai-entity-config.yml`.
 Required fields:
 - `vectorSpace`
 - `id`
-- `trace.userId`
+- `trace.authContext.subjectId`
 - **either** `content` **or** `entity`
 
 ### 2.3 Delete (single)
@@ -71,19 +79,21 @@ Required fields:
 Required fields:
 - `vectorSpace`
 - `id`
-- `trace.userId`
+- `trace.authContext.subjectId`
 
 ### 2.4 Batch
 
 - `POST /api/ai/data-sync/batch`
 
 Required fields:
-- `trace.userId`
+- `trace.authContext.subjectId`
 - `operations[]`
 
 Batch semantics:
-- **Fail-closed on access control:** if any operation is denied, **no operations execute**.
-- Returns per-operation results when allowed to proceed.
+- **Fail-closed preflight:** every operation is validated and authorized before vector writes/deletes start.
+- If any operation is denied or access evaluation fails closed, **no operations execute**.
+- The approved preflight decisions are reused during execution; access control is not re-run per operation after writes start.
+- Vector/embedding failures after successful preflight are returned as per-operation failures with batch message `Completed with failures`.
 
 ---
 
@@ -95,12 +105,25 @@ Batch semantics:
 
 ```json
 {
-  "userId": "system_shopify_sync",
-  "sessionId": "optional",
   "requestId": "optional",
-  "metadata": { "tenantId": "m_123" }
+  "metadata": { "tenantId": "m_123" },
+  "authContext": {
+    "subjectId": "system_shopify_sync",
+    "subjectType": "SYSTEM_PROCESS",
+    "authMode": "PRIVATE_RUNTIME_BACKEND_MEDIATED",
+    "callerType": "SYSTEM_PROCESS",
+    "sessionId": "optional",
+    "deploymentId": "dep_123",
+    "customerId": "cus_123",
+    "tenantId": "m_123",
+    "issuer": "runtime-shopify-sync",
+    "grantedScopes": ["data-sync:upsert", "data-sync:delete"]
+  }
 }
 ```
+
+`trace.authContext` is the canonical verified caller identity. Do not use legacy top-level
+`trace.userId`; the runtime ignores it for secure data-sync authorization.
 
 ### 3.2 Upsert request (single)
 
@@ -114,7 +137,17 @@ Batch semantics:
     "price": 399
   },
   "metadata": { "locale": "en_US" },
-  "trace": { "userId": "system_shopify_sync", "requestId": "req_1" }
+  "trace": {
+    "requestId": "req_1",
+    "authContext": {
+      "subjectId": "system_shopify_sync",
+      "subjectType": "SYSTEM_PROCESS",
+      "authMode": "PRIVATE_RUNTIME_BACKEND_MEDIATED",
+      "callerType": "SYSTEM_PROCESS",
+      "issuer": "runtime-shopify-sync",
+      "grantedScopes": ["data-sync:upsert"]
+    }
+  }
 }
 ```
 
@@ -129,7 +162,17 @@ Response:
 {
   "vectorSpace": "product",
   "id": "SKU-123",
-  "trace": { "userId": "system_shopify_sync", "requestId": "req_2" }
+  "trace": {
+    "requestId": "req_2",
+    "authContext": {
+      "subjectId": "system_shopify_sync",
+      "subjectType": "SYSTEM_PROCESS",
+      "authMode": "PRIVATE_RUNTIME_BACKEND_MEDIATED",
+      "callerType": "SYSTEM_PROCESS",
+      "issuer": "runtime-shopify-sync",
+      "grantedScopes": ["data-sync:delete"]
+    }
+  }
 }
 ```
 
@@ -137,7 +180,17 @@ Response:
 
 ```json
 {
-  "trace": { "userId": "system_shopify_sync", "requestId": "req_batch_1" },
+  "trace": {
+    "requestId": "req_batch_1",
+    "authContext": {
+      "subjectId": "system_shopify_sync",
+      "subjectType": "SYSTEM_PROCESS",
+      "authMode": "PRIVATE_RUNTIME_BACKEND_MEDIATED",
+      "callerType": "SYSTEM_PROCESS",
+      "issuer": "runtime-shopify-sync",
+      "grantedScopes": ["data-sync:upsert", "data-sync:delete"]
+    }
+  },
   "operations": [
     { "type": "UPSERT", "vectorSpace": "product", "id": "SKU-1", "content": "..." },
     { "type": "DELETE", "vectorSpace": "product", "id": "SKU-2" }
@@ -172,19 +225,59 @@ The module uses:
 Policy inputs:
 - `resourceId = "vectorSpace:{vectorSpace}"`
 - `operationType = "WRITE"` (upsert) or `"DELETE"` (delete)
-- metadata includes `vectorSpace`, `entityId`, and any `trace.metadata`
+- `authContext` is populated from `trace.authContext`
+- metadata includes `vectorSpace`, `entityId`, `operationType`, verified-auth evidence, and any `trace.metadata`
 
 If policy is missing or throws:
 - deny the request (fail-closed)
 
+Access-denied responses include structured metadata:
+- `identitySource`
+- `accessDecisionSource`
+- `accessEvaluationStatus`
+- `accessEvaluationFailure` when authorization failed closed because evaluation threw
+
+Batch access-denied responses also include:
+- `deniedOperations` for backward-compatible human-readable entries
+- `deniedOperationDetails` for structured release/debug evidence
+
+Trusted platform-internal sync can bypass the policy only when
+`ai.data-sync.allow-trusted-platform-internal-sync-bypass=true` and all of these are true:
+- `subjectType=SYSTEM_PROCESS`
+- `authMode=PRIVATE_RUNTIME_BACKEND_MEDIATED`
+- `callerType=SYSTEM_PROCESS`
+- `subjectId` starts with `system:platform-`
+- `issuer` starts with `platform-`
+- `deploymentId` is present
+- `grantedScopes` includes `data-sync:upsert` or `data-sync:delete` for the requested operation
+
+The bypass is disabled by default because this API accepts `trace.authContext` in the request DTO.
+Default behavior routes platform-shaped contexts through `AIAccessControlService`, preserving the
+fail-closed policy boundary.
+
 ---
 
-## 6) Configuration
+## 6) Error Semantics
+
+| Error code | HTTP status | Notes |
+| --- | --- | --- |
+| `INVALID_REQUEST` | `400` | Missing request fields, invalid chunk identity, or normalization bounds failure. |
+| `BATCH_TOO_LARGE` | `400` | `operations.length` exceeds `ai.data-sync.maxBatchSize`. |
+| `VECTOR_SPACE_NOT_FOUND` | `404` | `vectorSpace` is not configured in `ai-entity-config.yml`. |
+| `VECTOR_SPACE_NOT_INDEXABLE` | `400` | Upsert requested for a non-indexable vector space. |
+| `ACCESS_DENIED` | `403` | Missing verified auth context, policy denial, or fail-closed policy evaluation. |
+| `EMBEDDING_FAILED` | `500` | Embedding provider returned no vector or threw. |
+| `VECTOR_STORE_FAILED` | `500` | Vector store/delete failed; response metadata includes `cause` when available. |
+
+---
+
+## 7) Configuration
 
 Enable:
 
 ```properties
 ai.data-sync.enabled=true
+ai.data-sync.basePath=/api/ai/data-sync
 ```
 
 Tuning:
@@ -196,12 +289,14 @@ ai.data-sync.maxFieldValueChars=2000
 ai.data-sync.maxMetadataKeys=75
 ```
 
+The default base path is `/api/ai/data-sync`. Spring Boot relaxed binding also accepts kebab-case
+properties such as `ai.data-sync.base-path` and `ai.data-sync.max-batch-size`.
+
 ---
 
-## 7) Notes for Shopify sync
+## 8) Notes for Shopify sync
 
 Recommended:
 - Define a `product` vector space in `ai-entity-config.yml` with searchable fields matching Shopify fields you care about.
 - Push product updates via `/api/ai/data-sync/upsert` from your Shopify app backend.
 - Use `trace.metadata.tenantId` (or similar) and enforce tenant boundaries in `EntityAccessPolicy`.
-

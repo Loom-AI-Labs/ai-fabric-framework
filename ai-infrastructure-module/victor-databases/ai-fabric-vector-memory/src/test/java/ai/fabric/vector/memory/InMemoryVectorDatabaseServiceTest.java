@@ -261,6 +261,63 @@ class InMemoryVectorDatabaseServiceTest {
     }
 
     @Test
+    void unsupportedMetadataFiltersFailClosedInsteadOfBroadeningResults() {
+        service.storeVector("product", "p-1", "First product", List.of(1.0, 0.0), Map.of("tenant", "t1"));
+
+        Map<String, Object> unsupportedFilter = new LinkedHashMap<>();
+        unsupportedFilter.put("tenant", "t1");
+        unsupportedFilter.put("tags", List.of("public"));
+
+        AISearchResponse search = service.search(
+            List.of(1.0, 0.0),
+            AISearchRequest.builder()
+                .query("product")
+                .entityType("product")
+                .metadata(unsupportedFilter)
+                .limit(10)
+                .threshold(0.0)
+                .build()
+        );
+        VectorScanPage scan = service.scan(VectorScanRequest.builder()
+            .entityType("product")
+            .metadataEquals(unsupportedFilter)
+            .limit(10)
+            .build());
+
+        assertThat(search.getResults()).isEmpty();
+        assertThat(scan.getVectors()).isEmpty();
+    }
+
+    @Test
+    void integralMetadataFiltersDoNotMatchDecimalMetadataByTruncation() {
+        service.storeVector("product", "p-1", "First product", List.of(1.0, 0.0), Map.of("rank", 7.9d));
+        service.storeVector("product", "p-2", "Second product", List.of(0.9, 0.1), Map.of("rank", 7));
+
+        AISearchResponse search = service.search(
+            List.of(1.0, 0.0),
+            AISearchRequest.builder()
+                .query("product")
+                .entityType("product")
+                .metadata(Map.of("rank", 7))
+                .limit(10)
+                .threshold(0.0)
+                .build()
+        );
+        VectorScanPage scan = service.scan(VectorScanRequest.builder()
+            .entityType("product")
+            .metadataEquals(Map.of("rank", 7))
+            .limit(10)
+            .build());
+
+        assertThat(search.getResults())
+            .extracting(result -> result.get("id"))
+            .containsExactly("p-2");
+        assertThat(scan.getVectors())
+            .extracting(VectorRecord::getEntityId)
+            .containsExactly("p-2");
+    }
+
+    @Test
     void updateBatchRemoveAndClearMaintainCounts() {
         List<String> vectorIds = service.batchStoreVectors(List.of(
             VectorRecord.builder()
@@ -378,6 +435,15 @@ class InMemoryVectorDatabaseServiceTest {
             .containsEntry("sharedStorage", false)
             .containsEntry("supportsVectorScan", true)
             .containsEntry("supportsMetadataFiltering", true)
+            .containsEntry("supportsSearchMetadataFiltering", true)
+            .containsEntry("supportsScanMetadataFiltering", true)
+            .containsEntry("supportsExactFetchById", true)
+            .containsEntry("supportsClearByEntityType", true)
+            .containsEntry("supportsEfficientEntityTypeCount", true)
+            .containsEntry("metadataFilteredSearch", true)
+            .containsEntry("metadataFilteredScan", true)
+            .containsEntry("searchFilterMode", "in-memory-portable-scalar")
+            .containsEntry("scanFilterMode", "in-memory-portable-scalar")
             .containsEntry("totalVectors", 2);
     }
 }

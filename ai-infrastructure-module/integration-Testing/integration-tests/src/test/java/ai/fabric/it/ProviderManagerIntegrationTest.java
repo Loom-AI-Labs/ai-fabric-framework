@@ -4,11 +4,12 @@ import ai.fabric.dto.AIGenerationRequest;
 import ai.fabric.dto.AIGenerationResponse;
 import ai.fabric.dto.AIEmbeddingRequest;
 import ai.fabric.dto.AIEmbeddingResponse;
+import ai.fabric.it.provider.TestAIProvider;
 import ai.fabric.provider.AIProviderManager;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.Disabled;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.annotation.Import;
 import org.springframework.test.context.ActiveProfiles;
 
 import java.util.List;
@@ -18,9 +19,9 @@ import static org.junit.jupiter.api.Assertions.*;
 /**
  * Verifies that {@link AIProviderManager} is operational within the integration-test context.
  */
-@Disabled("Disabled due to ApplicationContext loading failures - table creation issues")
 @SpringBootTest(classes = TestApplication.class)
 @ActiveProfiles("test")
+@Import(TestAIProvider.class)
 class ProviderManagerIntegrationTest {
 
     @Autowired

@@ -1,15 +1,19 @@
 package ai.fabric.provider.onnx;
 
 import ai.fabric.config.AIProviderConfig;
+import ai.fabric.dto.AIEmbeddingRequest;
+import ai.fabric.exception.AIServiceException;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 
 import java.lang.reflect.Method;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.Arrays;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class ONNXAutoConfigurationTest {
 
@@ -59,6 +63,66 @@ class ONNXAutoConfigurationTest {
         findLongestSubword.setAccessible(true);
 
         assertThat((String) findLongestSubword.invoke(provider, "")).isEmpty();
+    }
+
+    @Test
+    void generateEmbeddingRejectsBlankTextBeforeRuntimeAvailabilityCheck() {
+        ONNXEmbeddingProvider provider = new ONNXEmbeddingProvider(new AIProviderConfig());
+
+        assertThatThrownBy(() -> provider.generateEmbedding(AIEmbeddingRequest.builder()
+                .text(" ")
+                .build()))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("cannot be blank");
+    }
+
+    @Test
+    void generateEmbeddingRejectsNullRequestBeforeRuntimeAvailabilityCheck() {
+        ONNXEmbeddingProvider provider = new ONNXEmbeddingProvider(new AIProviderConfig());
+
+        assertThatThrownBy(() -> provider.generateEmbedding(null))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("cannot be blank");
+    }
+
+    @Test
+    void generateEmbeddingRejectsOversizedTextBeforeRuntimeAvailabilityCheck() {
+        ONNXEmbeddingProvider provider = new ONNXEmbeddingProvider(new AIProviderConfig());
+
+        assertThatThrownBy(() -> provider.generateEmbedding(AIEmbeddingRequest.builder()
+                .text("x".repeat(8001))
+                .build()))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("8000");
+    }
+
+    @Test
+    void generateEmbeddingsRejectsInvalidBatchEntryBeforeRuntimeAvailabilityCheck() {
+        ONNXEmbeddingProvider provider = new ONNXEmbeddingProvider(new AIProviderConfig());
+
+        assertThatThrownBy(() -> provider.generateEmbeddings(java.util.List.of("valid", "")))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("index 1");
+    }
+
+    @Test
+    void generateEmbeddingsRejectsNullBatchEntryBeforeRuntimeAvailabilityCheck() {
+        ONNXEmbeddingProvider provider = new ONNXEmbeddingProvider(new AIProviderConfig());
+
+        assertThatThrownBy(() -> provider.generateEmbeddings(Arrays.asList("valid", null)))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("index 1");
+    }
+
+    @Test
+    void generateEmbeddingReportsUnavailableForValidRequestWhenRuntimeIsNotInitialized() {
+        ONNXEmbeddingProvider provider = new ONNXEmbeddingProvider(new AIProviderConfig());
+
+        assertThatThrownBy(() -> provider.generateEmbedding(AIEmbeddingRequest.builder()
+                .text("valid text")
+                .build()))
+            .isInstanceOf(AIServiceException.class)
+            .hasMessageContaining("not available");
     }
 
     @SuppressWarnings("unchecked")

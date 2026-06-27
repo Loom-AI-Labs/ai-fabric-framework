@@ -69,6 +69,36 @@ cd ai-infrastructure-module/integration-Testing/integration-tests
 ./run-provider-matrix-tests.sh "openai:onnx:pinecone"
 ```
 
+For release validation through GitHub Actions, use the manual `Framework Provider Matrix Suite`
+workflow. Each provider row first installs the current AI Fabric reactor with unit tests enabled.
+By default, the workflow also runs the Docker-backed `Vector Provider Container Contracts` job:
+
+```bash
+.github/scripts/run-vector-container-contracts.sh
+```
+
+That job validates Qdrant REST, Qdrant gRPC, Weaviate, and Milvus against the shared
+`VectorDatabaseService` lifecycle contract. When the matrix includes the Pinecone row, the workflow
+also runs the direct Pinecone provider-live gate:
+
+```bash
+cd ai-infrastructure-module
+PINECONE_LIVE_REQUIRED=true \
+mvn verify -Ppinecone-live-tests -pl victor-databases/ai-fabric-vector-pinecone -am -B -V
+```
+
+That direct gate validates AI Fabric's native Pinecone adapter before the broader RealAPI application
+suite runs against Pinecone. Configure Pinecone location explicitly with `PINECONE_API_HOST`, or with
+`PINECONE_INDEX_NAME` plus `PINECONE_ENVIRONMENT`; CI workflows do not ship a default Pinecone host.
+Set `PINECONE_LIVE_REQUIRED=true` for release validation so missing Pinecone credentials or location
+configuration fails instead of producing skipped live tests.
+
+The manual workflow can also verify a deployed runtime's vector readiness verdict. Provide
+`runtime_base_url` when launching `Framework Provider Matrix Suite` to run the repository verifier
+against `/actuator/health/vectorProvider`. The gate fails on `NOT_READY` and also fails on
+`WARN` / `productionReady=false` by default. Set `vector_readiness_allow_warn=true` only for
+diagnostic runs where warned-but-operational vector state is acceptable.
+
 ---
 
 ## 5) Common Failure Modes

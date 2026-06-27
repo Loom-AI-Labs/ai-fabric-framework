@@ -1,6 +1,7 @@
 package ai.fabric.provider;
 
 import ai.fabric.dto.AIGenerationRequest;
+import ai.fabric.dto.AIGenerationRequestContracts;
 import ai.fabric.dto.AIGenerationResponse;
 import ai.fabric.dto.AIEmbeddingRequest;
 import ai.fabric.dto.AIEmbeddingResponse;
@@ -68,17 +69,17 @@ public class AIProviderManager {
      */
     public AIGenerationResponse generateContent(AIGenerationRequest request, String providerOverride) {
         log.debug("Generating content with provider manager");
+        AIGenerationRequestContracts.validateStandardChatPrompting(request);
         
         List<AIProvider> availableProviders = getAvailableProviders();
-        if (availableProviders.isEmpty()) {
-            throw new RuntimeException("No AI providers available");
-        }
-        
         String configuredProvider = providerOverride != null && !providerOverride.isBlank()
             ? providerOverride
             : providerConfig.getLlmProvider();
-        AIProvider selectedProvider = findPreferredProvider(availableProviders, configuredProvider);
+        AIProvider selectedProvider = selectPreferredProviderForRequest(request, configuredProvider, availableProviders);
         if (selectedProvider == null) {
+            if (availableProviders.isEmpty()) {
+                throw new RuntimeException("No AI providers available");
+            }
             selectedProvider = selectProvider(availableProviders, "generation");
         }
         
@@ -122,13 +123,12 @@ public class AIProviderManager {
         log.debug("Generating embedding with provider manager");
         
         List<AIProvider> availableProviders = getAvailableProviders();
-        if (availableProviders.isEmpty()) {
-            throw new RuntimeException("No AI providers available");
-        }
-        
         String configuredProvider = providerConfig.getEmbeddingProvider();
-        AIProvider selectedProvider = findPreferredProvider(availableProviders, configuredProvider);
+        AIProvider selectedProvider = selectPreferredProviderForRequest(request, configuredProvider, availableProviders);
         if (selectedProvider == null) {
+            if (availableProviders.isEmpty()) {
+                throw new RuntimeException("No AI providers available");
+            }
             selectedProvider = selectProvider(availableProviders, "embedding");
         }
         
@@ -366,6 +366,65 @@ public class AIProviderManager {
             .filter(provider -> preferredName.equalsIgnoreCase(provider.getProviderName()))
             .findFirst()
             .orElse(null);
+    }
+
+    private AIProvider selectPreferredProviderForRequest(AIGenerationRequest request,
+                                                         String preferredName,
+                                                         List<AIProvider> availableProviders) {
+        AIProvider availablePreferredProvider = findPreferredProvider(availableProviders, preferredName);
+        if (availablePreferredProvider != null) {
+            return availablePreferredProvider;
+        }
+        if (!hasTrustedConnectionOverride(request)) {
+            return null;
+        }
+        AIProvider registeredProvider = findRegisteredProvider(preferredName);
+        if (registeredProvider != null) {
+            log.debug("Using request-scoped connection override for provider {}", registeredProvider.getProviderName());
+        }
+        return registeredProvider;
+    }
+
+    private AIProvider selectPreferredProviderForRequest(AIEmbeddingRequest request,
+                                                         String preferredName,
+                                                         List<AIProvider> availableProviders) {
+        AIProvider availablePreferredProvider = findPreferredProvider(availableProviders, preferredName);
+        if (availablePreferredProvider != null) {
+            return availablePreferredProvider;
+        }
+        if (!hasTrustedConnectionOverride(request)) {
+            return null;
+        }
+        AIProvider registeredProvider = findRegisteredProvider(preferredName);
+        if (registeredProvider != null) {
+            log.debug("Using request-scoped embedding connection override for provider {}",
+                registeredProvider.getProviderName());
+        }
+        return registeredProvider;
+    }
+
+    private AIProvider findRegisteredProvider(String preferredName) {
+        if (preferredName == null || preferredName.isBlank()) {
+            return null;
+        }
+        AIProvider exactProvider = providerMap.get(preferredName);
+        if (exactProvider != null) {
+            return exactProvider;
+        }
+        return providers.stream()
+            .filter(provider -> preferredName.equalsIgnoreCase(provider.getProviderName()))
+            .findFirst()
+            .orElse(null);
+    }
+
+    private boolean hasTrustedConnectionOverride(AIGenerationRequest request) {
+        return request != null
+            && ProviderRequestOverrideSupport.read(request.getParameters()).hasAny();
+    }
+
+    private boolean hasTrustedConnectionOverride(AIEmbeddingRequest request) {
+        return request != null
+            && ProviderRequestOverrideSupport.read(request.getParameters()).hasAny();
     }
 
     private boolean isFallbackEnabled() {

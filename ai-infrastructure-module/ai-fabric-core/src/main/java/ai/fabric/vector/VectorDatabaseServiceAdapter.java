@@ -92,7 +92,13 @@ public class VectorDatabaseServiceAdapter implements VectorDatabase {
 
     @Override
     public Map<String, Object> getInfo() {
-        return delegate.getStatistics();
+        Map<String, Object> statistics = safeMap(delegate.getStatistics());
+        Map<String, Object> diagnostics = safeMap(delegate.adminDiagnostics());
+        Map<String, Object> info = new LinkedHashMap<>(statistics);
+        info.putAll(diagnostics);
+        info.put("statistics", statistics);
+        info.put("adminDiagnostics", diagnostics);
+        return info;
     }
 
     @Override
@@ -146,5 +152,9 @@ public class VectorDatabaseServiceAdapter implements VectorDatabase {
         map.put("createdAt", record.getCreatedAt());
         map.put("updatedAt", record.getUpdatedAt());
         return map;
+    }
+
+    private static Map<String, Object> safeMap(Map<String, Object> source) {
+        return source == null ? Map.of() : new LinkedHashMap<>(source);
     }
 }

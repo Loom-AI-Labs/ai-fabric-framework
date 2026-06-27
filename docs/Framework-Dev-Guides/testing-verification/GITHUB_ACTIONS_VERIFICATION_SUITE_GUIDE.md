@@ -2,11 +2,13 @@
 
 This guide describes the full manual GitHub Actions verification suite for the current platform state.
 
-The suite now has six distinct workflows:
+The suite now has nine distinct workflows:
 
 - `Platform Code Regression`
 - `Platform Code Regression Gate`
 - `Platform V2 Verification`
+- `Framework Build`
+- `Framework Provider Matrix Suite`
 - `Manual Deployment Verification`
 - `Platform Admin Live Regression`
 - `Managed Vector Provider Verification`
@@ -51,7 +53,48 @@ It runs:
 
 This is the repo-side verification path for the Platform V2 control plane.
 
-### 1.3 `Manual Deployment Verification`
+### 1.3 `Framework Build`
+
+Workflow file:
+
+- `.github/workflows/framework-verify.yml`
+
+Use this as the automatic framework-side pull-request and push gate.
+
+It covers:
+
+- framework release guard validation through `.github/scripts/validate-framework-release-guards.sh`
+- AI Fabric framework reactor build, tests, and install
+- integration test-suite compilation
+- minimal Spring Boot consumer compilation
+- real-apps build/install plus offline smoke boot checks
+
+The framework release guard runs the lightweight checks that should fail before the Maven reactor is
+started:
+
+- provider registry and workflow option alignment
+- workflow test policy validation through `.github/scripts/validate-workflow-test-policy.sh`
+- release documentation policy validation through `.github/scripts/validate-release-doc-policy.sh`
+- production-source stub marker validation through `.github/scripts/validate-no-production-stubs.sh`
+- offline tests for `.github/scripts/verify-vector-readiness-health.sh`
+
+Run the same guard locally with:
+
+```bash
+.github/scripts/validate-framework-release-guards.sh
+```
+
+The workflow test policy rejects Maven test-skipping flags in workflow commands, so release and
+verification jobs cannot silently drift back to `-DskipTests`.
+The release documentation policy rejects skipped-test Maven examples in Markdown code blocks and
+stale Spring Boot 3.x release guidance, so public docs stay aligned with the current Boot 4.1.x
+release branch.
+The production-source stub marker policy rejects `TODO`, `FIXME`, `stub`, `dummy`, and
+`not implemented` markers under `src/main`. `UnsupportedOperationException` is only allowed for
+explicitly documented capability boundaries such as Spring AI providers that do not expose a requested
+mode.
+
+### 1.4 `Manual Deployment Verification`
 
 Workflow file:
 
@@ -71,7 +114,7 @@ Supported profiles:
 - `ecommerce`
 - `vector`
 
-### 1.4 `Platform Admin Live Regression`
+### 1.5 `Platform Admin Live Regression`
 
 Workflow file:
 
@@ -102,7 +145,34 @@ It also supports:
 - optional canonical rollout ensure before ecommerce/vector checks
 - optional manual canonical rollout recreate and cleanup mutation when you intentionally provide selected rollout keys
 
-### 1.5 `Managed Vector Provider Verification`
+### 1.6 `Framework Provider Matrix Suite`
+
+Workflow file:
+
+- `.github/workflows/provider-suite-keys-only.yml`
+
+Use this when you want provider-combination release validation across LLM, embedding, and vector
+providers.
+
+It covers:
+
+- full AI Fabric framework build with unit tests before each provider row
+- provider-matrix application suites for the available API-key combinations
+- Docker-backed `VectorDatabaseService` container contracts for Qdrant REST, Qdrant gRPC, Weaviate,
+  and Milvus
+- direct Pinecone provider-live verification for the Pinecone row
+- optional deployed runtime vector readiness smoke verification when `runtime_base_url` is supplied
+
+The vector contract job uses `.github/scripts/run-vector-container-contracts.sh`. It also runs in
+the automatic `Framework Build` workflow, and this provider-suite workflow keeps the same gate
+available for release validation alongside live provider rows. The provider-suite vector contract job
+runs by default and can be explicitly skipped with `run_vector_contracts=false` only when the release
+run is intentionally avoiding Docker-backed provider verification.
+The deployed runtime readiness smoke job runs `.github/scripts/verify-vector-readiness-health.sh`
+against `/actuator/health/vectorProvider`. It fails on `WARN` unless
+`vector_readiness_allow_warn=true`, so release runs should normally leave the warning override off.
+
+### 1.7 `Managed Vector Provider Verification`
 
 Workflow file:
 
@@ -119,7 +189,7 @@ It covers:
 
 This workflow verifies the vendor side directly instead of only the deployed runtime side.
 
-### 1.6 `Platform State Verification Suite`
+### 1.8 `Platform State Verification Suite`
 
 Workflow file:
 
@@ -254,6 +324,10 @@ Required when the matching provider check is enabled:
 - `WEAVIATE_API_KEY`
 
 If a provider is enabled in the workflow and its secret is missing, the provider verification workflow should fail.
+
+For Pinecone vector provider-live and provider-matrix rows, also configure either `PINECONE_API_HOST`
+or both `PINECONE_INDEX_NAME` and `PINECONE_ENVIRONMENT` as repository variables or workflow inputs.
+The release workflows intentionally do not hardcode a Pinecone index host.
 
 ## 4. Read-Only vs Temporary Resource Verification
 

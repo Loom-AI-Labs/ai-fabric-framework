@@ -16,8 +16,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
-
-import java.util.UUID;
+import org.springframework.validation.beanvalidation.LocalValidatorFactoryBean;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -35,7 +34,11 @@ class BehaviorProcessingControllerTest {
     @BeforeEach
     void setup() {
         BehaviorProcessingController controller = new BehaviorProcessingController(processingManager);
-        mockMvc = MockMvcBuilders.standaloneSetup(controller).build();
+        LocalValidatorFactoryBean validator = new LocalValidatorFactoryBean();
+        validator.afterPropertiesSet();
+        mockMvc = MockMvcBuilders.standaloneSetup(controller)
+            .setValidator(validator)
+            .build();
     }
 
     @Test
@@ -64,6 +67,16 @@ class BehaviorProcessingControllerTest {
     }
 
     @Test
+    void batchRejectsInvalidBoundsBeforeManagerCall() throws Exception {
+        mockMvc.perform(post("/api/behavior/processing/batch")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"maxUsers\":0,\"maxDurationMinutes\":0,\"delayBetweenUsersMs\":-1}"))
+            .andExpect(status().isBadRequest());
+
+        Mockito.verifyNoInteractions(processingManager);
+    }
+
+    @Test
     void continuousStartReturnsJobId() throws Exception {
         Mockito.when(processingManager.startContinuous(any(ContinuousProcessingRequest.class)))
             .thenReturn(ContinuousProcessingResponse.builder().jobId("job-1").status("RUNNING").build());
@@ -73,6 +86,16 @@ class BehaviorProcessingControllerTest {
                 .content("{}"))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.jobId").value("job-1"));
+    }
+
+    @Test
+    void continuousRejectsInvalidBoundsBeforeManagerCall() throws Exception {
+        mockMvc.perform(post("/api/behavior/processing/continuous")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"usersPerBatch\":0,\"intervalMinutes\":-1,\"maxIterations\":0}"))
+            .andExpect(status().isBadRequest());
+
+        Mockito.verifyNoInteractions(processingManager);
     }
 
     @Test

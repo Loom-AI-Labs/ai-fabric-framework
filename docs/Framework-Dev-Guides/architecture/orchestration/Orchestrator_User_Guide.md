@@ -286,9 +286,10 @@ ai:
       retrieval-limit: 5
       retrieval-threshold: 0.7
     
-    pii-detection:
-      enabled: true
-      detection-direction: INPUT_OUTPUT  # INPUT_ONLY, OUTPUT_ONLY, INPUT_OUTPUT
+  pii-detection:
+    enabled: true
+    detection-direction: INPUT_OUTPUT  # INPUT or INPUT_OUTPUT
+    expose-original-payload-in-result: false
 ```
 
 ## Testing

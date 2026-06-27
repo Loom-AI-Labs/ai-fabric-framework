@@ -2,7 +2,7 @@ package ai.fabric.http;
 
 import java.time.Duration;
 import java.util.Objects;
-import org.springframework.boot.web.client.RestTemplateBuilder;
+import org.springframework.boot.restclient.RestTemplateBuilder;
 import org.springframework.web.client.RestTemplate;
 
 public class DefaultAIHttpClientFactory implements AIHttpClientFactory {
@@ -24,13 +24,12 @@ public class DefaultAIHttpClientFactory implements AIHttpClientFactory {
     public HttpClient create(Duration connectTimeout, Duration readTimeout) {
         RestTemplateBuilder builder = restTemplateBuilder;
         if (connectTimeout != null) {
-            builder = builder.setConnectTimeout(connectTimeout);
+            builder = builder.connectTimeout(connectTimeout);
         }
         if (readTimeout != null) {
-            builder = builder.setReadTimeout(readTimeout);
+            builder = builder.readTimeout(readTimeout);
         }
         RestTemplate restTemplate = builder.build();
         return new RestTemplateHttpClient(restTemplate);
     }
 }
-

@@ -1,1 +1,3 @@
 ai.fabric.web.config.AIWebAutoConfiguration
+ai.fabric.web.config.AIWebGovernanceAutoConfiguration
+ai.fabric.web.config.AIWebMigrationAutoConfiguration

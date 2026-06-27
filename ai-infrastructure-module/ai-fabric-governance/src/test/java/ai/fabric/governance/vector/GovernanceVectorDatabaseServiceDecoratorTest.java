@@ -151,6 +151,39 @@ class GovernanceVectorDatabaseServiceDecoratorTest {
         verify(catalog).delete("product", "1");
     }
 
+    @Test
+    void adminDiagnosticsShouldPreserveDelegateScopeAndAddGovernanceMarkers() {
+        VectorDatabaseService delegate = mock(VectorDatabaseService.class);
+        IndexCatalog catalog = mock(IndexCatalog.class);
+
+        when(delegate.adminDiagnostics()).thenReturn(Map.of(
+            "provider", "pinecone",
+            "providerClass", "ai.fabric.vector.pinecone.PineconeVectorDatabaseService",
+            "scopePrefix", "customer-a--tenant-b",
+            "supportsSearchMetadataFiltering", true,
+            "supportsScanMetadataFiltering", false,
+            "metadataFilteredSearch", true,
+            "metadataFilteredScan", false
+        ));
+
+        GovernanceVectorDatabaseServiceDecorator decorator = new GovernanceVectorDatabaseServiceDecorator(
+            delegate,
+            providerOf(catalog)
+        );
+
+        assertThat(decorator.adminDiagnostics())
+            .containsEntry("provider", "pinecone")
+            .containsEntry("providerClass", "ai.fabric.vector.pinecone.PineconeVectorDatabaseService")
+            .containsEntry("scopePrefix", "customer-a--tenant-b")
+            .containsEntry("supportsSearchMetadataFiltering", true)
+            .containsEntry("supportsScanMetadataFiltering", false)
+            .containsEntry("metadataFilteredSearch", true)
+            .containsEntry("metadataFilteredScan", false)
+            .containsEntry("governanceDecorated", true)
+            .containsEntry("governanceCatalogWriteThrough", true)
+            .containsEntry("governanceDecoratorClass", GovernanceVectorDatabaseServiceDecorator.class.getName());
+    }
+
     private static ObjectProvider<IndexCatalog> providerOf(IndexCatalog catalog) {
         return new ObjectProvider<>() {
             @Override
@@ -185,4 +218,3 @@ class GovernanceVectorDatabaseServiceDecoratorTest {
         };
     }
 }
-

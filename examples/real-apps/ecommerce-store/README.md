@@ -30,12 +30,15 @@ UI-facing maintenance endpoints:
 Both require a JSON body with at least:
 - `{"confirm": true}`
 
-Optional: protect these endpoints with an API key:
+These endpoints are protected by default. Configure an admin API key before calling them:
 ```bash
-export CONNECTOR_ADMIN_AUTH_ENABLED=true
-export CONNECTOR_ADMIN_API_KEY="..."
-export CONNECTOR_ADMIN_API_KEY_HEADER="X-AIFABRIC-API-KEY"
+export APP_ADMIN_API_KEY="..."
+export APP_ADMIN_API_KEY_HEADER="X-ADMIN-API-KEY"
 ```
+
+The ecommerce app also accepts the older compatibility aliases
+`CONNECTOR_ADMIN_API_KEY` and `CONNECTOR_ADMIN_API_KEY_HEADER`. For local-only no-key demos, set
+`APP_ADMIN_AUTH_ENABLED=false` explicitly.
 
 ## Event-Based Indexing (Products/Policies/Reviews)
 
@@ -51,7 +54,37 @@ Indexing calls are sent to `CONNECTOR_INDEXING_RUNTIME_BASE_URL`, which can poin
 
 ## Optional Runtime Setup
 
-Runtime chat/RAG integration can use OpenAI for **LLM + embeddings** when those features are enabled.
+For local no-key proof, run the AI Fabric runtime app separately:
+
+```bash
+java -jar ../chat-capabilities-demo/target/chat-capabilities-demo-1.0.0-SNAPSHOT.jar \
+  --spring.profiles.active=smoke \
+  --server.port=8097 \
+  --management.server.port=0
+```
+
+Then run this customer-owned domain API with event indexing enabled:
+
+```bash
+CONNECTOR_INDEXING_ENABLED=true \
+CONNECTOR_INDEXING_RUNTIME_BASE_URL=http://localhost:8097 \
+java -jar target/ecommerce-store-1.0.0-SNAPSHOT.jar \
+  --spring.profiles.active=smoke \
+  --server.port=8096 \
+  --management.server.port=0 \
+  --spring.datasource.url='jdbc:h2:mem:ecommerce_runtime_proof;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE' \
+  --app.demo.seed-data=false
+```
+
+Creating or updating products, policies, and reviews will push verified data-sync requests to the
+runtime. Use `requests/demo.runtime.http` to inspect `/api/ai/data-sync/*` and
+`/api/runtime/vector-search`.
+
+For the deterministic smoke profile, verify pushed products with an exact content query. The
+suite-level guide at `examples/real-apps/README.md` includes the full create/search/delete/search
+script and expected counts.
+
+Runtime chat/RAG integration can also use OpenAI for **LLM + embeddings** when those features are enabled.
 
 ```bash
 export OPENAI_ENABLED=true

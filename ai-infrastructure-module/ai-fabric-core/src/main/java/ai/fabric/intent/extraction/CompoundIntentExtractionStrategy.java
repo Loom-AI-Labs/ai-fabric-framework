@@ -73,11 +73,11 @@ public class CompoundIntentExtractionStrategy implements IntentExtractionStrateg
                     .build();
             }
 
-            String sanitized = jsonSupport.stripCodeFences(content);
             MultiIntentResponse parsed;
             try {
-                parsed = jsonSupport.parseResponse(sanitized);
+                parsed = jsonSupport.parseResponse(content);
             } catch (Exception parseException) {
+                String sanitized = jsonSupport.stripCodeFences(content);
                 IntentExtractionValidator.ValidationResult validationResult = new IntentExtractionValidator.ValidationResult(
                     false,
                     IntentExtractionValidator.ErrorCategory.STRUCTURAL,
@@ -100,6 +100,7 @@ public class CompoundIntentExtractionStrategy implements IntentExtractionStrateg
                     .build();
             }
 
+            String sanitized = jsonSupport.stripCodeFences(content);
             IntentExtractionValidator.ValidationResult validation = validator.validate(parsed);
 
             return ExtractionAttempt.builder()

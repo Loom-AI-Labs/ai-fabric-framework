@@ -1,5 +1,6 @@
 package ai.fabric.intent.retrieval.connector;
 
+import ai.fabric.dto.AIAccessSubjectContext;
 import ai.fabric.dto.RAGRequest;
 import ai.fabric.dto.RAGResponse;
 import ai.fabric.http.AIHttpClientFactory;
@@ -49,11 +50,27 @@ public class RetrievalConnectorRAGProvider implements RAGProvider {
     private static final String ERROR_TIMEOUT = "TIMEOUT";
     private static final String ERROR_RATE_LIMITED = "RATE_LIMITED";
     private static final String ERROR_HTTP_ERROR = "HTTP_ERROR";
+    private static final String ERROR_INVALID_RESPONSE = "INVALID_RESPONSE";
 
     private static final Set<String> RETRYABLE_ERROR_CODES = Set.of(
         ERROR_TIMEOUT,
         ERROR_SERVICE_UNAVAILABLE,
         ERROR_RATE_LIMITED
+    );
+    private static final Set<String> FORBIDDEN_DOCUMENTS_ONLY_RESPONSE_KEYS = Set.of(
+        "answer",
+        "generatedanswer",
+        "finalanswer",
+        "response",
+        "completion",
+        "toolinstructions",
+        "toolcalls",
+        "tools",
+        "prompt",
+        "systemprompt",
+        "hiddenprompt",
+        "messages",
+        "instructions"
     );
 
     private static final String DOC_ID = "id";
@@ -255,7 +272,31 @@ public class RetrievalConnectorRAGProvider implements RAGProvider {
             return trace;
         }
         putIfText(trace, RetrievalConnectorProtocol.TRACE_REQUEST_ID, request.getRequestId());
+        Map<String, Object> authContext = buildAuthContext(request.getAuthContext());
+        if (!authContext.isEmpty()) {
+            trace.put(RetrievalConnectorProtocol.TRACE_AUTH_CONTEXT, Collections.unmodifiableMap(authContext));
+        }
         return trace;
+    }
+
+    private Map<String, Object> buildAuthContext(AIAccessSubjectContext authContext) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        if (authContext == null) {
+            return out;
+        }
+        putIfText(out, "subjectId", authContext.getSubjectId());
+        putIfText(out, "sessionId", authContext.getSessionId());
+        putIfText(out, "subjectType", authContext.getSubjectType());
+        putIfText(out, "authMode", authContext.getAuthMode());
+        putIfText(out, "callerType", authContext.getCallerType());
+        putIfText(out, "deploymentId", authContext.getDeploymentId());
+        putIfText(out, "customerId", authContext.getCustomerId());
+        putIfText(out, "tenantId", authContext.getTenantId());
+        putIfText(out, "issuer", authContext.getIssuer());
+        putIfTextList(out, "grantedScopes", authContext.getGrantedScopes());
+        putIfTextList(out, "audiences", authContext.getAudiences());
+        putIfText(out, "expiresAt", authContext.getExpiresAt());
+        return out;
     }
 
     private void putIfText(Map<String, Object> out, String key, String value) {
@@ -263,6 +304,21 @@ public class RetrievalConnectorRAGProvider implements RAGProvider {
             return;
         }
         out.put(key, value.trim());
+    }
+
+    private void putIfTextList(Map<String, Object> out, String key, List<String> values) {
+        if (out == null || !StringUtils.hasText(key) || values == null || values.isEmpty()) {
+            return;
+        }
+        List<String> clean = new ArrayList<>();
+        for (String value : values) {
+            if (StringUtils.hasText(value)) {
+                clean.add(value.trim());
+            }
+        }
+        if (!clean.isEmpty()) {
+            out.put(key, List.copyOf(clean));
+        }
     }
 
     private String buildSearchUrl() {
@@ -393,9 +449,22 @@ public class RetrievalConnectorRAGProvider implements RAGProvider {
             return ConnectorResult.failure(code, msg, List.of());
         }
 
-        Object documentsRaw = parsed.get(RetrievalConnectorProtocol.KEY_DOCUMENTS);
-        List<RAGResponse.RAGDocument> docs = parseDocuments(documentsRaw);
-        List<String> warnings = new ArrayList<>();
+        List<String> forbiddenKeys = forbiddenDocumentsOnlyResponseKeys(parsed);
+        if (!forbiddenKeys.isEmpty()) {
+            return ConnectorResult.failure(
+                ERROR_INVALID_RESPONSE,
+                "Retrieval connector response must be documents-only. Forbidden top-level field(s): "
+                    + String.join(", ", forbiddenKeys) + ".",
+                List.of()
+            );
+        }
+
+        DocumentParseResult documentResult = parseDocuments(parsed.get(RetrievalConnectorProtocol.KEY_DOCUMENTS));
+        if (documentResult.invalidResponse()) {
+            return ConnectorResult.failure(ERROR_INVALID_RESPONSE, documentResult.message(), documentResult.warnings());
+        }
+        List<RAGResponse.RAGDocument> docs = documentResult.documents();
+        List<String> warnings = new ArrayList<>(documentResult.warnings());
         if (docs.isEmpty()) {
             warnings.add("Retrieval connector returned 0 documents.");
         }
@@ -407,6 +476,23 @@ public class RetrievalConnectorRAGProvider implements RAGProvider {
         }
 
         return new ConnectorResult(true, message, null, docs, warnings, totalCount);
+    }
+
+    private List<String> forbiddenDocumentsOnlyResponseKeys(Map<String, Object> parsed) {
+        if (parsed == null || parsed.isEmpty()) {
+            return List.of();
+        }
+        List<String> out = new ArrayList<>();
+        for (String key : parsed.keySet()) {
+            if (!StringUtils.hasText(key)) {
+                continue;
+            }
+            String normalized = key.trim().replace("_", "").replace("-", "").toLowerCase(Locale.ROOT);
+            if (FORBIDDEN_DOCUMENTS_ONLY_RESPONSE_KEYS.contains(normalized)) {
+                out.add(key.trim());
+            }
+        }
+        return List.copyOf(out);
     }
 
     private String errorCodeForStatus(int status) {
@@ -422,22 +508,35 @@ public class RetrievalConnectorRAGProvider implements RAGProvider {
         return ERROR_HTTP_ERROR;
     }
 
-    private List<RAGResponse.RAGDocument> parseDocuments(Object raw) {
+    private DocumentParseResult parseDocuments(Object raw) {
         if (raw == null) {
-            return List.of();
+            return DocumentParseResult.invalid("Retrieval connector response documents must be an array.", List.of());
         }
         if (!(raw instanceof List<?> list)) {
-            return List.of();
+            return DocumentParseResult.invalid("Retrieval connector response documents must be an array.", List.of());
         }
 
         List<RAGResponse.RAGDocument> out = new ArrayList<>();
+        int invalidDocuments = 0;
         for (Object item : list) {
             RAGResponse.RAGDocument doc = parseDocument(item);
             if (doc != null) {
                 out.add(doc);
+            } else {
+                invalidDocuments++;
             }
         }
-        return Collections.unmodifiableList(out);
+        List<String> warnings = new ArrayList<>();
+        if (invalidDocuments > 0) {
+            warnings.add("Retrieval connector skipped " + invalidDocuments + " invalid document(s).");
+        }
+        if (!list.isEmpty() && out.isEmpty()) {
+            return DocumentParseResult.invalid(
+                "Retrieval connector response did not include any valid documents.",
+                warnings
+            );
+        }
+        return DocumentParseResult.valid(Collections.unmodifiableList(out), warnings);
     }
 
     private RAGResponse.RAGDocument parseDocument(Object raw) {
@@ -652,6 +751,31 @@ public class RetrievalConnectorRAGProvider implements RAGProvider {
     ) {
         static ConnectorResult failure(String errorCode, String message, List<String> warnings) {
             return new ConnectorResult(false, message, errorCode, List.of(), warnings != null ? List.copyOf(warnings) : List.of(), 0L);
+        }
+    }
+
+    private record DocumentParseResult(
+        boolean invalidResponse,
+        String message,
+        List<RAGResponse.RAGDocument> documents,
+        List<String> warnings
+    ) {
+        static DocumentParseResult valid(List<RAGResponse.RAGDocument> documents, List<String> warnings) {
+            return new DocumentParseResult(
+                false,
+                null,
+                documents != null ? List.copyOf(documents) : List.of(),
+                warnings != null ? List.copyOf(warnings) : List.of()
+            );
+        }
+
+        static DocumentParseResult invalid(String message, List<String> warnings) {
+            return new DocumentParseResult(
+                true,
+                message,
+                List.of(),
+                warnings != null ? List.copyOf(warnings) : List.of()
+            );
         }
     }
 }

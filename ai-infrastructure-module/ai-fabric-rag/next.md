@@ -24,6 +24,8 @@ These are acceptable SPI defaults, but the public docs and examples should avoid
 
 ### 1. Wire `RAGProperties` Into The Services
 
+Status: Done.
+
 `RAGProperties` defines module defaults for:
 
 - `defaultLimit`
@@ -32,61 +34,114 @@ These are acceptable SPI defaults, but the public docs and examples should avoid
 - `enableContextualSearch`
 - indexing batch/content settings
 - advanced defaults such as expansion level, reranking strategy, context optimization level, max documents, and max results per query
-- caching flags and TTLs
+- caching flags and TTLs.
 
-Current behavior still uses hardcoded defaults in `RAGService` and `AdvancedRAGService`.
+Implemented behavior:
 
-Recommended change:
+- `RAGAutoConfiguration` now passes bound `RAGProperties` into `RAGService` and
+  `AdvancedRAGService`.
+- `RAGService` uses configured default limit, threshold, hybrid/contextual defaults, and indexing
+  content length.
+- `AdvancedRAGService` uses configured expansion level, max documents, max results per query,
+  reranking strategy, context optimization level, and hybrid/contextual defaults.
+- Request DTO defaults for these fields are nullable, so omitted request options use the service
+  configuration instead of hidden DTO constants.
 
-- Inject `RAGProperties` through `RAGAutoConfiguration`.
-- Use it in `RAGService` for default limit, threshold, hybrid/contextual defaults, and indexing content length.
-- Use it in `AdvancedRAGService` for expansion level, max documents, max results, reranking strategy, and context optimization level.
-- Add auto-configuration and service tests proving property values override hardcoded defaults.
+Implemented coverage:
+
+- `RAGServicePropertiesTest` proves configured request defaults, explicit request overrides, search
+  mode defaults, explicit hybrid override, and indexing content truncation.
+- `AdvancedRAGServiceTest` proves configured advanced defaults propagate into delegated
+  `RAGRequest`s and response metadata.
+- `RAGAutoConfigurationTest` proves bound properties reach the auto-configured `RAGService`.
 
 ### 2. Make `indexContent` Upsert-Safe
 
-`RAGService.indexContent(...)` currently stores a vector directly. Re-indexing the same entity can create duplicate vectors depending on provider behavior.
+Status: Done.
 
-Recommended change:
+`RAGService.indexContent(...)` now looks up the existing vector by `entityType` and `entityId`,
+updates by vector id when possible, and only stores a new record when no existing entity record is
+present. If a provider returns an existing record without a vector id, the service removes by entity
+before storing the replacement.
 
-- Check `vectorDatabaseService.getVectorByEntity(entityType, entityId)` or `vectorExists(...)` before storing.
-- If a record exists, call `updateVector(...)` with the existing vector id.
-- If it does not exist, call `storeVector(...)`.
-- Preserve current metadata and embedding behavior.
-- Add memory-vector integration coverage for re-indexing the same entity and asserting one retrievable document with updated content.
+Implemented coverage:
+
+- Mocked `RAGServiceIndexContentTest` coverage for insert, update, update-miss replacement, and
+  no-vector-id replacement paths.
+- Memory-vector integration coverage proving re-indexing the same entity leaves one retrievable
+  document with updated content and metadata.
 
 ### 3. Clarify And Improve Hybrid Search
 
-No concrete vector provider currently overrides native hybrid search or keyword search support. Today, default hybrid search falls back to vector search unless a custom provider or `SearchSource` handles hybrid behavior.
+Status: Done.
 
-Recommended change:
+No concrete vector provider currently overrides native hybrid search or keyword search support. Default
+hybrid search still falls back to vector search unless a custom provider or `SearchSource` handles
+hybrid behavior, but response metadata now makes that explicit.
 
-- Keep the fallback behavior, but expose in metadata whether hybrid was native or fallback.
-- Consider using `supportsHybridSearch()` to set `hybridSearchUsed` more accurately.
-- Add provider-specific native hybrid implementations where feasible.
-- Update docs to say hybrid is provider-dependent.
+Implemented behavior:
+
+- `RAGSearchExecutor` keeps the existing fallback retrieval behavior.
+- `RAGResponse.hybridSearchUsed` now reports actual/native hybrid use instead of only echoing the
+  request flag.
+- Response metadata includes `hybridSearchRequested`, `hybridSearchUsed`, `hybridSearchMode`,
+  `searchExecutionPath`, `vectorProviderSupportsHybridSearch`, and `contextualSearchUsed`.
+- `SearchSource` now has a default `supportsHybridSearch()` capability hook. Search-source RAG only
+  reports `hybridSearchUsed=true` when a successful source advertises hybrid support.
+- Provider fallback is reported as `hybridSearchMode=fallback_vector`; native provider hybrid is
+  reported as `hybridSearchMode=native`.
+
+Implemented coverage:
+
+- `RAGServicePropertiesTest` proves requested hybrid is reported as vector fallback when the vector
+  provider does not advertise native hybrid support.
+- `RAGServicePropertiesTest` proves native hybrid is reported when `supportsHybridSearch()` is true.
+- `RAGServiceSearchSourceRegistryTest` proves source-registry hybrid reporting is driven by successful
+  source capability diagnostics.
 
 ### 4. Optimize Advanced Semantic Reranking
 
-`AdvancedRAGService.rerankBySemanticSimilarity(...)` embeds each document one by one.
+Status: Done.
 
-Recommended change:
+Implemented behavior:
 
-- Use `AIEmbeddingService.generateEmbeddings(...)` for batch document embeddings.
-- Reuse existing document similarity scores when document embeddings are not required.
-- Cap rerank input size before embedding to avoid expensive expanded-query fan-out.
-- Add tests proving semantic reranking uses batch embeddings and preserves fallback behavior when embedding fails.
+- `AdvancedRAGService.rerankBySemanticSimilarity(...)` still embeds the query once, then uses
+  `AIEmbeddingService.generateEmbeddings(...)` for retrieved documents that do not already carry
+  embeddings.
+- Existing `RAGDocument.embeddings` are reused instead of recomputed.
+- `RAGProperties.AdvancedProperties.maxSemanticRerankDocuments` caps how many candidates are embedded
+  during semantic reranking; overflow documents are preserved after the semantically scored set.
+- Batch embedding failures fall back to the original retrieval order instead of failing the whole
+  advanced RAG request.
+
+Implemented coverage:
+
+- `AdvancedRAGServiceTest` proves existing document embeddings are reused and only missing document
+  embeddings are batched.
+- `AdvancedRAGServiceTest` proves the semantic rerank cap bounds batch embedding work while preserving
+  overflow documents.
+- `AdvancedRAGServiceTest` proves batch embedding failure keeps the request successful and returns the
+  original retrieval order.
 
 ### 5. Use A Bounded Executor For Advanced Search Fan-Out
 
-`AdvancedRAGService.performMultiStrategySearch(...)` uses `CompletableFuture.supplyAsync(...)` without an explicit executor, which uses the common pool.
+Status: Done.
 
-Recommended change:
+Implemented behavior:
 
-- Inject a bounded executor or Spring `TaskExecutor`.
-- Add a max parallelism property under `ai.infrastructure.rag.advanced`.
-- Preserve current behavior when no executor is configured.
-- Add tests around query fan-out count and graceful failure handling.
+- `RAGProperties.AdvancedProperties` now exposes `maxParallelSearches`, defaulting to `4`.
+- `RAGAutoConfiguration` creates a named, daemon, fixed-size `advancedRagSearchExecutor` when
+  advanced RAG is enabled.
+- `AdvancedRAGService.performMultiStrategySearch(...)` runs expanded-query searches on the injected
+  executor instead of the common pool.
+- Direct service construction preserves the legacy common-pool fallback unless a caller supplies an
+  executor.
+
+Implemented coverage:
+
+- `RAGAutoConfigurationTest` proves `ai.infrastructure.rag.advanced.max-parallel-searches` binds into
+  the configured executor size.
+- `AdvancedRAGServiceTest` proves expanded-query fan-out is scheduled through the provided executor.
 
 ### 6. Avoid Double Filtering Where Possible
 
@@ -111,11 +166,11 @@ Recommended change:
 
 ## Suggested Implementation Order
 
-1. Wire `RAGProperties` and add tests.
-2. Make `indexContent` upsert-safe and add memory-vector integration coverage.
-3. Add bounded executor support for advanced search fan-out.
-4. Batch semantic reranking embeddings.
-5. Improve hybrid-search metadata and docs.
+1. Wire `RAGProperties` and add tests. Done.
+2. Make `indexContent` upsert-safe and add memory-vector integration coverage. Done.
+3. Add bounded executor support for advanced search fan-out. Done.
+4. Batch semantic reranking embeddings. Done.
+5. Improve hybrid-search metadata and docs. Done.
 6. Revisit source ranking normalization and duplicate filtering.
 
 ## Verification To Run After Changes
@@ -127,7 +182,7 @@ git diff --check
 
 Recommended focused tests to add or update:
 
-- `RAGAutoConfigurationTest` for property binding into services.
-- `RAGServiceMemoryVectorIntegrationTest` for upsert/re-index behavior.
+- `RAGAutoConfigurationTest` for property binding into services. Done for `RAGService`.
+- `RAGServiceMemoryVectorIntegrationTest` for upsert/re-index behavior. Done.
 - `AdvancedRAGServiceTest` for bounded fan-out and batch embedding reranking.
-- `RAGServiceSearchSourceRegistryTest` for hybrid/fallback metadata and source diagnostics.
+- `RAGServiceSearchSourceRegistryTest` for hybrid/fallback metadata and source diagnostics. Done.

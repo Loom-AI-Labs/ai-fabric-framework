@@ -12,6 +12,11 @@ import ai.fabric.rag.VectorDatabaseService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.core.type.TypeReference;
 import ai.fabric.util.MetadataJsonSerializer;
+import ai.fabric.util.VectorMetadataFilterSupport;
+import ai.fabric.util.VectorRecordLifecycleMetadata;
+import ai.fabric.util.VectorRecordInputValidation;
+import ai.fabric.util.VectorRecordProjection;
+import ai.fabric.vector.VectorProviderMetrics;
 import io.weaviate.client.Config;
 import io.weaviate.client.WeaviateClient;
 import io.weaviate.client.base.Result;
@@ -63,6 +68,8 @@ public class WeaviateVectorDatabaseService implements VectorDatabaseService {
     private static final String PROPERTY_CONTENT = "content";
     private static final String PROPERTY_RAW = "raw";
     private static final String PROPERTY_META_PREFIX = "meta_";
+    private static final String EMPTY_STRING_METADATA_SENTINEL = "__ai_fabric_empty_string__";
+    private static final int COUNT_FALLBACK_SCAN_PAGE_SIZE = 500;
 
     private final AIProviderConfig.WeaviateConfig config;
     private final VectorDatabaseConfig vectorDatabaseConfig;
@@ -75,6 +82,8 @@ public class WeaviateVectorDatabaseService implements VectorDatabaseService {
     private final Set<String> knownEntityTypes = ConcurrentHashMap.newKeySet(); // cache of original entity types
     private final ConcurrentMap<String, Set<String>> knownPropertiesByClass = new ConcurrentHashMap<>();
     private final Set<String> knownTenantBindings = ConcurrentHashMap.newKeySet();
+    private final ConcurrentMap<String, Integer> aggregateCountFallbacks = new ConcurrentHashMap<>();
+    private final ConcurrentMap<String, String> aggregateCountFallbackReasons = new ConcurrentHashMap<>();
 
     public WeaviateVectorDatabaseService(AIProviderConfig providerConfig) {
         this(providerConfig, null);
@@ -109,13 +118,74 @@ public class WeaviateVectorDatabaseService implements VectorDatabaseService {
     }
 
     @Override
+    public boolean supportsSearchMetadataFiltering() {
+        return true;
+    }
+
+    @Override
+    public boolean supportsScanMetadataFiltering() {
+        return true;
+    }
+
+    @Override
+    public boolean supportsExactFetchById() {
+        return true;
+    }
+
+    @Override
+    public boolean supportsClearByEntityType() {
+        return true;
+    }
+
+    @Override
     public boolean supportsEfficientEntityTypeCount() {
-        return false;
+        return true;
+    }
+
+    @Override
+    public String vectorProviderName() {
+        return "weaviate";
+    }
+
+    @Override
+    public String vectorNativeClient() {
+        return "weaviate-java-client";
+    }
+
+    @Override
+    public String vectorSearchFilterMode() {
+        return "weaviate-where-filter-text-backed";
+    }
+
+    @Override
+    public String vectorScanFilterMode() {
+        return "weaviate-where-filter-text-backed";
+    }
+
+    @Override
+    public String vectorMetadataFilterSubset() {
+        return "portable-scalar-exact-match";
+    }
+
+    @Override
+    public String vectorEntityTypeCountMode() {
+        return "native-aggregate-with-safe-fallback";
+    }
+
+    @Override
+    public String vectorEntityTypeClearMode() {
+        return "weaviate-delete-class-or-tenant-objects";
+    }
+
+    @Override
+    public String vectorConsistencyModel() {
+        return "provider-durable-class-tenant-scoped";
     }
 
     @Override
     public Map<String, Object> adminDiagnostics() {
-        Map<String, Object> diagnostics = new LinkedHashMap<>();
+        Map<String, Object> diagnostics = VectorDatabaseService.super.adminDiagnostics();
+        diagnostics.put("provider", "weaviate");
         diagnostics.put("sharedStorage", nativeMultiTenancyEnabled);
         diagnostics.put("scopeType", nativeMultiTenancyEnabled ? "CLASS_AND_TENANT" : "CLASS_PREFIX");
         diagnostics.put("rootResourceLabel", "Host");
@@ -123,6 +193,15 @@ public class WeaviateVectorDatabaseService implements VectorDatabaseService {
         diagnostics.put("scopePrefix", classPrefix);
         diagnostics.put("tenantHandle", tenantName);
         diagnostics.put("nativeMultiTenancyEnabled", nativeMultiTenancyEnabled);
+        diagnostics.put("metadataFilteredSearch", supportsSearchMetadataFiltering());
+        diagnostics.put("metadataFilteredScan", supportsScanMetadataFiltering());
+        diagnostics.put("searchFilterMode", "weaviate-where-filter-text-backed");
+        diagnostics.put("scanFilterMode", "weaviate-where-filter-text-backed");
+        diagnostics.put("countMode", "native-aggregate-with-safe-fallback");
+        diagnostics.put("aggregateCountFallbacks", sortedMap(aggregateCountFallbacks));
+        diagnostics.put("aggregateCountFallbackReasons", sortedMap(aggregateCountFallbackReasons));
+        diagnostics.put("countFallbacks", sortedMap(aggregateCountFallbacks));
+        diagnostics.put("countFallbackReasons", sortedMap(aggregateCountFallbackReasons));
         if (nativeMultiTenancyEnabled && (hasText(classPrefix) || hasText(tenantName))) {
             diagnostics.put("scopePattern", classPrefix + "<EntityType> @ tenant " + tenantName);
         }
@@ -133,19 +212,16 @@ public class WeaviateVectorDatabaseService implements VectorDatabaseService {
     public String storeVector(String entityType, String entityId, String content,
                               List<Double> embedding, Map<String, Object> metadata) {
         ensureEnabled();
-        requireText(entityType, "entityType");
-        requireText(entityId, "entityId");
-        if (CollectionUtils.isEmpty(embedding)) {
-            throw new AIServiceException("Weaviate storeVector requires a non-empty embedding vector");
-        }
+        VectorRecordInputValidation.requireStoreInputs("Weaviate", entityType, entityId, embedding);
 
         String className = toClassName(entityType);
         ensureClassExists(entityType, className);
-        ensureMetadataProperties(className, metadata);
+        Map<String, Object> lifecycleMetadata = VectorRecordLifecycleMetadata.enrichForStore(metadata);
+        ensureMetadataProperties(className, lifecycleMetadata);
         knownEntityTypes.add(entityType);
 
         String vectorId = buildVectorId(entityType, entityId);
-        upsertObject(className, vectorId, buildProperties(entityType, entityId, content, metadata), toFloatArray(embedding));
+        upsertObject(className, vectorId, buildProperties(entityType, entityId, content, lifecycleMetadata), toFloatArray(embedding));
         return vectorId;
     }
 
@@ -153,24 +229,38 @@ public class WeaviateVectorDatabaseService implements VectorDatabaseService {
     public boolean updateVector(String vectorId, String entityType, String entityId, String content,
                                 List<Double> embedding, Map<String, Object> metadata) {
         ensureEnabled();
-        if (!hasText(vectorId) || !hasText(entityType) || !hasText(entityId)) {
+        if (!VectorRecordInputValidation.hasVectorId(vectorId)
+            || !VectorRecordInputValidation.hasEntityIdentity(entityType, entityId)) {
             return false;
         }
-        if (CollectionUtils.isEmpty(embedding)) {
-            throw new AIServiceException("Weaviate updateVector requires a non-empty embedding vector");
-        }
+        VectorRecordInputValidation.requireEmbedding("Weaviate", "updateVector", embedding);
 
-        try {
-            String className = toClassName(entityType);
-            ensureClassExists(entityType, className);
-            ensureMetadataProperties(className, metadata);
-            knownEntityTypes.add(entityType);
-            upsertObject(className, vectorId, buildProperties(entityType, entityId, content, metadata), toFloatArray(embedding));
-            return true;
-        } catch (AIServiceException ex) {
-            log.warn("Failed to update vector {}: {}", vectorId, ex.getMessage());
+        String className = toClassName(entityType);
+        if (!classExists(className)) {
             return false;
         }
+        var getter = client.data()
+            .objectsGetter()
+            .withClassName(className)
+            .withID(vectorId);
+        Result<List<WeaviateObject>> existing = applyTenant(getter).run();
+        if (existing.hasErrors()) {
+            if (isNotFound(existing.getError())) {
+                return false;
+            }
+            throw new AIServiceException("Weaviate update existence check failed: " + errorMessages(existing.getError()));
+        }
+        if (CollectionUtils.isEmpty(existing.getResult())) {
+            return false;
+        }
+        LocalDateTime createdAt = toVectorRecord(existing.getResult().getFirst(), null)
+            .map(VectorRecord::getCreatedAt)
+            .orElse(null);
+        Map<String, Object> lifecycleMetadata = VectorRecordLifecycleMetadata.enrichForUpdate(metadata, createdAt);
+        ensureMetadataProperties(className, lifecycleMetadata);
+        knownEntityTypes.add(entityType);
+        upsertObject(className, vectorId, buildProperties(entityType, entityId, content, lifecycleMetadata), toFloatArray(embedding));
+        return true;
     }
 
     @Override
@@ -206,7 +296,9 @@ public class WeaviateVectorDatabaseService implements VectorDatabaseService {
         }
 
         // Fallback for older stores/unknown classes: may trigger a deprecation warning on Weaviate >= 1.23.
-        if (nativeMultiTenancyEnabled) {
+        // Once class-scoped candidates are known, do not fall through to a classless lookup because it
+        // can cross an AI Fabric class-prefix scope.
+        if (!classCandidates.isEmpty() || nativeMultiTenancyEnabled) {
             return Optional.empty();
         }
 
@@ -374,39 +466,34 @@ public class WeaviateVectorDatabaseService implements VectorDatabaseService {
         if (!hasText(vectorId)) {
             return false;
         }
-        try {
-            // Prefer class-qualified deletes to avoid Weaviate 1.23+ deprecation warnings.
-            if (!knownClasses.isEmpty()) {
-                for (String className : knownClasses.stream().filter(this::hasText).sorted().toList()) {
-                    if (deleteById(className, vectorId)) {
-                        return true;
-                    }
+        // Prefer class-qualified deletes to avoid Weaviate 1.23+ deprecation warnings.
+        if (!knownClasses.isEmpty()) {
+            for (String className : knownClasses.stream().filter(this::hasText).sorted().toList()) {
+                if (deleteById(className, vectorId)) {
+                    return true;
                 }
             }
-
-            if (nativeMultiTenancyEnabled) {
-                return false;
-            }
-
-            // Fallback: may trigger a deprecation warning on Weaviate >= 1.23.
-            Result<Boolean> result = client.data()
-                .deleter()
-                .withID(vectorId)
-                .run();
-
-            if (result.hasErrors()) {
-                if (isNotFound(result.getError())) {
-                    return false;
-                }
-                log.warn("Weaviate delete failed for {}: {}", vectorId, errorMessages(result.getError()));
-                return false;
-            }
-
-            return Boolean.TRUE.equals(result.getResult());
-        } catch (AIServiceException ex) {
-            log.warn("Failed to remove vector {}: {}", vectorId, ex.getMessage());
             return false;
         }
+
+        if (nativeMultiTenancyEnabled) {
+            return false;
+        }
+
+        // Fallback: may trigger a deprecation warning on Weaviate >= 1.23.
+        Result<Boolean> result = client.data()
+            .deleter()
+            .withID(vectorId)
+            .run();
+
+        if (result.hasErrors()) {
+            if (isNotFound(result.getError())) {
+                return false;
+            }
+            throw new AIServiceException("Weaviate delete failed for vector " + vectorId + ": " + errorMessages(result.getError()));
+        }
+
+        return Boolean.TRUE.equals(result.getResult());
     }
 
     @Override
@@ -482,7 +569,7 @@ public class WeaviateVectorDatabaseService implements VectorDatabaseService {
             limit = 200;
         }
 
-        String after = decodeAfterCursor(request.getCursor()).orElse(null);
+        int offset = decodeOffsetCursor(request.getCursor()).orElse(0);
         Optional<WhereFilter> where = buildWhereFilter(request.getMetadataEquals());
 
         List<Field> fields = new ArrayList<>();
@@ -505,13 +592,11 @@ public class WeaviateVectorDatabaseService implements VectorDatabaseService {
             .get()
             .withClassName(className)
             .withLimit(limit + 1)
+            .withOffset(offset)
             .withFields(fields.toArray(Field[]::new));
 
         if (where.isPresent()) {
             query = query.withWhere(where.get());
-        }
-        if (after != null) {
-            query = query.withAfter(after);
         }
 
         query = applyTenant(query);
@@ -521,15 +606,18 @@ public class WeaviateVectorDatabaseService implements VectorDatabaseService {
             throw new AIServiceException("Weaviate scan failed for class " + className + ": " + errorMessages(result.getError()));
         }
 
-        List<VectorRecord> records = parseGraphQLScanRecords(className, result.getResult(), request);
-        boolean hasMore = records.size() > limit;
+        List<VectorRecord> nativeRecords = parseGraphQLScanRecords(className, result.getResult(), request);
+        boolean hasMore = nativeRecords.size() > limit;
         if (hasMore) {
-            records = records.subList(0, limit);
+            nativeRecords = nativeRecords.subList(0, limit);
         }
+        List<VectorRecord> records = applyPortableMetadataFilter(nativeRecords, request.getMetadataEquals()).stream()
+            .map(record -> VectorRecordProjection.projectForScan(record, request))
+            .toList();
 
         String nextCursor = null;
-        if (hasMore && !records.isEmpty()) {
-            nextCursor = encodeAfterCursor(records.get(records.size() - 1).getVectorId()).orElse(null);
+        if (hasMore) {
+            nextCursor = encodeOffsetCursor(offset + nativeRecords.size()).orElse(null);
         }
 
         return VectorScanPage.builder()
@@ -576,7 +664,63 @@ public class WeaviateVectorDatabaseService implements VectorDatabaseService {
 
     @Override
     public long getVectorCountByEntityType(String entityType) {
-        return getVectorsByEntityType(entityType).size();
+        ensureEnabled();
+        if (!hasText(entityType)) {
+            return 0;
+        }
+
+        String className = toClassName(entityType);
+        if (!classExists(className)) {
+            return 0;
+        }
+
+        var query = applyTenant(client.graphQL()
+            .aggregate()
+            .withClassName(className)
+            .withFields(Field.builder()
+                .name("meta")
+                .fields(Field.builder().name("count").build())
+                .build()));
+
+        Result<GraphQLResponse> result = query.run();
+        if (result.hasErrors()) {
+            if (isNotFound(result.getError())) {
+                return 0;
+            }
+            if (isAggregateUnsupported(result.getError())) {
+                String reason = errorMessages(result.getError());
+                log.warn(
+                    "Weaviate aggregate count is not available for class '{}'; falling back to paged scan counting",
+                    className
+                );
+                aggregateCountFallbacks.merge(className, 1, Integer::sum);
+                aggregateCountFallbackReasons.put(className, reason);
+                VectorProviderMetrics.recordFallback("weaviate", "count", "aggregate_unsupported");
+                return countByPagedScan(entityType);
+            }
+            throw new AIServiceException("Weaviate count failed for class " + className + ": " + errorMessages(result.getError()));
+        }
+
+        aggregateCountFallbackReasons.remove(className);
+        return parseAggregateCount(className, result.getResult());
+    }
+
+    private long countByPagedScan(String entityType) {
+        long total = 0L;
+        String cursor = null;
+        do {
+            VectorScanPage page = scan(VectorScanRequest.builder()
+                .entityType(entityType)
+                .cursor(cursor)
+                .limit(COUNT_FALLBACK_SCAN_PAGE_SIZE)
+                .includeContent(false)
+                .includeMetadata(false)
+                .includeEmbedding(false)
+                .build());
+            total += page.getVectors().size();
+            cursor = page.isHasMore() ? page.getNextCursor() : null;
+        } while (cursor != null);
+        return total;
     }
 
     @Override
@@ -906,23 +1050,23 @@ public class WeaviateVectorDatabaseService implements VectorDatabaseService {
     }
 
     private Optional<WhereFilter> buildWhereFilter(Map<String, Object> metadataEquals) {
-        if (metadataEquals == null || metadataEquals.isEmpty()) {
+        VectorMetadataFilterSupport.ValidationResult validation =
+            VectorMetadataFilterSupport.validatePortableEquals(metadataEquals);
+        if (validation.isEmpty()) {
             return Optional.empty();
+        }
+        if (validation.hasRejectedFilters()) {
+            return Optional.of(impossibleWhereFilter());
         }
 
         List<WhereFilter> operands = new ArrayList<>();
-        metadataEquals.forEach((key, value) -> {
-            if (!hasText(key) || value == null) {
-                return;
-            }
-            toMetadataPropertyName(key)
+        validation.terms().forEach(term -> toMetadataPropertyName(term.key())
                 .map(property -> WhereFilter.builder()
                     .path(new String[]{property})
                     .operator("Equal")
-                    .valueText(String.valueOf(value))
+                    .valueText(metadataPropertyValue(term.value()))
                     .build())
-                .ifPresent(operands::add);
-        });
+                .ifPresent(operands::add));
 
         if (operands.isEmpty()) {
             return Optional.empty();
@@ -934,6 +1078,14 @@ public class WeaviateVectorDatabaseService implements VectorDatabaseService {
             .operator("And")
             .operands(operands.toArray(WhereFilter[]::new))
             .build());
+    }
+
+    private WhereFilter impossibleWhereFilter() {
+        return WhereFilter.builder()
+            .path(new String[]{PROPERTY_RAW})
+            .operator("Equal")
+            .valueText(VectorMetadataFilterSupport.IMPOSSIBLE_FILTER_VALUE)
+            .build();
     }
 
     private List<VectorRecord> parseGraphQLScanRecords(String className, GraphQLResponse response, VectorScanRequest request) {
@@ -965,68 +1117,53 @@ public class WeaviateVectorDatabaseService implements VectorDatabaseService {
             }
 
             String vectorId = String.valueOf(additional.get("id"));
-            List<Double> embedding = request.isIncludeEmbedding()
-                ? toDoubleList(extractVector(additional.get("vector")))
-                : List.of();
+            Object vectorObject = additional.get("vector");
+            List<Double> embedding = vectorObject != null ? toDoubleList(extractVector(vectorObject)) : null;
 
             String entityId = row.get(PROPERTY_ENTITY_ID) != null ? String.valueOf(row.get(PROPERTY_ENTITY_ID)) : null;
             String entityType = row.get(PROPERTY_ENTITY_TYPE) != null ? String.valueOf(row.get(PROPERTY_ENTITY_TYPE)) : null;
-            String content = request.isIncludeContent() && row.get(PROPERTY_CONTENT) != null ? String.valueOf(row.get(PROPERTY_CONTENT)) : null;
+            String content = row.get(PROPERTY_CONTENT) != null ? String.valueOf(row.get(PROPERTY_CONTENT)) : null;
             String raw = row.get(PROPERTY_RAW) != null ? String.valueOf(row.get(PROPERTY_RAW)) : "{}";
 
             Map<String, Object> parsedMetadata = parseRawMetadata(raw);
-            LocalDateTime createdAt = readTimestamp(parsedMetadata, "_indexedCreatedAt").orElse(null);
-            LocalDateTime updatedAt = readTimestamp(parsedMetadata, "_indexedUpdatedAt").orElse(null);
+            LocalDateTime createdAt = VectorRecordLifecycleMetadata.readCreatedAt(parsedMetadata).orElse(null);
+            LocalDateTime updatedAt = VectorRecordLifecycleMetadata.readUpdatedAt(parsedMetadata).orElse(null);
 
-            records.add(VectorRecord.builder()
+            VectorRecord record = VectorRecord.builder()
                 .vectorId(vectorId)
                 .entityType(entityType)
                 .entityId(entityId)
                 .content(content)
                 .embedding(embedding)
-                .metadata(request.isIncludeMetadata() ? parsedMetadata : Map.of())
+                .metadata(parsedMetadata)
                 .createdAt(createdAt)
                 .updatedAt(updatedAt)
-                .build());
+                .build();
+            records.add(record);
         }
 
         return records;
     }
 
-    private static Optional<LocalDateTime> readTimestamp(Map<String, Object> metadata, String key) {
-        if (metadata == null || key == null) {
+    private static Optional<String> encodeOffsetCursor(int offset) {
+        if (offset <= 0) {
             return Optional.empty();
         }
-        Object raw = metadata.get(key);
-        if (raw == null) {
-            return Optional.empty();
-        }
-        try {
-            return Optional.of(LocalDateTime.parse(raw.toString()));
-        } catch (Exception ex) {
-            return Optional.empty();
-        }
-    }
-
-    private static Optional<String> encodeAfterCursor(String vectorId) {
-        if (!hasTextStatic(vectorId)) {
-            return Optional.empty();
-        }
-        String raw = "after:" + vectorId;
+        String raw = "offset:" + offset;
         return Optional.of(Base64.getUrlEncoder().withoutPadding().encodeToString(raw.getBytes(StandardCharsets.UTF_8)));
     }
 
-    private static Optional<String> decodeAfterCursor(String cursor) {
+    private static Optional<Integer> decodeOffsetCursor(String cursor) {
         if (!hasTextStatic(cursor)) {
             return Optional.empty();
         }
         try {
             String raw = new String(Base64.getUrlDecoder().decode(cursor), StandardCharsets.UTF_8);
-            if (!raw.startsWith("after:")) {
+            if (!raw.startsWith("offset:")) {
                 return Optional.empty();
             }
-            String after = raw.substring("after:".length());
-            return hasTextStatic(after) ? Optional.of(after) : Optional.empty();
+            int offset = Integer.parseInt(raw.substring("offset:".length()));
+            return offset > 0 ? Optional.of(offset) : Optional.empty();
         } catch (Exception ex) {
             return Optional.empty();
         }
@@ -1052,9 +1189,33 @@ public class WeaviateVectorDatabaseService implements VectorDatabaseService {
         return nativeMultiTenancyEnabled ? query.withTenant(tenantName) : query;
     }
 
+    private io.weaviate.client.v1.graphql.query.Aggregate applyTenant(io.weaviate.client.v1.graphql.query.Aggregate query) {
+        return nativeMultiTenancyEnabled ? query.withTenant(tenantName) : query;
+    }
+
+    private static <T> Map<String, T> sortedMap(Map<String, T> values) {
+        return values.entrySet().stream()
+            .sorted(Map.Entry.comparingByKey())
+            .collect(
+                LinkedHashMap::new,
+                (map, entry) -> map.put(entry.getKey(), entry.getValue()),
+                LinkedHashMap::putAll
+            );
+    }
+
     private boolean isTenantAlreadyPresent(WeaviateError error) {
         String messages = errorMessages(error).toLowerCase();
         return messages.contains("already exists") || messages.contains("tenant exists");
+    }
+
+    private boolean isAggregateUnsupported(WeaviateError error) {
+        String messages = errorMessages(error).toLowerCase();
+        return messages.contains("aggregate") && (
+            messages.contains("unsupported")
+                || messages.contains("not supported")
+                || messages.contains("unknown field")
+                || messages.contains("cannot query field")
+        );
     }
 
     private Optional<String> toMetadataPropertyName(String key) {
@@ -1081,7 +1242,14 @@ public class WeaviateVectorDatabaseService implements VectorDatabaseService {
     }
 
     private String toClassName(String entityType) {
-        return scopedClassName(entityType, classPrefix);
+        String base = baseClassName(entityType);
+        if (!hasTextStatic(classPrefix)) {
+            return base;
+        }
+        String combined = classPrefix + "_" + base;
+        return combined.length() > 230
+            ? combined.substring(0, 221) + "_" + shortHash(combined)
+            : combined;
     }
 
     static String scopedClassName(String entityType, String classPrefix) {
@@ -1186,9 +1354,16 @@ public class WeaviateVectorDatabaseService implements VectorDatabaseService {
                 return;
             }
             toMetadataPropertyName(key)
-                .ifPresent(propertyName -> props.put(propertyName, String.valueOf(value)));
+                .ifPresent(propertyName -> props.put(propertyName, metadataPropertyValue(value)));
         });
         return props;
+    }
+
+    private static String metadataPropertyValue(Object value) {
+        if (value instanceof String string && string.isEmpty()) {
+            return EMPTY_STRING_METADATA_SENTINEL;
+        }
+        return String.valueOf(value);
     }
 
     private Map<String, Object> stripRaw(Map<String, Object> metadata) {
@@ -1201,11 +1376,17 @@ public class WeaviateVectorDatabaseService implements VectorDatabaseService {
     }
 
     private void upsertObject(String className, String vectorId, Map<String, Object> properties, Float[] vector) {
-        applyTenant(client.data()
+        Result<Boolean> deleteResult = applyTenant(client.data()
             .deleter()
             .withClassName(className)
             .withID(vectorId))
             .run();
+        if (deleteResult.hasErrors() && !isNotFound(deleteResult.getError())) {
+            throw new AIServiceException(
+                "Failed to prepare Weaviate upsert for object " + vectorId + ": "
+                    + errorMessages(deleteResult.getError())
+            );
+        }
 
         Result<WeaviateObject> result = applyTenant(client.data()
             .creator()
@@ -1228,6 +1409,9 @@ public class WeaviateVectorDatabaseService implements VectorDatabaseService {
     }
 
     private boolean deleteById(String className, String vectorId) {
+        if (!objectExists(className, vectorId)) {
+            return false;
+        }
         Result<Boolean> result = applyTenant(client.data()
             .deleter()
             .withClassName(className)
@@ -1238,10 +1422,30 @@ public class WeaviateVectorDatabaseService implements VectorDatabaseService {
             if (isNotFound(result.getError())) {
                 return false;
             }
-            log.warn("Weaviate delete failed for {}: {}", vectorId, errorMessages(result.getError()));
-            return false;
+            throw new AIServiceException(
+                "Weaviate delete failed for class " + className + " vector " + vectorId + ": "
+                    + errorMessages(result.getError())
+            );
         }
         return Boolean.TRUE.equals(result.getResult());
+    }
+
+    private boolean objectExists(String className, String vectorId) {
+        var getter = client.data()
+            .objectsGetter()
+            .withClassName(className)
+            .withID(vectorId);
+        Result<List<WeaviateObject>> result = applyTenant(getter).run();
+        if (result.hasErrors()) {
+            if (isNotFound(result.getError())) {
+                return false;
+            }
+            throw new AIServiceException(
+                "Weaviate existence check failed for class " + className + " vector " + vectorId + ": "
+                    + errorMessages(result.getError())
+            );
+        }
+        return !CollectionUtils.isEmpty(result.getResult());
     }
 
     private List<VectorRecord> searchClass(String className,
@@ -1282,7 +1486,21 @@ public class WeaviateVectorDatabaseService implements VectorDatabaseService {
             throw new AIServiceException("Weaviate search failed for class " + className + ": " + errorMessages(result.getError()));
         }
 
-        return parseGraphQLRecords(className, result.getResult(), threshold);
+        return applyPortableMetadataFilter(
+            parseGraphQLRecords(className, result.getResult(), threshold),
+            metadataEquals
+        );
+    }
+
+    private List<VectorRecord> applyPortableMetadataFilter(List<VectorRecord> records,
+                                                           Map<String, Object> metadataEquals) {
+        if (records == null || records.isEmpty()
+            || VectorMetadataFilterSupport.validatePortableEquals(metadataEquals).isEmpty()) {
+            return records == null ? List.of() : records;
+        }
+        return records.stream()
+            .filter(record -> VectorMetadataFilterSupport.matchesPortableEquals(record.getMetadata(), metadataEquals))
+            .toList();
     }
 
     private List<VectorRecord> parseGraphQLRecords(String className, GraphQLResponse response, double threshold) {
@@ -1331,8 +1549,8 @@ public class WeaviateVectorDatabaseService implements VectorDatabaseService {
             String raw = row.get(PROPERTY_RAW) != null ? String.valueOf(row.get(PROPERTY_RAW)) : "{}";
 
             Map<String, Object> metadata = parseRawMetadata(raw);
-            LocalDateTime createdAt = readTimestamp(metadata, "_indexedCreatedAt").orElse(null);
-            LocalDateTime updatedAt = readTimestamp(metadata, "_indexedUpdatedAt").orElse(null);
+            LocalDateTime createdAt = VectorRecordLifecycleMetadata.readCreatedAt(metadata).orElse(null);
+            LocalDateTime updatedAt = VectorRecordLifecycleMetadata.readUpdatedAt(metadata).orElse(null);
 
             records.add(VectorRecord.builder()
                 .vectorId(vectorId)
@@ -1347,6 +1565,44 @@ public class WeaviateVectorDatabaseService implements VectorDatabaseService {
         }
 
         return records;
+    }
+
+    private long parseAggregateCount(String className, GraphQLResponse response) {
+        if (response == null || response.getData() == null) {
+            return 0L;
+        }
+
+        if (!(response.getData() instanceof Map<?, ?> dataMap)) {
+            return 0L;
+        }
+        Object aggregateObject = dataMap.get("Aggregate");
+        if (!(aggregateObject instanceof Map<?, ?> aggregateMap)) {
+            return 0L;
+        }
+        Object classResults = aggregateMap.get(className);
+        if (!(classResults instanceof List<?> results) || results.isEmpty()) {
+            return 0L;
+        }
+        Object first = results.getFirst();
+        if (!(first instanceof Map<?, ?> firstRow)) {
+            return 0L;
+        }
+        Object metaObject = firstRow.get("meta");
+        if (!(metaObject instanceof Map<?, ?> meta)) {
+            return 0L;
+        }
+        Object count = meta.get("count");
+        if (count instanceof Number number) {
+            return number.longValue();
+        }
+        if (count instanceof String string) {
+            try {
+                return Long.parseLong(string);
+            } catch (NumberFormatException ignored) {
+                return 0L;
+            }
+        }
+        return 0L;
     }
 
     private Float[] extractVector(Object vectorValue) {
@@ -1412,8 +1668,8 @@ public class WeaviateVectorDatabaseService implements VectorDatabaseService {
         String raw = props.get(PROPERTY_RAW) != null ? String.valueOf(props.get(PROPERTY_RAW)) : "{}";
 
         Map<String, Object> metadata = parseRawMetadata(raw);
-        LocalDateTime createdAt = readTimestamp(metadata, "_indexedCreatedAt").orElse(null);
-        LocalDateTime updatedAt = readTimestamp(metadata, "_indexedUpdatedAt").orElse(null);
+        LocalDateTime createdAt = VectorRecordLifecycleMetadata.readCreatedAt(metadata).orElse(null);
+        LocalDateTime updatedAt = VectorRecordLifecycleMetadata.readUpdatedAt(metadata).orElse(null);
 
         return Optional.of(VectorRecord.builder()
             .vectorId(object.getId())
@@ -1435,7 +1691,9 @@ public class WeaviateVectorDatabaseService implements VectorDatabaseService {
         if (error.getStatusCode() == 404) {
             return true;
         }
-        return errorMessages(error).toLowerCase(java.util.Locale.ROOT).contains("tenant not found");
+        String messages = errorMessages(error).toLowerCase(java.util.Locale.ROOT);
+        return messages.contains("tenant not found")
+            || messages.contains("no object with id");
     }
 
     private String errorMessages(WeaviateError error) {
@@ -1445,9 +1703,4 @@ public class WeaviateVectorDatabaseService implements VectorDatabaseService {
         return error.getMessages().toString();
     }
 
-    private void requireText(String value, String field) {
-        if (!hasText(value)) {
-            throw new AIServiceException(field + " must not be blank");
-        }
-    }
 }

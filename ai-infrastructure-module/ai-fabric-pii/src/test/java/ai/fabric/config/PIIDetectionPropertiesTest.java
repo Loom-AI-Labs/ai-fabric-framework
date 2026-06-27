@@ -15,6 +15,13 @@ class PIIDetectionPropertiesTest {
     }
 
     @Test
+    void doesNotExposeOriginalPayloadInResultsByDefault() {
+        PIIDetectionProperties properties = new PIIDetectionProperties();
+
+        assertThat(properties.isExposeOriginalPayloadInResult()).isFalse();
+    }
+
+    @Test
     void canSwitchDetectionDirectionToInputOnly() {
         PIIDetectionProperties properties = new PIIDetectionProperties();
 
@@ -36,4 +43,3 @@ class PIIDetectionPropertiesTest {
             );
     }
 }
-

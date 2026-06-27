@@ -53,6 +53,16 @@ public class ChatSessionProperties {
     private int pinnedTargetReuseWindowTurns = 3;
 
     /**
+     * Maximum number of pending confirmation actions stored per conversation.
+     *
+     * <p>The newest action remains on top of the stack. When the limit is exceeded, the oldest
+     * pending actions are discarded to keep session metadata bounded.</p>
+     */
+    @Min(1)
+    @Max(20)
+    private int maxPendingActionStackDepth = 8;
+
+    /**
      * Configuration for persisting pinned targets (attachments / action result items) into conversation state.
      *
      * <p>This is short-lived conversational context intended for follow-up turns, not a long-term KB/index.</p>

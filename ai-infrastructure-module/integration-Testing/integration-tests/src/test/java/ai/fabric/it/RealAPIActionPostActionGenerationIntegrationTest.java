@@ -23,14 +23,13 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.context.annotation.Import;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.util.StringUtils;
 
-import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -65,7 +64,7 @@ public class RealAPIActionPostActionGenerationIntegrationTest {
     @Autowired
     private PostActionGenerationDemoActionHandler actionHandler;
 
-    @MockBean
+    @MockitoBean
     private IntentQueryExtractor intentQueryExtractor;
 
     @BeforeEach
@@ -77,7 +76,7 @@ public class RealAPIActionPostActionGenerationIntegrationTest {
     void shouldExecuteActionOnceAndGenerateSummaryFromHandlerFacts() {
         Assumptions.assumeTrue(hasAnyProviderKeyConfigured(), "No LLM provider API key configured; skipping RealAPI scenario.");
 
-        String verificationToken = "POAG-" + Instant.now().toEpochMilli();
+        String verificationToken = "POAG-ALPHA-BRAVO-CHARLIE";
 
         Intent intent = Intent.builder()
             .type(IntentType.ACTION)
@@ -96,9 +95,17 @@ public class RealAPIActionPostActionGenerationIntegrationTest {
                 .build()
         );
 
+        String query = "Execute post action generation demo with verification token \"%s\" and then summarize."
+            .formatted(verificationToken);
         OrchestrationResult result = orchestrator.orchestrate(
-            "Execute post action generation demo and then summarize.",
+            query,
             OrchestrationContext.forUser("post-action-realapi-user")
+        );
+        System.out.printf(
+            "RealAPI post-action generation step result type=%s success=%s metadataKeys=%s%n",
+            result.getType(),
+            result.isSuccess(),
+            result.getMetadata() != null ? result.getMetadata().keySet() : java.util.Set.of()
         );
 
         assertThat(result.getType()).isEqualTo(OrchestrationResultType.ACTION_EXECUTED);

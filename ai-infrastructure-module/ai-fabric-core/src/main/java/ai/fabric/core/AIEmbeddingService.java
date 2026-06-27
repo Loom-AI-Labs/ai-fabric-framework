@@ -1,10 +1,12 @@
 package ai.fabric.core;
 
+import ai.fabric.cache.AICacheNames;
 import ai.fabric.dto.AIEmbeddingRequest;
 import ai.fabric.dto.AIEmbeddingResponse;
 import ai.fabric.config.AIProviderConfig;
 import ai.fabric.embedding.EmbeddingProvider;
 import ai.fabric.exception.AIServiceException;
+import ai.fabric.provider.ProviderRequestOverrideSupport;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.cache.Cache;
 import org.springframework.cache.CacheManager;
@@ -324,7 +326,7 @@ public class AIEmbeddingService {
     }
 
     private Cache getEmbeddingCache() {
-        return cacheManager != null ? cacheManager.getCache("embeddings") : null;
+        return cacheManager != null ? cacheManager.getCache(AICacheNames.EMBEDDINGS) : null;
     }
 
     private AIEmbeddingResponse getFromCache(Cache cache, String cacheKey) {
@@ -393,6 +395,9 @@ public class AIEmbeddingService {
         String text = request != null && request.getText() != null ? request.getText() : "";
         String model = effectiveModel != null && !effectiveModel.isBlank() ? effectiveModel : "default";
         String provider = providerName != null && !providerName.isBlank() ? providerName : "unknown";
-        return text + "_" + model + "_" + provider;
+        String connection = ProviderRequestOverrideSupport.cacheDiscriminator(
+            request != null ? request.getParameters() : null
+        );
+        return text + "_" + model + "_" + provider + "_" + connection;
     }
 }

@@ -1,23 +1,20 @@
 package ai.fabric.it;
 
+import ai.fabric.config.AIProviderConfig;
 import ai.fabric.core.AIEmbeddingService;
 import ai.fabric.dto.AIEmbeddingRequest;
 import ai.fabric.dto.AIEmbeddingResponse;
 import ai.fabric.embedding.EmbeddingProvider;
-import com.theokanning.openai.OpenAiHttpException;
-import com.theokanning.openai.embedding.EmbeddingRequest;
-import com.theokanning.openai.embedding.EmbeddingResult;
-import com.theokanning.openai.service.OpenAiService;
+import ai.fabric.provider.springai.SpringAiEmbeddingProvider;
+import ai.fabric.provider.springai.SpringAiModelResolver;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
 
-import java.time.Duration;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -96,24 +93,38 @@ class ONNXEmbeddingIntegrationTest {
         Assumptions.assumeTrue(apiKey != null && !apiKey.isBlank(),
             "OPENAI_API_KEY environment variable must be defined");
 
-        OpenAiService openAiService = new OpenAiService(apiKey, Duration.ofSeconds(90));
-        EmbeddingRequest request = EmbeddingRequest.builder()
-            .model(OPENAI_EMBEDDING_MODEL)
-            .input(List.of(text))
-            .build();
-
-        EmbeddingResult result;
+        SpringAiModelResolver resolver = springAiOpenAiResolver(apiKey);
         try {
-            result = openAiService.createEmbeddings(request);
-        } catch (OpenAiHttpException httpException) {
+            SpringAiEmbeddingProvider provider = new SpringAiEmbeddingProvider("openai", resolver);
+            AIEmbeddingResponse response = provider.generateEmbedding(AIEmbeddingRequest.builder()
+                .text(text)
+                .model(OPENAI_EMBEDDING_MODEL)
+                .build());
+            assertNotNull(response, "Spring AI OpenAI embedding response must not be null");
+            assertNotNull(response.getEmbedding(), "Spring AI OpenAI embedding vector must not be null");
+            assertFalse(response.getEmbedding().isEmpty(), "Spring AI OpenAI embedding result should contain data");
+            return response.getEmbedding();
+        } catch (RuntimeException runtimeException) {
             // Treat transient quota or service issues as a skipped comparison rather than a hard failure.
             Assumptions.assumeTrue(false,
-                "Skipping OpenAI embedding comparison due to API error: " + httpException.getMessage());
-            throw httpException; // unreachable but required for compilation
+                "Skipping Spring AI OpenAI embedding comparison due to API error: " + runtimeException.getMessage());
+            throw runtimeException; // unreachable but required for compilation
+        } finally {
+            try {
+                resolver.destroy();
+            } catch (Exception ignored) {
+                // Nothing actionable in tests; resolver cleanup is best-effort.
+            }
         }
-        assertNotNull(result, "OpenAI embedding result must not be null");
-        assertFalse(result.getData().isEmpty(), "OpenAI embedding result should contain data");
-        return result.getData().get(0).getEmbedding();
+    }
+
+    private SpringAiModelResolver springAiOpenAiResolver(String apiKey) {
+        AIProviderConfig config = new AIProviderConfig();
+        config.setEmbeddingProvider("openai");
+        config.setEmbeddingApiKey(apiKey);
+        config.getOpenai().setApiKey(apiKey);
+        config.getOpenai().setEmbeddingModel(OPENAI_EMBEDDING_MODEL);
+        return new SpringAiModelResolver(config);
     }
 
     private void assertEmbeddingValuesAreFinite(List<Double> embedding) {

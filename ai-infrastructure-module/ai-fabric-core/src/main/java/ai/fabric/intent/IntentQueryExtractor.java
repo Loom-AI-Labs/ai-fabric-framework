@@ -14,12 +14,9 @@ import ai.fabric.intent.orchestration.OrchestrationAuthContextResolver;
 import ai.fabric.intent.orchestration.OrchestrationContext;
 import ai.fabric.prompt.PromptRenderer;
 import ai.fabric.prompt.PromptTemplateResolver;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.core.json.JsonReadFeature;
-import com.fasterxml.jackson.databind.DeserializationFeature;
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -48,9 +45,24 @@ public class IntentQueryExtractor {
     private final AICoreService aiCoreService;
     private final EnrichedPromptBuilder enrichedPromptBuilder;
     private final AIActionRegistry actionHandlerRegistry;
-    private final ObjectMapper objectMapper;
+    private final IntentExtractionJsonSupport jsonSupport;
     private final PromptTemplateResolver promptTemplateResolver;
     private final PromptRenderer promptRenderer;
+
+    @Autowired
+    public IntentQueryExtractor(AICoreService aiCoreService,
+                                EnrichedPromptBuilder enrichedPromptBuilder,
+                                AIActionRegistry actionHandlerRegistry,
+                                IntentExtractionJsonSupport jsonSupport,
+                                PromptTemplateResolver promptTemplateResolver,
+                                PromptRenderer promptRenderer) {
+        this.aiCoreService = aiCoreService;
+        this.enrichedPromptBuilder = enrichedPromptBuilder;
+        this.actionHandlerRegistry = actionHandlerRegistry;
+        this.jsonSupport = jsonSupport;
+        this.promptTemplateResolver = promptTemplateResolver;
+        this.promptRenderer = promptRenderer;
+    }
 
     public IntentQueryExtractor(AICoreService aiCoreService,
                                 EnrichedPromptBuilder enrichedPromptBuilder,
@@ -58,20 +70,14 @@ public class IntentQueryExtractor {
                                 ObjectMapper objectMapper,
                                 PromptTemplateResolver promptTemplateResolver,
                                 PromptRenderer promptRenderer) {
-        this.aiCoreService = aiCoreService;
-        this.enrichedPromptBuilder = enrichedPromptBuilder;
-        this.actionHandlerRegistry = actionHandlerRegistry;
-        this.objectMapper = objectMapper.copy()
-            .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
-            .configure(DeserializationFeature.ACCEPT_EMPTY_ARRAY_AS_NULL_OBJECT, true)
-            .configure(DeserializationFeature.ACCEPT_SINGLE_VALUE_AS_ARRAY, true)
-            .configure(DeserializationFeature.READ_UNKNOWN_ENUM_VALUES_AS_NULL, true)
-            // Some providers (and some model outputs) may include Java-style comments or trailing commas.
-            // Be tolerant here; schema validation happens after parsing.
-            .configure(JsonReadFeature.ALLOW_JAVA_COMMENTS.mappedFeature(), true)
-            .configure(JsonReadFeature.ALLOW_TRAILING_COMMA.mappedFeature(), true);
-        this.promptTemplateResolver = promptTemplateResolver;
-        this.promptRenderer = promptRenderer;
+        this(
+            aiCoreService,
+            enrichedPromptBuilder,
+            actionHandlerRegistry,
+            new IntentExtractionJsonSupport(objectMapper),
+            promptTemplateResolver,
+            promptRenderer
+        );
     }
 
     public MultiIntentResponse extract(IntentExtractionInput input, OrchestrationContext context) {
@@ -101,7 +107,7 @@ public class IntentQueryExtractor {
             .systemPrompt(systemPrompt)
             .prompt(userPrompt)
             .messages(input != null ? input.historyMessages() : List.of())
-            .parameters(jsonOnlyResponseParameters())
+            .parameters(jsonSupport.jsonOnlyResponseParameters())
             .authContext(OrchestrationAuthContextResolver.from(safeContext))
             .build();
 
@@ -112,12 +118,12 @@ public class IntentQueryExtractor {
             throw new AIServiceException("Intent extraction returned an empty response from provider");
         }
 
-        String sanitized = stripCodeFences(content);
+        String sanitized = jsonSupport.stripCodeFences(content);
         MultiIntentResponse response;
         Long providerProcessingTimeMs = generationResponse != null ? generationResponse.getProcessingTimeMs() : null;
         String model = generationResponse != null ? generationResponse.getModel() : null;
         try {
-            response = parseResponse(sanitized);
+            response = jsonSupport.parseResponse(sanitized);
         } catch (AIServiceException parseException) {
             log.warn("Primary intent extraction parsing failed, attempting JSON repair.", parseException);
             RepairTrace repairTrace = attemptRepair(generationRequest, sanitized, parseException);
@@ -183,34 +189,6 @@ public class IntentQueryExtractor {
         }
     }
 
-    private MultiIntentResponse parseResponse(String rawJson) {
-        try {
-            // First, try standard JSON parsing
-            JsonNode root = objectMapper.readTree(rawJson);
-            if (root == null || root.isNull()) {
-                throw new AIServiceException("Intent extraction returned null JSON payload");
-            }
-            return objectMapper.treeToValue(root, MultiIntentResponse.class);
-        } catch (JsonProcessingException firstAttempt) {
-            // If standard parsing fails, try to extract JSON from the text
-            String extractedJson = extractJsonFromText(rawJson);
-            if (extractedJson != null && !extractedJson.equals(rawJson)) {
-                try {
-                    JsonNode root = objectMapper.readTree(extractedJson);
-                    if (root == null || root.isNull()) {
-                        throw new AIServiceException("Intent extraction returned null JSON payload");
-                    }
-                    return objectMapper.treeToValue(root, MultiIntentResponse.class);
-                } catch (JsonProcessingException secondAttempt) {
-                    log.error("Failed to parse extracted JSON: {}", extractedJson, secondAttempt);
-                }
-            }
-            
-            log.error("Failed to parse intent extraction response: {}", rawJson, firstAttempt);
-            throw new AIServiceException("Unable to parse intent extraction response: " + firstAttempt.getMessage(), firstAttempt);
-        }
-    }
-
     private RepairTrace attemptRepair(AIGenerationRequest originalRequest,
                                       String malformedContent,
                                       Exception rootCause) {
@@ -239,7 +217,7 @@ public class IntentQueryExtractor {
             .systemPrompt(repairSystemPrompt)
             .prompt(repairPrompt)
             .messages(originalRequest.getMessages() != null ? originalRequest.getMessages() : List.of())
-            .parameters(jsonOnlyResponseParameters())
+            .parameters(jsonSupport.jsonOnlyResponseParameters())
             .authContext(originalRequest.getAuthContext())
             .build();
 
@@ -250,7 +228,7 @@ public class IntentQueryExtractor {
                 throw new AIServiceException("Intent extraction repair attempt returned an empty response from provider");
             }
             return new RepairTrace(
-                parseResponse(stripCodeFences(repairedContent)),
+                jsonSupport.parseResponse(repairedContent),
                 repairResponse != null ? repairResponse.getProcessingTimeMs() : null,
                 repairResponse != null ? repairResponse.getModel() : null
             );
@@ -295,26 +273,6 @@ public class IntentQueryExtractor {
         Long providerProcessingTimeMs,
         String model
     ) {}
-
-    private String extractJsonFromText(String text) {
-        // Try to find JSON object {...} in the text
-        int startIdx = text.indexOf('{');
-        if (startIdx >= 0) {
-            int endIdx = text.lastIndexOf('}');
-            if (endIdx > startIdx) {
-                return text.substring(startIdx, endIdx + 1);
-            }
-        }
-        return text;
-    }
-
-    private Map<String, Object> jsonOnlyResponseParameters() {
-        // Provider-agnostic hint: OpenAI/Azure support `response_format`, Gemini maps it to responseMimeType,
-        // and other providers may ignore it while still benefiting from the JSON-only system prompt contract.
-        return Map.of(
-            "response_format", Map.of("type", "json_object")
-        );
-    }
 
     private void validateResponse(MultiIntentResponse response, String originalQuery) {
         if (response.getIntents() == null) {
@@ -428,34 +386,4 @@ public class IntentQueryExtractor {
         intent.setActionParams(mutable);
     }
 
-    private String stripCodeFences(String content) {
-        String trimmed = content.trim();
-        while (trimmed.startsWith("###")) {
-            int nextNewline = trimmed.indexOf('\n');
-            if (nextNewline < 0) {
-                break;
-            }
-            trimmed = trimmed.substring(nextNewline + 1).trim();
-        }
-
-        if (trimmed.startsWith("```")) {
-            int firstNewline = trimmed.indexOf('\n');
-            if (firstNewline > 0) {
-                trimmed = trimmed.substring(firstNewline + 1);
-            }
-        }
-
-        int firstFence = trimmed.indexOf("```");
-        if (firstFence >= 0) {
-            int endFence = trimmed.indexOf("```", firstFence + 3);
-            if (endFence > firstFence) {
-                trimmed = trimmed.substring(firstFence + 3, endFence);
-            }
-        }
-
-        if (trimmed.endsWith("```")) {
-            trimmed = trimmed.substring(0, trimmed.length() - 3);
-        }
-        return trimmed.trim();
-    }
 }

@@ -156,6 +156,7 @@ public class AIProviderConfigValidator {
             case "openai" -> validateOpenAI(result, false, false);
             case "azure" -> validateAzure(result, false, true, false);
             case "onnx" -> validateOnnx(result);
+            case "spring-ai-onnx" -> validateSpringAiOnnx(result);
             default -> result.addWarning("ai.providers.embedding-provider='" + provider
                 + "' is not a built-in provider. Skipping strict embedding provider validation.");
         }
@@ -341,6 +342,31 @@ public class AIProviderConfigValidator {
 
         if (isBlank(config.getTokenizerPath())) {
             result.addWarning("ai.providers.onnx.tokenizer-path is not configured. Falling back to legacy tokenization.");
+        }
+    }
+
+    private void validateSpringAiOnnx(ValidationResult result) {
+        AIProviderConfig.SpringAiOnnxConfig config = providerConfig.getSpringAiOnnx();
+
+        if (config == null) {
+            result.addError("ai.providers.spring-ai-onnx", "Spring AI ONNX configuration block is missing");
+            return;
+        }
+
+        if (!config.isEnabled()) {
+            result.addError("ai.providers.spring-ai-onnx.enabled",
+                "spring-ai-onnx is selected but ai.providers.spring-ai-onnx.enabled=false");
+            return;
+        }
+
+        if (config.getDimensions() != null && config.getDimensions() <= 0) {
+            result.addError("ai.providers.spring-ai-onnx.dimensions",
+                "Spring AI ONNX dimensions must be positive when configured.");
+        }
+
+        if (config.getGpuDeviceId() != null && config.getGpuDeviceId() < -1) {
+            result.addError("ai.providers.spring-ai-onnx.gpu-device-id",
+                "Spring AI ONNX gpu-device-id must be -1 or a non-negative device id.");
         }
     }
 

@@ -4,12 +4,17 @@ import ai.fabric.core.AICoreService;
 import ai.fabric.config.PromptBundleProperties;
 import ai.fabric.dto.AIGenerationRequest;
 import ai.fabric.dto.AIGenerationResponse;
+import ai.fabric.llm.structured.DefaultStructuredJsonCallExecutor;
+import ai.fabric.llm.structured.StructuredJsonCallExecutor;
+import ai.fabric.llm.structured.StructuredJsonCallSpec;
 import ai.fabric.llm.structured.StructuredJsonExtractor;
+import ai.fabric.llm.structured.StructuredJsonResult;
 import ai.fabric.prompt.ClasspathPromptTemplateStore;
 import ai.fabric.prompt.PromptRenderer;
 import ai.fabric.prompt.PromptTemplateResolver;
 import ai.fabric.relationship.cache.QueryCache;
 import ai.fabric.relationship.config.RelationshipQueryProperties;
+import ai.fabric.relationship.dto.FilterOperator;
 import ai.fabric.relationship.dto.RelationshipQueryPlan;
 import ai.fabric.relationship.metrics.QueryMetrics;
 import ai.fabric.relationship.validation.RelationshipQueryValidator;
@@ -97,9 +102,116 @@ class RelationshipQueryPlannerTest {
         RelationshipQueryPlan result = planner.planQuery("Find docs", List.of("document"));
 
         assertThat(result.getPrimaryEntityType()).isEqualTo("document");
+        assertThat(result.getConfidenceScore()).isEqualTo(0.8d);
         verify(validator).validate(any(RelationshipQueryPlan.class));
         verify(queryCache).putPlan(anyString(), any(RelationshipQueryPlan.class));
         verify(queryMetrics).recordPlan(any(Long.class), any(Boolean.class), any(Boolean.class));
+    }
+
+    @Test
+    void shouldParsePlanThroughStructuredJsonExecutor() {
+        ObjectMapper objectMapper = new ObjectMapper();
+        StructuredJsonExtractor extractor = new StructuredJsonExtractor();
+        RecordingStructuredJsonCallExecutor recordingExecutor = new RecordingStructuredJsonCallExecutor(
+            new DefaultStructuredJsonCallExecutor(extractor, objectMapper)
+        );
+        planner = new RelationshipQueryPlanner(
+            aiCoreService,
+            schemaProvider,
+            new RelationshipQueryProperties(),
+            validator,
+            queryCache,
+            queryMetrics,
+            objectMapper,
+            extractor,
+            recordingExecutor,
+            promptTemplateResolver(),
+            new PromptRenderer()
+        );
+
+        when(queryCache.getPlan(anyString())).thenReturn(Optional.empty());
+        when(aiCoreService.generateContent(any()))
+            .thenReturn(AIGenerationResponse.builder()
+                .content("""
+                    Here is the plan:
+                    ```json
+                    {
+                      "originalQuery": "Find docs",
+                      "primaryEntityType": "document",
+                      "candidateEntityTypes": ["document"],
+                      "relationshipPaths": [],
+                      "directFilters": {},
+                      "relationshipFilters": {},
+                      "needsSemanticSearch": false,
+                      "confidence": 0.8
+                    }
+                    ```
+                    """)
+                .build());
+
+        RelationshipQueryPlan result = planner.planQuery("Find docs", List.of("document"));
+
+        assertThat(recordingExecutor.calls).isEqualTo(1);
+        assertThat(result.getPrimaryEntityType()).isEqualTo("document");
+        assertThat(result.getConfidenceScore()).isEqualTo(0.8d);
+    }
+
+    @Test
+    void shouldTolerateNullOptionalFieldsFromRealLlmPlans() {
+        when(queryCache.getPlan(anyString())).thenReturn(Optional.empty());
+        when(aiCoreService.generateContent(any()))
+            .thenReturn(AIGenerationResponse.builder()
+                .content("""
+                    {
+                      "originalQuery": "Find archived contracts",
+                      "primaryEntityType": "document",
+                      "candidateEntityTypes": null,
+                      "relationshipPaths": [
+                        {
+                          "fromEntityType": "document",
+                          "relationshipType": "author",
+                          "toEntityType": "user",
+                          "direction": null,
+                          "optional": null,
+                          "conditions": null
+                        }
+                      ],
+                      "directFilters": {
+                        "document": [
+                          {
+                            "field": "document.title",
+                            "operator": null,
+                            "value": "Archive",
+                            "caseSensitive": null
+                          }
+                        ]
+                      },
+                      "relationshipFilters": null,
+                      "metadataFilters": null,
+                      "needsSemanticSearch": null,
+                      "confidence": 0.72,
+                      "context": null
+                    }
+                    """)
+                .build());
+
+        RelationshipQueryPlan result = planner.planQuery("Find archived contracts", List.of("document"));
+
+        assertThat(result.getCandidateEntityTypes()).containsExactly("document");
+        assertThat(result.getRelationshipFilters()).isEmpty();
+        assertThat(result.getMetadataFilters()).isEmpty();
+        assertThat(result.getAdditionalContext()).isEmpty();
+        assertThat(result.isNeedsSemanticSearch()).isFalse();
+        assertThat(result.getRelationshipPaths()).singleElement().satisfies(path -> {
+            assertThat(path.getDirection()).isNotNull();
+            assertThat(path.isOptional()).isFalse();
+            assertThat(path.getConditions()).isEmpty();
+        });
+        assertThat(result.getDirectFilters()).containsKey("document");
+        assertThat(result.getDirectFilters().get("document")).singleElement().satisfies(filter -> {
+            assertThat(filter.getOperator()).isEqualTo(FilterOperator.EQUALS);
+            assertThat(filter.isCaseSensitive()).isTrue();
+        });
     }
 
     @Test
@@ -191,5 +303,20 @@ class RelationshipQueryPlannerTest {
             new ClasspathPromptTemplateStore(new DefaultResourceLoader()),
             new PromptBundleProperties()
         );
+    }
+
+    private static final class RecordingStructuredJsonCallExecutor implements StructuredJsonCallExecutor {
+        private final StructuredJsonCallExecutor delegate;
+        private int calls;
+
+        private RecordingStructuredJsonCallExecutor(StructuredJsonCallExecutor delegate) {
+            this.delegate = delegate;
+        }
+
+        @Override
+        public <T> StructuredJsonResult<T> execute(StructuredJsonCallSpec<T> spec) {
+            calls += 1;
+            return delegate.execute(spec);
+        }
     }
 }

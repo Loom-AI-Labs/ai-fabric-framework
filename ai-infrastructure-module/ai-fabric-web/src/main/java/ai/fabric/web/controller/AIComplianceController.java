@@ -5,6 +5,8 @@ import ai.fabric.dto.AIComplianceResponse;
 import ai.fabric.compliance.AIComplianceService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -15,7 +17,9 @@ import java.util.Map;
  */
 @Slf4j
 @RestController
-@RequestMapping("/api/ai/compliance")
+@RequestMapping("${ai.web.base-path:/api/ai}/compliance")
+@ConditionalOnBean(AIComplianceService.class)
+@ConditionalOnProperty(prefix = "ai.web.controllers", name = "compliance", havingValue = "true", matchIfMissing = true)
 @RequiredArgsConstructor
 public class AIComplianceController {
 

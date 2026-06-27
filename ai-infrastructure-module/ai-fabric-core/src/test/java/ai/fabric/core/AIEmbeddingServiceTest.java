@@ -1,15 +1,18 @@
 package ai.fabric.core;
 
+import ai.fabric.cache.AICacheNames;
 import ai.fabric.config.AIProviderConfig;
 import ai.fabric.dto.AIEmbeddingRequest;
 import ai.fabric.dto.AIEmbeddingResponse;
 import ai.fabric.embedding.EmbeddingProvider;
+import ai.fabric.provider.ProviderRequestOverrideSupport;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.cache.CacheManager;
 import org.springframework.cache.concurrent.ConcurrentMapCacheManager;
 
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -30,7 +33,7 @@ class AIEmbeddingServiceTest {
     void setUp() {
         config = mock(AIProviderConfig.class);
         provider = mock(EmbeddingProvider.class);
-        cacheManager = new ConcurrentMapCacheManager("embeddings");
+        cacheManager = new ConcurrentMapCacheManager(AICacheNames.EMBEDDINGS);
 
         when(provider.getProviderName()).thenReturn("openai");
         when(provider.isAvailable()).thenReturn(true);
@@ -77,5 +80,36 @@ class AIEmbeddingServiceTest {
         assertThat(second.serviceProcessingTimeMs()).isZero();
 
         verify(provider, times(1)).generateEmbedding(any());
+    }
+
+    @Test
+    void executeEmbeddingSeparatesCacheByConnectionOverride() {
+        AIEmbeddingRequest firstEndpoint = AIEmbeddingRequest.builder()
+            .text("same text")
+            .model("text-embedding-3-small")
+            .parameters(connectionOverride("https://embeddings-a.example.com/v1", "key-a"))
+            .build();
+        AIEmbeddingRequest secondEndpoint = AIEmbeddingRequest.builder()
+            .text("same text")
+            .model("text-embedding-3-small")
+            .parameters(connectionOverride("https://embeddings-b.example.com/v1", "key-b"))
+            .build();
+
+        AIEmbeddingService.EmbeddingExecution first = service.executeEmbedding(firstEndpoint);
+        AIEmbeddingService.EmbeddingExecution second = service.executeEmbedding(secondEndpoint);
+
+        assertThat(first.cacheHit()).isFalse();
+        assertThat(second.cacheHit()).isFalse();
+        verify(provider, times(2)).generateEmbedding(any());
+    }
+
+    private static Map<String, Object> connectionOverride(String baseUrl, String apiKey) {
+        return Map.of(
+            ProviderRequestOverrideSupport.PARAM_PROVIDER_CONNECTION_OVERRIDE,
+            Map.of(
+                ProviderRequestOverrideSupport.KEY_BASE_URL, baseUrl,
+                ProviderRequestOverrideSupport.KEY_API_KEY, apiKey
+            )
+        );
     }
 }

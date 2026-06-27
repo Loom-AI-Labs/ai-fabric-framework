@@ -1,0 +1,43 @@
+ai-entities:
+  support-message:
+    entity-type: "support-message"
+    auto-embedding: true
+    indexable: true
+    enable-search: true
+    searchable-fields:
+      - name: "processedSubject"
+        weight: 1.5
+      - name: "processedMessage"
+        weight: 2.0
+      - name: "channel"
+        weight: 0.5
+      - name: "detectionsSummary"
+        weight: 0.8
+    embeddable-fields:
+      - name: "processedSubject"
+        model: "privacy-simple"
+        auto-generate: true
+        include-in-similarity: true
+      - name: "processedMessage"
+        model: "privacy-simple"
+        auto-generate: true
+        include-in-similarity: true
+      - name: "channel"
+        model: "privacy-simple"
+        auto-generate: true
+        include-in-similarity: true
+      - name: "detectionsSummary"
+        model: "privacy-simple"
+        auto-generate: true
+        include-in-similarity: true
+    metadata-fields:
+      - name: "customerId"
+        type: "string"
+      - name: "channel"
+        type: "string"
+      - name: "piiDetected"
+        type: "boolean"
+      - name: "modeApplied"
+        type: "string"
+      - name: "detectionsCount"
+        type: "integer"

@@ -127,6 +127,34 @@ class ConnectorActionDefinitionValidatorTest {
     }
 
     @Test
+    void validate_rejectsReadActionResolutionEligibilityForReadWriteActions() {
+        ConnectorActionDefinition def = new ConnectorActionDefinition(
+            "a",
+            "a",
+            "desc",
+            "cat",
+            ActionAccessMode.READ_WRITE,
+            true,
+            null,
+            List.of(param("sku")),
+            false,
+            false,
+            true,
+            ActionResultPresentationHint.DEFAULT,
+            null,
+            null,
+            null,
+            List.of(),
+            null
+        );
+
+        assertThatThrownBy(() -> validator.validate(def))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("readActionResolutionEligible")
+            .hasMessageContaining("READ");
+    }
+
+    @Test
     void validate_rejectsUnsupportedDisplayNameForDbRegistry() {
         ConnectorActionDefinition def = action(List.of(param("sku")), builder -> builder.displayName = "Create Order");
 
@@ -221,22 +249,93 @@ class ConnectorActionDefinitionValidatorTest {
             .hasMessageContaining("assistant-resolution/evidence");
     }
 
+    @Test
+    void validate_rejectsOverlongActionNameBeforePersistence() {
+        String name = "a".repeat(129);
+        ConnectorActionDefinition def = action(List.of(), builder -> {
+            builder.name = name;
+            builder.displayName = name;
+        });
+
+        assertThatThrownBy(() -> validator.validate(def))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("action.name")
+            .hasMessageContaining("128");
+    }
+
+    @Test
+    void validate_rejectsOverlongParamValuesBeforePersistence() {
+        ConnectorActionParamDefinition param = param("sku", builder -> {
+            builder.description = "d".repeat(1025);
+            builder.pattern = "p".repeat(513);
+            builder.allowedValues = List.of("A");
+            builder.defaultValue = "B";
+        });
+        ConnectorActionDefinition def = action(List.of(param));
+
+        assertThatThrownBy(() -> validator.validate(def))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("param.description")
+            .hasMessageContaining("1024");
+    }
+
+    @Test
+    void validate_rejectsInvalidRegexPattern() {
+        ConnectorActionDefinition def = action(List.of(param("sku", builder -> builder.pattern = "[")));
+
+        assertThatThrownBy(() -> validator.validate(def))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("param.pattern")
+            .hasMessageContaining("sku");
+    }
+
+    @Test
+    void validate_rejectsDuplicateAllowedValuesBeforePersistence() {
+        ConnectorActionDefinition def = action(List.of(param("status", builder ->
+            builder.allowedValues = List.of("OPEN", "OPEN")
+        )));
+
+        assertThatThrownBy(() -> validator.validate(def))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("Duplicate allowed value")
+            .hasMessageContaining("status");
+    }
+
+    @Test
+    void validate_rejectsOverlongDefaultValueBeforePersistence() {
+        ConnectorActionDefinition def = action(List.of(param("quantity", builder ->
+            builder.defaultValue = "1".repeat(513)
+        )));
+
+        assertThatThrownBy(() -> validator.validate(def))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("param.defaultValue")
+            .hasMessageContaining("512");
+    }
+
     private ConnectorActionParamDefinition param(String name) {
+        return param(name, builder -> {
+        });
+    }
+
+    private ConnectorActionParamDefinition param(String name, ParamBuilderCustomizer customizer) {
+        ParamBuilder builder = new ParamBuilder(name);
+        customizer.customize(builder);
         return new ConnectorActionParamDefinition(
-            name,
-            "SKU",
-            AIActionParamType.STRING,
-            true,
-            false,
-            null,
-            List.of(),
-            null,
-            null,
-            null,
+            builder.name,
+            builder.description,
+            builder.type,
+            builder.required,
+            builder.batchTargets,
+            builder.pattern,
+            builder.allowedValues,
+            builder.min,
+            builder.max,
+            builder.defaultValue,
             null,
             null,
             Map.of(),
-            false,
+            builder.sensitive,
             null,
             Map.of(),
             List.of(),
@@ -262,7 +361,12 @@ class ConnectorActionDefinitionValidatorTest {
         void customize(ActionBuilder builder);
     }
 
+    private interface ParamBuilderCustomizer {
+        void customize(ParamBuilder builder);
+    }
+
     private static final class ActionBuilder {
+        private String name = "a";
         private String displayName = "a";
         private List<ConnectorActionParamDefinition> params = List.of();
         private List<ConnectorActionPostPolicyDefinition> postPolicies = List.of();
@@ -272,7 +376,7 @@ class ConnectorActionDefinitionValidatorTest {
 
         private ConnectorActionDefinition build() {
             return new ConnectorActionDefinition(
-                "a",
+                name,
                 displayName,
                 "desc",
                 "cat",
@@ -293,6 +397,24 @@ class ConnectorActionDefinitionValidatorTest {
                 execution,
                 mcpServers
             );
+        }
+    }
+
+    private static final class ParamBuilder {
+        private final String name;
+        private String description = "SKU";
+        private AIActionParamType type = AIActionParamType.STRING;
+        private boolean required = true;
+        private boolean batchTargets = false;
+        private String pattern;
+        private List<String> allowedValues = List.of();
+        private Long min;
+        private Long max;
+        private Object defaultValue;
+        private boolean sensitive = false;
+
+        private ParamBuilder(String name) {
+            this.name = name;
         }
     }
 }

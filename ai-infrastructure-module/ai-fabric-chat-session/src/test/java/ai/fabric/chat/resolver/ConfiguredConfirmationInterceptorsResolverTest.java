@@ -202,6 +202,32 @@ class ConfiguredConfirmationInterceptorsResolverTest {
         assertThat(resolver.canResolve(confirmation(IntentType.CONFIRMATION_POSITIVE), Map.of(), context)).isFalse();
     }
 
+    @Test
+    void shouldNotResolveExpiredPendingActionWithConfiguredInterceptor() {
+        InMemoryPendingActionStore store = new InMemoryPendingActionStore();
+        ConfiguredConfirmationInterceptorsResolver resolver = new ConfiguredConfirmationInterceptorsResolver(
+            store,
+            provider(retentionRules())
+        );
+
+        PipelineContext context = context("conv-expired");
+        PendingAction expired = new PendingAction(
+            "cancel_purchase_order",
+            Map.of("orderNumber", "PO-EXPIRED"),
+            null,
+            Instant.now().minusSeconds(600)
+        );
+        store.pushPendingAction("conv-expired", "demo-user", expired);
+
+        MultiIntentResponse response = confirmation(IntentType.CONFIRMATION_POSITIVE);
+
+        assertThat(resolver.canResolve(response, Map.of(), context)).isFalse();
+
+        PipelineContext updated = resolver.resolve(response, Map.of(), context);
+        assertThat(updated).isSameAs(context);
+        assertThat(store.peekPendingAction("conv-expired", "demo-user")).contains(expired);
+    }
+
     private ObjectProvider<ConfirmationInterceptorCatalogProvider> provider(List<ConfirmationInterceptorRule> rules) {
         ConfirmationInterceptorCatalogProvider provider = new ConfirmationInterceptorCatalogProvider() {
             @Override

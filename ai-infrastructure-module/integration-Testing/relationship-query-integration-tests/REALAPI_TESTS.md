@@ -206,7 +206,7 @@ ai:
     embedding-provider: ${AI_INFRASTRUCTURE_EMBEDDING_PROVIDER:${EMBEDDING_PROVIDER:onnx}}
 
     openai:
-      api-key: ${OPENAI_API_KEY:sk-real-api-test}
+      api-key: ${OPENAI_API_KEY:}
       model: ${OPENAI_MODEL:gpt-4o-mini}
       embedding-model: ${OPENAI_EMBEDDING_MODEL:text-embedding-3-small}
 
@@ -226,7 +226,9 @@ ai:
 
     pinecone:
       api-key: ${PINECONE_API_KEY:}
-      index-name: ${PINECONE_INDEX_NAME:relationship-query-test}
+      index-name: ${PINECONE_INDEX_NAME:}
+      api-host: ${PINECONE_API_HOST:}
+      environment: ${PINECONE_ENVIRONMENT:}
 ```
 
 ### BackendEnvTestConfiguration (Local Development Only)
@@ -247,9 +249,10 @@ void loadBackendEnv() {
 ```
 
 **When It's Used:**
-- ✅ **Local Development**: Auto-loads `OPENAI_API_KEY` from `../../backend/.env`
-- ✅ **Smart Loading**: Won't override existing environment variables
-- ❌ **GitHub Actions**: Not needed - API key provided via workflow inputs
+- **Local Development**: can auto-load `OPENAI_API_KEY` from `../../backend/.env`
+- **Smart Loading**: won't override existing environment variables
+- **GitHub Actions**: not used for secrets; workflows should use repository secrets, repository
+  variables, or explicitly masked ad hoc workflow inputs
 
 **Local Development:**
 ```bash
@@ -259,9 +262,11 @@ void loadBackendEnv() {
 
 **GitHub Actions:**
 ```yaml
-# API key provided via github.event.inputs.openai_api_key
 env:
-  OPENAI_API_KEY: ${{ github.event.inputs.openai_api_key }}
+  OPENAI_API_KEY: ${{ github.event.inputs.openai_api_key || secrets.OPENAI_API_KEY }}
+  PINECONE_API_HOST: ${{ github.event.inputs.pinecone_host || vars.PINECONE_API_HOST }}
+  PINECONE_INDEX_NAME: ${{ github.event.inputs.pinecone_index_name || vars.PINECONE_INDEX_NAME }}
+  PINECONE_ENVIRONMENT: ${{ github.event.inputs.pinecone_environment || vars.PINECONE_ENVIRONMENT }}
 ```
 
 ---
@@ -278,7 +283,7 @@ The manual workflow includes a step to run RealAPI tests:
     cd ai-infrastructure-module/integration-Testing/relationship-query-integration-tests
     bash run-relationship-query-realapi-tests.sh
   env:
-    OPENAI_API_KEY: ${{ github.event.inputs.openai_api_key }}
+    OPENAI_API_KEY: ${{ github.event.inputs.openai_api_key || secrets.OPENAI_API_KEY }}
 ```
 
 ### GitHub Actions: parent-verify.yml
@@ -341,7 +346,7 @@ mvn failsafe:integration-test failsafe:verify -P realapi
 | **Excluded from Verify** | All *RealApiIntegrationTest.java |
 | **RealAPI Script** | `run-relationship-query-realapi-tests.sh [LLM:EMBEDDING[:VECTOR_DB]]` |
 | **API Key (Local)** | Auto-loaded from backend/.env |
-| **API Key (CI/CD)** | Provided via GitHub Actions workflow input |
+| **API Key (CI/CD)** | Provided through GitHub Actions secrets, with masked workflow inputs available for ad hoc manual runs |
 | **Provider Flexibility** | ✅ Supports multiple LLM, embedding, and vector DB providers |
 | **Default Providers** | openai:onnx:lucene |
 | **Configuration** | Environment variables or script arguments |

@@ -104,7 +104,7 @@ Provider fallback is disabled when transient file URLs are present. A second pro
 | Azure OpenAI | Uses Responses input parts. PDFs are fetched transiently and sent as base64 `file_data`; supported images use native image URL inputs. Other types fail closed. |
 | Anthropic | Uses native URL blocks for PDFs and supported images only. Text, Office, audio, video, and other types fail closed unless Anthropic support is added later. |
 | Gemini | Fetches approved HTTPS URLs transiently and sends supported text, PDF, image, audio, and video bytes as `inlineData`. Unsupported types fail closed. |
-| Cohere | Fetches text-like files and PDFs transiently, extracts readable text, and sends it through Cohere `documents`. Images, Office binaries, audio, video, and unsupported files fail closed. |
+| Cohere | Not active in the AI Fabric 0.3.x Spring AI execution path. Cohere configuration remains modeled for compatibility only. |
 | ONNX starter | Not a chat/document analysis provider. Fail closed if selected for generation with transient file URLs. |
 
 Text-like means `text/*`, JSON, XML, XHTML, YAML, CSV, and Markdown MIME types. Supported image types are JPEG, PNG, WebP, and GIF. OpenAI Office-style support includes Word, Excel, and PowerPoint MIME types.
@@ -160,11 +160,9 @@ Provider contract enforcement:
 
 Provider adapters:
 
-- `ai-infrastructure-module/providers/ai-infrastructure-provider-openai/src/main/java/com/ai/infrastructure/provider/openai/OpenAIProvider.java`
-- `ai-infrastructure-module/providers/ai-infrastructure-provider-azure/src/main/java/com/ai/infrastructure/provider/azure/AzureOpenAIProvider.java`
-- `ai-infrastructure-module/providers/ai-infrastructure-provider-anthropic/src/main/java/com/ai/infrastructure/provider/anthropic/AnthropicProvider.java`
-- `ai-infrastructure-module/providers/ai-infrastructure-provider-gemini/src/main/java/com/ai/infrastructure/provider/gemini/GeminiProvider.java`
-- `ai-infrastructure-module/providers/ai-infrastructure-provider-cohere/src/main/java/com/ai/infrastructure/provider/cohere/CohereProvider.java`
+- `ai-infrastructure-module/providers/ai-fabric-provider-spring-ai/src/main/java/ai/fabric/provider/springai/SpringAiChatProvider.java`
+- `ai-infrastructure-module/providers/ai-fabric-provider-spring-ai/src/main/java/ai/fabric/provider/springai/SpringAiPromptMapper.java`
+- `ai-infrastructure-module/providers/ai-fabric-provider-spring-ai/src/main/java/ai/fabric/provider/springai/SpringAiModelResolver.java`
 
 ## Verification Commands
 
@@ -183,8 +181,7 @@ mvn -f ai-infrastructure-module/ai-infrastructure-core/pom.xml -q -Dtest=Transie
 Provider-focused tests:
 
 ```bash
-mvn -f ai-infrastructure-module/pom.xml -q -pl providers/ai-infrastructure-provider-openai,providers/ai-infrastructure-provider-azure -am -Dtest=OpenAIProviderTest,AzureOpenAIProviderTest test
-mvn -f ai-infrastructure-module/pom.xml -q -pl providers/ai-infrastructure-provider-anthropic,providers/ai-infrastructure-provider-gemini,providers/ai-infrastructure-provider-cohere -am -Dtest=AnthropicProviderTest,GeminiProviderTest,CohereProviderTest test
+mvn -f ai-infrastructure-module/pom.xml -q -pl providers/ai-fabric-provider-spring-ai -am -Dtest='SpringAi*' -Dsurefire.failIfNoSpecifiedTests=false test
 ```
 
 Cross-provider integration contract:
@@ -196,7 +193,7 @@ mvn -f ai-infrastructure-module/integration-Testing/integration-tests/pom.xml -q
 Broad affected-module regression:
 
 ```bash
-mvn -f ai-infrastructure-module/pom.xml -q -pl ai-infrastructure-core,ai-fabric-runtime,providers/ai-infrastructure-provider-openai,providers/ai-infrastructure-provider-anthropic,providers/ai-infrastructure-provider-gemini,providers/ai-infrastructure-provider-azure,providers/ai-infrastructure-provider-cohere -am test
+mvn -f ai-infrastructure-module/pom.xml -q -pl ai-fabric-core,providers/ai-fabric-provider-spring-ai -am test
 ```
 
 Whitespace check:

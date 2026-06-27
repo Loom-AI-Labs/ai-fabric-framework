@@ -172,7 +172,7 @@ mvn -f Platfrom/backend/pom.xml -q -Dtest=DeploymentBundleSealingServiceTest,Dep
 Backend compile:
 
 ```bash
-mvn -f Platfrom/backend/pom.xml -q -DskipTests compile
+mvn -f Platfrom/backend/pom.xml -q compile
 ```
 
 UI build:

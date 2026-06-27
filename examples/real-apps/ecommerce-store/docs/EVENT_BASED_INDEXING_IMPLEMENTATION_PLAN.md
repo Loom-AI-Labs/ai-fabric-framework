@@ -8,7 +8,8 @@ When a domain entity changes in the **Ecommerce Store** (the domain API app on `
 
 - No generic “CDC for all entities”. Start with **products** only.
 - No durable job queue / guaranteed delivery semantics (retry/backoff can be added later).
-- No runtime-side auth changes (connector can optionally send an API key header if you later add auth).
+- Data-sync requests include a verified platform auth context so AI Fabric can grant
+  `data-sync:upsert` / `data-sync:delete` through its fail-closed access path.
 
 ## Current State (before)
 

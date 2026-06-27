@@ -24,10 +24,9 @@ import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.Disabled;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ActiveProfiles;
 
@@ -35,7 +34,6 @@ import org.springframework.test.context.ActiveProfiles;
  * Integration coverage for {@link EntityAccessPolicy} hook interactions as defined in the
  * infrastructure-only compliance blueprint.
  */
-@Disabled("Disabled due to ApplicationContext loading failures - table creation issues")
 @SpringBootTest(classes = TestApplication.class)
 @ActiveProfiles("test")
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_EACH_TEST_METHOD)
@@ -47,7 +45,7 @@ class EntityAccessPolicyIntegrationTest {
     @Autowired
     private Clock clock;
 
-    @MockBean
+    @MockitoBean
     private EntityAccessPolicy entityAccessPolicy;
 
     @BeforeEach
@@ -85,7 +83,7 @@ class EntityAccessPolicyIntegrationTest {
     }
 
     @Test
-    void delegatesToPolicyOnEveryCall() {
+    void cachesEquivalentSuccessfulDecisions() {
         when(entityAccessPolicy.canAccess(any(), any())).thenReturn(true);
 
         AIAccessControlRequest request = baseRequestBuilder("req-cache")
@@ -95,10 +93,14 @@ class EntityAccessPolicyIntegrationTest {
         for (int i = 0; i < 5; i++) {
             AIAccessControlResponse response = accessControlService.checkAccess(request);
             assertTrue(Boolean.TRUE.equals(response.getAccessGranted()));
-            assertFalse(Boolean.TRUE.equals(response.getFromCache()));
+            if (i == 0) {
+                assertFalse(Boolean.TRUE.equals(response.getFromCache()));
+            } else {
+                assertTrue(Boolean.TRUE.equals(response.getFromCache()));
+            }
         }
 
-        verify(entityAccessPolicy, times(5)).canAccess(argThat(ctx -> ctx != null && "user-123".equals(ctx.getSubjectId())), any());
+        verify(entityAccessPolicy, times(1)).canAccess(argThat(ctx -> ctx != null && "user-123".equals(ctx.getSubjectId())), any());
     }
 
     @Test

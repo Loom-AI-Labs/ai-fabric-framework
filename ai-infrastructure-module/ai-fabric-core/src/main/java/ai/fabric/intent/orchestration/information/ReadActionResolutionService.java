@@ -327,8 +327,7 @@ public class ReadActionResolutionService {
             if (!StringUtils.hasText(content)) {
                 return null;
             }
-            PlannerPayload payload = jsonSupport.objectMapper()
-                .readValue(jsonSupport.stripCodeFences(content), PlannerPayload.class);
+            PlannerPayload payload = jsonSupport.parsePayload(content, PlannerPayload.class);
             PlannerDecisionType decisionType = PlannerDecisionType.from(payload.decision);
             if (decisionType == null) {
                 return null;

@@ -15,12 +15,17 @@ GET {{runtimeBaseUrl}}/actuator/health
 ### Data Sync: list vector spaces
 GET {{runtimeBaseUrl}}/api/ai/data-sync/vector-spaces
 
+### Runtime vector probe: raw AI Fabric search results from pushed data
+GET {{runtimeBaseUrl}}/api/runtime/vector-search?vectorSpace=product&q=wireless%20headphones&limit=5&threshold=0
+
 ### NOTE
-# Data Sync + Chat require an embeddings/LLM provider (e.g. OpenAI).
-# For Docker Compose, set:
+# Local no-key runtime:
+#   java -jar ../chat-capabilities-demo/target/chat-capabilities-demo-1.0.0-SNAPSHOT.jar --spring.profiles.active=smoke
+#
+# Real provider runtime:
 #   export OPENAI_ENABLED=true
 #   export OPENAI_API_KEY="..."
-# Then restart the stack.
+#   export OPENAI_EMBEDDING_DIMENSIONS=512
 
 ### Data Sync: upsert product SKU-0001 into vector space "product"
 POST {{runtimeBaseUrl}}/api/ai/data-sync/upsert
@@ -39,7 +44,22 @@ Content-Type: application/json
     "currency": "USD",
     "inStockQty": 25
   },
-  "trace": { "requestId": "seed-1", "userId": "seed-service", "sessionId": "seed-session" }
+  "trace": {
+    "requestId": "seed-1",
+    "metadata": { "source": "manual-demo", "operation": "product-upsert" },
+    "authContext": {
+      "subjectId": "system:platform-ecommerce-store",
+      "subjectType": "SYSTEM_PROCESS",
+      "authMode": "PRIVATE_RUNTIME_BACKEND_MEDIATED",
+      "callerType": "SYSTEM_PROCESS",
+      "sessionId": "seed-session",
+      "deploymentId": "ecommerce-store-local",
+      "customerId": "demo-commerce-customer",
+      "tenantId": "demo-commerce-tenant",
+      "issuer": "platform-ecommerce-store",
+      "grantedScopes": ["data-sync:upsert", "data-sync:delete"]
+    }
+  }
 }
 
 ### Data Sync: upsert product SKU-0002 into vector space "product"
@@ -59,7 +79,22 @@ Content-Type: application/json
     "currency": "USD",
     "inStockQty": 40
   },
-  "trace": { "requestId": "seed-2", "userId": "seed-service", "sessionId": "seed-session" }
+  "trace": {
+    "requestId": "seed-2",
+    "metadata": { "source": "manual-demo", "operation": "product-upsert" },
+    "authContext": {
+      "subjectId": "system:platform-ecommerce-store",
+      "subjectType": "SYSTEM_PROCESS",
+      "authMode": "PRIVATE_RUNTIME_BACKEND_MEDIATED",
+      "callerType": "SYSTEM_PROCESS",
+      "sessionId": "seed-session",
+      "deploymentId": "ecommerce-store-local",
+      "customerId": "demo-commerce-customer",
+      "tenantId": "demo-commerce-tenant",
+      "issuer": "platform-ecommerce-store",
+      "grantedScopes": ["data-sync:upsert", "data-sync:delete"]
+    }
+  }
 }
 
 ### Data Sync: upsert a refund policy into vector space "policy"
@@ -74,7 +109,22 @@ Content-Type: application/json
     "text": "Returns accepted within 30 days of delivery with receipt. Items must be in original condition. Refunds issued to original payment method within 5-10 business days after inspection.",
     "classification": "refund"
   },
-  "trace": { "requestId": "seed-3", "userId": "seed-service", "sessionId": "seed-session" }
+  "trace": {
+    "requestId": "seed-3",
+    "metadata": { "source": "manual-demo", "operation": "policy-upsert" },
+    "authContext": {
+      "subjectId": "system:platform-ecommerce-store",
+      "subjectType": "SYSTEM_PROCESS",
+      "authMode": "PRIVATE_RUNTIME_BACKEND_MEDIATED",
+      "callerType": "SYSTEM_PROCESS",
+      "sessionId": "seed-session",
+      "deploymentId": "ecommerce-store-local",
+      "customerId": "demo-commerce-customer",
+      "tenantId": "demo-commerce-tenant",
+      "issuer": "platform-ecommerce-store",
+      "grantedScopes": ["data-sync:upsert", "data-sync:delete"]
+    }
+  }
 }
 
 ### Data Sync: upsert a review into vector space "review"
@@ -90,7 +140,22 @@ Content-Type: application/json
     "rating": 4,
     "text": "Great sound and ANC. Very comfortable for long flights."
   },
-  "trace": { "requestId": "seed-4", "userId": "seed-service", "sessionId": "seed-session" }
+  "trace": {
+    "requestId": "seed-4",
+    "metadata": { "source": "manual-demo", "operation": "review-upsert" },
+    "authContext": {
+      "subjectId": "system:platform-ecommerce-store",
+      "subjectType": "SYSTEM_PROCESS",
+      "authMode": "PRIVATE_RUNTIME_BACKEND_MEDIATED",
+      "callerType": "SYSTEM_PROCESS",
+      "sessionId": "seed-session",
+      "deploymentId": "ecommerce-store-local",
+      "customerId": "demo-commerce-customer",
+      "tenantId": "demo-commerce-tenant",
+      "issuer": "platform-ecommerce-store",
+      "grantedScopes": ["data-sync:upsert", "data-sync:delete"]
+    }
+  }
 }
 
 ### Chat: RAG + actions (catalog recommendation)

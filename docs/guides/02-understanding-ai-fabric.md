@@ -16,7 +16,7 @@ backend does it. You depend on stable interfaces; you select concrete providers 
         ▼                            ▼
   AIProvider (LLM)          EmbeddingProvider
   openai / anthropic /      onnx / openai /
-  cohere / gemini / azure   cohere / gemini / azure
+  gemini / azure            gemini / azure / spring-ai-onnx
         │                            │
         └──────────┬─────────────────┘
                    ▼
@@ -25,7 +25,8 @@ backend does it. You depend on stable interfaces; you select concrete providers 
 ```
 
 Switching from OpenAI to Anthropic, or from Lucene to Qdrant, is a dependency + configuration
-change — not a code change.
+change — not a code change. Cohere configuration remains modeled for compatibility, but it is not
+an active Spring AI execution provider in the 0.3.x line.
 
 ## The key abstractions
 
@@ -47,7 +48,7 @@ bean and select it by name.
 
 1. You add `@EnableAIInfrastructure` and the `ai-fabric-starter`.
 2. Core auto-configuration registers the shared services and scans the framework's feature packages.
-3. Each **provider module** you add (e.g. `ai-fabric-provider-openai`) contributes its provider bean,
+3. Each **provider module** you add (e.g. `ai-fabric-provider-spring-ai`) contributes its provider bean,
    gated by `@ConditionalOnProperty` on `ai.providers.<name>.enabled`.
 4. Each **vector module** (e.g. `ai-fabric-vector-lucene`) contributes a `VectorDatabaseService`,
    gated by `ai.vector-db.type`.

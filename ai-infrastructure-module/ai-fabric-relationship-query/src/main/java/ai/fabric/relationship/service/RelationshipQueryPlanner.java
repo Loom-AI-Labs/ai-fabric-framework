@@ -15,7 +15,14 @@ import ai.fabric.relationship.exception.RelationshipQueryErrorContext;
 import ai.fabric.relationship.metrics.QueryMetrics;
 import ai.fabric.llm.structured.StructuredJsonExtraction;
 import ai.fabric.llm.structured.StructuredJsonExtractor;
+import ai.fabric.llm.structured.DefaultStructuredJsonCallExecutor;
+import ai.fabric.llm.structured.StructuredJsonCallExecutor;
+import ai.fabric.llm.structured.StructuredJsonCallSpec;
+import ai.fabric.llm.structured.StructuredJsonFailure;
+import ai.fabric.llm.structured.StructuredJsonFailureType;
 import ai.fabric.llm.structured.StructuredJsonProviderHints;
+import ai.fabric.llm.structured.StructuredJsonResult;
+import ai.fabric.llm.structured.springai.SpringAiStructuredOutputSupport;
 import ai.fabric.prompt.PromptRenderer;
 import ai.fabric.prompt.PromptTemplateResolver;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -48,8 +55,9 @@ public class RelationshipQueryPlanner {
     private final RelationshipQueryValidator validator;
     private final QueryCache queryCache;
     private final QueryMetrics queryMetrics;
-    private final ObjectMapper objectMapper;
     private final StructuredJsonExtractor structuredJsonExtractor;
+    private final StructuredJsonCallExecutor structuredJsonCallExecutor;
+    private final SpringAiStructuredOutputSupport.SpringAiStructuredOutput<RelationshipQueryPlan> planOutput;
 
     private static final String TEMPLATE_FAMILY = "relationship-query/planner";
     private static final String TEMPLATE_SYSTEM = "system";
@@ -80,14 +88,41 @@ public class RelationshipQueryPlanner {
                                     StructuredJsonExtractor structuredJsonExtractor,
                                     PromptTemplateResolver promptTemplateResolver,
                                     PromptRenderer promptRenderer) {
+        this(
+            aiCoreService,
+            schemaProvider,
+            properties,
+            validator,
+            queryCache,
+            queryMetrics,
+            objectMapper,
+            structuredJsonExtractor,
+            new DefaultStructuredJsonCallExecutor(structuredJsonExtractor, objectMapper),
+            promptTemplateResolver,
+            promptRenderer
+        );
+    }
+
+    public RelationshipQueryPlanner(AICoreService aiCoreService,
+                                    RelationshipSchemaProvider schemaProvider,
+                                    RelationshipQueryProperties properties,
+                                    RelationshipQueryValidator validator,
+                                    QueryCache queryCache,
+                                    QueryMetrics queryMetrics,
+                                    ObjectMapper objectMapper,
+                                    StructuredJsonExtractor structuredJsonExtractor,
+                                    StructuredJsonCallExecutor structuredJsonCallExecutor,
+                                    PromptTemplateResolver promptTemplateResolver,
+                                    PromptRenderer promptRenderer) {
         this.aiCoreService = aiCoreService;
         this.schemaProvider = schemaProvider;
         this.properties = properties;
         this.validator = validator;
         this.queryCache = queryCache;
         this.queryMetrics = queryMetrics;
-        this.objectMapper = objectMapper;
         this.structuredJsonExtractor = Objects.requireNonNull(structuredJsonExtractor, "structuredJsonExtractor");
+        this.structuredJsonCallExecutor = Objects.requireNonNull(structuredJsonCallExecutor, "structuredJsonCallExecutor");
+        this.planOutput = SpringAiStructuredOutputSupport.bean(RelationshipQueryPlan.class);
         this.promptTemplateResolver = Objects.requireNonNull(promptTemplateResolver, "promptTemplateResolver");
         this.promptRenderer = Objects.requireNonNull(promptRenderer, "promptRenderer");
     }
@@ -593,21 +628,40 @@ public class RelationshipQueryPlanner {
     }
 
     private RelationshipQueryPlan parsePlanPayload(String rawResponse) throws Exception {
-        StructuredJsonExtraction extraction = structuredJsonExtractor.extractFirstJson(rawResponse);
-        if (!extraction.jsonFound() || !StringUtils.hasText(extraction.payload())) {
-            throw new IllegalStateException("LLM did not return JSON payload");
+        StructuredJsonResult<RelationshipQueryPlan> result = structuredJsonCallExecutor.execute(
+            StructuredJsonCallSpec.<RelationshipQueryPlan>builder()
+                .callName("relationship_query_plan")
+                .maxAttempts(1)
+                .responseConverter(this::convertPlanPayload)
+                .caller(context -> AIGenerationResponse.builder()
+                    .content(rawResponse)
+                    .build())
+                .build()
+        );
+        if (result.isSuccess()) {
+            return result.getValue();
         }
-        String sanitizedPayload = sanitizePayload(extraction.payload());
-        try {
-            RelationshipQueryPlan plan = objectMapper.readValue(sanitizedPayload, RelationshipQueryPlan.class);
-            plan.setConfidenceScore(normalizeConfidence(plan.getConfidenceScore()));
-            return plan;
-        } catch (Exception ex) {
-            if (extraction.truncationSuspected()) {
-                throw new IllegalStateException("LLM returned a truncated JSON payload", ex);
-            }
-            throw ex;
+        throw plannerParseException(result.getLastFailure());
+    }
+
+    private RelationshipQueryPlan convertPlanPayload(String payload) {
+        RelationshipQueryPlan plan = planOutput.converter().apply(sanitizePayload(payload));
+        plan.setConfidenceScore(normalizeConfidence(plan.getConfidenceScore()));
+        return plan;
+    }
+
+    private Exception plannerParseException(StructuredJsonFailure failure) {
+        if (failure == null) {
+            return new IllegalStateException("LLM did not return JSON payload");
         }
+        if (failure.type() == StructuredJsonFailureType.NO_JSON_FOUND) {
+            return new IllegalStateException("LLM did not return JSON payload");
+        }
+        if (failure.truncationSuspected()) {
+            return new IllegalStateException("LLM returned a truncated JSON payload",
+                new IllegalStateException(failure.message()));
+        }
+        return new IllegalStateException(failure.message());
     }
 
     private Optional<String> repairPlanPayload(String rawResponse,

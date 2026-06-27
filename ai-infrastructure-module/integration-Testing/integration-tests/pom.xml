@@ -8,7 +8,7 @@
     <parent>
         <groupId>io.github.loom-ai-labs</groupId>
         <artifactId>ai-fabric-bom</artifactId>
-        <version>0.2.1</version>
+        <version>0.3.0</version>
         <relativePath>../../pom.xml</relativePath>
     </parent>
 
@@ -54,27 +54,7 @@
         </dependency>
         <dependency>
             <groupId>io.github.loom-ai-labs</groupId>
-            <artifactId>ai-fabric-provider-openai</artifactId>
-            <version>${project.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>io.github.loom-ai-labs</groupId>
-            <artifactId>ai-fabric-provider-azure</artifactId>
-            <version>${project.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>io.github.loom-ai-labs</groupId>
-            <artifactId>ai-fabric-provider-cohere</artifactId>
-            <version>${project.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>io.github.loom-ai-labs</groupId>
-            <artifactId>ai-fabric-provider-anthropic</artifactId>
-            <version>${project.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>io.github.loom-ai-labs</groupId>
-            <artifactId>ai-fabric-provider-gemini</artifactId>
+            <artifactId>ai-fabric-provider-spring-ai</artifactId>
             <version>${project.version}</version>
         </dependency>
         <dependency>
@@ -212,7 +192,6 @@
         <dependency>
             <groupId>org.junit.platform</groupId>
             <artifactId>junit-platform-launcher</artifactId>
-            <version>1.10.0</version>
             <scope>test</scope>
         </dependency>
 

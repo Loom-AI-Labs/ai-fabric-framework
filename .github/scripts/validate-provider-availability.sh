@@ -69,6 +69,9 @@ validate_embedding_provider() {
     onnx)
       echo "OK: ONNX embedding provider does not require an API key."
       ;;
+    spring-ai-onnx)
+      echo "OK: Spring AI ONNX embedding provider does not require an API key."
+      ;;
     openai)
       require_any_env "OpenAI API key" OPENAI_API_KEY AI_PROVIDERS_OPENAI_API_KEY
       ;;

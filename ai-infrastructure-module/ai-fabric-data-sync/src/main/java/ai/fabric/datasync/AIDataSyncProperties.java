@@ -27,6 +27,11 @@ public class AIDataSyncProperties {
     private int maxBatchSize = 200;
 
     /**
+     * Base path for the data sync REST API.
+     */
+    private String basePath = "/api/ai/data-sync";
+
+    /**
      * Max chars allowed for normalized content passed to embedding generation.
      *
      * <p>This should not exceed the limit enforced by {@code AIEmbeddingRequest}.</p>
@@ -49,6 +54,15 @@ public class AIDataSyncProperties {
     @Max(500)
     private int maxMetadataKeys = 75;
 
+    /**
+     * Allow trusted platform-internal sync calls to bypass the application EntityAccessPolicy when the
+     * verified auth context has the exact platform/system shape and matching data-sync scope.
+     *
+     * <p>Disabled by default because this module accepts auth context in the request DTO. Enable only
+     * behind a trusted backend/runtime boundary that verifies and injects that context.</p>
+     */
+    private boolean allowTrustedPlatformInternalSyncBypass = false;
+
     public boolean isEnabled() {
         return enabled;
     }
@@ -63,6 +77,14 @@ public class AIDataSyncProperties {
 
     public void setMaxBatchSize(int maxBatchSize) {
         this.maxBatchSize = maxBatchSize;
+    }
+
+    public String getBasePath() {
+        return basePath;
+    }
+
+    public void setBasePath(String basePath) {
+        this.basePath = basePath;
     }
 
     public int getMaxContentChars() {
@@ -87,5 +109,13 @@ public class AIDataSyncProperties {
 
     public void setMaxMetadataKeys(int maxMetadataKeys) {
         this.maxMetadataKeys = maxMetadataKeys;
+    }
+
+    public boolean isAllowTrustedPlatformInternalSyncBypass() {
+        return allowTrustedPlatformInternalSyncBypass;
+    }
+
+    public void setAllowTrustedPlatformInternalSyncBypass(boolean allowTrustedPlatformInternalSyncBypass) {
+        this.allowTrustedPlatformInternalSyncBypass = allowTrustedPlatformInternalSyncBypass;
     }
 }

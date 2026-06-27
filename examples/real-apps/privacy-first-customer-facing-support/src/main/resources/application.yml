@@ -18,14 +18,29 @@ spring:
     open-in-view: false
 
 ai:
+  enabled: true
+  config:
+    default-file: ai-entity-config.yml
+  providers:
+    embedding-provider: privacy-simple
   vector-db:
-    type: false
+    type: lucene
   service:
     features:
-      enable-embeddings: false
-      enable-search: false
+      enable-embeddings: true
+      enable-search: true
       enable-rag: false
       enable-generation: false
+  governance:
+    enabled: true
+    catalog:
+      mode: VECTOR
+    deletion:
+      enabled: true
+    pii:
+      enabled: true
+      require-detection-service: true
+      require-pipeline-step: false
   pii-detection:
     enabled: true
     mode: ${AI_PII_MODE:REDACT}

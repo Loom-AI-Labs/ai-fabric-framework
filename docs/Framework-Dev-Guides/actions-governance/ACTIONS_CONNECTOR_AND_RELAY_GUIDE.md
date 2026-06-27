@@ -4,53 +4,44 @@ This document extends the V5 actions model described in:
 - `./ACTIONS_AND_CONFIRMATION_INTERCEPTORS_GUIDE.md`
 
 It adds a **language-agnostic** execution path for actions via a **Customer Connector API** (optionally implemented using an **AI Fabric Relay**).
-It also supports an official **Generic REST API Connector** implementation (actionId → upstream REST endpoint routing).
+It also documents a planned **Generic REST API Connector** pattern (actionId → upstream REST endpoint routing).
 
 > This is an architecture + productization guide for the **Actions** solution only.
 > It does **not** define commerce entities, domain logic, or “built-in” domain actions.
 
 ---
 
-## Status (as of 2026-02-13)
+## Status (as of 2026-06-19)
 
 ### Implemented in code (opt-in modules + ai-fabric-core)
 
-- `ai-infrastructure-actions-connector`:
+- `ai-fabric-actions-connector`:
   - File-based connector action catalog loading + validation (`ai.actions.sources[*]`)
   - Connector-backed execution (`ai.actions.connector.*`) via `POST /actions/execute`
   - Idempotency key generation for `WRITE_ONLY` / `READ_WRITE` (`act_{ulid}`)
   - Bounded retries derived from `errorCode` + idempotency safety
   - Optional API key header + optional HMAC signing headers (outbound)
   - Strict payload parsing (object vs list payload contracts)
-- `ai-infrastructure-actions-registry`:
+- `ai-fabric-actions-registry`:
   - DB-backed action registration controller (`POST/DELETE/GET /api/ai/actions/registry`)
   - DB-backed connector action catalog contributor (loaded into the unified action registry)
   - Enabled by `ai.actions.db.enabled=true`
-  - Liquibase changelog shipped at `ai-infrastructure-module/ai-infrastructure-actions-registry/src/main/resources/db/changelog/ai-actions-registry-changelog.yaml`
-  - Optional “zero-config” Liquibase runner module: `ai-infrastructure-actions-registry-liquibase`
-- `ai-infrastructure-retrieval-connector`:
+  - Liquibase changelog shipped at `ai-infrastructure-module/ai-fabric-actions-registry/src/main/resources/db/changelog/ai-actions-registry-changelog.yaml`
+  - Optional “zero-config” Liquibase runner module: `ai-fabric-actions-registry-liquibase`
+- `ai-fabric-retrieval-connector`:
   - Documents-only external retrieval via `POST /retrieval/search` (as a `RAGProvider`)
-- `ai-infrastructure-relay` (runnable service):
+- `ai-fabric-relay` (runnable service):
   - Customer-side Relay implementation of the Customer Connector API (`/actions/execute`, `/retrieval/search`)
   - Inbound auth (API key and/or HMAC), replay protection, rate limiting, idempotency (in-memory by default; Redis backend supported), SSRF-safe routing (mapping/dispatcher)
   - OpenAPI contract conformance tests pinned to `changes/Productization/customer-connector-api.openapi.yml`
-- `ai-infrastructure-generic-rest-connector` (runnable service):
-  - Generic connector implementation of the Customer Connector API (`/actions/execute`)
-  - Routes `actionId` → configured upstream REST endpoint (domain-agnostic)
-  - File-based routing config (`actions-routing.yml`) with strict templating (`params` + `trace` → upstream request; upstream response → `ActionResult`)
-  - Inbound auth (API key), upstream auth (API key), timeouts, bounded retries (safe/idempotent), idempotency (in-memory)
-- `ai-infrastructure-generic-rest-connector` (runnable service):
-  - Customer-side implementation of the Customer Connector API (`/actions/execute`) that routes `actionId → upstream REST endpoint`
-  - File-based routing config + strict templating (`params/trace/body/status/headers`) + in-memory idempotency + response normalization to `ActionResult` payload rules
-  - Intended for “API-ready” upstream systems that do not implement the connector contract themselves (Shopify, ERP, internal services)
 - `ai-fabric-core`:
   - Unified action registry (annotation + contributed sources)
   - Connector actions registered alongside `@AIAction` actions
   - Name collisions fail fast at startup (no silent overrides)
 
 Opt-in:
-- Add dependency `com.ai.fabric:ai-infrastructure-actions-connector` to enable connector-backed actions.
-- Add dependency `com.ai.fabric:ai-infrastructure-retrieval-connector` to enable documents-only external retrieval.
+- Add dependency `io.github.loom-ai-labs:ai-fabric-actions-connector` to enable connector-backed actions.
+- Add dependency `io.github.loom-ai-labs:ai-fabric-retrieval-connector` to enable documents-only external retrieval.
 
 ### Implemented in docs (changes/Productization)
 
@@ -59,11 +50,16 @@ Opt-in:
 - Relay specification + deployment guide: `../connectors/RELAY_IMPLEMENTATION_AND_DEPLOYMENT_GUIDE.md`
 - Relay implementation plan (V1 build steps): `changes/Productization/RELAY_SERVICE_IMPLEMENTATION_PLAN.md`
 - Retrieval connector guide (documents-only): `../retrieval-vectorization/RETRIEVAL_CONNECTOR_GUIDE.md`
+- Generic REST connector pattern guide: `../connectors/GENERIC_REST_API_CONNECTOR_GUIDE.md`
 
 ### Not implemented yet (planned)
 
 - Relay hardening:
   - optional mTLS inbound auth (enterprise)
+- Runnable `ai-fabric-generic-rest-connector` service module:
+  - `actionId → upstream REST endpoint` routing
+  - Docker/Railway packaging
+  - production secret/tenant model
 
 ---
 
@@ -93,6 +89,10 @@ Curated packs / licensing provide:
 - `accessMode`: `READ | READ_WRITE | WRITE_ONLY`
 - parameter contract (required fields + validation hints)
 - `requiresConfirmation` and optional confirmation message template
+
+`readActionResolutionEligible` is valid only for `READ` actions. `READ_WRITE` is side-effecting and
+must not be exposed as a planner-driven read helper; boot-time catalogs and DB registration reject
+that combination. `READ_WRITE` actions are also not grounding-eligible by default.
 
 **Action execution** is how the action actually runs:
 - **Local (in-process)**: Java `@AIAction` handlers executed in the same JVM as AI Fabric
@@ -175,7 +175,7 @@ Use the V5 guide:
 For hosted + language-agnostic adoption, start with a file-based action contract loaded at boot.
 
 Implementation note:
-- Connector catalogs + execution live in the optional module `ai-infrastructure-actions-connector`.
+- Connector catalogs + execution live in the optional module `ai-fabric-actions-connector`.
 
 **Recommended file:** `ai-actions.yml`
 
@@ -240,14 +240,15 @@ Notes:
 
 ### 3.3 DB-backed registration (V1 optional)
 
-Implemented (opt-in module): `ai-infrastructure-actions-registry`
+Implemented (opt-in module): `ai-fabric-actions-registry`
 - Enable: `ai.actions.db.enabled=true`
 - Security (recommended): `ai.actions.db.api-key.enabled=true` + `ai.actions.db.api-key.value=...`
 - Liquibase (optional, “zero-config”):
-  - Add module: `ai-infrastructure-actions-registry-liquibase`
+  - Add module: `ai-fabric-actions-registry-liquibase`
   - Default: `ai.actions.db.liquibase.enabled=true`
   - Override changelog: `ai.actions.db.liquibase.change-log=classpath:db/changelog/ai-actions-registry-changelog.yaml`
   - If your app already uses Liquibase (`spring.liquibase.*` or a `db.changelog-master.*`), include the changelog in your master instead of relying on defaults.
+  - The helper respects explicit `spring.liquibase.change-log`, explicit `spring.liquibase.enabled=false`, and Boot default master changelogs. If only `spring.liquibase.enabled=true` is set, it still supplies the registry changelog when `ai.actions.db.enabled=true`.
 - Endpoints:
   - `GET /api/ai/actions/registry`
   - `POST /api/ai/actions/registry`
@@ -256,6 +257,19 @@ Implemented (opt-in module): `ai-infrastructure-actions-registry`
   - persists action definitions in DB
   - fails fast on duplicates/collisions
   - refreshes the unified action registry so changes are available without restart
+  - validates fixed DB field limits, regex patterns, duplicate allowed values, and flat param shape before persistence
+  - revalidates stored DB definitions when loading handlers; stale/manual invalid rows are skipped and
+    logged instead of being exposed as broken runtime actions
+
+DB-backed registration is intentionally narrower than the file-based catalog:
+- supports flat parameter definitions only
+- does not persist custom `displayName`, built-in shell/card bindings, provenance, `postPolicies`, `llmFacts`, nested schemas, assistant-resolution metadata, or MCP/runtime adapter config
+- rejects overlong values before database writes:
+  - action/param name: 128 characters
+  - category: 128 characters
+  - action/param description and confirmation message: 1024 characters
+  - param regex pattern and default value: 512 characters
+  - allowed value entry: 256 characters
 
 The runtime treats file + DB sources uniformly (same canonical model).
 
@@ -282,6 +296,7 @@ Recommended load order (no precedence; duplicates are fatal):
 Validate before exposing actions to the LLM:
 - `name`: non-empty, trimmed, stable identifier (recommended: `snake_case`; enforcement should be **optional/configurable**)
 - `accessMode`: must be one of `READ | READ_WRITE | WRITE_ONLY`
+- `readActionResolutionEligible`: allowed only when `accessMode=READ`
 - `params`: validate `required`, `pattern`, `allowedValues`, `min`, `max` using the same rules as the Java binder
 - `requiresConfirmation`: boolean
 - `confirmationMessage` (if present): validate template placeholders
@@ -371,6 +386,17 @@ To keep orchestration deterministic:
 - Prefer `HTTP 200` with an `ActionResult` body for **handled** outcomes (success or failure).
 - Use non-2xx responses only for **protocol-level** failures (auth failed, invalid JSON, missing required top-level fields).
   - If possible, still return an `ActionResult` body even when using non-2xx.
+- AI Fabric treats the HTTP status as authoritative: any non-2xx connector response is a failure even if the body says `success=true`.
+- For non-2xx responses with a valid `success=false` body, AI Fabric preserves the connector `errorCode`, user-safe `message`, and compatible `data` payload.
+- For non-2xx responses with an empty, invalid, or misleading body, AI Fabric maps the status deterministically:
+  - `408` -> `TIMEOUT`
+  - `429` -> `RATE_LIMITED`
+  - `5xx` / missing status -> `SERVICE_UNAVAILABLE`
+  - other `4xx` -> `ACTION_EXECUTION_FAILED`
+- For `HTTP 200` responses with `success=true`, AI Fabric validates the `data` payload against the
+  action result contract. Malformed successful payloads fail closed with `errorCode=INVALID_RESPONSE`.
+- For handled connector failures (`success=false`), AI Fabric preserves the connector `errorCode` and
+  message; malformed optional failure `data` is ignored rather than masking the business failure.
 
 #### Standard error codes (recommended)
 
@@ -387,6 +413,7 @@ Connector implementations should use a small, stable set of error codes so AI Fa
 | `RATE_LIMITED` | Too many requests | Yes | Ask user to retry later |
 | `TIMEOUT` | Upstream timed out | Yes | Retry (bounded) |
 | `SERVICE_UNAVAILABLE` | Temporary outage | Yes | Retry (bounded) |
+| `INVALID_RESPONSE` | Connector returned a malformed successful payload | No | Treat as connector contract bug |
 | `IDEMPOTENCY_CONFLICT` | Same key, different params | No | Treat as integration bug |
 | `ACTION_EXECUTION_FAILED` | Generic failure | Maybe | Retry only if safe for the action |
 
@@ -689,13 +716,15 @@ Suggested endpoint:
 
 Return:
 - an ordered list of documents/chunks with `content`, `source`, `url`, `score`, and optional `vectorSpace`
+- no generated answer, prompt fields, model messages, or tool instructions; AI Fabric rejects those
+  successful responses with `INVALID_RESPONSE`
 
 This endpoint can be implemented:
 - directly by the customer, or
 - inside the Relay (which calls internal search/RAG systems)
 
 Runtime integration note:
-- AI Fabric supports this via the opt-in module `ai-infrastructure-retrieval-connector` (as a `RAGProvider`).
+- AI Fabric supports this via the opt-in module `ai-fabric-retrieval-connector` (as a `RAGProvider`).
 
 Details:
 - `../retrieval-vectorization/RETRIEVAL_CONNECTOR_GUIDE.md`

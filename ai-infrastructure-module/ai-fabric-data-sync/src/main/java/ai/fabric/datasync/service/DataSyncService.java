@@ -152,6 +152,17 @@ public class DataSyncService {
             return failure(DataSyncOperationType.UPSERT, ERROR_ACCESS_DENIED, access.message(), vectorSpace, id, access.metadata(), startedAt);
         }
 
+        return upsertAfterAccess(request, vectorSpace, logicalId, id, entityConfig, access, startedAt);
+    }
+
+    private DataSyncOperationResponse upsertAfterAccess(DataSyncUpsertRequest request,
+                                                        String vectorSpace,
+                                                        String logicalId,
+                                                        String id,
+                                                        AIEntityConfig entityConfig,
+                                                        AccessDecision access,
+                                                        long startedAt) {
+
         DataSyncEntityNormalizer.NormalizedEntity normalized;
         try {
             normalized = normalizer.normalize(entityConfig, vectorSpace, id, request.getContent(), request.getEntity(), request.getMetadata());
@@ -193,7 +204,7 @@ public class DataSyncService {
                 "Vector store failed.",
                 vectorSpace,
                 id,
-                failureMetadata("cause", ex.getMessage()),
+                failureMetadata("cause", exceptionSummary(ex)),
                 startedAt
             );
         }
@@ -240,12 +251,29 @@ public class DataSyncService {
             return failure(DataSyncOperationType.DELETE, ERROR_ACCESS_DENIED, access.message(), vectorSpace, id, access.metadata(), startedAt);
         }
 
+        return deleteAfterAccess(request, vectorSpace, logicalId, id, access, startedAt);
+    }
+
+    private DataSyncOperationResponse deleteAfterAccess(DataSyncDeleteRequest request,
+                                                        String vectorSpace,
+                                                        String logicalId,
+                                                        String id,
+                                                        AccessDecision access,
+                                                        long startedAt) {
         boolean removed;
         try {
             removed = vectorManagementService.removeVector(vectorSpace, id);
         } catch (Exception ex) {
             log.warn("Vector delete failed for {}:{}: {}", vectorSpace, id, ex.getMessage());
-            return failure(DataSyncOperationType.DELETE, ERROR_VECTOR_STORE_FAILED, "Vector delete failed.", vectorSpace, id, null, startedAt);
+            return failure(
+                DataSyncOperationType.DELETE,
+                ERROR_VECTOR_STORE_FAILED,
+                "Vector delete failed.",
+                vectorSpace,
+                id,
+                failureMetadata("cause", exceptionSummary(ex)),
+                startedAt
+            );
         }
 
         long processingMs = nanosToMillis(System.nanoTime() - startedAt);
@@ -280,6 +308,8 @@ public class DataSyncService {
         }
 
         List<String> denied = new ArrayList<>();
+        List<Map<String, Object>> deniedDetails = new ArrayList<>();
+        List<PreparedOperation> preparedOperations = new ArrayList<>();
         Map<String, AIEntityConfig> configBySpace = new LinkedHashMap<>();
         for (int i = 0; i < ops.size(); i++) {
             DataSyncOperation op = ops.get(i);
@@ -315,12 +345,15 @@ public class DataSyncService {
             AccessDecision access = checkAccess(trace, vectorSpace, id, operationType);
             if (!access.granted()) {
                 denied.add("index=" + i + " vectorSpace=" + vectorSpace + " id=" + id);
+                deniedDetails.add(deniedOperationDetail(i, vectorSpace, id, operationType, access.metadata()));
             }
+            preparedOperations.add(new PreparedOperation(op, vectorSpace, logicalId, id, config, access));
         }
 
         if (!denied.isEmpty()) {
             Map<String, Object> meta = new LinkedHashMap<>();
             meta.put("deniedOperations", List.copyOf(denied));
+            meta.put("deniedOperationDetails", List.copyOf(deniedDetails));
 
             DataSyncOperationResponse marker = new DataSyncOperationResponse();
             marker.setSuccess(false);
@@ -342,28 +375,42 @@ public class DataSyncService {
 
         List<DataSyncOperationResponse> results = new ArrayList<>();
         int successCount = 0;
-        for (DataSyncOperation op : ops) {
-            if (op == null || op.getType() == null) {
-                continue;
-            }
+        for (PreparedOperation prepared : preparedOperations) {
+            DataSyncOperation op = prepared.operation();
             DataSyncOperationResponse result;
+            long operationStartedAt = System.nanoTime();
             if (op.getType() == DataSyncOperationType.DELETE) {
                 DataSyncDeleteRequest deleteRequest = new DataSyncDeleteRequest();
-                deleteRequest.setVectorSpace(op.getVectorSpace());
-                deleteRequest.setId(op.getId());
+                deleteRequest.setVectorSpace(prepared.vectorSpace());
+                deleteRequest.setId(prepared.logicalId());
                 deleteRequest.setIdentity(op.getIdentity());
                 deleteRequest.setTrace(trace);
-                result = delete(deleteRequest);
+                result = deleteAfterAccess(
+                    deleteRequest,
+                    prepared.vectorSpace(),
+                    prepared.logicalId(),
+                    prepared.id(),
+                    prepared.access(),
+                    operationStartedAt
+                );
             } else {
                 DataSyncUpsertRequest upsertRequest = new DataSyncUpsertRequest();
-                upsertRequest.setVectorSpace(op.getVectorSpace());
-                upsertRequest.setId(op.getId());
+                upsertRequest.setVectorSpace(prepared.vectorSpace());
+                upsertRequest.setId(prepared.logicalId());
                 upsertRequest.setContent(op.getContent());
                 upsertRequest.setEntity(op.getEntity());
                 upsertRequest.setMetadata(op.getMetadata());
                 upsertRequest.setIdentity(op.getIdentity());
                 upsertRequest.setTrace(trace);
-                result = upsert(upsertRequest);
+                result = upsertAfterAccess(
+                    upsertRequest,
+                    prepared.vectorSpace(),
+                    prepared.logicalId(),
+                    prepared.id(),
+                    prepared.entityConfig(),
+                    prepared.access(),
+                    operationStartedAt
+                );
             }
 
             results.add(result);
@@ -399,6 +446,8 @@ public class DataSyncService {
             deniedMeta.put("entityId", id);
             deniedMeta.put("operationType", operationType);
             deniedMeta.put("identitySource", "missingVerifiedAuthContext");
+            deniedMeta.put("accessDecisionSource", "dataSyncVerifiedAuthContext");
+            deniedMeta.put("accessEvaluationStatus", "missingSubject");
             if (trace != null && trace.getMetadata() != null && !trace.getMetadata().isEmpty()) {
                 for (Map.Entry<String, Object> entry : trace.getMetadata().entrySet()) {
                     if (!StringUtils.hasText(entry.getKey()) || entry.getValue() == null) {
@@ -442,8 +491,10 @@ public class DataSyncService {
             }
         }
 
-        if (isTrustedPlatformInternalSync(verifiedAuthContext, operationType)) {
+        if (properties.isAllowTrustedPlatformInternalSyncBypass()
+            && isTrustedPlatformInternalSync(verifiedAuthContext, operationType)) {
             meta.put("accessDecisionSource", "trustedPlatformInternalSync");
+            meta.put("accessEvaluationStatus", "granted");
             return new AccessDecision(true, "OK", Collections.unmodifiableMap(meta));
         }
 
@@ -466,16 +517,21 @@ public class DataSyncService {
             .resourceId(RESOURCE_PREFIX + vectorSpace)
             .operationType(operationType)
             .context("vector sync")
-            .metadata(Collections.unmodifiableMap(meta))
+            .metadata(Collections.unmodifiableMap(new LinkedHashMap<>(meta)))
             .timestamp(LocalDateTime.now(clock))
             .build();
 
         try {
             AIAccessControlResponse response = accessControlService.checkAccess(accessRequest);
             boolean granted = response != null && Boolean.TRUE.equals(response.getAccessGranted());
+            meta.put("accessDecisionSource", "accessControlService");
+            meta.put("accessEvaluationStatus", granted ? "granted" : "denied");
             return new AccessDecision(granted, granted ? "OK" : "Access denied.", Collections.unmodifiableMap(meta));
         } catch (Exception ex) {
             log.warn("Access control evaluation failed for {}:{}: {}", vectorSpace, id, ex.getMessage());
+            meta.put("accessDecisionSource", "accessControlService");
+            meta.put("accessEvaluationStatus", "failedClosed");
+            meta.put("accessEvaluationFailure", exceptionSummary(ex));
             return new AccessDecision(false, "Access denied.", Collections.unmodifiableMap(meta));
         }
     }
@@ -546,6 +602,40 @@ public class DataSyncService {
         Map<String, Object> metadata = new LinkedHashMap<>();
         metadata.put(key.trim(), value.trim());
         return Collections.unmodifiableMap(metadata);
+    }
+
+    private Map<String, Object> deniedOperationDetail(int index,
+                                                      String vectorSpace,
+                                                      String id,
+                                                      String operationType,
+                                                      Map<String, Object> accessMetadata) {
+        Map<String, Object> detail = new LinkedHashMap<>();
+        detail.put("index", index);
+        detail.put("vectorSpace", vectorSpace);
+        detail.put("id", id);
+        detail.put("operationType", operationType);
+        copyIfPresent(accessMetadata, detail, "identitySource");
+        copyIfPresent(accessMetadata, detail, "accessDecisionSource");
+        copyIfPresent(accessMetadata, detail, "accessEvaluationStatus");
+        copyIfPresent(accessMetadata, detail, "accessEvaluationFailure");
+        return Collections.unmodifiableMap(detail);
+    }
+
+    private void copyIfPresent(Map<String, Object> source, Map<String, Object> target, String key) {
+        if (source == null || target == null || !StringUtils.hasText(key)) {
+            return;
+        }
+        Object value = source.get(key);
+        if (value != null) {
+            target.put(key, value);
+        }
+    }
+
+    private String exceptionSummary(Exception ex) {
+        if (ex == null) {
+            return "Exception";
+        }
+        return StringUtils.hasText(ex.getMessage()) ? ex.getMessage().trim() : ex.getClass().getSimpleName();
     }
 
     private DataSyncOperationResponse failure(DataSyncOperationType type,
@@ -694,6 +784,13 @@ public class DataSyncService {
             throw new IllegalStateException("Failed to compute data sync idempotency key.", ex);
         }
     }
+
+    private record PreparedOperation(DataSyncOperation operation,
+                                     String vectorSpace,
+                                     String logicalId,
+                                     String id,
+                                     AIEntityConfig entityConfig,
+                                     AccessDecision access) { }
 
     private record AccessDecision(boolean granted, String message, Map<String, Object> metadata) { }
 }

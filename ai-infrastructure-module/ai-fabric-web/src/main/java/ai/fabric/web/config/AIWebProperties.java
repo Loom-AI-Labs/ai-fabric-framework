@@ -16,6 +16,7 @@ public class AIWebProperties {
         private boolean audit = true;
         private boolean compliance = true;
         private boolean monitoring = true;
+        private boolean migration = true;
         private boolean profile = true;
         private boolean security = true;
     }

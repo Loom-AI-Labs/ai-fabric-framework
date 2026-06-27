@@ -1,6 +1,7 @@
 package ai.fabric.it;
 
 import ai.fabric.cache.AICacheConfig;
+import ai.fabric.cache.AICacheNames;
 import ai.fabric.core.AIEmbeddingService;
 import ai.fabric.config.AIProviderConfig;
 import ai.fabric.dto.AIEmbeddingRequest;
@@ -20,7 +21,7 @@ import org.springframework.cache.Cache;
 import org.springframework.cache.CacheManager;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.context.annotation.Import;
-import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 import java.util.List;
 import java.util.Map;
@@ -52,10 +53,10 @@ class EmbeddingProviderFailoverIntegrationTest {
     @Autowired
     private AIProviderConfig providerConfig;
 
-    @MockBean(name = "openaiEmbeddingProvider")
+    @MockitoBean(name = "openaiEmbeddingProvider")
     private EmbeddingProvider primaryEmbeddingProvider;
 
-    @MockBean(name = "onnxFallbackEmbeddingProvider")
+    @MockitoBean(name = "onnxFallbackEmbeddingProvider")
     private EmbeddingProvider fallbackEmbeddingProvider;
 
     private Cache cache;
@@ -63,7 +64,7 @@ class EmbeddingProviderFailoverIntegrationTest {
 
     @BeforeEach
     void setUp() {
-        cache = cacheManager.getCache("embeddings");
+        cache = cacheManager.getCache(AICacheNames.EMBEDDINGS);
         if (cache != null) {
             cache.clear();
         }

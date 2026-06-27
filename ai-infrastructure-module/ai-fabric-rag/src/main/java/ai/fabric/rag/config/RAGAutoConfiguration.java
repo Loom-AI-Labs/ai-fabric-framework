@@ -6,6 +6,7 @@ import ai.fabric.core.AICoreService;
 import ai.fabric.core.AIEmbeddingService;
 import ai.fabric.core.AISearchService;
 import ai.fabric.rag.VectorDatabaseService;
+import ai.fabric.rag.evaluation.springai.SpringAiRagEvaluationService;
 import ai.fabric.rag.service.AdvancedRAGService;
 import ai.fabric.rag.service.RAGService;
 import ai.fabric.rag.source.SearchSourceRegistry;
@@ -16,12 +17,25 @@ import ai.fabric.vector.VectorDatabase;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.AutoConfigureAfter;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.evaluation.FactCheckingEvaluator;
+import org.springframework.ai.chat.evaluation.RelevancyEvaluator;
+import org.springframework.ai.evaluation.Evaluator;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+
+import java.util.concurrent.Executor;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Auto-configuration for RAG (Retrieval-Augmented Generation) module.
@@ -79,6 +93,7 @@ public class RAGAutoConfiguration {
     
     private static final String LOG_RAG_SERVICE_CREATED = "RAGService created as default RAGProvider implementation";
     private static final String LOG_ADVANCED_RAG_CREATED = "AdvancedRAGService created with RAGProvider integration";
+    private static final String ADVANCED_RAG_SEARCH_EXECUTOR = "advancedRagSearchExecutor";
     
     // =========================================================================
     // Bean Definitions
@@ -116,6 +131,7 @@ public class RAGAutoConfiguration {
             VectorDatabaseService vectorDatabaseService,
             VectorDatabase vectorDatabase,
             AISearchService searchService,
+            RAGProperties properties,
             ObjectProvider<SearchSourceRegistry> searchSourceRegistryProvider) {
         
         log.info(LOG_RAG_SERVICE_CREATED);
@@ -126,8 +142,24 @@ public class RAGAutoConfiguration {
             vectorDatabaseService,
             vectorDatabase,
             searchService,
-            searchSourceRegistryProvider.getIfAvailable()
+            searchSourceRegistryProvider.getIfAvailable(),
+            properties
         );
+    }
+
+    /**
+     * Bounded executor for advanced RAG expanded-query fan-out.
+     */
+    @Bean(name = ADVANCED_RAG_SEARCH_EXECUTOR, destroyMethod = "shutdown")
+    @ConditionalOnMissingBean(name = ADVANCED_RAG_SEARCH_EXECUTOR)
+    @ConditionalOnProperty(prefix = "ai.infrastructure.rag.advanced", name = "enabled", havingValue = "true", matchIfMissing = true)
+    public ExecutorService advancedRagSearchExecutor(RAGProperties properties) {
+        int parallelism = properties != null && properties.getAdvanced() != null
+            ? properties.getAdvanced().getMaxParallelSearches()
+            : 4;
+        int safeParallelism = Math.max(1, Math.min(64, parallelism));
+        log.info("Advanced RAG search executor created with maxParallelSearches={}", safeParallelism);
+        return Executors.newFixedThreadPool(safeParallelism, namedThreadFactory("ai-fabric-advanced-rag-search-"));
     }
     
     /**
@@ -160,7 +192,9 @@ public class RAGAutoConfiguration {
             AICoreService coreService,
             RAGProvider ragProvider,
             PromptTemplateResolver promptTemplateResolver,
-            PromptRenderer promptRenderer) {
+            PromptRenderer promptRenderer,
+            RAGProperties properties,
+            @Qualifier(ADVANCED_RAG_SEARCH_EXECUTOR) Executor advancedRagSearchExecutor) {
         
         log.info(LOG_ADVANCED_RAG_CREATED);
         
@@ -170,7 +204,59 @@ public class RAGAutoConfiguration {
             coreService,
             ragProvider,
             promptTemplateResolver,
-            promptRenderer
+            promptRenderer,
+            properties,
+            advancedRagSearchExecutor
         );
+    }
+
+    private ThreadFactory namedThreadFactory(String prefix) {
+        AtomicInteger sequence = new AtomicInteger();
+        return runnable -> {
+            Thread thread = new Thread(runnable, prefix + sequence.incrementAndGet());
+            thread.setDaemon(true);
+            return thread;
+        };
+    }
+
+    @Configuration(proxyBeanMethods = false)
+    @ConditionalOnClass(name = {
+        "org.springframework.ai.chat.client.ChatClient$Builder",
+        "org.springframework.ai.chat.evaluation.RelevancyEvaluator",
+        "org.springframework.ai.chat.evaluation.FactCheckingEvaluator"
+    })
+    @ConditionalOnBean(ChatClient.Builder.class)
+    @ConditionalOnProperty(
+        prefix = "ai.infrastructure.rag.evaluation",
+        name = "enabled",
+        havingValue = "true"
+    )
+    static class SpringAiRagEvaluationConfiguration {
+
+        @Bean
+        @ConditionalOnMissingBean(name = "springAiRagRelevancyEvaluator")
+        Evaluator springAiRagRelevancyEvaluator(ChatClient.Builder chatClientBuilder) {
+            return RelevancyEvaluator.builder()
+                .chatClientBuilder(chatClientBuilder)
+                .build();
+        }
+
+        @Bean
+        @ConditionalOnMissingBean(name = "springAiRagFactCheckingEvaluator")
+        Evaluator springAiRagFactCheckingEvaluator(ChatClient.Builder chatClientBuilder) {
+            return FactCheckingEvaluator.builder(chatClientBuilder).build();
+        }
+
+        @Bean
+        @ConditionalOnMissingBean
+        SpringAiRagEvaluationService springAiRagEvaluationService(
+            @Qualifier("springAiRagRelevancyEvaluator") Evaluator relevancyEvaluator,
+            @Qualifier("springAiRagFactCheckingEvaluator") ObjectProvider<Evaluator> factCheckingEvaluator
+        ) {
+            return new SpringAiRagEvaluationService(
+                relevancyEvaluator,
+                factCheckingEvaluator.getIfAvailable()
+            );
+        }
     }
 }

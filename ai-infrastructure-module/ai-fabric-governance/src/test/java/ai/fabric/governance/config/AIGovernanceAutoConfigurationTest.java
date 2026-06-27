@@ -1,5 +1,8 @@
 package ai.fabric.governance.config;
 
+import ai.fabric.deletion.UserDataDeletionService;
+import ai.fabric.deletion.UserDataDeletionResult;
+import ai.fabric.deletion.policy.UserDataDeletionProvider;
 import ai.fabric.governance.catalog.IndexCatalog;
 import ai.fabric.governance.catalog.disabled.DisabledIndexCatalog;
 import ai.fabric.governance.catalog.jpa.IndexCatalogRepository;
@@ -14,6 +17,7 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -73,7 +77,7 @@ class AIGovernanceAutoConfigurationTest {
     void autoModePrefersVectorCatalogWhenVectorScanAndMetadataFilteringAreSupported() {
         VectorDatabaseService vectorDatabaseService = mock(VectorDatabaseService.class);
         when(vectorDatabaseService.supportsVectorScan()).thenReturn(true);
-        when(vectorDatabaseService.supportsMetadataFiltering()).thenReturn(true);
+        when(vectorDatabaseService.supportsScanMetadataFiltering()).thenReturn(true);
 
         contextRunner
             .withBean(VectorDatabaseService.class, () -> vectorDatabaseService)
@@ -81,6 +85,24 @@ class AIGovernanceAutoConfigurationTest {
             .run(context -> {
                 assertThat(context).hasSingleBean(IndexCatalog.class);
                 assertThat(context.getBean(IndexCatalog.class)).isInstanceOf(VectorIndexCatalog.class);
+            });
+    }
+
+    @Test
+    void autoModeDoesNotUseVectorCatalogWhenOnlySearchMetadataFilteringIsSupported() {
+        IndexCatalogRepository repository = mock(IndexCatalogRepository.class);
+        VectorDatabaseService vectorDatabaseService = mock(VectorDatabaseService.class);
+        when(vectorDatabaseService.supportsVectorScan()).thenReturn(true);
+        when(vectorDatabaseService.supportsSearchMetadataFiltering()).thenReturn(true);
+        when(vectorDatabaseService.supportsScanMetadataFiltering()).thenReturn(false);
+
+        contextRunner
+            .withBean(VectorDatabaseService.class, () -> vectorDatabaseService)
+            .withBean(IndexCatalogRepository.class, () -> repository)
+            .withPropertyValues("ai.governance.enabled=true")
+            .run(context -> {
+                assertThat(context).hasSingleBean(IndexCatalog.class);
+                assertThat(context.getBean(IndexCatalog.class)).isInstanceOf(JpaIndexCatalog.class);
             });
     }
 
@@ -100,6 +122,62 @@ class AIGovernanceAutoConfigurationTest {
     }
 
     @Test
+    void deletionServiceIsCreatedWhenVectorBackendAndDomainProviderAreAvailable() {
+        VectorDatabaseService vectorDatabaseService = mock(VectorDatabaseService.class);
+        when(vectorDatabaseService.supportsVectorScan()).thenReturn(true);
+        when(vectorDatabaseService.supportsScanMetadataFiltering()).thenReturn(true);
+
+        contextRunner
+            .withBean(VectorDatabaseService.class, () -> vectorDatabaseService)
+            .withBean(UserDataDeletionProvider.class, TestUserDataDeletionProvider::new)
+            .withPropertyValues(
+                "ai.governance.enabled=true",
+                "ai.governance.deletion.enabled=true"
+            )
+            .run(context -> {
+                assertThat(context).hasSingleBean(IndexCatalog.class);
+                assertThat(context).hasSingleBean(UserDataDeletionService.class);
+            });
+    }
+
+    @Test
+    void deletionServiceIsCreatedWhenDeletionIsEnabledWithoutVectorBackend() {
+        contextRunner
+            .withBean(UserDataDeletionProvider.class, TestUserDataDeletionProvider::new)
+            .withPropertyValues(
+                "ai.governance.enabled=true",
+                "ai.governance.deletion.enabled=true"
+            )
+            .run(context -> {
+                assertThat(context).hasSingleBean(IndexCatalog.class);
+                assertThat(context.getBean(IndexCatalog.class)).isInstanceOf(DisabledIndexCatalog.class);
+                assertThat(context).hasSingleBean(UserDataDeletionService.class);
+                assertThat(context.getBean(UserDataDeletionService.class).deleteUser("user-1").getStatus())
+                    .isEqualTo(UserDataDeletionResult.Status.COMPLETED);
+            });
+    }
+
+    @Test
+    void deletionServiceIsCreatedWithoutDomainProviderAndFailsClosedOnUse() {
+        VectorDatabaseService vectorDatabaseService = mock(VectorDatabaseService.class);
+        when(vectorDatabaseService.supportsVectorScan()).thenReturn(true);
+        when(vectorDatabaseService.supportsScanMetadataFiltering()).thenReturn(true);
+
+        contextRunner
+            .withBean(VectorDatabaseService.class, () -> vectorDatabaseService)
+            .withPropertyValues(
+                "ai.governance.enabled=true",
+                "ai.governance.deletion.enabled=true"
+            )
+            .run(context -> {
+                assertThat(context).hasSingleBean(UserDataDeletionService.class);
+                assertThatThrownBy(() -> context.getBean(UserDataDeletionService.class).deleteUser("user-1"))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("UserDataDeletionProvider");
+            });
+    }
+
+    @Test
     void autoConfigurationImportsRegistersGovernanceAutoConfigurations() throws Exception {
         try (InputStream input = getClass().getClassLoader().getResourceAsStream(
             "META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports")) {
@@ -109,6 +187,23 @@ class AIGovernanceAutoConfigurationTest {
                 .contains(AIGovernanceAutoConfigurationPackages.class.getName())
                 .contains(AIGovernanceAutoConfiguration.class.getName());
             assertThat(AIGovernanceAutoConfigurationPackages.BASE_PACKAGE).isEqualTo("ai.fabric.governance");
+        }
+    }
+
+    static class TestUserDataDeletionProvider implements UserDataDeletionProvider {
+        @Override
+        public boolean canDeleteUser(String userId) {
+            return true;
+        }
+
+        @Override
+        public int deleteUserDomainData(String userId) {
+            return 0;
+        }
+
+        @Override
+        public void notifyAfterDeletion(String userId) {
+            // No-op test provider.
         }
     }
 }

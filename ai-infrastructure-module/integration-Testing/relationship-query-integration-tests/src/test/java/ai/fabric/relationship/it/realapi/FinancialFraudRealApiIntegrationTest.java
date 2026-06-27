@@ -13,8 +13,9 @@ import ai.fabric.rag.VectorDatabaseService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureTestRestTemplate;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.web.client.TestRestTemplate;
+import org.springframework.boot.resttestclient.TestRestTemplate;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -32,6 +33,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 )
 @ActiveProfiles("realapi")
 @Import(BackendEnvTestConfiguration.class)
+@AutoConfigureTestRestTemplate
 class FinancialFraudRealApiIntegrationTest {
 
     private static final String QUERY = "List suspicious transactions over $25k from high-risk regions routed through the same counterparty";

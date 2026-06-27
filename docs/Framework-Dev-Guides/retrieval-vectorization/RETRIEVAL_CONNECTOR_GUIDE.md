@@ -17,14 +17,20 @@ Reference:
 
 ---
 
-## Status (as of 2026-02-12)
+## Status (as of 2026-06-19)
 
 - **Contract is documented** (OpenAPI + this guide).
-- **Implemented in code (opt-in module):** `ai-infrastructure-retrieval-connector` provides a `RAGProvider` implementation that calls `/retrieval/search`.
+- **Implemented in code (opt-in module):** `ai-fabric-retrieval-connector` provides a read-only `RAGProvider` implementation that calls `/retrieval/search`.
 
 Opt-in:
-- Add dependency `com.ai.fabric:ai-infrastructure-retrieval-connector`
+- Add dependency `io.github.loom-ai-labs:ai-fabric-retrieval-connector`
 - Enable with `ai.retrieval.connector.enabled=true`
+- Set `ai.retrieval.connector.base-url` to the customer connector service base URL
+
+When enabled, the module contributes a read-only `RAGProvider` only if the application has not
+already defined a `RAGProvider`. This lets customer-owned or deployment-specific providers remain
+authoritative while still allowing the connector to replace the default AI Fabric RAG provider in
+green-field connector deployments.
 
 ---
 
@@ -40,6 +46,11 @@ It MUST NOT return:
 - a generated answer
 - tool instructions / “what the model should do”
 - hidden prompts
+
+AI Fabric enforces this boundary. A successful response that includes forbidden top-level generation
+fields such as `answer`, `generatedAnswer`, `finalAnswer`, `completion`, `toolInstructions`,
+`toolCalls`, `prompt`, `systemPrompt`, `hiddenPrompt`, `messages`, or `instructions` fails closed
+with `errorCode=INVALID_RESPONSE`.
 
 Reason:
 - AI Fabric needs a clean, deterministic retrieval boundary.
@@ -57,7 +68,7 @@ Key fields:
 - `topK`: number of documents/chunks to return (default 10)
 - `cursor`: opaque pagination cursor (optional)
 - `filters`: optional customer-defined filters (optional)
-- `trace`: request correlation + stable user/session identifiers
+- `trace`: request correlation plus canonical, verified `authContext` when present
 
 Example:
 
@@ -70,12 +81,24 @@ Example:
   "filters": { "locale": "en_US" },
   "trace": {
     "requestId": "req_123",
-    "conversationId": "chat_456",
-    "userId": "user_789",
-    "sessionId": "sess_012"
+    "authContext": {
+      "subjectId": "user_789",
+      "sessionId": "sess_012",
+      "subjectType": "END_USER",
+      "authMode": "PUBLIC_RUNTIME_AUTHENTICATED",
+      "callerType": "PUBLIC_BROWSER",
+      "deploymentId": "dep_123",
+      "customerId": "cust_123",
+      "tenantId": "tenant_123",
+      "issuer": "ai-fabric-runtime",
+      "grantedScopes": ["retrieval:search"]
+    }
   }
 }
 ```
+
+AI Fabric does not send legacy top-level `trace.userId` or `trace.sessionId` fields. Customer
+connectors should read identity and authorization attributes from `trace.authContext`.
 
 ### 2.2 Response
 
@@ -83,10 +106,17 @@ Response must be deterministic and shaped as `RetrievalSearchResponse`:
 - `success`: boolean
 - `message`: user-safe message (optional)
 - `errorCode`: stable code for deterministic handling (optional)
-- `documents`: ordered list of documents/chunks (may be empty)
+- `documents`: required ordered list of documents/chunks on success (may be empty)
 - `count`: number of returned documents
 - `totalCount`: optional overall count (if known)
 - `cursor`: optional next cursor (for pagination)
+
+On `success=true`, AI Fabric expects `documents` to be an array. Each returned document must include
+non-empty `id`, non-empty `content`, and numeric `score`. Invalid individual documents are skipped
+when at least one valid document remains, with a warning attached to the `RAGResponse`. If a
+successful connector response omits `documents`, returns a non-array `documents` value, or returns
+only invalid documents, AI Fabric fails closed with `errorCode=INVALID_RESPONSE`. Top-level
+generation, prompt, message, or tool-instruction fields are also rejected on successful responses.
 
 Example (success):
 
@@ -159,9 +189,27 @@ Pick one:
 
 Deny on auth failure.
 
+AI Fabric can send either a static API key header or HMAC signature:
+
+```yaml
+ai:
+  retrieval:
+    connector:
+      enabled: true
+      base-url: https://relay.customer.example
+      api-key:
+        header: X-AIFABRIC-API-KEY
+        value: ${AI_RETRIEVAL_CONNECTOR_API_KEY:}
+      hmac:
+        secret: ${AI_RETRIEVAL_CONNECTOR_HMAC_SECRET:}
+```
+
+HMAC signing sends timestamp, nonce, and signature headers. Connector implementations should reject
+stale timestamps and reused nonces on their side.
+
 ### 5.2 Re-authorize the user (defense in depth)
 
-Use `trace.userId` (stable, non‑PII) to enforce:
+Use `trace.authContext` to enforce:
 - tenant boundaries
 - knowledge-base access policies
 
@@ -176,7 +224,8 @@ Implement or enforce:
 Log (PII-safe):
 - timestamp
 - requestId
-- userId
+- authContext.subjectId or authContext.sessionId
+- authContext.tenantId / customerId / deploymentId when relevant
 - vectorSpace
 - outcome (success/errorCode)
 - latency
@@ -188,7 +237,10 @@ Do not log full `query` content if it can contain PII; if you must log, hash it 
 ## 6) Testing checklist
 
 - Always returns **documents only** (no answer fields, no generation).
+- Forbidden generation/prompt/tool fields on a successful response fail closed with `INVALID_RESPONSE`.
 - Unknown `vectorSpace` fails closed (`success=false`, `errorCode=NOT_FOUND` or standardized `VECTOR_SPACE_NOT_FOUND` if adopted).
+- `trace.authContext` drives user/tenant re-authorization; do not depend on top-level `trace.userId`.
+- Malformed success responses fail closed with `INVALID_RESPONSE`.
 - Filters are applied correctly (no tenant bleed).
 - Ordering is stable (highest score first).
 - Pagination via `cursor` works (when implemented).

@@ -1,14 +1,12 @@
 package ai.fabric.it;
 
+import ai.fabric.config.AIProviderConfig;
 import ai.fabric.core.AIEmbeddingService;
 import ai.fabric.dto.AIEmbeddingRequest;
 import ai.fabric.dto.AIEmbeddingResponse;
 import ai.fabric.embedding.EmbeddingProvider;
-import com.theokanning.openai.OpenAiHttpException;
-import com.theokanning.openai.embedding.EmbeddingRequest;
-import com.theokanning.openai.embedding.EmbeddingResult;
-import com.theokanning.openai.service.OpenAiService;
-import java.time.Duration;
+import ai.fabric.provider.springai.SpringAiEmbeddingProvider;
+import ai.fabric.provider.springai.SpringAiModelResolver;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -80,7 +78,7 @@ class EmbeddingMultilanguageIntegrationTest {
                 if (fallbackEnglish.isPresent() && fallbackTranslation.isPresent()) {
                     double fallbackSimilarity = cosineSimilarity(fallbackEnglish.get(), fallbackTranslation.get());
                     assertTrue(fallbackSimilarity >= 0.60,
-                        () -> "Fallback OpenAI similarity should be high for " + entry.getKey() + " translation but was "
+                        () -> "Spring AI OpenAI similarity should be high for " + entry.getKey() + " translation but was "
                             + fallbackSimilarity);
                 } else {
                     assertTrue(similarity > 0.45,
@@ -130,23 +128,36 @@ class EmbeddingMultilanguageIntegrationTest {
         if (apiKey == null || apiKey.isBlank()) {
             return Optional.empty();
         }
+        SpringAiModelResolver resolver = springAiOpenAiResolver(apiKey);
         try {
-            OpenAiService openAiService = new OpenAiService(apiKey, Duration.ofSeconds(90));
-            EmbeddingRequest request = EmbeddingRequest.builder()
+            SpringAiEmbeddingProvider provider = new SpringAiEmbeddingProvider("openai", resolver);
+            AIEmbeddingResponse response = provider.generateEmbedding(AIEmbeddingRequest.builder()
+                .text(text)
                 .model("text-embedding-3-small")
-                .input(List.of(text))
-                .build();
-            EmbeddingResult result = openAiService.createEmbeddings(request);
-            if (result.getData().isEmpty()) {
+                .build());
+            if (response == null || response.getEmbedding() == null || response.getEmbedding().isEmpty()) {
                 return Optional.empty();
             }
-            List<Double> embedding = result.getData().get(0).getEmbedding();
+            List<Double> embedding = response.getEmbedding();
             fallbackEmbeddingCache.put(text, embedding);
             return Optional.of(embedding);
-        } catch (OpenAiHttpException openAiException) {
-            return Optional.empty();
         } catch (Exception unexpected) {
             return Optional.empty();
+        } finally {
+            try {
+                resolver.destroy();
+            } catch (Exception ignored) {
+                // Nothing actionable in tests; resolver cleanup is best-effort.
+            }
         }
+    }
+
+    private SpringAiModelResolver springAiOpenAiResolver(String apiKey) {
+        AIProviderConfig config = new AIProviderConfig();
+        config.setEmbeddingProvider("openai");
+        config.setEmbeddingApiKey(apiKey);
+        config.getOpenai().setApiKey(apiKey);
+        config.getOpenai().setEmbeddingModel("text-embedding-3-small");
+        return new SpringAiModelResolver(config);
     }
 }

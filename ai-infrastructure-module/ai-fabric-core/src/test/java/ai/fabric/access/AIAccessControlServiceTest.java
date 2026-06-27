@@ -1,5 +1,6 @@
 package ai.fabric.access;
 
+import ai.fabric.cache.AICacheNames;
 import ai.fabric.access.policy.EntityAccessPolicy;
 import ai.fabric.dto.AIAccessControlRequest;
 import ai.fabric.dto.AIAccessControlResponse;
@@ -13,11 +14,13 @@ import java.util.Map;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.same;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import org.mockito.ArgumentCaptor;
 
 class AIAccessControlServiceTest {
 
@@ -78,7 +81,7 @@ class AIAccessControlServiceTest {
         AIAccessControlService service = new AIAccessControlService(
             clock,
             policy,
-            new ConcurrentMapCacheManager("accessDecisions")
+            new ConcurrentMapCacheManager(AICacheNames.ACCESS_DECISIONS)
         );
 
         AIAccessControlResponse first = service.checkAccess(buildRequest("cache-user"));
@@ -98,7 +101,7 @@ class AIAccessControlServiceTest {
         AIAccessControlService service = new AIAccessControlService(
             clock,
             policy,
-            new ConcurrentMapCacheManager("accessDecisions")
+            new ConcurrentMapCacheManager(AICacheNames.ACCESS_DECISIONS)
         );
 
         AIAccessControlResponse first = service.checkAccess(buildRequest("failure-user"));
@@ -107,6 +110,38 @@ class AIAccessControlServiceTest {
         assertThat(first.getFromCache()).isFalse();
         assertThat(second.getFromCache()).isFalse();
         verify(policy, times(2)).canAccess(any(), any());
+    }
+
+    @Test
+    void normalizesMetadataAndUserAttributesBeforePolicyEvaluation() {
+        EntityAccessPolicy policy = mock(EntityAccessPolicy.class);
+        doReturn(true).when(policy).canAccess(any(), any());
+        AIAccessControlService service = new AIAccessControlService(clock, policy);
+
+        AIAccessControlRequest request = buildRequest("normalize-user");
+        request.setMetadata(new java.util.LinkedHashMap<>());
+        request.getMetadata().put(null, "ignored-key");
+        request.getMetadata().put("blank", "   ");
+        request.getMetadata().put("role", " admin ");
+        request.getMetadata().put("nested", Map.of("team", " support ", "empty", ""));
+        request.setUserAttributes(new java.util.LinkedHashMap<>());
+        request.getUserAttributes().put(null, "ignored-key");
+        request.getUserAttributes().put("tier", " gold ");
+
+        AIAccessControlResponse response = service.checkAccess(request);
+
+        assertThat(response.getAccessGranted()).isTrue();
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<Map<String, Object>> entityContext = ArgumentCaptor.forClass(Map.class);
+        verify(policy).canAccess(same(request.getAuthContext()), entityContext.capture());
+
+        assertThat(entityContext.getValue().get("metadata"))
+            .isEqualTo(Map.of(
+                "role", "admin",
+                "nested", Map.of("team", "support")
+            ));
+        assertThat(entityContext.getValue().get("userAttributes"))
+            .isEqualTo(Map.of("tier", "gold"));
     }
 
     private AIAccessControlRequest buildRequest(String userId) {

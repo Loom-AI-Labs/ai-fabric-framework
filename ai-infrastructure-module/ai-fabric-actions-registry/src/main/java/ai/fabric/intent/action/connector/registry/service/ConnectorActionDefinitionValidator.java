@@ -10,14 +10,25 @@ import org.springframework.util.StringUtils;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.regex.PatternSyntaxException;
 
 @Service
 public class ConnectorActionDefinitionValidator {
 
     private static final Pattern TEMPLATE_PLACEHOLDER = Pattern.compile("\\{\\{\\s*([a-zA-Z0-9_]+)(?:\\s*\\|\\s*([^{}]*?))?\\s*}}");
+    private static final int MAX_ACTION_NAME_LENGTH = 128;
+    private static final int MAX_ACTION_DESCRIPTION_LENGTH = 1024;
+    private static final int MAX_ACTION_CATEGORY_LENGTH = 128;
+    private static final int MAX_CONFIRMATION_MESSAGE_LENGTH = 1024;
+    private static final int MAX_PARAM_NAME_LENGTH = 128;
+    private static final int MAX_PARAM_DESCRIPTION_LENGTH = 1024;
+    private static final int MAX_PARAM_PATTERN_LENGTH = 512;
+    private static final int MAX_ALLOWED_VALUE_LENGTH = 256;
+    private static final int MAX_DEFAULT_VALUE_LENGTH = 512;
 
     public void validate(ConnectorActionDefinition definition) {
         if (definition == null) {
@@ -29,6 +40,13 @@ public class ConnectorActionDefinitionValidator {
         if (definition.accessMode() == null) {
             throw new IllegalArgumentException("action.accessMode is required");
         }
+        if (definition.readActionResolutionEligible() && !definition.accessMode().isReadOnly()) {
+            throw new IllegalArgumentException("action.readActionResolutionEligible is only supported for READ actions");
+        }
+        validateLength("action.name", definition.name().trim(), MAX_ACTION_NAME_LENGTH);
+        validateLength("action.description", definition.description(), MAX_ACTION_DESCRIPTION_LENGTH);
+        validateLength("action.category", definition.category(), MAX_ACTION_CATEGORY_LENGTH);
+        validateLength("action.confirmationMessage", definition.confirmationMessage(), MAX_CONFIRMATION_MESSAGE_LENGTH);
 
         List<ConnectorActionParamDefinition> params = definition.params();
         if (params == null) {
@@ -39,7 +57,7 @@ public class ConnectorActionDefinitionValidator {
         Set<String> paramNames = new LinkedHashSet<>();
         for (ConnectorActionParamDefinition param : params) {
             if (param == null) {
-                continue;
+                throw new IllegalArgumentException("action.params must not contain null entries");
             }
             if (!StringUtils.hasText(param.name())) {
                 throw new IllegalArgumentException("param.name is required");
@@ -51,6 +69,11 @@ public class ConnectorActionDefinitionValidator {
             if (!paramNames.add(key)) {
                 throw new IllegalArgumentException("Duplicate param name '" + param.name().trim() + "'");
             }
+            validateLength("param.name", param.name().trim(), MAX_PARAM_NAME_LENGTH);
+            validateLength("param.description for param '" + param.name().trim() + "'", param.description(), MAX_PARAM_DESCRIPTION_LENGTH);
+            validatePattern(param);
+            validateAllowedValues(param);
+            validateDefaultValue(param);
             if (param.min() != null && param.max() != null && param.min() > param.max()) {
                 throw new IllegalArgumentException("param.min must be <= param.max for param '" + param.name().trim() + "'");
             }
@@ -58,6 +81,55 @@ public class ConnectorActionDefinitionValidator {
         }
 
         validateConfirmationTemplate(definition.name().trim(), definition.confirmationMessage(), paramNames);
+    }
+
+    private void validateLength(String field, String value, int maxLength) {
+        if (value != null && value.length() > maxLength) {
+            throw new IllegalArgumentException(field + " must be <= " + maxLength + " characters.");
+        }
+    }
+
+    private void validatePattern(ConnectorActionParamDefinition param) {
+        String pattern = param.pattern();
+        if (pattern == null) {
+            return;
+        }
+        String paramName = param.name().trim();
+        validateLength("param.pattern for param '" + paramName + "'", pattern, MAX_PARAM_PATTERN_LENGTH);
+        if (!StringUtils.hasText(pattern)) {
+            return;
+        }
+        try {
+            Pattern.compile(pattern);
+        } catch (PatternSyntaxException ex) {
+            throw new IllegalArgumentException("param.pattern is not valid regex for param '" + paramName + "': " + ex.getDescription());
+        }
+    }
+
+    private void validateAllowedValues(ConnectorActionParamDefinition param) {
+        if (param.allowedValues() == null || param.allowedValues().isEmpty()) {
+            return;
+        }
+        String paramName = param.name().trim();
+        Set<String> values = new LinkedHashSet<>();
+        for (String value : param.allowedValues()) {
+            if (!StringUtils.hasText(value)) {
+                throw new IllegalArgumentException("param.allowedValues must not contain blank values for param '" + paramName + "'");
+            }
+            String trimmed = value.trim();
+            validateLength("param.allowedValues entry for param '" + paramName + "'", trimmed, MAX_ALLOWED_VALUE_LENGTH);
+            if (!values.add(trimmed)) {
+                throw new IllegalArgumentException("Duplicate allowed value '" + trimmed + "' for param '" + paramName + "'");
+            }
+        }
+    }
+
+    private void validateDefaultValue(ConnectorActionParamDefinition param) {
+        if (param.defaultValue() == null) {
+            return;
+        }
+        String defaultValue = Objects.toString(param.defaultValue(), null);
+        validateLength("param.defaultValue for param '" + param.name().trim() + "'", defaultValue, MAX_DEFAULT_VALUE_LENGTH);
     }
 
     private void validateSupportedDbActionShape(ConnectorActionDefinition definition) {

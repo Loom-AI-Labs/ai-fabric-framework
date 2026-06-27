@@ -6,6 +6,8 @@ import ai.fabric.dto.AISecurityResponse;
 import ai.fabric.security.AISecurityService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -18,7 +20,9 @@ import java.util.Map;
  */
 @Slf4j
 @RestController
-@RequestMapping("/api/ai/security")
+@RequestMapping("${ai.web.base-path:/api/ai}/security")
+@ConditionalOnBean(AISecurityService.class)
+@ConditionalOnProperty(prefix = "ai.web.controllers", name = "security", havingValue = "true", matchIfMissing = true)
 @RequiredArgsConstructor
 public class AISecurityController {
 

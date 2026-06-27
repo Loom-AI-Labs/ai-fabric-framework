@@ -4,6 +4,7 @@ import ai.fabric.config.AIServiceConfig;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.cache.CacheManager;
 import org.springframework.cache.annotation.EnableCaching;
 import org.springframework.cache.caffeine.CaffeineCacheManager;
@@ -11,6 +12,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 import java.time.Duration;
+import java.util.Set;
 
 /**
  * AI Cache Configuration
@@ -28,7 +30,10 @@ import java.time.Duration;
 public class AICacheConfig {
 
     private static final Duration ACCESS_DECISION_TTL = Duration.ofSeconds(60);
-    
+    private static final Duration EMBEDDING_CACHE_TTL = Duration.ofHours(24);
+    private static final Duration SEARCH_CACHE_TTL = Duration.ofMinutes(30);
+    private static final Duration GENERATION_CACHE_TTL = Duration.ofHours(6);
+
     private final AIServiceConfig serviceConfig;
     
     /**
@@ -37,6 +42,7 @@ public class AICacheConfig {
      * @return configured cache manager
      */
     @Bean
+    @ConditionalOnMissingBean(CacheManager.class)
     public CacheManager cacheManager() {
         CaffeineCacheManager cacheManager = new CaffeineCacheManager();
         
@@ -53,9 +59,11 @@ public class AICacheConfig {
             ? cache.getDefaultTtl()
             : Duration.ofMinutes(60);
         
+        long maxSize = Math.max(configuredMaxSize, 1);
+
         // Configure Caffeine cache
         Caffeine<Object, Object> caffeine = Caffeine.newBuilder()
-            .maximumSize(Math.max(configuredMaxSize, 1))
+            .maximumSize(maxSize)
             .expireAfterWrite(ttl)
             .recordStats()
             .removalListener((key, value, cause) -> 
@@ -64,19 +72,35 @@ public class AICacheConfig {
         cacheManager.setCaffeine(caffeine);
         
         // Configure specific caches
-        cacheManager.setCacheNames(java.util.Set.of(
-            "embeddings",
-            "vectorSearch",
-            "textSearch",
-            "aiGeneration",
-            "aiValidation",
-            "retentionStatus",
-            "behaviorRetention"
+        cacheManager.setCacheNames(Set.of(
+            AICacheNames.EMBEDDINGS,
+            AICacheNames.VECTOR_SEARCH,
+            AICacheNames.TEXT_SEARCH,
+            AICacheNames.AI_GENERATION,
+            AICacheNames.AI_VALIDATION,
+            AICacheNames.RETENTION_STATUS,
+            AICacheNames.BEHAVIOR_RETENTION
         ));
         cacheManager.registerCustomCache(
-            "accessDecisions",
+            AICacheNames.EMBEDDINGS,
+            buildNativeCache(maxSize, EMBEDDING_CACHE_TTL, "Embedding cache entry removed")
+        );
+        cacheManager.registerCustomCache(
+            AICacheNames.VECTOR_SEARCH,
+            buildNativeCache(maxSize, SEARCH_CACHE_TTL, "Vector search cache entry removed")
+        );
+        cacheManager.registerCustomCache(
+            AICacheNames.TEXT_SEARCH,
+            buildNativeCache(maxSize, SEARCH_CACHE_TTL, "Text search cache entry removed")
+        );
+        cacheManager.registerCustomCache(
+            AICacheNames.AI_GENERATION,
+            buildNativeCache(maxSize, GENERATION_CACHE_TTL, "Generation cache entry removed")
+        );
+        cacheManager.registerCustomCache(
+            AICacheNames.ACCESS_DECISIONS,
             Caffeine.newBuilder()
-                .maximumSize(Math.max(configuredMaxSize, 1))
+                .maximumSize(maxSize)
                 .expireAfterWrite(ACCESS_DECISION_TTL)
                 .recordStats()
                 .removalListener((key, value, cause) ->
@@ -89,46 +113,16 @@ public class AICacheConfig {
         
         return cacheManager;
     }
-    
-    /**
-     * Configure embedding cache with specific settings
-     * 
-     * @return Caffeine cache for embeddings
-     */
-    @Bean("embeddingCache")
-    public com.github.benmanes.caffeine.cache.Cache<String, Object> embeddingCache() {
+
+    private com.github.benmanes.caffeine.cache.Cache<Object, Object> buildNativeCache(long maxSize,
+                                                                                      Duration ttl,
+                                                                                      String removalMessage) {
         return Caffeine.newBuilder()
-            .maximumSize(1000) // Embeddings can be large, limit size
-            .expireAfterWrite(Duration.ofHours(24)) // Embeddings rarely change
+            .maximumSize(maxSize)
+            .expireAfterWrite(ttl)
             .recordStats()
-            .build();
-    }
-    
-    /**
-     * Configure search cache with specific settings
-     * 
-     * @return Caffeine cache for search results
-     */
-    @Bean("searchCache")
-    public com.github.benmanes.caffeine.cache.Cache<String, Object> searchCache() {
-        return Caffeine.newBuilder()
-            .maximumSize(500) // Search results are smaller
-            .expireAfterWrite(Duration.ofMinutes(30)) // Search results change more frequently
-            .recordStats()
-            .build();
-    }
-    
-    /**
-     * Configure generation cache for AI content generation
-     * 
-     * @return Caffeine cache for generated content
-     */
-    @Bean("generationCache")
-    public com.github.benmanes.caffeine.cache.Cache<String, Object> generationCache() {
-        return Caffeine.newBuilder()
-            .maximumSize(200) // Generated content can be large
-            .expireAfterWrite(Duration.ofHours(6)) // Generated content has medium lifespan
-            .recordStats()
+            .removalListener((key, value, cause) ->
+                log.debug("{}: {} - {}", removalMessage, key, cause))
             .build();
     }
 }

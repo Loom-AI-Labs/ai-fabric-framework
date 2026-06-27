@@ -1,0 +1,6 @@
+apiVersion: v2
+name: ai-fabric-relay
+description: Customer-side AI Fabric Relay for actions and documents-only retrieval
+type: application
+version: 0.2.1
+appVersion: "0.2.1"

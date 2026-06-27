@@ -51,10 +51,11 @@ providers:
       required: true
       defaultModel: "command-r7b-12-2024"
       baseUrl: "https://api.cohere.com"
-      enabled: true
-      description: "Cohere Command models"
+      enabled: false
+      description: "Cohere Command models (modeled for compatibility; not active in the Spring AI execution path)"
       supportedFeatures:
-        - "chat_completions"
+        - "modeled_configuration"
+      notes: "Configuration shape remains available for compatibility, but AI Fabric 0.3.x does not wire a Cohere chat provider through Spring AI."
         
     azure:
       name: "azure"
@@ -89,6 +90,20 @@ providers:
       supportedFeatures:
         - "local_execution"
         - "no_api_key"
+
+    spring-ai-onnx:
+      name: "spring-ai-onnx"
+      displayName: "Spring AI ONNX Transformers"
+      apiKeyEnvVar: null
+      required: false
+      enabled: true
+      description: "Spring AI TransformersEmbeddingModel local ONNX embedding provider"
+      defaultModel: "all-MiniLM-L6-v2"
+      dimensions: 384
+      supportedFeatures:
+        - "spring_ai_execution"
+        - "local_execution"
+        - "no_api_key"
       
     openai:
       name: "openai"
@@ -109,10 +124,11 @@ providers:
       displayName: "Anthropic Embeddings"
       apiKeyEnvVar: "ANTHROPIC_API_KEY"
       required: true
-      enabled: true
-      description: "Anthropic embeddings (via OpenAI-compatible)"
+      enabled: false
+      description: "Anthropic embeddings (not active in the Spring AI execution path)"
       supportedFeatures:
-        - "openai_compatible"
+        - "modeled_configuration"
+      notes: "Anthropic chat is active through Spring AI, but Anthropic embeddings are not exposed by the AI Fabric Spring AI provider."
       
     gemini:
       name: "gemini"
@@ -134,12 +150,12 @@ providers:
       required: true
       defaultModel: "embed-english-v3.0"
       baseUrl: "https://api.cohere.com"
-      enabled: true
-      description: "Cohere embeddings"
+      enabled: false
+      description: "Cohere embeddings (modeled for compatibility; not active in the Spring AI execution path)"
       dimensions: 1024
       supportedFeatures:
-        - "text_embeddings"
-        - "multiple_languages"
+        - "modeled_configuration"
+      notes: "Configuration shape remains available for compatibility, but AI Fabric 0.3.x does not wire a Cohere embedding provider through Spring AI."
       
     azure:
       name: "azure"

@@ -32,13 +32,13 @@ jobs:
       - name: Install YAML parser
         run: python3 -m pip install --disable-pip-version-check --quiet pyyaml
 
-      - name: Validate provider registry and workflow choices
-        run: .github/scripts/validate-provider-registry.sh
+      - name: Validate framework release guards
+        run: .github/scripts/validate-framework-release-guards.sh
 
   maven-build:
     name: Maven Build
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     needs:
       - provider-registry
     steps:
@@ -66,10 +66,12 @@ jobs:
         env:
           MAVEN_OPTS: -Xmx2g
 
+      - name: P1 packaged relay local smoke
+        run: .github/scripts/smoke-p1-relay-local.sh
+
       - name: Compile restored integration test suites
         run: |
           mvn ${MAVEN_ARGS} -f ai-infrastructure-module/pom.xml \
-            -DskipTests \
             -pl integration-Testing/testcontainers-support,integration-Testing/integration-tests,integration-Testing/relationship-query-integration-tests,integration-Testing/chat-session-integration-tests,integration-Testing/behavior-integration-tests \
             -am \
             test-compile
@@ -79,14 +81,55 @@ jobs:
       - name: Compile minimal consumer example
         run: |
           mvn ${MAVEN_ARGS} -f examples/minimal-spring-boot/pom.xml \
-            -DskipTests \
             compile
 
       - name: Build and install real apps suite
         run: |
           mvn ${MAVEN_ARGS} -f examples/real-apps/pom.xml \
-            -DskipTests \
             install
 
       - name: Smoke boot-test real apps (offline 'smoke' profile)
         run: .github/scripts/smoke-boot-realapps.sh
+
+      - name: Smoke data-sync between ecommerce and chat runtime
+        run: .github/scripts/smoke-ecommerce-chat-datasync.sh
+
+      - name: P1 deterministic real-app scenario smoke
+        run: .github/scripts/smoke-p1-realapp-scenarios.sh
+
+  vector-provider-contracts:
+    name: Vector Provider Container Contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    needs:
+      - provider-registry
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: temurin
+          cache: maven
+
+      - name: Verify Docker is available
+        run: |
+          docker --version
+          docker info | head -5
+
+      - name: Run vector provider container contracts
+        run: .github/scripts/run-vector-container-contracts.sh
+        env:
+          MAVEN_OPTS: -Xmx2g
+
+      - name: Upload vector contract reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: vector-provider-contract-reports
+          path: |
+            ai-infrastructure-module/integration-Testing/vector-contract-tests/target/failsafe-reports/
+            ai-infrastructure-module/integration-Testing/vector-contract-tests/target/surefire-reports/
+          retention-days: 30

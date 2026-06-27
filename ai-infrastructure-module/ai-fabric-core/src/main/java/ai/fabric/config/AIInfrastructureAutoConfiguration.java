@@ -23,12 +23,15 @@ import ai.fabric.embedding.EmbeddingProvider;
 import ai.fabric.vector.VectorDatabase;
 import ai.fabric.vector.VectorDatabaseServiceAdapter;
 import ai.fabric.health.AIHealthIndicator;
+import ai.fabric.health.VectorProviderHealthIndicator;
 import ai.fabric.validation.AIProviderConfigValidator;
 import ai.fabric.http.AIHttpClientFactory;
 import ai.fabric.http.AIHttpClientProperties;
 import ai.fabric.http.DefaultAIHttpClientFactory;
 import ai.fabric.http.HttpClient;
 import ai.fabric.intent.action.InMemoryPendingActionStore;
+import ai.fabric.intent.action.AIActionRegistry;
+import ai.fabric.intent.action.tool.AIActionToolCallbackFactory;
 import ai.fabric.intent.action.PendingActionStore;
 import ai.fabric.intent.actiondraft.ActionDraftStore;
 import ai.fabric.intent.actiondraft.InMemoryActionDraftStore;
@@ -44,7 +47,8 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
-import org.springframework.boot.web.client.RestTemplateBuilder;
+import org.springframework.boot.health.contributor.HealthIndicator;
+import org.springframework.boot.restclient.RestTemplateBuilder;
 import org.springframework.cache.CacheManager;
 import org.springframework.cache.support.NoOpCacheManager;
 import org.springframework.context.annotation.Bean;
@@ -53,6 +57,7 @@ import org.springframework.context.annotation.FilterType;
 import org.springframework.context.annotation.Import;
 import org.springframework.core.io.ResourceLoader;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.ai.tool.ToolCallback;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import ai.fabric.config.condition.EmbeddingsFeatureEnabledCondition;
 import ai.fabric.config.condition.SearchFeatureEnabledCondition;
@@ -80,8 +85,8 @@ import jakarta.persistence.EntityManagerFactory;
     "ai.fabric.repository"
 })
 @AutoConfigureBefore({
-    org.springframework.boot.autoconfigure.orm.jpa.HibernateJpaAutoConfiguration.class,
-    org.springframework.boot.autoconfigure.data.jpa.JpaRepositoriesAutoConfiguration.class
+    org.springframework.boot.hibernate.autoconfigure.HibernateJpaAutoConfiguration.class,
+    org.springframework.boot.data.jpa.autoconfigure.DataJpaRepositoriesAutoConfiguration.class
 })
 @EnableConfigurationProperties({
     AIProviderConfig.class,
@@ -209,6 +214,20 @@ public class AIInfrastructureAutoConfiguration {
     }
 
     @Bean
+    @ConditionalOnMissingBean(ObjectMapper.class)
+    public ObjectMapper aiFabricObjectMapper() {
+        return new ObjectMapper().findAndRegisterModules();
+    }
+
+    @Bean
+    @ConditionalOnClass(ToolCallback.class)
+    @ConditionalOnMissingBean
+    public AIActionToolCallbackFactory aiActionToolCallbackFactory(ObjectProvider<AIActionRegistry> actionRegistry,
+                                                                  ObjectMapper objectMapper) {
+        return new AIActionToolCallbackFactory(actionRegistry::getIfAvailable, objectMapper);
+    }
+
+    @Bean
     @ConditionalOnMissingBean(AIHttpClientFactory.class)
     public AIHttpClientFactory aiHttpClientFactory(RestTemplateBuilder restTemplateBuilder,
                                                    AIHttpClientProperties properties) {
@@ -263,8 +282,10 @@ public class AIInfrastructureAutoConfiguration {
     @ConditionalOnMissingBean
     @Conditional(VectorDbConfiguredCondition.class)
     public VectorManagementService vectorManagementService(VectorDatabaseService vectorDatabaseService,
-                                                           AIEntityConfigurationLoader entityConfigurationLoader) {
-        return new VectorManagementService(vectorDatabaseService, entityConfigurationLoader);
+                                                           AIEntityConfigurationLoader entityConfigurationLoader,
+                                                           ObjectProvider<CacheManager> cacheManagerProvider) {
+        CacheManager cacheManager = cacheManagerProvider.getIfUnique(NoOpCacheManager::new);
+        return new VectorManagementService(vectorDatabaseService, entityConfigurationLoader, cacheManager);
     }
     
 	    @Bean
@@ -337,6 +358,15 @@ public class AIInfrastructureAutoConfiguration {
         AIProviderConfig providerConfig
     ) {
         return new AIHealthIndicator(configurationService, serviceConfig, providerConfig);
+    }
+
+    @Bean(name = "vectorProviderHealthIndicator")
+    @ConditionalOnClass(HealthIndicator.class)
+    @ConditionalOnBean(VectorManagementService.class)
+    @ConditionalOnMissingBean(name = "vectorProviderHealthIndicator")
+    @ConditionalOnProperty(prefix = "management.health.ai-fabric.vector", name = "enabled", havingValue = "true", matchIfMissing = true)
+    public HealthIndicator vectorProviderHealthIndicator(VectorManagementService vectorManagementService) {
+        return new VectorProviderHealthIndicator(vectorManagementService);
     }
 
     @Bean

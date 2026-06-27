@@ -65,7 +65,6 @@ public class IntentHistoryService {
             String metadataJson = serializeResult(result.getMetadata());
 
             IntentHistory history = IntentHistory.builder()
-                .id(UUID.randomUUID().toString())
                 .userId(userId)
                 .sessionId(StringUtils.hasText(sessionId) ? sessionId : UUID.randomUUID().toString())
                 .redactedQuery(sanitizedQuery)
@@ -109,6 +108,7 @@ public class IntentHistoryService {
     }
 
     @Scheduled(cron = "${ai.intent-history.cleanup-cron:0 0 * * * *}")
+    @Transactional
     public void cleanupExpiredHistory() {
         if (!properties.isEnabled()) {
             return;

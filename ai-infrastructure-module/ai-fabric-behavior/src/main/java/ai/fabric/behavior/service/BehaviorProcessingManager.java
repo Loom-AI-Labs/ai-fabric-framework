@@ -52,34 +52,46 @@ public class BehaviorProcessingManager {
     }
 
     public BatchProcessingResult processBatch(BatchProcessingRequest request) {
-        int maxUsers = request.getMaxUsers() != null ? request.getMaxUsers() : properties.getScheduledBatchSize();
-        maxUsers = Math.min(maxUsers, properties.getApiMaxBatchSize());
-        Duration maxDuration = request.getMaxDurationMinutes() != null
-            ? Duration.ofMinutes(request.getMaxDurationMinutes())
-            : properties.getApiMaxDuration();
-        Duration delay = request.getDelayBetweenUsersMs() != null
-            ? Duration.ofMillis(request.getDelayBetweenUsersMs())
-            : properties.getProcessingDelay();
+        BatchProcessingRequest effectiveRequest = request != null ? request : new BatchProcessingRequest();
+        int configuredBatchSize = positiveOrDefault(properties.getScheduledBatchSize(), 1);
+        int apiMaxBatchSize = positiveOrDefault(properties.getApiMaxBatchSize(), configuredBatchSize);
+        int requestedMaxUsers = effectiveRequest.getMaxUsers() != null
+            ? requirePositive(effectiveRequest.getMaxUsers(), "maxUsers")
+            : configuredBatchSize;
+        int maxUsers = Math.min(requestedMaxUsers, apiMaxBatchSize);
+        Duration maxDuration = effectiveRequest.getMaxDurationMinutes() != null
+            ? Duration.ofMinutes(requirePositive(effectiveRequest.getMaxDurationMinutes(), "maxDurationMinutes"))
+            : positiveDurationOrDefault(properties.getApiMaxDuration(), Duration.ofMinutes(1));
+        Duration delay = effectiveRequest.getDelayBetweenUsersMs() != null
+            ? Duration.ofMillis(requireNonNegative(effectiveRequest.getDelayBetweenUsersMs(), "delayBetweenUsersMs"))
+            : nonNegativeDurationOrDefault(properties.getProcessingDelay(), Duration.ZERO);
 
         return executeBatchProcessing(maxUsers, maxDuration, delay, false);
     }
 
     public ContinuousProcessingResponse startContinuous(ContinuousProcessingRequest request) {
+        ContinuousProcessingRequest effectiveRequest = request != null ? request : new ContinuousProcessingRequest();
+        int apiMaxBatchSize = positiveOrDefault(properties.getApiMaxBatchSize(), 1);
+        final int usersPerBatch = Math.min(
+            effectiveRequest.getUsersPerBatch() != null
+                ? requirePositive(effectiveRequest.getUsersPerBatch(), "usersPerBatch")
+                : positiveOrDefault(properties.getContinuousUsersPerBatch(), 1),
+            apiMaxBatchSize
+        );
+        final Duration interval = effectiveRequest.getIntervalMinutes() != null
+            ? Duration.ofMinutes(requireNonNegative(effectiveRequest.getIntervalMinutes(), "intervalMinutes"))
+            : nonNegativeDurationOrDefault(properties.getContinuousInterval(), Duration.ofMinutes(5));
+        final int maxIterations = effectiveRequest.getMaxIterations() != null
+            ? requirePositive(effectiveRequest.getMaxIterations(), "maxIterations")
+            : Integer.MAX_VALUE;
+
         String jobId = UUID.randomUUID().toString();
         ContinuousJobStatus status = new ContinuousJobStatus();
         status.setJobId(jobId);
         status.setStatus("RUNNING");
         status.setStartedAt(LocalDateTime.now());
+        status.setMaxIterations(maxIterations == Integer.MAX_VALUE ? null : maxIterations);
         jobStatuses.put(jobId, status);
-
-        final int usersPerBatch = Math.min(
-            request.getUsersPerBatch() != null ? request.getUsersPerBatch() : properties.getContinuousUsersPerBatch(),
-            properties.getApiMaxBatchSize()
-        );
-        final Duration interval = request.getIntervalMinutes() != null
-            ? Duration.ofMinutes(request.getIntervalMinutes())
-            : properties.getContinuousInterval();
-        final int maxIterations = request.getMaxIterations() != null ? request.getMaxIterations() : Integer.MAX_VALUE;
 
         Future<?> future = executor.submit(() -> {
             int totalProcessed = 0;
@@ -92,8 +104,8 @@ public class BehaviorProcessingManager {
                     status.setCurrentIteration(i + 1);
                     BatchProcessingResult res = executeBatchProcessing(
                         usersPerBatch,
-                        properties.getApiMaxDuration(),
-                        properties.getProcessingDelay(),
+                        positiveDurationOrDefault(properties.getApiMaxDuration(), Duration.ofMinutes(1)),
+                        nonNegativeDurationOrDefault(properties.getProcessingDelay(), Duration.ZERO),
                         true
                     );
                     totalProcessed += res.getProcessedCount();
@@ -170,6 +182,9 @@ public class BehaviorProcessingManager {
     }
 
     private BatchProcessingResult executeBatchProcessing(int maxUsers, Duration maxDuration, Duration delay, boolean suppressLogs) {
+        maxUsers = Math.max(0, maxUsers);
+        maxDuration = positiveDurationOrDefault(maxDuration, Duration.ofMinutes(1));
+        delay = nonNegativeDurationOrDefault(delay, Duration.ZERO);
         Instant start = Instant.now();
         int processed = 0;
         int success = 0;
@@ -216,6 +231,47 @@ public class BehaviorProcessingManager {
             .errorCount(errors)
             .durationMs(duration.toMillis())
             .build();
+    }
+
+    private int requirePositive(Integer value, String fieldName) {
+        if (value == null || value <= 0) {
+            throw new IllegalArgumentException(fieldName + " must be greater than zero");
+        }
+        return value;
+    }
+
+    private long requireNonNegative(Long value, String fieldName) {
+        if (value == null || value < 0) {
+            throw new IllegalArgumentException(fieldName + " must be zero or greater");
+        }
+        return value;
+    }
+
+    private int requireNonNegative(Integer value, String fieldName) {
+        if (value == null || value < 0) {
+            throw new IllegalArgumentException(fieldName + " must be zero or greater");
+        }
+        return value;
+    }
+
+    private int positiveOrDefault(int value, int defaultValue) {
+        return value > 0 ? value : Math.max(1, defaultValue);
+    }
+
+    private Duration positiveDurationOrDefault(Duration value, Duration defaultValue) {
+        if (value != null && !value.isNegative() && !value.isZero()) {
+            return value;
+        }
+        return defaultValue != null && !defaultValue.isNegative() && !defaultValue.isZero()
+            ? defaultValue
+            : Duration.ofMinutes(1);
+    }
+
+    private Duration nonNegativeDurationOrDefault(Duration value, Duration defaultValue) {
+        if (value != null && !value.isNegative()) {
+            return value;
+        }
+        return defaultValue != null && !defaultValue.isNegative() ? defaultValue : Duration.ZERO;
     }
 
     @Data

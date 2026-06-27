@@ -1,0 +1,24 @@
+server:
+  port: ${PORT:8097}
+
+spring:
+  datasource:
+    url: jdbc:h2:mem:chat_capabilities_smoke;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
+
+ai:
+  providers:
+    llm-provider: smoke
+    embedding-provider: smoke
+
+  vector-db:
+    type: memory
+
+  data-sync:
+    enabled: true
+
+  service:
+    features:
+      enable-generation: true
+      enable-embeddings: true
+      enable-search: true
+      enable-rag: true

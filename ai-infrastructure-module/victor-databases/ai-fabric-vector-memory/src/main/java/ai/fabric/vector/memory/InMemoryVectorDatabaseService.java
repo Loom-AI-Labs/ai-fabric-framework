@@ -9,6 +9,8 @@ import ai.fabric.dto.VectorScanRequest;
 import ai.fabric.exception.AIServiceException;
 import ai.fabric.rag.VectorDatabaseService;
 import ai.fabric.util.MetadataJsonSerializer;
+import ai.fabric.util.VectorMetadataFilterSupport;
+import ai.fabric.util.VectorRecordInputValidation;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
@@ -54,6 +56,81 @@ public class InMemoryVectorDatabaseService implements VectorDatabaseService {
     }
 
     @Override
+    public boolean supportsSearchMetadataFiltering() {
+        return true;
+    }
+
+    @Override
+    public boolean supportsScanMetadataFiltering() {
+        return true;
+    }
+
+    @Override
+    public boolean supportsExactFetchById() {
+        return true;
+    }
+
+    @Override
+    public boolean supportsClearByEntityType() {
+        return true;
+    }
+
+    @Override
+    public boolean supportsEfficientEntityTypeCount() {
+        return true;
+    }
+
+    @Override
+    public String vectorProviderName() {
+        return "memory";
+    }
+
+    @Override
+    public String vectorNativeClient() {
+        return "java-concurrent-hash-map";
+    }
+
+    @Override
+    public String vectorSearchFilterMode() {
+        return "in-memory-portable-scalar";
+    }
+
+    @Override
+    public String vectorScanFilterMode() {
+        return "in-memory-portable-scalar";
+    }
+
+    @Override
+    public String vectorMetadataFilterSubset() {
+        return "portable-scalar-exact-match";
+    }
+
+    @Override
+    public String vectorEntityTypeCountMode() {
+        return "in-memory-count";
+    }
+
+    @Override
+    public String vectorEntityTypeClearMode() {
+        return "in-memory-remove-if";
+    }
+
+    @Override
+    public String vectorConsistencyModel() {
+        return "process-local-immediate";
+    }
+
+    @Override
+    public boolean vectorDurableStorage() {
+        return false;
+    }
+
+    @Override
+    public boolean vectorProductionProfileSafe() {
+        return false;
+    }
+
+    @Override
     public VectorScanPage scan(VectorScanRequest request) {
         return VectorDatabaseService.super.scan(request);
     }
@@ -61,6 +138,7 @@ public class InMemoryVectorDatabaseService implements VectorDatabaseService {
     @Override
     public String storeVector(String entityType, String entityId, String content, 
                            List<Double> embedding, Map<String, Object> metadata) {
+        VectorRecordInputValidation.requireStoreInputs("In-memory", entityType, entityId, embedding);
         try {
             log.debug("Storing vector in memory for entity {} of type {}", entityId, entityType);
             
@@ -101,9 +179,11 @@ public class InMemoryVectorDatabaseService implements VectorDatabaseService {
                               List<Double> embedding, Map<String, Object> metadata) {
         try {
             log.debug("Updating vector in memory with vectorId {}", vectorId);
-            if (isBlank(vectorId)) {
+            if (!VectorRecordInputValidation.hasVectorId(vectorId)
+                || !VectorRecordInputValidation.hasEntityIdentity(entityType, entityId)) {
                 return false;
             }
+            VectorRecordInputValidation.requireEmbedding("In-memory", "updateVector", embedding);
             
             VectorRecord existingRecord = vectorStore.get(vectorId);
             if (existingRecord == null) {
@@ -158,6 +238,9 @@ public class InMemoryVectorDatabaseService implements VectorDatabaseService {
     public Optional<VectorRecord> getVectorByEntity(String entityType, String entityId) {
         try {
             log.debug("Getting vector from memory for entity {} of type {}", entityId, entityType);
+            if (!VectorRecordInputValidation.hasEntityIdentity(entityType, entityId)) {
+                return Optional.empty();
+            }
             return vectorStore.values().stream()
                 .filter(record -> matchesEntity(record, entityType, entityId))
                 .sorted(recordOrder())
@@ -223,6 +306,9 @@ public class InMemoryVectorDatabaseService implements VectorDatabaseService {
     public boolean removeVector(String entityType, String entityId) {
         try {
             log.debug("Removing vector from memory for entity {} of type {}", entityId, entityType);
+            if (!VectorRecordInputValidation.hasEntityIdentity(entityType, entityId)) {
+                return false;
+            }
             
             Optional<VectorRecord> recordToRemove = vectorStore.values().stream()
                 .filter(record -> matchesEntity(record, entityType, entityId))
@@ -351,6 +437,9 @@ public class InMemoryVectorDatabaseService implements VectorDatabaseService {
     public List<VectorRecord> getVectorsByEntityType(String entityType) {
         try {
             log.debug("Getting all vectors from memory for entity type {}", entityType);
+            if (!VectorRecordInputValidation.hasText(entityType)) {
+                return Collections.emptyList();
+            }
             
             return vectorStore.values().stream()
                 .filter(record -> Objects.equals(entityType, record.getEntityType()))
@@ -368,6 +457,9 @@ public class InMemoryVectorDatabaseService implements VectorDatabaseService {
     public long getVectorCountByEntityType(String entityType) {
         try {
             log.debug("Getting vector count from memory for entity type {}", entityType);
+            if (!VectorRecordInputValidation.hasText(entityType)) {
+                return 0;
+            }
             
             return vectorStore.values().stream()
                 .filter(record -> Objects.equals(entityType, record.getEntityType()))
@@ -383,6 +475,9 @@ public class InMemoryVectorDatabaseService implements VectorDatabaseService {
     public boolean vectorExists(String entityType, String entityId) {
         try {
             log.debug("Checking if vector exists in memory for entity {} of type {}", entityId, entityType);
+            if (!VectorRecordInputValidation.hasEntityIdentity(entityType, entityId)) {
+                return false;
+            }
             
             return vectorStore.values().stream()
                 .anyMatch(record -> matchesEntity(record, entityType, entityId));
@@ -414,6 +509,9 @@ public class InMemoryVectorDatabaseService implements VectorDatabaseService {
     public long clearVectorsByEntityType(String entityType) {
         try {
             log.debug("Clearing vectors from memory for entity type {}", entityType);
+            if (!VectorRecordInputValidation.hasText(entityType)) {
+                return 0;
+            }
             
             List<String> vectorIdsToRemove = vectorStore.values().stream()
                 .filter(record -> Objects.equals(entityType, record.getEntityType()))
@@ -453,12 +551,12 @@ public class InMemoryVectorDatabaseService implements VectorDatabaseService {
 
     @Override
     public Map<String, Object> adminDiagnostics() {
-        Map<String, Object> diagnostics = new LinkedHashMap<>();
+        Map<String, Object> diagnostics = VectorDatabaseService.super.adminDiagnostics();
         diagnostics.put("provider", "memory");
         diagnostics.put("persistent", false);
         diagnostics.put("sharedStorage", false);
-        diagnostics.put("supportsVectorScan", supportsVectorScan());
-        diagnostics.put("supportsMetadataFiltering", supportsMetadataFiltering());
+        diagnostics.put("searchFilterMode", "in-memory-portable-scalar");
+        diagnostics.put("scanFilterMode", "in-memory-portable-scalar");
         diagnostics.put("totalVectors", vectorStore.size());
         return diagnostics;
     }
@@ -613,23 +711,7 @@ public class InMemoryVectorDatabaseService implements VectorDatabaseService {
     }
 
     private boolean matchesMetadata(Map<String, Object> metadata, Map<String, Object> metadataEquals) {
-        if (metadataEquals == null || metadataEquals.isEmpty()) {
-            return true;
-        }
-        Map<String, Object> candidate = metadata == null ? Collections.emptyMap() : metadata;
-        for (Map.Entry<String, Object> entry : metadataEquals.entrySet()) {
-            if (!metadataValueMatches(candidate.get(entry.getKey()), entry.getValue())) {
-                return false;
-            }
-        }
-        return true;
-    }
-
-    private boolean metadataValueMatches(Object actual, Object expected) {
-        if (expected == null) {
-            return actual == null;
-        }
-        return actual != null && String.valueOf(expected).equals(String.valueOf(actual));
+        return VectorMetadataFilterSupport.matchesPortableEquals(metadata, metadataEquals);
     }
 
     private boolean matchesEntity(VectorRecord record, String entityType, String entityId) {

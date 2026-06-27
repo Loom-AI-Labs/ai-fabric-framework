@@ -4,8 +4,11 @@ import ai.fabric.dto.AIProfileRequest;
 import ai.fabric.dto.AIProfileResponse;
 import ai.fabric.entity.AIInfrastructureProfile;
 import ai.fabric.service.AIInfrastructureProfileService;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
@@ -26,7 +29,9 @@ import java.util.UUID;
  * @version 1.0.0
  */
 @RestController
-@RequestMapping("/api/ai/profiles")
+@RequestMapping("${ai.web.base-path:/api/ai}/profiles")
+@ConditionalOnBean(AIInfrastructureProfileService.class)
+@ConditionalOnProperty(prefix = "ai.web.controllers", name = "profile", havingValue = "true", matchIfMissing = true)
 @RequiredArgsConstructor
 @Slf4j
 public class AIProfileController {
@@ -37,7 +42,7 @@ public class AIProfileController {
      * Create a new AI profile
      */
     @PostMapping
-    public ResponseEntity<AIProfileResponse> createAIProfile(@RequestBody AIProfileRequest request) {
+    public ResponseEntity<AIProfileResponse> createAIProfile(@Valid @RequestBody AIProfileRequest request) {
         log.info("Creating AI profile for user: {}", request.getUserId());
         
         try {

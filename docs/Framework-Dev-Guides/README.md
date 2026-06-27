@@ -73,17 +73,21 @@ For connector and action work:
 For RAG, vector, and provider work:
 
 1. `retrieval-vectorization/RAG_EMBEDDING_QUERY_COMPOSITION_GUIDE.md`
-2. `retrieval-vectorization/RETRIEVAL_CONNECTOR_GUIDE.md`
-3. `providers-vector-db/PLATFORM_PROVIDER_AND_VECTOR_DEPLOYMENT_GUIDE.md`
-4. `providers-vector-db/VECTOR_DATABASE_CONFIGURATION_AUTH_AND_DEPLOYMENT_GUIDE.md`
-5. `testing-verification/REALAPI_PROVIDER_MATRIX_TESTING_GUIDE.md`
+2. `retrieval-vectorization/RAG_INDEXING_LIFECYCLE_GUIDE.md`
+3. `retrieval-vectorization/RETRIEVAL_CONNECTOR_GUIDE.md`
+4. `retrieval-vectorization/MIGRATION_BACKFILL_GUIDE.md`
+5. `providers-vector-db/PLATFORM_PROVIDER_AND_VECTOR_DEPLOYMENT_GUIDE.md`
+6. `runtime-integration/SPRING_AI_PROVIDER_INTEGRATION_GUIDE.md`
+7. `providers-vector-db/VECTOR_DATABASE_CONFIGURATION_AUTH_AND_DEPLOYMENT_GUIDE.md`
+8. `testing-verification/REALAPI_PROVIDER_MATRIX_TESTING_GUIDE.md`
 
 For release and verification:
 
 1. `testing-verification/VERIFICATION_PLAYBOOK.md`
-2. `testing-verification/GITHUB_ACTIONS_VERIFICATION_SUITE_GUIDE.md`
-3. `testing-verification/PLATFORM_REGRESSION_AND_LIVE_ADMIN_VERIFICATION_GUIDE.md`
-4. `deployment-operations/PLATFORM_HOSTED_DEPLOYMENT_VERIFICATION_GUIDE.md`
+2. `testing-verification/CI_PIPELINE_GUIDE.md`
+3. `testing-verification/GITHUB_ACTIONS_VERIFICATION_SUITE_GUIDE.md`
+4. `testing-verification/PLATFORM_REGRESSION_AND_LIVE_ADMIN_VERIFICATION_GUIDE.md`
+5. `deployment-operations/PLATFORM_HOSTED_DEPLOYMENT_VERIFICATION_GUIDE.md`
 
 ## Copy Policy
 

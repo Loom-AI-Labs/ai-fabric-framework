@@ -45,15 +45,34 @@ class ConfirmationDecisionSupportTest {
     }
 
     @Test
-    void shouldParsePositiveAndNegativeDecisionAliases() {
-        assertThat(ConfirmationDecisionSupport.parseConfirmationDecision("{\"decision\":\"confirmed\"}", mapper))
+    void shouldParseCanonicalStructuredDecisionsOnly() {
+        assertThat(ConfirmationDecisionSupport.parseConfirmationDecision("{\"decision\":\"POSITIVE\"}", mapper))
             .isEqualTo(ConfirmationResolutionDecision.POSITIVE);
-        assertThat(ConfirmationDecisionSupport.parseConfirmationDecision("{\"decision\":\"cancel\"}", mapper))
+        assertThat(ConfirmationDecisionSupport.parseConfirmationDecision("{\"decision\":\"negative\"}", mapper))
             .isEqualTo(ConfirmationResolutionDecision.NEGATIVE);
-        assertThat(ConfirmationDecisionSupport.parseConfirmationDecision("{\"decision\":\"maybe\"}", mapper))
+        assertThat(ConfirmationDecisionSupport.parseConfirmationDecision("{\"decision\":\"UNKNOWN\"}", mapper))
+            .isEqualTo(ConfirmationResolutionDecision.UNKNOWN);
+        assertThat(ConfirmationDecisionSupport.parseConfirmationDecision("{\"decision\":\"confirmed\"}", mapper))
+            .isEqualTo(ConfirmationResolutionDecision.UNKNOWN);
+        assertThat(ConfirmationDecisionSupport.parseConfirmationDecision("{\"decision\":\"cancel\"}", mapper))
             .isEqualTo(ConfirmationResolutionDecision.UNKNOWN);
         assertThat(ConfirmationDecisionSupport.parseConfirmationDecision("not-json", mapper))
             .isEqualTo(ConfirmationResolutionDecision.UNKNOWN);
+    }
+
+    @Test
+    void shouldParseWrappedConfirmationJson() {
+        String wrapped = """
+            Model rationale omitted.
+            ```json
+            {"decision":"POSITIVE","confidence":0.64}
+            ```
+            """;
+
+        assertThat(ConfirmationDecisionSupport.parseConfirmationDecision(wrapped, mapper))
+            .isEqualTo(ConfirmationResolutionDecision.POSITIVE);
+        assertThat(ConfirmationDecisionSupport.parseConfirmationConfidence(wrapped, mapper))
+            .isEqualTo(0.64d);
     }
 
     @Test

@@ -5,6 +5,9 @@ import ai.fabric.dto.AISearchResponse;
 import ai.fabric.dto.VectorRecord;
 import ai.fabric.dto.VectorScanPage;
 import ai.fabric.dto.VectorScanRequest;
+import ai.fabric.util.VectorMetadataFilterSupport;
+import ai.fabric.util.VectorRecordProjection;
+import ai.fabric.vector.VectorProviderCapabilities;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -39,9 +42,53 @@ public interface VectorDatabaseService {
     }
 
     /**
-     * Capability check: does this provider support efficient metadata filtering during scans?
+     * Capability check: does this provider support metadata filtering for similarity/vector search.
+     *
+     * <p>This is intentionally narrower than lifecycle/admin scan filtering. Implementations should
+     * use provider-native filters where possible and must fail closed when a requested filter cannot
+     * be represented safely. A provider can support metadata filters on similarity search without
+     * being able to page through all vectors with the same filter semantics.</p>
+     */
+    default boolean supportsSearchMetadataFiltering() {
+        return supportsMetadataFiltering();
+    }
+
+    /**
+     * Capability check: does this provider support metadata filtering during vector scan/admin
+     * operations.
+     *
+     * <p>This is the capability governance catalog and admin surfaces should use when they need
+     * reliable metadata-filtered scans, not just metadata-filtered similarity search. Filtering can
+     * be provider-native or adapter-side after an exact paged scan, but it must preserve AI Fabric's
+     * portable exact-match semantics and fail closed for unsupported filter shapes.</p>
+     */
+    default boolean supportsScanMetadataFiltering() {
+        return supportsMetadataFiltering();
+    }
+
+    /**
+     * Legacy broad metadata filtering flag.
+     *
+     * <p>New code should prefer {@link #supportsSearchMetadataFiltering()} and
+     * {@link #supportsScanMetadataFiltering()} so providers can advertise search and admin/scan
+     * support independently.</p>
      */
     default boolean supportsMetadataFiltering() {
+        return false;
+    }
+
+    /**
+     * Capability check: does this provider support exact vector retrieval by vector id.
+     */
+    default boolean supportsExactFetchById() {
+        return false;
+    }
+
+    /**
+     * Capability check: does this provider support clearing vectors by entity type without a
+     * caller-maintained sidecar catalog.
+     */
+    default boolean supportsClearByEntityType() {
         return false;
     }
 
@@ -51,10 +98,111 @@ public interface VectorDatabaseService {
      *
      * <p>Providers that need to enumerate full collections/classes just to answer a count
      * should override this to {@code false}. The overview service will then fall back to
-     * lightweight presence checks instead of expensive full scans.</p>
+     * lightweight presence checks instead of expensive full scans. The default is conservative so
+     * new providers must explicitly opt into exact-count request-path behavior.</p>
      */
     default boolean supportsEfficientEntityTypeCount() {
+        return false;
+    }
+
+    /**
+     * Stable provider name for diagnostics and release capability evidence.
+     */
+    default String vectorProviderName() {
+        return getClass().getSimpleName();
+    }
+
+    /**
+     * Native client or execution path used by this vector provider.
+     */
+    default String vectorNativeClient() {
+        return getClass().getName();
+    }
+
+    /**
+     * How similarity-search metadata filters are applied. Providers that support search metadata
+     * filtering should override this with a concrete value.
+     */
+    default String vectorSearchFilterMode() {
+        return "";
+    }
+
+    /**
+     * How scan/admin metadata filters are applied. Providers that support scan metadata filtering
+     * should override this with a concrete value.
+     */
+    default String vectorScanFilterMode() {
+        return "";
+    }
+
+    /**
+     * Metadata filter subset this provider can preserve without widening results.
+     */
+    default String vectorMetadataFilterSubset() {
+        return "";
+    }
+
+    /**
+     * How entity-type counts are answered for admin and overview flows.
+     */
+    default String vectorEntityTypeCountMode() {
+        return "";
+    }
+
+    /**
+     * How clear-by-entity-type is implemented for admin and lifecycle flows.
+     */
+    default String vectorEntityTypeClearMode() {
+        return "";
+    }
+
+    /**
+     * Provider consistency model relevant to lifecycle/admin verification.
+     */
+    default String vectorConsistencyModel() {
+        return "";
+    }
+
+    /**
+     * Whether records survive process restart without relying on caller memory.
+     */
+    default boolean vectorDurableStorage() {
         return true;
+    }
+
+    /**
+     * Whether this provider is safe to select under production profiles without an explicit
+     * operator acknowledgement.
+     */
+    default boolean vectorProductionProfileSafe() {
+        return vectorDurableStorage();
+    }
+
+    /**
+     * Typed provider capability descriptor for docs, readiness checks, and contract tests.
+     */
+    default VectorProviderCapabilities vectorCapabilities() {
+        return VectorProviderCapabilities.builder()
+            .providerName(vectorProviderName())
+            .providerClass(getClass().getName())
+            .nativeClient(vectorNativeClient())
+            .vectorScan(supportsVectorScan())
+            .searchMetadataFiltering(supportsSearchMetadataFiltering())
+            .scanMetadataFiltering(supportsScanMetadataFiltering())
+            .exactFetchById(supportsExactFetchById())
+            .clearByEntityType(supportsClearByEntityType())
+            .efficientEntityTypeCount(supportsEfficientEntityTypeCount())
+            .hybridSearch(supportsHybridSearch())
+            .keywordSearch(supportsKeywordSearch())
+            .searchFilterMode(vectorSearchFilterMode())
+            .scanFilterMode(vectorScanFilterMode())
+            .metadataFilterSubset(vectorMetadataFilterSubset())
+            .entityTypeCountMode(vectorEntityTypeCountMode())
+            .entityTypeClearMode(vectorEntityTypeClearMode())
+            .consistencyModel(vectorConsistencyModel())
+            .durableStorage(vectorDurableStorage())
+            .productionProfileSafe(vectorProductionProfileSafe())
+            .build();
     }
 
     /**
@@ -65,7 +213,34 @@ public interface VectorDatabaseService {
      * runtime state with the platform's modeled tenant-scoped handle.</p>
      */
     default Map<String, Object> adminDiagnostics() {
-        return new LinkedHashMap<>();
+        VectorProviderCapabilities capabilities = vectorCapabilities();
+        Map<String, Object> diagnostics = new LinkedHashMap<>();
+        diagnostics.put("provider", capabilities.providerName());
+        diagnostics.put("providerClass", capabilities.providerClass());
+        diagnostics.put("nativeClient", capabilities.nativeClient());
+        diagnostics.put("supportsVectorScan", capabilities.vectorScan());
+        diagnostics.put("supportsMetadataFiltering", supportsMetadataFiltering());
+        diagnostics.put("supportsSearchMetadataFiltering", capabilities.searchMetadataFiltering());
+        diagnostics.put("supportsScanMetadataFiltering", capabilities.scanMetadataFiltering());
+        diagnostics.put("supportsExactFetchById", capabilities.exactFetchById());
+        diagnostics.put("supportsClearByEntityType", capabilities.clearByEntityType());
+        diagnostics.put("supportsEfficientEntityTypeCount", capabilities.efficientEntityTypeCount());
+        diagnostics.put("supportsHybridSearch", capabilities.hybridSearch());
+        diagnostics.put("supportsKeywordSearch", capabilities.keywordSearch());
+        diagnostics.put("metadataFilteredSearch", capabilities.searchMetadataFiltering());
+        diagnostics.put("metadataFilteredScan", capabilities.scanMetadataFiltering());
+        diagnostics.put("searchFilterMode", capabilities.searchFilterMode());
+        diagnostics.put("scanFilterMode", capabilities.scanFilterMode());
+        diagnostics.put("metadataFilterSubset", capabilities.metadataFilterSubset());
+        diagnostics.put("countMode", capabilities.entityTypeCountMode());
+        diagnostics.put("clearMode", capabilities.entityTypeClearMode());
+        diagnostics.put("consistencyModel", capabilities.consistencyModel());
+        diagnostics.put("persistent", capabilities.durableStorage());
+        diagnostics.put("productionProfileSafe", capabilities.productionProfileSafe());
+        diagnostics.put("countFallbacks", Map.of());
+        diagnostics.put("countFallbackReasons", Map.of());
+        diagnostics.put("capabilities", capabilities.toMap());
+        return diagnostics;
     }
     
     /**
@@ -318,21 +493,7 @@ public interface VectorDatabaseService {
         // Strip heavy fields if requested.
         if (!request.isIncludeEmbedding() || !request.isIncludeContent() || !request.isIncludeMetadata()) {
             page = page.stream()
-                .map(record -> VectorRecord.builder()
-                    .vectorId(record.getVectorId())
-                    .entityType(record.getEntityType())
-                    .entityId(record.getEntityId())
-                    .content(request.isIncludeContent() ? record.getContent() : null)
-                    .embedding(request.isIncludeEmbedding() ? record.getEmbedding() : null)
-                    .metadata(request.isIncludeMetadata() ? record.getMetadata() : null)
-                    .aiAnalysis(record.getAiAnalysis())
-                    .createdAt(record.getCreatedAt())
-                    .updatedAt(record.getUpdatedAt())
-                    .vectorMetadata(record.getVectorMetadata())
-                    .similarityScore(record.getSimilarityScore())
-                    .active(record.getActive())
-                    .version(record.getVersion())
-                    .build())
+                .map(record -> VectorRecordProjection.projectForScan(record, request))
                 .collect(Collectors.toList());
         }
 
@@ -347,27 +508,7 @@ public interface VectorDatabaseService {
     }
 
     private static boolean metadataMatches(Map<String, Object> recordMetadata, Map<String, Object> filters) {
-        if (filters == null || filters.isEmpty()) {
-            return true;
-        }
-        if (recordMetadata == null || recordMetadata.isEmpty()) {
-            return false;
-        }
-        for (Map.Entry<String, Object> entry : filters.entrySet()) {
-            String key = entry.getKey();
-            Object expected = entry.getValue();
-            Object actual = recordMetadata.get(key);
-            if (expected == null) {
-                if (actual != null) {
-                    return false;
-                }
-            } else if (actual == null) {
-                return false;
-            } else if (!String.valueOf(expected).equals(String.valueOf(actual))) {
-                return false;
-            }
-        }
-        return true;
+        return VectorMetadataFilterSupport.matchesPortableEquals(recordMetadata, filters);
     }
 
     private static String encodeOffsetCursor(int offset) {

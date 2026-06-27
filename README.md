@@ -5,15 +5,15 @@ AI Fabric Framework is an open-source Java/Spring Boot framework for building AI
 This repository contains the framework only. It does not include private managed-product code, deployment operations, customer configuration, or commercial product code.
 
 **New to AI Fabric?** Start with the [user guides](docs/guides/README.md) (installation → concepts →
-modules → use cases → examples → quickstart). Latest release: **0.2.1** — see the
-[release notes](docs/release-notes/0.2.1.md).
+modules → use cases → examples → quickstart). Latest release: **0.3.0** — see the
+[release notes](docs/release-notes/0.3.0.md).
 
 ## What Is Included
 
 - orchestration and intent/action primitives
 - RAG and retrieval abstractions
 - indexing and data-sync modules
-- provider modules for OpenAI, Azure OpenAI, Anthropic, Cohere, Gemini, and ONNX
+- Spring AI-backed provider module for cloud LLMs/embeddings, plus native and Spring AI ONNX local embeddings
 - vector modules for Lucene, memory, Pinecone, Qdrant, Weaviate, and Milvus
 - curated generic prompt/action packs
 - optional runtime, web, governance, PII, migration, chat-session, behavior, and connector modules
@@ -22,7 +22,7 @@ modules → use cases → examples → quickstart). Latest release: **0.2.1** �
 
 - Java 21
 - Maven 3.9+
-- Spring Boot 3.2.x
+- Spring Boot 4.1.x
 
 ## Install Locally
 
@@ -43,7 +43,7 @@ extra repository configuration is needed. The BOM artifact is:
     <dependency>
       <groupId>io.github.loom-ai-labs</groupId>
       <artifactId>ai-fabric-bom</artifactId>
-      <version>0.2.1</version>
+      <version>0.3.0</version>
       <type>pom</type>
       <scope>import</scope>
     </dependency>
@@ -62,7 +62,7 @@ Example dependency set:
 
   <dependency>
     <groupId>io.github.loom-ai-labs</groupId>
-    <artifactId>ai-fabric-provider-openai</artifactId>
+    <artifactId>ai-fabric-provider-spring-ai</artifactId>
   </dependency>
 
   <dependency>

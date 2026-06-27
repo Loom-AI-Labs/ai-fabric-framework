@@ -30,7 +30,8 @@ import java.util.concurrent.ConcurrentHashMap;
  * <p><strong>Activation:</strong> This configuration only activates when:
  * <ul>
  *   <li>{@code testcontainers.enabled=true} (set automatically by {@link TestcontainersInitializer}
- *       when testcontainers profile is active AND a container type is specified)</li>
+ *       for module-backed container types, or set explicitly for generic future-provider
+ *       fixtures)</li>
  *   <li>{@code ai.vector-db.type} is set to a container-supported type</li>
  * </ul>
  * </p>
@@ -53,7 +54,10 @@ import java.util.concurrent.ConcurrentHashMap;
  * mvn test -Dspring.profiles.active=testcontainers -Dai.vector-db.type=lucene
  * </pre>
  *
- * <p><strong>Supported Container Types:</strong> milvus, qdrant, weaviate, chroma, pgvector</p>
+ * <p><strong>Module-backed Container Types:</strong> milvus, qdrant, weaviate</p>
+ * <p><strong>Generic Future-provider Fixtures:</strong> chroma, pgvector. These container
+ * helpers do not imply shipped AI Fabric Chroma or pgvector vector provider modules and are
+ * not auto-enabled by {@link TestcontainersInitializer}.</p>
  *
  * <p><strong>Thread Safety:</strong> This configuration is thread-safe and supports
  * parallel test execution. Each provider type maintains its own container instance.</p>
@@ -72,7 +76,8 @@ public class VectorDatabaseContainerAutoConfiguration {
 
     private static final Logger log = LoggerFactory.getLogger(VectorDatabaseContainerAutoConfiguration.class);
 
-    // Container type constants
+    // Container type constants. Milvus, Qdrant, and Weaviate have shipped AI Fabric
+    // vector provider modules; Chroma and pgvector are generic future-provider fixtures.
     private static final String CONTAINER_TYPE_MILVUS = "milvus";
     private static final String CONTAINER_TYPE_QDRANT = "qdrant";
     private static final String CONTAINER_TYPE_WEAVIATE = "weaviate";
@@ -222,7 +227,7 @@ public class VectorDatabaseContainerAutoConfiguration {
             }
         }
 
-        log.info("Starting Milvus container (fallback - should not happen if initializer worked)...");
+        log.info("Starting Milvus container via Testcontainers auto-configuration...");
 
         try {
             String image = getImageVersion(CONTAINER_TYPE_MILVUS, DEFAULT_IMAGE_MILVUS);
@@ -286,6 +291,14 @@ public class VectorDatabaseContainerAutoConfiguration {
     @Bean
     @ConditionalOnProperty(name = PROP_VECTOR_DB_TYPE, havingValue = CONTAINER_TYPE_QDRANT)
     public GenericContainer<?> qdrantContainer(ConfigurableEnvironment environment) {
+        GenericContainer<?> earlyStarted = TestcontainersInitializer.getEarlyStartedContainer(CONTAINER_TYPE_QDRANT);
+        if (earlyStarted != null && earlyStarted.isRunning()) {
+            log.info("Reusing Qdrant container started early by TestcontainersInitializer at {}:{}",
+                earlyStarted.getHost(), earlyStarted.getMappedPort(PORT_QDRANT_REST));
+            activeContainers.put(CONTAINER_TYPE_QDRANT, earlyStarted);
+            return earlyStarted;
+        }
+
         if (activeContainers.containsKey(CONTAINER_TYPE_QDRANT)) {
             GenericContainer<?> existing = activeContainers.get(CONTAINER_TYPE_QDRANT);
             if (existing != null && existing.isRunning()) {
@@ -355,6 +368,14 @@ public class VectorDatabaseContainerAutoConfiguration {
     @Bean
     @ConditionalOnProperty(name = PROP_VECTOR_DB_TYPE, havingValue = CONTAINER_TYPE_WEAVIATE)
     public GenericContainer<?> weaviateContainer(ConfigurableEnvironment environment) {
+        GenericContainer<?> earlyStarted = TestcontainersInitializer.getEarlyStartedContainer(CONTAINER_TYPE_WEAVIATE);
+        if (earlyStarted != null && earlyStarted.isRunning()) {
+            log.info("Reusing Weaviate container started early by TestcontainersInitializer at {}:{}",
+                earlyStarted.getHost(), earlyStarted.getMappedPort(PORT_WEAVIATE));
+            activeContainers.put(CONTAINER_TYPE_WEAVIATE, earlyStarted);
+            return earlyStarted;
+        }
+
         if (activeContainers.containsKey(CONTAINER_TYPE_WEAVIATE)) {
             GenericContainer<?> existing = activeContainers.get(CONTAINER_TYPE_WEAVIATE);
             if (existing != null && existing.isRunning()) {
@@ -556,6 +577,7 @@ public class VectorDatabaseContainerAutoConfiguration {
                 if (container != null && container.isRunning()) {
                     log.debug("Stopping container: {}", container.getContainerId());
                     container.stop();
+                    TestcontainersInitializer.removeEarlyStartedContainer(container);
                 }
             } catch (Exception e) {
                 log.warn("Error stopping container: {}", e.getMessage());

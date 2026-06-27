@@ -122,6 +122,7 @@ class RAGServiceSearchSourceRegistryTest {
             .entityType("product")
             .limit(5)
             .threshold(0.1)
+            .enableHybridSearch(false)
             .build());
 
         assertThat(response.getSuccess()).isTrue();
@@ -138,10 +139,66 @@ class RAGServiceSearchSourceRegistryTest {
             .containsEntry("searchSourceFailedCount", 0)
             .containsEntry("searchSourceSkippedCount", 0)
             .containsEntry("searchSourcesDegraded", false)
+            .containsEntry("searchExecutionPath", "search_source_registry")
+            .containsEntry("hybridSearchRequested", false)
+            .containsEntry("hybridSearchUsed", false)
+            .containsEntry("hybridSearchMode", "not_requested")
             .containsEntry("searchSourceIds", List.of("shared-catalog", "deployment-private-vector"))
             .containsEntry("searchSourceAdapterTypes", List.of("shared-index", "deployment-private-vector"));
         assertThat(response.getMetadata().get("searchSourceDiagnostics")).isInstanceOf(List.class);
         verify(searchSourceRegistry).recordSearchExecution(any(), eq(false));
+    }
+
+    @Test
+    void performRagReportsHybridUsedOnlyForSuccessfulHybridCapableSearchSource() {
+        configurePrivateSourceIdentity();
+        when(privateSource.isEligible(any())).thenReturn(true);
+        when(privateSource.supportsHybridSearch()).thenReturn(true);
+        when(searchSourceRegistry.resolveSearchSources(any())).thenReturn(List.of(privateSource));
+        when(privateSource.search(any(), any(), any())).thenReturn(
+            AISearchResponse.builder()
+                .results(List.of(Map.of(
+                    "id", "product-1",
+                    "content", "Hybrid-capable private source result.",
+                    "score", 0.91,
+                    "similarity", 0.91,
+                    "metadata", Map.of(
+                        "knowledgeSourceId", "deployment-private-vector",
+                        "knowledgeSourceType", "deployment-private-vector",
+                        "knowledgeSourceAdapterType", "deployment-private-vector",
+                        "knowledgeSourceAttributionLabel", "Deployment knowledge"
+                    )
+                )))
+                .totalResults(1)
+                .maxScore(0.91)
+                .build()
+        );
+
+        RAGResponse response = ragService.performRag(RAGRequest.builder()
+            .query("tell me about Alienware m18 R2")
+            .entityType("product")
+            .limit(5)
+            .threshold(0.1)
+            .enableHybridSearch(true)
+            .build());
+
+        assertThat(response.getSuccess()).isTrue();
+        assertThat(response.getHybridSearchUsed()).isTrue();
+        assertThat(response.getMetadata())
+            .containsEntry("searchExecutionPath", "search_source_registry")
+            .containsEntry("hybridSearchRequested", true)
+            .containsEntry("hybridSearchUsed", true)
+            .containsEntry("hybridSearchMode", "search_source");
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> diagnostics = (List<Map<String, Object>>) response.getMetadata().get("searchSourceDiagnostics");
+        assertThat(diagnostics)
+            .singleElement()
+            .satisfies(entry -> assertThat(entry)
+                .containsEntry("sourceId", "deployment-private-vector")
+                .containsEntry("supportsHybridSearch", true)
+                .containsEntry("hybridSearchRequested", true)
+                .containsEntry("hybridSearchUsed", true)
+                .containsEntry("status", "SUCCEEDED"));
     }
 
     @Test
@@ -283,5 +340,11 @@ class RAGServiceSearchSourceRegistryTest {
         when(sharedSource.sourceId()).thenReturn("shared-catalog");
         when(sharedSource.sourceType()).thenReturn("shared-vector");
         when(sharedSource.adapterType()).thenReturn("shared-index");
+    }
+
+    private void configurePrivateSourceIdentity() {
+        when(privateSource.sourceId()).thenReturn("deployment-private-vector");
+        when(privateSource.sourceType()).thenReturn("deployment-private-vector");
+        when(privateSource.adapterType()).thenReturn("deployment-private-vector");
     }
 }

@@ -172,6 +172,16 @@ public class RelationshipQueryActionHandler {
             QueryOptions options = buildQueryOptions(limit, returnMode, similarityThreshold);
             // Always pass allowed entity types (never null, never unrestricted)
             RAGResponse response = queryService.execute(query, allowedEntityTypes, options);
+            if (Boolean.FALSE.equals(response.getSuccess())) {
+                return ActionResult.builder()
+                    .success(false)
+                    .message(response.getErrorMessage() != null && !response.getErrorMessage().isBlank()
+                        ? response.getErrorMessage()
+                        : "Relationship query failed.")
+                    .errorCode(responseErrorCode(response))
+                    .data(ActionResultContracts.object(buildResultData(response)))
+                    .build();
+            }
 
             return ActionResult.builder()
                 .success(response.getSuccess() == null || response.getSuccess())
@@ -266,6 +276,16 @@ public class RelationshipQueryActionHandler {
         facts.put(DATA_KEY_DOCUMENTS, documentFacts);
         facts.put("documentCount", documentFacts.size());
         return Collections.unmodifiableMap(facts);
+    }
+
+    private String responseErrorCode(RAGResponse response) {
+        if (response != null && response.getMetadata() != null) {
+            Object errorCode = response.getMetadata().get("errorCode");
+            if (errorCode != null && !errorCode.toString().isBlank()) {
+                return errorCode.toString().trim();
+            }
+        }
+        return ERROR_EXECUTION_FAILED;
     }
 
     private QueryOptions buildQueryOptions(Integer limit, ReturnMode returnMode, Double similarityThreshold) {

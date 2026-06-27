@@ -1,0 +1,37 @@
+ai-entities:
+  product:
+    features: ["embedding", "search"]
+    auto-process: true
+    enable-search: true
+    auto-embedding: true
+    indexable: true
+    searchable-fields:
+      - name: name
+      - name: description
+      - name: category
+    embeddable-fields:
+      - name: name
+        auto-generate: true
+      - name: description
+        auto-generate: true
+    metadata-fields:
+      - name: category
+        type: TEXT
+        include-in-search: true
+      - name: brand
+        type: TEXT
+        include-in-search: true
+    crud-operations:
+      CREATE:
+        generate-embedding: true
+        index-for-search: true
+        enable-analysis: false
+      UPDATE:
+        generate-embedding: true
+        index-for-search: true
+        enable-analysis: false
+      DELETE:
+        generate-embedding: false
+        index-for-search: false
+        remove-from-search: true
+        cleanup-embeddings: true

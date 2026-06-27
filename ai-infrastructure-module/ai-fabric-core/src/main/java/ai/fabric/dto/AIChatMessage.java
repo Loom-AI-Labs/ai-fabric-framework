@@ -10,6 +10,10 @@ import lombok.NoArgsConstructor;
  *
  * <p>This DTO is used for passing conversation history to LLM providers via their
  * native chat formats, instead of packing history into a single prompt string.</p>
+ *
+ * <p>{@link AIGenerationRequest#getMessages()} supports prior {@code USER} and
+ * {@code ASSISTANT} turns only. Use {@link AIGenerationRequest#getSystemPrompt()}
+ * for system instructions.</p>
  */
 @Data
 @Builder
@@ -33,4 +37,3 @@ public class AIChatMessage {
         return AIChatMessage.builder().role(AIChatRole.ASSISTANT).content(content).build();
     }
 }
-

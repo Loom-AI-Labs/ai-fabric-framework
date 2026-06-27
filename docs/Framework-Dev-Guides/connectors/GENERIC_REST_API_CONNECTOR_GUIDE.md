@@ -1,6 +1,7 @@
-# Generic REST API Connector (Action → Endpoint) — Architecture & Developer Guide (V1)
+# Generic REST API Connector Pattern (Action → Endpoint) — Architecture & Developer Guide (V1)
 
-This document describes the **Generic REST API Connector**: a runnable service that implements the **Customer Connector API** (`POST /actions/execute`) but executes actions by routing:
+This document describes the **Generic REST API Connector pattern**: a connector implementation that
+implements the **Customer Connector API** (`POST /actions/execute`) but executes actions by routing:
 
 `actionId → upstream REST endpoint`
 
@@ -10,21 +11,26 @@ Related docs:
 - Customer Connector API contract: `./CUSTOMER_CONNECTOR_IMPLEMENTATION_GUIDE.md`
 - Actions architecture (local + connector + relay): `../actions-governance/ACTIONS_CONNECTOR_AND_RELAY_GUIDE.md`
 
-Code:
-- Runnable service: `ai-infrastructure-module/ai-infrastructure-generic-rest-connector`
+Code status:
+- AI Fabric currently ships the runtime caller (`ai-fabric-actions-connector`) and the hardened
+  customer-side relay (`ai-fabric-relay`).
+- A runnable generic REST connector module is **not** present in the current reactor. Treat this guide
+  as an implementation blueprint until a dedicated `ai-fabric-generic-rest-connector` module is added.
 
 ---
 
-## Status (as of 2026-02-19)
+## Status (as of 2026-06-19)
 
-- **Implemented (MVP):**
+- **Documented implementation pattern:**
   - `/actions/execute` connector endpoint (runtime-compatible)
   - File-based routing config (`actions-routing.yml`)
   - API-key inbound auth (fail-closed by default)
   - Upstream HTTP execution with timeouts + optional bounded retries
-  - Idempotency (in-memory) keyed by `idempotencyKey` + params fingerprint
+  - Idempotency keyed by `idempotencyKey` + params fingerprint
   - Response normalization to `ActionResult` payload rules (object vs list payload)
-- **Not implemented yet (planned):**
+- **Not shipped as a runnable AI Fabric module yet:**
+  - Generic `actionId → upstream REST endpoint` service module
+  - Docker/Railway packaging for that service
   - DB-backed routing/action registry (register/deregister/list)
   - OAuth2 client credentials to upstream
   - mTLS inbound auth
@@ -34,12 +40,12 @@ Code:
 
 ## 1) When to use this vs the Relay
 
-Use the **Generic REST Connector** when:
+Use the **Generic REST Connector pattern** when:
 - You already have upstream APIs that do **not** implement the Customer Connector API
 - You want a mapping layer: `actionId → method/url/body/headers`
 - You want AI Fabric runtime to call **one** connector base URL, while upstream remains arbitrary REST
 
-Use the **Relay** (`ai-infrastructure-relay`) when:
+Use the **Relay** (`ai-fabric-relay`) when:
 - Your upstream service already implements the Customer Connector API and returns `ActionResult`
 - You mainly need security hardening (inbound auth, idempotency, SSRF-safe routing) + forwarding
 
@@ -79,7 +85,7 @@ Payload rules:
 
 ### 3.1 Config file location
 
-The service loads routing config from:
+A generic REST connector implementation should load routing config from:
 - `rest-connector.routing-config-location` (default `classpath:actions-routing.yml`)
 
 You typically override it in Docker/Kubernetes via env:
@@ -135,9 +141,9 @@ actions:
       result: "{{body}}"
 ```
 
-### 3.3 Templating (supported roots)
+### 3.3 Templating (recommended supported roots)
 
-The connector supports `{{...}}` placeholders in:
+A generic REST connector implementation should support `{{...}}` placeholders in:
 - `url`, `path`
 - `headers[*]`
 - `request.query[*]`
@@ -158,7 +164,7 @@ Supported roots:
 Notes:
 - If the entire string is a placeholder (e.g. `"{{params.items}}"`), the value is inserted as its native JSON type.
 - If the placeholder is part of a larger string, it is interpolated as text.
-- Unsupported roots fail fast (mapping error).
+- Unsupported roots should fail fast with `MAPPING_ERROR`.
 
 ---
 
@@ -183,7 +189,7 @@ sequenceDiagram
 
 ## 5) Error codes (connector → runtime)
 
-The connector returns stable `errorCode`s:
+A generic REST connector implementation should return stable `errorCode`s:
 - `INVALID_REQUEST` (missing actionId, invalid JSON)
 - `ACTION_NOT_SUPPORTED` (no route mapping)
 - `MAPPING_ERROR` (invalid route config or template usage)
@@ -200,12 +206,16 @@ AI Fabric Runtime retry behavior is derived from `errorCode` + idempotency safet
 
 ### 6.1 Runnable module
 
-- Service module: `ai-infrastructure-module/ai-infrastructure-generic-rest-connector`
-- Default port: `8082` (supports `PORT` override via `server.port=${PORT:8082}`)
+- No runnable generic REST connector module is shipped in the current AI Fabric reactor.
+- Use `ai-fabric-relay` when you need a shipped customer-side runtime today.
+- If you build this pattern as a separate service, keep the expected connector contract at
+  `POST /actions/execute` and expose it behind a stable connector base URL.
+- Recommended default port for a custom implementation: `8082` with `PORT` override support.
 
-### 6.3 Verification endpoints (debug)
+### 6.2 Verification endpoints (debug)
 
-These endpoints help confirm which routes are loaded at runtime (useful for "ACTION_NOT_SUPPORTED" debugging):
+If you implement this pattern, these endpoints help confirm which routes are loaded at runtime
+(useful for "ACTION_NOT_SUPPORTED" debugging):
 
 - Health:
   - `GET /actuator/health`
@@ -226,13 +236,13 @@ Runtime-first recommendation:
   - `GET /api/admin/connector/actions/overview`
 - direct connector admin routes should be treated as compatibility or internal-only access
 
-### 6.4 Optional: Runtime Proxy (Indexing Alias)
+### 6.3 Optional: Runtime Proxy (Indexing Alias)
 
-For some demo setups you may want the connector to be the **single base URL** for both:
+For some demo setups, a custom generic REST connector may be the **single base URL** for both:
 - action execution (`POST /actions/execute`)
 - managed indexing calls (Runtime Data Sync push API)
 
-When enabled, the connector exposes a small set of **alias** endpoints under:
+When implemented and enabled, the connector exposes a small set of **alias** endpoints under:
 - `/api/ai/data-sync/*`
 
 These endpoints **forward** to the configured runtime.
@@ -264,15 +274,11 @@ Also exposed (read-only admin inspection, when enabled):
 Security:
 - These endpoints are protected by the same inbound API key filter as `/actions/execute` (unless you explicitly set `connector.inbound-auth.allow-unauthenticated=true`).
 
-### 6.2 Docker image
+### 6.4 Docker image
 
-Build:
-- `ai-infrastructure-module/ai-infrastructure-generic-rest-connector/Dockerfile`
-- Railway-friendly Dockerfile (bakes a template routing config):
-  - `ai-infrastructure-module/ai-infrastructure-generic-rest-connector/deploy/railway/Dockerfile`
-  - Guide: `ai-infrastructure-module/ai-infrastructure-generic-rest-connector/deploy/railway/RAILWAY_DEPLOYMENT_GUIDE.md`
+No generic REST connector Dockerfile is shipped in this repository today.
 
-Run pattern:
+A custom implementation should:
 - mount `actions-routing.yml` to `/config/actions-routing.yml`
 - set `REST_CONNECTOR_ROUTING_CONFIG_LOCATION=file:/config/actions-routing.yml`
 - set secrets via env (`CONNECTOR_API_KEY`, `UPSTREAM_API_KEY`, etc)

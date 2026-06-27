@@ -7,14 +7,14 @@
     <parent>
         <groupId>io.github.loom-ai-labs</groupId>
         <artifactId>ai-fabric-bom</artifactId>
-        <version>0.2.1</version>
+        <version>0.3.0</version>
         <relativePath>../../pom.xml</relativePath>
     </parent>
 
     <artifactId>ai-fabric-onnx-starter</artifactId>
     <packaging>jar</packaging>
 
-    <name>AI Infrastructure ONNX Starter</name>
+    <name>AI Fabric ONNX Starter</name>
     <description>Optional starter for ONNX Runtime embedding support and auto-configuration</description>
 
     <dependencies>
@@ -40,7 +40,7 @@
         <dependency>
             <groupId>com.microsoft.onnxruntime</groupId>
             <artifactId>onnxruntime</artifactId>
-            <version>1.16.3</version>
+            <version>${onnxruntime.version}</version>
         </dependency>
 
         <dependency>

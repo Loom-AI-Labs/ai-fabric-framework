@@ -28,8 +28,9 @@ import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureTestRestTemplate;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.web.client.TestRestTemplate;
+import org.springframework.boot.resttestclient.TestRestTemplate;
 import org.springframework.context.annotation.Import;
 import org.springframework.core.env.Environment;
 import org.springframework.http.ResponseEntity;
@@ -72,6 +73,7 @@ import java.util.stream.Collectors;
 )
 @ActiveProfiles("realapi")
 @Import(BackendEnvTestConfiguration.class)
+@AutoConfigureTestRestTemplate
 class ProviderScorecardRealApiIntegrationTest {
 
     @Autowired

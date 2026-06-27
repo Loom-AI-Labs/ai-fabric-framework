@@ -22,6 +22,7 @@ import ai.fabric.it.support.RealAPITestSupport;
 import ai.fabric.it.RealAPIMultiProviderFailoverIntegrationTest;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.DynamicTest;
+import org.junit.jupiter.api.TestFactory;
 import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
@@ -96,6 +97,7 @@ public class RealAPIProviderMatrixIntegrationTest extends AbstractProviderMatrix
     };
 
     @Override
+    @TestFactory
     public Stream<DynamicTest> providerMatrix() {
         // Enhanced provider key check with detailed messages
         if (!hasProviderKey()) {

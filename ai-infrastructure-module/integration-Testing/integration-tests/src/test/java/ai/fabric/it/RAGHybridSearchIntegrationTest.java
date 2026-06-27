@@ -54,7 +54,7 @@ class RAGHybridSearchIntegrationTest {
     @Autowired
     private VectorDatabaseService vectorDatabaseService;
 
-    @org.springframework.boot.test.mock.mockito.MockBean
+    @org.springframework.test.context.bean.override.mockito.MockitoBean
     private VectorDatabase vectorDatabase;
 
     @BeforeEach

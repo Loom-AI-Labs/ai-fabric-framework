@@ -95,6 +95,47 @@ class IntentQueryExtractorTest {
     }
 
     @Test
+    void shouldParseWrappedJsonWithoutRepairCall() {
+        when(enrichedPromptBuilder.buildSystemPrompt(any(OrchestrationContext.class))).thenReturn("system-prompt");
+
+        String wrappedJson = """
+            Sure, here is the structured result:
+            ```json
+            {
+              "intents": [
+                {
+                  "type": "INFORMATION",
+                  "intent": "refund_policy",
+                  "confidence": 0.81,
+                  "requiresRetrieval": true
+                }
+              ]
+            }
+            ```
+            """;
+
+        when(aiCoreService.generateContent(any(AIGenerationRequest.class), any(LlmPurpose.class)))
+            .thenReturn(AIGenerationResponse.builder().content(wrappedJson).build());
+
+        IntentQueryExtractor extractor = new IntentQueryExtractor(
+            aiCoreService,
+            enrichedPromptBuilder,
+            actionHandlerRegistry,
+            objectMapper,
+            promptTemplateResolver(),
+            new PromptRenderer()
+        );
+
+        MultiIntentResponse response = extractor.extract(input("What is your refund policy?"), OrchestrationContext.forUser("user-123"));
+
+        assertThat(response.getIntents()).singleElement().satisfies(intent -> {
+            assertThat(intent.getType()).isEqualTo(IntentType.INFORMATION);
+            assertThat(intent.getIntent()).isEqualTo("refund_policy");
+        });
+        verify(aiCoreService).generateContent(any(AIGenerationRequest.class), eq(LlmPurpose.ORCHESTRATION));
+    }
+
+    @Test
     void shouldReturnTraceWithProviderTimingAndModel() {
         when(enrichedPromptBuilder.buildSystemPrompt(any(OrchestrationContext.class))).thenReturn("system-prompt");
 

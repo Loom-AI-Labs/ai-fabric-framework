@@ -9,6 +9,7 @@ import ai.fabric.relay.forward.ForwardingClientException;
 import ai.fabric.relay.forward.ForwardingResponse;
 import ai.fabric.relay.ratelimit.FixedWindowRateLimiter;
 import ai.fabric.relay.ratelimit.RateLimitedException;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -27,6 +28,9 @@ public class RelayActionService {
     private static final String ERROR_ACTION_NOT_SUPPORTED = "ACTION_NOT_SUPPORTED";
     private static final String ERROR_SERVICE_UNAVAILABLE = "SERVICE_UNAVAILABLE";
     private static final String ERROR_TIMEOUT = "TIMEOUT";
+    private static final String ERROR_RATE_LIMITED = "RATE_LIMITED";
+    private static final String ERROR_ACTION_EXECUTION_FAILED = "ACTION_EXECUTION_FAILED";
+    private static final String ERROR_INVALID_RESPONSE = "INVALID_RESPONSE";
 
     private final RelayProperties properties;
     private final ObjectMapper objectMapper;
@@ -105,15 +109,121 @@ public class RelayActionService {
         }
 
         String body = response != null ? response.body() : null;
+        int statusCode = response != null ? response.statusCode() : 0;
+        if (statusCode < 200 || statusCode >= 300) {
+            return failureForHttpStatus(statusCode, body);
+        }
+
         if (!StringUtils.hasText(body)) {
             return ActionResultDto.failure(ERROR_SERVICE_UNAVAILABLE, "Internal service returned an empty response.");
         }
 
+        Map<String, Object> parsed;
         try {
-            return objectMapper.readValue(body, ActionResultDto.class);
+            parsed = objectMapper.readValue(body, new TypeReference<Map<String, Object>>() {});
         } catch (Exception ex) {
             return ActionResultDto.failure(ERROR_SERVICE_UNAVAILABLE, "Internal service returned invalid JSON.");
         }
+
+        boolean success = readBoolean(parsed.get("success"), false);
+        if (!success) {
+            return failureFromParsed(parsed, ERROR_ACTION_EXECUTION_FAILED, "Internal action service failed.");
+        }
+
+        Object dataRaw = parsed.get("data");
+        if (dataRaw != null && !(dataRaw instanceof Map<?, ?>)) {
+            return ActionResultDto.failure(
+                ERROR_INVALID_RESPONSE,
+                "Internal action service returned invalid ActionResult data."
+            );
+        }
+
+        try {
+            ActionResultDto result = objectMapper.convertValue(parsed, ActionResultDto.class);
+            if (result == null || !result.success()) {
+                return ActionResultDto.failure(ERROR_INVALID_RESPONSE, "Internal action service returned an invalid ActionResult.");
+            }
+            return result;
+        } catch (Exception ex) {
+            return ActionResultDto.failure(ERROR_INVALID_RESPONSE, "Internal action service returned an invalid ActionResult.");
+        }
+    }
+
+    private ActionResultDto failureForHttpStatus(int statusCode, String body) {
+        if (StringUtils.hasText(body)) {
+            try {
+                Map<String, Object> parsed = objectMapper.readValue(body, new TypeReference<Map<String, Object>>() {});
+                if (parsed != null && !readBoolean(parsed.get("success"), false)) {
+                    return failureFromParsed(
+                        parsed,
+                        errorCodeForStatus(statusCode),
+                        "Internal service returned HTTP " + statusCode + "."
+                    );
+                }
+            } catch (Exception ignored) {
+                // Fall through to deterministic status mapping.
+            }
+        }
+        return ActionResultDto.failure(
+            errorCodeForStatus(statusCode),
+            "Internal service returned HTTP " + statusCode + "."
+        );
+    }
+
+    private String errorCodeForStatus(int statusCode) {
+        if (statusCode == 408) {
+            return ERROR_TIMEOUT;
+        }
+        if (statusCode == 429) {
+            return ERROR_RATE_LIMITED;
+        }
+        if (statusCode >= 500 || statusCode <= 0) {
+            return ERROR_SERVICE_UNAVAILABLE;
+        }
+        return ERROR_ACTION_EXECUTION_FAILED;
+    }
+
+    private ActionResultDto failureFromParsed(Map<String, Object> parsed, String defaultCode, String defaultMessage) {
+        String code = readString(parsed != null ? parsed.get("errorCode") : null);
+        String message = readString(parsed != null ? parsed.get("message") : null);
+        Object dataRaw = parsed != null ? parsed.get("data") : null;
+        Map<String, Object> data = dataRaw instanceof Map<?, ?> ? toStringKeyMap((Map<?, ?>) dataRaw) : null;
+        return ActionResultDto.failure(
+            StringUtils.hasText(code) ? code : defaultCode,
+            StringUtils.hasText(message) ? message : defaultMessage,
+            data
+        );
+    }
+
+    private Map<String, Object> toStringKeyMap(Map<?, ?> raw) {
+        if (raw == null || raw.isEmpty()) {
+            return null;
+        }
+        Map<String, Object> out = new LinkedHashMap<>();
+        raw.forEach((key, value) -> {
+            if (key != null) {
+                out.put(key.toString(), value);
+            }
+        });
+        return out.isEmpty() ? null : out;
+    }
+
+    private boolean readBoolean(Object raw, boolean defaultValue) {
+        if (raw instanceof Boolean b) {
+            return b;
+        }
+        if (raw instanceof String s && StringUtils.hasText(s)) {
+            return Boolean.parseBoolean(s.trim());
+        }
+        return defaultValue;
+    }
+
+    private String readString(Object raw) {
+        if (raw == null) {
+            return null;
+        }
+        String value = raw.toString();
+        return StringUtils.hasText(value) ? value.trim() : null;
     }
 
     private ResolvedRoute resolveRoute(RelayProperties.Routing routing, String actionId) {

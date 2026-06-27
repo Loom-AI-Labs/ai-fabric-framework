@@ -6,7 +6,7 @@ works against real providers when you're ready.
 
 ## 1. Create a Spring Boot project
 
-A standard Spring Boot 3.2.x app on Java 21. Add the AI Fabric BOM and the modules you need.
+A standard Spring Boot 4.1.x app on Java 21. Add the AI Fabric BOM and the modules you need.
 
 ```xml
 <project>
@@ -17,7 +17,7 @@ A standard Spring Boot 3.2.x app on Java 21. Add the AI Fabric BOM and the modul
       <dependency>
         <groupId>io.github.loom-ai-labs</groupId>
         <artifactId>ai-fabric-bom</artifactId>
-        <version>0.2.1</version>
+        <version>0.3.0</version>
         <type>pom</type>
         <scope>import</scope>
       </dependency>
@@ -188,7 +188,7 @@ search.
 
 Switch from the offline local providers to real backends by **changing configuration, not code**:
 
-- Add a real embedding/LLM provider (e.g. `ai-fabric-provider-openai`) and set
+- Add a real embedding/LLM provider (e.g. `ai-fabric-provider-spring-ai`) and set
   `ai.providers.embedding-provider` / `ai.providers.llm-provider` + the API key.
 - Point `ai.vector-db.type` at a managed store (e.g. `qdrant`) and add `ai-fabric-vector-qdrant`.
 - Layer on RAG (`ai-fabric-rag`), NL→query (`ai-fabric-relationship-query`), PII

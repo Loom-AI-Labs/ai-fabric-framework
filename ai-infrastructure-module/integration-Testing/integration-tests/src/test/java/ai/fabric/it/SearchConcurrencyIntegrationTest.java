@@ -1,6 +1,7 @@
 package ai.fabric.it;
 
 import ai.fabric.cache.AICacheConfig;
+import ai.fabric.cache.AICacheNames;
 import ai.fabric.core.AIEmbeddingService;
 import ai.fabric.dto.AIEmbeddingRequest;
 import ai.fabric.dto.AISearchRequest;
@@ -247,7 +248,7 @@ class SearchConcurrencyIntegrationTest {
     }
 
     private void clearSearchCache() {
-        Cache cache = cacheManager.getCache("vectorSearch");
+        Cache cache = cacheManager.getCache(AICacheNames.VECTOR_SEARCH);
         if (cache != null) {
             cache.clear();
         }

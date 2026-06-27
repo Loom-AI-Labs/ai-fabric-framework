@@ -10,6 +10,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -24,8 +25,9 @@ import java.util.stream.StreamSupport;
 
 @Slf4j
 @RestController
-@RequestMapping("/api/ai/migration")
+@RequestMapping("${ai.web.base-path:/api/ai}/migration")
 @ConditionalOnBean(DataMigrationService.class)
+@ConditionalOnProperty(prefix = "ai.web.controllers", name = "migration", havingValue = "true", matchIfMissing = true)
 @RequiredArgsConstructor
 public class MigrationController {
 
