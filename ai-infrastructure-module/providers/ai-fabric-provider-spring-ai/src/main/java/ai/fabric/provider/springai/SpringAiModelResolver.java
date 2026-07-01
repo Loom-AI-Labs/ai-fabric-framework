@@ -323,7 +323,7 @@ public class SpringAiModelResolver implements DisposableBean {
         OpenAiChatOptions.Builder builder = OpenAiChatOptions.builder();
         builder.model(model);
         builder.temperature(temperature);
-        builder.maxTokens(maxTokens);
+        applyOpenAiTokenLimit(builder, model, maxTokens);
         return builder.build();
     }
 
@@ -336,7 +336,7 @@ public class SpringAiModelResolver implements DisposableBean {
         builder.model(deployment);
         builder.deploymentName(deployment);
         builder.temperature(temperature);
-        builder.maxTokens(maxTokens);
+        applyOpenAiTokenLimit(builder, deployment, maxTokens);
         if (azureNative) {
             builder.azure(true);
             if (hasText(apiVersion)) {
@@ -344,6 +344,28 @@ public class SpringAiModelResolver implements DisposableBean {
             }
         }
         return builder.build();
+    }
+
+    private void applyOpenAiTokenLimit(OpenAiChatOptions.Builder builder, String model, Integer maxTokens) {
+        if (maxTokens == null) {
+            return;
+        }
+        if (usesMaxCompletionTokens(model)) {
+            builder.maxCompletionTokens(maxTokens);
+        } else {
+            builder.maxTokens(maxTokens);
+        }
+    }
+
+    private boolean usesMaxCompletionTokens(String model) {
+        if (!hasText(model)) {
+            return false;
+        }
+        String normalized = model.trim().toLowerCase();
+        return normalized.startsWith("gpt-5")
+            || normalized.startsWith("o1")
+            || normalized.startsWith("o3")
+            || normalized.startsWith("o4");
     }
 
     private AnthropicChatOptions anthropicChatOptions(String model, Double temperature, Integer maxTokens) {

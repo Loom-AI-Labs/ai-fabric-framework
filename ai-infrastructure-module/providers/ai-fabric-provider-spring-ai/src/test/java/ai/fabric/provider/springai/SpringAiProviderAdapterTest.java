@@ -36,6 +36,7 @@ import org.springframework.ai.embedding.EmbeddingModel;
 import org.springframework.ai.embedding.EmbeddingOptions;
 import org.springframework.ai.embedding.EmbeddingRequest;
 import org.springframework.ai.embedding.EmbeddingResponse;
+import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.ai.tool.ToolCallback;
 
 import java.lang.reflect.Field;
@@ -336,6 +337,39 @@ class SpringAiProviderAdapterTest {
 
         assertThat(resolver.isEmbeddingAvailable("openai")).isFalse();
         assertThat(resolver.isEmbeddingAvailable("openai", request)).isTrue();
+    }
+
+    @Test
+    void resolverUsesMaxCompletionTokensForGpt5OpenAiModels() {
+        AIProviderConfig config = new AIProviderConfig();
+        config.getOpenai().setApiKey("test-key");
+        config.getOpenai().setTemperature(0.2);
+        SpringAiModelResolver resolver = new SpringAiModelResolver(config);
+
+        OpenAiChatOptions options = (OpenAiChatOptions) resolver.resolveChatOptions("openai", AIGenerationRequest.builder()
+            .prompt("Generate content")
+            .model("gpt-5.4-mini")
+            .maxTokens(800)
+            .build());
+
+        assertThat(options.getMaxCompletionTokens()).isEqualTo(800);
+        assertThat(options.getMaxTokens()).isNull();
+    }
+
+    @Test
+    void resolverKeepsMaxTokensForLegacyOpenAiModels() {
+        AIProviderConfig config = new AIProviderConfig();
+        config.getOpenai().setApiKey("test-key");
+        SpringAiModelResolver resolver = new SpringAiModelResolver(config);
+
+        OpenAiChatOptions options = (OpenAiChatOptions) resolver.resolveChatOptions("openai", AIGenerationRequest.builder()
+            .prompt("Generate content")
+            .model("gpt-4o-mini")
+            .maxTokens(800)
+            .build());
+
+        assertThat(options.getMaxTokens()).isEqualTo(800);
+        assertThat(options.getMaxCompletionTokens()).isNull();
     }
 
     @Test
