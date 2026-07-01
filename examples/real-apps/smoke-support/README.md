@@ -1,42 +1,76 @@
 # smoke-support
 
-Shared test-support module that lets every app in `examples/real-apps` **boot with no API keys and no
-external services** under the Spring `smoke` profile. It is intended for smoke/CI checks ("does the app
-start and wire up?"), not for producing real AI results.
+## Role
 
-## What it provides
+`smoke-support` is a shared test-support module for `examples/real-apps`. It is not a product demo.
 
-- **`SmokeAiProvider`** — a local `ai.fabric.provider.AIProvider` (name `smoke`) that returns a
-  deterministic response instead of calling an external model.
-- **`SmokeEmbeddingProvider`** — a deterministic, in-process `ai.fabric.embedding.EmbeddingProvider`
-  (name `smoke`, 384-dim) that needs no ONNX model file.
-- Transitive **`ai-fabric-vector-memory`** (in-memory vector store) and **H2** (in-memory database).
-- A bundled **`application-smoke.yml`** that points the framework's selectors at the local providers:
+It lets real apps boot with no API keys and no external services under the Spring `smoke` profile.
+Use it for CI and local release smoke checks: "does this app start and wire the AI Fabric pieces?"
 
-  ```yaml
-  ai:
-    providers:
-      llm-provider: smoke
-      embedding-provider: smoke
-    vector-db:
-      type: memory
-  ```
+## AI Fabric Capabilities Proved
 
-  Because it is a profile-specific document on the classpath, it overrides each app's base
-  `application.yml` when the `smoke` profile is active. An app that needs extra overrides (for example
-  `cloud-qdrant-openai-vector-search`, which swaps Postgres for H2) ships its own
-  `application-smoke.yml`, which fully replaces this shared one for that app.
+- A deterministic local `AIProvider` can satisfy LLM-provider selection for smoke runs.
+- A deterministic local `EmbeddingProvider` can satisfy embedding-provider selection without ONNX or
+  cloud services.
+- The in-memory vector provider can satisfy `VectorDatabaseService` for startup and lightweight app
+  checks.
+- A shared profile can keep real-app smoke boot consistent across the suite.
+
+## What It Provides
+
+- `SmokeAiProvider`: local `ai.fabric.provider.AIProvider` named `smoke`.
+- `SmokeEmbeddingProvider`: deterministic in-process `ai.fabric.embedding.EmbeddingProvider` named
+  `smoke`, 384 dimensions.
+- Transitive `ai-fabric-vector-memory`.
+- Transitive H2.
+- `application-smoke.yml` with provider selectors:
+
+```yaml
+ai:
+  providers:
+    llm-provider: smoke
+    embedding-provider: smoke
+  vector-db:
+    type: memory
+```
+
+## Runtime Posture
+
+- no external LLM
+- no external embedding provider
+- no model files
+- no external vector database
+- no external database
+
+Apps can still ship their own `application-smoke.yml` when they need extra overrides.
 
 ## Usage
 
-Every example app already depends on this module. Activate the profile when launching:
+Most real apps already depend on this module. Activate the profile when launching:
 
 ```bash
-# via the Spring Boot Maven plugin
 mvn -pl <app> spring-boot:run -Dspring-boot.run.profiles=smoke
+```
 
-# or with the packaged jar
+or:
+
+```bash
 java -jar <app>/target/<app>.jar --spring.profiles.active=smoke
 ```
 
-Run without the profile to use the app's real configuration (which may require API keys / services).
+## Validate
+
+Run the focused tests:
+
+```bash
+mvn -B -V --no-transfer-progress -f examples/real-apps/pom.xml -pl smoke-support test
+```
+
+## What This Module Does Not Cover
+
+- Real model behavior.
+- Semantic quality.
+- Real vector provider behavior.
+- Real API keys or provider matrix validation.
+
+Those belong to real-provider integration tests and opt-in real app profiles.

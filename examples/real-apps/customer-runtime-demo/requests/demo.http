@@ -1,0 +1,57 @@
+@host = http://localhost:8099
+
+### Upsert a customer-owned record
+POST {{host}}/api/customer-runtime/records
+Content-Type: application/json
+
+{
+  "id": "acct-1001",
+  "tenantId": "tenant-acme",
+  "title": "Acme onboarding policy",
+  "content": "Acme enterprise accounts require security review before rollout.",
+  "version": "1"
+}
+
+### Search within tenant
+GET {{host}}/api/customer-runtime/search?tenantId=tenant-acme&q=security
+
+### Write action requires confirmation
+POST {{host}}/api/customer-runtime/actions/execute
+Content-Type: application/json
+
+{
+  "actionId": "create_follow_up_task",
+  "recordId": "acct-1001",
+  "accessMode": "WRITE_ONLY",
+  "params": {"assignee": "csm-maya"},
+  "confirmed": false
+}
+
+### Confirm write action
+POST {{host}}/api/customer-runtime/actions/execute
+Content-Type: application/json
+
+{
+  "actionId": "create_follow_up_task",
+  "recordId": "acct-1001",
+  "accessMode": "WRITE_ONLY",
+  "params": {"assignee": "csm-maya"},
+  "confirmed": true
+}
+
+### Simulate connector outage
+POST {{host}}/api/customer-runtime/connector/availability?available=false
+
+### Outage returns structured failure
+POST {{host}}/api/customer-runtime/actions/execute
+Content-Type: application/json
+
+{
+  "actionId": "create_follow_up_task",
+  "recordId": "acct-1001",
+  "accessMode": "WRITE_ONLY",
+  "confirmed": true
+}
+
+### Delete record
+DELETE {{host}}/api/customer-runtime/records/acct-1001

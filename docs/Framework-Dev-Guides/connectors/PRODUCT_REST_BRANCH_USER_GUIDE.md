@@ -4,7 +4,7 @@ Status: historical draft (updated 2026-06-19)
 
 Release note: the current AI Fabric reactor does **not** ship a runnable Generic REST Connector
 module. Treat this guide as branch history and a topology sketch. For the supported release path,
-use `ai-fabric-actions-connector` in the runtime plus either `ai-fabric-relay` or a customer-owned
+use `ai-fabric-actions-connector` in the runtime plus a platform-owned or customer-owned
 implementation of the Customer Connector API.
 
 This branch turns the commerce demo into a 3-service topology:
@@ -23,7 +23,8 @@ If you previously used `Real_Apps/chat-capabilities-connector-demo`, it has been
 
 Module:
 - No runnable generic REST connector module is shipped in the current reactor.
-- Current supported customer-side runtime: `ai-infrastructure-module/ai-fabric-relay`.
+- Deployable customer-side connector runtimes are platform-owned or customer-owned, not part of this
+  framework reactor.
 - Pattern guide: `docs/Framework-Dev-Guides/connectors/GENERIC_REST_API_CONNECTOR_GUIDE.md`.
 
 Key capabilities:
@@ -122,7 +123,7 @@ Common env vars:
 
 Dockerfile options:
 - No generic REST connector Dockerfile is shipped in this repository today.
-- Use `ai-infrastructure-module/ai-fabric-relay/Dockerfile` for the supported relay service, or provide a customer-owned connector image.
+- Use the platform-owned connector runtime image, or provide a customer-owned connector image.
 
 Minimum env vars (recommended):
 - `CONNECTOR_API_KEY=<strong-secret>`
@@ -306,8 +307,6 @@ Behavior:
 
 - Generic REST connector pattern guide:
   - `docs/Framework-Dev-Guides/connectors/GENERIC_REST_API_CONNECTOR_GUIDE.md`
-- Relay deployment guide:
-  - `docs/Framework-Dev-Guides/connectors/RELAY_IMPLEMENTATION_AND_DEPLOYMENT_GUIDE.md`
 - Remote authz plan:
   - `changes/Productization/REMOTE_ACCESS_CONTROL_VIA_REST_CONNECTOR_PLAN.md`
 - Verification checklist:

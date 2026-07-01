@@ -1,54 +1,87 @@
-# Subscription Management Hub (Advanced)
+# Subscription Management Hub Advanced
 
-**Scenario:** “Explicit” integration example (shows optional annotations) while still keeping `ai-entity-config.yml` as the primary source of truth.
+## Scenario
 
-## Setup
+This app demonstrates an explicit subscription-plan integration style. It still keeps
+`ai-entity-config.yml` as the primary source of truth, but it also shows optional annotations and
+local action handlers for subscription workflows.
 
-- Spring Boot `3.2.x`, Java `21`
-- Database: H2 file (`./data/subscriptiondb`)
-- AI: deterministic local embeddings + Lucene vector DB
-- AI config file: `src/main/resources/ai-entity-config.yml`
-- Runs on port `8081` (see `src/main/resources/application.yml`)
+Use this app to compare config-first integration with annotation-assisted integration.
 
-## Build + Run
+## AI Fabric Capabilities Proved
 
-1) Install the framework artifacts:
+- Annotation-assisted indexing over subscription plans.
+- Config-driven indexing/search parity with the simple subscription app.
+- Deterministic local embeddings plus Lucene vector search.
+- Explicit reindex and search endpoints.
+- Subscription actions such as subscribe, upgrade, downgrade, cancel, and address update.
+- `@ActionAllowed` authorization hooks.
+- `@ActionConfirmation` for write actions.
+- Async indexing queue validation.
 
-`cd ../../ai-infrastructure-module && mvn -DskipTests install`
+## Framework Surfaces
 
-2) Run the app:
+- `ai-fabric-starter`
+- `ai-fabric-provider-spring-ai`
+- `ai-fabric-vector-lucene`
+- indexing queue
+- local `@AIAction` handlers
+- action authorization and confirmation annotations
+- config-driven entity metadata
 
-`cd examples/real-apps/sub-management-hub && mvn -DskipTests clean package && java -jar target/*.jar`
+## Runtime Posture
 
-## Validate Indexing + Search (Debug Endpoints)
+Default runtime:
 
-- Check what AI/indexing beans are active:
-  - `GET http://localhost:8081/api/ai/debug/indexing/components`
-- Reindex seeded subscription plans (sync):
-  - `POST http://localhost:8081/api/ai/debug/indexing/reindex/plans?mode=sync`
-- Query plans via vector search:
-  - `GET http://localhost:8081/api/ai/debug/indexing/search/plans?q=enterprise&limit=5`
-- End-to-end demo (mutate + index + search):
-  - `POST http://localhost:8081/api/ai/debug/indexing/demo?mode=sync`
+- Java 21
+- Spring Boot 4.1.0
+- H2
+- deterministic local embeddings
+- Lucene vector DB
+- no external model key required
 
-## Validate (App-Level Scenarios)
+Default port: `8081`.
 
-- Reindex plans (explicit, config-first trigger):
-  - `POST http://localhost:8081/api/demo/indexing/reindex/plans`
-- AI plan recommendation (returns scores + hydrated plans):
-  - `GET http://localhost:8081/api/subscriptions/plans/ai/search?q=team%20collaboration%20api%20access&limit=3`
-- Plan search endpoint used by the app (returns plans only, falls back to DB contains if AI isn’t available):
-  - `POST http://localhost:8081/api/subscriptions/plans/search?query=priority%20support&limit=3`
+## Run
 
-### Ready-to-run request file
+From the repository root:
 
-Use `examples/real-apps/sub-management-hub/requests/demo.http`.
+```bash
+mvn -B -V --no-transfer-progress -f examples/real-apps/pom.xml -pl sub-management-hub -am package
+java -jar examples/real-apps/sub-management-hub/target/subscription-management-hub-1.0.0-SNAPSHOT.jar
+```
 
-### Queue-based (Async) Validation
+## Validate
 
-- Enqueue indexing:
-  - `POST http://localhost:8081/api/ai/debug/indexing/reindex/plans?mode=async`
-- Process one worker tick manually:
-  - `POST http://localhost:8081/api/ai/debug/indexing/queue/run-once?strategy=async`
-- Queue status:
-  - `GET http://localhost:8081/api/ai/debug/indexing/queue`
+Focused tests/package:
+
+```bash
+mvn -B -V --no-transfer-progress -f examples/real-apps/pom.xml -pl sub-management-hub -am test
+```
+
+Use `requests/demo.http` for ready-to-run calls.
+
+## App-Level Scenario Endpoints
+
+- `POST /api/demo/indexing/reindex/plans`
+- `GET /api/subscriptions/plans/ai/search?q=team%20collaboration%20api%20access&limit=3`
+- `POST /api/subscriptions/plans/search?query=priority%20support&limit=3`
+
+## Debug/Indexing Endpoints
+
+- `GET /api/ai/debug/indexing/components`
+- `POST /api/ai/debug/indexing/reindex/plans?mode=sync`
+- `GET /api/ai/debug/indexing/search/plans?q=enterprise&limit=5`
+- `POST /api/ai/debug/indexing/demo?mode=sync`
+
+## Async Queue Validation
+
+- `POST /api/ai/debug/indexing/reindex/plans?mode=async`
+- `POST /api/ai/debug/indexing/queue/run-once?strategy=async`
+- `GET /api/ai/debug/indexing/queue`
+
+## What This App Does Not Cover
+
+- Minimal no-annotation onboarding. Use `sub-management-hub-simple`.
+- DB-backed action registry. Use `db-action-registry-lab`.
+- Tenant-scoped retrieval/deletion. Use `tenant-knowledge-portal`.

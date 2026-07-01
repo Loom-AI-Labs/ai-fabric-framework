@@ -1,0 +1,13 @@
+server:
+  port: ${PORT:8100}
+
+spring:
+  application:
+    name: mcp-operations-assistant
+
+ai:
+  providers:
+    llm-provider: ${AI_LLM_PROVIDER:smoke}
+    embedding-provider: ${AI_EMBEDDING_PROVIDER:smoke}
+  vector-db:
+    type: ${AI_VECTOR_DB_TYPE:memory}

@@ -1,0 +1,56 @@
+### List proposal templates
+GET http://localhost:8099/api/demo/db-action-registry/templates
+
+### Propose a read action
+POST http://localhost:8099/api/demo/db-action-registry/proposals/ticket.lookup
+
+### Approve the returned proposal id
+POST http://localhost:8099/api/demo/db-action-registry/proposals/{{proposalId}}/approve
+
+### Discover DB and runtime actions
+GET http://localhost:8099/api/demo/db-action-registry/discovery
+
+### Execute a registered read action
+POST http://localhost:8099/api/demo/db-action-registry/execute/ticket.lookup
+Content-Type: application/json
+
+{
+  "params": {
+    "ticketId": "TCK-1001"
+  },
+  "confirmed": false,
+  "userId": "agent-1"
+}
+
+### Propose and approve escalation before this call
+POST http://localhost:8099/api/demo/db-action-registry/execute/ticket.escalate
+Content-Type: application/json
+
+{
+  "params": {
+    "ticketId": "TCK-1001",
+    "targetQueue": "platform-sre"
+  },
+  "confirmed": false,
+  "userId": "agent-1"
+}
+
+### Confirm escalation
+POST http://localhost:8099/api/demo/db-action-registry/execute/ticket.escalate
+Content-Type: application/json
+
+{
+  "params": {
+    "ticketId": "TCK-1001",
+    "targetQueue": "platform-sre"
+  },
+  "confirmed": true,
+  "userId": "agent-1"
+}
+
+### Raw DB registry endpoint, API-key protected
+GET http://localhost:8099/api/ai/actions/registry
+X-AIFABRIC-REGISTRY-KEY: local-registry-key
+
+### Deregister an action
+DELETE http://localhost:8099/api/demo/db-action-registry/actions/ticket.lookup

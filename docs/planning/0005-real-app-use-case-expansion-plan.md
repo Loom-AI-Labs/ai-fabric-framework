@@ -1,9 +1,9 @@
 # ADR 0005 - Real app use case expansion plan for AI Fabric
 
-- **Status:** Proposed
+- **Status:** Implemented; second-pass capability coverage review added
 - **Date:** 2026-06-20
 - **Decision owner:** AI Fabric framework
-- **Context version:** AI Fabric `0.2.1`, Java `21`, Spring Boot `4.1.0`, Spring AI `2.0.0`
+- **Context version:** AI Fabric `0.3.1`, Java `21`, Spring Boot `4.1.0`, Spring AI `2.0.0`
 - **Depends on:** ADR 0002 Spring AI LLM and embedding execution, ADR 0003 Spring AI capability adoption plan, ADR 0004 vector provider hardening plan
 
 ## Context
@@ -55,58 +55,128 @@ This plan focuses on two tracks:
 | `it-support-action-bot` | Provider-only IT ticket action bot | LLM-only action orchestration, Spring AI provider, no vector/indexing/RAG requirement | `examples/real-apps/it-support-action-bot/README.md` |
 | `sub-management-hub-simple` | Config-first subscription plan search and natural language recommendation | Config-driven AI setup, Lucene, local embeddings, explicit reindex, product-level fallback | `examples/real-apps/sub-management-hub-simple/README.md` |
 | `sub-management-hub` | Annotation-assisted subscription plan search | Annotation plus config setup, behavior and relationship-query dependencies, Lucene | `examples/real-apps/sub-management-hub/README.md` |
-| `ecommerce-store` | Domain API fixture for products, carts, orders, coupons, policies, reviews | Connector/runtime boundary, event-based indexing producer shape, demo reset/clear APIs | `examples/real-apps/ecommerce-store/README.md`, `requests/demo.runtime.http` |
 | `cloud-qdrant-openai-vector-search` | Production-like semantic search with Postgres, Qdrant, and OpenAI | Cloud embeddings, external vector DB, annotation-driven indexing/search, provider configuration | `examples/real-apps/cloud-qdrant-openai-vector-search/README.md` |
 | `smoke-support` | Shared smoke profile for no-key/no-service boot | Deterministic local AI provider, deterministic embeddings, memory vector store, CI smoke support | `examples/real-apps/smoke-support/README.md` |
+| `customer-runtime-demo` | Customer-owned domain fixture plus runtime-style sync/search/actions | Data-sync DTO payloads, tenant-scoped retrieval, governed action confirmation, structured connector outage | `examples/real-apps/customer-runtime-demo/README.md`, `CustomerRuntimeServiceTest` |
+| `db-action-registry-lab` | DB-backed connector action registration, approval, discovery, execution, and deregistration | `ai-fabric-actions-registry`, DB action catalog, runtime `AIActionRegistry` refresh, connector action handler execution, API-key protected registry API | `examples/real-apps/db-action-registry-lab/README.md`, `DbActionRegistryLabServiceTest`, `DbActionRegistryControllerTest` |
+| `mcp-operations-assistant` | Governed MCP operations tool execution | `McpActionExecutor`, action access modes, confirmation policy, sanitized tool output | `examples/real-apps/mcp-operations-assistant/README.md`, `McpOperationsServiceTest` |
+| `tenant-knowledge-portal` | Tenant-aware knowledge search, catalog, actions, and deletion | Tenant metadata, role checks, cross-tenant action rejection, tenant deletion evidence | `examples/real-apps/tenant-knowledge-portal/README.md`, `TenantKnowledgeServiceTest` |
+| `document-ingestion-workbench` | Trusted document upload, preview, index, reindex, delete | Spring AI document readers, AI Fabric indexing requests, chunk manifest lifecycle, metadata sanitization | `examples/real-apps/document-ingestion-workbench/README.md`, `DocumentIngestionServiceTest` |
+| `provider-failover-lab` | Provider routing/fallback diagnostics and transient input evidence | `AIProvider`, provider fallback attempts, safe diagnostics, transient URL non-persistence evidence | `examples/real-apps/provider-failover-lab/README.md`, `ProviderFailoverServiceTest` |
+| `vector-readiness-playground` | Vector lifecycle/admin readiness evidence | `VectorDatabaseService.adminDiagnostics()`, lifecycle status, store/existence/delete evidence | `examples/real-apps/vector-readiness-playground/README.md`, `VectorReadinessServiceTest` |
 
-## Coverage gaps
+Previously deployed apps are not expansion targets in this plan. Treat the existing commerce store
+fixture as prior deployed reference material, not as a target for new scenario work.
 
-The current apps cover the core well, but these framework surfaces are not yet represented as clear
-real-world product scenarios:
+## Coverage Targets And Closure
 
-1. **Customer connector and relay end-to-end.**
-   `ecommerce-store` has the domain fixture and request shape, but the suite does not yet have a
-   first-class scenario that runs domain app + runtime + relay/actions/retrieval connector together.
+These were the framework surfaces that needed clearer real-world product scenarios. Each target is
+now either covered by the implemented app suite or intentionally left as non-expansion material.
+
+1. **Customer connector end-to-end.**
+   Covered by `customer-runtime-demo`, which runs a customer-domain fixture shape with data-sync
+   payloads, tenant-scoped retrieval, governed action confirmation, and structured connector outage
+   behavior.
 
 2. **DB-backed action registry and connector action lifecycle.**
-   The action registry modules exist, but no real app shows action registration, approval, discovery,
-   deregistration, and runtime execution against a customer-owned system.
+   Covered by `db-action-registry-lab`, which proposes actions, requires operator approval before DB
+   publication, discovers the refreshed runtime registry, executes through the connector handler path,
+   and deregisters actions from DB/runtime availability.
 
 3. **MCP action bridge.**
-   ADR 0003 and the actions connector include MCP capability, but there is no real app showing MCP
-   tools behind AI Fabric governance and confirmation policy.
+   Covered by `mcp-operations-assistant`, which exposes operations tools through AI Fabric action
+   access modes, confirmation policy, failure handling, and hidden-context sanitization.
 
 4. **Governance, catalog, retention, and deletion as a product story.**
-   Governance is present in framework modules and integration tests, but real apps do not yet show
-   compliance operators inspecting catalog state, deleting indexed customer data, and consuming
-   vector readiness evidence.
+   Covered by `privacy-first-customer-facing-support`, `tenant-knowledge-portal`, and
+   `vector-readiness-playground` through privacy inventory, deletion provider behavior, tenant
+   deletion, and vector readiness diagnostics.
 
 5. **RAG quality and evaluation gates.**
-   `smart-faq-assistant` and `chat-capabilities-demo` exercise retrieval, but neither acts as a
-   release-quality RAG evaluation workbench with golden questions, relevancy/fact checks, and
-   regression thresholds.
+   Covered by `smart-faq-assistant` golden questions, quality gate, retrieved evidence, and optional
+   Spring AI evaluation path.
 
 6. **Observability and provider diagnostics.**
-   Provider metrics, Spring AI observation diagnostics, vector readiness, and fallback evidence are
-   not yet visible in a real app workflow.
+   Covered by `provider-failover-lab` and `vector-readiness-playground`, with safe fallback
+   diagnostics, transient URL non-persistence evidence, and readiness status.
 
 7. **Tenant/role-aware AI workflows.**
-   Existing apps use user/session context, but there is no app whose core scenario proves tenant
-   isolation, role-limited actions, and retrieval allowlists.
+   Covered by `tenant-knowledge-portal`, which proves tenant-scoped search, admin/user catalog
+   visibility, cross-tenant action rejection, and tenant-specific deletion.
 
 8. **Multi-step agentic workflows.**
-   The docs describe agentic apps, and existing action bots cover single-turn execution, but there is
-   no polished real app where a user goal moves through search, planning, confirmation, action,
-   post-action generation, and audit.
+   Covered across `it-support-action-bot`, `relationship-query-crm-insights`, `behavior-churn-signals`,
+   and `db-action-registry-lab` with retrieval/evidence, planning, confirmation, action execution,
+   post-action/customer-safe summaries, and audit-style action evidence.
 
 9. **Document ingestion beyond simple DB text.**
-   The current suite mostly indexes entities stored in app tables. There is no app for PDF/Markdown/
-   knowledge-base ingestion, chunking, metadata normalization, and reindex/update/delete.
+   Covered by `document-ingestion-workbench`, which handles trusted upload, Spring AI reader preview,
+   chunk manifest lifecycle, reindex deletes, source deletion, and unsupported-file fail-closed behavior.
 
 10. **Business-domain breadth.**
-    Current domains are commerce, subscriptions, CRM, support, FAQ, behavior, and product catalog.
-    Add finance/claims, healthcare operations, HR policy, or security operations only when they prove
-    missing framework behavior, not just a different story around the same APIs.
+    Intentionally not expanded just for variety. New domains should be added only when they prove a
+    missing framework behavior, not merely a different story around the same APIs.
+
+## Capability Coverage Re-Review - 2026-07-01
+
+This second pass compared the real-app suite against
+`docs/planning/0006-framework-capability-priority-map.md` and the framework modules under
+`ai-infrastructure-module`.
+
+Conclusion: the suite does not need another broad domain app for release evidence. It already covers
+the core AI Fabric story well. The remaining worthwhile additions are narrow boundary labs for
+capabilities that are framework-owned, externally useful, and still mostly visible only in module
+tests or guides.
+
+### Coverage Decision Matrix
+
+| Capability area | Current real-app coverage | Code/guide evidence | Decision |
+| --- | --- | --- | --- |
+| Local actions, confirmation, confirmation interceptors, post-action summaries | Covered by `chat-capabilities-demo`, `it-support-action-bot`, subscription apps, and support/CRM/retention services. | `ACTIONS_AND_CONFIRMATION_INTERCEPTORS_GUIDE.md`, action handlers under `examples/real-apps/**/action`, core action tests. | No new app. Continue hardening packaged smoke scripts. |
+| DB-backed action registry | Covered by `db-action-registry-lab`. | `ai-fabric-actions-registry`, `DbActionRegistryLabServiceTest`, `DbActionRegistryControllerTest`. | No new app. This gap is now closed. |
+| File-based connector action catalog | Partially covered by connector module tests; not visible in a real app. `db-action-registry-lab` covers DB registry, not YAML catalog loading. | `ai-fabric-actions-connector/src/main/java/.../ConnectorActionCatalogLoader.java`, `ConnectorActionCatalogLoaderTest`, `ACTIONS_CONNECTOR_AND_RELAY_GUIDE.md`. | Add a focused candidate app only if file catalogs remain a public onboarding path. Best shape: `connector-catalog-lab`. |
+| Customer connector action execution | Covered by `customer-runtime-demo`, `db-action-registry-lab`, and `mcp-operations-assistant` through connector executor paths. | `ActionConnectorExecutor`, `ConnectorAIActionHandler`, app tests. | No broad new app. Extend `connector-catalog-lab` if the file-catalog path needs product evidence. |
+| Retrieval connector `/retrieval/search` documents-only boundary | Not covered by a real app. Current proof is module-level. | `ai-fabric-retrieval-connector`, `RetrievalConnectorRAGProviderTest`, `RETRIEVAL_CONNECTOR_GUIDE.md`. | Add `retrieval-connector-boundary-lab`. This is the strongest next app candidate. |
+| Data-sync push API and customer runtime | Covered by `customer-runtime-demo` and the ecommerce-to-chat smoke. | `ai-fabric-data-sync`, `DATA_SYNC_PUSH_API_GUIDE.md`, `smoke-ecommerce-chat-datasync.sh`. | No new app. |
+| Indexing queue retry/dead-letter/worker operator behavior | Ingestion and migration apps enqueue/update/delete work, but queue retry/dead-letter is only module-test visible. | `ai-fabric-indexing` queue/worker classes and tests, `document-ingestion-workbench`. | Optional `indexing-ops-lab` if operator evidence becomes release-facing. Not urgent for app suite. |
+| Spring AI document ingestion bridge | Covered by `document-ingestion-workbench`. | `SpringAiDocumentIndexingAdapter`, `SpringAiDocumentReaderFactory`, app tests. | No new app. |
+| RAG quality, evidence, and fail-closed retrieval | Covered by `smart-faq-assistant`; retrieval connector fail-closed boundary remains separate. | `FaqQualityServiceTest`, `SpringAiRagEvaluationServiceTest`. | No new app beyond the retrieval connector boundary lab. |
+| Vector lifecycle/admin readiness | Covered by `vector-readiness-playground` plus provider contract CI. | `VectorDatabaseService`, vector provider tests, Docker-backed vector provider CI. | No new app. |
+| Tenant/role-aware search and deletion | Covered by `tenant-knowledge-portal`. | `TenantKnowledgeServiceTest`, runtime auth/access guides. | No new app. |
+| Public runtime browser-token integration | Partially covered at framework metadata propagation and ecommerce authz reference level; token bootstrap/provisioning is platform-owned. | `PUBLIC_RUNTIME_BROWSER_TOKEN_INTEGRATION_GUIDE.md`, `PUBLIC_ANONYMOUS_ACTION_POLICY_GUIDE.md`, core auth-context tests, ecommerce `AuthzController`. | Add `public-runtime-policy-lab` only if AI Fabric framework owns the public token validator/runtime entrypoint. Otherwise keep in platform verification. |
+| Public anonymous action policy gates | Partially covered by action metadata and core tests; not product-shaped in a framework real app. | `anonymousAllowed` metadata, `IntentHandlingStep*` tests, public anonymous policy guide. | Same as browser-token integration: candidate only if this remains framework-owned. |
+| AI Web admin/governance controllers | Covered by `ai-fabric-web` module tests, not a real app. | `AIComplianceControllerTest`, `AISecurityControllerTest`, `AdvancedRAGControllerTest`, `MigrationControllerTest`. | Optional `admin-governance-console-lab` if `ai-fabric-web` is marketed as a user-facing starter surface. |
+| Generic REST connector pattern | Documented blueprint only; no runnable generic REST connector module in this reactor. | `GENERIC_REST_API_CONNECTOR_GUIDE.md` explicitly says the runnable connector module is not present. | Do not add a real app yet. Add `generic-rest-connector-lab` only after a framework module exists. |
+| Action registry Liquibase helper | Module-level helper only. | `ai-fabric-actions-registry-liquibase`, environment post-processor test. | No standalone app. Mention in `db-action-registry-lab` README if users need migration wiring. |
+| Marketplace plugins, public provisioning, sealed backup/restore, hosted deployment verification | Platform/control-plane capabilities, not framework runtime apps. | Marketplace, public API client, deployment export/import guides. | Keep out of `examples/real-apps`; verify in platform repository/process. |
+
+### Recommended Next App Additions
+
+Only two additions are clearly worth planning from the framework side right now:
+
+1. **`retrieval-connector-boundary-lab` - P1**
+
+   Proves a customer-owned retrieval service implementing `POST /retrieval/search` can be used as the
+   RAG provider while AI Fabric keeps generation, citations, policy, and fail-closed response
+   validation. This should include one good documents-only response, one forbidden/policy response,
+   and one invalid response containing generated-answer or prompt-like fields that AI Fabric rejects.
+
+2. **`connector-catalog-lab` - P1 conditional**
+
+   Proves file-based connector action catalogs remain viable for users who do not need the DB action
+   registry. It should load a YAML action catalog, validate access modes/confirmation metadata, execute
+   through `ConnectorAIActionHandler`, prove retry/error normalization, and show how catalog-defined
+   confirmation interceptors behave. This may also be implemented as an extension to
+   `db-action-registry-lab` if keeping app count lower is preferable.
+
+Three candidates should stay deferred until ownership is clearer:
+
+- **`public-runtime-policy-lab`**: useful if framework owns public token validation and browser-direct
+  runtime admission; otherwise platform-owned.
+- **`indexing-ops-lab`**: useful if queue retry/dead-letter/admin evidence becomes user-facing; module
+  tests currently cover the important mechanics.
+- **`admin-governance-console-lab`**: useful if `ai-fabric-web` is promoted as a user-facing starter
+  experience; otherwise controller tests are enough.
 
 ## Decision
 
@@ -114,6 +184,12 @@ Prefer enhancing existing apps before creating new apps.
 
 Create new apps only when an AI Fabric capability cannot be shown cleanly by extending an existing
 app without confusing the story.
+
+The deployable Relay service is now treated as a platform-owned runtime component, not a framework
+real-app coverage target. This plan ignores the relay module and focuses framework examples on the
+portable Customer Connector API contracts, connector client libraries, action registry behavior, and
+retrieval/data-sync boundaries. Platform verification should cover relay packaging, deployment,
+inbound auth, replay protection, rate limiting, idempotency persistence, and operational controls.
 
 Every new or enhanced app must have:
 
@@ -126,20 +202,46 @@ Every new or enhanced app must have:
 - README sections for "what this proves", "run", "validate", and "configuration";
 - no unlabeled dummy, empty, or stub production behavior.
 
+## Implementation Evidence
+
+Implemented on 2026-07-01 as a complete real-app expansion pass. The relay remains intentionally
+excluded from framework examples because it is platform-owned runtime infrastructure.
+
+| Priority item | Implementation evidence | Test evidence |
+| --- | --- | --- |
+| P0.1 Customer connector runtime scenario | Added `customer-runtime-demo` with customer-domain fixture behavior, data-sync upsert/delete payloads, tenant-scoped search, action confirmation, and structured connector outage handling. | `CustomerRuntimeServiceTest`; focused run: `mvn -B -V --no-transfer-progress -f examples/real-apps/pom.xml -pl customer-runtime-demo -am test` |
+| P0.1b DB-backed action registry lifecycle | Added `db-action-registry-lab` with controlled action proposals, approval into the DB registry, runtime discovery through `AIActionRegistry`, connector-handler execution against a customer ticket fixture, API-key protected raw registry endpoints, and deregistration. | `DbActionRegistryLabServiceTest`, `DbActionRegistryControllerTest`; focused run: `mvn -B -V --no-transfer-progress -f examples/real-apps/pom.xml -pl db-action-registry-lab -am test` |
+| P0.2 Smart FAQ RAG quality workbench | Existing `smart-faq-assistant` includes golden questions, quality gate, retrieved evidence, and optional Spring AI evaluation. | `FaqQualityServiceTest`, `FaqQualityControllerTest` |
+| P0.3 Privacy/governance support desk | Existing `privacy-first-customer-facing-support` includes governance inventory, deletion provider, deletion service delegation, and catalog evidence. | `PrivacyGovernanceServiceTest`, `SupportMessageDeletionProviderTest` |
+| P1.4 MCP operations assistant | Added `mcp-operations-assistant` with local MCP executor implementing the same `McpActionExecutor` bridge contract, read/write action policy, confirmation, and hidden-context sanitization. | `McpOperationsServiceTest` |
+| P1.5 Support operations center | Enhanced `it-support-action-bot` with `SupportOperationsService` for runbook evidence, severity classification, governed support actions, RAG-disabled fallback, and customer-safe summaries. | `SupportOperationsServiceTest` plus existing smoke action tests |
+| P1.6 SaaS retention studio | Enhanced `behavior-churn-signals` with `RetentionStudioService` for churn-risk review, behavior/plan evidence ids, and confirmation-gated retention offers. | `RetentionStudioServiceTest` |
+| P1.7 CRM revenue copilot | Enhanced `relationship-query-crm-insights` with `RevenueCopilotService` for structured planner output parsing, allowlisted entity access, follow-up task target validation, and evidence summary. | `RevenueCopilotServiceTest` |
+| P1.8 Tenant-aware knowledge portal | Added `tenant-knowledge-portal` with tenant-scoped search, admin/user catalog views, role-limited actions, cross-tenant rejection, and tenant deletion. | `TenantKnowledgeServiceTest` |
+| P2.9 Document ingestion workbench | Added `document-ingestion-workbench` with trusted uploads, Spring AI reader preview, AI Fabric indexing request planning, reindex deletes, delete lifecycle, and unsupported-file fail-closed behavior. | `DocumentIngestionServiceTest`, `DocumentIngestionControllerTest` |
+| P2.10 Provider failover diagnostics lab | Added `provider-failover-lab` with `AIProvider` probe execution, primary/fallback attempts, safe error summaries, and transient file URL non-persistence diagnostics. | `ProviderFailoverServiceTest` |
+| P2.11 Vector readiness playground | Added `vector-readiness-playground` with `READY`/`WARN`/`NOT_READY` reports from `VectorDatabaseService` diagnostics and lifecycle store/existence/delete evidence. | `VectorReadinessServiceTest` |
+
+Release verification completed for this implementation pass:
+
+- `mvn -B -V --no-transfer-progress -f examples/real-apps/pom.xml test`
+- `mvn -B -V --no-transfer-progress -f examples/real-apps/pom.xml -pl customer-runtime-demo,mcp-operations-assistant,tenant-knowledge-portal,document-ingestion-workbench,provider-failover-lab,vector-readiness-playground -am package`
+- Smoke-started the six new app jars with `--spring.profiles.active=smoke --server.port=0 --management.server.port=0`.
+
 ## Priority roadmap
 
 ### P0 - Deepen current apps for release storytelling
 
-#### 1. Commerce runtime and customer connector scenario
+#### 1. Customer connector runtime scenario
 
-**Start from:** `ecommerce-store` plus `chat-capabilities-demo`.
+**Start from:** `chat-capabilities-demo` plus a new lightweight customer-domain fixture.
 
-**Goal:** Show AI Fabric as the runtime layer for a customer-owned commerce domain app.
+**Goal:** Show AI Fabric as the runtime layer for a customer-owned domain app.
 
 **User story:**
 
-An ecommerce site owns product/order/cart data. AI Fabric runtime receives data-sync events, indexes
-products/policies/reviews, answers catalog and policy questions, and executes governed cart/order
+A customer system owns domain records and APIs. AI Fabric runtime receives data-sync events, indexes
+records and policy-like documents, answers grounded questions, and executes governed connector
 actions back against the domain app.
 
 **AI Fabric surfaces:**
@@ -148,7 +250,6 @@ actions back against the domain app.
 - `ai-fabric-actions-connector`;
 - `ai-fabric-actions-registry`;
 - `ai-fabric-retrieval-connector`;
-- `ai-fabric-relay`;
 - chat sessions;
 - action confirmation;
 - indexing update/delete lifecycle;
@@ -157,27 +258,28 @@ actions back against the domain app.
 **Implementation shape:**
 
 ```text
-ecommerce-store
+customer-domain-fixture
   -> emits domain events and exposes customer-owned domain APIs
-  -> optional relay endpoint for actions/retrieval
+  -> optional Customer Connector API endpoints or local test harness for actions/retrieval
 
-commerce-runtime-demo
-  -> uses AI Fabric data-sync to ingest product/policy/review records
+customer-runtime-demo
+  -> uses AI Fabric data-sync to ingest domain records and policy-like documents
   -> uses retrieval connector or local vector provider for RAG
-  -> uses action connector/registry for cart/order actions
+  -> uses action connector/registry for governed domain actions
   -> exposes chat/query and admin readiness endpoints
 ```
 
 **Use current apps where possible:**
 
-- Keep `ecommerce-store` as the customer-owned app.
-- Either add a new `commerce-runtime-demo` app or split the runtime parts out of
+- Add a new lightweight customer-domain fixture only if the scenario cannot be expressed cleanly
+  inside an existing app.
+- Either add a new `customer-runtime-demo` app or split the runtime parts out of
   `chat-capabilities-demo` if that app is currently carrying too many concerns.
 
 **Acceptance tests:**
 
-- Domain product create/update/delete produces matching upsert/delete request payloads.
-- Runtime search returns updated products and does not return deleted products.
+- Domain record create/update/delete produces matching upsert/delete request payloads.
+- Runtime search returns updated records and does not return deleted records.
 - Action execution requires confirmation for write actions.
 - Connector outage returns a structured AI Fabric failure instead of a raw HTTP/client exception.
 - Smoke profile starts both apps without external services.
@@ -515,7 +617,6 @@ scenario, then inspects readiness diagnostics and fallback evidence before relea
 | `it-support-action-bot` | Provider-only actions | RAG-backed support ops workflow and post-action summaries |
 | `sub-management-hub-simple` | Config-first indexing | Keep as minimal "getting started" real app |
 | `sub-management-hub` | Annotation-assisted subscription search | Merge behavior/retention storyline or keep as advanced indexing reference |
-| `ecommerce-store` | Domain API fixture | Customer connector, relay, action registry, event indexing proof |
 | `cloud-qdrant-openai-vector-search` | Cloud vector path | Add vector readiness diagnostics and metadata filter examples |
 
 ## App design rules
@@ -584,7 +685,7 @@ mvn -B -V --no-transfer-progress -f examples/real-apps/pom.xml \
 
 1. Add RAG evaluation to `smart-faq-assistant`.
 2. Extend `privacy-first-customer-facing-support` into privacy/governance deletion evidence.
-3. Build the commerce runtime/customer connector scenario around `ecommerce-store`.
+3. Build the customer connector runtime scenario around a lightweight fixture or existing chat demo harness.
 4. Add `mcp-operations-assistant`.
 5. Upgrade `it-support-action-bot` into support operations center.
 6. Extend behavior/subscription apps into SaaS retention studio.

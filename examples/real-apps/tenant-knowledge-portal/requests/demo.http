@@ -1,0 +1,29 @@
+@host = http://localhost:8101
+
+### Tenant A only sees tenant A VPN setup
+GET {{host}}/api/tenant-knowledge/search?q=VPN
+X-Tenant-Id: tenant-a
+X-Role: USER
+
+### Admin catalog sees all tenants
+GET {{host}}/api/tenant-knowledge/catalog
+X-Tenant-Id: platform
+X-Role: ADMIN
+
+### Cross-tenant action rejected
+POST {{host}}/api/tenant-knowledge/actions/execute
+Content-Type: application/json
+X-Tenant-Id: tenant-a
+X-Role: USER
+
+{
+  "actionId": "archive_document",
+  "documentId": "doc-b",
+  "accessMode": "WRITE_ONLY",
+  "confirmed": true
+}
+
+### Admin deletes one tenant
+DELETE {{host}}/api/tenant-knowledge/tenant?targetTenantId=tenant-b
+X-Tenant-Id: platform
+X-Role: ADMIN

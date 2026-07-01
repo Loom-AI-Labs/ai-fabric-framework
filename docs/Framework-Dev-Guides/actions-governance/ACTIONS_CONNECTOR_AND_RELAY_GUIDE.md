@@ -1,9 +1,9 @@
-# Actions Execution (Local + Connector + Relay) — Architecture & Developer Guide
+# Actions Execution (Local + Connector) — Architecture & Developer Guide
 
 This document extends the V5 actions model described in:
 - `./ACTIONS_AND_CONFIRMATION_INTERCEPTORS_GUIDE.md`
 
-It adds a **language-agnostic** execution path for actions via a **Customer Connector API** (optionally implemented using an **AI Fabric Relay**).
+It adds a **language-agnostic** execution path for actions via a **Customer Connector API**.
 It also documents a planned **Generic REST API Connector** pattern (actionId → upstream REST endpoint routing).
 
 > This is an architecture + productization guide for the **Actions** solution only.
@@ -30,10 +30,6 @@ It also documents a planned **Generic REST API Connector** pattern (actionId →
   - Optional “zero-config” Liquibase runner module: `ai-fabric-actions-registry-liquibase`
 - `ai-fabric-retrieval-connector`:
   - Documents-only external retrieval via `POST /retrieval/search` (as a `RAGProvider`)
-- `ai-fabric-relay` (runnable service):
-  - Customer-side Relay implementation of the Customer Connector API (`/actions/execute`, `/retrieval/search`)
-  - Inbound auth (API key and/or HMAC), replay protection, rate limiting, idempotency (in-memory by default; Redis backend supported), SSRF-safe routing (mapping/dispatcher)
-  - OpenAPI contract conformance tests pinned to `changes/Productization/customer-connector-api.openapi.yml`
 - `ai-fabric-core`:
   - Unified action registry (annotation + contributed sources)
   - Connector actions registered alongside `@AIAction` actions
@@ -47,15 +43,11 @@ Opt-in:
 
 - OpenAPI spec: `changes/Productization/customer-connector-api.openapi.yml`
 - Connector implementation guide: `../connectors/CUSTOMER_CONNECTOR_IMPLEMENTATION_GUIDE.md`
-- Relay specification + deployment guide: `../connectors/RELAY_IMPLEMENTATION_AND_DEPLOYMENT_GUIDE.md`
-- Relay implementation plan (V1 build steps): `changes/Productization/RELAY_SERVICE_IMPLEMENTATION_PLAN.md`
 - Retrieval connector guide (documents-only): `../retrieval-vectorization/RETRIEVAL_CONNECTOR_GUIDE.md`
 - Generic REST connector pattern guide: `../connectors/GENERIC_REST_API_CONNECTOR_GUIDE.md`
 
 ### Not implemented yet (planned)
 
-- Relay hardening:
-  - optional mTLS inbound auth (enterprise)
 - Runnable `ai-fabric-generic-rest-connector` service module:
   - `actionId → upstream REST endpoint` routing
   - Docker/Railway packaging
@@ -113,11 +105,14 @@ AI Fabric (hosted or self-hosted) calls **one** connector base URL, typically:
 - `POST /actions/execute` (actions)
 - (optional) `POST /retrieval/search` (documents-only retrieval for RAG)
 
-### 1.3 Relay (customer-side agent)
+### 1.3 Platform-owned relay or customer-owned connector
 
-A **Relay** is an official AI Fabric component that implements the Customer Connector API.
+The deployable Relay service is platform-owned. The framework owns the portable Customer Connector
+API contract and connector client libraries; platform/runtime code may provide a relay deployment
+that implements this contract inside a customer environment.
 
-Customers deploy the Relay inside their environment (VPC/on‑prem). The Relay then:
+Customers can also implement the connector contract directly. Either way, the service behind the
+connector boundary:
 - receives `actionId + params` from AI Fabric
 - calls internal services safely (private network)
 - returns an `ActionResult` back to AI Fabric
@@ -531,29 +526,30 @@ Connector execution must be bounded:
 
 ---
 
-## 5) Relay (recommended default for hosted deployments)
+## 5) Customer Connector Runtime Boundary
 
 ### 5.1 Who implements it?
 
-AI Fabric implements and ships the Relay as an official component (Docker image / binary).
-Customers deploy it and configure their internal routes/auth.
+AI Fabric framework owns the **Customer Connector API** contract and the runtime caller libraries.
+Deployable connector runtimes, including any Relay service, are platform-owned or customer-owned
+deployment components. They are not part of the framework reactor.
 
-### 5.2 What the Relay is responsible for (and what it is not)
+### 5.2 What the connector runtime is responsible for (and what it is not)
 
-The Relay implements the **Customer Connector API** boundary.
+The connector runtime implements the **Customer Connector API** boundary.
 
-The Relay is responsible for:
+The connector runtime is responsible for:
 - verifying inbound requests from AI Fabric (auth + integrity)
 - enforcing rate limits (defense in depth)
 - routing `actionId` safely to internal endpoints (SSRF-safe)
 - forwarding trace/user context for audit + authorization
 - producing a valid `ActionResult` response (success or error)
 
-The Relay is **not** responsible for:
+The connector runtime is **not** responsible for:
 - defining the action contract (params, required fields, confirmation text)
 - LLM prompting or orchestration logic
 
-### 5.3 Relay security model (production requirements)
+### 5.3 Connector runtime security model (production requirements)
 
 #### 5.3.1 Authentication chain (defense in depth)
 
@@ -561,7 +557,7 @@ Recommended chain:
 
 ```
 User → AI Fabric (authenticates user/session)
-     → Relay (verifies AI Fabric signature)
+     → Connector runtime (verifies AI Fabric signature)
      → Internal service (re-authorizes user)
 ```
 
@@ -573,7 +569,7 @@ Critical principle:
 
 The connector request includes `trace` fields (example: `userId`, `requestId`, `conversationId`, `sessionId`).
 
-Relay must forward enough context so internal services can:
+The connector runtime must forward enough context so internal services can:
 - authorize the user
 - write auditable logs
 - correlate distributed traces
@@ -584,7 +580,7 @@ Guidance:
 
 #### 5.3.3 Rate limiting (required)
 
-Relay should enforce:
+The connector runtime should enforce:
 - per-user limits (to prevent abuse)
 - per-action limits (to protect expensive/mutable operations)
 
@@ -595,7 +591,7 @@ If rate-limited, return:
 
 #### 5.3.4 Audit logging (required; PII-safe)
 
-Relay must log, at minimum:
+The connector runtime must log, at minimum:
 - timestamp (ISO 8601)
 - `actionId`
 - `requestId` (or equivalent correlation id)
@@ -609,34 +605,34 @@ Do not log:
 
 #### 5.3.5 Network security (required)
 
-AI Fabric → Relay:
+AI Fabric → connector runtime:
 - TLS required
 - integrity/auth required (HMAC recommended, mTLS optional later)
 - replay protection (timestamp + nonce)
 
-Relay → internal services:
+Connector runtime → internal services:
 - customer choice, but TLS + service auth is recommended
 
-### 5.4 Do actions need to be defined in the Relay?
+### 5.4 Do actions need to be defined in the connector runtime?
 
 Not the full action contract (name/params/confirmation text).
 
-But the Relay must know **where to send the call**, unless the customer uses a single internal dispatcher endpoint.
+But the connector runtime must know **where to send the call**, unless the customer uses a single internal dispatcher endpoint.
 
-Two safe relay designs:
+Two safe connector-runtime designs:
 
-**A) Relay mapping: `actionId → internal endpoint` (most controlled)**
-- Relay config file contains allowlisted actions and their internal routing
+**A) Connector mapping: `actionId → internal endpoint` (most controlled)**
+- Connector config file contains allowlisted actions and their internal routing
 - Hosted AI Fabric never sends URLs
 
-**B) Single internal dispatcher (least relay config)**
-- Relay forwards everything to one internal endpoint like `POST /actions/execute`
+**B) Single internal dispatcher (least connector config)**
+- Connector runtime forwards everything to one internal endpoint like `POST /actions/execute`
 - The customer service routes by `actionId` internally
 
 Avoid:
-- A relay that accepts arbitrary URLs from AI Fabric (SSRF risk)
+- Any connector runtime that accepts arbitrary URLs from AI Fabric (SSRF risk)
 
-### 5.5 Relay configuration example (illustrative)
+### 5.5 Connector runtime configuration example (illustrative)
 
 ```yaml
 # relay-config.yml
@@ -675,14 +671,14 @@ actions:
 audit:
   enabled: true
   destination: file
-  path: /var/log/relay/audit.jsonl
+  path: /var/log/connector/audit.jsonl
   retentionDays: 90
 ```
 
 ### 5.6 Deployment patterns
 
-- **Customer-side (recommended)**: Relay inside customer VPC/on‑prem, reachable from AI Fabric
-- **Sidecar**: if AI Fabric is deployed into customer environment, run Relay next to it for consistent architecture
+- **Customer-side (recommended)**: connector runtime inside customer VPC/on-prem, reachable from AI Fabric
+- **Sidecar**: if AI Fabric is deployed into customer environment, run the connector runtime next to it for consistent architecture
 
 ---
 
@@ -721,7 +717,7 @@ Return:
 
 This endpoint can be implemented:
 - directly by the customer, or
-- inside the Relay (which calls internal search/RAG systems)
+- inside a platform/customer connector runtime that calls internal search/RAG systems
 
 Runtime integration note:
 - AI Fabric supports this via the opt-in module `ai-fabric-retrieval-connector` (as a `RAGProvider`).
@@ -757,5 +753,4 @@ With one unified action model + connector execution:
 
 - `changes/Productization/customer-connector-api.openapi.yml`
 - `../connectors/CUSTOMER_CONNECTOR_IMPLEMENTATION_GUIDE.md`
-- `../connectors/RELAY_IMPLEMENTATION_AND_DEPLOYMENT_GUIDE.md`
 - `../retrieval-vectorization/RETRIEVAL_CONNECTOR_GUIDE.md`

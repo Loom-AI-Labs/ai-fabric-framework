@@ -1,0 +1,44 @@
+@host = http://localhost:8100
+
+### Tool catalog
+GET {{host}}/api/mcp-ops/tools
+
+### Read-only health tool
+POST {{host}}/api/mcp-ops/tools/execute
+Content-Type: application/json
+
+{
+  "actionId": "service_health",
+  "params": {"service": "checkout"},
+  "confirmed": false
+}
+
+### Rollback is gated
+POST {{host}}/api/mcp-ops/tools/execute
+Content-Type: application/json
+
+{
+  "actionId": "deployment_rollback",
+  "params": {"service": "checkout", "targetVersion": "2026.06.28"},
+  "confirmed": false
+}
+
+### Confirm rollback
+POST {{host}}/api/mcp-ops/tools/execute
+Content-Type: application/json
+
+{
+  "actionId": "deployment_rollback",
+  "params": {"service": "checkout", "targetVersion": "2026.06.28"},
+  "confirmed": true
+}
+
+### Unknown tool failure
+POST {{host}}/api/mcp-ops/tools/execute
+Content-Type: application/json
+
+{
+  "actionId": "unknown_tool",
+  "params": {},
+  "confirmed": true
+}

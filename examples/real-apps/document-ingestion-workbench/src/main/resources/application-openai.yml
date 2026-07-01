@@ -1,0 +1,5 @@
+ai:
+  providers:
+    embedding-provider: openai
+  vector-db:
+    type: lucene

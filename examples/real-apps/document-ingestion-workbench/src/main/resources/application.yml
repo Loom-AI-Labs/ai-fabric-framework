@@ -1,0 +1,47 @@
+server:
+  port: ${PORT:8098}
+
+spring:
+  application:
+    name: document-ingestion-workbench
+  datasource:
+    url: jdbc:h2:mem:documentingest;DB_CLOSE_DELAY=-1;MODE=PostgreSQL
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+  jpa:
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
+  servlet:
+    multipart:
+      max-file-size: 1MB
+      max-request-size: 1MB
+
+document-workbench:
+  trusted-root: ${DOCUMENT_WORKBENCH_TRUSTED_ROOT:${java.io.tmpdir}/ai-fabric-document-workbench}
+  entity-type: kb
+
+ai:
+  enabled: true
+  config:
+    default-file: ai-entity-config.yml
+  providers:
+    embedding-provider: ${AI_EMBEDDING_PROVIDER:openai}
+  indexing:
+    enabled: true
+  vector-db:
+    type: ${AI_VECTOR_DB_TYPE:lucene}
+  pii-detection:
+    enabled: false
+  service:
+    features:
+      enable-embeddings: true
+      enable-search: true
+      enable-generation: false
+      enable-rag: false
+
+logging:
+  level:
+    com.ai.fabric.realapps.docingest: INFO
+    ai.fabric: INFO

@@ -2,6 +2,9 @@
 
 These standalone Spring Boot applications are public examples used to validate AI Fabric Framework capabilities in realistic product shapes.
 
+For the detailed capability matrix and per-app proof notes, see
+[`REAL_APP_CAPABILITIES.md`](REAL_APP_CAPABILITIES.md).
+
 The apps are intentionally scenario-focused:
 
 - `smart-faq-assistant`: offline FAQ search using a deterministic local embedding provider and optional RAG.
@@ -10,10 +13,17 @@ The apps are intentionally scenario-focused:
 - `relationship-query-crm-insights`: natural language relationship query with an offline deterministic LLM.
 - `behavior-churn-signals`: behavior analytics and churn/sentiment insight flow with an offline deterministic LLM.
 - `chat-capabilities-demo`: chat-session storage and conversation-aware orchestration.
+- `customer-runtime-demo`: customer-owned domain fixture with data-sync, tenant-scoped retrieval, and governed actions.
+- `db-action-registry-lab`: DB-backed connector action registration, approval, discovery, execution, and deregistration.
+- `document-ingestion-workbench`: trusted document upload, preview, indexing, reindex, and delete lifecycle.
 - `it-support-action-bot`: provider-only action orchestration path.
+- `mcp-operations-assistant`: governed MCP-style operations tool execution.
+- `provider-failover-lab`: provider routing/fallback diagnostics and transient-input policy evidence.
 - `sub-management-hub-simple`: config-driven indexing setup using local deterministic embeddings by default.
 - `sub-management-hub`: annotation-assisted indexing setup using local deterministic embeddings by default.
-- `ecommerce-store`: domain API fixture for connector/runtime examples.
+- `tenant-knowledge-portal`: tenant-scoped knowledge search, catalog visibility, role-limited actions, and deletion.
+- `vector-readiness-playground`: vector provider lifecycle/admin readiness evidence.
+- `ecommerce-store`: prior deployed domain API fixture retained as reference material.
 - `cloud-qdrant-openai-vector-search`: cloud vector search shape using OpenAI, Postgres, and Qdrant.
 
 ## Build

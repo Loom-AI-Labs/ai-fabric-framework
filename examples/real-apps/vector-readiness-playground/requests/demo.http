@@ -1,0 +1,7 @@
+@host = http://localhost:8103
+
+### Readiness diagnostics
+GET {{host}}/api/vector-readiness
+
+### Store/search/delete lifecycle proof
+POST {{host}}/api/vector-readiness/lifecycle

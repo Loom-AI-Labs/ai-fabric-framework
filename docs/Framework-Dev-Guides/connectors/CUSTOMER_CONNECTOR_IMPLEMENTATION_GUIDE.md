@@ -15,7 +15,7 @@ Reference:
 
 - **Implemented in AI Fabric:** `ai-fabric-actions-connector` calls `/actions/execute`, parses the `ActionResult` contract, generates idempotency keys, and performs bounded retries.
 - **Implemented in AI Fabric:** `ai-fabric-retrieval-connector` calls `/retrieval/search` and returns documents/chunks via the `RAGProvider` contract.
-- **Reference implementation available:** `ai-fabric-relay` implements the Customer Connector API with inbound auth + replay protection + rate limits + idempotency (in-memory by default; Redis backend supported).
+- **Deployment boundary:** reference/deployable connector runtimes, including relay-style services with inbound auth + replay protection + rate limits + idempotency, are platform-owned or customer-owned and live outside this framework reactor.
 
 ---
 
@@ -68,11 +68,11 @@ Never rely on “AI Fabric already checked”.
 
 ### 2.3 Rate limiting
 
-If you expose the connector directly (without a relay), implement:
+If you expose the connector directly, implement:
 - per-user limits
 - per-action limits (especially for write actions)
 
-If you deploy a Relay, rate limiting should live there by default.
+If you deploy a shared connector runtime, rate limiting should live there by default.
 
 ### 2.4 Audit logging (PII-safe)
 

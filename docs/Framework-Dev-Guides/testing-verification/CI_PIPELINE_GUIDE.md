@@ -35,14 +35,13 @@ This is the default CI gate for framework code changes.
 | GitHub runner `ubuntu-latest` | all jobs | Uses the standard hosted runner image. |
 | repository checkout | all jobs | Every job starts from the current commit. |
 | Python 3.x + `pyyaml` | `Provider Registry` | Required by registry/release guard validation scripts. |
-| Python 3.x | `Maven Build` smoke scripts | Required by the P1 relay smoke, ecommerce-to-chat data-sync smoke, and P1 real-app scenario smoke for JSON assertions/local stub services. |
+| Python 3.x | `Maven Build` smoke scripts | Required by the ecommerce-to-chat data-sync smoke and P1 real-app scenario smoke for JSON assertions/local stub services. |
 | JDK 21 / Temurin | `Maven Build`, `Vector Provider Container Contracts` | Required for the Spring Boot 4.1.x / Java 21 framework build. |
 | Maven | `Maven Build` | Provided by the runner/JDK setup path. |
 | Docker daemon | `Maven Build`, `Vector Provider Container Contracts` | Verified before container-backed checks. Required by Testcontainers. |
 | `.github/scripts/*` guard scripts | `Provider Registry` | Must be executable and committed. |
 | `examples/minimal-spring-boot` | `Maven Build` | Used as a consumer compile check. |
 | `examples/real-apps` | `Maven Build` | Built, smoke-booted offline, used for the ecommerce-to-chat data-sync proof, and used for deterministic P1 product-flow smokes. |
-| `ai-fabric-relay` packaged boot jar | `Maven Build` | Built by the framework reactor and exercised by the P1 packaged relay local smoke. |
 | `.github/scripts/run-vector-container-contracts.sh` | `Vector Provider Container Contracts` | One-command runner for Qdrant REST/gRPC, Weaviate, and Milvus contract parity. |
 
 ### Job: Provider Registry
@@ -84,7 +83,6 @@ Step dependencies:
 | Set up JDK 21 | `actions/setup-java@v4`, Maven cache | Java 21 cannot be installed or Maven cache restore fails badly. |
 | Verify Docker is available | Docker service on `ubuntu-latest` | Docker is unavailable; this blocks container-aware verification. |
 | Build, test, and install framework reactor | JDK 21, Maven, all non-integration framework modules | Compile error, unit test failure, packaging failure, dependency resolution failure. |
-| P1 packaged relay local smoke | executable `ai-fabric-relay` jar, `.github/scripts/smoke-p1-relay-local.sh`, free local ports, Python 3 | Relay fails to boot as a packaged jar, API-key auth fails, action forwarding/idempotency fails, retrieval forwarding fails, or generated retrieval responses are not rejected. |
 | Compile restored integration test suites | Framework modules built by `-am`, integration test modules | Integration test source no longer compiles against framework APIs. |
 | Compile minimal consumer example | Installed framework artifacts and example POM | A normal consumer app cannot compile. |
 | Build and install real apps suite | Installed framework artifacts and real-app modules | Real application examples fail to compile, test, or package. |
@@ -99,12 +97,12 @@ mvn -B -V --no-transfer-progress -f ai-infrastructure-module/pom.xml \
   -Dai.vector-db.lucene.cleanup-on-close=true \
   -pl '!integration-Testing/testcontainers-support,!integration-Testing/integration-tests,!integration-Testing/relationship-query-integration-tests,!integration-Testing/chat-session-integration-tests,!integration-Testing/behavior-integration-tests' \
   install
-.github/scripts/smoke-p1-relay-local.sh
 ```
 
 This compiles, tests, packages, and installs framework modules except the restored integration-test
-suites, which are handled separately. The relay smoke then starts the packaged relay jar and a local
-stub internal service to prove the Customer Connector API boundary.
+suites, which are handled separately. Deployable relay packaging and relay-local smoke verification
+belong to the platform repository because relay is an operated runtime service, not a framework
+artifact.
 
 Then it compiles the restored integration-test suites:
 

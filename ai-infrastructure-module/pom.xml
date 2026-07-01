@@ -45,7 +45,6 @@
         <module>ai-fabric-actions-registry-liquibase</module>
         <module>ai-fabric-retrieval-connector</module>
         <module>ai-fabric-data-sync</module>
-        <module>ai-fabric-relay</module>
         <module>ai-fabric-indexing</module>
         <module>ai-fabric-pii</module>
         <module>ai-fabric-governance</module>
@@ -187,11 +186,6 @@
 		                <artifactId>ai-fabric-provider-starter</artifactId>
 		                <version>${project.version}</version>
 		            </dependency>
-            <dependency>
-                <groupId>io.github.loom-ai-labs</groupId>
-                <artifactId>ai-fabric-relay</artifactId>
-                <version>${project.version}</version>
-            </dependency>
             <dependency>
                 <groupId>io.github.loom-ai-labs</groupId>
                 <artifactId>ai-fabric-web</artifactId>

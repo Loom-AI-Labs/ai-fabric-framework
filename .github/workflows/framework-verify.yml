@@ -66,9 +66,6 @@ jobs:
         env:
           MAVEN_OPTS: -Xmx2g
 
-      - name: P1 packaged relay local smoke
-        run: .github/scripts/smoke-p1-relay-local.sh
-
       - name: Compile restored integration test suites
         run: |
           mvn ${MAVEN_ARGS} -f ai-infrastructure-module/pom.xml \

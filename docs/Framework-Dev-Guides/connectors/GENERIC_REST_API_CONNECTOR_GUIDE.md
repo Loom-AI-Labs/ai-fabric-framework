@@ -9,11 +9,13 @@ It is **domain-agnostic** and intended for “API-ready” systems (Shopify, ERP
 
 Related docs:
 - Customer Connector API contract: `./CUSTOMER_CONNECTOR_IMPLEMENTATION_GUIDE.md`
-- Actions architecture (local + connector + relay): `../actions-governance/ACTIONS_CONNECTOR_AND_RELAY_GUIDE.md`
+- Actions architecture (local + connector): `../actions-governance/ACTIONS_CONNECTOR_AND_RELAY_GUIDE.md`
 
 Code status:
-- AI Fabric currently ships the runtime caller (`ai-fabric-actions-connector`) and the hardened
-  customer-side relay (`ai-fabric-relay`).
+- AI Fabric framework currently ships the runtime caller (`ai-fabric-actions-connector`) and the
+  Customer Connector API contracts/guides.
+- Deployable connector runtimes, including any relay service, are platform-owned or customer-owned
+  components outside this framework reactor.
 - A runnable generic REST connector module is **not** present in the current reactor. Treat this guide
   as an implementation blueprint until a dedicated `ai-fabric-generic-rest-connector` module is added.
 
@@ -38,16 +40,16 @@ Code status:
 
 ---
 
-## 1) When to use this vs the Relay
+## 1) When to use this pattern
 
 Use the **Generic REST Connector pattern** when:
 - You already have upstream APIs that do **not** implement the Customer Connector API
 - You want a mapping layer: `actionId → method/url/body/headers`
 - You want AI Fabric runtime to call **one** connector base URL, while upstream remains arbitrary REST
 
-Use the **Relay** (`ai-fabric-relay`) when:
+Use a platform/customer connector runtime when:
 - Your upstream service already implements the Customer Connector API and returns `ActionResult`
-- You mainly need security hardening (inbound auth, idempotency, SSRF-safe routing) + forwarding
+- You mainly need security hardening (inbound auth, idempotency, SSRF-safe routing) plus forwarding
 
 ---
 
@@ -207,7 +209,8 @@ AI Fabric Runtime retry behavior is derived from `errorCode` + idempotency safet
 ### 6.1 Runnable module
 
 - No runnable generic REST connector module is shipped in the current AI Fabric reactor.
-- Use `ai-fabric-relay` when you need a shipped customer-side runtime today.
+- Use a platform-owned or customer-owned connector runtime when you need a deployable customer-side
+  service today.
 - If you build this pattern as a separate service, keep the expected connector contract at
   `POST /actions/execute` and expose it behind a stable connector base URL.
 - Recommended default port for a custom implementation: `8082` with `PORT` override support.

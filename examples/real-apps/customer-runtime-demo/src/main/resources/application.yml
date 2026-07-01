@@ -1,0 +1,13 @@
+server:
+  port: ${PORT:8099}
+
+spring:
+  application:
+    name: customer-runtime-demo
+
+ai:
+  providers:
+    llm-provider: ${AI_LLM_PROVIDER:smoke}
+    embedding-provider: ${AI_EMBEDDING_PROVIDER:smoke}
+  vector-db:
+    type: ${AI_VECTOR_DB_TYPE:memory}

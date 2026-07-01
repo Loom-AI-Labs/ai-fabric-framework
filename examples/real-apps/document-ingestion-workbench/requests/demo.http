@@ -1,0 +1,70 @@
+@host = http://localhost:8098
+
+### 1) Upload trusted text source
+POST {{host}}/api/documents/sources
+Content-Type: multipart/form-data; boundary=demo
+
+--demo
+Content-Disposition: form-data; name="title"
+
+Incident response runbook
+--demo
+Content-Disposition: form-data; name="tenantId"
+
+tenant-acme
+--demo
+Content-Disposition: form-data; name="visibility"
+
+internal
+--demo
+Content-Disposition: form-data; name="file"; filename="incident-runbook.txt"
+Content-Type: text/plain
+
+Rotate impacted credentials, notify the customer success owner, and preserve audit evidence.
+--demo--
+
+### 2) Preview chunks before enqueueing work
+GET {{host}}/api/documents/sources/{{sourceId}}/preview
+
+### 3) Queue indexing work and persist chunk manifest
+POST {{host}}/api/documents/sources/{{sourceId}}/index
+
+### 4) Replace source content before reindexing
+PUT {{host}}/api/documents/sources/{{sourceId}}/content
+Content-Type: multipart/form-data; boundary=demo
+
+--demo
+Content-Disposition: form-data; name="title"
+
+Incident response runbook v2
+--demo
+Content-Disposition: form-data; name="tenantId"
+
+tenant-acme
+--demo
+Content-Disposition: form-data; name="visibility"
+
+internal
+--demo
+Content-Disposition: form-data; name="file"; filename="incident-runbook.txt"
+Content-Type: text/plain
+
+Rotate impacted credentials, notify customer success, preserve audit evidence, and open a follow-up task.
+--demo--
+
+### 5) Reindex replacement; old chunks are deleted first
+POST {{host}}/api/documents/sources/{{sourceId}}/index
+
+### 6) Delete source vectors and manifest entries
+DELETE {{host}}/api/documents/sources/{{sourceId}}
+
+### 7) Safety path: unsupported file extension is rejected
+POST {{host}}/api/documents/sources
+Content-Type: multipart/form-data; boundary=demo
+
+--demo
+Content-Disposition: form-data; name="file"; filename="unsafe.exe"
+Content-Type: application/octet-stream
+
+not a trusted document
+--demo--

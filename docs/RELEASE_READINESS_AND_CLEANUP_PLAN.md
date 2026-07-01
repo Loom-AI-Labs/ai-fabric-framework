@@ -139,8 +139,8 @@ Why it matters:
   aligned the assertion with the default template's actual wording. Test-only.
 
 A fourth pre-existing failure was masked behind the core failures (the reactor stops at the
-first failing module): `RelayOpenApiContractTest` in `ai-fabric-relay` errored with
-`OpenAPI spec not found on disk … changes/Productization/customer-connector-api.openapi.yml`.
+first failing module): a connector OpenAPI contract test errored with
+`OpenAPI spec not found on disk ... changes/Productization/customer-connector-api.openapi.yml`.
 The spec was never part of this repo (it lived in the private monorepo under `Productization/`),
 and this test file was the **only** place the private `Productization/` path name appeared in
 the public repo. **Fix:** the contract test now skips gracefully (JUnit `Assumptions`) when the
@@ -182,7 +182,6 @@ Minor, non-blocking:
   use `${mapstruct.version}`.
 - `ai-infrastructure-core/pom.xml` — `jsr305:3.0.2` and `spring-cloud-context:4.0.4`
   hardcoded; promote to BOM `dependencyManagement` / properties.
-- `ai-fabric-relay/pom.xml` — `swagger-request-validator-mockmvc:2.40.0` (test) hardcoded.
 - `surefire 3.0.0` hardcoded in a couple of child modules; centralize via a property.
 
 *(Low effort, quality only.)*

@@ -17,13 +17,20 @@
         <module>behavior-churn-signals</module>
         <module>chat-capabilities-demo</module>
         <module>cloud-qdrant-openai-vector-search</module>
+        <module>customer-runtime-demo</module>
+        <module>db-action-registry-lab</module>
+        <module>document-ingestion-workbench</module>
         <module>ecommerce-store</module>
         <module>it-support-action-bot</module>
+        <module>mcp-operations-assistant</module>
         <module>migration-enabled-product-catalog</module>
         <module>privacy-first-customer-facing-support</module>
+        <module>provider-failover-lab</module>
         <module>relationship-query-crm-insights</module>
         <module>smart-faq-assistant</module>
         <module>sub-management-hub</module>
         <module>sub-management-hub-simple</module>
+        <module>tenant-knowledge-portal</module>
+        <module>vector-readiness-playground</module>
     </modules>
 </project>

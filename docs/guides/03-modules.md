@@ -81,9 +81,11 @@ and [Migration Backfill Guide](../Framework-Dev-Guides/retrieval-vectorization/M
 | `ai-fabric-actions-registry-liquibase` | Optional Liquibase helper that supplies safe DB action registry changelog defaults when the host application has not configured its own Liquibase changelog. |
 | `ai-fabric-actions-connector` | File/DB connector action catalogs plus validated outbound execution via the Customer Connector API. |
 | `ai-fabric-retrieval-connector` | Optional documents-only `RAGProvider` that connects retrieval to external content sources and backs off when a custom `RAGProvider` is present. |
-| `ai-fabric-relay` | Runnable customer-side Relay for `/actions/execute` and documents-only `/retrieval/search`, with inbound auth, replay protection, rate limits, idempotency, Redis/in-memory stores, and validated upstream response handling. |
 
 (Core orchestration and intent-extraction primitives live in `ai-fabric-core`.)
+
+The deployable Relay service is platform-owned. Framework applications should depend on the
+connector libraries above and implement or configure the Customer Connector API boundary.
 
 ## Trust, safety & operations
 

@@ -1,0 +1,12 @@
+@host = http://localhost:8102
+
+### Probe provider routing
+POST {{host}}/api/provider-lab/probe
+Content-Type: application/json
+
+{
+  "prompt": "Summarize provider readiness without leaking this prompt",
+  "primaryProvider": "openai",
+  "fallbackProviders": ["smoke"],
+  "transientFileUrl": "https://files.example/private/report.pdf?token=secret"
+}

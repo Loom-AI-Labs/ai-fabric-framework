@@ -1,60 +1,109 @@
 # Ecommerce Store
 
-This real app is the domain API fixture used by connector/runtime examples. It exposes products, carts, orders, coupons, policies, reviews, and demo reset endpoints on port `8096`.
+## Role
 
-The domain API exposes only domain endpoints such as `/api/products`, `/api/carts`, and `/api/orders`. It does not expose `/actions/execute`.
+This app is a prior deployed customer-domain API fixture retained as reference material. It is not a
+new ADR 0005 expansion target.
+
+It exposes ecommerce domain endpoints for products, carts, orders, coupons, policies, reviews, and
+demo reset operations. It does not expose `/actions/execute`; AI Fabric connector/runtime behavior is
+proved by running this app beside `chat-capabilities-demo` or another runtime.
+
+## Scenario
+
+A customer-owned ecommerce service keeps its own domain model and APIs. Product, policy, and review
+changes can emit AI Fabric data-sync requests to a separate runtime, where those records become
+searchable through AI Fabric vector search.
+
+## AI Fabric Capabilities Proved
+
+- Customer-owned app can remain outside the AI Fabric runtime process.
+- Product/policy/review writes can emit after-commit indexing events.
+- Event indexing can target a runtime data-sync endpoint.
+- Runtime vector search can find created records and stop finding deleted records.
+- Demo reset/clear endpoints support repeatable migration/runtime proof.
+- Public anonymous/authz reference logic exists for ecommerce runtime policy experiments.
+
+## Framework Surfaces
+
+- data-sync client shape
+- customer-domain boundary
+- event-based indexing producer
+- optional integration with `chat-capabilities-demo` runtime
+- admin reset/clear support for repeatable demos
+
+## Runtime Posture
+
+Default runtime is local H2 and seeded demo data. Runtime integration is optional and points to
+another app/process.
+
+Default port: `8096`.
 
 ## Run
 
 From this app folder:
 
 ```bash
-mvn -DskipTests spring-boot:run
+mvn -B -V --no-transfer-progress spring-boot:run
 ```
 
-Then:
-- Domain API Swagger UI: `http://localhost:8096/swagger-ui/index.html`
+Then open:
+
+- Swagger UI: `http://localhost:8096/swagger-ui/index.html`
 - Health: `http://localhost:8096/actuator/health`
 
-Requests file:
-- Domain API: `requests/demo.connector.http`
-- Runtime integration shape: `requests/demo.runtime.http`
+## Request Files
 
-## Demo Reset / Migration Clear (Domain API)
+- `requests/demo.connector.http`: domain API examples.
+- `requests/demo.runtime.http`: runtime integration shape.
 
-UI-facing maintenance endpoints:
-- `POST /api/admin/demo/reset` (preferred)
-- `POST /api/admin/demo/clear` (eventful; deletes indexed entities via service methods so delete-index events fire)
-- `POST /api/admin/migration/clear` (legacy alias)
+## Demo Reset And Migration Clear
 
-Both require a JSON body with at least:
-- `{"confirm": true}`
+Maintenance endpoints:
 
-These endpoints are protected by default. Configure an admin API key before calling them:
+- `POST /api/admin/demo/reset`
+- `POST /api/admin/demo/clear`
+- `POST /api/admin/migration/clear`
+
+Requests require:
+
+```json
+{"confirm": true}
+```
+
+Admin endpoints are protected by default:
+
 ```bash
 export APP_ADMIN_API_KEY="..."
 export APP_ADMIN_API_KEY_HEADER="X-ADMIN-API-KEY"
 ```
 
-The ecommerce app also accepts the older compatibility aliases
-`CONNECTOR_ADMIN_API_KEY` and `CONNECTOR_ADMIN_API_KEY_HEADER`. For local-only no-key demos, set
-`APP_ADMIN_AUTH_ENABLED=false` explicitly.
+Compatibility aliases are also accepted:
 
-## Event-Based Indexing (Products/Policies/Reviews)
+- `CONNECTOR_ADMIN_API_KEY`
+- `CONNECTOR_ADMIN_API_KEY_HEADER`
 
-The domain API can automatically index **product/policy/review** changes into a runtime or connector endpoint using after-commit event listeners.
+For local-only no-key demos, opt out explicitly:
 
-Enable or disable with:
+```bash
+export APP_ADMIN_AUTH_ENABLED=false
+```
+
+## Event-Based Indexing
+
+Enable event indexing:
 
 ```bash
 export CONNECTOR_INDEXING_ENABLED=true
+export CONNECTOR_INDEXING_RUNTIME_BASE_URL=http://localhost:8097
 ```
 
-Indexing calls are sent to `CONNECTOR_INDEXING_RUNTIME_BASE_URL`, which can point at a REST connector or runtime data-sync endpoint in an integration environment.
+Indexing calls are sent to `CONNECTOR_INDEXING_RUNTIME_BASE_URL`, which can point at an AI Fabric
+runtime data-sync endpoint or compatible connector target.
 
-## Optional Runtime Setup
+## Optional Runtime Proof With `chat-capabilities-demo`
 
-For local no-key proof, run the AI Fabric runtime app separately:
+Start the AI Fabric runtime:
 
 ```bash
 java -jar ../chat-capabilities-demo/target/chat-capabilities-demo-1.0.0-SNAPSHOT.jar \
@@ -63,7 +112,7 @@ java -jar ../chat-capabilities-demo/target/chat-capabilities-demo-1.0.0-SNAPSHOT
   --management.server.port=0
 ```
 
-Then run this customer-owned domain API with event indexing enabled:
+Start this domain API with event indexing enabled:
 
 ```bash
 CONNECTOR_INDEXING_ENABLED=true \
@@ -76,30 +125,21 @@ java -jar target/ecommerce-store-1.0.0-SNAPSHOT.jar \
   --app.demo.seed-data=false
 ```
 
-Creating or updating products, policies, and reviews will push verified data-sync requests to the
-runtime. Use `requests/demo.runtime.http` to inspect `/api/ai/data-sync/*` and
-`/api/runtime/vector-search`.
+Expected proof:
 
-For the deterministic smoke profile, verify pushed products with an exact content query. The
-suite-level guide at `examples/real-apps/README.md` includes the full create/search/delete/search
-script and expected counts.
+1. Create a product in ecommerce.
+2. Ecommerce emits an AI Fabric data-sync upsert request.
+3. Runtime vector search returns the product.
+4. Delete the product in ecommerce.
+5. Runtime vector search no longer returns it.
 
-Runtime chat/RAG integration can also use OpenAI for **LLM + embeddings** when those features are enabled.
+The top-level `examples/real-apps/README.md` includes a full curl script for this proof.
 
-```bash
-export OPENAI_ENABLED=true
-export OPENAI_API_KEY="..."
-export OPENAI_MODEL="gpt-4o-mini"
-export OPENAI_EMBEDDING_MODEL="text-embedding-3-small"
-export OPENAI_EMBEDDING_DIMENSIONS="512"
-```
+## Seed Data
 
-Then open `requests/demo.runtime.http`.
+The app seeds a small demo catalog, including `SKU-0001`, `SKU-0002`, and coupon `SAVE10`.
 
-## Demo Seed Data (Domain API)
-
-The domain API seeds a small demo catalog (including `SKU-0001` and `SKU-0002`) and a demo coupon `SAVE10` on first start.
-Disable this with:
+Disable seed data:
 
 ```bash
 export APP_DEMO_SEED_DATA=false
@@ -107,8 +147,15 @@ export APP_DEMO_SEED_DATA=false
 
 ## CORS
 
-If you are calling this API from a browser-based frontend on another domain, set:
+For browser-based frontends:
 
 ```bash
 export CORS_ALLOWED_ORIGINS="https://your-ui.example"
 ```
+
+## What This App Does Not Cover
+
+- AI Fabric action execution endpoint. Use `db-action-registry-lab`, `customer-runtime-demo`, or
+  `chat-capabilities-demo`.
+- AI Fabric runtime orchestration by itself. Use `chat-capabilities-demo`.
+- Relay/platform packaging. That belongs outside this framework repo.

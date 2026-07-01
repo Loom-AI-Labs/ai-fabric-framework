@@ -1,35 +1,84 @@
-# IT Support Action Bot (Provider-Only)
+# IT Support Action Bot
 
-**Scenario:** Provider-only orchestration + actions (no vector DB, no indexing, no RAG). This validates that AI Fabric can power action bots with only an LLM provider configured.
+## Scenario
 
-## Setup
+This app demonstrates provider-only AI Fabric action orchestration for an IT helpdesk. It does not
+need vector search, indexing, or RAG to prove that AI Fabric can run a useful action bot around a
+ticketing domain.
 
-- Spring Boot `3.2.x`, Java `21`
-- Database: H2 file (`./data/it-support.db`)
-- AI: **LLM only** (OpenAI provider module)
-- Port: `8082`
+The app includes ticket actions, authorization hooks, confirmation-required mutations, and a support
+operations service that produces runbook-aware, customer-safe summaries.
 
-## Build + Run
+## AI Fabric Capabilities Proved
 
-1) Install the framework artifacts:
+- LLM-only orchestration path.
+- Local `@AIAction` discovery and execution.
+- `@ActionAllowed` authorization checks for support operations.
+- `@ActionConfirmation` for ticket mutations.
+- Confirmation-required create, assign, close, escalate, and priority update flows.
+- Provider-only path remains usable when RAG is disabled.
+- Support operations center workflow can combine runbook evidence, severity classification, governed
+  actions, and post-action/customer-safe summaries.
 
-`cd ../../ai-infrastructure-module && mvn -DskipTests install`
+## Framework Surfaces
 
-2) Run the app:
+- `ai-fabric-provider-starter`
+- `ai-fabric-provider-spring-ai`
+- local action annotations
+- action access modes
+- action confirmation policy
+- post-action summary pattern
 
-`cd examples/real-apps/it-support-action-bot && mvn -DskipTests clean package && java -jar target/*.jar`
+## Runtime Posture
 
-## Enable the LLM provider
+Default runtime can boot without external keys. To run true LLM-backed action selection, enable an
+LLM provider such as OpenAI.
 
-By default, the app boots without requiring an API key. To run the bot:
+Default database: H2.
 
-- `export OPENAI_ENABLED=true`
-- `export OPENAI_API_KEY=...`
+Default port: `8082`.
 
-## Validate (Scenarios)
+## Run
 
-Use `examples/real-apps/it-support-action-bot/requests/demo.http`:
+From the repository root:
 
-- Seed demo tickets and agents
-- Ask the bot to create/assign/close/escalate tickets
-- Inspect tickets via REST endpoints
+```bash
+mvn -B -V --no-transfer-progress -f examples/real-apps/pom.xml -pl it-support-action-bot -am package
+java -jar examples/real-apps/it-support-action-bot/target/it-support-action-bot-1.0.0-SNAPSHOT.jar \
+  --spring.profiles.active=smoke
+```
+
+## Enable OpenAI
+
+```bash
+export OPENAI_ENABLED=true
+export OPENAI_API_KEY="..."
+```
+
+Then run the app without the smoke profile or with an OpenAI-enabled profile/config.
+
+## Validate
+
+Focused tests:
+
+```bash
+mvn -B -V --no-transfer-progress -f examples/real-apps/pom.xml -pl it-support-action-bot -am test
+```
+
+Use `requests/demo.http` to run the scenario.
+
+## Demo Flow
+
+1. Seed demo tickets and agents.
+2. Ask the bot to create a ticket.
+3. Assign or escalate a ticket.
+4. Try a mutation that requires confirmation.
+5. Confirm the pending action.
+6. Inspect the final ticket state.
+7. Generate a customer-safe support summary.
+
+## What This App Does Not Cover
+
+- Retrieval/RAG over indexed documents. Use `smart-faq-assistant` or `chat-capabilities-demo`.
+- DB-backed action registration. Use `db-action-registry-lab`.
+- MCP tool execution. Use `mcp-operations-assistant`.

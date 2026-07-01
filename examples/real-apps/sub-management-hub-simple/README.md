@@ -1,55 +1,84 @@
-# Subscription Management Hub (Simple)
+# Subscription Management Hub Simple
 
-**Scenario:** Minimal, configuration-driven AI Fabric integration (keep app code free of AI annotations).
+## Scenario
 
-## Setup
+This app demonstrates the smallest configuration-driven AI Fabric integration for subscription plan
+search. App code stays free of AI annotations; indexing/search behavior comes from
+`ai-entity-config.yml` and framework configuration.
 
-- Spring Boot `3.2.x`, Java `21`
-- Database: H2 file (`./data/subscriptiondb`)
-- AI: deterministic local embeddings + Lucene vector DB
-- AI config file: `src/main/resources/ai-entity-config.yml`
+Use this app as the "getting started" real app for config-first indexing.
 
-## Build + Run
+## AI Fabric Capabilities Proved
 
-1) Install the framework artifacts:
+- Config-driven entity indexing without AI annotations in app code.
+- Deterministic local embeddings plus Lucene vector search.
+- Explicit app-level reindex endpoint.
+- AI plan recommendation endpoint that returns scores and hydrated plans.
+- Product-level fallback when AI search is unavailable.
+- Async queue validation through debug endpoints.
 
-`cd ../../ai-infrastructure-module && mvn -DskipTests install`
+## Framework Surfaces
 
-2) Run the app (port `8080`):
+- `ai-fabric-starter`
+- `ai-fabric-provider-spring-ai`
+- `ai-fabric-vector-lucene`
+- indexing queue
+- config-driven entity metadata
+- `AICoreService.performSearch`
 
-`cd examples/real-apps/sub-management-hub-simple && mvn -DskipTests clean package && java -jar target/*.jar`
+## Runtime Posture
 
-## Validate Indexing + Search (Debug Endpoints)
+Default runtime:
 
-- Check what AI/indexing beans are active:
-  - `GET http://localhost:8080/api/ai/debug/indexing/components`
-- Reindex seeded subscription plans (sync):
-  - `POST http://localhost:8080/api/ai/debug/indexing/reindex/plans?mode=sync`
-- Query plans via vector search:
-  - `GET http://localhost:8080/api/ai/debug/indexing/search/plans?q=premium&limit=5`
-- End-to-end demo (mutate + index + search):
-  - `POST http://localhost:8080/api/ai/debug/indexing/demo?mode=sync`
+- Java 21
+- Spring Boot 4.1.0
+- H2
+- deterministic local embeddings
+- Lucene vector DB
+- no external model key required
 
-## Validate (App-Level Scenarios)
+Default port: `8080`.
 
-These endpoints are more “product-like” and validate that the framework integration works without exposing internal indexing/queue types.
+## Run
 
-- Reindex plans (explicit, config-first trigger):
-  - `POST http://localhost:8080/api/demo/indexing/reindex/plans`
-- AI plan recommendation (returns scores + hydrated plans):
-  - `GET http://localhost:8080/api/subscriptions/plans/ai/search?q=team%20collaboration%20api%20access&limit=3`
-- Plan search endpoint used by the app (returns plans only, falls back to DB contains if AI isn’t available):
-  - `POST http://localhost:8080/api/subscriptions/plans/search?query=priority%20support&limit=3`
+From the repository root:
 
-### Ready-to-run request file
+```bash
+mvn -B -V --no-transfer-progress -f examples/real-apps/pom.xml -pl sub-management-hub-simple -am package
+java -jar examples/real-apps/sub-management-hub-simple/target/subscription-management-hub-simple-1.0.0-SNAPSHOT.jar
+```
 
-Use `examples/real-apps/sub-management-hub-simple/requests/demo.http`.
+## Validate
 
-### Queue-based (Async) Validation
+Focused tests/package:
 
-- Enqueue indexing:
-  - `POST http://localhost:8080/api/ai/debug/indexing/reindex/plans?mode=async`
-- Process one worker tick manually (if you don’t want to wait for scheduling):
-  - `POST http://localhost:8080/api/ai/debug/indexing/queue/run-once?strategy=async`
-- Queue status:
-  - `GET http://localhost:8080/api/ai/debug/indexing/queue`
+```bash
+mvn -B -V --no-transfer-progress -f examples/real-apps/pom.xml -pl sub-management-hub-simple -am test
+```
+
+Use `requests/demo.http` for ready-to-run calls.
+
+## App-Level Scenario Endpoints
+
+- `POST /api/demo/indexing/reindex/plans`
+- `GET /api/subscriptions/plans/ai/search?q=team%20collaboration%20api%20access&limit=3`
+- `POST /api/subscriptions/plans/search?query=priority%20support&limit=3`
+
+## Debug/Indexing Endpoints
+
+- `GET /api/ai/debug/indexing/components`
+- `POST /api/ai/debug/indexing/reindex/plans?mode=sync`
+- `GET /api/ai/debug/indexing/search/plans?q=premium&limit=5`
+- `POST /api/ai/debug/indexing/demo?mode=sync`
+
+## Async Queue Validation
+
+- `POST /api/ai/debug/indexing/reindex/plans?mode=async`
+- `POST /api/ai/debug/indexing/queue/run-once?strategy=async`
+- `GET /api/ai/debug/indexing/queue`
+
+## What This App Does Not Cover
+
+- Optional annotation-assisted indexing. Use `sub-management-hub`.
+- Chat sessions and action orchestration. Use `chat-capabilities-demo` or `it-support-action-bot`.
+- Real cloud vector DB. Use `cloud-qdrant-openai-vector-search`.

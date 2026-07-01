@@ -89,7 +89,7 @@ On top of the core abstractions, feature modules add:
 - **Actions** — register and execute actions/tools the model can invoke, with a pending/draft store.
 - **RAG** — retrieval-augmented generation primitives over the vector store.
 - **PII** — detect and redact sensitive data in customer-facing flows.
-- **Behavior, chat-session, governance, data-sync, relay, web** — runtime concerns layered on top.
+- **Behavior, chat-session, governance, data-sync, web** — runtime concerns layered on top.
 
 See the [Modules Reference](03-modules.md) for the full list.
 

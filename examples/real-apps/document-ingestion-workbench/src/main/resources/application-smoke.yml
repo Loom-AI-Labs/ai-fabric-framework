@@ -1,0 +1,6 @@
+ai:
+  providers:
+    llm-provider: smoke
+    embedding-provider: smoke
+  vector-db:
+    type: memory

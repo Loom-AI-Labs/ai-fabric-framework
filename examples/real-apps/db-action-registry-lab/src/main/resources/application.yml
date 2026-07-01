@@ -1,0 +1,43 @@
+server:
+  port: ${PORT:8099}
+
+spring:
+  application:
+    name: db-action-registry-lab
+  datasource:
+    url: jdbc:h2:mem:db_action_registry_lab;MODE=PostgreSQL;NON_KEYWORDS=VALUE
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+  jpa:
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
+
+ai:
+  enabled: true
+  providers:
+    llm-provider: smoke
+    embedding-provider: smoke
+  actions:
+    db:
+      enabled: true
+      api-key:
+        enabled: true
+        header: X-AIFABRIC-REGISTRY-KEY
+        value: ${AI_ACTION_REGISTRY_KEY:local-registry-key}
+    connector:
+      base-url: http://db-action-registry-lab.local
+      execute-path: /actions/execute
+      max-attempts: 1
+  service:
+    features:
+      enable-embeddings: false
+      enable-search: false
+      enable-generation: false
+      enable-rag: false
+
+logging:
+  level:
+    com.ai.fabric.realapps.dbactionregistry: INFO
+    ai.fabric.intent.action.connector.registry: INFO

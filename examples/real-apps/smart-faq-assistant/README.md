@@ -1,61 +1,102 @@
-# Smart FAQ Assistant (Real_App)
+# Smart FAQ Assistant
 
-Scenario: **offline semantic search** over a curated FAQ knowledge base (DB text), with **optional** context-based answer generation when an LLM provider is added.
+## Scenario
+
+This app demonstrates offline semantic search over a curated FAQ knowledge base, with optional
+context-based answer generation when an LLM provider is configured.
 
 It also includes a local RAG quality workbench: seed the baseline FAQ corpus, run golden questions,
-inspect retrieved evidence, and fail the gate when expected FAQ articles are not retrieved. Run the
-quality workbench with the app's normal local profile so it uses the app's Lucene + `simple`
-embedding setup; the shared `smoke` profile is for no-key startup checks.
+inspect retrieved evidence, and fail the gate when expected FAQ articles are not retrieved.
 
-## What this app proves
+## AI Fabric Capabilities Proved
 
-- Config-driven AI setup via `ai-entity-config.yml` (no AI annotations required)
-- Local-first stack by default: **H2 + deterministic local embeddings + Lucene vector DB**
-- Simple, realistic demo flow: seed → reindex → semantic search → optional “ask”
-- Release-style quality gate: golden questions → AI Fabric search → retrieved evidence → pass/fail
-- Optional Spring AI-backed RAG evaluation when `ai.infrastructure.rag.evaluation.enabled=true` and a real `ChatClient.Builder` is configured
+- Config-driven AI setup through `ai-entity-config.yml`.
+- No AI annotations required for the core FAQ flow.
+- H2 plus deterministic local embeddings plus Lucene vector search.
+- FAQ seed, reindex, semantic search, and optional ask flow.
+- RAG quality gate using golden questions and expected source evidence.
+- Fail-closed quality behavior when retrieval throws or expected evidence is absent.
+- Optional Spring AI-backed RAG evaluation when `ChatClient.Builder` is configured.
+
+## Framework Surfaces
+
+- `ai-fabric-starter`
+- `ai-fabric-rag`
+- `ai-fabric-vector-lucene`
+- config-driven indexing
+- `AICoreService.performSearch`
+- optional Spring AI RAG evaluation helpers
+
+## Runtime Posture
+
+Default runtime:
+
+- H2 database
+- deterministic local embeddings
+- Lucene vector DB
+- no LLM provider required
+
+The shared `smoke` profile is for no-key startup checks. The normal local profile is better for the
+RAG quality workbench because it uses this app's Lucene plus `simple` embedding setup.
+
+Default port: `8094`.
 
 ## Run
 
-1) Build framework artifacts:
+From the repository root:
 
-`cd ai-infrastructure-module && mvn -DskipTests install`
+```bash
+mvn -B -V --no-transfer-progress -f examples/real-apps/pom.xml -pl smart-faq-assistant -am package
+java -jar examples/real-apps/smart-faq-assistant/target/smart-faq-assistant-1.0.0-SNAPSHOT.jar
+```
 
-2) Run the app:
+## Validate
 
-`cd examples/real-apps/smart-faq-assistant && mvn -DskipTests package && java -jar target/*.jar`
+Focused tests:
 
-App port: `8094`
-
-## Endpoints
-
-- `POST /api/demo/seed` (creates sample FAQ articles + indexes them)
-- `POST /api/demo/indexing/reindex/articles` (re-index all existing articles)
-- `POST /api/demo/quality/seed-and-run` (seed baseline corpus, run golden RAG retrieval gate)
-- `GET /api/faq/search?q=...&limit=...` (semantic search)
-- `POST /api/faq/ask` (search-only by default; optional contextual generation)
-- `GET /api/faq/quality/golden` (list golden questions)
-- `POST /api/faq/quality/golden/run` (run the quality gate against current indexed content)
+```bash
+mvn -B -V --no-transfer-progress -f examples/real-apps/pom.xml -pl smart-faq-assistant -am test
+```
 
 Use `requests/demo.http` to run the full scenario.
 
-## Optional: enable answer generation
+## Demo Flow
 
-By default the app runs without any LLM provider dependency (so it’s always runnable).
+1. Seed FAQ articles.
+2. Reindex FAQ articles.
+3. Run semantic search.
+4. Ask a question in search-only mode.
+5. Run the golden-question quality gate.
+6. Optionally enable answer generation and evaluator-backed checks.
 
-If you add an LLM provider module + set its keys, you can enable contextual answer generation:
+## Key Endpoints
+
+- `POST /api/demo/seed`
+- `POST /api/demo/indexing/reindex/articles`
+- `POST /api/demo/quality/seed-and-run`
+- `GET /api/faq/search?q=...&limit=...`
+- `POST /api/faq/ask`
+- `GET /api/faq/quality/golden`
+- `POST /api/faq/quality/golden/run`
+
+## Optional Answer Generation
+
+By default the app runs without an LLM provider dependency. To enable contextual generation, add an
+LLM provider module/configuration and set:
 
 - `AI_FAQ_ENABLE_GENERATION=true`
 - `AI_FAQ_ENABLE_RAG=true`
 
-## Optional: Spring AI RAG evaluation
+## Optional Spring AI RAG Evaluation
 
 The golden gate runs locally by default and checks whether expected FAQ articles are retrieved.
-If a Spring AI `ChatClient.Builder` is configured, enable evaluator-backed checks with:
 
-- `ai.infrastructure.rag.evaluation.enabled=true`
+If a Spring AI `ChatClient.Builder` is configured:
 
-Then call `POST /api/faq/quality/golden/run` with:
+- set `ai.infrastructure.rag.evaluation.enabled=true`
+- call `POST /api/faq/quality/golden/run`
+
+Example request:
 
 ```json
 {
@@ -63,3 +104,10 @@ Then call `POST /api/faq/quality/golden/run` with:
   "springAiEvaluation": true
 }
 ```
+
+## What This App Does Not Cover
+
+- Customer-owned retrieval connector boundary. That should be covered by a dedicated
+  `retrieval-connector-boundary-lab`.
+- Live provider fallback. Use `provider-failover-lab`.
+- Vector provider lifecycle/admin readiness. Use `vector-readiness-playground`.

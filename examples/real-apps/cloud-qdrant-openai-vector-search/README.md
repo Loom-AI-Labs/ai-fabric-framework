@@ -1,53 +1,108 @@
-# Cloud Qdrant + OpenAI Vector Search (Real_App)
+# Cloud Qdrant + OpenAI Vector Search
 
-Scenario: **production-like semantic search** using **Postgres** for domain storage, **Qdrant** as the external vector database, and **OpenAI** for embeddings.
+## Scenario
 
-This app is intentionally simple:
-- No custom framework wiring.
-- Indexing/embedding intent is defined via annotations (`@AICapable`, `@AISearchable`, `@AIContext`).
-- Provider + enablement config is driven by `src/main/resources/application.yml` and `src/main/resources/ai-entity-config.yml`.
+This app demonstrates a production-like semantic search stack using Postgres for domain storage,
+Qdrant as an external vector database, and OpenAI embeddings.
 
-## What this app proves
+It is intentionally simple: domain entities define indexing intent through annotations and
+configuration, then app writes call AI Fabric indexing/search APIs.
 
-- Real provider + real vector DB setup works (OpenAI embeddings + Qdrant gRPC)
-- Config-driven indexing/search (`ai.config.default-file: ai-entity-config.yml`)
-- Apps can index on write (`AICapabilityService.processEntityForAI`) and search via `AICoreService.performSearch`
+## AI Fabric Capabilities Proved
+
+- Real external embedding provider wiring with OpenAI.
+- Real external vector database wiring with Qdrant gRPC.
+- Postgres-backed domain storage.
+- Annotation-assisted indexing using `@AICapable`, `@AISearchable`, and `@AIContext`.
+- Config-driven indexing/search through `ai-entity-config.yml`.
+- Index-on-write behavior through `AICapabilityService.processEntityForAI`.
+- Semantic search through `AICoreService.performSearch`.
+
+## Framework Surfaces
+
+- `ai-fabric-starter`
+- Qdrant vector provider
+- OpenAI embedding provider path
+- annotation/config indexing
+- Spring Boot JPA/Postgres integration
+
+## Runtime Posture
+
+This is not a no-key smoke app. Full runtime validation requires:
+
+- Docker or equivalent services for Postgres and Qdrant
+- OpenAI API key
+
+Use this app for cloud/provider wiring evidence, not default local CI.
 
 ## Prerequisites
 
-- Docker (for Postgres + Qdrant) OR equivalent external services
+- Docker
 - OpenAI API key
+- Local framework artifacts installed
 
 ## Run
 
-1) Install the framework artifacts locally:
+Install framework artifacts:
 
-`cd ai-infrastructure-module && mvn -DskipTests install`
+```bash
+mvn -B -V --no-transfer-progress -f ai-infrastructure-module/pom.xml install
+```
 
-2) Start Postgres + Qdrant:
+Start Postgres and Qdrant:
 
-`cd examples/real-apps/cloud-qdrant-openai-vector-search && docker compose up -d`
+```bash
+cd examples/real-apps/cloud-qdrant-openai-vector-search
+docker compose up -d
+```
 
-If you previously ran this app with an older Qdrant image, recreate volumes to avoid client/server incompatibilities:
+If the Qdrant image or client changed, recreate volumes:
 
-`cd examples/real-apps/cloud-qdrant-openai-vector-search && docker compose down -v && docker compose up -d`
+```bash
+cd examples/real-apps/cloud-qdrant-openai-vector-search
+docker compose down -v
+docker compose up -d
+```
 
-3) Run the app (port `8098`):
+Run the app:
 
 ```bash
 export AI_PROVIDERS_OPENAI_API_KEY="..."
-cd examples/real-apps/cloud-qdrant-openai-vector-search
-mvn -DskipTests package
-java -jar target/*.jar
+mvn -B -V --no-transfer-progress package
+java -jar target/cloud-qdrant-openai-vector-search-1.0.0-SNAPSHOT.jar
 ```
 
-## Configuration (minimal)
+Default port: `8098`.
 
-- OpenAI:
-  - `AI_PROVIDERS_OPENAI_API_KEY` (required)
-- Qdrant:
-  - `AI_PROVIDERS_QDRANT_HOST` (defaults to `localhost`)
-  - `AI_PROVIDERS_QDRANT_GRPC_PORT` (defaults to `6334`)
-  - `AI_PROVIDERS_QDRANT_API_KEY` (optional; needed for Qdrant Cloud)
+## Validate
 
-Use `requests/demo.http` to run the scenario.
+Use `requests/demo.http` to run the scenario:
+
+1. Create or update domain records.
+2. Trigger AI Fabric indexing.
+3. Search through the semantic endpoint.
+4. Confirm results come from Qdrant-backed vector search.
+
+Focused build/test command:
+
+```bash
+mvn -B -V --no-transfer-progress -f examples/real-apps/pom.xml -pl cloud-qdrant-openai-vector-search -am test
+```
+
+## Configuration
+
+OpenAI:
+
+- `AI_PROVIDERS_OPENAI_API_KEY`
+
+Qdrant:
+
+- `AI_PROVIDERS_QDRANT_HOST`, default `localhost`
+- `AI_PROVIDERS_QDRANT_GRPC_PORT`, default `6334`
+- `AI_PROVIDERS_QDRANT_API_KEY`, required only for secured/Qdrant Cloud deployments
+
+## What This App Does Not Cover
+
+- No-key/offline release smoke. Use `smoke-support` and local apps.
+- Vector lifecycle/admin readiness comparison. Use `vector-readiness-playground`.
+- RAG quality gates. Use `smart-faq-assistant`.
