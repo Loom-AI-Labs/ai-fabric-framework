@@ -46,6 +46,12 @@ ai:
             - commerce_get_most_recent_order_status
             - commerce_get_order_status
             - commerce_get_store_credit_balances
+            - list_products
+            - search_products
+            - get_product_details
+            - check_availability
+            - get_policy
+            - view_cart
           max-actions-per-iteration: 2
           max-total-actions: 2
           max-parallel-actions: 1
@@ -78,6 +84,12 @@ ai:
             - commerce_get_most_recent_order_status
             - commerce_get_order_status
             - commerce_get_store_credit_balances
+            - list_products
+            - search_products
+            - get_product_details
+            - check_availability
+            - get_policy
+            - view_cart
           max-actions-per-iteration: 2
           max-total-actions: 2
           max-parallel-actions: 1
@@ -99,6 +111,12 @@ ai:
             - commerce_get_most_recent_order_status
             - commerce_get_order_status
             - commerce_get_store_credit_balances
+            - list_products
+            - search_products
+            - get_product_details
+            - check_availability
+            - get_policy
+            - view_cart
           max-actions-per-iteration: 2
           max-total-actions: 2
           max-parallel-actions: 1
@@ -125,6 +143,12 @@ ai:
             - commerce_get_most_recent_order_status
             - commerce_get_order_status
             - commerce_get_store_credit_balances
+            - list_products
+            - search_products
+            - get_product_details
+            - check_availability
+            - get_policy
+            - view_cart
           max-actions-per-iteration: 2
           max-total-actions: 2
           max-parallel-actions: 1
@@ -153,6 +177,12 @@ ai:
             - commerce_get_most_recent_order_status
             - commerce_get_order_status
             - commerce_get_store_credit_balances
+            - list_products
+            - search_products
+            - get_product_details
+            - check_availability
+            - get_policy
+            - view_cart
           max-iterations: 2
           max-actions-per-iteration: 2
           max-total-actions: 3

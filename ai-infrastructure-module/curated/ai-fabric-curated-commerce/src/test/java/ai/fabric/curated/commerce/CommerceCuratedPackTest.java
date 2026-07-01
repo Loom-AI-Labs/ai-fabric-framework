@@ -60,15 +60,15 @@ class CommerceCuratedPackTest {
                 "commerce_get_customer_context_summary",
                 "commerce_get_most_recent_order_status",
                 "commerce_get_order_status",
-                "commerce_get_store_credit_balances"
-            )
-            .doesNotContain(
+                "commerce_get_store_credit_balances",
                 "list_products",
                 "search_products",
                 "get_product_details",
                 "check_availability",
                 "get_policy",
-                "view_cart",
+                "view_cart"
+            )
+            .doesNotContain(
                 "relationship_query",
                 "find_similar_products",
                 "compare_products"
@@ -111,15 +111,15 @@ class CommerceCuratedPackTest {
                 "commerce_get_customer_context_summary",
                 "commerce_get_most_recent_order_status",
                 "commerce_get_order_status",
-                "commerce_get_store_credit_balances"
-            )
-            .doesNotContain(
+                "commerce_get_store_credit_balances",
                 "list_products",
                 "search_products",
                 "get_product_details",
                 "check_availability",
                 "get_policy",
-                "view_cart",
+                "view_cart"
+            )
+            .doesNotContain(
                 "relationship_query",
                 "find_similar_products",
                 "compare_products"
@@ -138,15 +138,15 @@ class CommerceCuratedPackTest {
                 "commerce_get_customer_context_summary",
                 "commerce_get_most_recent_order_status",
                 "commerce_get_order_status",
-                "commerce_get_store_credit_balances"
-            )
-            .doesNotContain(
+                "commerce_get_store_credit_balances",
                 "list_products",
                 "search_products",
                 "get_product_details",
                 "check_availability",
                 "get_policy",
-                "view_cart",
+                "view_cart"
+            )
+            .doesNotContain(
                 "relationship_query",
                 "find_similar_products",
                 "compare_products"
