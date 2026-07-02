@@ -39,14 +39,80 @@ Default runtime is local-only:
 
 Use this app to prove behavior analytics independently from RAG/vector infrastructure.
 
-## Run
+## Public Demo App
+
+This app backs the public AI Fabric demo page:
+
+- Demo UI: `https://ai-fabric.dev/demos/ai-fabric-behavior-signals`
+- Expected backend runtime: `https://behavior-churn-signals.46.224.145.148.sslip.io`
+- Demo API base path: `/api/behavior-demo`
+
+The demo shows an operator workflow for a SaaS retention team:
+
+1. Reset and analyze seeded account behavior.
+2. Review churn, sentiment, trend, and immediate-action evidence.
+3. Inject a new behavior signal such as cancellation intent.
+4. Preview a retention action that requires confirmation.
+5. Confirm the action and inspect the executed result.
+
+## Run Locally
 
 From the repository root:
 
-```bash
-mvn -B -V --no-transfer-progress -f examples/real-apps/pom.xml -pl behavior-churn-signals -am package
-java -jar examples/real-apps/behavior-churn-signals/target/behavior-churn-signals-1.0.0-SNAPSHOT.jar
-```
+1. Package the app and its real-app dependencies:
+
+   ```bash
+   mvn -B -V --no-transfer-progress -f examples/real-apps/pom.xml \
+     -pl behavior-churn-signals -am package
+   ```
+
+2. Start the app:
+
+   ```bash
+   java -jar examples/real-apps/behavior-churn-signals/target/behavior-churn-signals-1.0.0-SNAPSHOT.jar
+   ```
+
+3. Open the local health endpoint:
+
+   ```bash
+   curl -fsS http://localhost:8097/actuator/health
+   ```
+
+4. Seed and analyze the demo scenarios:
+
+   ```bash
+   curl -fsS -X POST http://localhost:8097/api/behavior-demo/seed-and-analyze | jq
+   ```
+
+5. Inject a cancellation signal for the high-risk account:
+
+   ```bash
+   curl -fsS -X POST http://localhost:8097/api/behavior-demo/scenarios/user-1001/signals \
+     -H 'Content-Type: application/json' \
+     -d '{
+       "eventType": "CANCEL_INTENT",
+       "eventData": {
+         "message": "Customer says renewal failed twice and asks how to cancel before month end."
+       },
+       "source": "local-demo"
+     }' | jq
+   ```
+
+6. Preview the confirmation-gated retention offer:
+
+   ```bash
+   curl -fsS -X POST http://localhost:8097/api/behavior-demo/scenarios/user-1001/retention-offer \
+     -H 'Content-Type: application/json' \
+     -d '{"discountPercent":25,"confirmed":false}' | jq
+   ```
+
+7. Confirm the retention action:
+
+   ```bash
+   curl -fsS -X POST http://localhost:8097/api/behavior-demo/scenarios/user-1001/retention-offer \
+     -H 'Content-Type: application/json' \
+     -d '{"discountPercent":25,"confirmed":true}' | jq
+   ```
 
 Default port: `8097`.
 
@@ -106,7 +172,7 @@ docker build -f examples/real-apps/behavior-churn-signals/Dockerfile \
   examples/real-apps
 ```
 
-Run:
+Run the image:
 
 ```bash
 docker run --rm -p 8097:8097 \
@@ -114,6 +180,16 @@ docker run --rm -p 8097:8097 \
   -e CORS_ALLOWED_ORIGINS=https://ai-fabric.dev \
   ai-fabric-behavior-churn-signals:0.3.1
 ```
+
+Then verify the running container:
+
+```bash
+curl -fsS http://localhost:8097/actuator/health
+curl -fsS -X POST http://localhost:8097/api/behavior-demo/seed-and-analyze | jq
+```
+
+For a local frontend smoke, set `CORS_ALLOWED_ORIGINS` to the local UI origin instead, for example
+`http://127.0.0.1:4173`.
 
 Suggested deployment values:
 

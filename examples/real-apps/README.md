@@ -26,6 +26,30 @@ The apps are intentionally scenario-focused:
 - `ecommerce-store`: prior deployed domain API fixture retained as reference material.
 - `cloud-qdrant-openai-vector-search`: cloud vector search shape using OpenAI, Postgres, and Qdrant.
 
+## Public Demo Apps
+
+`behavior-churn-signals` backs the public AI Fabric Behavior Signals demo at
+`https://ai-fabric.dev/demos/ai-fabric-behavior-signals`.
+
+To run the backend locally from the repository root:
+
+```bash
+mvn -B -V --no-transfer-progress -f examples/real-apps/pom.xml \
+  -pl behavior-churn-signals -am package
+
+java -jar examples/real-apps/behavior-churn-signals/target/behavior-churn-signals-1.0.0-SNAPSHOT.jar
+```
+
+Then seed the demo data:
+
+```bash
+curl -fsS -X POST http://localhost:8097/api/behavior-demo/seed-and-analyze | jq
+```
+
+For Docker deployment, use
+[`behavior-churn-signals/Dockerfile`](behavior-churn-signals/Dockerfile) with build context
+`examples/real-apps`.
+
 ## Build
 
 Install the framework artifacts from the local checkout first:
