@@ -65,7 +65,7 @@ public class UpdateAddressActionHandler extends BaseActionHandler {
 
     @ActionExecute
     public ActionResult execute(
-        @Param(value = "subscriptionId", required = true, description = "UUID of the subscription") String subscriptionId,
+        @Param(value = "subscriptionId", description = "UUID of the subscription") String subscriptionId,
         @Param(value = "addressType", description = "BILLING or SHIPPING") String addressType,
         @Param(value = "streetAddress", required = true, description = "Street address") String streetAddress,
         @Param(value = "city", required = true, description = "City") String city,
@@ -108,8 +108,9 @@ public class UpdateAddressActionHandler extends BaseActionHandler {
                 address.setValidationScore(1.0);
             }
 
+            UUID resolvedSubscriptionId = resolveSubscriptionId(subscriptionId, context);
             var subscription = subscriptionService.updateAddress(
-                UUID.fromString(subscriptionId),
+                resolvedSubscriptionId,
                 parsedType,
                 address
             );
@@ -118,8 +119,8 @@ public class UpdateAddressActionHandler extends BaseActionHandler {
                 .success(true)
                 .message("Your address has been updated successfully")
                 .data(ActionResultContracts.object(Map.of(
-                    "subscriptionId", subscriptionId,
-                    "addressType", addressType.toString(),
+                    "subscriptionId", resolvedSubscriptionId.toString(),
+                    "addressType", type,
                     "isValidated", address.getIsValidated().toString()
                 )))
                 .build();
@@ -131,5 +132,19 @@ public class UpdateAddressActionHandler extends BaseActionHandler {
                 .errorCode("UPDATE_ADDRESS_FAILED")
                 .build();
         }
+    }
+
+    private UUID resolveSubscriptionId(String subscriptionId, ActionContext context) {
+        if (subscriptionId != null && !subscriptionId.isBlank()) {
+            return UUID.fromString(subscriptionId);
+        }
+        String userId = context != null ? context.userId() : null;
+        if (userId == null || userId.isBlank()) {
+            throw new IllegalArgumentException("subscriptionId or userId is required");
+        }
+        UUID userUuid = parseUserId(userId);
+        return subscriptionService.getActiveSubscription(userUuid)
+            .map(subscription -> subscription.getId())
+            .orElseThrow(() -> new IllegalArgumentException("Active subscription not found for user"));
     }
 }

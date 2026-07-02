@@ -1,32 +1,52 @@
-# Subscription Management Hub Advanced
+# AI Fabric Account Resolver
 
 ## Scenario
 
-This app demonstrates an explicit subscription-plan integration style. It still keeps
-`ai-entity-config.yml` as the primary source of truth, but it also shows optional annotations and
-local action handlers for subscription workflows.
+This app demonstrates an AI-enabled account resolver for subscription and checkout-style blockers. It is built from the original subscription management hub, but the demo focus is now account diagnosis and governed resolution:
 
-Use this app to compare config-first integration with annotation-assisted integration.
+- Inspect whether an account can continue using the app or place an order.
+- Explain blockers such as missing payment method, missing billing address, or inactive subscription.
+- Let AI Fabric propose safe read actions and confirmable write actions.
+- Resolve payment, address, cancellation, plan change, and refund/account-credit issues through local `@AIAction` handlers.
+
+## Demo Personas
+
+Seed deterministic resolver personas with:
+
+```bash
+curl -X POST http://localhost:8081/api/account-resolver/demo/seed
+```
+
+The seeded demo users are:
+
+- `91` ready account: active subscription, validated address, verified payment method.
+- `92` missing payment: active subscription and address, but ordering is blocked by missing payment.
+- `93` missing address: active subscription and payment method, but ordering is blocked by missing billing address.
+- `94` refund request: usable account with a billing issue that can become an account credit or refund.
 
 ## AI Fabric Capabilities Proved
 
+- Read-action grounding through `inspect_account_readiness`.
+- Confirmable write actions through `update_payment_method`, `update_address`, `request_refund`, `cancel_subscription`, `upgrade_subscription`, and `downgrade_subscription`.
+- Action authorization through `@ActionAllowed`.
+- Action confirmation through `@ActionConfirmation`.
+- Post-action readiness evidence returned as structured `ActionResult` payloads.
+- Policy-backed resolver behavior without hardcoded frontend business logic.
 - Annotation-assisted indexing over subscription plans.
-- Config-driven indexing/search parity with the simple subscription app.
 - Deterministic local embeddings plus Lucene vector search.
 - Explicit reindex and search endpoints.
-- Subscription actions such as subscribe, upgrade, downgrade, cancel, and address update.
-- `@ActionAllowed` authorization hooks.
-- `@ActionConfirmation` for write actions.
-- Async indexing queue validation.
+- Behavior event capture for subscription and resolution actions.
 
 ## Framework Surfaces
 
 - `ai-fabric-starter`
 - `ai-fabric-provider-spring-ai`
 - `ai-fabric-vector-lucene`
+- `ai-fabric-behavior`
 - indexing queue
 - local `@AIAction` handlers
 - action authorization and confirmation annotations
+- planner-eligible read actions
 - config-driven entity metadata
 
 ## Runtime Posture
@@ -35,20 +55,53 @@ Default runtime:
 
 - Java 21
 - Spring Boot 4.1.0
-- H2
+- H2 file database
 - deterministic local embeddings
 - Lucene vector DB
-- no external model key required
+- no external model key required unless `OPENAI_ENABLED=true`
 
 Default port: `8081`.
 
-## Run
+## Run Locally
 
 From the repository root:
 
 ```bash
 mvn -B -V --no-transfer-progress -f examples/real-apps/pom.xml -pl sub-management-hub -am package
-java -jar examples/real-apps/sub-management-hub/target/subscription-management-hub-1.0.0-SNAPSHOT.jar
+java -jar examples/real-apps/sub-management-hub/target/ai-fabric-account-resolver-1.0.0-SNAPSHOT.jar
+```
+
+With OpenAI for real LLM orchestration:
+
+```bash
+OPENAI_ENABLED=true \
+OPENAI_API_KEY="$OPENAI_API_KEY" \
+OPENAI_MODEL=gpt-4o-mini \
+PORT=8081 \
+java -jar examples/real-apps/sub-management-hub/target/ai-fabric-account-resolver-1.0.0-SNAPSHOT.jar
+```
+
+## Docker
+
+Build from the repo root:
+
+```bash
+docker build -f examples/real-apps/sub-management-hub/Dockerfile \
+  --build-arg AI_FABRIC_VERSION=0.3.1 \
+  -t ai-fabric-account-resolver:0.3.1 \
+  examples/real-apps
+```
+
+Run:
+
+```bash
+docker run --rm -p 8081:8081 \
+  -e PORT=8081 \
+  -e OPENAI_ENABLED=true \
+  -e OPENAI_API_KEY="$OPENAI_API_KEY" \
+  -e OPENAI_MODEL=gpt-4o-mini \
+  -e CORS_ALLOWED_ORIGINS=https://ai-fabric.dev \
+  ai-fabric-account-resolver:0.3.1
 ```
 
 ## Validate
@@ -61,24 +114,32 @@ mvn -B -V --no-transfer-progress -f examples/real-apps/pom.xml -pl sub-managemen
 
 Use `requests/demo.http` for ready-to-run calls.
 
-## App-Level Scenario Endpoints
+## Resolver Endpoints
 
-- `POST /api/demo/indexing/reindex/plans`
-- `GET /api/subscriptions/plans/ai/search?q=team%20collaboration%20api%20access&limit=3`
-- `POST /api/subscriptions/plans/search?query=priority%20support&limit=3`
+- `GET /api/account-resolver/policies`
+- `GET /api/account-resolver/scenarios`
+- `POST /api/account-resolver/demo/seed`
+- `GET /api/account-resolver/users/{userId}/readiness`
+- `GET /api/account-resolver/subscriptions/{subscriptionId}/readiness`
+- `POST /api/account-resolver/subscriptions/{subscriptionId}/payment-method`
+- `PUT /api/account-resolver/subscriptions/{subscriptionId}/billing-address`
+- `POST /api/account-resolver/subscriptions/{subscriptionId}/refund`
 
-## Debug/Indexing Endpoints
+Natural language orchestration stays at:
 
-- `GET /api/ai/debug/indexing/components`
-- `POST /api/ai/debug/indexing/reindex/plans?mode=sync`
-- `GET /api/ai/debug/indexing/search/plans?q=enterprise&limit=5`
-- `POST /api/ai/debug/indexing/demo?mode=sync`
+- `POST /api/subscriptions/query`
+- `POST /api/subscriptions/query/actions/execute`
 
-## Async Queue Validation
+When no `position` is provided, this app defaults to `resolver`.
 
-- `POST /api/ai/debug/indexing/reindex/plans?mode=async`
-- `POST /api/ai/debug/indexing/queue/run-once?strategy=async`
-- `GET /api/ai/debug/indexing/queue`
+## Deployment Env Vars
+
+- `PORT=8081`
+- `OPENAI_ENABLED=true`
+- `OPENAI_API_KEY=<set in deployment secret store>`
+- `OPENAI_MODEL=gpt-4o-mini`
+- `CORS_ALLOWED_ORIGINS=https://ai-fabric.dev`
+- `JAVA_OPTS=-Xms256m -Xmx768m`
 
 ## What This App Does Not Cover
 

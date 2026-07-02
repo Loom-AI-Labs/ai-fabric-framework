@@ -285,6 +285,7 @@ public class DataInitializer implements CommandLineRunner {
             .churnRiskScore(random.nextDouble() * 0.4) // Low to medium risk (0.0-0.4)
             .billingAddress(createRandomAddress(Address.AddressType.BILLING, user.getUserId()))
             .shippingAddress(createRandomAddress(Address.AddressType.SHIPPING, user.getUserId()))
+            .paymentMethod(createRandomPaymentMethod(user.getUserId(), true))
             .build();
     }
 
@@ -303,6 +304,7 @@ public class DataInitializer implements CommandLineRunner {
             .lastActivityDate(cancelDate)
             .churnRiskScore(0.85 + random.nextDouble() * 0.15) // High risk (0.85-1.0)
             .billingAddress(createRandomAddress(Address.AddressType.BILLING, user.getUserId()))
+            .paymentMethod(createRandomPaymentMethod(user.getUserId(), true))
             .build();
     }
 
@@ -322,6 +324,7 @@ public class DataInitializer implements CommandLineRunner {
             .churnRiskScore(0.6 + random.nextDouble() * 0.25) // Medium-high risk (0.6-0.85)
             .billingAddress(createRandomAddress(Address.AddressType.BILLING, user.getUserId()))
             .shippingAddress(createRandomAddress(Address.AddressType.SHIPPING, user.getUserId()))
+            .paymentMethod(createRandomPaymentMethod(user.getUserId(), false))
             .build();
     }
 
@@ -340,6 +343,7 @@ public class DataInitializer implements CommandLineRunner {
             .lastActivityDate(endDate.minusDays(random.nextInt(30)))
             .churnRiskScore(0.9 + random.nextDouble() * 0.1) // Very high risk (0.9-1.0)
             .billingAddress(createRandomAddress(Address.AddressType.BILLING, user.getUserId()))
+            .paymentMethod(createRandomPaymentMethod(user.getUserId(), false))
             .build();
     }
 
@@ -368,6 +372,16 @@ public class DataInitializer implements CommandLineRunner {
             .type(type)
             .isValidated(isValidated)
             .validationScore(validationScore)
+            .build();
+    }
+
+    private PaymentMethod createRandomPaymentMethod(Long userId, boolean verified) {
+        String last4 = String.format("%04d", (4000 + userId) % 10000);
+        return PaymentMethod.builder()
+            .type(PaymentMethod.PaymentType.CARD)
+            .provider("Visa")
+            .last4(last4)
+            .verified(verified)
             .build();
     }
 }

@@ -24,14 +24,70 @@ POST {{baseUrl}}/api/ai/debug/indexing/demo?mode=sync
 ### Guest login (returns numeric userId + UUID)
 POST {{baseUrl}}/api/auth/guest/login
 
-### Natural language orchestration (position-aware: support)
+### Account resolver policies
+GET {{baseUrl}}/api/account-resolver/policies
+
+### Account resolver scenarios
+GET {{baseUrl}}/api/account-resolver/scenarios
+
+### Seed deterministic account resolver personas
+POST {{baseUrl}}/api/account-resolver/demo/seed
+
+### Inspect ready account
+GET {{baseUrl}}/api/account-resolver/users/91/readiness
+
+### Inspect missing payment blocker
+GET {{baseUrl}}/api/account-resolver/users/92/readiness
+
+### Inspect missing address blocker
+GET {{baseUrl}}/api/account-resolver/users/93/readiness
+
+### Natural language orchestration (position-aware: resolver)
 POST {{baseUrl}}/api/subscriptions/query
 Content-Type: application/json
 
 {
-  "userId": "1",
+  "userId": "92",
   "sessionId": "subhub-session-1",
   "conversationId": "chat-subhub-1",
-  "position": "support",
-  "query": "Which subscription plan is best for a small team that needs API access and analytics?"
+  "position": "resolver",
+  "query": "Why can't I place an order? If payment is missing, add my Visa ending 4242."
+}
+
+### Execute inspect readiness read action manually
+POST {{baseUrl}}/api/subscriptions/query/actions/execute
+Content-Type: application/json
+
+{
+  "action": "inspect_account_readiness",
+  "userId": "92",
+  "confirmed": true,
+  "params": {}
+}
+
+### Confirm and execute payment-method resolution manually
+POST {{baseUrl}}/api/subscriptions/query/actions/execute
+Content-Type: application/json
+
+{
+  "action": "update_payment_method",
+  "userId": "92",
+  "confirmed": true,
+  "params": {
+    "type": "CARD",
+    "provider": "Visa",
+    "last4": "4242"
+  }
+}
+
+### Natural language refund/account-credit scenario
+POST {{baseUrl}}/api/subscriptions/query
+Content-Type: application/json
+
+{
+  "userId": "94",
+  "sessionId": "subhub-session-2",
+  "conversationId": "chat-subhub-2",
+  "position": "resolver",
+  "query": "I was charged after a support incident. Please give me a $25 account credit."
 }

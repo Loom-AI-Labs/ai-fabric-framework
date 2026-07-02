@@ -63,8 +63,8 @@ public class NaturalLanguageController {
         if (request.getPosition() != null && !request.getPosition().isBlank()) {
             builder.position(request.getPosition());
         } else {
-            // This API represents a support-style workflow; default to the support position when not provided.
-            builder.position("support");
+            // This API represents an account resolver workflow; callers may override the position.
+            builder.position("resolver");
         }
         if (request.getMode() != null && !request.getMode().isBlank()) {
             builder.mode(request.getMode());

@@ -68,6 +68,10 @@ public class Subscription {
     @JoinColumn(name = "shipping_address_id")
     private Address shippingAddress;
 
+    @OneToOne(cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    @JoinColumn(name = "payment_method_id")
+    private PaymentMethod paymentMethod;
+
     // Note: planId is used directly; plan relationship removed to avoid JPA column mapping conflict
     // If needed, can be added as @ManyToOne with @JoinColumn(name = "plan_id", insertable = false, updatable = false)
 
