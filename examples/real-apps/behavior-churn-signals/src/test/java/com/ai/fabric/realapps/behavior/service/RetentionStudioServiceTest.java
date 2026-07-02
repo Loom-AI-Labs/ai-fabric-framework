@@ -40,4 +40,19 @@ class RetentionStudioServiceTest {
         assertThat(executed.success()).isTrue();
         assertThat(executed.data()).containsEntry("accountId", "acct-1001");
     }
+
+    @Test
+    void singleFailedPaymentIsMediumRiskUntilSignalsRepeat() {
+        RetentionStudioService.RetentionReviewResult result = service.review(new RetentionStudioService.RetentionReviewRequest(
+            "acct-1003",
+            "user-1003",
+            "starter",
+            12,
+            1,
+            0
+        ));
+
+        assertThat(result.riskCategory()).isEqualTo("MEDIUM");
+        assertThat(result.recommendation()).contains("adoption review");
+    }
 }

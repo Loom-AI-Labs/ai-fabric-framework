@@ -39,3 +39,15 @@ logging:
     com.ai.fabric.realapps.behavior: INFO
     ai.fabric.behavior: INFO
     ai.fabric: INFO
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+app:
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:}
+    allowed-origin-patterns: ${CORS_ALLOWED_ORIGIN_PATTERNS:}
+    allow-credentials: ${CORS_ALLOW_CREDENTIALS:false}

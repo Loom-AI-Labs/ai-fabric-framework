@@ -15,3 +15,42 @@ GET http://localhost:8097/api/behavior/insights
 
 ### 5) Built-in analytics: rapidly declining users
 GET http://localhost:8097/api/behavior/analytics/rapid-decline
+
+### 6) Public demo dashboard
+GET http://localhost:8097/api/behavior-demo/dashboard
+
+### 7) Seed and analyze all public demo scenarios
+POST http://localhost:8097/api/behavior-demo/seed-and-analyze
+
+### 8) Analyze one public demo scenario
+POST http://localhost:8097/api/behavior-demo/scenarios/user-1001/analyze
+
+### 9) Inject a new behavior signal and re-analyze
+POST http://localhost:8097/api/behavior-demo/scenarios/user-1001/signals
+Content-Type: application/json
+
+{
+  "eventType": "CANCEL_INTENT",
+  "eventData": {
+    "message": "Customer says renewal failed twice and asks how to cancel before month end."
+  },
+  "source": "demo-ui"
+}
+
+### 10) Preview confirmation-gated retention offer
+POST http://localhost:8097/api/behavior-demo/scenarios/user-1001/retention-offer
+Content-Type: application/json
+
+{
+  "discountPercent": 25,
+  "confirmed": false
+}
+
+### 11) Confirm retention offer
+POST http://localhost:8097/api/behavior-demo/scenarios/user-1001/retention-offer
+Content-Type: application/json
+
+{
+  "discountPercent": 25,
+  "confirmed": true
+}

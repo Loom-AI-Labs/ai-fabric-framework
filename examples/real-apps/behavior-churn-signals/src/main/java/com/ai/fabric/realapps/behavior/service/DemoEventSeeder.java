@@ -1,5 +1,6 @@
 package com.ai.fabric.realapps.behavior.service;
 
+import ai.fabric.behavior.repository.BehaviorInsightsRepository;
 import com.ai.fabric.realapps.behavior.domain.AppBehaviorEvent;
 import com.ai.fabric.realapps.behavior.repo.AppBehaviorEventRepository;
 import lombok.RequiredArgsConstructor;
@@ -15,29 +16,37 @@ import java.util.Map;
 public class DemoEventSeeder {
 
     private final AppBehaviorEventRepository eventRepository;
+    private final BehaviorInsightsRepository insightsRepository;
 
     @Transactional
     public long seed() {
+        insightsRepository.deleteAll();
         eventRepository.deleteAll();
 
         seedUser("user-1001", List.of(
             event("LOGIN", Map.of("channel", "web")),
             event("PAYMENT_FAILED", Map.of("reason", "card_declined")),
             event("SUPPORT_COMPLAINT", Map.of("topic", "billing", "message", "charged twice")),
-            event("CANCEL_INTENT", Map.of("reason", "too expensive"))
+            event("PAYMENT_FAILED", Map.of("reason", "expired_card")),
+            event("CANCEL_INTENT", Map.of("reason", "too expensive")),
+            event("CANCEL_INTENT", Map.of("reason", "renewal failed twice"))
         ));
 
         seedUser("user-1002", List.of(
             event("LOGIN", Map.of("channel", "mobile")),
             event("FEATURE_USED", Map.of("feature", "reports")),
             event("UPGRADE", Map.of("from", "starter", "to", "pro")),
-            event("LOGIN", Map.of("channel", "web"))
+            event("LOGIN", Map.of("channel", "web")),
+            event("LOGIN", Map.of("channel", "web")),
+            event("UPGRADE", Map.of("from", "pro", "to", "enterprise")),
+            event("LOGIN", Map.of("channel", "mobile"))
         ));
 
         seedUser("user-1003", List.of(
             event("LOGIN", Map.of("channel", "web")),
             event("SUPPORT_TICKET", Map.of("topic", "mfa_reset")),
-            event("PAYMENT_FAILED", Map.of("reason", "insufficient_funds"))
+            event("SUPPORT_COMPLAINT", Map.of("topic", "onboarding", "message", "team cannot find admin workflow")),
+            event("HELP_CENTER_SEARCH", Map.of("query", "invite team members and billing permissions"))
         ));
 
         return eventRepository.count();

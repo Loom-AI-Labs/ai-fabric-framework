@@ -52,10 +52,10 @@ public class RetentionStudioService {
     }
 
     private String riskCategory(RetentionReviewRequest request) {
-        if (request.failedPayments() > 0 || request.usageDropPercent() >= 50 || request.supportTickets() >= 3) {
+        if (request.failedPayments() >= 2 || request.usageDropPercent() >= 50 || request.supportTickets() >= 3) {
             return "HIGH";
         }
-        if (request.usageDropPercent() >= 25 || request.supportTickets() > 0) {
+        if (request.failedPayments() > 0 || request.usageDropPercent() >= 25 || request.supportTickets() > 0) {
             return "MEDIUM";
         }
         return "LOW";
