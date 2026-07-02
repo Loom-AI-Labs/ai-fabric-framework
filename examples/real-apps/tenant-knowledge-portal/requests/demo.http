@@ -1,5 +1,63 @@
 @host = http://localhost:8101
 
+### Public demo dashboard
+GET {{host}}/api/tenant-guard-demo/dashboard
+
+### Reset public demo data
+POST {{host}}/api/tenant-guard-demo/reset
+
+### Compare the same query across tenant contexts
+GET {{host}}/api/tenant-guard-demo/compare?q=VPN
+
+### Public demo: cross-tenant action rejected
+POST {{host}}/api/tenant-guard-demo/actions/execute
+Content-Type: application/json
+
+{
+  "tenantId": "tenant-a",
+  "role": "USER",
+  "actionId": "archive_document",
+  "documentId": "doc-b",
+  "accessMode": "WRITE_ONLY",
+  "confirmed": true
+}
+
+### Public demo: same-tenant write requires confirmation
+POST {{host}}/api/tenant-guard-demo/actions/execute
+Content-Type: application/json
+
+{
+  "tenantId": "tenant-a",
+  "role": "ADMIN",
+  "actionId": "archive_document",
+  "documentId": "doc-a",
+  "accessMode": "WRITE_ONLY",
+  "confirmed": false
+}
+
+### Public demo: confirmed same-tenant write
+POST {{host}}/api/tenant-guard-demo/actions/execute
+Content-Type: application/json
+
+{
+  "tenantId": "tenant-a",
+  "role": "ADMIN",
+  "actionId": "archive_document",
+  "documentId": "doc-a",
+  "accessMode": "WRITE_ONLY",
+  "confirmed": true
+}
+
+### Public demo: platform admin deletes tenant-b evidence
+POST {{host}}/api/tenant-guard-demo/tenants/delete
+Content-Type: application/json
+
+{
+  "tenantId": "platform",
+  "role": "ADMIN",
+  "targetTenantId": "tenant-b"
+}
+
 ### Tenant A only sees tenant A VPN setup
 GET {{host}}/api/tenant-knowledge/search?q=VPN
 X-Tenant-Id: tenant-a

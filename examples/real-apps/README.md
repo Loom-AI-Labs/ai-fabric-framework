@@ -21,7 +21,7 @@ The apps are intentionally scenario-focused:
 - `provider-failover-lab`: provider routing/fallback diagnostics and transient-input policy evidence.
 - `sub-management-hub-simple`: config-driven indexing setup using local deterministic embeddings by default.
 - `ai-fabric-account-resolver`: account-resolution demo using governed actions, readiness blockers, and local deterministic embeddings by default.
-- `tenant-knowledge-portal`: tenant-scoped knowledge search, catalog visibility, role-limited actions, and deletion.
+- `tenant-knowledge-portal`: AI Fabric Tenant Guard demo for tenant-scoped search, catalog visibility, role-limited actions, and deletion.
 - `vector-readiness-playground`: vector provider lifecycle/admin readiness evidence.
 - `ecommerce-store`: prior deployed domain API fixture retained as reference material.
 - `cloud-qdrant-openai-vector-search`: cloud vector search shape using OpenAI, Postgres, and Qdrant.
@@ -30,6 +30,9 @@ The apps are intentionally scenario-focused:
 
 `behavior-churn-signals` backs the public AI Fabric Behavior Signals demo at
 `https://ai-fabric.dev/demos/ai-fabric-behavior-signals`.
+
+`tenant-knowledge-portal` backs the public AI Fabric Tenant Guard demo at
+`https://ai-fabric.dev/demos/ai-fabric-tenant-guard`.
 
 To run the backend locally from the repository root:
 

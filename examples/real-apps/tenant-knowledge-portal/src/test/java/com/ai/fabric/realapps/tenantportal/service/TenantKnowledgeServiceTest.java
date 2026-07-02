@@ -19,10 +19,10 @@ class TenantKnowledgeServiceTest {
     @Test
     void adminCatalogSeesAllAndUserCatalogIsScoped() {
         assertThat(service.catalog(new TenantKnowledgeService.UserContext("platform", "ADMIN")).visibleDocuments())
-            .isEqualTo(3);
+            .isEqualTo(6);
         assertThat(service.catalog(new TenantKnowledgeService.UserContext("tenant-a", "USER")).entries())
             .extracting(TenantKnowledgeService.CatalogEntry::id)
-            .containsExactly("doc-a", "doc-admin");
+            .containsExactly("doc-a", "doc-a-billing");
     }
 
     @Test
@@ -41,6 +41,23 @@ class TenantKnowledgeServiceTest {
     }
 
     @Test
+    void dashboardShowsTenantGuardEvidence() {
+        TenantKnowledgeService.TenantGuardDashboard dashboard = service.dashboard();
+
+        assertThat(dashboard.scenarios()).hasSize(3);
+        assertThat(dashboard.stats().totalDocuments()).isEqualTo(6);
+        assertThat(dashboard.defaultComparison().tenantAResults())
+            .extracting(TenantKnowledgeService.KnowledgeHit::id)
+            .containsExactly("doc-a");
+        assertThat(dashboard.defaultComparison().tenantBResults())
+            .extracting(TenantKnowledgeService.KnowledgeHit::id)
+            .containsExactly("doc-b");
+        assertThat(dashboard.crossTenantDenied().errorCode()).isEqualTo("CROSS_TENANT_DENIED");
+        assertThat(dashboard.writeActionPreview().confirmationRequired()).isTrue();
+        assertThat(dashboard.deletionPreview().documentIds()).containsExactly("doc-b", "doc-b-keys");
+    }
+
+    @Test
     void tenantDeletionRemovesOnlyTargetTenant() {
         TenantKnowledgeService.TenantDeletionResult result = service.deleteTenant(
             new TenantKnowledgeService.UserContext("platform", "ADMIN"),
@@ -48,7 +65,7 @@ class TenantKnowledgeServiceTest {
         );
 
         assertThat(result.success()).isTrue();
-        assertThat(result.deletedIds()).containsExactly("doc-b");
+        assertThat(result.deletedIds()).containsExactly("doc-b", "doc-b-keys");
         assertThat(service.search(new TenantKnowledgeService.UserContext("tenant-a", "USER"), "VPN"))
             .extracting(TenantKnowledgeService.KnowledgeHit::id)
             .containsExactly("doc-a");

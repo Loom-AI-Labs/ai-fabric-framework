@@ -5,6 +5,12 @@ spring:
   application:
     name: tenant-knowledge-portal
 
+app:
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:}
+    allowed-origin-patterns: ${CORS_ALLOWED_ORIGIN_PATTERNS:}
+    allow-credentials: ${CORS_ALLOW_CREDENTIALS:false}
+
 ai:
   providers:
     llm-provider: ${AI_LLM_PROVIDER:smoke}
