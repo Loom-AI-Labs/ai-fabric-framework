@@ -20,7 +20,7 @@ The apps are intentionally scenario-focused:
 - `mcp-operations-assistant`: governed MCP-style operations tool execution.
 - `provider-failover-lab`: provider routing/fallback diagnostics and transient-input policy evidence.
 - `sub-management-hub-simple`: config-driven indexing setup using local deterministic embeddings by default.
-- `sub-management-hub`: annotation-assisted indexing setup using local deterministic embeddings by default.
+- `ai-fabric-account-resolver`: account-resolution demo using governed actions, readiness blockers, and local deterministic embeddings by default.
 - `tenant-knowledge-portal`: tenant-scoped knowledge search, catalog visibility, role-limited actions, and deletion.
 - `vector-readiness-playground`: vector provider lifecycle/admin readiness evidence.
 - `ecommerce-store`: prior deployed domain API fixture retained as reference material.

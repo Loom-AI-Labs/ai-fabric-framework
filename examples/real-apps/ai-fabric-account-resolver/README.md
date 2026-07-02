@@ -67,8 +67,8 @@ Default port: `8081`.
 From the repository root:
 
 ```bash
-mvn -B -V --no-transfer-progress -f examples/real-apps/pom.xml -pl sub-management-hub -am package
-java -jar examples/real-apps/sub-management-hub/target/ai-fabric-account-resolver-1.0.0-SNAPSHOT.jar
+mvn -B -V --no-transfer-progress -f examples/real-apps/pom.xml -pl ai-fabric-account-resolver -am package
+java -jar examples/real-apps/ai-fabric-account-resolver/target/ai-fabric-account-resolver-1.0.0-SNAPSHOT.jar
 ```
 
 With OpenAI for real LLM orchestration:
@@ -78,7 +78,7 @@ OPENAI_ENABLED=true \
 OPENAI_API_KEY="$OPENAI_API_KEY" \
 OPENAI_MODEL=gpt-4o-mini \
 PORT=8081 \
-java -jar examples/real-apps/sub-management-hub/target/ai-fabric-account-resolver-1.0.0-SNAPSHOT.jar
+java -jar examples/real-apps/ai-fabric-account-resolver/target/ai-fabric-account-resolver-1.0.0-SNAPSHOT.jar
 ```
 
 ## Docker
@@ -86,7 +86,7 @@ java -jar examples/real-apps/sub-management-hub/target/ai-fabric-account-resolve
 Build from the repo root:
 
 ```bash
-docker build -f examples/real-apps/sub-management-hub/Dockerfile \
+docker build -f examples/real-apps/ai-fabric-account-resolver/Dockerfile \
   --build-arg AI_FABRIC_VERSION=0.3.1 \
   -t ai-fabric-account-resolver:0.3.1 \
   examples/real-apps
@@ -109,7 +109,7 @@ docker run --rm -p 8081:8081 \
 Focused tests/package:
 
 ```bash
-mvn -B -V --no-transfer-progress -f examples/real-apps/pom.xml -pl sub-management-hub -am test
+mvn -B -V --no-transfer-progress -f examples/real-apps/pom.xml -pl ai-fabric-account-resolver -am test
 ```
 
 Use `requests/demo.http` for ready-to-run calls.

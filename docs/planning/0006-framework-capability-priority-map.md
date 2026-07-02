@@ -178,7 +178,7 @@ summary. The initial packaged suite is wired into automatic CI after the P0 boot
 | Scenario | App / Existing Code Evidence | Smoke Proof |
 | --- | --- | --- |
 | Action confirmation plus confirmation interceptor | `chat-capabilities-demo` has confirmable order/review actions and `CancellationRetentionOfferResolver` | HTTP script starts the app, triggers `cancel_purchase_order`, verifies pending confirmation, verifies the retention-offer interceptor path, then proves accept/reject clears or executes the expected action |
-| Support/action bot authorization | `it-support-action-bot`, `sub-management-hub`, `sub-management-hub-simple` contain action handlers and authorization hooks | HTTP or controller smoke proves read action, write action denial/confirmation, and `@ActionAllowed` behavior under a known user context |
+| Support/action bot authorization | `it-support-action-bot`, `ai-fabric-account-resolver`, `sub-management-hub-simple` contain action handlers and authorization hooks | HTTP or controller smoke proves read action, write action denial/confirmation, and `@ActionAllowed` behavior under a known user context |
 | RAG golden-answer quality | `smart-faq-assistant` quality service and golden FAQ test coverage | Script runs the quality endpoint and fails closed if expected article/source evidence is absent or retrieval throws |
 | Privacy/governance deletion | `privacy-first-customer-facing-support` PII masking and governance deletion tests | Script creates masked support data, verifies searchable evidence, requests deletion/retention cleanup, then proves no indexed/searchable residue remains |
 | Relationship-query business question | `relationship-query-crm-insights` deterministic relationship query app | Script asks a representative CRM/account question and verifies structured result shape, relationship evidence, and a bounded failure response for impossible queries |
@@ -690,9 +690,9 @@ Test evidence:
   `mvn -pl ai-fabric-core install`
 - Result: 565 tests, 0 failures, 0 errors, 0 skipped; `ai-fabric-core-0.2.1.jar` installed locally.
 - Action real-app compatibility command run with clean compile and without `-DskipTests`:
-  `mvn -pl smoke-support,it-support-action-bot,sub-management-hub,sub-management-hub-simple -am clean test`
+  `mvn -pl smoke-support,it-support-action-bot,ai-fabric-account-resolver,sub-management-hub-simple -am clean test`
 - Result: smoke-support ran 8 tests, it-support-action-bot compiled 15 app sources with no test
-  sources, sub-management-hub ran 6 tests, and sub-management-hub-simple ran 3 tests; 0 failures,
+  sources, ai-fabric-account-resolver ran 11 tests, and sub-management-hub-simple ran 3 tests; 0 failures,
   0 errors, 0 skipped.
 
 Philosophy check:
@@ -739,9 +739,9 @@ Test evidence:
   `mvn -pl ai-fabric-core install`
 - Result: 568 tests, 0 failures, 0 errors, 0 skipped; `ai-fabric-core-0.2.1.jar` installed locally.
 - Confirmation-heavy real-app compatibility command run with clean compile and without `-DskipTests`:
-  `mvn -pl smoke-support,chat-capabilities-demo,it-support-action-bot,sub-management-hub,sub-management-hub-simple -am clean test`
+  `mvn -pl smoke-support,chat-capabilities-demo,it-support-action-bot,ai-fabric-account-resolver,sub-management-hub-simple -am clean test`
 - Result: smoke-support ran 8 tests, chat-capabilities-demo ran 24 tests, it-support-action-bot
-  compiled 15 app sources with no test sources, sub-management-hub ran 6 tests, and
+  compiled 15 app sources with no test sources, ai-fabric-account-resolver ran 11 tests, and
   sub-management-hub-simple ran 3 tests; 0 failures, 0 errors, 0 skipped.
 
 Philosophy check:
@@ -926,9 +926,9 @@ Test evidence:
 - Result: curated-default ran 3 tests, core ran 579 tests, actions-connector ran 50 tests, and
   actions-registry ran 25 tests; 0 failures, 0 errors, 0 skipped.
 - Real-app compatibility command run cleanly without `-DskipTests`:
-  `mvn -pl smoke-support,chat-capabilities-demo,it-support-action-bot,sub-management-hub,sub-management-hub-simple -am clean test`
+  `mvn -pl smoke-support,chat-capabilities-demo,it-support-action-bot,ai-fabric-account-resolver,sub-management-hub-simple -am clean test`
 - Result: smoke-support ran 8 tests, chat-capabilities-demo ran 24 tests, it-support-action-bot
-  compiled cleanly with no tests, sub-management-hub ran 6 tests, and sub-management-hub-simple ran
+  compiled cleanly with no tests, ai-fabric-account-resolver ran 11 tests, and sub-management-hub-simple ran
   3 tests; 0 failures, 0 errors, 0 skipped.
 
 Philosophy check:

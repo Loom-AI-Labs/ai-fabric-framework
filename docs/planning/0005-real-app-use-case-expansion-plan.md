@@ -54,7 +54,7 @@ This plan focuses on two tracks:
 | `chat-capabilities-demo` | Commerce chat with catalog RAG, chat sessions, and cart/order actions | `ai-fabric-starter`, curated commerce, chat-session, governance, indexing, RAG, Lucene, Spring AI provider | `examples/real-apps/chat-capabilities-demo/README.md` |
 | `it-support-action-bot` | Provider-only IT ticket action bot | LLM-only action orchestration, Spring AI provider, no vector/indexing/RAG requirement | `examples/real-apps/it-support-action-bot/README.md` |
 | `sub-management-hub-simple` | Config-first subscription plan search and natural language recommendation | Config-driven AI setup, Lucene, local embeddings, explicit reindex, product-level fallback | `examples/real-apps/sub-management-hub-simple/README.md` |
-| `sub-management-hub` | Annotation-assisted subscription plan search | Annotation plus config setup, behavior and relationship-query dependencies, Lucene | `examples/real-apps/sub-management-hub/README.md` |
+| `ai-fabric-account-resolver` | Account resolver with governed actions and readiness blockers | Annotation plus config setup, behavior and relationship-query dependencies, Lucene | `examples/real-apps/ai-fabric-account-resolver/README.md` |
 | `cloud-qdrant-openai-vector-search` | Production-like semantic search with Postgres, Qdrant, and OpenAI | Cloud embeddings, external vector DB, annotation-driven indexing/search, provider configuration | `examples/real-apps/cloud-qdrant-openai-vector-search/README.md` |
 | `smoke-support` | Shared smoke profile for no-key/no-service boot | Deterministic local AI provider, deterministic embeddings, memory vector store, CI smoke support | `examples/real-apps/smoke-support/README.md` |
 | `customer-runtime-demo` | Customer-owned domain fixture plus runtime-style sync/search/actions | Data-sync DTO payloads, tenant-scoped retrieval, governed action confirmation, structured connector outage | `examples/real-apps/customer-runtime-demo/README.md`, `CustomerRuntimeServiceTest` |
@@ -438,7 +438,7 @@ suggests next actions, assigns/escalates tickets, and writes a customer-safe res
 
 #### 6. SaaS retention studio
 
-**Start from:** `behavior-churn-signals` and `sub-management-hub`.
+**Start from:** `behavior-churn-signals` and `ai-fabric-account-resolver`.
 
 **Goal:** Show behavior analysis feeding governed retention actions.
 
@@ -616,7 +616,7 @@ scenario, then inspects readiness diagnostics and fallback evidence before relea
 | `chat-capabilities-demo` | Broad commerce chat | Narrow into runtime demo or keep as all-in-one showcase with stricter scenario tests |
 | `it-support-action-bot` | Provider-only actions | RAG-backed support ops workflow and post-action summaries |
 | `sub-management-hub-simple` | Config-first indexing | Keep as minimal "getting started" real app |
-| `sub-management-hub` | Annotation-assisted subscription search | Merge behavior/retention storyline or keep as advanced indexing reference |
+| `ai-fabric-account-resolver` | Account resolver and annotation-assisted subscription search | Merge behavior/retention storyline or keep as advanced indexing reference |
 | `cloud-qdrant-openai-vector-search` | Cloud vector path | Add vector readiness diagnostics and metadata filter examples |
 
 ## App design rules

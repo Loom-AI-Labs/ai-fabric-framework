@@ -2,7 +2,7 @@
 
 ## Status
 
-The `sub-management-hub` real app has been upgraded into the AI Fabric Account Resolver demo. The module still keeps subscription-management capabilities, but the user-facing scenario is now account diagnosis and governed resolution for blockers that prevent a user from continuing app usage or placing an order.
+The `ai-fabric-account-resolver` real app has been upgraded from the subscription management hub into the AI Fabric Account Resolver demo. The module still keeps subscription-management capabilities, but the user-facing scenario is now account diagnosis and governed resolution for blockers that prevent a user from continuing app usage or placing an order.
 
 ## Implemented Capabilities
 
@@ -45,14 +45,14 @@ The `sub-management-hub` real app has been upgraded into the AI Fabric Account R
 Focused package build with tests:
 
 ```bash
-mvn -B -V --no-transfer-progress -f examples/real-apps/pom.xml -pl sub-management-hub -am package
+mvn -B -V --no-transfer-progress -f examples/real-apps/pom.xml -pl ai-fabric-account-resolver -am package
 ```
 
 Local smoke path:
 
 ```bash
 PORT=18081 OPENAI_ENABLED=false \
-java -jar examples/real-apps/sub-management-hub/target/ai-fabric-account-resolver-1.0.0-SNAPSHOT.jar
+java -jar examples/real-apps/ai-fabric-account-resolver/target/ai-fabric-account-resolver-1.0.0-SNAPSHOT.jar
 ```
 
 Smoke calls:

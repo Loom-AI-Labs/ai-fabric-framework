@@ -5,7 +5,7 @@
 # version. It does not copy or install ai-infrastructure-module.
 #
 # From repo root:
-# docker build -f examples/real-apps/sub-management-hub/Dockerfile \
+# docker build -f examples/real-apps/ai-fabric-account-resolver/Dockerfile \
 #   --build-arg AI_FABRIC_VERSION=0.3.1 \
 #   -t ai-fabric-account-resolver:0.3.1 \
 #   examples/real-apps
@@ -20,7 +20,7 @@ COPY . .
 
 RUN mvn -B -V --no-transfer-progress \
     -Dai-fabric.version="${AI_FABRIC_VERSION}" \
-    -pl sub-management-hub -am package
+    -pl ai-fabric-account-resolver -am package
 
 FROM eclipse-temurin:21-jre-alpine
 WORKDIR /app
@@ -34,7 +34,7 @@ RUN addgroup -S app && adduser -S app -G app \
 
 USER app:app
 
-COPY --from=build --chown=app:app /workspace/sub-management-hub/target/ai-fabric-account-resolver-*.jar /app/app.jar
+COPY --from=build --chown=app:app /workspace/ai-fabric-account-resolver/target/ai-fabric-account-resolver-*.jar /app/app.jar
 
 EXPOSE 8081
 

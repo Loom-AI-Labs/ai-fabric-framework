@@ -12,14 +12,14 @@ they are executable evidence that a framework capability works in a realistic Sp
 | --- | --- |
 | No-key smoke boot and deterministic local providers | `smoke-support`, most apps under `--spring.profiles.active=smoke` |
 | Config-driven entity indexing and local semantic search | `smart-faq-assistant`, `sub-management-hub-simple`, `migration-enabled-product-catalog` |
-| Annotation-assisted indexing | `sub-management-hub`, `cloud-qdrant-openai-vector-search` |
+| Annotation-assisted indexing | `ai-fabric-account-resolver`, `cloud-qdrant-openai-vector-search` |
 | RAG and retrieval evidence | `smart-faq-assistant`, `chat-capabilities-demo` |
 | RAG quality gates and golden questions | `smart-faq-assistant` |
 | Migration/backfill indexing | `migration-enabled-product-catalog` |
 | PII detection/redaction | `privacy-first-customer-facing-support`, `chat-capabilities-demo` |
 | Governance deletion/catalog evidence | `privacy-first-customer-facing-support`, `tenant-knowledge-portal`, `vector-readiness-playground` |
 | Chat sessions and conversation-aware orchestration | `chat-capabilities-demo` |
-| Local `@AIAction` discovery/execution | `chat-capabilities-demo`, `it-support-action-bot`, `sub-management-hub`, `sub-management-hub-simple` |
+| Local `@AIAction` discovery/execution | `chat-capabilities-demo`, `it-support-action-bot`, `ai-fabric-account-resolver`, `sub-management-hub-simple` |
 | Action confirmation and pending-action flows | `chat-capabilities-demo`, `it-support-action-bot`, `customer-runtime-demo`, `db-action-registry-lab` |
 | Connector action execution | `customer-runtime-demo`, `db-action-registry-lab`, `mcp-operations-assistant` |
 | DB-backed action registry | `db-action-registry-lab` |
@@ -321,16 +321,17 @@ indexing queue, configuration-driven entity model.
 
 **Best used for:** onboarding users who want the smallest config-first integration example.
 
-### `sub-management-hub`
+### `ai-fabric-account-resolver`
 
-**Scenario:** Advanced subscription management app showing optional AI annotations while keeping
-configuration as the primary source of truth.
+**Scenario:** Account resolver app showing how AI Fabric can diagnose account blockers and execute
+governed subscription, payment, address, and refund/account-credit actions.
 
 **Capabilities proved:**
 
 - Annotation-assisted indexing.
-- Config-driven indexing/search parity with the simple app.
+- Read-action grounding through account readiness inspection.
 - Subscription actions such as subscribe, upgrade, downgrade, cancel, and address update.
+- Account resolver actions such as payment-method update and refund/account-credit request.
 - `@ActionAllowed` authorization hooks.
 - `@ActionConfirmation` on write actions.
 - Sync and async indexing validation endpoints.
@@ -340,7 +341,8 @@ provider, deterministic local embeddings.
 
 **Runtime posture:** local H2 and deterministic providers.
 
-**Best used for:** comparing config-first and annotation-assisted integration styles.
+**Best used for:** demonstrating account-resolution workflows where AI proposes a governed action,
+asks for confirmation, and returns structured post-action readiness evidence.
 
 ### `tenant-knowledge-portal`
 

@@ -28,7 +28,7 @@
         <module>provider-failover-lab</module>
         <module>relationship-query-crm-insights</module>
         <module>smart-faq-assistant</module>
-        <module>sub-management-hub</module>
+        <module>ai-fabric-account-resolver</module>
         <module>sub-management-hub-simple</module>
         <module>tenant-knowledge-portal</module>
         <module>vector-readiness-playground</module>

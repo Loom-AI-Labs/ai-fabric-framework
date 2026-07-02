@@ -1019,5 +1019,5 @@ The framework handles the **hard parts** (security, PII detection, intent extrac
 
 For more examples, see:
 - `/Real_Apps/it-support-action-bot/` - Action-only bot
-- `/Real_Apps/sub-management-hub/` - Full agentic app
+- `/Real_Apps/ai-fabric-account-resolver/` - Full agentic app
 - `/ai-infrastructure-module/docs/intentExtraction/action-handling/` - Detailed action handling docs

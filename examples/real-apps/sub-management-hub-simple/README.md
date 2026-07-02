@@ -79,6 +79,6 @@ Use `requests/demo.http` for ready-to-run calls.
 
 ## What This App Does Not Cover
 
-- Optional annotation-assisted indexing. Use `sub-management-hub`.
+- Optional annotation-assisted account-resolution flow. Use `ai-fabric-account-resolver`.
 - Chat sessions and action orchestration. Use `chat-capabilities-demo` or `it-support-action-bot`.
 - Real cloud vector DB. Use `cloud-qdrant-openai-vector-search`.
