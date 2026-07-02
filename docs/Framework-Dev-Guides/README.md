@@ -42,6 +42,7 @@ Not copied here:
 | `connectors` | Generic REST connector, customer connector, relay, and REST branch guides. |
 | `deployment-operations` | Deployment verification, benchmarking, latency, export/import, and hosted verification. |
 | `developer-workflows` | LLM coding and code-review prompts for maintainers. |
+| `LLM-guides` | LLM session reference material and framework philosophy. |
 | `marketplace-plugins` | Marketplace plugin authoring, manifest, data plugins, inference profiles, and troubleshooting. |
 | `providers-vector-db` | LLM/embedding/vector provider and managed vector database guidance. |
 | `retrieval-vectorization` | Retrieval connector, data sync, RAG query composition, and tenant vectorization docs. |
@@ -88,6 +89,12 @@ For release and verification:
 3. `testing-verification/GITHUB_ACTIONS_VERIFICATION_SUITE_GUIDE.md`
 4. `testing-verification/PLATFORM_REGRESSION_AND_LIVE_ADMIN_VERIFICATION_GUIDE.md`
 5. `deployment-operations/PLATFORM_HOSTED_DEPLOYMENT_VERIFICATION_GUIDE.md`
+
+For LLM-assisted framework debugging sessions:
+
+1. `LLM-guides/AI_FABRIC_FRAMEWORK_PHILOSOPHY.md`
+2. `LLM-guides/AI_FABRIC_LLM_SESSION_LESSONS_LEARNED.md`
+3. `developer-workflows/AI_LLM_CODE_GENERATION_GUIDE.md`
 
 ## Copy Policy
 
