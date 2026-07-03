@@ -22,6 +22,9 @@ spring:
         dialect: org.hibernate.dialect.PostgreSQLDialect
 
 ai:
+  curated:
+    pack: ${AI_CURATED_PACK:commerce}
+
   config:
     default-file: ai-entity-config.yml
 
