@@ -56,20 +56,4 @@ public @interface Param {
      * multiple UI-selected pinned targets.</p>
      */
     boolean batchTargets() default false;
-
-    /**
-     * Whether a missing value is appropriate to ask the end user for.
-     *
-     * <p>Set to false for parameters that should come from trusted application context,
-     * owned resources, server defaults, or internal resolution rather than a public form.</p>
-     */
-    boolean askUser() default true;
-
-    /**
-     * Optional prompt/user visibility for this parameter.
-     *
-     * <p>Supported values include INTERNAL, SYSTEM, and SECRET. Unknown or blank values are
-     * treated as public for backward compatibility.</p>
-     */
-    String visibility() default "";
 }

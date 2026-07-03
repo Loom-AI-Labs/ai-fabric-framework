@@ -76,24 +76,6 @@ class AIActionRegistryTest {
     }
 
     @Test
-    void shouldExposePromptVisibilityFromParamAnnotation() {
-        try (AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext()) {
-            context.register(AIActionRegistry.class);
-            context.register(ContextResolvedParamAction.class);
-            context.refresh();
-
-            AIActionRegistry registry = context.getBean(AIActionRegistry.class);
-            AIActionMetaData meta = registry.findMetadata("context_resolved_param").orElseThrow();
-
-            assertThat(meta.getParameterSchemas()).containsKeys("accountId", "reason");
-            assertThat(meta.getParameterSchemas().get("accountId").getAskUser()).isFalse();
-            assertThat(meta.getParameterSchemas().get("accountId").getVisibility()).isEqualTo("INTERNAL");
-            assertThat(meta.getParameterSchemas().get("reason").getAskUser()).isNull();
-            assertThat(meta.getParameterSchemas().get("reason").getVisibility()).isNull();
-        }
-    }
-
-    @Test
     void shouldBuildPostActionFactsWithActionResultAndContext() {
         try (AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext()) {
             context.register(AIActionRegistry.class);
@@ -402,23 +384,6 @@ class AIActionRegistryTest {
 
         @ActionExecute
         public ActionResult execute(@Param(value = "quantity", required = true) Integer quantity) {
-            return ActionResult.builder().success(true).message("ok").build();
-        }
-    }
-
-    @AIAction(
-        name = "context_resolved_param",
-        description = "Action with context resolved parameter",
-        category = "test",
-        accessMode = ActionAccessMode.WRITE_ONLY,
-        requiresConfirmation = false
-    )
-    static class ContextResolvedParamAction {
-        @ActionExecute
-        public ActionResult execute(
-            @Param(value = "accountId", description = "Resolved account id", askUser = false, visibility = "INTERNAL") String accountId,
-            @Param(value = "reason", description = "User-facing reason") String reason
-        ) {
             return ActionResult.builder().success(true).message("ok").build();
         }
     }
