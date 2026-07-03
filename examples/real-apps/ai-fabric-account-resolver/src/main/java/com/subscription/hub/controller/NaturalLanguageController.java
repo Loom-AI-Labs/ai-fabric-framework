@@ -4,6 +4,8 @@ import ai.fabric.intent.action.AIActionHandler;
 import ai.fabric.intent.action.AIActionRegistry;
 import ai.fabric.intent.action.ActionContext;
 import ai.fabric.intent.action.ActionResult;
+import ai.fabric.intent.action.PendingAction;
+import ai.fabric.intent.action.PendingActionStore;
 import ai.fabric.intent.orchestration.OrchestrationContext;
 import ai.fabric.intent.orchestration.OrchestrationResult;
 import ai.fabric.intent.orchestration.RAGOrchestrator;
@@ -36,6 +38,9 @@ public class NaturalLanguageController {
 
     @Autowired(required = false)
     private AIActionRegistry actionRegistry;
+
+    @Autowired(required = false)
+    private PendingActionStore pendingActionStore;
 
     @PostMapping
     public ResponseEntity<OrchestrationResult> query(@Valid @RequestBody QueryRequest request) {
@@ -140,6 +145,84 @@ public class NaturalLanguageController {
 
         try {
             ActionResult result = handler.executeAction(params != null ? params : Map.of(), actionContext);
+            return ResponseEntity.ok(result);
+        } catch (RuntimeException ex) {
+            return ResponseEntity.badRequest()
+                .body(ActionResult.builder()
+                    .success(false)
+                    .message(ex.getMessage() != null ? ex.getMessage() : "Action failed")
+                    .errorCode("ACTION_EXECUTION_FAILED")
+                    .build());
+        }
+    }
+
+    @PostMapping("/actions/confirm")
+    public ResponseEntity<ActionResult> confirmPendingAction(
+            @RequestBody Map<String, Object> request) {
+
+        if (actionRegistry == null || pendingActionStore == null) {
+            return ResponseEntity.badRequest()
+                .body(ActionResult.builder()
+                    .success(false)
+                    .message("AI action confirmation is not configured")
+                    .build());
+        }
+
+        Object userIdObj = request.get("userId");
+        String userId = userIdObj != null ? userIdObj.toString() : null;
+        String sessionId = request.get("sessionId") != null ? request.get("sessionId").toString() : UUID.randomUUID().toString();
+        String conversationId = request.get("conversationId") != null ? request.get("conversationId").toString() : null;
+        if (conversationId == null || conversationId.isBlank()) {
+            conversationId = "chat-" + sessionId;
+        }
+
+        OrchestrationContext.OrchestrationContextBuilder builder = OrchestrationContext.builder()
+            .sessionId(sessionId)
+            .conversationId(conversationId);
+        OrchestrationContext context = userId != null && !userId.isBlank()
+            ? builder.userId(userId).build()
+            : builder.build();
+
+        PendingAction pending = pendingActionStore.popPendingAction(conversationId, context.getIdentifier()).orElse(null);
+        if (pending == null) {
+            return ResponseEntity.badRequest()
+                .body(ActionResult.builder()
+                    .success(false)
+                    .message("No pending action to confirm")
+                    .errorCode("NO_PENDING_ACTION")
+                    .build());
+        }
+
+        boolean confirmed = Boolean.TRUE.equals(request.get("confirmed"));
+        if (!confirmed) {
+            return ResponseEntity.ok(ActionResult.builder()
+                .success(false)
+                .message("Action rejected. No account changes were made.")
+                .errorCode("ACTION_DENIED")
+                .build());
+        }
+
+        AIActionHandler handler = actionRegistry.findHandler(pending.action()).orElse(null);
+        if (handler == null) {
+            return ResponseEntity.badRequest()
+                .body(ActionResult.builder()
+                    .success(false)
+                    .message("Action handler not found: " + pending.action())
+                    .build());
+        }
+
+        ActionContext actionContext = new ActionContext(context, null);
+        if (!handler.validateActionAllowed(actionContext)) {
+            return ResponseEntity.status(403)
+                .body(ActionResult.builder()
+                    .success(false)
+                    .message("Action not allowed")
+                    .errorCode("ACTION_DENIED")
+                    .build());
+        }
+
+        try {
+            ActionResult result = handler.executeAction(pending.actionParams() != null ? pending.actionParams() : Map.of(), actionContext);
             return ResponseEntity.ok(result);
         } catch (RuntimeException ex) {
             return ResponseEntity.badRequest()
