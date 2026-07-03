@@ -92,10 +92,13 @@ public class RequestRefundActionHandler extends BaseActionHandler {
             data.put("amount", result.amount());
             data.put("reason", result.reason());
             data.put("createdAt", result.createdAt());
+            data.put("policyDecision", result.policyDecision());
+            data.put("policyExplanation", result.policyExplanation());
+            data.put("autoApprovalLimit", result.autoApprovalLimit());
 
             return ActionResult.builder()
                 .success(true)
-                .message("Billing resolution created with status " + result.status())
+                .message("Billing resolution created with status " + result.status() + ". " + result.policyExplanation())
                 .data(ActionResultContracts.object(data))
                 .build();
         } catch (Exception ex) {

@@ -6,6 +6,7 @@ import ai.fabric.intent.action.ActionContext;
 import ai.fabric.intent.action.ActionResult;
 import ai.fabric.intent.orchestration.OrchestrationContext;
 import com.subscription.hub.entity.Address;
+import com.subscription.hub.entity.RefundRequest;
 import com.subscription.hub.entity.Subscription;
 import com.subscription.hub.service.AccountResolutionService;
 import com.subscription.hub.service.SubscriptionService;
@@ -13,7 +14,9 @@ import com.subscription.hub.service.UserService;
 import org.junit.jupiter.api.Test;
 import org.springframework.context.annotation.AnnotationConfigApplicationContext;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -185,6 +188,69 @@ class AccountResolverActionHandlerTest {
         assertThat(result.isSuccess()).isTrue();
         assertThat(result.getMessage()).contains("blockers");
         verify(accountResolutionService).inspectReadiness(92L);
+    }
+
+    @Test
+    void refundActionMessageIncludesPolicyDecisionFromBackendResult() {
+        UUID userUuid = UUID.randomUUID();
+        UUID subscriptionId = UUID.randomUUID();
+        UUID refundId = UUID.randomUUID();
+        Subscription subscription = Subscription.builder()
+            .id(subscriptionId)
+            .userId(userUuid)
+            .status(Subscription.SubscriptionStatus.ACTIVE)
+            .billingCycle(Subscription.BillingCycle.MONTHLY)
+            .startDate(LocalDateTime.now().minusDays(3))
+            .build();
+        AccountResolutionService.RefundResolutionResult refundResult = new AccountResolutionService.RefundResolutionResult(
+            refundId,
+            subscriptionId,
+            userUuid,
+            "REFUND",
+            "PENDING_REVIEW",
+            new BigDecimal("75.00"),
+            "Support incident",
+            LocalDateTime.now(),
+            "REVIEW_REQUIRED",
+            "Routed to review because this refund is above the $50 auto-approval limit.",
+            new BigDecimal("50.00")
+        );
+        when(userService.getUserIdFromNumeric(94L)).thenReturn(userUuid);
+        when(subscriptionService.hasActiveSubscription(userUuid)).thenReturn(true);
+        when(subscriptionService.getActiveSubscription(userUuid)).thenReturn(Optional.of(subscription));
+        when(accountResolutionService.requestRefund(
+            eq(subscriptionId),
+            eq(new BigDecimal("75")),
+            eq("Support incident"),
+            eq(RefundRequest.ResolutionType.REFUND)
+        )).thenReturn(refundResult);
+
+        RequestRefundActionHandler handler = new RequestRefundActionHandler(
+            accountResolutionService,
+            subscriptionService,
+            userService
+        );
+        ActionContext context = new ActionContext(OrchestrationContext.builder()
+            .userId("94")
+            .sessionId("resolver-test")
+            .build(), null);
+
+        ActionResult result = handler.execute(
+            null,
+            new BigDecimal("75"),
+            "Support incident",
+            RefundRequest.ResolutionType.REFUND,
+            context
+        );
+
+        assertThat(result.isSuccess()).isTrue();
+        assertThat(result.getMessage())
+            .contains("PENDING_REVIEW")
+            .contains("Routed to review");
+        Map<String, Object> data = result.getData().toMap();
+        assertThat(data)
+            .containsEntry("policyDecision", "REVIEW_REQUIRED")
+            .containsEntry("policyExplanation", "Routed to review because this refund is above the $50 auto-approval limit.");
     }
 
     @Test

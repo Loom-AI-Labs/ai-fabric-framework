@@ -109,9 +109,49 @@ class AccountResolutionServiceTest {
         assertThat(result.resolutionType()).isEqualTo("ACCOUNT_CREDIT");
         assertThat(result.status()).isEqualTo("APPROVED");
         assertThat(result.amount()).isEqualByComparingTo("25.00");
+        assertThat(result.policyDecision()).isEqualTo("AUTO_APPROVED");
+        assertThat(result.policyExplanation()).contains("Auto-approved", "$100");
+        assertThat(result.autoApprovalLimit()).isEqualByComparingTo("100.00");
         assertThat(behaviorEventService.getEventsForUser(user.getId().toString(), null, null))
-            .extracting(event -> event.getEventData().get("status"))
-            .containsExactly("APPROVED");
+            .singleElement()
+            .satisfies(event -> assertThat(event.getEventData())
+                .containsEntry("status", "APPROVED")
+                .containsEntry("policyDecision", "AUTO_APPROVED"));
+    }
+
+    @Test
+    void requestRefundRoutesLargeCashRefundToReviewAndExplainsPolicy() {
+        UUID refundId = UUID.randomUUID();
+        User user = user(94L);
+        Subscription subscription = activeSubscription(user.getId());
+        when(subscriptionRepository.findById(subscription.getId())).thenReturn(Optional.of(subscription));
+        when(subscriptionRepository.save(any(Subscription.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(refundRequestRepository.save(any(RefundRequest.class))).thenAnswer(invocation -> {
+            RefundRequest request = invocation.getArgument(0);
+            request.setId(refundId);
+            request.setCreatedAt(LocalDateTime.now());
+            return request;
+        });
+
+        AccountResolutionService.RefundResolutionResult result = service.requestRefund(
+            subscription.getId(),
+            new BigDecimal("75"),
+            "Billing issue",
+            RefundRequest.ResolutionType.REFUND
+        );
+
+        assertThat(result.refundRequestId()).isEqualTo(refundId);
+        assertThat(result.resolutionType()).isEqualTo("REFUND");
+        assertThat(result.status()).isEqualTo("PENDING_REVIEW");
+        assertThat(result.amount()).isEqualByComparingTo("75.00");
+        assertThat(result.policyDecision()).isEqualTo("REVIEW_REQUIRED");
+        assertThat(result.policyExplanation()).contains("Routed to review", "$50");
+        assertThat(result.autoApprovalLimit()).isEqualByComparingTo("50.00");
+        assertThat(behaviorEventService.getEventsForUser(user.getId().toString(), null, null))
+            .singleElement()
+            .satisfies(event -> assertThat(event.getEventData())
+                .containsEntry("status", "PENDING_REVIEW")
+                .containsEntry("policyDecision", "REVIEW_REQUIRED"));
     }
 
     private static User user(Long numericId) {

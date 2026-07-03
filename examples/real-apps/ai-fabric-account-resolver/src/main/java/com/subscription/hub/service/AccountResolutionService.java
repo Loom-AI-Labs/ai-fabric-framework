@@ -201,7 +201,10 @@ public class AccountResolutionService {
             "refundRequestId", savedRefund.getId().toString(),
             "resolutionType", savedRefund.getResolutionType().name(),
             "status", savedRefund.getStatus().name(),
-            "amount", savedRefund.getAmount().toPlainString()
+            "amount", savedRefund.getAmount().toPlainString(),
+            "policyDecision", policyDecision(savedRefund.getStatus()),
+            "policyExplanation", refundPolicyExplanation(savedRefund.getResolutionType(), savedRefund.getStatus()),
+            "autoApprovalLimit", autoApprovalLimit(savedRefund.getResolutionType()).toPlainString()
         ));
 
         return new RefundResolutionResult(
@@ -212,7 +215,10 @@ public class AccountResolutionService {
             savedRefund.getStatus().name(),
             savedRefund.getAmount(),
             savedRefund.getReason(),
-            savedRefund.getCreatedAt()
+            savedRefund.getCreatedAt(),
+            policyDecision(savedRefund.getStatus()),
+            refundPolicyExplanation(savedRefund.getResolutionType(), savedRefund.getStatus()),
+            autoApprovalLimit(savedRefund.getResolutionType())
         );
     }
 
@@ -422,12 +428,33 @@ public class AccountResolutionService {
     }
 
     private RefundRequest.RefundStatus refundStatus(RefundRequest.ResolutionType resolutionType, BigDecimal amount) {
-        BigDecimal limit = resolutionType == RefundRequest.ResolutionType.ACCOUNT_CREDIT
-            ? AUTO_APPROVE_CREDIT_LIMIT
-            : AUTO_APPROVE_REFUND_LIMIT;
+        BigDecimal limit = autoApprovalLimit(resolutionType);
         return amount.compareTo(limit) <= 0
             ? RefundRequest.RefundStatus.APPROVED
             : RefundRequest.RefundStatus.PENDING_REVIEW;
+    }
+
+    private BigDecimal autoApprovalLimit(RefundRequest.ResolutionType resolutionType) {
+        return resolutionType == RefundRequest.ResolutionType.ACCOUNT_CREDIT
+            ? AUTO_APPROVE_CREDIT_LIMIT
+            : AUTO_APPROVE_REFUND_LIMIT;
+    }
+
+    private String policyDecision(RefundRequest.RefundStatus status) {
+        return status == RefundRequest.RefundStatus.APPROVED
+            ? "AUTO_APPROVED"
+            : "REVIEW_REQUIRED";
+    }
+
+    private String refundPolicyExplanation(RefundRequest.ResolutionType resolutionType, RefundRequest.RefundStatus status) {
+        String subject = resolutionType == RefundRequest.ResolutionType.ACCOUNT_CREDIT
+            ? "account-credit"
+            : "refund";
+        String limit = "$" + autoApprovalLimit(resolutionType).stripTrailingZeros().toPlainString();
+        if (status == RefundRequest.RefundStatus.APPROVED) {
+            return "Auto-approved under the small " + subject + " policy (" + limit + " or less).";
+        }
+        return "Routed to review because this " + subject + " is above the " + limit + " auto-approval limit.";
     }
 
     public record AccountReadiness(
@@ -492,6 +519,9 @@ public class AccountResolutionService {
         String status,
         BigDecimal amount,
         String reason,
-        LocalDateTime createdAt
+        LocalDateTime createdAt,
+        String policyDecision,
+        String policyExplanation,
+        BigDecimal autoApprovalLimit
     ) { }
 }
