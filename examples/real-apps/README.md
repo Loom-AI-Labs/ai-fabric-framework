@@ -84,6 +84,18 @@ Most apps can boot without external API keys because they use local H2 storage a
 
 `cloud-qdrant-openai-vector-search` is compile-verified by default and requires Postgres, Qdrant, and OpenAI configuration before runtime smoke testing.
 
+Every Spring Boot real app that depends on `smoke-support` exposes shared deployment metadata at:
+
+```bash
+curl -fsS http://localhost:<port>/api/demo/health | jq
+```
+
+The response includes `status`, `service`, `version`, `aiFabricVersion`, `commit`, `branch`, `builtAt`,
+`startedAt`, and `checkedAt`. Dockerized demos support these optional build args:
+`APP_VERSION`, `AI_FABRIC_VERSION`, `BUILD_COMMIT`, `BUILD_BRANCH`, and `BUILD_TIME`. Deployment
+platform env vars such as `APP_BUILD_COMMIT`, `APP_BUILD_BRANCH`, `APP_BUILD_TIME`, `SOURCE_COMMIT`,
+`GIT_COMMIT`, and `git_branch` are also read at runtime when present.
+
 ## External Runtime Proof
 
 This local scenario proves a customer-owned app can use AI Fabric outside its own process:

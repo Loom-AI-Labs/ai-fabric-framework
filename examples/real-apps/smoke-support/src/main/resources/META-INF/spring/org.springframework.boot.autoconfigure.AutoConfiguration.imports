@@ -1,1 +1,2 @@
 com.ai.fabric.examples.smoke.SmokeProfileAutoConfiguration
+com.ai.fabric.examples.smoke.health.DemoHealthAutoConfiguration

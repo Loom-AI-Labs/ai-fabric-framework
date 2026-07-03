@@ -11,6 +11,7 @@
 #   examples/real-apps
 
 ARG AI_FABRIC_VERSION=0.3.1
+ARG APP_VERSION=1.0.0-SNAPSHOT
 ARG BUILD_COMMIT=unknown
 ARG BUILD_BRANCH=unknown
 ARG BUILD_TIME=
@@ -29,6 +30,7 @@ FROM eclipse-temurin:21-jre-alpine
 WORKDIR /app
 
 ARG AI_FABRIC_VERSION
+ARG APP_VERSION
 ARG BUILD_COMMIT
 ARG BUILD_BRANCH
 ARG BUILD_TIME
@@ -36,6 +38,7 @@ ARG BUILD_TIME
 ENV PORT=8081
 ENV JAVA_OPTS=""
 ENV AI_FABRIC_VERSION="${AI_FABRIC_VERSION}"
+ENV APP_VERSION="${APP_VERSION}"
 ENV APP_BUILD_COMMIT="${BUILD_COMMIT}"
 ENV APP_BUILD_BRANCH="${BUILD_BRANCH}"
 ENV APP_BUILD_TIME="${BUILD_TIME}"
@@ -45,8 +48,8 @@ RUN addgroup -S app && adduser -S app -G app \
     && chown -R app:app /app
 
 RUN actual_build_time="${BUILD_TIME:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}" \
-    && printf 'commit=%s\nbranch=%s\nbuiltAt=%s\naiFabricVersion=%s\n' \
-      "${BUILD_COMMIT}" "${BUILD_BRANCH}" "${actual_build_time}" "${AI_FABRIC_VERSION}" \
+    && printf 'version=%s\ncommit=%s\nbranch=%s\nbuiltAt=%s\naiFabricVersion=%s\n' \
+      "${APP_VERSION}" "${BUILD_COMMIT}" "${BUILD_BRANCH}" "${actual_build_time}" "${AI_FABRIC_VERSION}" \
       > /app/build-info.properties \
     && chown app:app /app/build-info.properties
 

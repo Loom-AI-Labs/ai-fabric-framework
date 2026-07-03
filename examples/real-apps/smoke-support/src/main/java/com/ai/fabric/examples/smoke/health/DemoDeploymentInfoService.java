@@ -1,7 +1,6 @@
-package com.subscription.hub.service;
+package com.ai.fabric.examples.smoke.health;
 
 import org.springframework.core.env.Environment;
-import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 import java.io.IOException;
@@ -13,32 +12,31 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Properties;
 
-@Service
-public class DeploymentInfoService {
+public class DemoDeploymentInfoService {
 
-    private static final String APP_POM_PROPERTIES =
-        "META-INF/maven/com.subscription/ai-fabric-account-resolver/pom.properties";
     private static final String BUILD_INFO_FILE = "/app/build-info.properties";
 
     private final Environment environment;
     private final Instant startedAt;
-    private final Properties appProperties;
     private final Properties fileBuildProperties;
 
-    public DeploymentInfoService(Environment environment) {
+    public DemoDeploymentInfoService(Environment environment) {
         this.environment = environment;
         this.startedAt = Instant.now();
-        this.appProperties = loadClasspathProperties(APP_POM_PROPERTIES);
         this.fileBuildProperties = loadFileProperties(BUILD_INFO_FILE);
     }
 
     public Map<String, Object> health() {
         Map<String, Object> health = new LinkedHashMap<>();
         health.put("status", "UP");
-        health.put("service", "ai-fabric-account-resolver");
+        health.put("service", firstText(
+            env("APP_SERVICE_NAME"),
+            environment.getProperty("spring.application.name"),
+            "ai-fabric-real-app-demo"
+        ));
         health.put("version", firstText(
             env("APP_VERSION"),
-            appProperties.getProperty("version"),
+            fileBuildProperties.getProperty("version"),
             "unknown"
         ));
         health.put("aiFabricVersion", firstText(
@@ -89,19 +87,6 @@ public class DeploymentInfoService {
             }
         }
         return "unknown";
-    }
-
-    private Properties loadClasspathProperties(String location) {
-        Properties properties = new Properties();
-        ClassLoader classLoader = Thread.currentThread().getContextClassLoader();
-        try (InputStream inputStream = classLoader.getResourceAsStream(location)) {
-            if (inputStream != null) {
-                properties.load(inputStream);
-            }
-        } catch (IOException ignored) {
-            // Deployment metadata is diagnostic only; health should remain available.
-        }
-        return properties;
     }
 
     private Properties loadFileProperties(String location) {
