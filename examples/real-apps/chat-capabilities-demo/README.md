@@ -52,13 +52,13 @@ Default app port: `8097`.
 ### Docker With Released AI Fabric
 
 Build from the repository root. This uses the latest released AI Fabric version declared by the app
-(`0.3.1` currently) and does not copy or install `ai-infrastructure-module`:
+(`0.3.2` currently) and does not copy or install `ai-infrastructure-module`:
 
 ```bash
 docker build \
   -f examples/real-apps/chat-capabilities-demo/Dockerfile \
-  --build-arg AI_FABRIC_VERSION=0.3.1 \
-  -t ai-fabric-chat-capabilities-demo:0.3.1 \
+  --build-arg AI_FABRIC_VERSION=0.3.2 \
+  -t ai-fabric-chat-capabilities-demo:0.3.2 \
   examples/real-apps
 ```
 
@@ -67,7 +67,7 @@ No-key smoke runtime:
 ```bash
 docker run --rm -p 8097:8097 \
   -e SPRING_PROFILES_ACTIVE=smoke \
-  ai-fabric-chat-capabilities-demo:0.3.1
+  ai-fabric-chat-capabilities-demo:0.3.2
 ```
 
 Full OpenAI-backed runtime:
@@ -79,7 +79,7 @@ docker run --rm -p 8097:8097 \
   -e OPENAI_MODEL=gpt-4o-mini \
   -e OPENAI_EMBEDDING_MODEL=text-embedding-3-small \
   -e OPENAI_EMBEDDING_DIMENSIONS=512 \
-  ai-fabric-chat-capabilities-demo:0.3.1
+  ai-fabric-chat-capabilities-demo:0.3.2
 ```
 
 Health endpoint:

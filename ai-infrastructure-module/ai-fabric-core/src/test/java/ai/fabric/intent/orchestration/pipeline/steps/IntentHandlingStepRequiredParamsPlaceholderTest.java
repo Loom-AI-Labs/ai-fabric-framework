@@ -378,6 +378,8 @@ class IntentHandlingStepRequiredParamsPlaceholderTest {
             .build();
         when(registry.findMetadata("create_purchase_order")).thenReturn(Optional.of(meta));
 
+        OrchestrationProperties orchestrationProperties = new OrchestrationProperties();
+        orchestrationProperties.setActionParamProvenanceMode(OrchestrationProperties.ActionParamProvenanceMode.BLOCK);
         IntentHandlingStep step = new IntentHandlingStep(
             registry,
             providerOf(mock(RAGProvider.class)),
@@ -389,7 +391,7 @@ class IntentHandlingStepRequiredParamsPlaceholderTest {
             new RelationshipQueryPostActionGenerationProperties(),
             new PostActionGenerationProperties(),
             providerOf(new ObjectMapper()),
-            new OrchestrationProperties(),
+            orchestrationProperties,
             providerOf((KnowledgeBaseOverviewService) null),
             null,
             new InMemoryPendingActionStore(),

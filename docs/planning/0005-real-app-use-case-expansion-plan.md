@@ -3,7 +3,7 @@
 - **Status:** Implemented; second-pass capability coverage review added
 - **Date:** 2026-06-20
 - **Decision owner:** AI Fabric framework
-- **Context version:** AI Fabric `0.3.1`, Java `21`, Spring Boot `4.1.0`, Spring AI `2.0.0`
+- **Context version:** AI Fabric `0.3.2`, Java `21`, Spring Boot `4.1.0`, Spring AI `2.0.0`
 - **Depends on:** ADR 0002 Spring AI LLM and embedding execution, ADR 0003 Spring AI capability adoption plan, ADR 0004 vector provider hardening plan
 
 ## Context

@@ -1,6 +1,8 @@
 package ai.fabric.intent.orchestration.pipeline.steps;
 
+import ai.fabric.config.OrchestrationProperties.ActionParamProvenanceMode;
 import ai.fabric.intent.action.AIActionMetaData;
+import ai.fabric.intent.action.AIActionParamSchema;
 import ai.fabric.intent.orchestration.pipeline.PipelineContext;
 import ai.fabric.intent.orchestration.pipeline.steps.ActionExecutableValidationSupport.ActionExecutableValidation;
 import org.springframework.util.StringUtils;
@@ -38,13 +40,21 @@ final class ActionParamValidationSupport {
     static ActionParamValidation validateRequiredActionParams(AIActionMetaData meta,
                                                               Map<String, Object> params,
                                                               PipelineContext pipelineContext) {
-        return validateRequiredActionParams(meta, params, pipelineContext, Set.of());
+        return validateRequiredActionParams(meta, params, pipelineContext, Set.of(), ActionParamProvenanceMode.WARN);
     }
 
     static ActionParamValidation validateRequiredActionParams(AIActionMetaData meta,
                                                               Map<String, Object> params,
                                                               PipelineContext pipelineContext,
                                                               Set<String> trustedResolvedParameters) {
+        return validateRequiredActionParams(meta, params, pipelineContext, trustedResolvedParameters, ActionParamProvenanceMode.WARN);
+    }
+
+    static ActionParamValidation validateRequiredActionParams(AIActionMetaData meta,
+                                                              Map<String, Object> params,
+                                                              PipelineContext pipelineContext,
+                                                              Set<String> trustedResolvedParameters,
+                                                              ActionParamProvenanceMode provenanceMode) {
         if (meta == null || meta.getRequiredParameters() == null || meta.getRequiredParameters().isEmpty()) {
             return null;
         }
@@ -60,8 +70,11 @@ final class ActionParamValidationSupport {
         String originalQuery = pipelineContext != null ? pipelineContext.getOriginalQuery() : null;
         String normalizedOriginalQuery = StringUtils.hasText(originalQuery) ? originalQuery.trim() : "";
 
-        List<String> missing = new java.util.ArrayList<>();
+        ActionParamProvenanceMode effectiveMode = provenanceMode != null ? provenanceMode : ActionParamProvenanceMode.WARN;
+        List<String> hardMissing = new java.util.ArrayList<>();
         List<String> provenanceMissing = new java.util.ArrayList<>();
+        List<String> untrustedHidden = new java.util.ArrayList<>();
+        List<String> untrustedEvidenceBound = new java.util.ArrayList<>();
         Set<String> trustedResolved = normalizeParameterNameSet(trustedResolvedParameters);
 
         for (String required : meta.getRequiredParameters()) {
@@ -70,37 +83,67 @@ final class ActionParamValidationSupport {
             }
             Object value = params != null ? params.get(required) : null;
             if (value == null) {
-                missing.add(required);
+                hardMissing.add(required);
                 continue;
             }
 
             String raw = value.toString();
             if (!StringUtils.hasText(raw)) {
-                missing.add(required);
+                hardMissing.add(required);
                 continue;
             }
 
             if (isPlaceholderOrInstructionEcho(required, raw, meta, normalizedOriginalQuery)) {
-                missing.add(required);
+                hardMissing.add(required);
                 continue;
             }
 
-            if (value instanceof String
-                && !isHiddenActionParameter(meta, required)
-                && !trustedResolved.contains(required.trim().toLowerCase(Locale.ROOT))) {
+            String normalizedRequired = required.trim().toLowerCase(Locale.ROOT);
+            boolean trusted = trustedResolved.contains(normalizedRequired);
+            AIActionParamSchema schema = ActionParameterSupport.paramSchema(meta, required);
+            if (isHiddenActionParameter(meta, required) && !trusted) {
+                hardMissing.add(required);
+                untrustedHidden.add(required);
+                continue;
+            }
+            if (schema != null
+                && Boolean.TRUE.equals(schema.getEvidenceBound())
+                && !trusted
+                && !ActionEvidenceSupport.isEvidenceBoundValueTrusted(
+                    value,
+                    schema,
+                    evidence != null ? evidence.trustedValuesByKey() : null
+                )) {
+                hardMissing.add(required);
+                untrustedEvidenceBound.add(required);
+                continue;
+            }
+
+            if (effectiveMode != ActionParamProvenanceMode.OFF
+                && value instanceof String
+                && !trusted) {
                 String needle = raw.trim().toLowerCase(Locale.ROOT);
                 if (StringUtils.hasText(needle)
                     && !userEvidenceLower.contains(needle)
                     && !pinnedEvidenceLower.contains(needle)) {
-                    missing.add(required);
                     provenanceMissing.add(required);
                 }
             }
         }
 
+        List<String> missing = new java.util.ArrayList<>(hardMissing);
+        if (effectiveMode == ActionParamProvenanceMode.BLOCK) {
+            missing.addAll(provenanceMissing);
+        }
+
         Map<String, Object> debug = new LinkedHashMap<>();
         debug.put("missing", List.copyOf(missing));
+        debug.put("hardMissing", List.copyOf(hardMissing));
         debug.put("provenanceMissing", List.copyOf(provenanceMissing));
+        debug.put("untrustedHiddenParameters", List.copyOf(untrustedHidden));
+        debug.put("untrustedEvidenceBoundParameters", List.copyOf(untrustedEvidenceBound));
+        debug.put("provenanceMode", effectiveMode.name());
+        debug.put("provenanceBlocking", effectiveMode == ActionParamProvenanceMode.BLOCK);
         debug.put("sourcesUsed", evidence != null ? evidence.sourcesUsed() : Map.of());
         return new ActionParamValidation(
             List.copyOf(missing),
@@ -125,7 +168,10 @@ final class ActionParamValidationSupport {
             debug.putAll(validation.debugMetadata());
         }
         debug.put("missing", List.copyOf(missingRequired));
+        debug.put("hardMissing", withoutConfirmationGateParameter(asStringList(debug.get("hardMissing"))));
         debug.put("provenanceMissing", List.copyOf(provenanceMissing));
+        debug.put("untrustedHiddenParameters", withoutConfirmationGateParameter(asStringList(debug.get("untrustedHiddenParameters"))));
+        debug.put("untrustedEvidenceBoundParameters", withoutConfirmationGateParameter(asStringList(debug.get("untrustedEvidenceBoundParameters"))));
         debug.put("confirmationGateHidden", true);
         return new ActionParamValidation(
             List.copyOf(missingRequired),
@@ -143,16 +189,35 @@ final class ActionParamValidationSupport {
         Map<String, Object> rawDebug = validation.debugMetadata();
         if (rawDebug != null) {
             rawDebug.forEach((key, value) -> {
-                if (!"missing".equals(key) && !"provenanceMissing".equals(key)) {
+                if (!"missing".equals(key)
+                    && !"hardMissing".equals(key)
+                    && !"provenanceMissing".equals(key)
+                    && !"untrustedHiddenParameters".equals(key)
+                    && !"untrustedEvidenceBoundParameters".equals(key)) {
                     debug.put(key, value);
                 }
             });
         }
         debug.put("missing", publicMissingRequiredParameters(meta, validation.missingRequired()));
+        debug.put("hardMissing", publicMissingRequiredParameters(meta, asStringList(rawDebug != null
+            ? rawDebug.get("hardMissing")
+            : null)));
         debug.put("provenanceMissing", publicMissingRequiredParameters(meta, validation.provenanceMissing()));
         long hiddenContextMissing = countHiddenContextParameters(meta, validation.missingRequired());
         if (hiddenContextMissing > 0) {
             debug.put("hiddenContextMissingCount", hiddenContextMissing);
+        }
+        long untrustedHiddenParameters = countHiddenContextParameters(meta, asStringList(rawDebug != null
+            ? rawDebug.get("untrustedHiddenParameters")
+            : null));
+        if (untrustedHiddenParameters > 0) {
+            debug.put("untrustedHiddenParametersCount", untrustedHiddenParameters);
+        }
+        List<String> untrustedEvidenceBoundParameters = publicMissingRequiredParameters(meta, asStringList(rawDebug != null
+            ? rawDebug.get("untrustedEvidenceBoundParameters")
+            : null));
+        if (!untrustedEvidenceBoundParameters.isEmpty()) {
+            debug.put("untrustedEvidenceBoundParameters", untrustedEvidenceBoundParameters);
         }
         return Map.of(METADATA_KEY_ACTION_PARAM_VALIDATION, Collections.unmodifiableMap(debug));
     }
@@ -204,6 +269,16 @@ final class ActionParamValidationSupport {
         }
         return parameters.stream()
             .filter(parameter -> !isConfirmationAcceptedParameter(parameter))
+            .toList();
+    }
+
+    private static List<String> asStringList(Object raw) {
+        if (!(raw instanceof List<?> list) || list.isEmpty()) {
+            return List.of();
+        }
+        return list.stream()
+            .filter(value -> value != null && StringUtils.hasText(value.toString()))
+            .map(value -> value.toString().trim())
             .toList();
     }
 

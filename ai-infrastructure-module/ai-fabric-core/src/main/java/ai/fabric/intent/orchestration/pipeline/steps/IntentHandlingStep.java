@@ -8,6 +8,7 @@ import ai.fabric.dto.Intent;
 import ai.fabric.dto.MultiIntentResponse;
 import ai.fabric.dto.NextStepRecommendation;
 import ai.fabric.intent.action.AIActionMetaData;
+import ai.fabric.intent.action.AIActionParamSchema;
 import ai.fabric.intent.action.AIActionHandler;
 import ai.fabric.intent.action.AIActionRegistry;
 import ai.fabric.intent.action.ActionAccessMode;
@@ -420,11 +421,18 @@ public class IntentHandlingStep implements PipelineStep {
             actionContext = actionContext.withActionParams(effectiveParams);
         }
 
+        OrchestrationProperties.ActionParamProvenanceMode provenanceMode = actionParamProvenanceMode();
+        Set<String> trustedResolvedParameters = resolvedContextParams.resolvedParameters();
+        if (confirmedThisRequest && requiresConfirmation) {
+            trustedResolvedParameters = trustConfirmedActionParams(meta, trustedResolvedParameters, effectiveParams);
+        }
+
         ActionParamValidation validation = validateRequiredActionParams(
             meta,
             effectiveParams,
             pipelineContext,
-            resolvedContextParams.resolvedParameters()
+            trustedResolvedParameters,
+            provenanceMode
         );
         validation = suppressConfirmationGateParameter(validation, requiresConfirmation);
         List<String> missingRequired = validation != null ? validation.missingRequired() : List.of();
@@ -653,6 +661,40 @@ public class IntentHandlingStep implements PipelineStep {
                 .nextSteps(extractNextSteps(intent))
                 .build();
         }
+    }
+
+    private OrchestrationProperties.ActionParamProvenanceMode actionParamProvenanceMode() {
+        return orchestrationProperties != null && orchestrationProperties.getActionParamProvenanceMode() != null
+            ? orchestrationProperties.getActionParamProvenanceMode()
+            : OrchestrationProperties.ActionParamProvenanceMode.WARN;
+    }
+
+    private Set<String> trustConfirmedActionParams(AIActionMetaData meta,
+                                                   Set<String> trustedResolvedParameters,
+                                                   Map<String, Object> effectiveParams) {
+        java.util.LinkedHashSet<String> trusted = new java.util.LinkedHashSet<>();
+        if (trustedResolvedParameters != null && !trustedResolvedParameters.isEmpty()) {
+            trusted.addAll(trustedResolvedParameters);
+        }
+        if (effectiveParams != null && !effectiveParams.isEmpty()) {
+            for (Map.Entry<String, Object> entry : effectiveParams.entrySet()) {
+                if (entry == null || !StringUtils.hasText(entry.getKey())) {
+                    continue;
+                }
+                String parameter = entry.getKey().trim();
+                if (!ActionParameterSupport.isUserVisibleActionParameter(meta, parameter)) {
+                    continue;
+                }
+                AIActionParamSchema schema = ActionParameterSupport.paramSchema(meta, parameter);
+                if (schema != null && Boolean.TRUE.equals(schema.getEvidenceBound())) {
+                    continue;
+                }
+                if (ActionValueSupport.hasMeaningfulJavaValue(entry.getValue())) {
+                    trusted.add(parameter);
+                }
+            }
+        }
+        return trusted.isEmpty() ? Set.of() : Collections.unmodifiableSet(trusted);
     }
 
     private void enqueuePostPolicies(String actionName,

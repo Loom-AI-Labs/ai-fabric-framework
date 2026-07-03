@@ -22,7 +22,7 @@ versions on individual dependencies. Import it in `dependencyManagement`:
     <dependency>
       <groupId>io.github.loom-ai-labs</groupId>
       <artifactId>ai-fabric-bom</artifactId>
-      <version>0.3.1</version>
+      <version>0.3.2</version>
       <type>pom</type>
       <scope>import</scope>
     </dependency>

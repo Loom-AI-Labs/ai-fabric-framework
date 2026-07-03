@@ -49,6 +49,19 @@ public class OrchestrationProperties {
     private boolean exposeReadProbeFallbackAttempt = false;
 
     /**
+     * Controls whether user-visible action parameter provenance warnings block execution.
+     *
+     * <p>Hard validation failures still block in every mode: missing required values, empty or placeholder values,
+     * hidden/system parameters that were not resolved from trusted context, and executable/resource-handle checks.
+     * This setting only controls user-visible string values that are present but not found in current user/history
+     * or pinned evidence.</p>
+     *
+     * <p>Defaults to {@link ActionParamProvenanceMode#WARN}: continue to confirmation/execution while surfacing
+     * provenance diagnostics in result metadata.</p>
+     */
+    private ActionParamProvenanceMode actionParamProvenanceMode = ActionParamProvenanceMode.WARN;
+
+    /**
      * Server-defined orchestration modes (coherent bundles) that can override profile defaults.
      *
      * <p>Clients may request a mode, but the server only accepts allowlisted modes defined here.</p>
@@ -107,6 +120,26 @@ public class OrchestrationProperties {
          * Missing vectorSpace triggers fan-out across all known vector spaces (when available).
          */
         DETERMINISTIC_RAG_GENERATE
+    }
+
+    /**
+     * Policy for user-visible action parameter provenance checks.
+     */
+    public enum ActionParamProvenanceMode {
+        /**
+         * User-visible values without provenance block as missing required parameters.
+         */
+        BLOCK,
+
+        /**
+         * User-visible values without provenance are reported in metadata but do not block.
+         */
+        WARN,
+
+        /**
+         * User-visible provenance checks are skipped. Hard validation still applies.
+         */
+        OFF
     }
 
     /**

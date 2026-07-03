@@ -51,6 +51,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -61,6 +62,104 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class IntentHandlingStepPendingConfirmationLoopBreakerTest {
+
+    @Test
+    void shouldTrustStoredPendingActionParamsWhenUserConfirmsWithPlainYes() {
+        InMemoryPendingActionStore pendingActionStore = new InMemoryPendingActionStore();
+
+        AtomicReference<Map<String, Object>> executedParams = new AtomicReference<>();
+
+        AIActionHandler handler = new AIActionHandler() {
+            @Override
+            public AIActionMetaData getActionMetadata() {
+                return AIActionMetaData.builder()
+                    .name("add_to_cart")
+                    .description("Add sku to cart")
+                    .requiredParameters(Set.of("sku"))
+                    .build();
+            }
+
+            @Override
+            public boolean requiresConfirmation() {
+                return true;
+            }
+
+            @Override
+            public String getConfirmationMessage(Map<String, Object> params, ActionContext context) {
+                Object sku = params != null ? params.get("sku") : null;
+                return "Add " + (sku != null ? sku.toString() : "unknown") + " to your cart?";
+            }
+
+            @Override
+            public ActionResult executeAction(Map<String, Object> params, ActionContext context) {
+                executedParams.set(params);
+                return ActionResult.builder()
+                    .success(true)
+                    .message("Added to cart")
+                    .data(ActionPayload.object(Map.of("ok", true)))
+                    .build();
+            }
+        };
+
+        AIActionRegistry registry = mock(AIActionRegistry.class);
+        when(registry.findHandler("add_to_cart")).thenReturn(Optional.of(handler));
+        when(registry.findMetadata("add_to_cart")).thenReturn(Optional.of(handler.getActionMetadata()));
+
+        IntentHandlingStep step = new IntentHandlingStep(
+            registry,
+            providerOf((RAGProvider) null),
+            mock(AICoreService.class),
+            mock(AIServiceConfig.class),
+            providerOf((AdvancedRAGProvider) null),
+            new VectorSpaceRoutingProperties(),
+            new RankBasedMerger(),
+            new RelationshipQueryPostActionGenerationProperties(),
+            new PostActionGenerationProperties(),
+            providerOf(new ObjectMapper()),
+            new OrchestrationProperties(),
+            providerOf((KnowledgeBaseOverviewService) null),
+            null,
+            pendingActionStore,
+            new InMemoryActionDraftStore(),
+            promptTemplateResolver(),
+            new PromptRenderer()
+        );
+
+        OrchestrationContext orchContext = OrchestrationContext.builder()
+            .userId("user-1")
+            .conversationId("chat-confirm-with-stored-params")
+            .build();
+
+        Intent actionIntent = Intent.builder()
+            .type(IntentType.ACTION)
+            .action("add_to_cart")
+            .actionParams(Map.of("sku", "SKU-1"))
+            .build();
+
+        PipelineContext turn1 = PipelineContext.from("add SKU-1 to cart", orchContext)
+            .toBuilder()
+            .intentResponse(MultiIntentResponse.builder().intents(List.of(actionIntent)).build())
+            .build();
+
+        OrchestrationResult turn1Result = step.process(turn1).getIntentResult();
+        assertThat(turn1Result.getType()).isEqualTo(OrchestrationResultType.CONFIRMATION_REQUIRED);
+        assertThat(pendingActionStore.peekPendingAction("chat-confirm-with-stored-params", "user-1")).isPresent();
+
+        Intent confirmIntent = Intent.builder()
+            .type(IntentType.CONFIRMATION_POSITIVE)
+            .build();
+        PipelineContext turn2 = PipelineContext.from("Yes, confirm", orchContext)
+            .toBuilder()
+            .intentResponse(MultiIntentResponse.builder().intents(List.of(confirmIntent)).build())
+            .build();
+
+        OrchestrationResult turn2Result = step.process(turn2).getIntentResult();
+
+        assertThat(turn2Result.getType()).isEqualTo(OrchestrationResultType.ACTION_EXECUTED);
+        assertThat(turn2Result.isSuccess()).isTrue();
+        assertThat(pendingActionStore.peekPendingAction("chat-confirm-with-stored-params", "user-1")).isEmpty();
+        assertThat(executedParams.get()).containsEntry("sku", "SKU-1");
+    }
 
     @Test
     void shouldExecutePendingActionWhenLlmReissuesSameActionInsteadOfConfirmation() {

@@ -21,7 +21,7 @@ Read them in order, or jump to what you need.
 ## At a glance
 
 - **Coordinates:** group `io.github.loom-ai-labs`, BOM `ai-fabric-bom`, modules `ai-fabric-*`.
-- **Latest version:** `0.3.1`.
+- **Latest version:** `0.3.2`.
 - **Java packages:** `ai.fabric.*`.
 - **Requirements:** Java 21, Maven 3.9+, Spring Boot 4.1.x.
 - **Entry point:** annotate a Spring Boot app with `@EnableAIInfrastructure` and add the starter.

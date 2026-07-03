@@ -46,6 +46,7 @@ ai:
     type: lucene
 
   orchestration:
+    action-param-provenance-mode: WARN
     default-mode: resolver
     strict-mode-routing: true
     modes:

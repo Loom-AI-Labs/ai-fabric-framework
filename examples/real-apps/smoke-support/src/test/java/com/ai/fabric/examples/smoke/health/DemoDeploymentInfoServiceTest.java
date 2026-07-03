@@ -14,7 +14,7 @@ class DemoDeploymentInfoServiceTest {
         MockEnvironment environment = new MockEnvironment()
             .withProperty("spring.application.name", "demo-app")
             .withProperty("APP_VERSION", "1.0.0")
-            .withProperty("AI_FABRIC_VERSION", "0.3.1")
+            .withProperty("AI_FABRIC_VERSION", "0.3.2")
             .withProperty("APP_BUILD_COMMIT", "abc1234")
             .withProperty("APP_BUILD_BRANCH", "unknown")
             .withProperty("git_branch", "main")
@@ -26,7 +26,7 @@ class DemoDeploymentInfoServiceTest {
             .containsEntry("status", "UP")
             .containsEntry("service", "demo-app")
             .containsEntry("version", "1.0.0")
-            .containsEntry("aiFabricVersion", "0.3.1")
+            .containsEntry("aiFabricVersion", "0.3.2")
             .containsEntry("commit", "abc1234")
             .containsEntry("branch", "main")
             .containsEntry("builtAt", "2026-07-03T12:00:00Z");

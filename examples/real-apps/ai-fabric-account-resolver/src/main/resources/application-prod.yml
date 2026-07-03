@@ -46,6 +46,7 @@ ai:
       index-path: ${VECTOR_INDEX_PATH:./data/lucene-vector-index}
 
   orchestration:
+    action-param-provenance-mode: WARN
     default-mode: resolver
     strict-mode-routing: true
     modes:
