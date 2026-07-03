@@ -4,6 +4,7 @@ import com.subscription.hub.entity.Address;
 import com.subscription.hub.entity.PaymentMethod;
 import com.subscription.hub.entity.RefundRequest;
 import com.subscription.hub.service.AccountResolutionService;
+import com.subscription.hub.service.DeploymentInfoService;
 import com.subscription.hub.service.SubscriptionService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.DecimalMin;
@@ -32,6 +33,12 @@ public class AccountResolverController {
 
     private final AccountResolutionService accountResolutionService;
     private final SubscriptionService subscriptionService;
+    private final DeploymentInfoService deploymentInfoService;
+
+    @GetMapping("/health")
+    public Map<String, Object> health() {
+        return deploymentInfoService.health();
+    }
 
     @GetMapping("/policies")
     public List<AccountResolutionService.ResolutionPolicy> policies() {

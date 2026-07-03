@@ -90,6 +90,9 @@ Build from the repo root:
 ```bash
 docker build -f examples/real-apps/ai-fabric-account-resolver/Dockerfile \
   --build-arg AI_FABRIC_VERSION=0.3.1 \
+  --build-arg BUILD_COMMIT="$(git rev-parse --short HEAD)" \
+  --build-arg BUILD_BRANCH="$(git rev-parse --abbrev-ref HEAD)" \
+  --build-arg BUILD_TIME="$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
   -t ai-fabric-account-resolver:0.3.1 \
   examples/real-apps
 ```
@@ -118,6 +121,7 @@ Use `requests/demo.http` for ready-to-run calls.
 
 ## Resolver Endpoints
 
+- `GET /api/account-resolver/health` - public deployment health with app version, AI Fabric version, commit, branch, build time, start time, and check time.
 - `GET /api/account-resolver/policies`
 - `GET /api/account-resolver/scenarios`
 - `POST /api/account-resolver/demo/seed`
@@ -142,6 +146,7 @@ When no `position` is provided, this app defaults to `resolver`.
 - `OPENAI_MODEL=gpt-4o-mini`
 - `CORS_ALLOWED_ORIGINS=https://ai-fabric.dev`
 - `JAVA_OPTS=-Xms256m -Xmx768m`
+- Optional deployment metadata: `APP_VERSION`, `AI_FABRIC_VERSION`, `APP_BUILD_COMMIT`, `APP_BUILD_BRANCH`, `APP_BUILD_TIME`.
 
 ## What This App Does Not Cover
 
