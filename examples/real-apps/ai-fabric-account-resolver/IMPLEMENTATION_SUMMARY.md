@@ -38,7 +38,6 @@ The `ai-fabric-account-resolver` real app has been upgraded from the subscriptio
 - `PUT /api/account-resolver/subscriptions/{subscriptionId}/billing-address`
 - `POST /api/account-resolver/subscriptions/{subscriptionId}/refund`
 - `POST /api/subscriptions/query`
-- `POST /api/subscriptions/query/actions/execute`
 
 ## Verification
 
@@ -60,9 +59,6 @@ Smoke calls:
 ```bash
 curl -fsS -X POST http://localhost:18081/api/account-resolver/demo/seed
 curl -fsS http://localhost:18081/api/account-resolver/users/92/readiness
-curl -fsS -X POST http://localhost:18081/api/subscriptions/query/actions/execute \
-  -H 'Content-Type: application/json' \
-  -d '{"action":"update_payment_method","userId":"92","confirmed":true,"params":{"type":"CARD","provider":"Visa","last4":"4242"}}'
 ```
 
 ## Deployment Env Vars
@@ -76,6 +72,6 @@ curl -fsS -X POST http://localhost:18081/api/subscriptions/query/actions/execute
 
 ## Notes
 
-- The app can boot without an LLM key for API and action smoke tests.
+- The app can boot without an LLM key for API and readiness smoke tests.
 - Real natural-language orchestration requires `OPENAI_ENABLED=true` and a valid OpenAI key.
 - Dockerfile build was added, but local Docker daemon must be running to validate the image build.

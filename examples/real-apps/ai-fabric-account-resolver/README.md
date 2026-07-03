@@ -134,9 +134,8 @@ Use `requests/demo.http` for ready-to-run calls.
 Natural language orchestration stays at:
 
 - `POST /api/subscriptions/query`
-- `POST /api/subscriptions/query/actions/execute`
 
-When no `position` is provided, this app defaults to `resolver`.
+When no `position` is provided, this app defaults to `resolver`. Action proposal, confirmation, and rejection should all be sent as normal turns to this query endpoint with the same `conversationId`.
 
 ## Deployment Env Vars
 

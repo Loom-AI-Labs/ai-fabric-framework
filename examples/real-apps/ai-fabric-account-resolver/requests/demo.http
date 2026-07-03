@@ -54,30 +54,16 @@ Content-Type: application/json
   "query": "Why can't I place an order? If payment is missing, add my Visa ending 4242."
 }
 
-### Execute inspect readiness read action manually
-POST {{baseUrl}}/api/subscriptions/query/actions/execute
+### Natural language payment-method resolution follow-up
+POST {{baseUrl}}/api/subscriptions/query
 Content-Type: application/json
 
 {
-  "action": "inspect_account_readiness",
   "userId": "92",
-  "confirmed": true,
-  "params": {}
-}
-
-### Confirm and execute payment-method resolution manually
-POST {{baseUrl}}/api/subscriptions/query/actions/execute
-Content-Type: application/json
-
-{
-  "action": "update_payment_method",
-  "userId": "92",
-  "confirmed": true,
-  "params": {
-    "type": "CARD",
-    "provider": "Visa",
-    "last4": "4242"
-  }
+  "sessionId": "subhub-session-1",
+  "conversationId": "chat-subhub-1",
+  "position": "resolver",
+  "query": "Yes, confirm it."
 }
 
 ### Natural language refund/account-credit scenario
