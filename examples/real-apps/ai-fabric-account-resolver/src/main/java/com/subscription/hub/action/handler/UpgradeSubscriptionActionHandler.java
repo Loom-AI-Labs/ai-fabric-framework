@@ -49,31 +49,31 @@ public class UpgradeSubscriptionActionHandler extends BaseActionHandler {
 
     @ActionConfirmation
     public String confirm(
-        @Param(value = "subscriptionId", required = true, description = "UUID of the subscription to upgrade") String subscriptionId,
-        @Param(value = "newPlanId", required = true, description = "UUID of the new plan to upgrade to") String newPlanId
+        @Param(value = "newPlanName", required = true, description = "Target plan name or tier, such as Pro or Enterprise") String newPlanName
     ) {
-        return "Are you sure you want to upgrade to this plan? Your billing will be updated accordingly.";
+        return "Are you sure you want to upgrade to " + newPlanName + "? Your billing will be updated accordingly.";
     }
 
     @ActionExecute
     public ActionResult execute(
-        @Param(value = "subscriptionId", required = true, description = "UUID of the subscription to upgrade") String subscriptionId,
-        @Param(value = "newPlanId", required = true, description = "UUID of the new plan to upgrade to") String newPlanId,
+        @Param(value = "newPlanName", required = true, description = "Target plan name or tier, such as Pro or Enterprise") String newPlanName,
         ActionContext context
     ) {
-        String userId = context != null ? context.userId() : null;
         try {
+            UUID subscriptionId = requireActiveSubscriptionId(subscriptionService, context);
+            UUID newPlanId = subscriptionService.resolvePlanId(newPlanName);
             var subscription = subscriptionService.upgrade(
-                UUID.fromString(subscriptionId),
-                UUID.fromString(newPlanId)
+                subscriptionId,
+                newPlanId
             );
 
             return ActionResult.builder()
                 .success(true)
                 .message("Your subscription has been upgraded successfully!")
                 .data(ActionResultContracts.object(Map.of(
-                    "subscriptionId", subscriptionId,
-                    "newPlanId", newPlanId,
+                    "subscriptionId", subscriptionId.toString(),
+                    "newPlanId", newPlanId.toString(),
+                    "newPlanName", newPlanName,
                     "status", subscription.getStatus().toString()
                 )))
                 .build();

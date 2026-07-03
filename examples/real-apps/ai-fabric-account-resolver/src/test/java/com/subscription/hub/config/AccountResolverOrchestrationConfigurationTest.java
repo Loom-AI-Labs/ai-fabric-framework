@@ -73,19 +73,19 @@ class AccountResolverOrchestrationConfigurationTest {
         var compoundSystem = resolver.resolve("intent-extraction/compound", "system").template();
         assertThat(compoundSystem.key().version()).isEqualTo("v1-account-resolver");
         assertThat(compoundSystem.template())
-            .contains("ACCOUNT RESOLVER FOLLOW-UP RULES")
-            .contains("classify \"ok add it\", \"add it\", \"update it\", or \"do it\" as ACTION update_payment_method")
-            .contains("Omit missing required params such as last4")
-            .contains("Do NOT set requiresTargetResolution=true for requests about \"my account\"")
-            .contains("return ACTION update_address with requiresTargetResolution=false");
+            .contains("ACCOUNT RESOLVER OPERATING PRINCIPLES")
+            .contains("This assistant resolves the current authenticated user's account")
+            .contains("Do not ask the user for internal identifiers")
+            .contains("Treat policy documents as human-readable guidance")
+            .contains("For account-owned workflows, set requiresTargetResolution=false");
 
         var multiStepClassify = resolver.resolve("intent-extraction/multi-step", "classify").template();
         assertThat(multiStepClassify.key().version()).isEqualTo("v1-account-resolver");
         assertThat(multiStepClassify.template())
-            .contains("Account Resolver follow-ups are different from generic acknowledgements")
-            .contains("ACTION with actionHint \"update payment method\"")
-            .contains("Do NOT set requiresTargetResolution=true for requests about \"my account\"")
-            .contains("classify ACTION with actionHint \"update address\" and requiresTargetResolution=false");
+            .contains("Account Resolver resolves the current authenticated user's account")
+            .contains("Do not ask the user for internal identifiers")
+            .contains("Treat policy documents as human-readable guidance")
+            .contains("For account-owned workflows, set requiresTargetResolution=false");
 
         assertThat(resolver.resolve("intent-extraction/compound", "user").template().key().version())
             .isEqualTo("v1");

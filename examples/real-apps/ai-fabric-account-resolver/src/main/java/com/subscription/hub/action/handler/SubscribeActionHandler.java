@@ -51,31 +51,32 @@ public class SubscribeActionHandler extends BaseActionHandler {
 
     @ActionConfirmation
     public String confirm(
-        @Param(value = "planId", required = true, description = "UUID of the plan to subscribe to") String planId,
+        @Param(value = "planName", required = true, description = "Plan name or tier to subscribe to, such as Basic, Pro, or Enterprise") String planName,
         @Param(value = "billingCycle", description = "MONTHLY or ANNUAL") String billingCycle
     ) {
         String cycle = billingCycle != null && !billingCycle.isBlank() ? billingCycle : "MONTHLY";
         return String.format(
-            "Are you sure you want to subscribe to this plan with %s billing?",
+            "Are you sure you want to subscribe to %s with %s billing?",
+            planName,
             cycle
         );
     }
 
     @ActionExecute
     public ActionResult execute(
-        @Param(value = "planId", required = true, description = "UUID of the plan to subscribe to") String planId,
+        @Param(value = "planName", required = true, description = "Plan name or tier to subscribe to, such as Basic, Pro, or Enterprise") String planName,
         @Param(value = "billingCycle", description = "MONTHLY or ANNUAL") String billingCycle,
         ActionContext context
     ) {
-        String userId = context != null ? context.userId() : null;
         try {
             String cycle = billingCycle != null && !billingCycle.isBlank() ? billingCycle : "MONTHLY";
             Subscription.BillingCycle parsed = Subscription.BillingCycle.valueOf(cycle.toUpperCase());
 
-            UUID userUuid = parseUserId(userId);
+            UUID userUuid = requireCurrentUser(context);
+            UUID planId = subscriptionService.resolvePlanId(planName);
             Subscription subscription = subscriptionService.subscribe(
                 userUuid,
-                UUID.fromString(planId),
+                planId,
                 parsed
             );
 
@@ -84,7 +85,8 @@ public class SubscribeActionHandler extends BaseActionHandler {
                 .message("You have successfully subscribed!")
                 .data(ActionResultContracts.object(Map.of(
                     "subscriptionId", subscription.getId().toString(),
-                    "planId", planId,
+                    "planId", planId.toString(),
+                    "planName", planName,
                     "status", subscription.getStatus().toString()
                 )))
                 .build();

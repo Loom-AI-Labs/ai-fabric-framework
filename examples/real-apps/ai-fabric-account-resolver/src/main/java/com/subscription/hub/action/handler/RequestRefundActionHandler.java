@@ -10,7 +10,6 @@ import ai.fabric.intent.action.annotation.ActionConfirmation;
 import ai.fabric.intent.action.annotation.ActionExecute;
 import ai.fabric.intent.action.annotation.Param;
 import com.subscription.hub.entity.RefundRequest;
-import com.subscription.hub.entity.Subscription;
 import com.subscription.hub.service.AccountResolutionService;
 import com.subscription.hub.service.SubscriptionService;
 import com.subscription.hub.service.UserService;
@@ -70,14 +69,13 @@ public class RequestRefundActionHandler extends BaseActionHandler {
 
     @ActionExecute
     public ActionResult execute(
-        @Param(value = "subscriptionId", description = "UUID of the subscription") String subscriptionId,
         @Param(value = "amount", required = true, description = "Refund or account credit amount", min = 1) BigDecimal amount,
         @Param(value = "reason", description = "Reason for the billing resolution") String reason,
         @Param(value = "resolutionType", description = "REFUND or ACCOUNT_CREDIT", allowedValues = {"REFUND", "ACCOUNT_CREDIT"}) RefundRequest.ResolutionType resolutionType,
         ActionContext context
     ) {
         try {
-            UUID resolvedSubscriptionId = resolveSubscriptionId(subscriptionId, context);
+            UUID resolvedSubscriptionId = requireActiveSubscriptionId(subscriptionService, context);
             AccountResolutionService.RefundResolutionResult result = accountResolutionService.requestRefund(
                 resolvedSubscriptionId,
                 amount,
@@ -109,19 +107,5 @@ public class RequestRefundActionHandler extends BaseActionHandler {
                 .errorCode("REQUEST_REFUND_FAILED")
                 .build();
         }
-    }
-
-    private UUID resolveSubscriptionId(String subscriptionId, ActionContext context) {
-        if (subscriptionId != null && !subscriptionId.isBlank()) {
-            return UUID.fromString(subscriptionId);
-        }
-        String userId = context != null ? context.userId() : null;
-        if (userId == null || userId.isBlank()) {
-            throw new IllegalArgumentException("subscriptionId or userId is required");
-        }
-        UUID userUuid = parseUserId(userId);
-        return subscriptionService.getActiveSubscription(userUuid)
-            .map(Subscription::getId)
-            .orElseThrow(() -> new IllegalArgumentException("Active subscription not found for user"));
     }
 }

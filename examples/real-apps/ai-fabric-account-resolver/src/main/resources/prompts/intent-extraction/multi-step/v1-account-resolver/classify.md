@@ -55,17 +55,14 @@ Rules:
   - STANDARD for normal grounded explanations and summaries
   - DEEP for comprehensive analysis, comparisons, or multi-factor recommendations
 - For conversational acknowledgements/greetings (e.g., "thanks", "ok"), prefer INFORMATION with requiresRetrieval=false and provide directAnswer.
-- Account Resolver follow-ups are different from generic acknowledgements when recent history makes the next action clear.
-  - You receive prior chat turns as provider-native conversation history. Use the immediately preceding assistant message, especially next-step wording, smart suggestions, or account-blocker explanations, to interpret short follow-ups.
-  - If the previous assistant explained a missing payment method or recommended updating payment, classify "ok add it", "add it", "update it", "do it", or "continue" as ACTION with actionHint "update payment method". Omit missing required params so the backend can ask for them.
-  - If the previous assistant explained a missing or invalid billing address, classify short follow-ups as ACTION with actionHint "update address".
-  - If the previous assistant discussed a refund or account credit, classify short follow-ups as ACTION with actionHint "request refund".
-  - If the previous assistant recommended inspecting account readiness, blockers, or policies, classify short follow-ups such as "ok inspect it", "show me", or "check it" as ACTION with actionHint "inspect account readiness".
-  - Do not use OUT_OF_SCOPE for short follow-ups when the recent Account Resolver context makes one supported action plausible.
-- Account-owned fields and workflows are resolved from the current authenticated account/user context, not from attachments or search results.
-  - Do NOT set requiresTargetResolution=true for requests about "my account", "my subscription", "my payment method", "my billing address", "my refund", account blockers, account readiness, or whether the user can place an order.
-  - For update payment method, update address, subscribe, request refund, and inspect account readiness intents, set requiresTargetResolution=false unless the user explicitly refers to a separate attached or previously pinned item.
-  - For "update my billing address" or similar address updates, classify ACTION with actionHint "update address" and requiresTargetResolution=false. If the concrete street/city/state/postal/country values are missing, leave actionParams empty so the backend asks for address fields.
+- Account Resolver resolves the current authenticated user's account.
+  - First-person account resources are context-owned by default: account, subscription, payment method, billing or shipping address, billing issue, refund or credit, blockers, and readiness.
+  - Do not ask the user for internal identifiers such as userId, subscriptionId, tenantId, accountId, or hidden database IDs. Backend actions resolve those from context when needed.
+  - Use available actions, action descriptions, recent chat history, assistant recommendations, account blocker explanations, and user-friendly policy text together to classify the next supported action.
+  - Treat policy documents as human-readable guidance for explaining and choosing governed actions. Do not treat policy text as an executable schema, and do not invent parameters from it.
+  - For account-owned workflows, set requiresTargetResolution=false unless the user explicitly refers to a separate attached or pinned item outside the current account workflow.
+  - For short follow-ups, infer the intended supported action from the immediate conversation context when one action is clearly implied. Do not use OUT_OF_SCOPE for plausible account-resolution follow-ups.
+  - If required user-supplied fields are missing for a chosen action, leave actionParams empty or partial so the backend asks for those fields.
 - Set requiresTargetResolution=true when the request depends on resolving specific target(s) from attachments or prior retrieved results.
   - This includes implicit target-dependent follow-ups like: "any negative reviews on them?", "return policy for this", "alternatives to these", even if the user does not include explicit identifiers.
 - Optional: set metadata.retrievalQueryHint with short keywords/identifiers (max 200 chars) that improve retrieval. Never include sensitive personal contact details.

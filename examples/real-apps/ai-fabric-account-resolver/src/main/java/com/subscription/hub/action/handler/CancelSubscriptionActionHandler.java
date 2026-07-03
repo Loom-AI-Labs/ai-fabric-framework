@@ -48,35 +48,21 @@ public class CancelSubscriptionActionHandler extends BaseActionHandler {
     }
 
     @ActionConfirmation
-    public String confirm(@Param(value = "subscriptionId", description = "UUID of the subscription to cancel") String subscriptionId) {
-        if (subscriptionId == null) {
-            return "Are you sure you want to cancel your subscription? This action cannot be undone.";
-        }
-
-        try {
-            var subscription = subscriptionService.findById(UUID.fromString(subscriptionId));
-            return String.format(
-                "Are you sure you want to cancel your subscription? " +
-                "Your access will end on %s. This action cannot be undone.",
-                subscription.getEndDate() != null ? subscription.getEndDate().toString() : "immediately"
-            );
-        } catch (Exception e) {
-            return "Are you sure you want to cancel your subscription? This action cannot be undone.";
-        }
+    public String confirm() {
+        return "Are you sure you want to cancel your current subscription? This action cannot be undone.";
     }
 
     @ActionExecute
     public ActionResult execute(
-        @Param(value = "subscriptionId", required = true, description = "UUID of the subscription to cancel") String subscriptionId,
         @Param(value = "reason", description = "Optional reason for cancellation") String reason,
         ActionContext context
     ) {
-        String userId = context != null ? context.userId() : null;
         try {
             String safeReason = reason != null && !reason.isBlank() ? reason : "User requested";
+            UUID subscriptionId = requireActiveSubscriptionId(subscriptionService, context);
 
             var subscription = subscriptionService.unsubscribe(
-                UUID.fromString(subscriptionId),
+                subscriptionId,
                 safeReason
             );
 
@@ -84,7 +70,7 @@ public class CancelSubscriptionActionHandler extends BaseActionHandler {
                 .success(true)
                 .message("Your subscription has been cancelled successfully")
                 .data(ActionResultContracts.object(Map.of(
-                    "subscriptionId", subscriptionId,
+                    "subscriptionId", subscriptionId.toString(),
                     "status", subscription.getStatus().toString(),
                     "endDate", subscription.getEndDate() != null ? subscription.getEndDate().toString() : ""
                 )))

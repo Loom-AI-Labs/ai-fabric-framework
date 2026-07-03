@@ -18,6 +18,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Objects;
@@ -328,7 +329,61 @@ public class SubscriptionService {
             .orElseThrow(() -> new RuntimeException("Subscription not found"));
     }
 
+    /**
+     * Resolve a user-facing plan reference such as "Pro" or "Enterprise Plan" to a plan id.
+     */
+    public UUID resolvePlanId(String planReference) {
+        if (planReference == null || planReference.isBlank()) {
+            throw new IllegalArgumentException("Plan name or tier is required");
+        }
+
+        String trimmed = planReference.trim();
+        try {
+            UUID id = UUID.fromString(trimmed);
+            return planRepository.findById(id)
+                .map(SubscriptionPlan::getId)
+                .orElseThrow(() -> new IllegalArgumentException("Plan not found"));
+        } catch (IllegalArgumentException ignored) {
+            // Continue with human-readable plan matching.
+        }
+
+        String normalized = normalizePlanReference(trimmed);
+        if (normalized.isBlank()) {
+            throw new IllegalArgumentException("Plan name or tier is required");
+        }
+        List<SubscriptionPlan> plans = planRepository.findByIsActiveTrue();
+        if (plans == null || plans.isEmpty()) {
+            plans = planRepository.findAll();
+        }
+
+        return plans.stream()
+            .filter(plan -> plan != null && plan.getId() != null)
+            .filter(plan -> matchesPlanReference(plan, normalized))
+            .map(SubscriptionPlan::getId)
+            .findFirst()
+            .orElseThrow(() -> new IllegalArgumentException("Plan not found for: " + planReference));
+    }
+
     // Helper methods
+
+    private boolean matchesPlanReference(SubscriptionPlan plan, String normalizedReference) {
+        String name = normalizePlanReference(plan.getName());
+        String tier = plan.getTier() != null ? normalizePlanReference(plan.getTier().name()) : "";
+        return name.equals(normalizedReference)
+            || (!name.isBlank() && name.contains(normalizedReference))
+            || (!name.isBlank() && normalizedReference.contains(name))
+            || tier.equals(normalizedReference);
+    }
+
+    private String normalizePlanReference(String value) {
+        if (value == null) {
+            return "";
+        }
+        return value.toLowerCase(Locale.ROOT)
+            .replace("plan", "")
+            .replaceAll("[^a-z0-9]+", "")
+            .trim();
+    }
 
     private LocalDateTime calculateEndDate(Subscription.BillingCycle billingCycle) {
         LocalDateTime now = LocalDateTime.now();

@@ -11,7 +11,6 @@ import ai.fabric.intent.action.annotation.ActionExecute;
 import ai.fabric.intent.action.annotation.Param;
 import ai.fabric.privacy.pii.PIIDetectionService;
 import com.subscription.hub.entity.Address;
-import com.subscription.hub.entity.Subscription;
 import com.subscription.hub.service.SubscriptionService;
 import com.subscription.hub.service.UserService;
 import lombok.extern.slf4j.Slf4j;
@@ -108,7 +107,7 @@ public class UpdateAddressActionHandler extends BaseActionHandler {
                 address.setValidationScore(1.0);
             }
 
-            UUID resolvedSubscriptionId = resolveSubscriptionId(context);
+            UUID resolvedSubscriptionId = requireActiveSubscriptionId(subscriptionService, context);
             var subscription = subscriptionService.updateAddress(
                 resolvedSubscriptionId,
                 parsedType,
@@ -132,16 +131,5 @@ public class UpdateAddressActionHandler extends BaseActionHandler {
                 .errorCode("UPDATE_ADDRESS_FAILED")
                 .build();
         }
-    }
-
-    private UUID resolveSubscriptionId(ActionContext context) {
-        String userId = context != null ? context.userId() : null;
-        if (userId == null || userId.isBlank()) {
-            throw new IllegalArgumentException("authenticated user context is required");
-        }
-        UUID userUuid = parseUserId(userId);
-        return subscriptionService.getActiveSubscription(userUuid)
-            .map(Subscription::getId)
-            .orElseThrow(() -> new IllegalArgumentException("Active subscription not found for user"));
     }
 }

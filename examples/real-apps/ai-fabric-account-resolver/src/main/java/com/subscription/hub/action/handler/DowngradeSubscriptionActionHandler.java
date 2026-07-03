@@ -49,31 +49,31 @@ public class DowngradeSubscriptionActionHandler extends BaseActionHandler {
 
     @ActionConfirmation
     public String confirm(
-        @Param(value = "subscriptionId", required = true, description = "UUID of the subscription to downgrade") String subscriptionId,
-        @Param(value = "newPlanId", required = true, description = "UUID of the new plan to downgrade to") String newPlanId
+        @Param(value = "newPlanName", required = true, description = "Target plan name or tier, such as Basic or Pro") String newPlanName
     ) {
-        return "Are you sure you want to downgrade? You may lose access to some features. This change will take effect on your next billing cycle.";
+        return "Are you sure you want to downgrade to " + newPlanName + "? You may lose access to some features. This change will take effect on your next billing cycle.";
     }
 
     @ActionExecute
     public ActionResult execute(
-        @Param(value = "subscriptionId", required = true, description = "UUID of the subscription to downgrade") String subscriptionId,
-        @Param(value = "newPlanId", required = true, description = "UUID of the new plan to downgrade to") String newPlanId,
+        @Param(value = "newPlanName", required = true, description = "Target plan name or tier, such as Basic or Pro") String newPlanName,
         ActionContext context
     ) {
-        String userId = context != null ? context.userId() : null;
         try {
+            UUID subscriptionId = requireActiveSubscriptionId(subscriptionService, context);
+            UUID newPlanId = subscriptionService.resolvePlanId(newPlanName);
             var subscription = subscriptionService.downgrade(
-                UUID.fromString(subscriptionId),
-                UUID.fromString(newPlanId)
+                subscriptionId,
+                newPlanId
             );
 
             return ActionResult.builder()
                 .success(true)
                 .message("Your subscription has been downgraded successfully")
                 .data(ActionResultContracts.object(Map.of(
-                    "subscriptionId", subscriptionId,
-                    "newPlanId", newPlanId,
+                    "subscriptionId", subscriptionId.toString(),
+                    "newPlanId", newPlanId.toString(),
+                    "newPlanName", newPlanName,
                     "status", subscription.getStatus().toString()
                 )))
                 .build();

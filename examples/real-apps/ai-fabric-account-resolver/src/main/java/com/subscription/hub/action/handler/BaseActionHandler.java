@@ -1,5 +1,8 @@
 package com.subscription.hub.action.handler;
 
+import ai.fabric.intent.action.ActionContext;
+import com.subscription.hub.entity.Subscription;
+import com.subscription.hub.service.SubscriptionService;
 import com.subscription.hub.service.UserService;
 import lombok.RequiredArgsConstructor;
 
@@ -31,5 +34,20 @@ public abstract class BaseActionHandler {
             // Try as UUID string
             return UUID.fromString(userId);
         }
+    }
+
+    protected UUID requireCurrentUser(ActionContext context) {
+        String userId = context != null ? context.userId() : null;
+        if (userId == null || userId.isBlank()) {
+            throw new IllegalArgumentException("authenticated user context is required");
+        }
+        return parseUserId(userId);
+    }
+
+    protected UUID requireActiveSubscriptionId(SubscriptionService subscriptionService, ActionContext context) {
+        UUID userUuid = requireCurrentUser(context);
+        return subscriptionService.getActiveSubscription(userUuid)
+            .map(Subscription::getId)
+            .orElseThrow(() -> new IllegalArgumentException("Active subscription not found for user"));
     }
 }

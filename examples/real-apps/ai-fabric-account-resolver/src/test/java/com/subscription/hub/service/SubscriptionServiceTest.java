@@ -16,6 +16,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -63,13 +64,51 @@ class SubscriptionServiceTest {
         assertThat(results).containsExactly(pro);
     }
 
+    @Test
+    void resolvePlanIdAcceptsUserFacingPlanNameOrTier() {
+        UUID basicId = UUID.randomUUID();
+        UUID proId = UUID.randomUUID();
+        UUID enterpriseId = UUID.randomUUID();
+        SubscriptionPlan basic = plan(basicId, "Basic Plan", "Starter features", SubscriptionPlan.PlanTier.BASIC);
+        SubscriptionPlan pro = plan(proId, "Pro Plan", "Priority support", SubscriptionPlan.PlanTier.PRO);
+        SubscriptionPlan enterprise = plan(enterpriseId, "Enterprise Plan", "Enterprise governance", SubscriptionPlan.PlanTier.ENTERPRISE);
+        when(planRepository.findByIsActiveTrue()).thenReturn(List.of(basic, pro, enterprise));
+
+        assertThat(service.resolvePlanId("Pro")).isEqualTo(proId);
+        assertThat(service.resolvePlanId("Enterprise Plan")).isEqualTo(enterpriseId);
+        assertThat(service.resolvePlanId("basic")).isEqualTo(basicId);
+    }
+
+    @Test
+    void resolvePlanIdStillAcceptsInternalUuidWhenSuppliedByBackendContext() {
+        UUID proId = UUID.randomUUID();
+        SubscriptionPlan pro = plan(proId, "Pro Plan", "Priority support", SubscriptionPlan.PlanTier.PRO);
+        when(planRepository.findById(proId)).thenReturn(Optional.of(pro));
+
+        assertThat(service.resolvePlanId(proId.toString())).isEqualTo(proId);
+    }
+
+    @Test
+    void resolvePlanIdRejectsUnknownPlanReference() {
+        SubscriptionPlan pro = plan(UUID.randomUUID(), "Pro Plan", "Priority support", SubscriptionPlan.PlanTier.PRO);
+        when(planRepository.findByIsActiveTrue()).thenReturn(List.of(pro));
+
+        assertThatThrownBy(() -> service.resolvePlanId("Premium"))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("Plan not found");
+    }
+
     private static SubscriptionPlan plan(UUID id, String name, String description) {
+        return plan(id, name, description, SubscriptionPlan.PlanTier.PRO);
+    }
+
+    private static SubscriptionPlan plan(UUID id, String name, String description, SubscriptionPlan.PlanTier tier) {
         return SubscriptionPlan.builder()
             .id(id)
             .name(name)
             .description(description)
             .monthlyPrice(BigDecimal.TEN)
-            .tier(SubscriptionPlan.PlanTier.PRO)
+            .tier(tier)
             .isActive(true)
             .build();
     }

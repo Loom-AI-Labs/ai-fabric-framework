@@ -17,19 +17,15 @@ EXTRACTION RULES:
 5. If multiple intents are present -> set multi-intent data and ensure intents array reflects each one.
 6. Confidence must be between 0.0 and 1.0.
 
-ACCOUNT RESOLVER FOLLOW-UP RULES:
-- You receive prior chat turns as provider-native conversation history. Treat recent USER and ASSISTANT messages as conversation context when resolving short follow-ups.
-- For short acknowledgement or follow-up messages such as "ok", "ok add it", "do it", "yes add it", "continue", "that one", or "update it", infer the intended supported action from the immediately preceding assistant message, especially a prior nextStepRecommended.query, smart suggestion, or explanation of account blockers.
-- If the previous assistant explained a missing payment method or recommended updating payment, and AVAILABLE ACTIONS includes update_payment_method, classify "ok add it", "add it", "update it", or "do it" as ACTION update_payment_method. Do not mark OUT_OF_SCOPE. Omit missing required params such as last4 so the backend can ask for them.
-- If the previous assistant explained a missing or invalid billing address and AVAILABLE ACTIONS includes update_address, map short follow-ups to ACTION update_address.
-- If the previous assistant discussed a refund or account credit and AVAILABLE ACTIONS includes request_refund, map short follow-ups to ACTION request_refund.
-- If the previous assistant recommended inspecting account readiness, blockers, or policies and AVAILABLE ACTIONS includes inspect_account_readiness, map short follow-ups such as "ok inspect it", "show me", or "check it" to ACTION inspect_account_readiness.
-- Never execute or confirm a pending action solely from ambiguous "ok add it" unless the current request clearly confirms a PENDING ACTION section; for normal action starts, return ACTION and omit missing required params.
-- Prefer missing-parameter collection over OUT_OF_SCOPE when recent account-resolver context makes the user's intent plausible.
-- Account-owned fields and workflows are resolved from the current authenticated account/user context, not from attachments or search results.
-- Do NOT set requiresTargetResolution=true for requests about "my account", "my subscription", "my payment method", "my billing address", "my refund", account blockers, account readiness, or whether the user can place an order.
-- For update_payment_method, update_address, subscribe, request_refund, and inspect_account_readiness, set requiresTargetResolution=false unless the user explicitly refers to a separate attached or previously pinned item.
-- For "update my billing address" or similar address updates, return ACTION update_address with requiresTargetResolution=false. If streetAddress, city, state, postalCode, or country are missing, omit them so the backend asks for those address fields.
+ACCOUNT RESOLVER OPERATING PRINCIPLES:
+- This assistant resolves the current authenticated user's account. First-person account resources are context-owned by default: account, subscription, payment method, billing or shipping address, billing issue, refund or credit, blockers, and readiness.
+- Do not ask the user for internal identifiers such as userId, subscriptionId, tenantId, accountId, or hidden database IDs. Backend actions resolve those from context when needed.
+- Use AVAILABLE ACTIONS, action descriptions, recent chat history, assistant recommendations, account blocker explanations, and user-friendly policy text together to choose the next supported action.
+- Treat policy documents as human-readable guidance for explaining and choosing governed actions. Do not treat policy text as an executable schema, and do not invent parameters from it.
+- For account-owned workflows, set requiresTargetResolution=false unless the user explicitly refers to a separate attached or pinned item outside the current account workflow.
+- For short follow-ups, infer the intended supported action from the immediate conversation context when one action is clearly implied. Do not mark plausible account-resolution follow-ups OUT_OF_SCOPE.
+- Never execute or confirm a pending action solely from an ambiguous follow-up unless the current prompt includes a PENDING ACTION section and the user clearly approves it.
+- If the chosen action is missing required user-supplied fields, omit the missing fields. The backend will ask for those fields through the missing-parameter flow.
 
 7. AUTHORITATIVE CONTEXT FIRST: if active attachments and/or pinned targets are present, treat them as the primary source of truth.
    - RAG retrieval is slower and more expensive than answering from authoritative context.

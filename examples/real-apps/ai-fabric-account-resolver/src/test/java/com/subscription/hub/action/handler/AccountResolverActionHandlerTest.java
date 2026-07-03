@@ -236,7 +236,6 @@ class AccountResolverActionHandlerTest {
             .build(), null);
 
         ActionResult result = handler.execute(
-            null,
             new BigDecimal("75"),
             "Support incident",
             RefundRequest.ResolutionType.REFUND,
@@ -263,9 +262,31 @@ class AccountResolverActionHandlerTest {
             context.register(InspectAccountReadinessActionHandler.class);
             context.register(UpdatePaymentMethodActionHandler.class);
             context.register(UpdateAddressActionHandler.class);
+            context.register(RequestRefundActionHandler.class);
+            context.register(CancelSubscriptionActionHandler.class);
+            context.register(UpgradeSubscriptionActionHandler.class);
+            context.register(DowngradeSubscriptionActionHandler.class);
+            context.register(SubscribeActionHandler.class);
             context.refresh();
 
             AIActionRegistry registry = context.getBean(AIActionRegistry.class);
+
+            assertThat(registry.getAllMetadata())
+                .extracting(AIActionMetaData::getName)
+                .containsExactlyInAnyOrder(
+                    "inspect_account_readiness",
+                    "update_payment_method",
+                    "update_address",
+                    "request_refund",
+                    "cancel_subscription",
+                    "upgrade_subscription",
+                    "downgrade_subscription",
+                    "subscribe"
+                );
+            assertThat(registry.getAllMetadata()).allSatisfy(action ->
+                assertThat(action.getParameters().keySet())
+                    .doesNotContain("userId", "subscriptionId", "tenantId", "accountId", "planId", "newPlanId")
+            );
 
             AIActionMetaData readiness = registry.findMetadata("inspect_account_readiness").orElseThrow();
             assertThat(readiness.getParameters()).isEmpty();
@@ -284,6 +305,26 @@ class AccountResolverActionHandlerTest {
                 .containsOnlyKeys("addressType", "streetAddress", "city", "state", "postalCode", "country");
             assertThat(address.getRequiredParameters())
                 .containsExactlyInAnyOrder("streetAddress", "city", "state", "postalCode", "country");
+
+            AIActionMetaData refund = registry.findMetadata("request_refund").orElseThrow();
+            assertThat(refund.getParameters()).containsOnlyKeys("amount", "reason", "resolutionType");
+            assertThat(refund.getRequiredParameters()).containsExactly("amount");
+
+            AIActionMetaData cancel = registry.findMetadata("cancel_subscription").orElseThrow();
+            assertThat(cancel.getParameters()).containsOnlyKeys("reason");
+            assertThat(cancel.getRequiredParameters()).isEmpty();
+
+            AIActionMetaData upgrade = registry.findMetadata("upgrade_subscription").orElseThrow();
+            assertThat(upgrade.getParameters()).containsOnlyKeys("newPlanName");
+            assertThat(upgrade.getRequiredParameters()).containsExactly("newPlanName");
+
+            AIActionMetaData downgrade = registry.findMetadata("downgrade_subscription").orElseThrow();
+            assertThat(downgrade.getParameters()).containsOnlyKeys("newPlanName");
+            assertThat(downgrade.getRequiredParameters()).containsExactly("newPlanName");
+
+            AIActionMetaData subscribe = registry.findMetadata("subscribe").orElseThrow();
+            assertThat(subscribe.getParameters()).containsOnlyKeys("planName", "billingCycle");
+            assertThat(subscribe.getRequiredParameters()).containsExactly("planName");
         }
     }
 
@@ -324,5 +365,160 @@ class AccountResolverActionHandlerTest {
 
         assertThat(result.isSuccess()).isTrue();
         verify(subscriptionService).updateAddress(eq(subscriptionId), eq(Address.AddressType.BILLING), isA(Address.class));
+    }
+
+    @Test
+    void cancelActionResolvesActiveSubscriptionFromUserContext() {
+        UUID userUuid = UUID.randomUUID();
+        UUID subscriptionId = UUID.randomUUID();
+        Subscription active = Subscription.builder()
+            .id(subscriptionId)
+            .userId(userUuid)
+            .status(Subscription.SubscriptionStatus.ACTIVE)
+            .billingCycle(Subscription.BillingCycle.MONTHLY)
+            .startDate(LocalDateTime.now().minusDays(3))
+            .build();
+        Subscription cancelled = Subscription.builder()
+            .id(subscriptionId)
+            .userId(userUuid)
+            .status(Subscription.SubscriptionStatus.CANCELLED)
+            .billingCycle(Subscription.BillingCycle.MONTHLY)
+            .startDate(active.getStartDate())
+            .endDate(LocalDateTime.now())
+            .build();
+        when(userService.getUserIdFromNumeric(94L)).thenReturn(userUuid);
+        when(subscriptionService.hasActiveSubscription(userUuid)).thenReturn(true);
+        when(subscriptionService.getActiveSubscription(userUuid)).thenReturn(Optional.of(active));
+        when(subscriptionService.unsubscribe(eq(subscriptionId), eq("No longer needed"))).thenReturn(cancelled);
+
+        CancelSubscriptionActionHandler handler = new CancelSubscriptionActionHandler(subscriptionService, userService);
+        ActionContext context = new ActionContext(OrchestrationContext.builder()
+            .userId("94")
+            .sessionId("resolver-test")
+            .build(), null);
+
+        assertThat(handler.allowed(context)).isTrue();
+        assertThat(handler.confirm()).contains("current subscription");
+
+        ActionResult result = handler.execute("No longer needed", context);
+
+        assertThat(result.isSuccess()).isTrue();
+        verify(subscriptionService).unsubscribe(eq(subscriptionId), eq("No longer needed"));
+    }
+
+    @Test
+    void upgradeActionResolvesActiveSubscriptionAndPlanNameFromContext() {
+        UUID userUuid = UUID.randomUUID();
+        UUID subscriptionId = UUID.randomUUID();
+        UUID planId = UUID.randomUUID();
+        Subscription active = Subscription.builder()
+            .id(subscriptionId)
+            .userId(userUuid)
+            .status(Subscription.SubscriptionStatus.ACTIVE)
+            .billingCycle(Subscription.BillingCycle.MONTHLY)
+            .startDate(LocalDateTime.now().minusDays(3))
+            .build();
+        Subscription upgraded = Subscription.builder()
+            .id(subscriptionId)
+            .userId(userUuid)
+            .planId(planId)
+            .status(Subscription.SubscriptionStatus.ACTIVE)
+            .billingCycle(Subscription.BillingCycle.MONTHLY)
+            .startDate(active.getStartDate())
+            .build();
+        when(userService.getUserIdFromNumeric(95L)).thenReturn(userUuid);
+        when(subscriptionService.hasActiveSubscription(userUuid)).thenReturn(true);
+        when(subscriptionService.getActiveSubscription(userUuid)).thenReturn(Optional.of(active));
+        when(subscriptionService.resolvePlanId("Enterprise")).thenReturn(planId);
+        when(subscriptionService.upgrade(eq(subscriptionId), eq(planId))).thenReturn(upgraded);
+
+        UpgradeSubscriptionActionHandler handler = new UpgradeSubscriptionActionHandler(subscriptionService, userService);
+        ActionContext context = new ActionContext(OrchestrationContext.builder()
+            .userId("95")
+            .sessionId("resolver-test")
+            .build(), null);
+
+        assertThat(handler.allowed(context)).isTrue();
+        assertThat(handler.confirm("Enterprise")).contains("Enterprise");
+
+        ActionResult result = handler.execute("Enterprise", context);
+
+        assertThat(result.isSuccess()).isTrue();
+        verify(subscriptionService).upgrade(eq(subscriptionId), eq(planId));
+    }
+
+    @Test
+    void downgradeActionResolvesActiveSubscriptionAndPlanNameFromContext() {
+        UUID userUuid = UUID.randomUUID();
+        UUID subscriptionId = UUID.randomUUID();
+        UUID planId = UUID.randomUUID();
+        Subscription active = Subscription.builder()
+            .id(subscriptionId)
+            .userId(userUuid)
+            .status(Subscription.SubscriptionStatus.ACTIVE)
+            .billingCycle(Subscription.BillingCycle.MONTHLY)
+            .startDate(LocalDateTime.now().minusDays(3))
+            .build();
+        Subscription downgraded = Subscription.builder()
+            .id(subscriptionId)
+            .userId(userUuid)
+            .planId(planId)
+            .status(Subscription.SubscriptionStatus.ACTIVE)
+            .billingCycle(Subscription.BillingCycle.MONTHLY)
+            .startDate(active.getStartDate())
+            .build();
+        when(userService.getUserIdFromNumeric(96L)).thenReturn(userUuid);
+        when(subscriptionService.hasActiveSubscription(userUuid)).thenReturn(true);
+        when(subscriptionService.getActiveSubscription(userUuid)).thenReturn(Optional.of(active));
+        when(subscriptionService.resolvePlanId("Basic")).thenReturn(planId);
+        when(subscriptionService.downgrade(eq(subscriptionId), eq(planId))).thenReturn(downgraded);
+
+        DowngradeSubscriptionActionHandler handler = new DowngradeSubscriptionActionHandler(subscriptionService, userService);
+        ActionContext context = new ActionContext(OrchestrationContext.builder()
+            .userId("96")
+            .sessionId("resolver-test")
+            .build(), null);
+
+        assertThat(handler.allowed(context)).isTrue();
+        assertThat(handler.confirm("Basic")).contains("Basic");
+
+        ActionResult result = handler.execute("Basic", context);
+
+        assertThat(result.isSuccess()).isTrue();
+        verify(subscriptionService).downgrade(eq(subscriptionId), eq(planId));
+    }
+
+    @Test
+    void subscribeActionResolvesCurrentUserAndPlanName() {
+        UUID userUuid = UUID.randomUUID();
+        UUID subscriptionId = UUID.randomUUID();
+        UUID planId = UUID.randomUUID();
+        Subscription subscription = Subscription.builder()
+            .id(subscriptionId)
+            .userId(userUuid)
+            .planId(planId)
+            .status(Subscription.SubscriptionStatus.ACTIVE)
+            .billingCycle(Subscription.BillingCycle.MONTHLY)
+            .startDate(LocalDateTime.now())
+            .build();
+        when(userService.getUserIdFromNumeric(97L)).thenReturn(userUuid);
+        when(subscriptionService.hasActiveSubscription(userUuid)).thenReturn(false);
+        when(subscriptionService.resolvePlanId("Pro")).thenReturn(planId);
+        when(subscriptionService.subscribe(eq(userUuid), eq(planId), eq(Subscription.BillingCycle.MONTHLY)))
+            .thenReturn(subscription);
+
+        SubscribeActionHandler handler = new SubscribeActionHandler(subscriptionService, userService);
+        ActionContext context = new ActionContext(OrchestrationContext.builder()
+            .userId("97")
+            .sessionId("resolver-test")
+            .build(), null);
+
+        assertThat(handler.allowed(context)).isTrue();
+        assertThat(handler.confirm("Pro", "MONTHLY")).contains("Pro");
+
+        ActionResult result = handler.execute("Pro", "MONTHLY", context);
+
+        assertThat(result.isSuccess()).isTrue();
+        verify(subscriptionService).subscribe(eq(userUuid), eq(planId), eq(Subscription.BillingCycle.MONTHLY));
     }
 }

@@ -9,7 +9,6 @@ import ai.fabric.intent.action.annotation.ActionAllowed;
 import ai.fabric.intent.action.annotation.ActionConfirmation;
 import ai.fabric.intent.action.annotation.ActionExecute;
 import ai.fabric.intent.action.annotation.Param;
-import com.subscription.hub.entity.Subscription;
 import com.subscription.hub.service.AccountResolutionService;
 import com.subscription.hub.service.SubscriptionService;
 import com.subscription.hub.service.UserService;
@@ -70,7 +69,7 @@ public class UpdatePaymentMethodActionHandler extends BaseActionHandler {
         ActionContext context
     ) {
         try {
-            UUID resolvedSubscriptionId = resolveSubscriptionId(context);
+            UUID resolvedSubscriptionId = requireActiveSubscriptionId(subscriptionService, context);
             AccountResolutionService.PaymentMethodResult result = accountResolutionService.updatePaymentMethod(
                 resolvedSubscriptionId,
                 null,
@@ -100,16 +99,5 @@ public class UpdatePaymentMethodActionHandler extends BaseActionHandler {
                 .errorCode("UPDATE_PAYMENT_METHOD_FAILED")
                 .build();
         }
-    }
-
-    private UUID resolveSubscriptionId(ActionContext context) {
-        String userId = context != null ? context.userId() : null;
-        if (userId == null || userId.isBlank()) {
-            throw new IllegalArgumentException("authenticated user context is required");
-        }
-        UUID userUuid = parseUserId(userId);
-        return subscriptionService.getActiveSubscription(userUuid)
-            .map(Subscription::getId)
-            .orElseThrow(() -> new IllegalArgumentException("Active subscription not found for user"));
     }
 }
