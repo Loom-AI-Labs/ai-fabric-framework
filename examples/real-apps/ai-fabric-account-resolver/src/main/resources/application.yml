@@ -27,6 +27,11 @@ ai:
   config:
     default-file: ai-entity-config.yml
 
+  prompts:
+    bundle:
+      overlays:
+        - v1-account-resolver
+
   providers:
     llm-provider: openai
     embedding-provider: simple
