@@ -65,13 +65,13 @@ ai:
             - subscription-plan
         read-action-resolution:
           enabled: true
-          planning-mode: SINGLE_PASS
+          planning-mode: ITERATIVE
           require-allowlist: true
           allowed-read-actions:
             - inspect_account_readiness
-          max-iterations: 1
+          max-iterations: 2
           max-actions-per-iteration: 1
-          max-total-actions: 1
+          max-total-actions: 2
           max-parallel-actions: 1
           max-planner-context-chars: 3000
           max-action-evidence-chars-per-action: 1800

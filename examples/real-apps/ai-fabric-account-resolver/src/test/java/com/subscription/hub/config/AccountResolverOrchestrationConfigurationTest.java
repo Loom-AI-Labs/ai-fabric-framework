@@ -44,9 +44,11 @@ class AccountResolverOrchestrationConfigurationTest {
             .containsExactly("account-resolution-policy", "subscription-plan");
         assertThat(resolver.getReadActionResolution().getEnabled()).isTrue();
         assertThat(resolver.getReadActionResolution().getPlanningMode())
-            .isEqualTo(OrchestrationProperties.ReadActionResolutionPlanningMode.SINGLE_PASS);
+            .isEqualTo(OrchestrationProperties.ReadActionResolutionPlanningMode.ITERATIVE);
         assertThat(resolver.getReadActionResolution().getAllowedReadActions())
             .containsExactly("inspect_account_readiness");
+        assertThat(resolver.getReadActionResolution().getMaxIterations()).isEqualTo(2);
+        assertThat(resolver.getReadActionResolution().getMaxTotalActions()).isEqualTo(2);
         assertThat(resolver.getReadActionResolution().getRagCooperationMode())
             .isEqualTo(OrchestrationProperties.ReadActionResolutionRagCooperationMode.PARALLEL_ACTIONS_AND_RAG);
     }
