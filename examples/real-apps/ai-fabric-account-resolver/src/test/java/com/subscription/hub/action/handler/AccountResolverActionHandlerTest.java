@@ -1,15 +1,17 @@
 package com.subscription.hub.action.handler;
 
+import ai.fabric.intent.action.AIActionMetaData;
+import ai.fabric.intent.action.AIActionRegistry;
 import ai.fabric.intent.action.ActionContext;
 import ai.fabric.intent.action.ActionResult;
 import ai.fabric.intent.orchestration.OrchestrationContext;
 import com.subscription.hub.entity.Address;
-import com.subscription.hub.entity.PaymentMethod;
 import com.subscription.hub.entity.Subscription;
 import com.subscription.hub.service.AccountResolutionService;
 import com.subscription.hub.service.SubscriptionService;
 import com.subscription.hub.service.UserService;
 import org.junit.jupiter.api.Test;
+import org.springframework.context.annotation.AnnotationConfigApplicationContext;
 
 import java.time.LocalDateTime;
 import java.util.Optional;
@@ -18,6 +20,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isA;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -63,12 +66,8 @@ class AccountResolverActionHandlerTest {
         when(userService.getUserIdFromNumeric(92L)).thenReturn(userUuid);
         when(subscriptionService.hasActiveSubscription(userUuid)).thenReturn(true);
         when(subscriptionService.getActiveSubscription(userUuid)).thenReturn(Optional.of(subscription));
-        when(accountResolutionService.updatePaymentMethod(
-            eq(subscriptionId),
-            eq(PaymentMethod.PaymentType.CARD),
-            eq("Visa"),
-            eq("4242")
-        )).thenReturn(paymentResult);
+        when(accountResolutionService.updatePaymentMethod(eq(subscriptionId), isNull(), isNull(), eq("4242")))
+            .thenReturn(paymentResult);
 
         UpdatePaymentMethodActionHandler handler = new UpdatePaymentMethodActionHandler(
             accountResolutionService,
@@ -83,16 +82,11 @@ class AccountResolverActionHandlerTest {
         assertThat(handler.allowed(context)).isTrue();
         assertThat(handler.confirm("Visa", "4242")).contains("Visa").contains("4242");
 
-        ActionResult result = handler.execute(null, PaymentMethod.PaymentType.CARD, "Visa", "4242", context);
+        ActionResult result = handler.execute("4242", context);
 
         assertThat(result.isSuccess()).isTrue();
         assertThat(result.getMessage()).contains("ready to continue");
-        verify(accountResolutionService).updatePaymentMethod(
-            subscriptionId,
-            PaymentMethod.PaymentType.CARD,
-            "Visa",
-            "4242"
-        );
+        verify(accountResolutionService).updatePaymentMethod(eq(subscriptionId), isNull(), isNull(), eq("4242"));
     }
 
     @Test
@@ -131,8 +125,8 @@ class AccountResolverActionHandlerTest {
         when(subscriptionService.getActiveSubscription(userUuid)).thenReturn(Optional.of(subscription));
         when(accountResolutionService.updatePaymentMethod(
             eq(subscriptionId),
-            eq(null),
-            eq(null),
+            isNull(),
+            isNull(),
             eq("4242")
         )).thenReturn(paymentResult);
 
@@ -146,11 +140,76 @@ class AccountResolverActionHandlerTest {
             .sessionId("resolver-test")
             .build(), null);
 
-        ActionResult result = handler.execute(null, null, null, "4242", context);
+        ActionResult result = handler.execute("4242", context);
 
         assertThat(result.isSuccess()).isTrue();
         assertThat(result.getMessage()).contains("ready to continue");
-        verify(accountResolutionService).updatePaymentMethod(subscriptionId, null, null, "4242");
+        verify(accountResolutionService).updatePaymentMethod(eq(subscriptionId), isNull(), isNull(), eq("4242"));
+    }
+
+    @Test
+    void readinessActionResolvesAccountFromCurrentUserContextOnly() {
+        UUID userUuid = UUID.randomUUID();
+        UUID subscriptionId = UUID.randomUUID();
+        AccountResolutionService.AccountReadiness readiness = new AccountResolutionService.AccountReadiness(
+            subscriptionId,
+            userUuid,
+            92L,
+            "ACTIVE",
+            false,
+            java.util.List.of(new AccountResolutionService.AccountBlocker(
+                "PAYMENT_METHOD_MISSING",
+                "A verified payment method is required",
+                "update_payment_method",
+                true
+            )),
+            java.util.List.of(),
+            java.util.List.of("update_payment_method"),
+            false,
+            true
+        );
+        when(accountResolutionService.inspectReadiness(92L)).thenReturn(readiness);
+
+        InspectAccountReadinessActionHandler handler = new InspectAccountReadinessActionHandler(
+            accountResolutionService,
+            subscriptionService,
+            userService
+        );
+        ActionContext context = new ActionContext(OrchestrationContext.builder()
+            .userId("92")
+            .sessionId("resolver-test")
+            .build(), null);
+
+        ActionResult result = handler.execute(context);
+
+        assertThat(result.isSuccess()).isTrue();
+        assertThat(result.getMessage()).contains("blockers");
+        verify(accountResolutionService).inspectReadiness(92L);
+    }
+
+    @Test
+    void actionMetadataExposesOnlyUserSuppliedParameters() {
+        try (AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext()) {
+            context.registerBean(AccountResolutionService.class, () -> accountResolutionService);
+            context.registerBean(SubscriptionService.class, () -> subscriptionService);
+            context.registerBean(UserService.class, () -> userService);
+            context.register(AIActionRegistry.class);
+            context.register(InspectAccountReadinessActionHandler.class);
+            context.register(UpdatePaymentMethodActionHandler.class);
+            context.refresh();
+
+            AIActionRegistry registry = context.getBean(AIActionRegistry.class);
+
+            AIActionMetaData readiness = registry.findMetadata("inspect_account_readiness").orElseThrow();
+            assertThat(readiness.getParameters()).isEmpty();
+            assertThat(readiness.getParameterSchemas()).isEmpty();
+            assertThat(readiness.getRequiredParameters()).isEmpty();
+
+            AIActionMetaData payment = registry.findMetadata("update_payment_method").orElseThrow();
+            assertThat(payment.getParameters()).containsOnlyKeys("last4");
+            assertThat(payment.getParameterSchemas()).containsOnlyKeys("last4");
+            assertThat(payment.getRequiredParameters()).containsExactly("last4");
+        }
     }
 
     @Test

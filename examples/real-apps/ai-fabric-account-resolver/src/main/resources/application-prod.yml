@@ -57,6 +57,7 @@ ai:
           fanout-enabled: true
           max-spaces: 2
           top-k-per-space: 3
+          similarity-threshold: 0.45
           max-documents-returned-to-client: 4
           max-documents-used-for-context: 4
           max-context-chars: 3000

@@ -357,6 +357,30 @@ Then redeploy and verify:
 Add a small packaging/dependency test for demo apps whose release story depends on RAG, so the POM
 cannot accidentally drop `ai-fabric-rag`.
 
+## Lesson 7: Do Not Expose Context-Owned Action Parameters To The Model
+
+### Symptom
+
+The account resolver demo asked for backend-owned fields such as `subscriptionId`, or the model
+invented a different `userId` when calling `inspect_account_readiness`.
+
+### Root Cause
+
+The app action method exposed context-owned values as `@Param` method arguments. AI Fabric correctly
+published those parameters in the action schema, so the model treated them as fields it could fill.
+
+### Fix Pattern
+
+Keep model-visible action schemas limited to values the user should actually provide. Resolve current
+user, active subscription, tenant, session, cart, or account state from `ActionContext` and app services
+inside the handler.
+
+For example:
+
+- `inspect_account_readiness` should take no prompt-visible parameters and use `context.userId()`;
+- `update_payment_method` should ask only for the card detail the user must supply, such as `last4`;
+- app tests should assert action metadata exposes only user-supplied parameters.
+
 ## Quick Triage Checklist
 
 ### Orchestration Error Before Any AI Response

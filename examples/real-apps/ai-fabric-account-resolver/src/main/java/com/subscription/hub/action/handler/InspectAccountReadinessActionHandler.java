@@ -7,7 +7,6 @@ import ai.fabric.intent.action.ActionResultContracts;
 import ai.fabric.intent.action.annotation.AIAction;
 import ai.fabric.intent.action.annotation.ActionAllowed;
 import ai.fabric.intent.action.annotation.ActionExecute;
-import ai.fabric.intent.action.annotation.Param;
 import com.subscription.hub.entity.Subscription;
 import com.subscription.hub.service.AccountResolutionService;
 import com.subscription.hub.service.SubscriptionService;
@@ -48,12 +47,10 @@ public class InspectAccountReadinessActionHandler extends BaseActionHandler {
 
     @ActionExecute
     public ActionResult execute(
-        @Param(value = "userId", description = "Numeric demo user ID") String userId,
-        @Param(value = "subscriptionId", description = "UUID of the subscription") String subscriptionId,
         ActionContext context
     ) {
         try {
-            AccountResolutionService.AccountReadiness readiness = resolveReadiness(userId, subscriptionId, context);
+            AccountResolutionService.AccountReadiness readiness = resolveReadiness(context);
             Map<String, Object> data = new LinkedHashMap<>();
             data.put("readiness", readiness);
             data.put("canContinue", readiness.canContinue());
@@ -77,18 +74,10 @@ public class InspectAccountReadinessActionHandler extends BaseActionHandler {
         }
     }
 
-    private AccountResolutionService.AccountReadiness resolveReadiness(String userId,
-                                                                       String subscriptionId,
-                                                                       ActionContext context) {
-        if (subscriptionId != null && !subscriptionId.isBlank()) {
-            return accountResolutionService.inspectReadiness(UUID.fromString(subscriptionId));
-        }
-
-        String effectiveUserId = userId != null && !userId.isBlank()
-            ? userId
-            : context != null ? context.userId() : null;
+    private AccountResolutionService.AccountReadiness resolveReadiness(ActionContext context) {
+        String effectiveUserId = context != null ? context.userId() : null;
         if (effectiveUserId == null || effectiveUserId.isBlank()) {
-            throw new IllegalArgumentException("userId or subscriptionId is required");
+            throw new IllegalArgumentException("authenticated user context is required");
         }
 
         try {

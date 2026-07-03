@@ -42,6 +42,7 @@ class AccountResolverOrchestrationConfigurationTest {
             .isEqualTo(OrchestrationProperties.InformationMode.DETERMINISTIC_RAG_GENERATE);
         assertThat(resolver.getRag().getRetrievalVectorSpacesAllowlist())
             .containsExactly("account-resolution-policy", "subscription-plan");
+        assertThat(resolver.getRag().getSimilarityThreshold()).isEqualTo(0.45);
         assertThat(resolver.getReadActionResolution().getEnabled()).isTrue();
         assertThat(resolver.getReadActionResolution().getPlanningMode())
             .isEqualTo(OrchestrationProperties.ReadActionResolutionPlanningMode.ITERATIVE);

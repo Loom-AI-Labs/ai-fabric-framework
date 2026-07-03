@@ -9,7 +9,6 @@ import ai.fabric.intent.action.annotation.ActionAllowed;
 import ai.fabric.intent.action.annotation.ActionConfirmation;
 import ai.fabric.intent.action.annotation.ActionExecute;
 import ai.fabric.intent.action.annotation.Param;
-import com.subscription.hub.entity.PaymentMethod;
 import com.subscription.hub.entity.Subscription;
 import com.subscription.hub.service.AccountResolutionService;
 import com.subscription.hub.service.SubscriptionService;
@@ -67,18 +66,15 @@ public class UpdatePaymentMethodActionHandler extends BaseActionHandler {
 
     @ActionExecute
     public ActionResult execute(
-        @Param(value = "subscriptionId", description = "Resolved active subscription for the current user") String subscriptionId,
-        @Param(value = "type", description = "Payment method type inferred by the account resolver", allowedValues = {"CARD", "BANK_TRANSFER", "PAYPAL"}) PaymentMethod.PaymentType type,
-        @Param(value = "provider", description = "Payment provider or stored payment method label inferred by the account resolver") String provider,
         @Param(value = "last4", required = true, description = "Last four digits of the stored payment method to use", pattern = ".*\\d{4}.*") String last4,
         ActionContext context
     ) {
         try {
-            UUID resolvedSubscriptionId = resolveSubscriptionId(subscriptionId, context);
+            UUID resolvedSubscriptionId = resolveSubscriptionId(context);
             AccountResolutionService.PaymentMethodResult result = accountResolutionService.updatePaymentMethod(
                 resolvedSubscriptionId,
-                type,
-                provider,
+                null,
+                null,
                 last4
             );
             Map<String, Object> data = new LinkedHashMap<>();
@@ -106,13 +102,10 @@ public class UpdatePaymentMethodActionHandler extends BaseActionHandler {
         }
     }
 
-    private UUID resolveSubscriptionId(String subscriptionId, ActionContext context) {
-        if (subscriptionId != null && !subscriptionId.isBlank()) {
-            return UUID.fromString(subscriptionId);
-        }
+    private UUID resolveSubscriptionId(ActionContext context) {
         String userId = context != null ? context.userId() : null;
         if (userId == null || userId.isBlank()) {
-            throw new IllegalArgumentException("subscriptionId or userId is required");
+            throw new IllegalArgumentException("authenticated user context is required");
         }
         UUID userUuid = parseUserId(userId);
         return subscriptionService.getActiveSubscription(userUuid)
