@@ -21,7 +21,6 @@ apps=(
   privacy-first-customer-facing-support
   relationship-query-crm-insights
   smart-faq-assistant
-  sub-management-hub
   sub-management-hub-simple
 )
 
