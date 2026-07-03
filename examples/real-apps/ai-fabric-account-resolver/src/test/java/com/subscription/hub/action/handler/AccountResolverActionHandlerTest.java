@@ -262,6 +262,7 @@ class AccountResolverActionHandlerTest {
             context.register(AIActionRegistry.class);
             context.register(InspectAccountReadinessActionHandler.class);
             context.register(UpdatePaymentMethodActionHandler.class);
+            context.register(UpdateAddressActionHandler.class);
             context.refresh();
 
             AIActionRegistry registry = context.getBean(AIActionRegistry.class);
@@ -275,6 +276,14 @@ class AccountResolverActionHandlerTest {
             assertThat(payment.getParameters()).containsOnlyKeys("last4");
             assertThat(payment.getParameterSchemas()).containsOnlyKeys("last4");
             assertThat(payment.getRequiredParameters()).containsExactly("last4");
+
+            AIActionMetaData address = registry.findMetadata("update_address").orElseThrow();
+            assertThat(address.getParameters())
+                .containsOnlyKeys("addressType", "streetAddress", "city", "state", "postalCode", "country");
+            assertThat(address.getParameterSchemas())
+                .containsOnlyKeys("addressType", "streetAddress", "city", "state", "postalCode", "country");
+            assertThat(address.getRequiredParameters())
+                .containsExactlyInAnyOrder("streetAddress", "city", "state", "postalCode", "country");
         }
     }
 
@@ -304,7 +313,6 @@ class AccountResolverActionHandlerTest {
         assertThat(handler.allowed(context)).isTrue();
 
         ActionResult result = handler.execute(
-            null,
             "BILLING",
             "101 Market St",
             "San Francisco",

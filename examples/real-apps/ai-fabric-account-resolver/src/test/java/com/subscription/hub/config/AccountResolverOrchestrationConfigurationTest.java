@@ -75,13 +75,17 @@ class AccountResolverOrchestrationConfigurationTest {
         assertThat(compoundSystem.template())
             .contains("ACCOUNT RESOLVER FOLLOW-UP RULES")
             .contains("classify \"ok add it\", \"add it\", \"update it\", or \"do it\" as ACTION update_payment_method")
-            .contains("Omit missing required params such as last4");
+            .contains("Omit missing required params such as last4")
+            .contains("Do NOT set requiresTargetResolution=true for requests about \"my account\"")
+            .contains("return ACTION update_address with requiresTargetResolution=false");
 
         var multiStepClassify = resolver.resolve("intent-extraction/multi-step", "classify").template();
         assertThat(multiStepClassify.key().version()).isEqualTo("v1-account-resolver");
         assertThat(multiStepClassify.template())
             .contains("Account Resolver follow-ups are different from generic acknowledgements")
-            .contains("ACTION with actionHint \"update payment method\"");
+            .contains("ACTION with actionHint \"update payment method\"")
+            .contains("Do NOT set requiresTargetResolution=true for requests about \"my account\"")
+            .contains("classify ACTION with actionHint \"update address\" and requiresTargetResolution=false");
 
         assertThat(resolver.resolve("intent-extraction/compound", "user").template().key().version())
             .isEqualTo("v1");

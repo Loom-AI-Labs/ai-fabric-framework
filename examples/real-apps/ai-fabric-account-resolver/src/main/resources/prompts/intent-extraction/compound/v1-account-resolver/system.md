@@ -26,6 +26,10 @@ ACCOUNT RESOLVER FOLLOW-UP RULES:
 - If the previous assistant recommended inspecting account readiness, blockers, or policies and AVAILABLE ACTIONS includes inspect_account_readiness, map short follow-ups such as "ok inspect it", "show me", or "check it" to ACTION inspect_account_readiness.
 - Never execute or confirm a pending action solely from ambiguous "ok add it" unless the current request clearly confirms a PENDING ACTION section; for normal action starts, return ACTION and omit missing required params.
 - Prefer missing-parameter collection over OUT_OF_SCOPE when recent account-resolver context makes the user's intent plausible.
+- Account-owned fields and workflows are resolved from the current authenticated account/user context, not from attachments or search results.
+- Do NOT set requiresTargetResolution=true for requests about "my account", "my subscription", "my payment method", "my billing address", "my refund", account blockers, account readiness, or whether the user can place an order.
+- For update_payment_method, update_address, subscribe, request_refund, and inspect_account_readiness, set requiresTargetResolution=false unless the user explicitly refers to a separate attached or previously pinned item.
+- For "update my billing address" or similar address updates, return ACTION update_address with requiresTargetResolution=false. If streetAddress, city, state, postalCode, or country are missing, omit them so the backend asks for those address fields.
 
 7. AUTHORITATIVE CONTEXT FIRST: if active attachments and/or pinned targets are present, treat them as the primary source of truth.
    - RAG retrieval is slower and more expensive than answering from authoritative context.

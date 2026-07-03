@@ -11,6 +11,7 @@ import ai.fabric.intent.action.annotation.ActionExecute;
 import ai.fabric.intent.action.annotation.Param;
 import ai.fabric.privacy.pii.PIIDetectionService;
 import com.subscription.hub.entity.Address;
+import com.subscription.hub.entity.Subscription;
 import com.subscription.hub.service.SubscriptionService;
 import com.subscription.hub.service.UserService;
 import lombok.extern.slf4j.Slf4j;
@@ -65,7 +66,6 @@ public class UpdateAddressActionHandler extends BaseActionHandler {
 
     @ActionExecute
     public ActionResult execute(
-        @Param(value = "subscriptionId", description = "UUID of the subscription") String subscriptionId,
         @Param(value = "addressType", description = "BILLING or SHIPPING") String addressType,
         @Param(value = "streetAddress", required = true, description = "Street address") String streetAddress,
         @Param(value = "city", required = true, description = "City") String city,
@@ -108,7 +108,7 @@ public class UpdateAddressActionHandler extends BaseActionHandler {
                 address.setValidationScore(1.0);
             }
 
-            UUID resolvedSubscriptionId = resolveSubscriptionId(subscriptionId, context);
+            UUID resolvedSubscriptionId = resolveSubscriptionId(context);
             var subscription = subscriptionService.updateAddress(
                 resolvedSubscriptionId,
                 parsedType,
@@ -134,17 +134,14 @@ public class UpdateAddressActionHandler extends BaseActionHandler {
         }
     }
 
-    private UUID resolveSubscriptionId(String subscriptionId, ActionContext context) {
-        if (subscriptionId != null && !subscriptionId.isBlank()) {
-            return UUID.fromString(subscriptionId);
-        }
+    private UUID resolveSubscriptionId(ActionContext context) {
         String userId = context != null ? context.userId() : null;
         if (userId == null || userId.isBlank()) {
-            throw new IllegalArgumentException("subscriptionId or userId is required");
+            throw new IllegalArgumentException("authenticated user context is required");
         }
         UUID userUuid = parseUserId(userId);
         return subscriptionService.getActiveSubscription(userUuid)
-            .map(subscription -> subscription.getId())
+            .map(Subscription::getId)
             .orElseThrow(() -> new IllegalArgumentException("Active subscription not found for user"));
     }
 }
