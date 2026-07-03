@@ -563,6 +563,7 @@ public class IntentHandlingStep implements PipelineStep {
             data.put(DATA_KEY_ACTION, actionName);
             data.put(DATA_KEY_CONFIRMATION_MESSAGE, confirmationMessage);
             data.put(DATA_KEY_CONFIRMATION_REQUIRED, true);
+            data.put(DATA_KEY_PROVIDED_PARAMETERS, publicProvidedParameters(meta, effectiveParams));
             data.put(DATA_KEY_METADATA, publicActionMetadata(getMetadataForAction(actionName)));
 
             String message = StringUtils.hasText(confirmationMessage)

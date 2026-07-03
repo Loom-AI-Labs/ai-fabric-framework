@@ -546,6 +546,10 @@ class IntentHandlingStepRequiredParamsPlaceholderTest {
 
         assertThat(result.getType()).isEqualTo(OrchestrationResultType.CONFIRMATION_REQUIRED);
         assertThat(result.getMessage()).isEqualTo("Add Selling Plans Ski Wax to my cart?");
+        assertThat(result.getData()).containsEntry(
+            "providedParameters",
+            Map.of("cart_update_confirmation", "Add Selling Plans Ski Wax to my cart")
+        );
         assertThat(result.toString()).doesNotContain("confirmationAccepted");
         assertThat(pendingActionStore.peekPendingAction("chat-cart-confirmation", "user")).isPresent();
         verify(handler, org.mockito.Mockito.never()).executeAction(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any());
