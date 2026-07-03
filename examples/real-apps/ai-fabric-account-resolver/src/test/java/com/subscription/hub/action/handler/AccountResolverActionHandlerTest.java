@@ -96,6 +96,64 @@ class AccountResolverActionHandlerTest {
     }
 
     @Test
+    void paymentActionDoesNotRequireUserToProvideSubscriptionTypeOrProvider() {
+        UUID userUuid = UUID.randomUUID();
+        UUID subscriptionId = UUID.randomUUID();
+        Subscription subscription = Subscription.builder()
+            .id(subscriptionId)
+            .userId(userUuid)
+            .status(Subscription.SubscriptionStatus.ACTIVE)
+            .billingCycle(Subscription.BillingCycle.MONTHLY)
+            .startDate(LocalDateTime.now().minusDays(3))
+            .build();
+        AccountResolutionService.AccountReadiness readiness = new AccountResolutionService.AccountReadiness(
+            subscriptionId,
+            userUuid,
+            92L,
+            "ACTIVE",
+            true,
+            java.util.List.of(),
+            java.util.List.of(),
+            java.util.List.of(),
+            true,
+            true
+        );
+        AccountResolutionService.PaymentMethodResult paymentResult = new AccountResolutionService.PaymentMethodResult(
+            subscriptionId,
+            userUuid,
+            "CARD",
+            "card",
+            "4242",
+            true,
+            readiness
+        );
+        when(userService.getUserIdFromNumeric(92L)).thenReturn(userUuid);
+        when(subscriptionService.getActiveSubscription(userUuid)).thenReturn(Optional.of(subscription));
+        when(accountResolutionService.updatePaymentMethod(
+            eq(subscriptionId),
+            eq(null),
+            eq(null),
+            eq("4242")
+        )).thenReturn(paymentResult);
+
+        UpdatePaymentMethodActionHandler handler = new UpdatePaymentMethodActionHandler(
+            accountResolutionService,
+            subscriptionService,
+            userService
+        );
+        ActionContext context = new ActionContext(OrchestrationContext.builder()
+            .userId("92")
+            .sessionId("resolver-test")
+            .build(), null);
+
+        ActionResult result = handler.execute(null, null, null, "4242", context);
+
+        assertThat(result.isSuccess()).isTrue();
+        assertThat(result.getMessage()).contains("ready to continue");
+        verify(accountResolutionService).updatePaymentMethod(subscriptionId, null, null, "4242");
+    }
+
+    @Test
     void addressActionResolvesActiveSubscriptionFromUserContext() {
         UUID userUuid = UUID.randomUUID();
         UUID subscriptionId = UUID.randomUUID();

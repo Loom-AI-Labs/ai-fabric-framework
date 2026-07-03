@@ -445,6 +445,8 @@ public class AIActionRegistry {
                 .type(AIActionParamType.UNKNOWN)
                 .required(param != null ? param.required() : null)
                 .batchTargets(param != null ? param.batchTargets() : null)
+                .askUser(param != null && !param.askUser() ? Boolean.FALSE : null)
+                .visibility(param != null && StringUtils.hasText(param.visibility()) ? param.visibility().trim() : null)
                 .build();
         }
 
@@ -456,7 +458,9 @@ public class AIActionRegistry {
             .description(StringUtils.hasText(description) ? description.trim() : null)
             .type(paramType)
             .required(param != null ? param.required() : null)
-            .batchTargets(param != null && param.batchTargets() ? Boolean.TRUE : null);
+            .batchTargets(param != null && param.batchTargets() ? Boolean.TRUE : null)
+            .askUser(param != null && !param.askUser() ? Boolean.FALSE : null)
+            .visibility(param != null && StringUtils.hasText(param.visibility()) ? param.visibility().trim() : null);
 
         if (param != null) {
             if (StringUtils.hasText(param.pattern())) {

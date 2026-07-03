@@ -57,20 +57,20 @@ public class UpdatePaymentMethodActionHandler extends BaseActionHandler {
 
     @ActionConfirmation
     public String confirm(
-        @Param(value = "provider", description = "Payment provider or card brand") String provider,
-        @Param(value = "last4", description = "Last four digits of the payment method") String last4
+        @Param(value = "provider", description = "Payment provider or stored payment method label") String provider,
+        @Param(value = "last4", description = "Last four digits of the stored payment method") String last4
     ) {
-        String brand = provider != null && !provider.isBlank() ? provider.trim() : "card";
+        String brand = provider != null && !provider.isBlank() ? provider.trim() : "stored card";
         String safeLast4 = last4 != null && !last4.isBlank() ? last4.trim() : "provided digits";
         return "Use " + brand + " ending in " + safeLast4 + " as the verified payment method for this account?";
     }
 
     @ActionExecute
     public ActionResult execute(
-        @Param(value = "subscriptionId", description = "UUID of the subscription to update") String subscriptionId,
-        @Param(value = "type", description = "CARD, BANK_TRANSFER, or PAYPAL", allowedValues = {"CARD", "BANK_TRANSFER", "PAYPAL"}) PaymentMethod.PaymentType type,
-        @Param(value = "provider", description = "Payment provider or card brand") String provider,
-        @Param(value = "last4", required = true, description = "Last four digits of the payment method", pattern = ".*\\d{4}.*") String last4,
+        @Param(value = "subscriptionId", description = "Resolved active subscription for the current user") String subscriptionId,
+        @Param(value = "type", description = "Payment method type inferred by the account resolver", allowedValues = {"CARD", "BANK_TRANSFER", "PAYPAL"}) PaymentMethod.PaymentType type,
+        @Param(value = "provider", description = "Payment provider or stored payment method label inferred by the account resolver") String provider,
+        @Param(value = "last4", required = true, description = "Last four digits of the stored payment method to use", pattern = ".*\\d{4}.*") String last4,
         ActionContext context
     ) {
         try {
