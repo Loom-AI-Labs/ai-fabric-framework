@@ -27,6 +27,8 @@ The seeded demo users are:
 ## AI Fabric Capabilities Proved
 
 - Read-action grounding through `inspect_account_readiness`.
+- Dedicated AI Fabric `resolver` orchestration mode.
+- Policy-grounded RAG through the `account-resolution-policy` vector space.
 - Confirmable write actions through `update_payment_method`, `update_address`, `request_refund`, `cancel_subscription`, `upgrade_subscription`, and `downgrade_subscription`.
 - Action authorization through `@ActionAllowed`.
 - Action confirmation through `@ActionConfirmation`.

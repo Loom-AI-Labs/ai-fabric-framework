@@ -1,4 +1,25 @@
 ai-entities:
+  account-resolution-policy:
+    entity-type: "account-resolution-policy"
+    auto-embedding: true
+    indexable: true
+    enable-search: true
+    enable-recommendations: false
+    searchable-fields:
+      - name: "title"
+        weight: 2.0
+      - name: "description"
+        weight: 1.5
+      - name: "actionName"
+        weight: 1.0
+    metadata-fields:
+      - name: "code"
+        type: "string"
+      - name: "actionName"
+        type: "string"
+      - name: "confirmationRequired"
+        type: "boolean"
+
   subscription-plan:
     entity-type: "subscription-plan"
     auto-embedding: true

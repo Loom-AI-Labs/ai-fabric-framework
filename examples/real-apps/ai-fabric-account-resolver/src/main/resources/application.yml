@@ -40,6 +40,44 @@ ai:
   vector-db:
     type: lucene
 
+  orchestration:
+    default-mode: resolver
+    strict-mode-routing: true
+    modes:
+      resolver:
+        actions-enabled: true
+        actions-preferred: true
+        retrieval-enabled: true
+        retrieval-allowlist-required: true
+        vector-space-selection-required: false
+        information-mode: DETERMINISTIC_RAG_GENERATE
+        expose-read-probe-fallback-attempt: true
+        force-grounding-eligible-read-action-post-generation: true
+        rag:
+          fanout-enabled: true
+          max-spaces: 2
+          top-k-per-space: 3
+          max-documents-returned-to-client: 4
+          max-documents-used-for-context: 4
+          max-context-chars: 3000
+          retrieval-vector-spaces-allowlist:
+            - account-resolution-policy
+            - subscription-plan
+        read-action-resolution:
+          enabled: true
+          planning-mode: SINGLE_PASS
+          require-allowlist: true
+          allowed-read-actions:
+            - inspect_account_readiness
+          max-iterations: 1
+          max-actions-per-iteration: 1
+          max-total-actions: 1
+          max-parallel-actions: 1
+          max-planner-context-chars: 3000
+          max-action-evidence-chars-per-action: 1800
+          rag-cooperation-mode: PARALLEL_ACTIONS_AND_RAG
+          require-grounding-eligible: true
+
   behavior:
     enabled: false
     mode: LIGHT
