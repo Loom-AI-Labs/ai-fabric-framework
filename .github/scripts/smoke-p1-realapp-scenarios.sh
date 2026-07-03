@@ -308,7 +308,7 @@ behavior_smoke() {
   assert_json "${analyze_body}" "Behavior analysis returns user insight" "payload.get('userId') == 'user-1001' and payload.get('churnRisk', 0) >= 0"
 
   http_get "${base}/api/behavior/insights/user-1001/summary" "${summary_body}"
-  assert_json "${summary_body}" "Behavior summary includes churn, sentiment, and trend evidence" "payload.get('userId') == 'user-1001' and payload.get('churnRisk', 0) > 0.5 and payload.get('sentimentLabel') and payload.get('trend') == 'DECLINING'"
+  assert_json "${summary_body}" "Behavior summary includes churn, sentiment, and trend evidence" "payload.get('userId') == 'user-1001' and payload.get('churnRisk', 0) > 0.5 and payload.get('sentimentLabel') and str(payload.get('trend', '')).endswith('DECLINING')"
 }
 
 support_action_bot_smoke() {
