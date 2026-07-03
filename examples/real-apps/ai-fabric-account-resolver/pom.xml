@@ -58,11 +58,6 @@
         </dependency>
         <dependency>
             <groupId>io.github.loom-ai-labs</groupId>
-            <artifactId>ai-fabric-curated-commerce</artifactId>
-            <version>${ai-fabric.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>io.github.loom-ai-labs</groupId>
             <artifactId>ai-fabric-behavior</artifactId>
             <version>${ai-fabric.version}</version>
         </dependency>

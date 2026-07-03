@@ -24,9 +24,6 @@ server:
   port: ${PORT:8081}
 
 ai:
-  curated:
-    pack: ${AI_CURATED_PACK:commerce}
-
   config:
     default-file: ai-entity-config.yml
 
