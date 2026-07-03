@@ -71,6 +71,11 @@
             <artifactId>ai-fabric-provider-spring-ai</artifactId>
             <version>${ai-fabric.version}</version>
         </dependency>
+        <dependency>
+            <groupId>io.github.loom-ai-labs</groupId>
+            <artifactId>ai-fabric-rag</artifactId>
+            <version>${ai-fabric.version}</version>
+        </dependency>
         <!-- Required by ai-fabric-behavior for relationship mapping -->
         <dependency>
             <groupId>io.github.loom-ai-labs</groupId>
