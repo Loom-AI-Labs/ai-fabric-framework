@@ -61,6 +61,7 @@ public class DeploymentInfoService {
             env("COOLIFY_GIT_BRANCH"),
             env("GIT_BRANCH"),
             env("SOURCE_BRANCH"),
+            env("git_branch"),
             fileBuildProperties.getProperty("branch"),
             "unknown"
         ));
