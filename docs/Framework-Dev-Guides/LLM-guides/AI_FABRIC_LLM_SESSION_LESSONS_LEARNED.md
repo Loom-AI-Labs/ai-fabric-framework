@@ -302,6 +302,61 @@ tools.
 - Do not raise iteration/action limits just to hide orchestration uncertainty.
 - Do not use iterative read planning as a substitute for app-owned readiness APIs and policies.
 
+## Lesson 6: RAG Mode Config Still Needs The RAG Module On The Classpath
+
+### User Symptom
+
+The orchestration policy says retrieval is enabled and the mode allowlists vector spaces, but the
+live response includes:
+
+```text
+RAG module is not enabled (no RAGProvider bean present).
+```
+
+The response may still look partially smart because read-action resolution works, but policy or plan
+retrieval does not actually run.
+
+### Root Cause
+
+`ai-fabric-starter` does not include `ai-fabric-rag`. This is intentional modularity. An app that
+wants retrieval must explicitly depend on the RAG module. Config like this is not enough by itself:
+
+```yaml
+ai:
+  orchestration:
+    modes:
+      resolver:
+        retrieval-enabled: true
+```
+
+Without `ai-fabric-rag`, no `RAGProvider` bean is created, policy indexers that depend on
+`ObjectProvider<RAGProvider>` skip indexing, and the orchestration pipeline cannot retrieve evidence.
+
+### Fix Pattern
+
+Add the RAG module to the real app:
+
+```xml
+<dependency>
+    <groupId>io.github.loom-ai-labs</groupId>
+    <artifactId>ai-fabric-rag</artifactId>
+    <version>${ai-fabric.version}</version>
+</dependency>
+```
+
+Then redeploy and verify:
+
+1. startup logs show `RAGService created as default RAGProvider implementation`;
+2. app debug/components endpoint, if present, confirms `RAGProvider`;
+3. policy indexer logs that it indexed policy documents;
+4. orchestration response no longer says `no RAGProvider bean present`;
+5. retrieved documents appear for policy/plan questions.
+
+### Regression Test
+
+Add a small packaging/dependency test for demo apps whose release story depends on RAG, so the POM
+cannot accidentally drop `ai-fabric-rag`.
+
 ## Quick Triage Checklist
 
 ### Orchestration Error Before Any AI Response
@@ -346,11 +401,13 @@ Check the browser code before changing framework code:
 
 Check in this order:
 
-1. the vector space exists in `ai-entity-config.yml`;
-2. documents are actually indexed through `RAGProvider` or the app's indexing flow;
-3. the orchestration mode allowlists that vector space;
-4. a typed config test proves the YAML binds to `OrchestrationProperties`;
-5. a policy-indexing test proves the app seeded the documents.
+1. the app POM includes `ai-fabric-rag`;
+2. a `RAGProvider` bean exists at runtime;
+3. the vector space exists in `ai-entity-config.yml`;
+4. documents are actually indexed through `RAGProvider` or the app's indexing flow;
+5. the orchestration mode allowlists that vector space;
+6. a typed config test proves the YAML binds to `OrchestrationProperties`;
+7. a policy-indexing test proves the app seeded the documents.
 
 ## Principles
 
