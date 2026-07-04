@@ -50,7 +50,8 @@ public class ApplyCouponToCartActionHandler {
                 : null;
             return ActionResult.builder()
                 .success(true)
-                .message("Coupon applied")
+                .message("Coupon " + cart.getCouponCode() + " applied. Cart total is "
+                    + cart.getCurrency() + " " + cart.getTotal() + ".")
                 .data(ActionResultContracts.object(Map.of(
                     "cartId", cart.getId(),
                     "couponCode", cart.getCouponCode(),

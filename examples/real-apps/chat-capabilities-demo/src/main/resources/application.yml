@@ -97,6 +97,11 @@ logging:
     ai.fabric: INFO
 
 app:
+  demo:
+    controls:
+      enabled: ${APP_DEMO_CONTROLS_ENABLED:true}
+      api-key: ${APP_DEMO_CONTROLS_API_KEY:}
+      api-key-header: ${APP_DEMO_CONTROLS_API_KEY_HEADER:X-DEMO-API-KEY}
   admin:
     enabled: ${APP_ADMIN_AUTH_ENABLED:true}
     api-key: ${APP_ADMIN_API_KEY:}

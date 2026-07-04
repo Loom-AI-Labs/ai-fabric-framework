@@ -9,4 +9,6 @@ public interface ReviewRepository extends JpaRepository<Review, Long> {
     List<Review> findByProductIdOrderByCreatedAtDesc(Long productId);
 
     List<Review> findBySkuIgnoreCaseOrderByCreatedAtDesc(String sku);
+
+    boolean existsByUserIdAndSkuIgnoreCaseAndText(String userId, String sku, String text);
 }

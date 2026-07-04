@@ -62,7 +62,8 @@ public class CheckoutCartActionHandler {
 
             return ActionResult.builder()
                 .success(true)
-                .message("Checkout complete")
+                .message("Checkout complete. Order " + order.getOrderNumber() + " was created for "
+                    + order.getCurrency() + " " + order.getTotalPrice() + ".")
                 .data(ActionResultContracts.object(Map.of(
                     "orderId", order.getId(),
                     "orderNumber", order.getOrderNumber(),

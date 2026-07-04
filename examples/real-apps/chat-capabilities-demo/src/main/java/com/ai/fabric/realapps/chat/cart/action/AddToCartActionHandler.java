@@ -104,17 +104,21 @@ public class AddToCartActionHandler {
                     .build();
             }
             String cartId = cart.getId() != null ? String.valueOf(cart.getId()) : null;
+            int itemsCount = cart.getItems() != null ? cart.getItems().size() : 0;
+            String message = "Added to cart. Active cart has " + itemsCount + " item"
+                + (itemsCount == 1 ? "" : "s")
+                + " and totals " + cart.getCurrency() + " " + cart.getTotal() + ".";
             ActionTargetRef cartTarget = cartId != null
                 ? new ActionTargetRef(cartId, "cart", "active cart", Map.of("cartId", cartId))
                 : null;
             return ActionResult.builder()
                 .success(true)
-                .message("Added to cart")
+                .message(message)
                 .data(ActionResultContracts.object(Map.of(
                     "cartId", cart.getId(),
                     "total", cart.getTotal(),
                     "currency", cart.getCurrency(),
-                    "itemsCount", cart.getItems() != null ? cart.getItems().size() : 0
+                    "itemsCount", itemsCount
                 )))
                 .pinnedTargets(cartTarget != null ? List.of(cartTarget) : null)
                 .build();

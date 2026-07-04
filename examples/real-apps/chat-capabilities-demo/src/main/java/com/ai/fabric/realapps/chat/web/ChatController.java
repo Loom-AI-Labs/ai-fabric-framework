@@ -67,6 +67,7 @@ public class ChatController {
     private final ObjectProvider<ChatSessionService> chatSessionServiceProvider;
     private final ObjectProvider<AICoreService> aiCoreServiceProvider;
     private final ObjectProvider<AIActionRegistry> aiActionRegistryProvider;
+    private final CommerceModeResolver commerceModeResolver;
 
     @PostMapping("/query")
     public ResponseEntity<ChatQueryResponse> query(@Valid @RequestBody ChatQueryRequest request) {
@@ -82,7 +83,8 @@ public class ChatController {
             ? request.getConversationId()
             : CONVERSATION_PREFIX + UUID.randomUUID();
 
-        OrchestrationContext context = buildContext(request, conversationId);
+        ResolvedContext resolved = buildContext(request, conversationId);
+        OrchestrationContext context = resolved.context();
         OrchestrationResult result = orchestrator.orchestrate(request.getQuery(), context);
 
         return ResponseEntity.ok(ChatQueryResponse.builder()
@@ -90,6 +92,9 @@ public class ChatController {
             .conversationId(conversationId)
             .userId(context.getUserId())
             .sessionId(context.getSessionId())
+            .position(resolved.position())
+            .mode(resolved.mode())
+            .modeSource(resolved.modeSource())
             .result(result)
             .build());
     }
@@ -215,21 +220,18 @@ public class ChatController {
         return ResponseEntity.noContent().build();
     }
 
-    private OrchestrationContext buildContext(ChatQueryRequest request, String conversationId) {
+    private ResolvedContext buildContext(ChatQueryRequest request, String conversationId) {
         String userId = trimToText(request.getUserId()).orElse("");
         String sessionId = StringUtils.hasText(request.getSessionId())
             ? request.getSessionId()
             : "anon-" + UUID.randomUUID();
+        CommerceModeResolver.ResolvedRouting routing = commerceModeResolver.resolve(request.getPosition(), request.getMode());
 
         OrchestrationContext.OrchestrationContextBuilder builder = OrchestrationContext.builder()
             .conversationId(conversationId);
 
-        if (StringUtils.hasText(request.getPosition())) {
-            builder.position(request.getPosition());
-        }
-        if (StringUtils.hasText(request.getMode())) {
-            builder.mode(request.getMode());
-        }
+        builder.position(routing.position());
+        builder.mode(routing.mode());
 
         if (request.getAttachments() != null && !request.getAttachments().isEmpty()) {
             builder.attachments(request.getAttachments());
@@ -240,7 +242,10 @@ public class ChatController {
         }
         builder.sessionId(sessionId);
 
-        return builder.build();
+        return new ResolvedContext(builder.build(), routing.position(), routing.mode(), routing.modeSource());
+    }
+
+    private record ResolvedContext(OrchestrationContext context, String position, String mode, String modeSource) {
     }
 
     private Optional<String> resolveOwnerId(String userId, String ownerId) {
@@ -515,6 +520,9 @@ public class ChatController {
         private String conversationId;
         private String userId;
         private String sessionId;
+        private String position;
+        private String mode;
+        private String modeSource;
         private OrchestrationResult result;
     }
 
