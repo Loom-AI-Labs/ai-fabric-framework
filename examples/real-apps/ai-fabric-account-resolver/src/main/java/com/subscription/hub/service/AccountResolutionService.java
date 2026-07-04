@@ -524,7 +524,7 @@ public class AccountResolutionService {
             .orElseGet(() -> User.builder()
                 .userId(numericUserId)
                 .isGuest(false)
-                .createdAt(LocalDateTime.now().minusMonths(2))
+                .createdAt(demoUserCreatedAt(numericUserId))
                 .build());
         user.setUsername("resolver_user_" + numericUserId);
         user.setEmail("resolver.user" + numericUserId + "@example.com");
@@ -532,6 +532,12 @@ public class AccountResolutionService {
         user.setLastName(lastName);
         user.setLastLoginAt(LocalDateTime.now().minusMinutes(20));
         return userRepository.save(user);
+    }
+
+    private LocalDateTime demoUserCreatedAt(Long numericUserId) {
+        return numericUserId != null && numericUserId > 100
+            ? LocalDateTime.now()
+            : LocalDateTime.now().minusMonths(2);
     }
 
     private SubscriptionPlan preferredPlan() {

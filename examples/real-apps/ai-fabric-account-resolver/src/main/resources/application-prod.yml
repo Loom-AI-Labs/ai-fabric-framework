@@ -118,6 +118,11 @@ logging:
     console: "%d{yyyy-MM-dd HH:mm:ss} - %msg%n"
 
 app:
+  demo:
+    cleanup:
+      enabled: ${APP_DEMO_CLEANUP_ENABLED:true}
+      ttl: ${APP_DEMO_CLEANUP_TTL:PT6H}
+      cron: ${APP_DEMO_CLEANUP_CRON:0 */30 * * * *}
   cors:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:}
     allowed-origin-patterns: ${CORS_ALLOWED_ORIGIN_PATTERNS:}
