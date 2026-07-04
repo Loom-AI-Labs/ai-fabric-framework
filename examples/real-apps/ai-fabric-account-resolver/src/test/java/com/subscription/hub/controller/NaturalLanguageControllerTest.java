@@ -4,15 +4,12 @@ import ai.fabric.intent.orchestration.OrchestrationContext;
 import ai.fabric.intent.orchestration.OrchestrationResult;
 import ai.fabric.intent.orchestration.OrchestrationResultType;
 import ai.fabric.intent.orchestration.RAGOrchestrator;
-import com.subscription.hub.ai.ResolverChatHistoryEnrichmentStep;
 import org.mockito.ArgumentCaptor;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.ResponseEntity;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.util.List;
-import java.util.Map;
-
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -23,7 +20,7 @@ import static org.mockito.Mockito.when;
 class NaturalLanguageControllerTest {
 
     @Test
-    void queryPassesBoundedChatHistoryToOrchestrationContext() {
+    void queryLeavesConversationHistoryToAiFabricChatSession() {
         RAGOrchestrator ragOrchestrator = mock(RAGOrchestrator.class);
         when(ragOrchestrator.orchestrate(eq("ok add it"), any(OrchestrationContext.class)))
             .thenReturn(OrchestrationResult.builder()
@@ -56,20 +53,11 @@ class NaturalLanguageControllerTest {
         ArgumentCaptor<OrchestrationContext> contextCaptor = ArgumentCaptor.forClass(OrchestrationContext.class);
         verify(ragOrchestrator).orchestrate(eq("ok add it"), contextCaptor.capture());
         OrchestrationContext context = contextCaptor.getValue();
-        Object rawHistory = context.getMetadata().get(ResolverChatHistoryEnrichmentStep.METADATA_KEY);
 
         assertThat(response.getStatusCode().is2xxSuccessful()).isTrue();
         assertThat(context.getUserId()).isEqualTo("92");
         assertThat(context.getSessionId()).isEqualTo("session-1");
         assertThat(context.getConversationId()).isEqualTo("resolver-session-1");
-        assertThat(rawHistory).isInstanceOf(List.class);
-        assertThat((List<?>) rawHistory)
-            .hasSize(2)
-            .first()
-            .satisfies(message -> {
-                Map<?, ?> messageMap = (Map<?, ?>) message;
-                assertThat(messageMap.get("role")).isEqualTo("user");
-                assertThat(messageMap.get("content")).isEqualTo("Why can't I place an order?");
-            });
+        assertThat(context.getMetadata()).doesNotContainKey("resolverChatHistory");
     }
 }

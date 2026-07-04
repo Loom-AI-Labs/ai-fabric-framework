@@ -35,6 +35,7 @@ The seeded demo users are:
 - Action confirmation through `@ActionConfirmation`.
 - Post-action readiness evidence returned as structured `ActionResult` payloads after write actions.
 - Policy-backed resolver behavior without hardcoded frontend business logic.
+- AI Fabric chat-session conversation memory for follow-up turns and confirmation context.
 - Annotation-assisted indexing over subscription plans.
 - Deterministic local embeddings plus Lucene vector search.
 - Explicit reindex and search endpoints.
@@ -44,6 +45,7 @@ The seeded demo users are:
 
 - `ai-fabric-starter`
 - `ai-fabric-provider-spring-ai`
+- `ai-fabric-chat-session`
 - `ai-fabric-vector-lucene`
 - `ai-fabric-behavior`
 - indexing queue

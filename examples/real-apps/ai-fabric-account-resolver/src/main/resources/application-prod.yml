@@ -25,6 +25,13 @@ ai:
   config:
     default-file: ai-entity-config.yml
 
+  chat:
+    enabled: true
+    auto-create-sessions: true
+    window-size: 8
+    max-context-chars: 4000
+    pinned-target-reuse-window-turns: 3
+
   prompts:
     bundle:
       overlays:

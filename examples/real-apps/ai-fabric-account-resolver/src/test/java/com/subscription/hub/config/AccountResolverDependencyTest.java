@@ -18,7 +18,9 @@ class AccountResolverDependencyTest {
             .newDocumentBuilder()
             .parse(pom.toFile());
 
-        assertThat(artifactIds(document)).contains("ai-fabric-rag");
+        assertThat(artifactIds(document))
+            .contains("ai-fabric-rag")
+            .contains("ai-fabric-chat-session");
     }
 
     private static Path resolveModulePom() {

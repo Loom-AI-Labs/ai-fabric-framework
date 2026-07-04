@@ -4,7 +4,6 @@ import ai.fabric.intent.orchestration.OrchestrationContext;
 import ai.fabric.intent.orchestration.OrchestrationResult;
 import ai.fabric.intent.orchestration.RAGOrchestrator;
 import ai.fabric.intent.orchestration.attachment.OrchestrationAttachment;
-import com.subscription.hub.ai.ResolverChatHistoryEnrichmentStep;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import lombok.Data;
@@ -14,10 +13,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -29,8 +25,6 @@ import java.util.UUID;
 @RequiredArgsConstructor
 @Slf4j
 public class NaturalLanguageController {
-
-    private static final int MAX_REQUEST_HISTORY_MESSAGES = 8;
 
     @Autowired(required = false)
     private RAGOrchestrator ragOrchestrator;
@@ -70,10 +64,6 @@ public class NaturalLanguageController {
         if (request.getAttachments() != null && !request.getAttachments().isEmpty()) {
             builder.attachments(request.getAttachments());
         }
-        List<Map<String, String>> historyMessages = normalizeHistoryMessages(request.getHistoryMessages());
-        if (!historyMessages.isEmpty()) {
-            builder.metadata(Map.of(ResolverChatHistoryEnrichmentStep.METADATA_KEY, historyMessages));
-        }
 
         OrchestrationContext context = userId != null && !userId.isBlank()
             ? builder.userId(userId).sessionId(sessionId).build()
@@ -101,33 +91,5 @@ public class NaturalLanguageController {
     public static class ChatHistoryMessage {
         private String role;
         private String content;
-    }
-
-    private List<Map<String, String>> normalizeHistoryMessages(List<ChatHistoryMessage> rawHistoryMessages) {
-        if (rawHistoryMessages == null || rawHistoryMessages.isEmpty()) {
-            return List.of();
-        }
-
-        List<Map<String, String>> normalized = new ArrayList<>();
-        for (ChatHistoryMessage rawMessage : rawHistoryMessages) {
-            if (rawMessage == null) {
-                continue;
-            }
-            String role = rawMessage.getRole() != null ? rawMessage.getRole().trim() : "";
-            String content = rawMessage.getContent() != null ? rawMessage.getContent().trim() : "";
-            if (role.isBlank() || content.isBlank()) {
-                continue;
-            }
-
-            Map<String, String> message = new LinkedHashMap<>();
-            message.put("role", role);
-            message.put("content", content);
-            normalized.add(message);
-        }
-
-        if (normalized.size() <= MAX_REQUEST_HISTORY_MESSAGES) {
-            return normalized;
-        }
-        return normalized.subList(normalized.size() - MAX_REQUEST_HISTORY_MESSAGES, normalized.size());
     }
 }

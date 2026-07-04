@@ -1,5 +1,6 @@
 package com.subscription.hub.config;
 
+import ai.fabric.chat.config.ChatSessionProperties;
 import ai.fabric.config.AIEntityConfigurationLoader;
 import ai.fabric.config.OrchestrationProperties;
 import ai.fabric.config.PromptBundleProperties;
@@ -51,6 +52,22 @@ class AccountResolverOrchestrationConfigurationTest {
         assertThat(resolver.getReadActionResolution().getMaxTotalActions()).isEqualTo(2);
         assertThat(resolver.getReadActionResolution().getRagCooperationMode())
             .isEqualTo(OrchestrationProperties.ReadActionResolutionRagCooperationMode.PARALLEL_ACTIONS_AND_RAG);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"application.yml", "application-prod.yml"})
+    void frameworkChatSessionBindsForResolverConversationMemory(String configFile) throws IOException {
+        StandardEnvironment environment = loadEnvironment(configFile);
+
+        ChatSessionProperties properties = Binder.get(environment)
+            .bind("ai.chat", ChatSessionProperties.class)
+            .orElseThrow(() -> new AssertionError("ai.chat must bind from " + configFile));
+
+        assertThat(properties.isEnabled()).isTrue();
+        assertThat(properties.isAutoCreateSessions()).isTrue();
+        assertThat(properties.getWindowSize()).isEqualTo(8);
+        assertThat(properties.getMaxContextChars()).isEqualTo(4000);
+        assertThat(properties.getPinnedTargetReuseWindowTurns()).isEqualTo(3);
     }
 
     @ParameterizedTest
