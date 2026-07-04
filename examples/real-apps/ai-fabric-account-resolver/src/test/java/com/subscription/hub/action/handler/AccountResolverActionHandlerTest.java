@@ -260,6 +260,47 @@ class AccountResolverActionHandlerTest {
     }
 
     @Test
+    void profileActionFactsAreCompactAndDecisionFree() {
+        AccountResolutionService.AccountProfile profile = new AccountResolutionService.AccountProfile(
+            new AccountResolutionService.AccountHolderProfile("Resolver User", false, LocalDateTime.now()),
+            new AccountResolutionService.SubscriptionProfile(
+                "ACTIVE",
+                true,
+                "MONTHLY",
+                null,
+                null,
+                null,
+                new AccountResolutionService.PlanProfile("Pro Plan", "PRO", null, null, 25, 100)
+            ),
+            new AccountResolutionService.PaymentMethodProfile(true, true, "CARD", "Visa", "4093"),
+            new AccountResolutionService.AddressProfile(false, false, "BILLING", null, null, null, null),
+            new AccountResolutionService.AddressProfile(true, true, "SHIPPING", "San Francisco", "CA", "94105", "USA")
+        );
+        when(accountResolutionService.accountProfile(93L)).thenReturn(profile);
+
+        GetAccountProfileActionHandler handler = new GetAccountProfileActionHandler(
+            accountResolutionService,
+            userService
+        );
+        ActionContext context = new ActionContext(OrchestrationContext.builder()
+            .userId("93")
+            .sessionId("resolver-test")
+            .build(), null);
+
+        Map<String, Object> facts = handler.facts(ActionResult.builder().success(true).build(), context);
+
+        assertThat(facts)
+            .containsEntry("subscriptionActive", true)
+            .containsEntry("paymentMethodVerified", true)
+            .containsEntry("billingAddressPresent", false)
+            .containsEntry("billingAddressValidated", false);
+        assertThat(facts.toString())
+            .doesNotContain("canContinue")
+            .doesNotContain("recommendedActions")
+            .doesNotContain("blockers");
+    }
+
+    @Test
     void refundActionMessageIncludesPolicyDecisionFromBackendResult() {
         UUID userUuid = UUID.randomUUID();
         UUID subscriptionId = UUID.randomUUID();

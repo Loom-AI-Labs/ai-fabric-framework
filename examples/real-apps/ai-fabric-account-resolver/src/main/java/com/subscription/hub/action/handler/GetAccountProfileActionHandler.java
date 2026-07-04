@@ -7,6 +7,7 @@ import ai.fabric.intent.action.ActionResultContracts;
 import ai.fabric.intent.action.annotation.AIAction;
 import ai.fabric.intent.action.annotation.ActionAllowed;
 import ai.fabric.intent.action.annotation.ActionExecute;
+import ai.fabric.intent.action.annotation.ActionFacts;
 import com.subscription.hub.service.AccountResolutionService;
 import com.subscription.hub.service.UserService;
 import lombok.extern.slf4j.Slf4j;
@@ -60,6 +61,31 @@ public class GetAccountProfileActionHandler extends BaseActionHandler {
                 .errorCode("ACCOUNT_PROFILE_FAILED")
                 .build();
         }
+    }
+
+    @ActionFacts
+    public Map<String, Object> facts(ActionResult result, ActionContext context) {
+        AccountResolutionService.AccountProfile profile = resolveProfile(context);
+        Map<String, Object> facts = new LinkedHashMap<>();
+        facts.put("factSource", "current_authenticated_account_profile");
+        facts.put("subscriptionStatus", profile.subscription().status());
+        facts.put("subscriptionActive", profile.subscription().active());
+        facts.put("billingCycle", profile.subscription().billingCycle());
+        facts.put("planName", profile.subscription().plan() != null ? profile.subscription().plan().name() : null);
+        facts.put("planTier", profile.subscription().plan() != null ? profile.subscription().plan().tier() : null);
+        facts.put("paymentMethodPresent", profile.paymentMethod().present());
+        facts.put("paymentMethodVerified", profile.paymentMethod().verified());
+        facts.put("paymentMethodProvider", profile.paymentMethod().provider());
+        facts.put("paymentMethodLast4", profile.paymentMethod().last4());
+        facts.put("billingAddressPresent", profile.billingAddress().present());
+        facts.put("billingAddressValidated", profile.billingAddress().validated());
+        facts.put("shippingAddressPresent", profile.shippingAddress().present());
+        facts.put("shippingAddressValidated", profile.shippingAddress().validated());
+        facts.put(
+            "reasoningInstruction",
+            "Infer account issues by comparing these facts with retrieved user-facing policies. Do not claim a requirement is missing when the corresponding fact is true."
+        );
+        return facts;
     }
 
     private AccountResolutionService.AccountProfile resolveProfile(ActionContext context) {

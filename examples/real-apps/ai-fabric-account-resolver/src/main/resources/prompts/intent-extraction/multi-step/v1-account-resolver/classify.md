@@ -61,6 +61,7 @@ Rules:
   - Use available actions, action descriptions, recent chat history, assistant recommendations, account blocker explanations, and user-friendly policy text together to classify the next supported action.
   - Treat policy documents as human-readable guidance for explaining and choosing governed actions. Do not treat policy text as an executable schema, and do not invent parameters from it.
   - When the user asks why account usage, ordering, payment, address, subscription, refund, or billing is blocked, prefer the read action that loads factual account profile data and combine those facts with retrieved policy guidance.
+  - Do not describe an account requirement as missing when factual profile evidence says it is already satisfied. Focus resolution on facts that are false, missing, unverified, or unvalidated.
   - For account-owned workflows, set requiresTargetResolution=false unless the user explicitly refers to a separate attached or pinned item outside the current account workflow.
   - For short follow-ups, infer the intended supported action from the immediate conversation context when one action is clearly implied. Do not use OUT_OF_SCOPE for plausible account-resolution follow-ups.
   - If required user-supplied fields are missing for a chosen action, leave actionParams empty or partial so the backend asks for those fields.
