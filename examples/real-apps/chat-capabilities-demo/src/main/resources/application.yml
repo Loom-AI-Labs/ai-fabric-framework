@@ -102,6 +102,12 @@ app:
       enabled: ${APP_DEMO_CONTROLS_ENABLED:true}
       api-key: ${APP_DEMO_CONTROLS_API_KEY:}
       api-key-header: ${APP_DEMO_CONTROLS_API_KEY_HEADER:X-DEMO-API-KEY}
+    cleanup:
+      enabled: ${APP_DEMO_CLEANUP_ENABLED:true}
+      ttl: ${APP_DEMO_CLEANUP_TTL:PT24H}
+      cron: ${APP_DEMO_CLEANUP_CRON:0 17 * * * *}
+      user-id-prefix: ${APP_DEMO_CLEANUP_USER_ID_PREFIX:shopping-demo-user-}
+      protected-user-id-prefix: ${APP_DEMO_CLEANUP_PROTECTED_USER_ID_PREFIX:shopping-demo-user-seed-}
   admin:
     enabled: ${APP_ADMIN_AUTH_ENABLED:true}
     api-key: ${APP_ADMIN_API_KEY:}

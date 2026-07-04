@@ -22,7 +22,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @WebMvcTest(DemoController.class)
 @TestPropertySource(properties = {
     "app.demo.controls.enabled=true",
-    "app.demo.controls.api-key="
+    "app.demo.controls.api-key=",
+    "spring.application.name=chat-capabilities-demo",
+    "project.version=1.0.0-test",
+    "ai-fabric.version=0.3.2-test",
+    "APP_BUILD_COMMIT=test-commit",
+    "APP_BUILD_TIME=2026-07-04T00:00:00Z"
 })
 class DemoControllerTest {
 
@@ -72,6 +77,23 @@ class DemoControllerTest {
                 .content("{\"confirm\":false}"))
             .andExpect(status().isBadRequest())
             .andExpect(jsonPath("$.success").value(false));
+    }
+
+    @Test
+    void healthExposesNonSensitiveBuildAndRuntimeMetadata() throws Exception {
+        when(readinessService.readiness()).thenReturn(readiness("full"));
+
+        mockMvc.perform(get("/api/demo/health"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.app").value("chat-capabilities-demo"))
+            .andExpect(jsonPath("$.version").value("1.0.0-test"))
+            .andExpect(jsonPath("$.aiFabricVersion").value("0.3.2-test"))
+            .andExpect(jsonPath("$.commit").value("test-commit"))
+            .andExpect(jsonPath("$.buildTime").value("2026-07-04T00:00:00Z"))
+            .andExpect(jsonPath("$.demoControlsEnabled").value(true))
+            .andExpect(jsonPath("$.chatSessionEnabled").value(true))
+            .andExpect(jsonPath("$.readiness.stage").value("full"))
+            .andExpect(jsonPath("$.demoControlsApiKey").doesNotExist());
     }
 
     private DemoReadinessService.ReadinessReport readiness(String stage) {

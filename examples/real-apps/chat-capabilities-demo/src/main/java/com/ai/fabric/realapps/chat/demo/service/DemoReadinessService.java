@@ -1,5 +1,8 @@
 package com.ai.fabric.realapps.chat.demo.service;
 
+import ai.fabric.dto.VectorRecord;
+import ai.fabric.dto.VectorScanPage;
+import ai.fabric.dto.VectorScanRequest;
 import ai.fabric.rag.VectorDatabaseService;
 import ai.fabric.repository.IndexingQueueRepository;
 import com.ai.fabric.realapps.chat.catalog.repo.ProductRepository;
@@ -80,6 +83,7 @@ public class DemoReadinessService {
         for (String space : VECTOR_SPACES) {
             try {
                 long count = vectorDatabaseService.getVectorCountByEntityType(space);
+                RetrievalProof retrievalProof = retrievalProof(vectorDatabaseService, space, count);
                 out.put(space, VectorSpaceStatus.builder()
                     .name(space)
                     .present(count > 0)
@@ -87,6 +91,7 @@ public class DemoReadinessService {
                     .provider(vectorDatabaseService.vectorProviderName())
                     .searchFilterMode(vectorDatabaseService.vectorSearchFilterMode())
                     .scanFilterMode(vectorDatabaseService.vectorScanFilterMode())
+                    .retrievalProof(retrievalProof)
                     .build());
             } catch (Exception ex) {
                 out.put(space, VectorSpaceStatus.builder()
@@ -94,11 +99,56 @@ public class DemoReadinessService {
                     .present(false)
                     .vectorCount(0L)
                     .provider(vectorDatabaseService.vectorProviderName())
+                    .retrievalProof(RetrievalProof.builder()
+                        .checked(false)
+                        .found(false)
+                        .method("scan")
+                        .warning(ex.getMessage())
+                        .build())
                     .warning(ex.getMessage())
                     .build());
             }
         }
         return out;
+    }
+
+    private RetrievalProof retrievalProof(VectorDatabaseService vectorDatabaseService, String space, long vectorCount) {
+        if (vectorCount <= 0) {
+            return RetrievalProof.builder()
+                .checked(false)
+                .found(false)
+                .method("scan")
+                .warning("No vectors to probe")
+                .build();
+        }
+        try {
+            VectorScanPage page = vectorDatabaseService.scan(VectorScanRequest.builder()
+                .entityType(space)
+                .limit(1)
+                .includeContent(false)
+                .includeEmbedding(false)
+                .includeMetadata(false)
+                .build());
+            VectorRecord sample = page != null && page.getVectors() != null && !page.getVectors().isEmpty()
+                ? page.getVectors().get(0)
+                : null;
+            boolean found = sample != null;
+            return RetrievalProof.builder()
+                .checked(true)
+                .found(found)
+                .method("scan")
+                .sampleVectorId(found ? sample.getVectorId() : null)
+                .sampleEntityId(found ? sample.getEntityId() : null)
+                .warning(found ? null : "Vector count is non-zero but scan returned no sample")
+                .build();
+        } catch (Exception ex) {
+            return RetrievalProof.builder()
+                .checked(true)
+                .found(false)
+                .method("scan")
+                .warning(ex.getMessage())
+                .build();
+        }
     }
 
     private long indexingQueueSize() {
@@ -161,16 +211,33 @@ public class DemoReadinessService {
         if (counts.getOrDefault("products", 0L) > 0 && vectorSpaces.get("product").getVectorCount() == 0) {
             warnings.add("Products exist in the database but product vectors are not visible yet.");
         }
+        if (counts.getOrDefault("products", 0L) > 0 && retrievalProbeMissing(vectorSpaces.get("product"))) {
+            warnings.add("Products exist in the database but product vector retrieval proof failed.");
+        }
         if (counts.getOrDefault("reviews", 0L) > 0 && vectorSpaces.get("review").getVectorCount() == 0) {
             warnings.add("Reviews exist in the database but review vectors are not visible yet.");
         }
+        if (counts.getOrDefault("reviews", 0L) > 0 && retrievalProbeMissing(vectorSpaces.get("review"))) {
+            warnings.add("Reviews exist in the database but review vector retrieval proof failed.");
+        }
         if (counts.getOrDefault("policies", 0L) > 0 && vectorSpaces.get("policy").getVectorCount() == 0) {
             warnings.add("Policies exist in the database but policy vectors are not visible yet.");
+        }
+        if (counts.getOrDefault("policies", 0L) > 0 && retrievalProbeMissing(vectorSpaces.get("policy"))) {
+            warnings.add("Policies exist in the database but policy vector retrieval proof failed.");
         }
         if (indexingQueueSize > 0) {
             warnings.add("Indexing queue still has " + indexingQueueSize + " entries; retrieval may lag briefly.");
         }
         return warnings;
+    }
+
+    private boolean retrievalProbeMissing(VectorSpaceStatus status) {
+        return status != null
+            && status.getVectorCount() > 0
+            && status.getRetrievalProof() != null
+            && status.getRetrievalProof().isChecked()
+            && !status.getRetrievalProof().isFound();
     }
 
     @Data
@@ -196,6 +263,18 @@ public class DemoReadinessService {
         private String provider;
         private String searchFilterMode;
         private String scanFilterMode;
+        private RetrievalProof retrievalProof;
+        private String warning;
+    }
+
+    @Data
+    @Builder
+    public static class RetrievalProof {
+        private boolean checked;
+        private boolean found;
+        private String method;
+        private String sampleVectorId;
+        private String sampleEntityId;
         private String warning;
     }
 }

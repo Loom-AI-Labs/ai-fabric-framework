@@ -15,6 +15,7 @@ import java.math.BigDecimal;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import lombok.Builder;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
@@ -41,11 +42,15 @@ public class DemoStageSeedService {
         DemoStage effectiveStage = stage != null ? stage : DemoStage.FULL;
         Map<String, Object> results = new LinkedHashMap<>();
 
+        boolean productsSeeded = false;
         if (effectiveStage == DemoStage.PRODUCTS || effectiveStage == DemoStage.FULL) {
             results.put("products", seedProducts());
+            productsSeeded = true;
         }
         if (effectiveStage == DemoStage.REVIEWS || effectiveStage == DemoStage.FULL) {
-            results.put("products", seedProducts());
+            if (!productsSeeded) {
+                results.put("products", seedProducts());
+            }
             results.put("reviews", seedReviews());
         }
         if (effectiveStage == DemoStage.POLICIES || effectiveStage == DemoStage.FULL) {
@@ -69,9 +74,14 @@ public class DemoStageSeedService {
     private Map<String, Object> seedProducts() {
         int created = 0;
         int updated = 0;
+        int skipped = 0;
         for (DemoSeedCatalog.ProductSeed seed : DemoSeedCatalog.products()) {
-            if (productService.findBySku(seed.sku()).isPresent()) {
-                Product existing = productService.findBySku(seed.sku()).orElseThrow();
+            Product existing = productService.findBySku(seed.sku()).orElse(null);
+            if (existing != null) {
+                if (productMatches(existing, seed)) {
+                    skipped++;
+                    continue;
+                }
                 productService.updateProduct(
                     existing.getId(),
                     seed.sku(),
@@ -100,23 +110,26 @@ public class DemoStageSeedService {
                 created++;
             }
         }
-        return Map.of("created", created, "updated", updated, "target", DemoSeedCatalog.products().size());
+        return Map.of("created", created, "updated", updated, "skipped", skipped, "target", DemoSeedCatalog.products().size());
     }
 
     private Map<String, Object> seedPolicies() {
         int created = 0;
         int updated = 0;
+        int skipped = 0;
         for (DemoSeedCatalog.PolicySeed seed : DemoSeedCatalog.policies()) {
             Policy existing = policyRepository.findByTitleIgnoreCase(seed.title()).orElse(null);
             if (existing == null) {
                 policyService.createPolicy(seed.title(), seed.text(), seed.classification());
                 created++;
+            } else if (policyMatches(existing, seed)) {
+                skipped++;
             } else {
                 policyService.updatePolicy(existing.getId(), seed.title(), seed.text(), seed.classification());
                 updated++;
             }
         }
-        return Map.of("created", created, "updated", updated, "target", DemoSeedCatalog.policies().size());
+        return Map.of("created", created, "updated", updated, "skipped", skipped, "target", DemoSeedCatalog.policies().size());
     }
 
     private Map<String, Object> seedReviews() {
@@ -138,6 +151,7 @@ public class DemoStageSeedService {
     private Map<String, Object> seedCoupons() {
         int created = 0;
         int updated = 0;
+        int skipped = 0;
         for (DemoSeedCatalog.CouponSeed seed : DemoSeedCatalog.coupons()) {
             Coupon existing = couponService.findByCode(seed.code()).orElse(null);
             if (existing == null) {
@@ -150,6 +164,8 @@ public class DemoStageSeedService {
                     seed.discountAmount()
                 );
                 created++;
+            } else if (couponMatches(existing, seed)) {
+                skipped++;
             } else {
                 couponService.update(
                     existing.getId(),
@@ -162,7 +178,7 @@ public class DemoStageSeedService {
                 updated++;
             }
         }
-        return Map.of("created", created, "updated", updated, "target", DemoSeedCatalog.coupons().size());
+        return Map.of("created", created, "updated", updated, "skipped", skipped, "target", DemoSeedCatalog.coupons().size());
     }
 
     private Map<String, Object> seedTickets() {
@@ -181,6 +197,52 @@ public class DemoStageSeedService {
             created++;
         }
         return Map.of("created", created, "skipped", skipped, "target", DemoSeedCatalog.tickets().size());
+    }
+
+    private boolean productMatches(Product existing, DemoSeedCatalog.ProductSeed seed) {
+        return equalText(existing.getSku(), seed.sku(), true)
+            && equalText(existing.getName(), seed.name(), false)
+            && equalText(existing.getDescription(), seed.description(), false)
+            && equalText(existing.getCategory(), seed.category(), false)
+            && equalText(existing.getTags(), seed.tags(), false)
+            && equalText(existing.getImageUrl(), seed.imageUrl(), false)
+            && equalText(existing.getCurrency(), "USD", true)
+            && equalNumber(existing.getPrice(), new BigDecimal(seed.price()))
+            && Objects.equals(existing.getInStockQty(), seed.stock());
+    }
+
+    private boolean policyMatches(Policy existing, DemoSeedCatalog.PolicySeed seed) {
+        return equalText(existing.getTitle(), seed.title(), false)
+            && equalText(existing.getText(), seed.text(), false)
+            && equalText(existing.getClassification(), seed.classification(), false);
+    }
+
+    private boolean couponMatches(Coupon existing, DemoSeedCatalog.CouponSeed seed) {
+        return equalText(existing.getCode(), seed.code(), true)
+            && equalText(existing.getDescription(), seed.description(), false)
+            && equalText(existing.getRules(), seed.rules(), false)
+            && existing.isActive() == seed.active()
+            && Objects.equals(existing.getDiscountPercent(), seed.discountPercent())
+            && equalNumber(existing.getDiscountAmount(), seed.discountAmount());
+    }
+
+    private boolean equalText(String actual, String expected, boolean ignoreCase) {
+        String normalizedActual = normalizeText(actual);
+        String normalizedExpected = normalizeText(expected);
+        return ignoreCase
+            ? normalizedActual.equalsIgnoreCase(normalizedExpected)
+            : normalizedActual.equals(normalizedExpected);
+    }
+
+    private String normalizeText(String value) {
+        return StringUtils.hasText(value) ? value.trim() : "";
+    }
+
+    private boolean equalNumber(BigDecimal actual, BigDecimal expected) {
+        if (actual == null || expected == null) {
+            return actual == expected;
+        }
+        return actual.compareTo(expected) == 0;
     }
 
     @Data

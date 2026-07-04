@@ -240,9 +240,10 @@ shopping-demo-session-<uuid>
 
 This avoids visitor collisions for real write actions while preserving the shared RAG dataset.
 
-P2 optional:
+P2 hardening:
 
 - add TTL cleanup for carts/orders/chat sessions with user id prefix `shopping-demo-user-`;
+- keep seeded fixture users protected from cleanup;
 - if needed, add per-session scenario fixtures later.
 
 ### 4. Generic AI Component With Demo-Specific Projections
@@ -557,9 +558,12 @@ Local implementation completed on 2026-07-04:
 
 - backend-owned staged demo APIs were added under `/api/demo`;
 - readiness/health now report data counts, vector-space status, and build/runtime flags;
+- readiness now includes a lightweight scan-based retrieval proof per populated vector space;
 - the chat app maps UI `position` to commerce mode when the UI does not explicitly choose one;
 - cart action results now include concise, user-facing totals;
 - demo access control is explicit rather than blanket-allow;
+- browser-scoped demo writes now have a scheduled, configurable TTL cleanup path for carts, orders,
+  support tickets, and AI Fabric chat sessions;
 - frontend seeding moved from bundled JSON to backend-owned stage operations;
 - frontend chat uses browser-scoped user/session IDs and still sends only the new turn;
 - Shopping UI now has Evidence, Cart, and Support surfaces;
@@ -570,6 +574,8 @@ Local implementation completed on 2026-07-04:
 Verification completed locally:
 
 - `mvn test -DskipITs` from `examples/real-apps/chat-capabilities-demo`;
+- focused backend tests for demo-controls auth, health metadata, access policy, readiness retrieval
+  proof, staged seeding idempotency, and demo-user cleanup;
 - `npm run build` from `/Users/mahmoudashraf/Downloads/Projects/aifabric`;
 - `git diff --check` in both repos.
 
