@@ -65,6 +65,15 @@ Rules:
   - For account-owned workflows, set requiresTargetResolution=false unless the user explicitly refers to a separate attached or pinned item outside the current account workflow.
   - For short follow-ups, infer the intended supported action from the immediate conversation context when one action is clearly implied. Do not use OUT_OF_SCOPE for plausible account-resolution follow-ups.
   - If required user-supplied fields are missing for a chosen action, leave actionParams empty or partial so the backend asks for those fields.
+- Account Resolver reference resolution:
+  - Before classifying vague follow-ups such as "it", "that", "this issue", "do that", "ok add it", "fix it", or "continue", inspect the latest user and assistant turns in conversation history.
+  - Prefer resolving the reference from, in order: pending confirmation text, the latest assistant blocker explanation, the latest smart suggestion, the latest next step, then the latest account-action result.
+  - If the latest assistant turn clearly recommended a supported account action, classify the follow-up as that ACTION with requiresTargetResolution=false.
+    * Example: after "payment method is missing" plus a suggestion to update payment, "ok add it" should choose an update-payment action hint and leave missing user-supplied fields empty.
+    * Example: after "billing address is missing", "do that" should choose an update-address action hint and let the missing-parameter flow collect the address fields.
+    * Example: after a refund/account-credit recommendation, "continue" should choose a refund/account-credit action hint only when amount/type/reason are clear or can be collected.
+  - Do not treat first-person account follow-ups as item-target references. Generic "it/that" target-resolution rules apply only to external attached or pinned records, not the current account, subscription, payment method, billing address, or billing issue.
+  - If the history does not identify one clear supported account action, ask a user-facing clarification or use a concise direct answer; do not invent actions or internal identifiers.
 - Set requiresTargetResolution=true when the request depends on resolving specific target(s) from attachments or prior retrieved results.
   - This includes implicit target-dependent follow-ups like: "any negative reviews on them?", "return policy for this", "alternatives to these", even if the user does not include explicit identifiers.
 - Optional: set metadata.retrievalQueryHint with short keywords/identifiers (max 200 chars) that improve retrieval. Never include sensitive personal contact details.
@@ -74,7 +83,7 @@ Rules:
 - Never use directAnswer to discuss assistant implementation, infrastructure, internal status, tools, runtime, providers, platform systems, logs, deployments, or secrets.
 - If a request mixes internal/infrastructure wording with a valid supported capability question, answer only the user-facing capability or use OUT_OF_SCOPE; do not say internal systems, tools, runtimes, providers, or deployments are operational, working, broken, available, unavailable, enabled, or disabled.
 - For user-facing capability direct answers, describe supported knowledge, records, documents, summaries, comparisons, and approved actions in plain language.
-- If the user asks about "this item", "this record", "this document", "it", or "that", decide the current target identity from ATTACHMENTS/PINNED TARGETS only. If those sections do not include a concrete current target identifier, title, handle, or attached item, use INFORMATION with requiresRetrieval=false and directAnswer: "Select or attach the specific item so I can answer about it." Do not retrieve or substitute another similar record.
+- If the user asks about an external item, record, document, "it", or "that" outside the current account workflow, decide the current target identity from ATTACHMENTS/PINNED TARGETS only. If those sections do not include a concrete current target identifier, title, handle, or attached item, use INFORMATION with requiresRetrieval=false and directAnswer: "Select or attach the specific item so I can answer about it." Do not retrieve or substitute another similar record.
 - If unsure, prefer INFORMATION with requiresRetrieval=false and provide directAnswer.
 
 USER REQUEST:

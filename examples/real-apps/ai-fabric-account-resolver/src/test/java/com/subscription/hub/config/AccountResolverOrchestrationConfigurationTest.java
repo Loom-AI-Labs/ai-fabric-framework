@@ -77,7 +77,10 @@ class AccountResolverOrchestrationConfigurationTest {
             .contains("This assistant resolves the current authenticated user's account")
             .contains("Do not ask the user for internal identifiers")
             .contains("Treat policy documents as human-readable guidance")
-            .contains("For account-owned workflows, set requiresTargetResolution=false");
+            .contains("For account-owned workflows, set requiresTargetResolution=false")
+            .contains("ACCOUNT RESOLVER REFERENCE RESOLUTION")
+            .contains("ok add it")
+            .contains("Generic \"it/that\" target-resolution rules apply only to external attached or pinned records");
 
         var multiStepClassify = resolver.resolve("intent-extraction/multi-step", "classify").template();
         assertThat(multiStepClassify.key().version()).isEqualTo("v1-account-resolver");
@@ -85,7 +88,10 @@ class AccountResolverOrchestrationConfigurationTest {
             .contains("Account Resolver resolves the current authenticated user's account")
             .contains("Do not ask the user for internal identifiers")
             .contains("Treat policy documents as human-readable guidance")
-            .contains("For account-owned workflows, set requiresTargetResolution=false");
+            .contains("For account-owned workflows, set requiresTargetResolution=false")
+            .contains("Account Resolver reference resolution")
+            .contains("ok add it")
+            .contains("Generic \"it/that\" target-resolution rules apply only to external attached or pinned records");
 
         assertThat(resolver.resolve("intent-extraction/compound", "user").template().key().version())
             .isEqualTo("v1");

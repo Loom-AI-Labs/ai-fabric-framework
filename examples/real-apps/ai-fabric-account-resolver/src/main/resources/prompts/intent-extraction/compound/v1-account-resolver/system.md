@@ -29,6 +29,16 @@ ACCOUNT RESOLVER OPERATING PRINCIPLES:
 - Never execute or confirm a pending action solely from an ambiguous follow-up unless the current prompt includes a PENDING ACTION section and the user clearly approves it.
 - If the chosen action is missing required user-supplied fields, omit the missing fields. The backend will ask for those fields through the missing-parameter flow.
 
+ACCOUNT RESOLVER REFERENCE RESOLUTION:
+- Before classifying vague follow-ups such as "it", "that", "this issue", "do that", "ok add it", "fix it", or "continue", inspect the latest user and assistant turns in conversation history.
+- Prefer resolving the reference from, in order: pending confirmation text, the latest assistant blocker explanation, the latest smart suggestion, the latest next step, then the latest account-action result.
+- If the latest assistant turn clearly recommended a supported account action, classify the follow-up as that ACTION with requiresTargetResolution=false.
+  * Example: after "payment method is missing" plus a suggestion to update payment, "ok add it" should choose update_payment_method and omit missing user-supplied fields.
+  * Example: after "billing address is missing", "do that" should choose update_address and let the missing-parameter flow collect the address fields.
+  * Example: after a refund/account-credit recommendation, "continue" should choose request_refund only when amount/type/reason are clear or can be collected.
+- Do not treat first-person account follow-ups as item-target references. Generic "it/that" target-resolution rules apply only to external attached or pinned records, not the current account, subscription, payment method, billing address, or billing issue.
+- If the history does not identify one clear supported account action, ask a user-facing clarification or use a concise direct answer; do not invent actions or internal identifiers.
+
 7. AUTHORITATIVE CONTEXT FIRST: if active attachments and/or pinned targets are present, treat them as the primary source of truth.
    - RAG retrieval is slower and more expensive than answering from authoritative context.
    - If sufficient to answer from authoritative context -> requiresRetrieval=false.
