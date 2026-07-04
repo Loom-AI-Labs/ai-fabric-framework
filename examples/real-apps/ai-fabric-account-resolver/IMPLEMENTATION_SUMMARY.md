@@ -12,13 +12,14 @@ The `ai-fabric-account-resolver` real app has been upgraded from the subscriptio
   - user `93`: missing billing address
   - user `94`: refund/account-credit issue
 - Resolver policy API for active subscription, payment method, billing address, and refund/account-credit rules.
-- Account readiness API that returns blockers, recommended actions, and confirmation requirements.
+- Account readiness API that returns blockers, recommended actions, and confirmation requirements for dashboard and regression use.
+- Factual account profile read model for LLM policy reasoning without precomputed blockers or recommendations.
 - New payment-method domain model attached to subscriptions.
 - New refund-request domain model and repository.
 - New resolver service for readiness inspection, demo seeding, payment resolution, and refund/account-credit policy execution.
 - New resolver REST API under `/api/account-resolver`.
 - New AI Fabric read action:
-  - `inspect_account_readiness`
+  - `get_account_profile`
 - New AI Fabric confirmable write actions:
   - `update_payment_method`
   - `request_refund`

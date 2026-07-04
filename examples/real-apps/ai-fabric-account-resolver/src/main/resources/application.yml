@@ -75,7 +75,7 @@ ai:
           planning-mode: ITERATIVE
           require-allowlist: true
           allowed-read-actions:
-            - inspect_account_readiness
+            - get_account_profile
           max-iterations: 2
           max-actions-per-iteration: 1
           max-total-actions: 2

@@ -4,6 +4,7 @@ import com.subscription.hub.entity.Address;
 import com.subscription.hub.entity.PaymentMethod;
 import com.subscription.hub.entity.RefundRequest;
 import com.subscription.hub.entity.Subscription;
+import com.subscription.hub.entity.SubscriptionPlan;
 import com.subscription.hub.entity.User;
 import com.subscription.hub.repository.RefundRequestRepository;
 import com.subscription.hub.repository.SubscriptionPlanRepository;
@@ -55,6 +56,47 @@ class AccountResolutionServiceTest {
         assertThat(readiness.blockers())
             .extracting(AccountResolutionService.AccountBlocker::code)
             .containsExactly("PAYMENT_METHOD_MISSING", "BILLING_ADDRESS_MISSING");
+    }
+
+    @Test
+    void accountProfileReturnsFactsWithoutReadinessDecisions() {
+        User user = user(93L);
+        Subscription subscription = activeSubscription(user.getId());
+        subscription.setPaymentMethod(PaymentMethod.builder()
+            .type(PaymentMethod.PaymentType.CARD)
+            .provider("Visa")
+            .last4("4093")
+            .verified(true)
+            .build());
+        subscription.setBillingAddress(null);
+        subscription.setShippingAddress(null);
+        SubscriptionPlan plan = SubscriptionPlan.builder()
+            .id(subscription.getPlanId())
+            .name("Pro Plan")
+            .tier(SubscriptionPlan.PlanTier.PRO)
+            .monthlyPrice(new BigDecimal("29.00"))
+            .annualPrice(new BigDecimal("290.00"))
+            .maxUsers(25)
+            .storageGB(100)
+            .build();
+        when(userRepository.findByUserId(93L)).thenReturn(Optional.of(user));
+        when(subscriptionRepository.findByUserIdAndStatus(user.getId(), Subscription.SubscriptionStatus.ACTIVE))
+            .thenReturn(Optional.of(subscription));
+        when(planRepository.findById(subscription.getPlanId())).thenReturn(Optional.of(plan));
+
+        AccountResolutionService.AccountProfile profile = service.accountProfile(93L);
+
+        assertThat(profile.account().displayName()).isEqualTo("Resolver User");
+        assertThat(profile.subscription().active()).isTrue();
+        assertThat(profile.subscription().plan().tier()).isEqualTo("PRO");
+        assertThat(profile.paymentMethod().present()).isTrue();
+        assertThat(profile.paymentMethod().verified()).isTrue();
+        assertThat(profile.billingAddress().present()).isFalse();
+        assertThat(profile.billingAddress().validated()).isFalse();
+        assertThat(profile.toString())
+            .doesNotContain("canContinue")
+            .doesNotContain("recommendedActions")
+            .doesNotContain("AccountBlocker");
     }
 
     @Test

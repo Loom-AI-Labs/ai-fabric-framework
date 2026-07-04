@@ -8,6 +8,7 @@ This app demonstrates an AI-enabled account resolver for subscription and checko
 - Explain blockers such as missing payment method, missing billing address, or inactive subscription.
 - Let AI Fabric propose safe read actions and confirmable write actions.
 - Resolve payment, address, cancellation, plan change, and refund/account-credit issues through local `@AIAction` handlers.
+- Keep the readiness endpoint available for dashboard state and regression checks while the LLM path reasons from factual profile data plus policies.
 
 ## Demo Personas
 
@@ -26,13 +27,13 @@ The seeded demo users are:
 
 ## AI Fabric Capabilities Proved
 
-- Read-action grounding through `inspect_account_readiness`.
+- Read-action grounding through `get_account_profile`, which returns factual account state without precomputed blockers or recommendations.
 - Dedicated AI Fabric `resolver` orchestration mode.
 - Policy-grounded RAG through the `account-resolution-policy` vector space.
 - Confirmable write actions through `update_payment_method`, `update_address`, `request_refund`, `cancel_subscription`, `upgrade_subscription`, and `downgrade_subscription`.
 - Action authorization through `@ActionAllowed`.
 - Action confirmation through `@ActionConfirmation`.
-- Post-action readiness evidence returned as structured `ActionResult` payloads.
+- Post-action readiness evidence returned as structured `ActionResult` payloads after write actions.
 - Policy-backed resolver behavior without hardcoded frontend business logic.
 - Annotation-assisted indexing over subscription plans.
 - Deterministic local embeddings plus Lucene vector search.

@@ -151,31 +151,19 @@ class AccountResolverActionHandlerTest {
     }
 
     @Test
-    void readinessActionResolvesAccountFromCurrentUserContextOnly() {
+    void profileActionResolvesAccountFromCurrentUserContextOnly() {
         UUID userUuid = UUID.randomUUID();
-        UUID subscriptionId = UUID.randomUUID();
-        AccountResolutionService.AccountReadiness readiness = new AccountResolutionService.AccountReadiness(
-            subscriptionId,
-            userUuid,
-            92L,
-            "ACTIVE",
-            false,
-            java.util.List.of(new AccountResolutionService.AccountBlocker(
-                "PAYMENT_METHOD_MISSING",
-                "A verified payment method is required",
-                "update_payment_method",
-                true
-            )),
-            java.util.List.of(),
-            java.util.List.of("update_payment_method"),
-            false,
-            true
+        AccountResolutionService.AccountProfile profile = new AccountResolutionService.AccountProfile(
+            new AccountResolutionService.AccountHolderProfile("Resolver User", false, LocalDateTime.now()),
+            new AccountResolutionService.SubscriptionProfile("ACTIVE", true, "MONTHLY", null, null, null, null),
+            new AccountResolutionService.PaymentMethodProfile(false, false, null, null, null),
+            new AccountResolutionService.AddressProfile(true, true, "BILLING", "San Francisco", "CA", "94105", "USA"),
+            new AccountResolutionService.AddressProfile(true, true, "SHIPPING", "San Francisco", "CA", "94105", "USA")
         );
-        when(accountResolutionService.inspectReadiness(92L)).thenReturn(readiness);
+        when(accountResolutionService.accountProfile(92L)).thenReturn(profile);
 
-        InspectAccountReadinessActionHandler handler = new InspectAccountReadinessActionHandler(
+        GetAccountProfileActionHandler handler = new GetAccountProfileActionHandler(
             accountResolutionService,
-            subscriptionService,
             userService
         );
         ActionContext context = new ActionContext(OrchestrationContext.builder()
@@ -186,8 +174,89 @@ class AccountResolverActionHandlerTest {
         ActionResult result = handler.execute(context);
 
         assertThat(result.isSuccess()).isTrue();
-        assertThat(result.getMessage()).contains("blockers");
-        verify(accountResolutionService).inspectReadiness(92L);
+        assertThat(result.getMessage()).contains("profile facts");
+        assertThat(result.getData().toMap())
+            .containsKey("accountProfile")
+            .doesNotContainKeys("readiness", "canContinue", "blockers", "recommendedActions", "policies");
+        verify(accountResolutionService).accountProfile(92L);
+    }
+
+    @Test
+    void profileActionResolvesUuidUserContextOnly() {
+        UUID userUuid = UUID.randomUUID();
+        AccountResolutionService.AccountProfile profile = new AccountResolutionService.AccountProfile(
+            new AccountResolutionService.AccountHolderProfile("Resolver User", false, LocalDateTime.now()),
+            new AccountResolutionService.SubscriptionProfile("ACTIVE", true, "MONTHLY", null, null, null, null),
+            new AccountResolutionService.PaymentMethodProfile(
+                true,
+                true,
+                "CARD",
+                "Visa",
+                "4242"
+            ),
+            new AccountResolutionService.AddressProfile(false, false, "BILLING", null, null, null, null),
+            new AccountResolutionService.AddressProfile(false, false, "SHIPPING", null, null, null, null)
+        );
+        when(accountResolutionService.accountProfile(userUuid)).thenReturn(profile);
+
+        GetAccountProfileActionHandler handler = new GetAccountProfileActionHandler(
+            accountResolutionService,
+            userService
+        );
+        ActionContext context = new ActionContext(OrchestrationContext.builder()
+            .userId(userUuid.toString())
+            .sessionId("resolver-test")
+            .build(), null);
+
+        ActionResult result = handler.execute(context);
+
+        assertThat(result.isSuccess()).isTrue();
+        verify(accountResolutionService).accountProfile(userUuid);
+    }
+
+    @Test
+    void profileActionDoesNotReturnBackendReadinessDecisions() {
+        AccountResolutionService.AccountProfile profile = new AccountResolutionService.AccountProfile(
+            new AccountResolutionService.AccountHolderProfile("Resolver User", false, LocalDateTime.now()),
+            new AccountResolutionService.SubscriptionProfile(
+                "ACTIVE",
+                true,
+                "MONTHLY",
+                null,
+                null,
+                null,
+                null
+            ),
+            new AccountResolutionService.PaymentMethodProfile(
+                false,
+                false,
+                null,
+                null,
+                null
+            ),
+            new AccountResolutionService.AddressProfile(false, false, "BILLING", null, null, null, null),
+            new AccountResolutionService.AddressProfile(false, false, "SHIPPING", null, null, null, null)
+        );
+        when(accountResolutionService.accountProfile(92L)).thenReturn(profile);
+
+        GetAccountProfileActionHandler handler = new GetAccountProfileActionHandler(
+            accountResolutionService,
+            userService
+        );
+        ActionContext context = new ActionContext(OrchestrationContext.builder()
+            .userId("92")
+            .sessionId("resolver-test")
+            .build(), null);
+
+        ActionResult result = handler.execute(context);
+
+        assertThat(result.isSuccess()).isTrue();
+        Map<String, Object> data = result.getData().toMap();
+        assertThat(data).containsOnlyKeys("accountProfile");
+        assertThat(data.toString())
+            .doesNotContain("canContinue")
+            .doesNotContain("recommendedActions")
+            .doesNotContain("AccountBlocker");
     }
 
     @Test
@@ -259,7 +328,7 @@ class AccountResolverActionHandlerTest {
             context.registerBean(SubscriptionService.class, () -> subscriptionService);
             context.registerBean(UserService.class, () -> userService);
             context.register(AIActionRegistry.class);
-            context.register(InspectAccountReadinessActionHandler.class);
+            context.register(GetAccountProfileActionHandler.class);
             context.register(UpdatePaymentMethodActionHandler.class);
             context.register(UpdateAddressActionHandler.class);
             context.register(RequestRefundActionHandler.class);
@@ -274,7 +343,7 @@ class AccountResolverActionHandlerTest {
             assertThat(registry.getAllMetadata())
                 .extracting(AIActionMetaData::getName)
                 .containsExactlyInAnyOrder(
-                    "inspect_account_readiness",
+                    "get_account_profile",
                     "update_payment_method",
                     "update_address",
                     "request_refund",
@@ -288,10 +357,11 @@ class AccountResolverActionHandlerTest {
                     .doesNotContain("userId", "subscriptionId", "tenantId", "accountId", "planId", "newPlanId")
             );
 
-            AIActionMetaData readiness = registry.findMetadata("inspect_account_readiness").orElseThrow();
-            assertThat(readiness.getParameters()).isEmpty();
-            assertThat(readiness.getParameterSchemas()).isEmpty();
-            assertThat(readiness.getRequiredParameters()).isEmpty();
+            assertThat(registry.findMetadata("inspect_account_readiness")).isEmpty();
+            AIActionMetaData profile = registry.findMetadata("get_account_profile").orElseThrow();
+            assertThat(profile.getParameters()).isEmpty();
+            assertThat(profile.getParameterSchemas()).isEmpty();
+            assertThat(profile.getRequiredParameters()).isEmpty();
 
             AIActionMetaData payment = registry.findMetadata("update_payment_method").orElseThrow();
             assertThat(payment.getParameters()).containsOnlyKeys("last4");

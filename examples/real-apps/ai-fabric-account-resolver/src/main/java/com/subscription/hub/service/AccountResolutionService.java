@@ -124,6 +124,26 @@ public class AccountResolutionService {
         return buildReadiness(user, subscription);
     }
 
+    @Transactional(readOnly = true)
+    public AccountProfile accountProfile(Long numericUserId) {
+        User user = userRepository.findByUserId(numericUserId)
+            .orElseThrow(() -> new IllegalArgumentException("User not found: " + numericUserId));
+        Subscription subscription = subscriptionRepository
+            .findByUserIdAndStatus(user.getId(), Subscription.SubscriptionStatus.ACTIVE)
+            .orElse(null);
+        return buildAccountProfile(user, subscription);
+    }
+
+    @Transactional(readOnly = true)
+    public AccountProfile accountProfile(UUID userId) {
+        User user = userRepository.findById(userId)
+            .orElseThrow(() -> new IllegalArgumentException("User not found: " + userId));
+        Subscription subscription = subscriptionRepository
+            .findByUserIdAndStatus(user.getId(), Subscription.SubscriptionStatus.ACTIVE)
+            .orElse(null);
+        return buildAccountProfile(user, subscription);
+    }
+
     @AIProcess(
         entityType = "subscription",
         processType = "update",
@@ -276,6 +296,44 @@ public class AccountResolutionService {
         return buildReadiness(user, subscription);
     }
 
+    private AccountProfile buildAccountProfile(User user, Subscription subscription) {
+        SubscriptionPlan plan = subscription != null && subscription.getPlanId() != null
+            ? planRepository.findById(subscription.getPlanId()).orElse(null)
+            : null;
+
+        return new AccountProfile(
+            user != null
+                ? new AccountHolderProfile(
+                    fullName(user),
+                    Boolean.TRUE.equals(user.getIsGuest()),
+                    user.getLastLoginAt()
+                )
+                : null,
+            subscription != null
+                ? new SubscriptionProfile(
+                    subscription.getStatus().name(),
+                    subscription.getStatus() == Subscription.SubscriptionStatus.ACTIVE,
+                    subscription.getBillingCycle() != null ? subscription.getBillingCycle().name() : null,
+                    subscription.getEndDate(),
+                    subscription.getLastActivityDate(),
+                    subscription.getChurnRiskScore(),
+                    planProfile(plan)
+                )
+                : new SubscriptionProfile(
+                    "NO_ACTIVE_SUBSCRIPTION",
+                    false,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null
+                ),
+            paymentMethodProfile(subscription != null ? subscription.getPaymentMethod() : null),
+            addressProfile(subscription != null ? subscription.getBillingAddress() : null, "BILLING"),
+            addressProfile(subscription != null ? subscription.getShippingAddress() : null, "SHIPPING")
+        );
+    }
+
     private AccountReadiness buildReadiness(User user, Subscription subscription) {
         List<AccountBlocker> blockers = new ArrayList<>();
         List<String> recommendedActions = new ArrayList<>();
@@ -327,6 +385,54 @@ public class AccountResolutionService {
 
     private boolean isUsableAddress(Address address) {
         return address != null && Boolean.TRUE.equals(address.getIsValidated());
+    }
+
+    private String fullName(User user) {
+        String first = user.getFirstName() != null ? user.getFirstName().trim() : "";
+        String last = user.getLastName() != null ? user.getLastName().trim() : "";
+        return (first + " " + last).trim();
+    }
+
+    private PlanProfile planProfile(SubscriptionPlan plan) {
+        if (plan == null) {
+            return null;
+        }
+        return new PlanProfile(
+            plan.getName(),
+            plan.getTier() != null ? plan.getTier().name() : null,
+            plan.getMonthlyPrice(),
+            plan.getAnnualPrice(),
+            plan.getMaxUsers(),
+            plan.getStorageGB()
+        );
+    }
+
+    private PaymentMethodProfile paymentMethodProfile(PaymentMethod paymentMethod) {
+        if (paymentMethod == null) {
+            return new PaymentMethodProfile(false, false, null, null, null);
+        }
+        return new PaymentMethodProfile(
+            true,
+            Boolean.TRUE.equals(paymentMethod.getVerified()),
+            paymentMethod.getType() != null ? paymentMethod.getType().name() : null,
+            paymentMethod.getProvider(),
+            paymentMethod.getLast4()
+        );
+    }
+
+    private AddressProfile addressProfile(Address address, String defaultType) {
+        if (address == null) {
+            return new AddressProfile(false, false, defaultType, null, null, null, null);
+        }
+        return new AddressProfile(
+            true,
+            Boolean.TRUE.equals(address.getIsValidated()),
+            address.getType() != null ? address.getType().name() : defaultType,
+            address.getCity(),
+            address.getState(),
+            address.getPostalCode(),
+            address.getCountry()
+        );
     }
 
     private AccountReadiness buildScenario(Long numericUserId,
@@ -477,6 +583,57 @@ public class AccountResolutionService {
                 : List.of();
         }
     }
+
+    public record AccountProfile(
+        AccountHolderProfile account,
+        SubscriptionProfile subscription,
+        PaymentMethodProfile paymentMethod,
+        AddressProfile billingAddress,
+        AddressProfile shippingAddress
+    ) { }
+
+    public record AccountHolderProfile(
+        String displayName,
+        boolean guest,
+        LocalDateTime lastLoginAt
+    ) { }
+
+    public record SubscriptionProfile(
+        String status,
+        boolean active,
+        String billingCycle,
+        LocalDateTime currentPeriodEndsAt,
+        LocalDateTime lastActivityAt,
+        Double churnRiskScore,
+        PlanProfile plan
+    ) { }
+
+    public record PlanProfile(
+        String name,
+        String tier,
+        BigDecimal monthlyPrice,
+        BigDecimal annualPrice,
+        Integer maxUsers,
+        Integer storageGB
+    ) { }
+
+    public record PaymentMethodProfile(
+        boolean present,
+        boolean verified,
+        String type,
+        String provider,
+        String last4
+    ) { }
+
+    public record AddressProfile(
+        boolean present,
+        boolean validated,
+        String type,
+        String city,
+        String state,
+        String postalCode,
+        String country
+    ) { }
 
     public record AccountBlocker(
         String code,

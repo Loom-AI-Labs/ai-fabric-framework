@@ -25,7 +25,7 @@ public class ResolverAccountOwnedTargetResolutionStep implements PipelineStep {
     private static final String METADATA_KEY = "resolverAccountOwnedTargetResolution";
 
     private static final Set<String> ACCOUNT_OWNED_ACTIONS = Set.of(
-        "inspect_account_readiness",
+        "get_account_profile",
         "update_payment_method",
         "update_address",
         "request_refund",
