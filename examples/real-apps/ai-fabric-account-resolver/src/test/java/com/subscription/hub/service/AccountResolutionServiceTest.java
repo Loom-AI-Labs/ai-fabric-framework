@@ -14,12 +14,15 @@ import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -196,6 +199,47 @@ class AccountResolutionServiceTest {
                 .containsEntry("policyDecision", "REVIEW_REQUIRED"));
     }
 
+    @Test
+    void createDemoSessionClonesScenarioUsersForBrowserScopedState() {
+        SubscriptionPlan plan = plan();
+        when(planRepository.findByTier(SubscriptionPlan.PlanTier.PRO)).thenReturn(List.of(plan));
+        when(userRepository.existsByUserId(any())).thenReturn(false);
+        when(userRepository.findByUserId(any())).thenReturn(Optional.empty());
+        when(userRepository.save(any(User.class))).thenAnswer(invocation -> {
+            User saved = invocation.getArgument(0);
+            if (saved.getId() == null) {
+                saved.setId(UUID.randomUUID());
+            }
+            return saved;
+        });
+        when(subscriptionRepository.findByUserIdAndStatus(any(), eq(Subscription.SubscriptionStatus.ACTIVE)))
+            .thenReturn(Optional.empty());
+        when(subscriptionRepository.save(any(Subscription.class))).thenAnswer(invocation -> {
+            Subscription saved = invocation.getArgument(0);
+            if (saved.getId() == null) {
+                saved.setId(UUID.randomUUID());
+            }
+            return saved;
+        });
+
+        AccountResolutionService.DemoSession session = service.createDemoSession("browser-session-1");
+
+        assertThat(session.sessionId()).isEqualTo("browser-session-1");
+        assertThat(session.scenarios())
+            .extracting(AccountResolutionService.DemoResolverScenario::id)
+            .containsExactly("ready-account", "missing-payment", "missing-address", "refund-request");
+        assertThat(session.scenarios()).allSatisfy(scenario -> {
+            assertThatCode(() -> UUID.fromString(scenario.userId())).doesNotThrowAnyException();
+            assertThat(scenario.subscriptionId()).isNotNull();
+            assertThat(scenario.baseUserId()).isBetween(91L, 94L);
+        });
+        assertThat(session.readiness()).containsKeys("ready-account", "missing-payment", "missing-address", "refund-request");
+        assertThat(session.readiness().get("missing-address").numericUserId()).isGreaterThan(100L);
+        assertThat(session.readiness().get("missing-address").hasVerifiedPaymentMethod()).isTrue();
+        assertThat(session.readiness().get("missing-address").hasValidatedBillingAddress()).isFalse();
+        assertThat(session.readiness().get("ready-account").canContinue()).isTrue();
+    }
+
     private static User user(Long numericId) {
         return User.builder()
             .id(UUID.randomUUID())
@@ -230,6 +274,19 @@ class AccountResolutionServiceTest {
             .type(Address.AddressType.BILLING)
             .isValidated(true)
             .validationScore(1.0)
+            .build();
+    }
+
+    private static SubscriptionPlan plan() {
+        return SubscriptionPlan.builder()
+            .id(UUID.randomUUID())
+            .name("Pro Plan")
+            .tier(SubscriptionPlan.PlanTier.PRO)
+            .monthlyPrice(new BigDecimal("29.00"))
+            .annualPrice(new BigDecimal("290.00"))
+            .maxUsers(25)
+            .storageGB(100)
+            .isActive(true)
             .build();
     }
 }

@@ -55,9 +55,18 @@ public class AccountResolverController {
         return accountResolutionService.seedDemoScenarios();
     }
 
+    @PostMapping("/demo/sessions")
+    public AccountResolutionService.DemoSession createDemoSession(@RequestBody(required = false) DemoSessionRequest request) {
+        return accountResolutionService.createDemoSession(request != null ? request.sessionId() : null);
+    }
+
     @GetMapping("/users/{userId}/readiness")
-    public AccountResolutionService.AccountReadiness readinessByUser(@PathVariable Long userId) {
-        return accountResolutionService.inspectReadiness(userId);
+    public AccountResolutionService.AccountReadiness readinessByUser(@PathVariable String userId) {
+        try {
+            return accountResolutionService.inspectReadiness(Long.parseLong(userId));
+        } catch (NumberFormatException ignored) {
+            return accountResolutionService.inspectReadinessByUserId(UUID.fromString(userId));
+        }
     }
 
     @GetMapping("/subscriptions/{subscriptionId}/readiness")
@@ -128,5 +137,9 @@ public class AccountResolverController {
         @NotNull @DecimalMin("0.01") BigDecimal amount,
         String reason,
         RefundRequest.ResolutionType resolutionType
+    ) { }
+
+    public record DemoSessionRequest(
+        String sessionId
     ) { }
 }

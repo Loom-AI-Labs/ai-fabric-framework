@@ -25,6 +25,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.ThreadLocalRandom;
 
 @Service
 @RequiredArgsConstructor
@@ -77,36 +78,15 @@ public class AccountResolutionService {
     }
 
     public List<ResolverScenario> scenarios() {
-        return List.of(
-            new ResolverScenario(
-                "ready-account",
-                READY_USER_ID,
-                "Ready account",
-                "Account has an active subscription, validated address, and verified payment method.",
-                "Can I continue using the app and make an order?"
-            ),
-            new ResolverScenario(
-                "missing-payment",
-                MISSING_PAYMENT_USER_ID,
-                "Missing payment method",
-                "Account has an active subscription and address, but checkout is blocked by a missing payment method.",
-                "Why can't I place an order? If payment is missing, add my Visa ending 4242."
-            ),
-            new ResolverScenario(
-                "missing-address",
-                MISSING_ADDRESS_USER_ID,
-                "Missing billing address",
-                "Account has a verified payment method, but checkout is blocked by a missing billing address.",
-                "Resolve the issue blocking my account and set my billing address to 101 Market St, San Francisco, CA 94105, USA."
-            ),
-            new ResolverScenario(
-                "refund-request",
-                REFUND_USER_ID,
-                "Refund or account credit",
-                "Account is usable, but the user needs a governed billing resolution.",
-                "I was charged after a support incident. Please give me a $25 account credit."
-            )
-        );
+        return scenarioDefinitions().stream()
+            .map(definition -> new ResolverScenario(
+                definition.id(),
+                definition.baseUserId(),
+                definition.title(),
+                definition.description(),
+                definition.suggestedPrompt()
+            ))
+            .toList();
     }
 
     @Transactional(readOnly = true)
@@ -122,6 +102,13 @@ public class AccountResolutionService {
             .orElseThrow(() -> new IllegalArgumentException("Subscription not found: " + subscriptionId));
         User user = userRepository.findById(subscription.getUserId()).orElse(null);
         return buildReadiness(user, subscription);
+    }
+
+    @Transactional(readOnly = true)
+    public AccountReadiness inspectReadinessByUserId(UUID userId) {
+        User user = userRepository.findById(userId)
+            .orElseThrow(() -> new IllegalArgumentException("User not found: " + userId));
+        return inspectReadinessForUser(user);
     }
 
     @Transactional(readOnly = true)
@@ -246,47 +233,110 @@ public class AccountResolutionService {
     public Map<String, AccountReadiness> seedDemoScenarios() {
         SubscriptionPlan plan = preferredPlan();
         Map<String, AccountReadiness> seeded = new LinkedHashMap<>();
-        seeded.put("ready-account", buildScenario(
-            READY_USER_ID,
-            "Ava",
-            "Ready",
-            plan,
-            true,
-            true,
-            true,
-            0.18
-        ));
-        seeded.put("missing-payment", buildScenario(
-            MISSING_PAYMENT_USER_ID,
-            "Noah",
-            "Payment",
-            plan,
-            true,
-            false,
-            true,
-            0.48
-        ));
-        seeded.put("missing-address", buildScenario(
-            MISSING_ADDRESS_USER_ID,
-            "Mia",
-            "Address",
-            plan,
-            false,
-            true,
-            true,
-            0.36
-        ));
-        seeded.put("refund-request", buildScenario(
-            REFUND_USER_ID,
-            "Ethan",
-            "Refund",
-            plan,
-            true,
-            true,
-            true,
-            0.64
-        ));
+        for (DemoScenarioDefinition definition : scenarioDefinitions()) {
+            seeded.put(definition.id(), buildScenario(
+                definition.baseUserId(),
+                definition.firstName(),
+                definition.lastName(),
+                plan,
+                definition.includeAddress(),
+                definition.includePaymentMethod(),
+                definition.active(),
+                definition.churnRiskScore()
+            ));
+        }
         return seeded;
+    }
+
+    @Transactional
+    public DemoSession createDemoSession(String requestedSessionId) {
+        String sessionId = normalizeDemoSessionId(requestedSessionId);
+        SubscriptionPlan plan = preferredPlan();
+        List<DemoResolverScenario> demoScenarios = new ArrayList<>();
+        Map<String, AccountReadiness> readinessByScenario = new LinkedHashMap<>();
+
+        for (DemoScenarioDefinition definition : scenarioDefinitions()) {
+            Long sessionNumericUserId = nextSessionNumericUserId();
+            AccountReadiness readiness = buildScenario(
+                sessionNumericUserId,
+                definition.firstName(),
+                definition.lastName(),
+                plan,
+                definition.includeAddress(),
+                definition.includePaymentMethod(),
+                definition.active(),
+                definition.churnRiskScore()
+            );
+            readinessByScenario.put(definition.id(), readiness);
+            demoScenarios.add(new DemoResolverScenario(
+                definition.id(),
+                readiness.userId().toString(),
+                readiness.subscriptionId(),
+                definition.baseUserId(),
+                definition.title(),
+                definition.description(),
+                definition.suggestedPrompt()
+            ));
+        }
+
+        return new DemoSession(sessionId, demoScenarios, readinessByScenario);
+    }
+
+    private List<DemoScenarioDefinition> scenarioDefinitions() {
+        return List.of(
+            new DemoScenarioDefinition(
+                "ready-account",
+                READY_USER_ID,
+                "Ava",
+                "Ready",
+                "Ready account",
+                "Account has an active subscription, validated address, and verified payment method.",
+                "Can I continue using the app and make an order?",
+                true,
+                true,
+                true,
+                0.18
+            ),
+            new DemoScenarioDefinition(
+                "missing-payment",
+                MISSING_PAYMENT_USER_ID,
+                "Noah",
+                "Payment",
+                "Missing payment method",
+                "Account has an active subscription and address, but checkout is blocked by a missing payment method.",
+                "Why can't I place an order? If payment is missing, add my Visa ending 4242.",
+                true,
+                false,
+                true,
+                0.48
+            ),
+            new DemoScenarioDefinition(
+                "missing-address",
+                MISSING_ADDRESS_USER_ID,
+                "Mia",
+                "Address",
+                "Missing billing address",
+                "Account has a verified payment method, but checkout is blocked by a missing billing address.",
+                "Resolve the issue blocking my account and set my billing address to 101 Market St, San Francisco, CA 94105, USA.",
+                false,
+                true,
+                true,
+                0.36
+            ),
+            new DemoScenarioDefinition(
+                "refund-request",
+                REFUND_USER_ID,
+                "Ethan",
+                "Refund",
+                "Refund or account credit",
+                "Account is usable, but the user needs a governed billing resolution.",
+                "I was charged after a support incident. Please give me a $25 account credit.",
+                true,
+                true,
+                true,
+                0.64
+            )
+        );
     }
 
     private AccountReadiness inspectReadinessForUser(User user) {
@@ -515,6 +565,24 @@ public class AccountResolutionService {
             .build();
     }
 
+    private Long nextSessionNumericUserId() {
+        for (int attempt = 0; attempt < 25; attempt++) {
+            long candidate = ThreadLocalRandom.current().nextLong(10_000L, 999_999_999L);
+            if (!userRepository.existsByUserId(candidate)) {
+                return candidate;
+            }
+        }
+        throw new IllegalStateException("Could not allocate a unique demo user id");
+    }
+
+    private String normalizeDemoSessionId(String requestedSessionId) {
+        if (!StringUtils.hasText(requestedSessionId)) {
+            return "account-resolver-" + UUID.randomUUID();
+        }
+        String trimmed = requestedSessionId.trim();
+        return trimmed.length() <= 120 ? trimmed : trimmed.substring(0, 120);
+    }
+
     private String normalizeLast4(String last4) {
         if (!StringUtils.hasText(last4)) {
             throw new IllegalArgumentException("last4 is required");
@@ -658,6 +726,27 @@ public class AccountResolutionService {
         String suggestedPrompt
     ) { }
 
+    public record DemoSession(
+        String sessionId,
+        List<DemoResolverScenario> scenarios,
+        Map<String, AccountReadiness> readiness
+    ) {
+        public DemoSession {
+            scenarios = scenarios != null ? List.copyOf(scenarios) : List.of();
+            readiness = readiness != null ? Map.copyOf(readiness) : Map.of();
+        }
+    }
+
+    public record DemoResolverScenario(
+        String id,
+        String userId,
+        UUID subscriptionId,
+        Long baseUserId,
+        String title,
+        String description,
+        String suggestedPrompt
+    ) { }
+
     public record PaymentMethodResult(
         UUID subscriptionId,
         UUID userId,
@@ -680,5 +769,19 @@ public class AccountResolutionService {
         String policyDecision,
         String policyExplanation,
         BigDecimal autoApprovalLimit
+    ) { }
+
+    private record DemoScenarioDefinition(
+        String id,
+        Long baseUserId,
+        String firstName,
+        String lastName,
+        String title,
+        String description,
+        String suggestedPrompt,
+        boolean includeAddress,
+        boolean includePaymentMethod,
+        boolean active,
+        double churnRiskScore
     ) { }
 }
