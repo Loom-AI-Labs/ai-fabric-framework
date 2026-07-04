@@ -89,6 +89,13 @@ class AccountResolverOrchestrationConfigurationTest {
 
         assertThat(resolver.resolve("intent-extraction/compound", "user").template().key().version())
             .isEqualTo("v1");
+
+        var ragAnswer = resolver.resolve("rag/generation", "answer").template();
+        assertThat(ragAnswer.key().version()).isEqualTo("v1-account-resolver");
+        assertThat(ragAnswer.template())
+            .contains("ACCOUNT RESOLVER ANSWER RULES")
+            .contains("live account profile facts")
+            .contains("billingAddressValidated=false");
     }
 
     @ParameterizedTest
