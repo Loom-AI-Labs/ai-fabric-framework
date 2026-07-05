@@ -23,6 +23,12 @@ ai:
   curated:
     pack: commerce
 
+  prompts:
+    bundle:
+      overlays:
+        - v1-shopping-demo
+        - v1-commerce
+
   orchestration:
     rag:
       target-hint:
