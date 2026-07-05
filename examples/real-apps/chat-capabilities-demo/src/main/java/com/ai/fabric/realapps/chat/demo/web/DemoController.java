@@ -7,14 +7,18 @@ import com.ai.fabric.realapps.chat.migration.service.DemoDataResetService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
+import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Properties;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.io.Resource;
+import org.springframework.core.io.ResourceLoader;
 import org.springframework.core.env.Environment;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -35,6 +39,7 @@ public class DemoController {
     private final DemoStageSeedService stageSeedService;
     private final DemoDataResetService resetService;
     private final Environment environment;
+    private final ResourceLoader resourceLoader;
 
     @Value("${app.demo.controls.enabled:true}")
     private boolean demoControlsEnabled;
@@ -54,6 +59,9 @@ public class DemoController {
     @Value("${ai-fabric.version:0.3.2}")
     private String aiFabricVersion;
 
+    @Value("${app.build-info.path:file:/app/build-info.properties}")
+    private String buildInfoPath;
+
     @GetMapping("/readiness")
     public DemoReadinessService.ReadinessReport readiness() {
         return readinessService.readiness();
@@ -65,8 +73,11 @@ public class DemoController {
         out.put("app", appName);
         out.put("version", appVersion);
         out.put("aiFabricVersion", aiFabricVersion);
-        out.put("commit", firstConfigured("APP_BUILD_COMMIT", "GIT_COMMIT", "SOURCE_COMMIT", "COMMIT_SHA"));
-        out.put("buildTime", firstConfigured("APP_BUILD_TIME", "BUILD_TIME", "SOURCE_BUILD_TIME"));
+        BuildInfo buildInfo = loadBuildInfo();
+        out.put("commit", buildValue(buildInfo, "commit", "APP_BUILD_COMMIT", "GIT_COMMIT", "SOURCE_COMMIT", "COMMIT_SHA"));
+        out.put("buildBranch", buildValue(buildInfo, "branch", "APP_BUILD_BRANCH", "GIT_BRANCH", "SOURCE_BRANCH", "BRANCH_NAME"));
+        out.put("buildTime", buildValue(buildInfo, "builtAt", "APP_BUILD_TIME", "BUILD_TIME", "SOURCE_BUILD_TIME"));
+        out.put("buildMetadataSource", buildInfo.source());
         out.put("checkedAt", Instant.now().toString());
         out.put("demoControlsEnabled", demoControlsEnabled);
         out.put("chatSessionEnabled", environment.getProperty("ai.chat.enabled", Boolean.class, true));
@@ -138,6 +149,38 @@ public class DemoController {
         return null;
     }
 
+    private BuildInfo loadBuildInfo() {
+        if (!StringUtils.hasText(buildInfoPath) || resourceLoader == null) {
+            return BuildInfo.environmentFallback();
+        }
+        Resource resource = resourceLoader.getResource(buildInfoPath.trim());
+        if (!resource.exists()) {
+            return BuildInfo.environmentFallback();
+        }
+        Properties properties = new Properties();
+        try (InputStream input = resource.getInputStream()) {
+            properties.load(input);
+        } catch (Exception ignored) {
+            return BuildInfo.environmentFallback();
+        }
+        Map<String, String> values = new LinkedHashMap<>();
+        for (String name : properties.stringPropertyNames()) {
+            String value = properties.getProperty(name);
+            if (StringUtils.hasText(name) && StringUtils.hasText(value)) {
+                values.put(name.trim(), value.trim());
+            }
+        }
+        return new BuildInfo(buildInfoPath.trim(), values);
+    }
+
+    private String buildValue(BuildInfo buildInfo, String key, String... fallbackKeys) {
+        if (buildInfo != null && buildInfo.fromBuildInfoFile()) {
+            String value = buildInfo.values().get(key);
+            return StringUtils.hasText(value) ? value.trim() : "unknown";
+        }
+        return firstConfigured(fallbackKeys);
+    }
+
     private String firstConfigured(String... keys) {
         for (String key : keys) {
             String value = environment.getProperty(key);
@@ -146,6 +189,16 @@ public class DemoController {
             }
         }
         return "unknown";
+    }
+
+    private record BuildInfo(String source, Map<String, String> values) {
+        private static BuildInfo environmentFallback() {
+            return new BuildInfo("environment", Map.of());
+        }
+
+        private boolean fromBuildInfoFile() {
+            return !"environment".equals(source);
+        }
     }
 
     @Data
