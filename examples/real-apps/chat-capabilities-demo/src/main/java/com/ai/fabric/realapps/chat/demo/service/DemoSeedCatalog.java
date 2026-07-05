@@ -39,27 +39,107 @@ final class DemoSeedCatalog {
             "Accessories", "dock,thunderbolt,usb-c,workstation", "https://images.unsplash.com/photo-1625842268584-8f3296236761?auto=format&fit=crop&w=900&q=80", "249.00", 76)
     );
 
-    private static final List<String> POLICY_TITLES = List.of(
-        "Returns and refund policy",
-        "Laptop warranty policy",
-        "Gaming product stock policy",
-        "Coupon eligibility policy",
-        "Checkout payment policy",
-        "Shipping and delivery policy",
-        "Price match policy",
-        "Order cancellation policy",
-        "Support ticket priority policy",
-        "Review moderation policy",
-        "Bundle discount policy",
-        "International delivery policy",
-        "Damaged item policy",
-        "Gift card policy",
-        "Account data privacy policy",
-        "Preorder policy",
-        "Open box policy",
-        "Extended warranty policy",
-        "Business purchase policy",
-        "Marketplace seller policy"
+    private static final List<PolicySeed> BASE_POLICIES = List.of(
+        new PolicySeed(
+            "Returns and refund policy",
+            "Customers may return eligible products within 30 days of delivery. Opened electronics, including opened gaming laptops, may be returned when the device is complete, undamaged, factory reset, and includes the charger, accessories, and original serial-number label. Refunds return to the original payment method after inspection. Missing accessories may reduce the refund. Final-sale clearance items, activated software keys, and damaged-by-customer items are not eligible for a standard return.",
+            "returns"
+        ),
+        new PolicySeed(
+            "Laptop warranty policy",
+            "Laptop warranty covers manufacturing defects for 12 months and is separate from return eligibility. Warranty service does not decide whether an opened laptop can be returned. For opened gaming laptop returns, use the Returns and refund policy and Open box policy: the return window is 30 days, the laptop must be undamaged and complete, and no restocking fee applies when the condition check passes.",
+            "laptop"
+        ),
+        new PolicySeed(
+            "Gaming product stock policy",
+            "Gaming products with limited stock may be reserved in a cart for 20 minutes. If stock expires before checkout, the assistant should suggest another in-stock gaming product or ask whether the user wants stock alerts. Stock policy does not override return eligibility.",
+            "gaming"
+        ),
+        new PolicySeed(
+            "Coupon eligibility policy",
+            "Coupons apply only to active, in-stock products and cannot be combined with clearance pricing, gift cards, or marketplace-seller items. Percentage coupons apply before tax and shipping. The assistant should explain coupon constraints before applying a coupon action.",
+            "coupon"
+        ),
+        new PolicySeed(
+            "Checkout payment policy",
+            "Checkout requires a valid cart, shipping address, email address, and payment method. Payment authorization is captured only after the user confirms checkout. If a payment method is missing or declined, ask for updated payment details instead of placing an order.",
+            "checkout"
+        ),
+        new PolicySeed(
+            "Shipping and delivery policy",
+            "Standard delivery takes 3 to 5 business days for in-stock products. Express delivery takes 1 to 2 business days where available. Delivery estimates can change for oversized monitors, international addresses, or items awaiting restock.",
+            "shipping"
+        ),
+        new PolicySeed(
+            "Price match policy",
+            "Price match requests are eligible within 7 days of purchase for identical products sold by authorized retailers. The compared product must be in stock and match model, storage, color, warranty coverage, and seller region. Marketplace offers and coupon-only prices are excluded.",
+            "price"
+        ),
+        new PolicySeed(
+            "Order cancellation policy",
+            "Orders can be cancelled before they enter packing or shipment. After shipment, the customer must use the return flow instead of cancellation. The assistant should require confirmation before cancelling an order.",
+            "order"
+        ),
+        new PolicySeed(
+            "Support ticket priority policy",
+            "Support tickets are prioritized by issue severity. Payment failures, failed checkout, and delivery exceptions are high priority. Product advice and general policy questions are normal priority. The assistant should create a support ticket only after collecting the issue type and description.",
+            "support"
+        ),
+        new PolicySeed(
+            "Review moderation policy",
+            "Product reviews should discuss product experience, delivery, or support interaction. Reviews containing personal data, abusive content, external links, or unrelated disputes should be rejected or escalated before publication.",
+            "review"
+        ),
+        new PolicySeed(
+            "Bundle discount policy",
+            "Bundle discounts apply when all required items are present in the cart at checkout. Removing a bundle item removes the bundle discount. Bundle pricing cannot be combined with a larger manual coupon unless the coupon explicitly allows stacking.",
+            "bundle"
+        ),
+        new PolicySeed(
+            "International delivery policy",
+            "International delivery is available only for supported countries and may require customs duties, local taxes, and longer delivery windows. Warranty and returns remain available, but return shipping labels may require support review before approval.",
+            "international"
+        ),
+        new PolicySeed(
+            "Damaged item policy",
+            "Items damaged in transit are eligible for replacement or refund when reported within 7 days of delivery with photos of the packaging and product. Transit damage is not treated as customer damage and does not reduce the refund amount.",
+            "damaged"
+        ),
+        new PolicySeed(
+            "Gift card policy",
+            "Gift cards are non-refundable after activation and cannot be exchanged for cash except where required by law. Gift cards can be used with eligible product purchases but cannot be used to buy another gift card.",
+            "gift"
+        ),
+        new PolicySeed(
+            "Account data privacy policy",
+            "Customer account data is used only to support orders, delivery, payments, returns, and support workflows. The assistant must not expose payment tokens, full card numbers, or private account details in chat responses.",
+            "account"
+        ),
+        new PolicySeed(
+            "Preorder policy",
+            "Preorders can be cancelled until the item is allocated for shipment. Estimated release dates may change. Coupons apply at shipment time only if they remain valid and the preorder terms allow promotional pricing.",
+            "preorder"
+        ),
+        new PolicySeed(
+            "Open box policy",
+            "Opened laptops and other open-box electronics are returnable within 30 days when the product is complete, undamaged, factory reset, and includes original accessories. No restocking fee applies to opened gaming laptops when they pass inspection. If the laptop is missing accessories or has customer-caused damage, support must review the return before refund approval.",
+            "open"
+        ),
+        new PolicySeed(
+            "Extended warranty policy",
+            "Extended warranty can be added during checkout or within 14 days after purchase for eligible laptops, monitors, and accessories. Extended warranty covers hardware failure after the manufacturer warranty but does not extend the 30-day return window.",
+            "extended"
+        ),
+        new PolicySeed(
+            "Business purchase policy",
+            "Business purchases may require invoice details, tax identifiers, and approval by the buyer's organization. Bulk orders over 10 units can require manual review before fulfillment. Business return rules follow the standard return policy unless a signed agreement overrides them.",
+            "business"
+        ),
+        new PolicySeed(
+            "Marketplace seller policy",
+            "Marketplace seller items may have seller-specific shipping and return handling. The product page must disclose when a marketplace seller fulfills the order. If no seller-specific return rule is shown, the standard Returns and refund policy applies.",
+            "marketplace"
+        )
     );
 
     private DemoSeedCatalog() {
@@ -91,17 +171,7 @@ final class DemoSeedCatalog {
     }
 
     static List<PolicySeed> policies() {
-        List<PolicySeed> out = new ArrayList<>(POLICY_TITLES.size());
-        for (int i = 0; i < POLICY_TITLES.size(); i++) {
-            String title = POLICY_TITLES.get(i);
-            String classification = title.split(" ")[0].toLowerCase();
-            out.add(new PolicySeed(
-                title,
-                "Policy guidance for %s. Use this policy when answering commerce questions. Explain user options, mention limits clearly, and prefer confirmed actions for checkout, returns, coupon application, and order changes.".formatted(title.toLowerCase()),
-                classification
-            ));
-        }
-        return out;
+        return BASE_POLICIES;
     }
 
     static List<CouponSeed> coupons() {
