@@ -23,6 +23,7 @@ class ShoppingDemoPromptOverlayTest {
 
         assertThat(source.getProperty("ai.prompts.bundle.overlays[0]")).isEqualTo("v1-shopping-demo");
         assertThat(source.getProperty("ai.prompts.bundle.overlays[1]")).isEqualTo("v1-commerce");
+        assertThat(source.getProperty("ai.fabric.examples.demo-health.enabled")).isEqualTo(false);
     }
 
     @Test

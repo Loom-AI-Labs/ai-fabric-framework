@@ -17,6 +17,10 @@ spring:
 
 ai:
   enabled: true
+  fabric:
+    examples:
+      demo-health:
+        enabled: false
   config:
     default-file: ai-entity-config.yml
 
