@@ -41,6 +41,46 @@ RAG quality workbench because it uses this app's Lucene plus `simple` embedding 
 
 Default port: `8094`.
 
+## Demo Backend App Architecture
+
+The `aifabric` site includes a Smart FAQ Assistant demo page. That page is currently an explanatory UI
+page, not a live browser client wired to this backend. This app is the runnable backend candidate for
+turning that page into a live AI Fabric FAQ demo.
+
+Backend dependencies:
+
+- Spring Boot Web, Data JPA, Validation, Actuator, H2, and Lombok.
+- AI Fabric modules: `ai-fabric-starter`, `ai-fabric-rag`, and `ai-fabric-vector-lucene`.
+- `smoke-support` for shared release smoke and build metadata.
+
+AI-enabled domain model:
+
+- The FAQ flow is config-driven and intentionally uses no Java AI annotations.
+- `ai-entity-config.yml` defines the `faq-article` entity type, searchable fields, embeddable fields,
+  and metadata fields.
+- `FaqArticleService` owns article CRUD, seeding, reindexing, semantic search, and optional ask flow.
+- `FaqQualityService` owns golden questions and expected evidence checks so RAG quality can fail
+  closed.
+
+Providers and storage:
+
+- Embeddings use the app's deterministic `SimpleHashEmbeddingProvider`.
+- Vector search uses Lucene.
+- H2 stores FAQ articles and golden-question fixtures.
+- Optional answer generation can be enabled with `AI_FAQ_ENABLE_GENERATION=true` and
+  `AI_FAQ_ENABLE_RAG=true` when an LLM provider is added/configured.
+
+Request and data flow:
+
+1. Seed FAQ articles through `POST /api/demo/seed`.
+2. Reindex articles through `POST /api/demo/indexing/reindex/articles`; AI Fabric writes article
+   evidence to the `faq-article` vector space.
+3. Search calls `GET /api/faq/search`, which delegates to `AICoreService.performSearch`.
+4. Ask calls `POST /api/faq/ask`; by default it returns grounded retrieval evidence without requiring
+   an LLM.
+5. Quality gates call `/api/faq/quality/golden/run` and verify expected source ids are retrieved
+   before the app claims FAQ RAG readiness.
+
 ## Run
 
 From the repository root:

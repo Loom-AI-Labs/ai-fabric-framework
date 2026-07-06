@@ -52,6 +52,47 @@ The demo shows:
 4. A same-tenant write action that requires confirmation.
 5. Tenant deletion evidence that removes only the selected tenant's documents.
 
+## Demo Backend App Architecture
+
+This is the backend for the `aifabric` Tenant Guard UI. It is a small, deterministic app that shows
+the tenant and role boundaries AI Fabric applications must preserve around retrieval and actions.
+
+Backend dependencies:
+
+- Spring Boot Web, Actuator, and Lombok.
+- AI Fabric modules: `ai-fabric-starter` and `ai-fabric-governance`.
+- `smoke-support` for shared build metadata.
+
+AI-enabled domain model:
+
+- This demo does not use `@AICapable` annotations. It uses explicit in-memory `KnowledgeDocument`
+  records so the tenant-boundary behavior is easy to inspect.
+- Each document carries tenant metadata and visibility; the service exposes search hits, catalog
+  entries, action decisions, and tenant-deletion evidence with that metadata intact.
+- `ActionAccessMode` models read/write action access so the UI can show why write attempts require
+  role checks and confirmation.
+
+Providers and storage:
+
+- Default provider ids are smoke/local through configuration.
+- The default vector DB is memory, but this browser demo primarily proves scoped metadata filtering,
+  role checks, and deletion evidence rather than live LLM generation.
+- Demo data lives in the in-memory `TenantKnowledgeService` and can be reset through
+  `/api/tenant-guard-demo/reset`.
+
+Request and data flow:
+
+1. The UI calls `/api/tenant-guard-demo/dashboard` to load seeded tenant scenarios and current proof
+   state.
+2. `/compare?q=...` runs the same query as tenant A, tenant B, and platform admin so the UI can show
+   scoped retrieval side by side.
+3. `/actions/execute` validates target tenant, role, access mode, and confirmation before returning an
+   action decision.
+4. `/tenants/delete` removes only the requested tenant's documents and returns the deleted ids as
+   evidence.
+5. The frontend renders policy outcomes from backend decisions; it does not infer tenant access
+   locally.
+
 ## Run Locally
 
 From the repository root:

@@ -95,6 +95,50 @@ commit/build metadata, behavior pipeline steps, scenario queue, model used for e
 governed action state. It should never present deterministic output as live AI; check
 `GET /api/behavior-demo/health` before claiming live LLM behavior.
 
+## Demo Backend App Architecture
+
+This is the backend for the `aifabric` Behavior Signals UI and its behavior-driven home-preview
+subpage. It is intentionally not a RAG/vector demo; it proves AI Fabric behavior analysis,
+structured LLM output, governed action preview, and agentic UI planning.
+
+Backend dependencies:
+
+- Spring Boot Web, Data JPA, Validation, Actuator, H2, and Lombok.
+- AI Fabric modules: `ai-fabric-provider-starter`, `ai-fabric-provider-spring-ai`, and
+  `ai-fabric-behavior`.
+- `smoke-support` for shared health/build metadata.
+
+AI-enabled domain model:
+
+- This demo does not use `@AICapable` entities. That is intentional: behavior analytics is fed through
+  AI Fabric's behavior SPI rather than entity annotations.
+- `AppBehaviorEvent` stores raw app events, and `DbExternalEventProvider` exposes them through
+  `ExternalEventProvider`.
+- `BehaviorAnalysisService` from the behavior module produces persisted `BehaviorInsights`.
+- `AgenticUiComposerService` uses the shared structured JSON path to ask the configured LLM for an
+  allowlisted component-name plan; backend code fills the trusted props.
+
+Providers and storage:
+
+- Local runs use the deterministic `behavior-local` LLM provider by default.
+- Live public deployments use OpenAI via `ai-fabric-provider-spring-ai`.
+- No vector database is configured; `ai.vector-db.type=false` and search/embedding features are off.
+- H2 stores behavior events and persisted insights for each session-scoped demo user.
+
+Request and data flow:
+
+1. The UI creates or restores a browser session through `/api/behavior-demo/sessions`.
+2. The backend clones seeded demo users and raw behavior events into that session namespace.
+3. The UI triggers `BehaviorAnalysisService` through `/api/behavior-demo/scenarios/{userId}/analyze`
+   or records a new raw event through `/signals`.
+4. AI Fabric summarizes sentiment, churn risk, trend, recommendation, action family, and evidence.
+5. Retention offer preview and confirmation stay in backend policy code, not frontend heuristics.
+6. The agentic UI route calls `/agentic-ui`; the LLM receives a small component catalog and returns
+   component names plus reasons. The backend validates names and renders trusted, domain-specific
+   module props for the UI.
+7. Session cleanup removes old public-demo users and their generated events/insights after the
+   configured TTL.
+
 ## Run Locally
 
 From the repository root:

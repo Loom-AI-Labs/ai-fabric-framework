@@ -92,6 +92,56 @@ form:
 
 Use `GET /api/account-resolver/health` before demoing to verify deployed build metadata.
 
+## Demo Backend App Architecture
+
+This is the backend for the `aifabric` Account Resolver UI. It models a current user's subscription
+account and lets AI Fabric diagnose blockers from factual account data plus policy evidence.
+
+Backend dependencies:
+
+- Spring Boot Web, Data JPA, Validation, Actuator, H2/PostgreSQL drivers, and Lombok.
+- AI Fabric modules: `ai-fabric-starter`, `ai-fabric-provider-spring-ai`,
+  `ai-fabric-chat-session`, `ai-fabric-rag`, `ai-fabric-vector-lucene`,
+  `ai-fabric-behavior`, and `ai-fabric-relationship-query`.
+- `smoke-support` for shared build metadata and release smoke support.
+
+AI-enabled domain model:
+
+- `SubscriptionPlan` and `Subscription` are annotated with `@AICapable`; plan text is searchable and
+  subscription lifecycle fields are exposed as AI context.
+- `PaymentMethod`, `Address`, and `RefundRequest` expose context fields used in action results and
+  post-action evidence.
+- `SubscriptionService` and `AccountResolutionService` use `@AIProcess` to keep plans,
+  subscriptions, payments, addresses, and refund resolutions synchronized with indexing metadata.
+- Local `@AIAction` handlers expose `get_account_profile`, `update_payment_method`,
+  `update_address`, `request_refund`, `subscribe`, `cancel_subscription`, `upgrade_subscription`, and
+  `downgrade_subscription`.
+- `get_account_profile` includes `@ActionFacts`, so the LLM can reason from account facts instead of
+  relying on frontend shortcuts or precomputed blocker text.
+
+Providers and storage:
+
+- Live natural-language orchestration uses OpenAI through `ai-fabric-provider-spring-ai`.
+- Embeddings default to the app's deterministic `simple` provider for account-resolution policies and
+  subscription plans.
+- RAG uses Lucene vector search over `account-resolution-policy` and `subscription-plan`.
+- H2 stores users, subscriptions, payment methods, addresses, refunds, behavior events, and chat
+  sessions.
+
+Request and data flow:
+
+1. The UI sends natural language to `POST /api/subscriptions/query` with a stable conversation id.
+2. The app defaults AI Fabric to the typed `resolver` mode and persists turns through
+   `ai-fabric-chat-session`.
+3. AI Fabric can run the planner-eligible `get_account_profile` read action and retrieve policy RAG in
+   parallel.
+4. The LLM explains blockers from current account facts plus retrieved policies, then proposes a
+   confirmable write action when appropriate.
+5. Action handlers enforce `@ActionAllowed`, build confirmation text with `@ActionConfirmation`, and
+   execute domain writes through `@ActionExecute`.
+6. Post-action payloads return concise result facts and readiness evidence for the UI, while dashboard
+   readiness endpoints remain separate regression/state APIs.
+
 ## Run Locally
 
 From the repository root:

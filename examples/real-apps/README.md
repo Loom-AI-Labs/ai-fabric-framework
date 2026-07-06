@@ -26,19 +26,30 @@ The apps are intentionally scenario-focused:
 - `ecommerce-store`: prior deployed domain API fixture retained as reference material.
 - `cloud-qdrant-openai-vector-search`: cloud vector search shape using OpenAI, Postgres, and Qdrant.
 
-## Public Demo Apps
+## Public `aifabric` UI Demo Coverage
 
-`chat-capabilities-demo` backs the AI Shopping Experience demo at
-`https://ai-fabric.dev/demos/ai-fabric-framework`.
+Only the demos below are documented as public `aifabric` UI-backed backend apps. Other real apps in
+this folder are still useful framework proofs, but they are not public `aifabric` demos today.
 
-`ai-fabric-account-resolver` backs the AI Fabric Account Resolver demo at
-`https://ai-fabric.dev/demos/ai-fabric-account-resolver`.
+Live UI-backed backend apps:
 
-`behavior-churn-signals` backs the public AI Fabric Behavior Signals demo at
-`https://ai-fabric.dev/demos/ai-fabric-behavior-signals`.
+| `aifabric` route | Backend app | Public backend | What it proves |
+| --- | --- | --- | --- |
+| `https://ai-fabric.dev/demos/ai-shopping-experience` and legacy `/demos/ai-fabric-framework` | `chat-capabilities-demo` | `https://ai-fabric-chat-capabilities-demo.46.224.145.148.sslip.io` | Commerce chat, staged RAG readiness, actions, confirmations, chat memory, data sync, and Lucene retrieval |
+| `https://ai-fabric.dev/demos/ai-fabric-account-resolver` | `ai-fabric-account-resolver` | `https://ai-fabric-account-resolver.46.224.145.148.sslip.io` | Current-account resolver mode, policy RAG, read-action grounding, governed writes, and chat memory |
+| `https://ai-fabric.dev/demos/ai-fabric-behavior-signals` | `behavior-churn-signals` | `https://behavior-churn-signals.46.224.145.148.sslip.io` | Behavior insights, session-scoped events, governed retention actions, and provider-posture proof |
+| `https://ai-fabric.dev/demos/ai-fabric-behavior-signals/agentic-ui` | `behavior-churn-signals` | `https://behavior-churn-signals.46.224.145.148.sslip.io` | LLM-selected allowlisted home modules with backend-populated trusted props |
+| `https://ai-fabric.dev/demos/ai-fabric-tenant-guard` | `tenant-knowledge-portal` | `https://ai-fabric-tenant-guard.46.224.145.148.sslip.io` | Tenant-scoped retrieval, role-aware catalog visibility, governed actions, and deletion evidence |
 
-`tenant-knowledge-portal` backs the public AI Fabric Tenant Guard demo at
-`https://ai-fabric.dev/demos/ai-fabric-tenant-guard`.
+UI pages that exist on `aifabric` but are not live backend clients yet:
+
+| `aifabric` route | Runnable backend candidate | Current status |
+| --- | --- | --- |
+| `https://ai-fabric.dev/demos/smart-faq-assistant` | `smart-faq-assistant` | Static/explanatory UI page; backend README documents how to run the FAQ RAG service |
+| `https://ai-fabric.dev/demos/document-intelligence-hub` | `document-ingestion-workbench` | Static/explanatory UI page; backend README documents how to run trusted document ingestion |
+| `https://ai-fabric.dev/demos/product-discovery-engine` | Covered live by `chat-capabilities-demo` | Concept page; the live shopping demo is the current product-discovery proof |
+| `https://ai-fabric.dev/demos/code-documentation-search` | None in this repo | Concept page only |
+| `https://ai-fabric.dev/demos/meeting-notes-analyzer` | None in this repo | Concept page only |
 
 Public demo backends:
 

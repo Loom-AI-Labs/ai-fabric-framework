@@ -39,6 +39,46 @@ Default runtime is local:
 
 OpenAI embeddings can be enabled explicitly when needed.
 
+## Demo Backend App Architecture
+
+The `aifabric` site includes a Document Intelligence Hub demo page. That page is currently an
+explanatory UI page, not a live browser client wired to this backend. This app is the runnable backend
+candidate for a live document-ingestion demo.
+
+Backend dependencies:
+
+- Spring Boot Web, Data JPA, Validation, Actuator, H2, and Lombok.
+- Spring AI commons for document-reader integration.
+- AI Fabric modules: `ai-fabric-starter`, `ai-fabric-indexing`, and `ai-fabric-vector-lucene`.
+- `smoke-support` for shared release smoke and build metadata.
+
+AI-enabled domain model:
+
+- The workbench is config-driven and uses no Java AI annotations.
+- `ai-entity-config.yml` defines the generated `kb` chunk entity type, searchable content/source
+  fields, embeddable fields, and chunk/source metadata.
+- `DocumentSource` stores trusted source files; `DocumentChunkManifest` records the generated chunks
+  so replacement and deletion can remove stale vectors.
+- `DocumentIngestionService` controls trusted writes, preview, indexing, reindex, and delete
+  lifecycle.
+
+Providers and storage:
+
+- The default profile uses the configured embedding provider and Lucene vector DB.
+- Smoke mode runs with deterministic local providers.
+- H2 stores source and chunk manifests.
+- `document-workbench.trusted-root` is the only filesystem root from which source files are read.
+
+Request and data flow:
+
+1. The UI/API creates or updates a source through `/api/documents/sources`.
+2. The backend writes the uploaded text/JSON into the trusted root and stores source metadata.
+3. Preview calls use Spring AI document readers to produce chunks without indexing yet.
+4. Index calls turn chunks into normalized AI Fabric indexing payloads with source and chunk metadata.
+5. Re-upload queues stale chunk deletes before new chunks are indexed.
+6. Delete removes the source and queues deletes for every indexed chunk manifest.
+7. Unsupported paths, files, or metadata fail closed before they can become retrieval evidence.
+
 ## Run
 
 From the repository root:

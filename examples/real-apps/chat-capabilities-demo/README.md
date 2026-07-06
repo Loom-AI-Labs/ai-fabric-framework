@@ -78,6 +78,52 @@ The stage model is:
 Use `GET /api/demo/health` and `GET /api/demo/readiness` before demoing. They expose build metadata,
 RAG/data-sync/vector posture, stage counts, vector counts, retrieval proof, and warnings.
 
+## Demo Backend App Architecture
+
+This is the backend for the `aifabric` AI Shopping Experience UI. It is a single Spring Boot app that
+owns both normal commerce REST APIs and the AI Fabric orchestration runtime used by the browser chat.
+
+Backend dependencies:
+
+- Spring Boot Web, Data JPA, Validation, Actuator, OpenAPI, H2, and Lombok.
+- AI Fabric modules: `ai-fabric-starter`, `ai-fabric-curated-commerce`,
+  `ai-fabric-provider-spring-ai`, `ai-fabric-chat-session`, `ai-fabric-data-sync`,
+  `ai-fabric-governance`, `ai-fabric-indexing`, `ai-fabric-rag`, and
+  `ai-fabric-vector-lucene`.
+- `smoke-support` for deployment metadata and no-key smoke verification.
+
+AI-enabled domain model:
+
+- `Product`, `Policy`, and `Review` are annotated with `@AICapable`; their searchable/context fields
+  use `@AISearchable` and `@AIContext`.
+- `ProductService`, `PolicyService`, and `ReviewService` use `@AIProcess` so creates, updates, and
+  deletes stay synchronized with AI Fabric indexing.
+- Local `@AIAction` handlers expose product lookup, cart operations, checkout, orders, support,
+  returns, reviews, addresses, shipment tracking, and account lookup.
+- Confirmation-required write actions use `@ActionConfirmation`, while read actions execute directly
+  through `@ActionExecute`.
+
+Providers and storage:
+
+- Live demo generation and embeddings use OpenAI through `ai-fabric-provider-spring-ai`.
+- No-key smoke runs can use the local `ChatLocalLlmProvider`.
+- Vector retrieval uses the Lucene provider; H2 stores commerce data and chat-session state.
+- `ai-entity-config.yml` enables product, policy, and review indexing; the staged demo APIs control
+  which evidence is actually present.
+
+Request and data flow:
+
+1. The UI sends a chat turn to `POST /api/chat/query`, optionally with a commerce position such as
+   navigator, deep search, cart assistant, or executor.
+2. `CommerceModeResolver` maps the UI position to an AI Fabric orchestration mode and prompt overlay.
+3. AI Fabric loads recent turns from `ai-fabric-chat-session`, resolves intent, retrieves RAG
+   evidence when enabled, and selects a local action when the user asks to do work.
+4. Read actions return domain facts; write actions return a confirmation card before execution.
+5. Domain writes flow back through `@AIProcess` and the async indexing worker so later RAG searches can
+   retrieve the updated evidence.
+6. The response returns generated answer text, retrieved documents, action state, suggestions, and UI
+   evidence panels without the frontend inventing AI context.
+
 ## Run
 
 ### Docker With Released AI Fabric
