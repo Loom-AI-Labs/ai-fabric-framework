@@ -115,6 +115,11 @@ public class BehaviorDemoController {
         return service.recordSignal(userId, request);
     }
 
+    @PostMapping("/scenarios/{userId}/positive-recovery")
+    public BehaviorDemoScenarioService.BehaviorScenarioResult recordPositiveRecovery(@PathVariable String userId) {
+        return service.recordPositiveRecovery(userId);
+    }
+
     @PostMapping("/scenarios/{userId}/agentic-ui")
     public AgenticUiComposerService.AgenticUiResponse agenticUi(@PathVariable String userId) {
         return agenticUiComposerService.compose(service.analyze(userId));

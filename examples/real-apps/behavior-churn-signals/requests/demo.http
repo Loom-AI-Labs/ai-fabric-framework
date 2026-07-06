@@ -76,7 +76,13 @@ Content-Type: application/json
 
 {}
 
-### 15) Reset only this public demo session
+### 15) Add positive recovery events to the churning account
+POST http://localhost:8097/api/behavior-demo/scenarios/behavior-demo-user-local-browser-1-user-1001/positive-recovery
+Content-Type: application/json
+
+{}
+
+### 16) Reset only this public demo session
 POST http://localhost:8097/api/behavior-demo/reset
 Content-Type: application/json
 

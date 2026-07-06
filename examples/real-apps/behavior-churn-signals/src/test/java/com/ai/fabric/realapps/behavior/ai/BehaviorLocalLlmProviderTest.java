@@ -32,7 +32,7 @@ class BehaviorLocalLlmProviderTest {
         assertThat(json.path("segment").asText()).isEqualTo("at_risk");
         assertThat(json.path("sentiment").path("label").asText()).isNotBlank();
         assertThat(json.path("churn").path("risk").asDouble()).isGreaterThan(0.7);
-        assertThat(json.path("patterns")).hasSize(9);
+        assertThat(json.path("patterns")).hasSize(10);
         assertThat(json.path("insights").path("signals").path("payment_failed").asInt()).isEqualTo(2);
     }
 
@@ -53,6 +53,28 @@ class BehaviorLocalLlmProviderTest {
 
         assertThat(silentJson.path("segment").asText()).isEqualTo("quiet_disengagement");
         assertThat(silentJson.path("churn").path("reason").asText()).contains("Quiet disengagement");
+    }
+
+    @Test
+    void recoveryEventsReduceChurnPressure() throws Exception {
+        AIGenerationResponse before = provider.generateContent(AIGenerationRequest.builder()
+            .prompt("payment_failed payment_failed cancel support_complaint usage_drop")
+            .build());
+        AIGenerationResponse after = provider.generateContent(AIGenerationRequest.builder()
+            .prompt("""
+                payment_failed payment_failed cancel support_complaint usage_drop
+                payment_succeeded login feature_used usage_recovery positive_feedback billing issue resolved active again
+                """)
+            .build());
+
+        JsonNode beforeJson = objectMapper.readTree(before.getContent());
+        JsonNode afterJson = objectMapper.readTree(after.getContent());
+
+        assertThat(afterJson.path("churn").path("risk").asDouble())
+            .isLessThan(beforeJson.path("churn").path("risk").asDouble());
+        assertThat(afterJson.path("sentiment").path("score").asDouble())
+            .isGreaterThan(beforeJson.path("sentiment").path("score").asDouble());
+        assertThat(afterJson.path("patterns").toString()).contains("recovery_signals");
     }
 
     @Test

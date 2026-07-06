@@ -162,6 +162,48 @@ public class BehaviorDemoScenarioService {
     }
 
     @Transactional
+    public BehaviorScenarioResult recordPositiveRecovery(String userId) {
+        DemoScenarioDefinition scenario = requireScenario(userId);
+        List<RecordBehaviorSignalRequest> recoveryEvents = List.of(
+            new RecordBehaviorSignalRequest("PAYMENT_SUCCEEDED", Map.of(
+                "invoiceStatus", "paid",
+                "gateway", "stripe",
+                "retryAttempt", "3"
+            ), "billing-service"),
+            new RecordBehaviorSignalRequest("LOGIN", Map.of(
+                "channel", "web",
+                "sessionsLast7d", "5"
+            ), "usage-analytics"),
+            new RecordBehaviorSignalRequest("FEATURE_USED", Map.of(
+                "feature", "reports",
+                "usageSessions", "4"
+            ), "product-telemetry"),
+            new RecordBehaviorSignalRequest("USAGE_RECOVERY", Map.of(
+                "metric", "weekly_active_users",
+                "recoveredPercent", "48"
+            ), "usage-analytics"),
+            new RecordBehaviorSignalRequest("POSITIVE_FEEDBACK", Map.of(
+                "message", "billing issue resolved and team is active again"
+            ), "customer-success")
+        );
+
+        LocalDateTime timestamp = LocalDateTime.now();
+        for (int i = 0; i < recoveryEvents.size(); i++) {
+            RecordBehaviorSignalRequest recovery = recoveryEvents.get(i);
+            AppBehaviorEvent event = new AppBehaviorEvent();
+            event.setUserId(userId);
+            event.setEventType(recovery.eventType());
+            event.setEventTimestamp(timestamp.plusSeconds(i));
+            event.setEventData(toJson(recovery.eventData()));
+            event.setSource(recovery.source());
+            eventRepository.save(event);
+        }
+
+        BehaviorInsights insight = behaviorAnalysisService.analyzeUser(userId);
+        return resultFor(scenario, insight);
+    }
+
+    @Transactional
     public RetentionOfferDemoResult retentionOffer(String userId, RetentionOfferDemoRequest request) {
         DemoScenarioDefinition scenario = requireScenario(userId);
         int discountPercent = request != null && request.discountPercent() != null

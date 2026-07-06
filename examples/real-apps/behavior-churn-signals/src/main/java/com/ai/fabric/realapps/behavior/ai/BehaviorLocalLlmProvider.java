@@ -60,6 +60,7 @@ public class BehaviorLocalLlmProvider implements AIProvider {
         int helpSearches = counts.getOrDefault("help_search", 0);
         int positiveSignals = counts.getOrDefault("positive", 0);
         int noLoginSignals = counts.getOrDefault("no_login", 0);
+        int recoverySignals = counts.getOrDefault("recovery", 0);
 
         double churnRisk = 0.2
             + 0.35 * clamp01(paymentFailures / 3.0)
@@ -69,13 +70,15 @@ public class BehaviorLocalLlmProvider implements AIProvider {
             + 0.2 * clamp01(noLoginSignals / 2.0)
             + 0.18 * clamp01(featureErrors / 2.0)
             - 0.15 * clamp01(upgrades / 2.0)
-            - 0.12 * clamp01(positiveSignals / 2.0);
+            - 0.12 * clamp01(positiveSignals / 2.0)
+            - 0.28 * clamp01(recoverySignals / 4.0);
         churnRisk = clamp01(churnRisk);
 
         double sentimentScore = 0.1
             + 0.25 * clamp01(logins / 5.0)
             + 0.3 * clamp01(upgrades / 2.0)
             + 0.25 * clamp01(positiveSignals / 2.0)
+            + 0.35 * clamp01(recoverySignals / 4.0)
             - 0.35 * clamp01(complaints / 3.0)
             - 0.4 * clamp01(paymentFailures / 3.0)
             - 0.45 * clamp01(cancellations / 2.0)
@@ -86,7 +89,9 @@ public class BehaviorLocalLlmProvider implements AIProvider {
 
         String label = sentimentLabel(sentimentScore, churnRisk);
         String trend = trendLabel(churnRisk, sentimentScore);
-        String segment = featureErrors > 0 && usageDrops > 0
+        String segment = recoverySignals >= 3 && churnRisk < 0.65
+            ? "recovering"
+            : featureErrors > 0 && usageDrops > 0
             ? "product_regression_risk"
             : usageDrops > 0 && complaints == 0 && cancellations == 0
                 ? "quiet_disengagement"
@@ -103,7 +108,7 @@ public class BehaviorLocalLlmProvider implements AIProvider {
         String responseJson = """
             {
               "segment": "%s",
-              "patterns": ["payment_signals:%d","cancel_signals:%d","complaints:%d","logins:%d","upgrades:%d","usage_drops:%d","feature_errors:%d","help_searches:%d","positive_signals:%d"],
+              "patterns": ["payment_signals:%d","cancel_signals:%d","complaints:%d","logins:%d","upgrades:%d","usage_drops:%d","feature_errors:%d","help_searches:%d","positive_signals:%d","recovery_signals:%d"],
               "sentiment": {"score": %.3f, "label": "%s"},
               "churn": {"risk": %.3f, "reason": "%s"},
               "trend": "%s",
@@ -122,6 +127,7 @@ public class BehaviorLocalLlmProvider implements AIProvider {
             featureErrors,
             helpSearches,
             positiveSignals,
+            recoverySignals,
             sentimentScore,
             label,
             churnRisk,
@@ -279,6 +285,11 @@ public class BehaviorLocalLlmProvider implements AIProvider {
         counts.put("help_search", countMatches(lower, "help_center_search") + countMatches(lower, "help search"));
         counts.put("positive", countMatches(lower, "positive_feedback") + countMatches(lower, "loves") + countMatches(lower, "delighted"));
         counts.put("no_login", countMatches(lower, "no_login") + countMatches(lower, "no login"));
+        counts.put("recovery", countMatches(lower, "payment_succeeded")
+            + countMatches(lower, "usage_recovery")
+            + countMatches(lower, "feature_used")
+            + countMatches(lower, "billing issue resolved")
+            + countMatches(lower, "active again"));
         return counts;
     }
 

@@ -61,7 +61,7 @@ class BehaviorDemoControllerTest {
         BehaviorDemoScenarioService.BehaviorScenarioResult scenarioResult =
             new BehaviorDemoScenarioService.BehaviorScenarioResult(null, null, List.of(), null, null);
         AgenticUiComposerService.AgenticUiResponse agenticResponse =
-            new AgenticUiComposerService.AgenticUiResponse("user-1001", "acct-1001", "Acme Finance", null, null);
+            new AgenticUiComposerService.AgenticUiResponse("user-1001", "acct-1001", "Acme Finance", null, null, null);
         when(service.analyze("user-1001")).thenReturn(scenarioResult);
         when(agenticUiComposerService.compose(scenarioResult)).thenReturn(agenticResponse);
 

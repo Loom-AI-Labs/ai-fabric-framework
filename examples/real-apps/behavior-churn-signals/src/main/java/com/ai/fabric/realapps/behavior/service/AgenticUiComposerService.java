@@ -26,6 +26,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -112,6 +113,7 @@ public class AgenticUiComposerService {
             behaviorResult.scenario().accountId(),
             behaviorResult.scenario().customerName(),
             behaviorResult.scenario(),
+            evidenceSummary(behaviorResult.events()),
             plan
         );
     }
@@ -372,6 +374,23 @@ public class AgenticUiComposerService {
             .toList();
     }
 
+    private AgenticUiEvidenceSummary evidenceSummary(List<BehaviorEventSummary> events) {
+        List<BehaviorEventSummary> safeEvents = events != null ? events : List.of();
+        Map<String, Long> counts = safeEvents.stream()
+            .filter(event -> StringUtils.hasText(event.eventType()))
+            .collect(Collectors.groupingBy(
+                event -> event.eventType().trim(),
+                LinkedHashMap::new,
+                Collectors.counting()
+            ));
+        return new AgenticUiEvidenceSummary(
+            safeEvents.size(),
+            List.copyOf(counts.keySet()),
+            counts,
+            eventItems(safeEvents)
+        );
+    }
+
     private String eventSummary(String rawEventData) {
         if (!StringUtils.hasText(rawEventData)) {
             return "";
@@ -503,7 +522,15 @@ public class AgenticUiComposerService {
         String accountId,
         String customerName,
         DemoScenarioSummary scenario,
+        AgenticUiEvidenceSummary evidence,
         AgenticUiPlan plan
+    ) {}
+
+    public record AgenticUiEvidenceSummary(
+        int eventCount,
+        List<String> eventTypes,
+        Map<String, Long> eventTypeCounts,
+        List<Map<String, Object>> recentEvents
     ) {}
 
     public record AgenticUiPlan(

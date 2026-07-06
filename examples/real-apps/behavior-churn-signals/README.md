@@ -82,6 +82,7 @@ The demo shows an operator workflow for a SaaS behavior team:
 5. Preview governed action output with backend policy explanations.
 6. Confirm a retention offer when the selected scenario actually calls for one.
 7. Compose an agentic UI plan where the LLM selects safe component types and the backend fills trusted component props.
+8. Add positive recovery events to a churning user and observe how churn, sentiment, trend, and component selection react.
 
 Agentic UI planning deliberately keeps the LLM contract small. The backend sends a component catalog
 with each component name, description, and recommended use case. The LLM returns a short ordered list
@@ -166,6 +167,13 @@ From the repository root:
      -H 'Content-Type: application/json' | jq
    ```
 
+9. Add positive recovery events to the churning account and rerun analysis:
+
+   ```bash
+   curl -fsS -X POST http://localhost:8097/api/behavior-demo/scenarios/behavior-demo-user-local-browser-1-user-1001/positive-recovery \
+     -H 'Content-Type: application/json' | jq
+   ```
+
 Default port: `8097`.
 
 ## Validate
@@ -186,7 +194,8 @@ For a live browser smoke against the public deployment, verify:
 4. Recording a typed app event re-runs behavior analysis and increases the session event count.
 5. Retention offer preview returns `confirmationRequired=true`, and confirmation executes the action.
 6. Agentic UI planning returns only allowlisted component types with backend-populated props.
-7. Reset the session and confirm health returns to zero public-demo events/insights for that session.
+7. Positive recovery events are visible as raw event evidence and cause a fresh behavior analysis.
+8. Reset the session and confirm health returns to zero public-demo events/insights for that session.
 
 ## Demo Flow
 
@@ -198,6 +207,7 @@ For a live browser smoke against the public deployment, verify:
 6. Review behavior evidence, policy explanation, and recommended action family.
 7. Preview and optionally confirm a confirmation-gated retention offer.
 8. Generate an agentic UI component plan for the selected account and render the returned component list.
+9. For the churning account, add positive recovery events and compare before/after insight metrics.
 
 ## Key Endpoints
 
@@ -219,6 +229,7 @@ For a live browser smoke against the public deployment, verify:
 - `POST /api/behavior-demo/reset`
 - `POST /api/behavior-demo/scenarios/{userId}/analyze`
 - `POST /api/behavior-demo/scenarios/{userId}/signals`
+- `POST /api/behavior-demo/scenarios/{userId}/positive-recovery`
 - `POST /api/behavior-demo/scenarios/{userId}/agentic-ui`
 - `POST /api/behavior-demo/scenarios/{userId}/retention-offer`
 

@@ -20,6 +20,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -135,6 +136,28 @@ class BehaviorDemoScenarioServiceTest {
             "gateway", "stripe"
         ));
         assertThat(eventData).doesNotContainKey("message");
+    }
+
+    @Test
+    void recordPositiveRecoveryAddsRawPositiveEventsAndReanalyzesOnce() {
+        when(eventRepository.findByUserIdOrderByEventTimestampAsc("user-1001")).thenReturn(List.of());
+
+        service.recordPositiveRecovery("user-1001");
+
+        var eventCaptor = forClass(AppBehaviorEvent.class);
+        verify(eventRepository, times(5)).save(eventCaptor.capture());
+        assertThat(eventCaptor.getAllValues())
+            .extracting(AppBehaviorEvent::getEventType)
+            .containsExactly(
+                "PAYMENT_SUCCEEDED",
+                "LOGIN",
+                "FEATURE_USED",
+                "USAGE_RECOVERY",
+                "POSITIVE_FEEDBACK"
+            );
+        assertThat(eventCaptor.getAllValues())
+            .allSatisfy(event -> assertThat(event.getSource()).isNotBlank());
+        verify(behaviorAnalysisService).analyzeUser("user-1001");
     }
 
     @Test

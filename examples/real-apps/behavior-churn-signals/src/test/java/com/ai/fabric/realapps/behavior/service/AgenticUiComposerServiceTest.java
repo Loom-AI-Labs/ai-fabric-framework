@@ -56,6 +56,14 @@ class AgenticUiComposerServiceTest {
         assertThat(response.plan().components())
             .extracting(AgenticUiComposerService.AgenticUiComponent::type)
             .containsExactly("RISK_SUMMARY_CARD", "RETENTION_OFFER_PANEL");
+        assertThat(response.evidence().eventCount()).isEqualTo(1);
+        assertThat(response.evidence().eventTypes()).containsExactly("PAYMENT_FAILED");
+        assertThat(response.evidence().eventTypeCounts()).containsEntry("PAYMENT_FAILED", 1L);
+        assertThat(response.evidence().recentEvents()).singleElement()
+            .satisfies(event -> {
+                assertThat(event).containsEntry("type", "PAYMENT_FAILED");
+                assertThat(String.valueOf(event.get("summary"))).contains("card_declined");
+            });
 
         AgenticUiComposerService.AgenticUiComponent risk = response.plan().components().get(0);
         assertThat(risk.title()).isEqualTo("Risk Summary Card");
