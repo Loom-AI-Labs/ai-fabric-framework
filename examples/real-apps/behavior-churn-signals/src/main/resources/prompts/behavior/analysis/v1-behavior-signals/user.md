@@ -4,6 +4,9 @@
 {{new_events_lines}}
 
 Analyze how this user's behavior has evolved.
+Use the previous analysis as the starting point, then update it based on the new event sequence.
+If the new events are mostly positive recovery signals after a negative baseline, show whether risk is resolved, partially reduced, or still urgent.
+For mixed evidence, keep the analysis balanced: name both the remaining blocker and the recovery signal.
 
 Output one compact JSON object only. Prefer concise evidence summaries over long explanations.
 If this is the first analysis for the user, set trend to NEW_USER unless the event sequence clearly shows rapid improvement or decline.
