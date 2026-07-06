@@ -1,5 +1,6 @@
 package com.ai.fabric.realapps.behavior.web;
 
+import com.ai.fabric.realapps.behavior.service.AgenticUiComposerService;
 import com.ai.fabric.realapps.behavior.service.BehaviorDemoScenarioService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
@@ -27,6 +28,7 @@ import java.util.Properties;
 public class BehaviorDemoController {
 
     private final BehaviorDemoScenarioService service;
+    private final AgenticUiComposerService agenticUiComposerService;
     private final Environment environment;
     private final ResourceLoader resourceLoader;
 
@@ -111,6 +113,11 @@ public class BehaviorDemoController {
         @RequestBody(required = false) BehaviorDemoScenarioService.RecordBehaviorSignalRequest request
     ) {
         return service.recordSignal(userId, request);
+    }
+
+    @PostMapping("/scenarios/{userId}/agentic-ui")
+    public AgenticUiComposerService.AgenticUiResponse agenticUi(@PathVariable String userId) {
+        return agenticUiComposerService.compose(service.analyze(userId));
     }
 
     @PostMapping("/scenarios/{userId}/retention-offer")

@@ -37,16 +37,19 @@ GET http://localhost:8097/api/behavior-demo/dashboard?sessionId=local-browser-1
 ### 10) Analyze one public demo scenario
 POST http://localhost:8097/api/behavior-demo/scenarios/behavior-demo-user-local-browser-1-user-1001/analyze
 
-### 11) Inject a new behavior signal and re-analyze
+### 11) Record a raw app behavior event and re-analyze
 POST http://localhost:8097/api/behavior-demo/scenarios/behavior-demo-user-local-browser-1-user-1001/signals
 Content-Type: application/json
 
 {
-  "eventType": "CANCEL_INTENT",
+  "eventType": "PAYMENT_FAILED",
   "eventData": {
-    "message": "Customer says renewal failed twice and asks how to cancel before month end."
+    "reason": "card_declined",
+    "invoiceStatus": "past_due",
+    "renewalAttempt": "2",
+    "gateway": "stripe"
   },
-  "source": "demo-ui"
+  "source": "billing-service"
 }
 
 ### 12) Preview confirmation-gated retention offer
@@ -67,7 +70,13 @@ Content-Type: application/json
   "confirmed": true
 }
 
-### 14) Reset only this public demo session
+### 14) Compose an agentic UI component plan
+POST http://localhost:8097/api/behavior-demo/scenarios/behavior-demo-user-local-browser-1-user-1001/agentic-ui
+Content-Type: application/json
+
+{}
+
+### 15) Reset only this public demo session
 POST http://localhost:8097/api/behavior-demo/reset
 Content-Type: application/json
 

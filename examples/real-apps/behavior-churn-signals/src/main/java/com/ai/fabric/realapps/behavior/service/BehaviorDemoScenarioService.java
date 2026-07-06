@@ -153,7 +153,7 @@ public class BehaviorDemoScenarioService {
         event.setEventTimestamp(LocalDateTime.now());
         event.setEventData(toJson(effective.eventData() != null && !effective.eventData().isEmpty()
             ? effective.eventData()
-            : Map.of("message", scenario.defaultSignalMessage())));
+            : defaultEventData(scenario)));
         event.setSource(StringUtils.hasText(effective.source()) ? effective.source() : "demo-ui");
         eventRepository.save(event);
 
@@ -296,6 +296,38 @@ public class BehaviorDemoScenarioService {
         }
     }
 
+    private Map<String, Object> defaultEventData(DemoScenarioDefinition scenario) {
+        return switch (scenario.id()) {
+            case "billing-cancellation-risk" -> Map.of(
+                "reason", "card_declined",
+                "invoiceStatus", "past_due",
+                "renewalAttempt", "2",
+                "gateway", "stripe"
+            );
+            case "expansion-ready-account" -> Map.of(
+                "count", "8",
+                "plan", "enterprise",
+                "channel", "admin_console"
+            );
+            case "onboarding-friction" -> Map.of(
+                "query", "invite team members",
+                "resultsClicked", "0",
+                "sessionMinutes", "12"
+            );
+            case "release-regression" -> Map.of(
+                "feature", "dashboard",
+                "code", "REPORT_WIDGET_TIMEOUT",
+                "releaseVersion", "2026.07.dashboard"
+            );
+            case "silent-churn" -> Map.of(
+                "days", "14",
+                "previousWeeklyLogins", "9",
+                "currentWeeklyLogins", "0"
+            );
+            default -> Map.of("category", scenario.defaultSignalType().toLowerCase(), "scenario", scenario.id());
+        };
+    }
+
     private static Map<String, DemoScenarioDefinition> createScenarios() {
         Map<String, DemoScenarioDefinition> scenarios = new LinkedHashMap<>();
         scenarios.put("user-1001", new DemoScenarioDefinition(
@@ -308,8 +340,8 @@ public class BehaviorDemoScenarioService {
             "Billing-driven cancellation risk",
             "A finance team has repeated failed renewals, billing complaints, and cancellation intent.",
             "Spot churn before the renewal is lost and create a safe retention offer.",
-            "CANCEL_INTENT",
-            "Customer says renewal failed twice and asks how to cancel before month end.",
+            "PAYMENT_FAILED",
+            "Renewal payment failed in the billing service.",
             25,
             62,
             2,
@@ -326,8 +358,8 @@ public class BehaviorDemoScenarioService {
             "Expansion-ready healthy account",
             "A growing team logs in often, uses reports, and upgraded twice.",
             "Confirm this account is healthy and avoid unnecessary retention intervention.",
-            "UPGRADE",
-            "Customer added more seats after adopting automated reporting.",
+            "SEAT_ADDED",
+            "Account admin added seats through the billing system.",
             0,
             0,
             0,
@@ -344,8 +376,8 @@ public class BehaviorDemoScenarioService {
             "Onboarding friction and support confusion",
             "A healthcare operations team is searching help docs and complaining about admin setup.",
             "Route the account to adoption help before support friction becomes churn.",
-            "SUPPORT_COMPLAINT",
-            "Admin cannot find invite workflow and asks support for the third time.",
+            "HELP_CENTER_SEARCH",
+            "User searched help content during setup.",
             10,
             34,
             0,
@@ -363,7 +395,7 @@ public class BehaviorDemoScenarioService {
             "A team hit dashboard errors after a release and report exports dropped sharply.",
             "Escalate product regression evidence instead of offering a discount first.",
             "FEATURE_ERROR",
-            "Reports stopped loading after the dashboard release and export usage fell.",
+            "Dashboard client telemetry recorded a report widget timeout.",
             0,
             58,
             0,
@@ -381,7 +413,7 @@ public class BehaviorDemoScenarioService {
             "A customer has no complaints, but usage and logins are steadily disappearing.",
             "Detect quiet disengagement before a cancellation request exists.",
             "NO_LOGIN_14D",
-            "No logins for 14 days and weekly usage dropped without any support tickets.",
+            "Usage analytics recorded no login for fourteen days.",
             0,
             41,
             0,

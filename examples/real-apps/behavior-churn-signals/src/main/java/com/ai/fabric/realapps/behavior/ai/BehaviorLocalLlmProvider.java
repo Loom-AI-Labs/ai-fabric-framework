@@ -43,6 +43,10 @@ public class BehaviorLocalLlmProvider implements AIProvider {
 
     @Override
     public AIGenerationResponse generateContent(AIGenerationRequest request) {
+        if (request != null && "agentic-ui-layout".equalsIgnoreCase(request.getGenerationType())) {
+            return generateAgenticUiLayout(request);
+        }
+
         String prompt = request != null ? request.getPrompt() : "";
         Map<String, Integer> counts = countSignals(prompt);
 
@@ -132,6 +136,77 @@ public class BehaviorLocalLlmProvider implements AIProvider {
             .model(PROVIDER_NAME)
             .requestId("gen-" + UUID.randomUUID())
             .build();
+    }
+
+    private AIGenerationResponse generateAgenticUiLayout(AIGenerationRequest request) {
+        String prompt = request != null && request.getPrompt() != null
+            ? request.getPrompt().toUpperCase(Locale.ROOT)
+            : "";
+        String components;
+        String summary;
+        if (prompt.contains("RETENTION_OFFER")) {
+            summary = "Show risk, recommended retention action, evidence timeline, and the gated offer.";
+            components = componentJson(
+                "RISK_SUMMARY_CARD", "Risk posture", 1, "The account has urgent commercial risk signals.",
+                "RECOMMENDED_ACTION_CARD", "Recommended save motion", 2, "The operator needs a governed next action.",
+                "EVENT_TIMELINE", "Recent app events", 3, "Raw events explain why the UI changed.",
+                "RETENTION_OFFER_PANEL", "Retention offer", 4, "The action needs confirmation before execution."
+            );
+        } else if (prompt.contains("EXPANSION_FOLLOW_UP")) {
+            summary = "Show health, expansion recommendation, and the activity trail.";
+            components = componentJson(
+                "HEALTH_SCORE_CARD", "Healthy account signal", 1, "Low risk should surface expansion readiness.",
+                "EXPANSION_NUDGE_CARD", "Expansion follow-up", 2, "The next best action is growth-oriented.",
+                "EVENT_TIMELINE", "Positive usage trail", 3, "Events show why this account is not a save motion."
+            );
+        } else if (prompt.contains("ADOPTION_HELP")) {
+            summary = "Show setup help, recent friction events, and practical next steps.";
+            components = componentJson(
+                "ADOPTION_HELP_PANEL", "Adoption help", 1, "The account needs guidance instead of a discount.",
+                "EVENT_TIMELINE", "Friction events", 2, "Recent app events show the setup problem.",
+                "NEXT_BEST_ACTIONS", "Next best actions", 3, "Operators need concise follow-up options."
+            );
+        } else if (prompt.contains("ENGINEERING_ESCALATION")) {
+            summary = "Show product escalation context, event evidence, and the recommended response.";
+            components = componentJson(
+                "PRODUCT_ESCALATION_PANEL", "Product regression", 1, "Regression evidence should reach engineering.",
+                "EVENT_TIMELINE", "Error evidence", 2, "Raw telemetry supports the escalation.",
+                "RECOMMENDED_ACTION_CARD", "Escalation action", 3, "The safest action is not discounting."
+            );
+        } else {
+            summary = "Show monitoring context, event evidence, and follow-up actions.";
+            components = componentJson(
+                "MONITORING_CARD", "Quiet risk monitor", 1, "The account may be drifting without explicit complaints.",
+                "EVENT_TIMELINE", "Usage events", 2, "Raw events explain the trend.",
+                "NEXT_BEST_ACTIONS", "Next best actions", 3, "Operators need a small set of safe actions."
+            );
+        }
+
+        String responseJson = """
+            {
+              "layout": "behavior-agentic-workspace",
+              "summary": "%s",
+              "components": [%s]
+            }
+            """.formatted(summary, components);
+        return AIGenerationResponse.builder()
+            .content(responseJson)
+            .model(PROVIDER_NAME)
+            .requestId("gen-" + UUID.randomUUID())
+            .build();
+    }
+
+    private String componentJson(Object... values) {
+        StringBuilder out = new StringBuilder();
+        for (int i = 0; i < values.length; i += 4) {
+            if (i > 0) {
+                out.append(",");
+            }
+            out.append("""
+                {"type":"%s","title":"%s","priority":%s,"rationale":"%s","props":{}}
+                """.formatted(values[i], values[i + 1], values[i + 2], values[i + 3]));
+        }
+        return out.toString();
     }
 
     @Override

@@ -15,6 +15,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentCaptor.forClass;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -111,6 +112,29 @@ class BehaviorDemoScenarioServiceTest {
             any(LocalDateTime.class)
         );
         verify(behaviorAnalysisService).analyzeUser("behavior-demo-user-browser-session-1-user-1001");
+    }
+
+    @Test
+    void recordSignalDefaultsToStructuredRawAppEventData() throws Exception {
+        when(eventRepository.findByUserIdOrderByEventTimestampAsc("user-1001")).thenReturn(List.of());
+
+        service.recordSignal("user-1001", new BehaviorDemoScenarioService.RecordBehaviorSignalRequest(null, null, null));
+
+        var eventCaptor = forClass(AppBehaviorEvent.class);
+        verify(eventRepository).save(eventCaptor.capture());
+        AppBehaviorEvent saved = eventCaptor.getValue();
+        assertThat(saved.getEventType()).isEqualTo("PAYMENT_FAILED");
+        assertThat(saved.getSource()).isEqualTo("demo-ui");
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> eventData = new ObjectMapper().readValue(saved.getEventData(), Map.class);
+        assertThat(eventData).containsAllEntriesOf(Map.of(
+            "reason", "card_declined",
+            "invoiceStatus", "past_due",
+            "renewalAttempt", "2",
+            "gateway", "stripe"
+        ));
+        assertThat(eventData).doesNotContainKey("message");
     }
 
     @Test

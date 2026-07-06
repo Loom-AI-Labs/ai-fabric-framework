@@ -4,11 +4,15 @@
 
 This app demonstrates behavior analytics, churn/sentiment insight generation, and governed operator
 actions using AI Fabric's behavior module. The public-demo scenario is a SaaS behavior command center:
-operators review real account behavior signals, analyze churn/upside/product-risk signals, inject a
-new behavior event, and confirm a retention offer only when the evidence supports it.
+operators review real account behavior signals, analyze churn/upside/product-risk signals, record a
+raw application event, and confirm a retention offer only when the evidence supports it.
 
 The app is fully offline by default. It uses H2, deterministic sample behavior data, and an in-app
 deterministic LLM provider so the scenario is repeatable without external API keys.
+
+For the public demo, the same workflow runs with the AI Fabric Spring AI provider and OpenAI. That
+path proves the behavior module with live LLM-generated sentiment, churn, trend, recommendation, and
+action-family analysis.
 
 ## AI Fabric Capabilities Proved
 
@@ -18,6 +22,7 @@ deterministic LLM provider so the scenario is repeatable without external API ke
 - Built-in behavior analytics endpoints can query trend and rapid-decline signals.
 - Retention workflow can combine behavior evidence, plan evidence, policy explanations, and confirmation-gated actions.
 - Product-shaped `/api/behavior-demo` endpoints expose repeatable real-world scenarios for UI demos.
+- Agentic UI planning can ask the configured AI Fabric LLM provider for an allowlisted structured component plan.
 - Customer-safe recommendation output can cite stable evidence ids rather than raw internal state.
 - Public demo sessions can isolate each visitor's seeded users, injected signals, and action previews.
 - `/api/behavior-demo/health` exposes build metadata, provider posture, behavior mode, and demo readiness counts.
@@ -63,17 +68,25 @@ so the public UI can be honest about whether insight generation is no-key determ
 This app backs the public AI Fabric demo page:
 
 - Demo UI: `https://ai-fabric.dev/demos/ai-fabric-behavior-signals`
+- Agentic UI demo: `https://ai-fabric.dev/demos/ai-fabric-agentic-ui`
 - Expected backend runtime: `https://behavior-churn-signals.46.224.145.148.sslip.io`
 - Demo API base path: `/api/behavior-demo`
+- Live deployment posture: `AI_LLM_PROVIDER=openai`, `OPENAI_ENABLED=true`, `OPENAI_MODEL=gpt-4o-mini`.
 
 The demo shows an operator workflow for a SaaS behavior team:
 
 1. Create an isolated browser demo session.
 2. Analyze five seeded behavior scenarios.
 3. Review churn, sentiment, trend, recommendation, and action-family evidence.
-4. Inject a new behavior signal such as cancellation intent, feature error, or no-login risk.
+4. Record a typed raw app event such as `PAYMENT_FAILED`, `FEATURE_ERROR`, `HELP_CENTER_SEARCH`, or `NO_LOGIN_14D`.
 5. Preview governed action output with backend policy explanations.
 6. Confirm a retention offer when the selected scenario actually calls for one.
+7. Compose an agentic UI plan where the LLM selects safe component types and the backend fills trusted component props.
+
+The public UI is intentionally evidence-first. It displays the active provider posture, deployed
+commit/build metadata, behavior pipeline steps, scenario queue, model used for each insight, and
+governed action state. It should never present deterministic output as live AI; check
+`GET /api/behavior-demo/health` before claiming live LLM behavior.
 
 ## Run Locally
 
@@ -107,17 +120,20 @@ From the repository root:
      -d '{"sessionId":"local-browser-1","analyze":true}' | jq
    ```
 
-5. Inject a cancellation signal for the session's high-risk account:
+5. Record a raw app event for the session's high-risk account:
 
    ```bash
    curl -fsS -X POST http://localhost:8097/api/behavior-demo/scenarios/behavior-demo-user-local-browser-1-user-1001/signals \
      -H 'Content-Type: application/json' \
      -d '{
-       "eventType": "CANCEL_INTENT",
+       "eventType": "PAYMENT_FAILED",
        "eventData": {
-         "message": "Customer says renewal failed twice and asks how to cancel before month end."
+         "reason": "card_declined",
+         "invoiceStatus": "past_due",
+         "renewalAttempt": "2",
+         "gateway": "stripe"
        },
-       "source": "local-demo"
+       "source": "billing-service"
      }' | jq
    ```
 
@@ -137,6 +153,13 @@ From the repository root:
      -d '{"discountPercent":25,"confirmed":true}' | jq
    ```
 
+8. Compose an agentic UI component plan for the same analyzed user:
+
+   ```bash
+   curl -fsS -X POST http://localhost:8097/api/behavior-demo/scenarios/behavior-demo-user-local-browser-1-user-1001/agentic-ui \
+     -H 'Content-Type: application/json' | jq
+   ```
+
 Default port: `8097`.
 
 ## Validate
@@ -149,15 +172,26 @@ mvn -B -V --no-transfer-progress -f examples/real-apps/pom.xml -pl behavior-chur
 
 Use `requests/demo.http` to run the product scenario.
 
+For a live browser smoke against the public deployment, verify:
+
+1. `GET /api/behavior-demo/health` reports `provider=openai` and `providerMode=live-external`.
+2. The UI shows `API connected`, `Live LLM provider`, and the expected commit.
+3. Each seeded scenario returns a non-fallback model such as `gpt-4o-mini-2024-07-18`.
+4. Recording a typed app event re-runs behavior analysis and increases the session event count.
+5. Retention offer preview returns `confirmationRequired=true`, and confirmation executes the action.
+6. Agentic UI planning returns only allowlisted component types with backend-populated props.
+7. Reset the session and confirm health returns to zero public-demo events/insights for that session.
+
 ## Demo Flow
 
 1. Create or restore a browser session.
 2. Seed session-scoped users and behavior events.
 3. Analyze all seeded accounts or a selected account through AI Fabric `BehaviorAnalysisService`.
 4. Review persisted behavior insight summaries, trend distribution, and immediate-action signals.
-5. Inject a new account behavior event and re-run analysis.
+5. Record a new raw account behavior event and re-run analysis.
 6. Review behavior evidence, policy explanation, and recommended action family.
 7. Preview and optionally confirm a confirmation-gated retention offer.
+8. Generate an agentic UI component plan for the selected account and render the returned component list.
 
 ## Key Endpoints
 
@@ -179,6 +213,7 @@ Use `requests/demo.http` to run the product scenario.
 - `POST /api/behavior-demo/reset`
 - `POST /api/behavior-demo/scenarios/{userId}/analyze`
 - `POST /api/behavior-demo/scenarios/{userId}/signals`
+- `POST /api/behavior-demo/scenarios/{userId}/agentic-ui`
 - `POST /api/behavior-demo/scenarios/{userId}/retention-offer`
 
 Add `?sessionId=<id>` to `dashboard`, `scenarios`, `seed`, and `seed-and-analyze` to work with an isolated public demo session.
@@ -245,9 +280,9 @@ Suggested deployment values:
 
 ## What This App Does Not Cover
 
-- Live LLM provider behavior.
 - Vector search or RAG.
 - Multi-tenant vector storage.
+- Full conversational chat orchestration. Use `chat-capabilities-demo`.
 
 Those are covered by other real apps such as `provider-failover-lab`, `smart-faq-assistant`,
 `tenant-knowledge-portal`, and `vector-readiness-playground`.
