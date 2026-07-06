@@ -21,6 +21,10 @@ spring:
       mode: always
 
 ai:
+  prompts:
+    bundle:
+      overlays:
+        - v1-behavior-signals
   vector-db:
     type: false
   service:
