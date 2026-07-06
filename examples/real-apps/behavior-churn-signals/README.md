@@ -68,7 +68,7 @@ so the public UI can be honest about whether insight generation is no-key determ
 This app backs the public AI Fabric demo page:
 
 - Demo UI: `https://ai-fabric.dev/demos/ai-fabric-behavior-signals`
-- Agentic UI demo: `https://ai-fabric.dev/demos/ai-fabric-agentic-ui`
+- Behavior-driven home preview: `https://ai-fabric.dev/demos/ai-fabric-behavior-signals/agentic-ui`
 - Expected backend runtime: `https://behavior-churn-signals.46.224.145.148.sslip.io`
 - Demo API base path: `/api/behavior-demo`
 - Live deployment posture: `AI_LLM_PROVIDER=openai`, `OPENAI_ENABLED=true`, `OPENAI_MODEL=gpt-4o-mini`.
@@ -81,7 +81,7 @@ The demo shows an operator workflow for a SaaS behavior team:
 4. Record a typed raw app event such as `PAYMENT_FAILED`, `FEATURE_ERROR`, `HELP_CENTER_SEARCH`, or `NO_LOGIN_14D`.
 5. Preview governed action output with backend policy explanations.
 6. Confirm a retention offer when the selected scenario actually calls for one.
-7. Compose an agentic UI plan where the LLM selects safe component types and the backend fills trusted component props.
+7. Compose a behavior-driven home preview where the LLM selects safe user-facing home modules and the backend fills trusted module props.
 8. Add positive recovery events to a churning user and observe how churn, sentiment, trend, and component selection react.
 
 Agentic UI planning deliberately keeps the LLM contract small. The backend sends a component catalog

@@ -39,9 +39,9 @@ class AgenticUiComposerServiceTest {
                       "layout": "custom-workbench",
                       "summary": "Show the save motion.",
                       "components": [
-                        {"name": "RISK_SUMMARY_CARD", "reason": "High churn risk."},
+                        {"name": "ACCOUNT_STATUS_BANNER", "reason": "High churn risk."},
                         {"name": "ARBITRARY_WIDGET", "reason": "Should be ignored."},
-                        {"name": "RETENTION_OFFER_PANEL", "reason": "Needs confirmation."}
+                        {"name": "RETENTION_OFFER", "reason": "Needs confirmation."}
                       ]
                     }
                     """)
@@ -55,7 +55,7 @@ class AgenticUiComposerServiceTest {
         assertThat(response.plan().model()).isEqualTo("test-layout-model");
         assertThat(response.plan().components())
             .extracting(AgenticUiComposerService.AgenticUiComponent::type)
-            .containsExactly("RISK_SUMMARY_CARD", "RETENTION_OFFER_PANEL");
+            .containsExactly("ACCOUNT_STATUS_BANNER", "RETENTION_OFFER");
         assertThat(response.evidence().eventCount()).isEqualTo(1);
         assertThat(response.evidence().eventTypes()).containsExactly("PAYMENT_FAILED");
         assertThat(response.evidence().eventTypeCounts()).containsEntry("PAYMENT_FAILED", 1L);
@@ -66,15 +66,39 @@ class AgenticUiComposerServiceTest {
             });
 
         AgenticUiComposerService.AgenticUiComponent risk = response.plan().components().get(0);
-        assertThat(risk.title()).isEqualTo("Risk Summary Card");
+        assertThat(risk.title()).isEqualTo("Account Status Banner");
         assertThat(risk.rationale()).isEqualTo("High churn risk.");
         assertThat(risk.props()).containsEntry("segment", "at_risk");
         assertThat(risk.props()).containsEntry("churnRisk", 0.91);
 
         AgenticUiComposerService.AgenticUiComponent offer = response.plan().components().get(1);
-        assertThat(offer.title()).isEqualTo("Retention Offer Panel");
+        assertThat(offer.title()).isEqualTo("Retention Offer");
         assertThat(offer.props()).containsEntry("discountPercent", 25);
         assertThat(offer.props()).containsEntry("confirmationRequired", true);
+    }
+
+    @Test
+    void acceptsLegacyTechnicalComponentNamesAsAliases() {
+        when(aiCoreService.generateContent(any(AIGenerationRequest.class), eq(LlmPurpose.ORCHESTRATION)))
+            .thenReturn(AIGenerationResponse.builder()
+                .model("test-layout-model")
+                .content("""
+                    {
+                      "layout": "legacy-plan",
+                      "summary": "Legacy names normalize.",
+                      "components": [
+                        {"name": "RISK_SUMMARY_CARD", "reason": "Legacy risk component."},
+                        {"name": "RETENTION_OFFER_PANEL", "reason": "Legacy offer component."}
+                      ]
+                    }
+                    """)
+                .build());
+
+        AgenticUiComposerService.AgenticUiResponse response = service.compose(sampleResult("RETENTION_OFFER"));
+
+        assertThat(response.plan().components())
+            .extracting(AgenticUiComposerService.AgenticUiComponent::type)
+            .containsExactly("ACCOUNT_STATUS_BANNER", "RETENTION_OFFER");
     }
 
     @Test
@@ -91,7 +115,7 @@ class AgenticUiComposerServiceTest {
         assertThat(response.plan().model()).isEqualTo("fallback");
         assertThat(response.plan().components())
             .extracting(AgenticUiComposerService.AgenticUiComponent::type)
-            .containsExactly("PRODUCT_ESCALATION_PANEL", "EVENT_TIMELINE", "RECOMMENDED_ACTION_CARD");
+            .containsExactly("SERVICE_RECOVERY_UPDATE", "BEHAVIOR_EVIDENCE_FEED", "PERSONALIZED_NEXT_STEP");
     }
 
     private static BehaviorDemoScenarioService.BehaviorScenarioResult sampleResult(String actionFamily) {

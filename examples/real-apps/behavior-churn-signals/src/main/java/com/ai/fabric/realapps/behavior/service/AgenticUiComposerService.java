@@ -33,68 +33,68 @@ import java.util.stream.Collectors;
 public class AgenticUiComposerService {
 
     public static final List<String> ALLOWED_COMPONENT_TYPES = List.of(
-        "RISK_SUMMARY_CARD",
-        "RECOMMENDED_ACTION_CARD",
-        "EVENT_TIMELINE",
-        "RETENTION_OFFER_PANEL",
-        "EXPANSION_NUDGE_CARD",
-        "PRODUCT_ESCALATION_PANEL",
-        "ADOPTION_HELP_PANEL",
-        "MONITORING_CARD",
-        "HEALTH_SCORE_CARD",
-        "NEXT_BEST_ACTIONS"
+        "ACCOUNT_STATUS_BANNER",
+        "PERSONALIZED_NEXT_STEP",
+        "BEHAVIOR_EVIDENCE_FEED",
+        "RETENTION_OFFER",
+        "UPGRADE_RECOMMENDATION",
+        "SERVICE_RECOVERY_UPDATE",
+        "QUICK_SETUP_SHORTCUTS",
+        "ENGAGEMENT_WATCH",
+        "ACTIVITY_POINTS",
+        "SMART_SHORTCUTS"
     );
 
     private static final List<ComponentCatalogItem> COMPONENT_CATALOG = List.of(
         new ComponentCatalogItem(
-            "RISK_SUMMARY_CARD",
-            "Shows churn risk, sentiment, trend, churn reason, confidence, and immediate-action posture.",
-            "Use for high-risk, negative sentiment, commercial friction, cancellation risk, or accounts needing urgent operator attention."
+            "ACCOUNT_STATUS_BANNER",
+            "Home-page status module that explains whether this user's account is healthy, blocked, confused, improving, or at risk.",
+            "Use for any user whose home page needs a visible account status based on churn, sentiment, trend, or recovery evidence."
         ),
         new ComponentCatalogItem(
-            "RECOMMENDED_ACTION_CARD",
-            "Shows the backend recommendation, action family, policy explanation, and evidence ids.",
-            "Use when the operator needs a clear next action backed by policy and evidence."
+            "PERSONALIZED_NEXT_STEP",
+            "One clear next step shown to the user based on behavior insight and backend policy.",
+            "Use when the home page should guide the user toward retention, adoption help, upgrade, or support."
         ),
         new ComponentCatalogItem(
-            "EVENT_TIMELINE",
-            "Shows recent raw app behavior events with source, timestamp, and compact event summaries.",
-            "Use when event evidence explains why the UI changed; useful for most scenarios."
+            "BEHAVIOR_EVIDENCE_FEED",
+            "A compact recent-activity feed that explains why this personalized home page changed.",
+            "Use when event evidence should be visible, especially after recording new behavior events."
         ),
         new ComponentCatalogItem(
-            "RETENTION_OFFER_PANEL",
-            "Shows a confirmation-gated retention offer, discount policy, and offer confirmation message.",
-            "Use only for RETENTION_OFFER, high commercial churn, failed payments, cancellation intent, or save-motion scenarios."
+            "RETENTION_OFFER",
+            "User-facing save or recovery offer for weak, churning, or billing-frustrated users.",
+            "Use only for RETENTION_OFFER, failed payments, cancellation intent, refund pressure, or commercial save-motion scenarios."
         ),
         new ComponentCatalogItem(
-            "EXPANSION_NUDGE_CARD",
-            "Shows customer, plan, and an expansion-friendly recommendation.",
-            "Use for EXPANSION_FOLLOW_UP, healthy enterprise accounts, seat growth, upgrades, or positive expansion signals."
+            "UPGRADE_RECOMMENDATION",
+            "Relevant plan or feature upgrade module for loyal, growing, or highly active users.",
+            "Use for EXPANSION_FOLLOW_UP, seat growth, high activity, positive sentiment, or upgrade signals."
         ),
         new ComponentCatalogItem(
-            "PRODUCT_ESCALATION_PANEL",
-            "Shows product regression context, policy explanation, and escalation evidence ids.",
+            "SERVICE_RECOVERY_UPDATE",
+            "Service recovery module for users affected by product errors, regressions, or incidents.",
             "Use for ENGINEERING_ESCALATION, feature errors, release regressions, dashboard/report failures, or product defects."
         ),
         new ComponentCatalogItem(
-            "ADOPTION_HELP_PANEL",
-            "Shows customer, support-ticket count, and the operator goal for guided setup help.",
-            "Use for ADOPTION_HELP, onboarding friction, help-center searches, setup confusion, or training/support guidance."
+            "QUICK_SETUP_SHORTCUTS",
+            "Simple shortcut module for confused users who need onboarding, setup, or help-center guidance.",
+            "Use for ADOPTION_HELP, help searches, setup friction, unresolved usage questions, or onboarding confusion."
         ),
         new ComponentCatalogItem(
-            "MONITORING_CARD",
-            "Shows customer, usage-drop percent, and action family for low-friction monitoring.",
+            "ENGAGEMENT_WATCH",
+            "Quiet check-in module for users whose usage is falling without an explicit complaint.",
             "Use for PROACTIVE_CHECK_IN, silent churn, usage decay, no-login signals, or watchlist follow-up."
         ),
         new ComponentCatalogItem(
-            "HEALTH_SCORE_CARD",
-            "Shows a compact account health score derived from churn risk, sentiment, and confidence.",
-            "Use for healthy or improving accounts, expansion-ready accounts, and positive posture summaries."
+            "ACTIVITY_POINTS",
+            "Reward or points module for loyal, interactive, or improving users.",
+            "Use for healthy accounts, high engagement, positive sentiment, expansion-ready accounts, and active product usage."
         ),
         new ComponentCatalogItem(
-            "NEXT_BEST_ACTIONS",
-            "Shows the behavior insight recommendation list and action family as concise next steps.",
-            "Use when multiple lightweight follow-up options should be shown."
+            "SMART_SHORTCUTS",
+            "Small set of behavior-aware shortcuts for the user home page.",
+            "Use when the user needs a few practical actions instead of a full offer or escalation module."
         )
     );
 
@@ -210,7 +210,7 @@ public class AgenticUiComposerService {
                 if (!(item instanceof Map<?, ?> rawComponent)) {
                     continue;
                 }
-                String type = stringValue(firstText(rawComponent, "name", "type")).toUpperCase(Locale.ROOT);
+                String type = normalizeComponentType(stringValue(firstText(rawComponent, "name", "type", "module")));
                 if (!ALLOWED_COMPONENT_TYPES.contains(type)) {
                     continue;
                 }
@@ -273,48 +273,48 @@ public class AgenticUiComposerService {
     private List<String> fallbackComponentTypes(String actionFamily) {
         String family = actionFamily != null ? actionFamily.toUpperCase(Locale.ROOT) : "";
         return switch (family) {
-            case "RETENTION_OFFER" -> List.of("RISK_SUMMARY_CARD", "RECOMMENDED_ACTION_CARD", "EVENT_TIMELINE", "RETENTION_OFFER_PANEL");
-            case "EXPANSION_FOLLOW_UP" -> List.of("HEALTH_SCORE_CARD", "EXPANSION_NUDGE_CARD", "EVENT_TIMELINE");
-            case "ADOPTION_HELP" -> List.of("ADOPTION_HELP_PANEL", "EVENT_TIMELINE", "NEXT_BEST_ACTIONS");
-            case "ENGINEERING_ESCALATION" -> List.of("PRODUCT_ESCALATION_PANEL", "EVENT_TIMELINE", "RECOMMENDED_ACTION_CARD");
-            case "PROACTIVE_CHECK_IN" -> List.of("MONITORING_CARD", "EVENT_TIMELINE", "NEXT_BEST_ACTIONS");
-            default -> List.of("RISK_SUMMARY_CARD", "EVENT_TIMELINE", "NEXT_BEST_ACTIONS");
+            case "RETENTION_OFFER" -> List.of("ACCOUNT_STATUS_BANNER", "PERSONALIZED_NEXT_STEP", "BEHAVIOR_EVIDENCE_FEED", "RETENTION_OFFER");
+            case "EXPANSION_FOLLOW_UP" -> List.of("ACTIVITY_POINTS", "UPGRADE_RECOMMENDATION", "BEHAVIOR_EVIDENCE_FEED");
+            case "ADOPTION_HELP" -> List.of("QUICK_SETUP_SHORTCUTS", "BEHAVIOR_EVIDENCE_FEED", "SMART_SHORTCUTS");
+            case "ENGINEERING_ESCALATION" -> List.of("SERVICE_RECOVERY_UPDATE", "BEHAVIOR_EVIDENCE_FEED", "PERSONALIZED_NEXT_STEP");
+            case "PROACTIVE_CHECK_IN" -> List.of("ENGAGEMENT_WATCH", "BEHAVIOR_EVIDENCE_FEED", "SMART_SHORTCUTS");
+            default -> List.of("ACCOUNT_STATUS_BANNER", "BEHAVIOR_EVIDENCE_FEED", "SMART_SHORTCUTS");
         };
     }
 
     private Map<String, Object> trustedProps(String type, BehaviorScenarioResult result) {
         return switch (type) {
-            case "RISK_SUMMARY_CARD" -> riskProps(result.insight());
-            case "RECOMMENDED_ACTION_CARD" -> actionProps(result);
-            case "EVENT_TIMELINE" -> Map.of("events", eventItems(result.events()));
-            case "RETENTION_OFFER_PANEL" -> retentionProps(result);
-            case "EXPANSION_NUDGE_CARD" -> Map.of(
+            case "ACCOUNT_STATUS_BANNER" -> riskProps(result.insight());
+            case "PERSONALIZED_NEXT_STEP" -> actionProps(result);
+            case "BEHAVIOR_EVIDENCE_FEED" -> Map.of("events", eventItems(result.events()));
+            case "RETENTION_OFFER" -> retentionProps(result);
+            case "UPGRADE_RECOMMENDATION" -> Map.of(
                 "customerName", result.scenario().customerName(),
                 "planId", result.scenario().planId(),
                 "recommendation", result.retentionReview().recommendation()
             );
-            case "PRODUCT_ESCALATION_PANEL" -> Map.of(
+            case "SERVICE_RECOVERY_UPDATE" -> Map.of(
                 "customerName", result.scenario().customerName(),
                 "policyExplanation", result.retentionReview().policyExplanation(),
                 "evidenceIds", result.retentionReview().evidenceIds()
             );
-            case "ADOPTION_HELP_PANEL" -> Map.of(
+            case "QUICK_SETUP_SHORTCUTS" -> Map.of(
                 "customerName", result.scenario().customerName(),
                 "operatorGoal", result.scenario().operatorGoal(),
                 "supportTickets", result.scenario().supportTickets()
             );
-            case "MONITORING_CARD" -> Map.of(
+            case "ENGAGEMENT_WATCH" -> Map.of(
                 "customerName", result.scenario().customerName(),
                 "usageDropPercent", result.scenario().usageDropPercent(),
                 "actionFamily", result.retentionReview().actionFamily()
             );
-            case "HEALTH_SCORE_CARD" -> Map.of(
+            case "ACTIVITY_POINTS" -> Map.of(
                 "customerName", result.scenario().customerName(),
                 "churnRisk", valueOrNull(result.insight() != null ? result.insight().churnRisk() : null),
                 "sentiment", valueOrNull(result.insight() != null ? result.insight().sentimentLabel() : null),
                 "confidence", valueOrNull(result.insight() != null ? result.insight().confidence() : null)
             );
-            case "NEXT_BEST_ACTIONS" -> Map.of(
+            case "SMART_SHORTCUTS" -> Map.of(
                 "recommendations", result.insight() != null ? result.insight().recommendations() : List.of(result.scenario().operatorGoal()),
                 "actionFamily", result.retentionReview().actionFamily()
             );
@@ -420,13 +420,13 @@ public class AgenticUiComposerService {
         return """
             AGENTIC_UI_LAYOUT_REQUEST
 
-            Choose the component list for a SaaS behavior intelligence page.
+            Choose the user-facing home modules for a SaaS account home page.
             Return JSON only with this schema:
             {
               "layout": "short-layout-name",
               "summary": "one sentence",
               "components": [
-                {"name": "ONE_ALLOWED_COMPONENT_NAME", "reason": "why this component belongs in this UI"}
+                {"name": "ONE_ALLOWED_HOME_MODULE_NAME", "reason": "why this module belongs on this user's home page"}
               ]
             }
 
@@ -438,7 +438,7 @@ public class AgenticUiComposerService {
 
             Rules:
             - Return 3 to 5 components.
-            - Use only component names from the catalog.
+            - Use only home module names from the catalog.
             - Return only names and reasons for components.
             - Choose components from the current insight and action family.
             - Do not invent facts, numbers, ids, offers, or event data.
@@ -447,7 +447,7 @@ public class AgenticUiComposerService {
     }
 
     private String systemPrompt() {
-        return "You are an agentic UI planner. Return only valid JSON. Pick a short ordered list of component names from the provided catalog.";
+        return "You are a behavior-aware SaaS home page planner. Return only valid JSON. Pick a short ordered list of user-facing home module names from the provided catalog.";
     }
 
     private String toJsonString(Object value) {
@@ -489,6 +489,25 @@ public class AgenticUiComposerService {
             }
         }
         return "";
+    }
+
+    private String normalizeComponentType(String type) {
+        String normalized = type != null
+            ? type.trim().toUpperCase(Locale.ROOT).replace('-', '_').replace(' ', '_')
+            : "";
+        return switch (normalized) {
+            case "RISK_SUMMARY_CARD" -> "ACCOUNT_STATUS_BANNER";
+            case "RECOMMENDED_ACTION_CARD" -> "PERSONALIZED_NEXT_STEP";
+            case "EVENT_TIMELINE" -> "BEHAVIOR_EVIDENCE_FEED";
+            case "RETENTION_OFFER_PANEL" -> "RETENTION_OFFER";
+            case "EXPANSION_NUDGE_CARD" -> "UPGRADE_RECOMMENDATION";
+            case "PRODUCT_ESCALATION_PANEL" -> "SERVICE_RECOVERY_UPDATE";
+            case "ADOPTION_HELP_PANEL" -> "QUICK_SETUP_SHORTCUTS";
+            case "MONITORING_CARD" -> "ENGAGEMENT_WATCH";
+            case "HEALTH_SCORE_CARD" -> "ACTIVITY_POINTS";
+            case "NEXT_BEST_ACTIONS" -> "SMART_SHORTCUTS";
+            default -> normalized;
+        };
     }
 
     private String stableComponentId(String type, int index) {

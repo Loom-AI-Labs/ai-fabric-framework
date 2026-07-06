@@ -89,9 +89,9 @@ class BehaviorLocalLlmProviderTest {
         assertThat(response.getModel()).isEqualTo("behavior-local");
         assertThat(json.path("layout").asText()).isEqualTo("behavior-agentic-workspace");
         assertThat(json.path("components")).hasSizeGreaterThanOrEqualTo(3);
-        assertThat(json.path("components").get(0).path("name").asText()).isEqualTo("RISK_SUMMARY_CARD");
+        assertThat(json.path("components").get(0).path("name").asText()).isEqualTo("ACCOUNT_STATUS_BANNER");
         assertThat(json.path("components").get(0).has("props")).isFalse();
-        assertThat(json.path("components").toString()).contains("RETENTION_OFFER_PANEL");
+        assertThat(json.path("components").toString()).contains("RETENTION_OFFER");
     }
 
     @Test

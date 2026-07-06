@@ -151,40 +151,40 @@ public class BehaviorLocalLlmProvider implements AIProvider {
         String components;
         String summary;
         if (prompt.contains("RETENTION_OFFER")) {
-            summary = "Show risk, recommended retention action, evidence timeline, and the gated offer.";
+            summary = "Show account status, a retention next step, recent behavior evidence, and the gated offer.";
             components = componentJson(
-                "RISK_SUMMARY_CARD", "The account has urgent commercial risk signals.",
-                "RECOMMENDED_ACTION_CARD", "The operator needs a governed next action.",
-                "EVENT_TIMELINE", "Raw events explain why the UI changed.",
-                "RETENTION_OFFER_PANEL", "The action needs confirmation before execution."
+                "ACCOUNT_STATUS_BANNER", "The account has urgent commercial risk signals.",
+                "PERSONALIZED_NEXT_STEP", "The user needs a governed next step.",
+                "BEHAVIOR_EVIDENCE_FEED", "Raw events explain why the home page changed.",
+                "RETENTION_OFFER", "A weak or churning user should see a safe recovery offer."
             );
         } else if (prompt.contains("EXPANSION_FOLLOW_UP")) {
-            summary = "Show health, expansion recommendation, and the activity trail.";
+            summary = "Show activity points, an upgrade recommendation, and the behavior evidence trail.";
             components = componentJson(
-                "HEALTH_SCORE_CARD", "Low risk should surface expansion readiness.",
-                "EXPANSION_NUDGE_CARD", "The next best action is growth-oriented.",
-                "EVENT_TIMELINE", "Events show why this account is not a save motion."
+                "ACTIVITY_POINTS", "Low risk and positive engagement should surface earned status.",
+                "UPGRADE_RECOMMENDATION", "A loyal or growing user should see a relevant upgrade path.",
+                "BEHAVIOR_EVIDENCE_FEED", "Events show why this account is not a save motion."
             );
         } else if (prompt.contains("ADOPTION_HELP")) {
-            summary = "Show setup help, recent friction events, and practical next steps.";
+            summary = "Show setup shortcuts, recent friction events, and practical next steps.";
             components = componentJson(
-                "ADOPTION_HELP_PANEL", "The account needs guidance instead of a discount.",
-                "EVENT_TIMELINE", "Recent app events show the setup problem.",
-                "NEXT_BEST_ACTIONS", "Operators need concise follow-up options."
+                "QUICK_SETUP_SHORTCUTS", "The user needs guidance instead of a discount.",
+                "BEHAVIOR_EVIDENCE_FEED", "Recent app events show the setup problem.",
+                "SMART_SHORTCUTS", "Confused users need concise follow-up options."
             );
         } else if (prompt.contains("ENGINEERING_ESCALATION")) {
-            summary = "Show product escalation context, event evidence, and the recommended response.";
+            summary = "Show service recovery context, event evidence, and the recommended response.";
             components = componentJson(
-                "PRODUCT_ESCALATION_PANEL", "Regression evidence should reach engineering.",
-                "EVENT_TIMELINE", "Raw telemetry supports the escalation.",
-                "RECOMMENDED_ACTION_CARD", "The safest action is not discounting."
+                "SERVICE_RECOVERY_UPDATE", "Regression evidence should become a service recovery module.",
+                "BEHAVIOR_EVIDENCE_FEED", "Raw telemetry supports the escalation.",
+                "PERSONALIZED_NEXT_STEP", "The safest action is not discounting."
             );
         } else {
             summary = "Show monitoring context, event evidence, and follow-up actions.";
             components = componentJson(
-                "MONITORING_CARD", "The account may be drifting without explicit complaints.",
-                "EVENT_TIMELINE", "Raw events explain the trend.",
-                "NEXT_BEST_ACTIONS", "Operators need a small set of safe actions."
+                "ENGAGEMENT_WATCH", "The user may be drifting without explicit complaints.",
+                "BEHAVIOR_EVIDENCE_FEED", "Raw events explain the trend.",
+                "SMART_SHORTCUTS", "The user needs a small set of safe actions."
             );
         }
 
