@@ -26,6 +26,7 @@ deterministic LLM provider so the scenario is repeatable without external API ke
 
 - `ai-fabric-behavior`
 - `ai-fabric-provider-starter`
+- `ai-fabric-provider-spring-ai` for live external LLM runs
 - deterministic local LLM provider
 - H2-backed behavior persistence
 - support code for retention studio flows
@@ -49,6 +50,10 @@ OPENAI_ENABLED=true
 OPENAI_API_KEY=...
 OPENAI_MODEL=gpt-4o-mini
 ```
+
+When `AI_LLM_PROVIDER=openai`, the demo uses the AI Fabric Spring AI provider. The deterministic
+`behavior-local` provider is only registered for `AI_LLM_PROVIDER=behavior-local` or missing provider
+configuration, so live deployments cannot accidentally generate insights through the offline fallback.
 
 The demo health endpoint reports the active provider as either `deterministic-local` or `live-external`,
 so the public UI can be honest about whether insight generation is no-key deterministic or live LLM-backed.

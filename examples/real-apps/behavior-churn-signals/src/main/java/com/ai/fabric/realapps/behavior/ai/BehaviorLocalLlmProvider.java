@@ -8,6 +8,7 @@ import ai.fabric.provider.AIProvider;
 import ai.fabric.provider.ProviderConfig;
 import ai.fabric.provider.ProviderStatus;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDateTime;
@@ -24,9 +25,10 @@ import java.util.UUID;
  */
 @Slf4j
 @Component
+@ConditionalOnProperty(name = "ai.providers.llm-provider", havingValue = "behavior-local", matchIfMissing = true)
 public class BehaviorLocalLlmProvider implements AIProvider {
 
-    static final String PROVIDER_NAME = "behavior-local";
+    public static final String PROVIDER_NAME = "behavior-local";
     static final int EMBEDDING_DIMENSION = 384;
 
     @Override
