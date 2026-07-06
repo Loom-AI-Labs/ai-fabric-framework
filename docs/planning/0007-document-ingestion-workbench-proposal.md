@@ -6,6 +6,8 @@ Date: 2026-07-01
 
 Owner: AI Fabric framework plus real-app examples
 
+Core support plan: `docs/planning/0010-document-indexing-core-support-plan.md`
+
 ## Summary
 
 Build a real-app proof called `document-ingestion-workbench` that demonstrates how AI Fabric ingests

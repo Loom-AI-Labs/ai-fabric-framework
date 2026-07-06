@@ -47,6 +47,37 @@ Two runtime modes are useful:
 
 Default app port: `8097`.
 
+## Public Demo App
+
+This app backs the public AI Shopping Experience demo:
+
+- Demo UI: `https://ai-fabric.dev/demos/ai-fabric-framework`
+- Expected backend runtime: `https://ai-fabric-chat-capabilities-demo.46.224.145.148.sslip.io`
+- Chat API: `POST /api/chat/query`
+- Demo readiness API: `/api/demo`
+
+The public demo is designed to prove AI Fabric as a commerce runtime:
+
+1. Start from no indexed evidence and show that RAG-backed answers should not be claimed yet.
+2. Seed evidence in stages: products, reviews, policies, coupons, tickets, then full.
+3. Run natural-language shopping prompts against the current evidence stage.
+4. Inspect retrieved documents and vector proof rather than faking context.
+5. Use curated commerce positions only when the UI/user selects them.
+6. Exercise cart, checkout, support, return, coupon, and policy actions with confirmation where needed.
+7. Keep browser users isolated through `shopping-demo-user-*` ownership and scheduled cleanup.
+
+The stage model is:
+
+- `empty`: no catalog evidence is ready.
+- `products`: product catalog is indexed.
+- `reviews`: products plus review evidence are indexed.
+- `policies`: products, reviews, and policy evidence are indexed.
+- `coupons`: discount/coupon evidence is available.
+- `full`: support-ticket evidence is available and the full shopping demo is ready.
+
+Use `GET /api/demo/health` and `GET /api/demo/readiness` before demoing. They expose build metadata,
+RAG/data-sync/vector posture, stage counts, vector counts, retrieval proof, and warnings.
+
 ## Run
 
 ### Docker With Released AI Fabric
@@ -86,6 +117,30 @@ Health endpoint:
 
 ```bash
 curl http://localhost:8097/actuator/health
+curl http://localhost:8097/api/demo/health | jq
+curl http://localhost:8097/api/demo/readiness | jq
+```
+
+Seed the demo in stages:
+
+```bash
+curl -fsS -X POST http://localhost:8097/api/demo/reset \
+  -H 'Content-Type: application/json' \
+  -d '{"confirm":true,"clearVectors":true,"clearIndexingQueue":true}' | jq
+
+curl -fsS -X POST http://localhost:8097/api/demo/stages/products | jq
+curl -fsS -X POST http://localhost:8097/api/demo/stages/reviews | jq
+curl -fsS -X POST http://localhost:8097/api/demo/stages/policies | jq
+curl -fsS -X POST http://localhost:8097/api/demo/stages/coupons | jq
+curl -fsS -X POST http://localhost:8097/api/demo/stages/tickets | jq
+curl -fsS -X POST http://localhost:8097/api/demo/stages/full | jq
+```
+
+If demo controls are protected, send the configured header:
+
+```bash
+curl -fsS -X POST http://localhost:8097/api/demo/stages/full \
+  -H "X-DEMO-API-KEY: $APP_DEMO_CONTROLS_API_KEY" | jq
 ```
 
 ### Local Source Checkout
@@ -166,6 +221,38 @@ export CORS_ALLOWED_ORIGINS="https://ai-fabric.dev"
 The chat request contract and UI positions are described in:
 
 - `docs/Framework-Dev-Guides/ui-clients/CHAT_CAPABILITIES_UI_MIGRATION_GUIDE.md`
+
+## Demo Deployment Env Vars
+
+The public deployment normally uses:
+
+- `PORT=8097`
+- `OPENAI_ENABLED=true`
+- `OPENAI_API_KEY=<secret>`
+- `OPENAI_MODEL=gpt-4o-mini`
+- `OPENAI_EMBEDDING_MODEL=text-embedding-3-small`
+- `OPENAI_EMBEDDING_DIMENSIONS=512`
+- `AI_DATA_SYNC_ENABLED=true`
+- `APP_ADMIN_AUTH_ENABLED=true`
+- `APP_ADMIN_API_KEY=<secret>`
+- `APP_ADMIN_API_KEY_HEADER=X-ADMIN-API-KEY`
+- `CORS_ALLOWED_ORIGINS=https://ai-fabric.dev`
+- `JAVA_OPTS=-Xms256m -Xmx768m`
+- `APP_DEMO_CONTROLS_ENABLED=true`
+- Optional demo-control protection: `APP_DEMO_CONTROLS_API_KEY`, `APP_DEMO_CONTROLS_API_KEY_HEADER`.
+- Optional cleanup tuning: `APP_DEMO_CLEANUP_TTL=PT24H`, `APP_DEMO_CLEANUP_CRON=0 17 * * * *`.
+
+Docker build metadata is baked into `/app/build-info.properties` from `SOURCE_COMMIT` or
+`BUILD_COMMIT`, `SOURCE_BRANCH` or `BUILD_BRANCH`, and `BUILD_TIME`. `GET /api/demo/health` should
+reflect the deployed commit before live verification.
+
+Suggested deployment values:
+
+- `git_repository=Loom-AI-Labs/ai-fabric-framework.git`
+- `git_branch=main`
+- `base_directory=/examples/real-apps`
+- `dockerfile_location=/chat-capabilities-demo/Dockerfile`
+- `ports_exposes=8097`
 
 ## What This App Does Not Cover
 

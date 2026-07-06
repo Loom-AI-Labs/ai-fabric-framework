@@ -11,8 +11,8 @@ The apps are intentionally scenario-focused:
 - `migration-enabled-product-catalog`: migration/backfill indexing with local H2, hash embeddings, and Lucene.
 - `privacy-first-customer-facing-support`: PII detection and redaction workflow.
 - `relationship-query-crm-insights`: natural language relationship query with an offline deterministic LLM.
-- `behavior-churn-signals`: behavior analytics and churn/sentiment insight flow with an offline deterministic LLM.
-- `chat-capabilities-demo`: chat-session storage and conversation-aware orchestration.
+- `behavior-churn-signals`: behavior analytics and churn/sentiment insight flow with deterministic local or live OpenAI-backed LLM analysis.
+- `chat-capabilities-demo`: chat-session storage, conversation-aware orchestration, staged RAG readiness, and the AI Shopping Experience demo.
 - `customer-runtime-demo`: customer-owned domain fixture with data-sync, tenant-scoped retrieval, and governed actions.
 - `db-action-registry-lab`: DB-backed connector action registration, approval, discovery, execution, and deregistration.
 - `document-ingestion-workbench`: trusted document upload, preview, indexing, reindex, and delete lifecycle.
@@ -20,7 +20,7 @@ The apps are intentionally scenario-focused:
 - `mcp-operations-assistant`: governed MCP-style operations tool execution.
 - `provider-failover-lab`: provider routing/fallback diagnostics and transient-input policy evidence.
 - `sub-management-hub-simple`: config-driven indexing setup using local deterministic embeddings by default.
-- `ai-fabric-account-resolver`: account-resolution demo using governed actions, readiness blockers, and local deterministic embeddings by default.
+- `ai-fabric-account-resolver`: account-resolution demo using profile reads, policy RAG, chat memory, and governed resolver actions.
 - `tenant-knowledge-portal`: AI Fabric Tenant Guard demo for tenant-scoped search, catalog visibility, role-limited actions, and deletion.
 - `vector-readiness-playground`: vector provider lifecycle/admin readiness evidence.
 - `ecommerce-store`: prior deployed domain API fixture retained as reference material.
@@ -28,13 +28,26 @@ The apps are intentionally scenario-focused:
 
 ## Public Demo Apps
 
+`chat-capabilities-demo` backs the AI Shopping Experience demo at
+`https://ai-fabric.dev/demos/ai-fabric-framework`.
+
+`ai-fabric-account-resolver` backs the AI Fabric Account Resolver demo at
+`https://ai-fabric.dev/demos/ai-fabric-account-resolver`.
+
 `behavior-churn-signals` backs the public AI Fabric Behavior Signals demo at
 `https://ai-fabric.dev/demos/ai-fabric-behavior-signals`.
 
 `tenant-knowledge-portal` backs the public AI Fabric Tenant Guard demo at
 `https://ai-fabric.dev/demos/ai-fabric-tenant-guard`.
 
-To run the backend locally from the repository root:
+Public demo backends:
+
+- AI Shopping Experience: `https://ai-fabric-chat-capabilities-demo.46.224.145.148.sslip.io`
+- Account Resolver: `https://ai-fabric-account-resolver.46.224.145.148.sslip.io`
+- Behavior Signals: `https://behavior-churn-signals.46.224.145.148.sslip.io`
+- Tenant Guard: `https://ai-fabric-tenant-guard.46.224.145.148.sslip.io`
+
+To run the Behavior Signals backend locally from the repository root:
 
 ```bash
 mvn -B -V --no-transfer-progress -f examples/real-apps/pom.xml \
@@ -52,6 +65,23 @@ curl -fsS -X POST http://localhost:8097/api/behavior-demo/seed-and-analyze | jq
 For Docker deployment, use
 [`behavior-churn-signals/Dockerfile`](behavior-churn-signals/Dockerfile) with build context
 `examples/real-apps`.
+
+For the shopping demo, `chat-capabilities-demo` exposes staged readiness controls:
+
+```bash
+curl -fsS http://localhost:8097/api/demo/readiness | jq
+curl -fsS -X POST http://localhost:8097/api/demo/stages/products | jq
+curl -fsS -X POST http://localhost:8097/api/demo/stages/full | jq
+```
+
+For Account Resolver, seed personas and use the natural-language resolver endpoint:
+
+```bash
+curl -fsS -X POST http://localhost:8081/api/account-resolver/demo/seed | jq
+curl -fsS -X POST http://localhost:8081/api/subscriptions/query \
+  -H 'Content-Type: application/json' \
+  -d '{"query":"Why cannot I place an order?","conversationId":"local-resolver-demo"}' | jq
+```
 
 ## Build
 

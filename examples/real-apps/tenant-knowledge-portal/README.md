@@ -106,6 +106,9 @@ Build from the repo root:
 ```bash
 docker build -f examples/real-apps/tenant-knowledge-portal/Dockerfile \
   --build-arg AI_FABRIC_VERSION=0.3.2 \
+  --build-arg BUILD_COMMIT="$(git rev-parse --short HEAD)" \
+  --build-arg BUILD_BRANCH="$(git rev-parse --abbrev-ref HEAD)" \
+  --build-arg BUILD_TIME="$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
   -t ai-fabric-tenant-guard:0.3.2 \
   examples/real-apps
 ```
@@ -124,6 +127,7 @@ Suggested deployment values:
 - `PORT=8101`
 - `CORS_ALLOWED_ORIGINS=https://ai-fabric.dev`
 - `JAVA_OPTS=-Xms256m -Xmx768m`
+- Optional deployment metadata: `APP_VERSION`, `AI_FABRIC_VERSION`, `APP_BUILD_COMMIT`, `APP_BUILD_BRANCH`, `APP_BUILD_TIME`.
 - `git_repository=Loom-AI-Labs/ai-fabric-framework.git`
 - `git_branch=main`
 - `base_directory=/examples/real-apps`

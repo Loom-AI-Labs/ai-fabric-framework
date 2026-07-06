@@ -67,6 +67,31 @@ Default runtime:
 
 Default port: `8081`.
 
+## Public Demo App
+
+This app backs the public AI Fabric Account Resolver demo:
+
+- Demo UI: `https://ai-fabric.dev/demos/ai-fabric-account-resolver`
+- Expected backend runtime: `https://ai-fabric-account-resolver.46.224.145.148.sslip.io`
+- Resolver API base path: `/api/account-resolver`
+- Natural-language orchestration endpoint: `POST /api/subscriptions/query`
+
+The public demo is designed to prove a current-account resolver, not a generic subscription admin
+form:
+
+1. Seed deterministic personas `91` to `94`.
+2. Let AI Fabric read factual account profile data through `get_account_profile`.
+3. Retrieve account-resolution policies through RAG.
+4. Let the LLM reason about blockers from profile facts plus policies.
+5. Propose confirmable write actions such as `update_payment_method`, `update_address`, and
+   `request_refund`.
+6. Persist chat turns through `ai-fabric-chat-session` so follow-up turns such as "ok add it" can use
+   prior context.
+7. Keep dashboard readiness endpoints available for UI state and regression checks, but do not expose
+   precomputed blocker analysis as the primary AI action.
+
+Use `GET /api/account-resolver/health` before demoing to verify deployed build metadata.
+
 ## Run Locally
 
 From the repository root:
@@ -149,6 +174,11 @@ When no `position` is provided, this app defaults to `resolver`. Action proposal
 - `CORS_ALLOWED_ORIGINS=https://ai-fabric.dev`
 - `JAVA_OPTS=-Xms256m -Xmx768m`
 - Optional deployment metadata: `APP_VERSION`, `AI_FABRIC_VERSION`, `APP_BUILD_COMMIT`, `APP_BUILD_BRANCH`, `APP_BUILD_TIME`.
+- `git_repository=Loom-AI-Labs/ai-fabric-framework.git`
+- `git_branch=main`
+- `base_directory=/examples/real-apps`
+- `dockerfile_location=/ai-fabric-account-resolver/Dockerfile`
+- `ports_exposes=8081`
 
 ## What This App Does Not Cover
 
