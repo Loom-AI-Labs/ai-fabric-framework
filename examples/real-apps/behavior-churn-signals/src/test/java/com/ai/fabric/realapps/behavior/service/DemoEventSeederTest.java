@@ -20,13 +20,23 @@ class DemoEventSeederTest {
 
     @Test
     void seedClearsPreviousInsightsAndCreatesReplayableDemoEvents() {
-        when(eventRepository.count()).thenReturn(17L);
+        when(eventRepository.count()).thenReturn(33L);
 
         long count = seeder.seed();
 
-        assertThat(count).isEqualTo(17L);
+        assertThat(count).isEqualTo(33L);
         verify(insightsRepository).deleteAll();
         verify(eventRepository).deleteAll();
-        verify(eventRepository, times(17)).save(any(AppBehaviorEvent.class));
+        verify(eventRepository, times(33)).save(any(AppBehaviorEvent.class));
+    }
+
+    @Test
+    void seedScenarioReplacesOnlyTheRequestedUser() {
+        long count = seeder.seedScenario("session-user-1004", "release-regression", "test-session", null);
+
+        assertThat(count).isEqualTo(7L);
+        verify(eventRepository).deleteByUserId("session-user-1004");
+        verify(insightsRepository).deleteByUserId("session-user-1004");
+        verify(eventRepository, times(7)).save(any(AppBehaviorEvent.class));
     }
 }

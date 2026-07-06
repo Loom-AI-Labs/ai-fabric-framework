@@ -15,7 +15,10 @@ import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -82,6 +85,55 @@ class BehaviorDemoScenarioServiceTest {
             "userId", "user-1001",
             "discountPercent", 25
         ));
+        assertThat(result.result().data()).containsEntry("policyDecision", "APPROVED");
+    }
+
+    @Test
+    void createSessionClonesAllScenariosAndAnalyzesSessionUsers() {
+        when(eventRepository.findByUserIdOrderByEventTimestampAsc(anyString())).thenReturn(List.of());
+
+        BehaviorDemoScenarioService.DemoSessionResponse response = service.createSession(
+            new BehaviorDemoScenarioService.CreateDemoSessionRequest("browser-session-1", true)
+        );
+
+        assertThat(response.sessionId()).isEqualTo("browser-session-1");
+        assertThat(response.scenarios()).hasSize(5);
+        assertThat(response.scenarios())
+            .allSatisfy(scenario -> {
+                assertThat(scenario.userId()).startsWith(BehaviorDemoScenarioService.SESSION_USER_PREFIX + "browser-session-1-");
+                assertThat(scenario.baseUserId()).startsWith("user-");
+                assertThat(scenario.expectedActionFamily()).isNotBlank();
+            });
+        verify(seeder).seedScenario(
+            eq("behavior-demo-user-browser-session-1-user-1001"),
+            eq("billing-cancellation-risk"),
+            eq("demo-session"),
+            any(LocalDateTime.class)
+        );
+        verify(behaviorAnalysisService).analyzeUser("behavior-demo-user-browser-session-1-user-1001");
+    }
+
+    @Test
+    void resetRequiresExplicitConfirmation() {
+        BehaviorDemoScenarioService.ResetResult result = service.reset(
+            new BehaviorDemoScenarioService.ResetRequest("browser-session-2", false)
+        );
+
+        assertThat(result.success()).isFalse();
+        assertThat(result.message()).contains("confirm=true");
+        assertThat(result.deletedUsers()).isZero();
+    }
+
+    @Test
+    void resetSessionDeletesOnlyClonedScenarioUsers() {
+        BehaviorDemoScenarioService.ResetResult result = service.reset(
+            new BehaviorDemoScenarioService.ResetRequest("browser-session-2", true)
+        );
+
+        assertThat(result.success()).isTrue();
+        assertThat(result.deletedUsers()).isEqualTo(5);
+        verify(insightsRepository).deleteByUserId("behavior-demo-user-browser-session-2-user-1001");
+        verify(eventRepository).deleteByUserId("behavior-demo-user-browser-session-2-user-1001");
     }
 
     private static AppBehaviorEvent event(String userId, String eventType) {

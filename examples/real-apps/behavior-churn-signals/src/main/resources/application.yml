@@ -29,7 +29,13 @@ ai:
       enable-search: false
       enable-generation: true
   providers:
-    llm-provider: behavior-local
+    llm-provider: ${AI_LLM_PROVIDER:behavior-local}
+    openai:
+      enabled: ${OPENAI_ENABLED:false}
+      api-key: ${OPENAI_API_KEY:}
+      base-url: ${OPENAI_BASE_URL:https://api.openai.com/v1}
+      model: ${OPENAI_MODEL:gpt-4o-mini}
+      timeout: 45
   behavior:
     enabled: true
     mode: LIGHT
@@ -47,6 +53,14 @@ management:
         include: health,info
 
 app:
+  version: ${APP_VERSION:1.0.0-SNAPSHOT}
+  build-info:
+    path: ${APP_BUILD_INFO_PATH:file:/app/build-info.properties}
+  behavior-demo:
+    cleanup:
+      enabled: ${APP_BEHAVIOR_DEMO_CLEANUP_ENABLED:true}
+      ttl: ${APP_BEHAVIOR_DEMO_CLEANUP_TTL:PT6H}
+      cron: ${APP_BEHAVIOR_DEMO_CLEANUP_CRON:0 */30 * * * *}
   cors:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:}
     allowed-origin-patterns: ${CORS_ALLOWED_ORIGIN_PATTERNS:}

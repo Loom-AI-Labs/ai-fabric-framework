@@ -12,6 +12,8 @@ public interface AppBehaviorEventRepository extends JpaRepository<AppBehaviorEve
 
     List<AppBehaviorEvent> findByUserIdOrderByEventTimestampAsc(String userId);
 
+    void deleteByUserId(String userId);
+
     @Query("select e from AppBehaviorEvent e where e.userId = :userId and e.eventTimestamp >= :since and e.eventTimestamp <= :until order by e.eventTimestamp asc")
     List<AppBehaviorEvent> findWindow(@Param("userId") String userId,
                                       @Param("since") LocalDateTime since,

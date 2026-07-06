@@ -1,0 +1,55 @@
+package com.ai.fabric.realapps.behavior.web;
+
+import com.ai.fabric.realapps.behavior.service.BehaviorDemoScenarioService;
+import org.junit.jupiter.api.Test;
+import org.springframework.core.io.DefaultResourceLoader;
+import org.springframework.mock.env.MockEnvironment;
+import org.springframework.test.util.ReflectionTestUtils;
+
+import java.util.List;
+import java.util.Map;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
+
+class BehaviorDemoControllerTest {
+
+    private final BehaviorDemoScenarioService service = mock(BehaviorDemoScenarioService.class);
+
+    @Test
+    void healthReportsBuildMetadataAndProviderPosture() {
+        when(service.dashboard()).thenReturn(new BehaviorDemoScenarioService.BehaviorDemoDashboard(
+            List.of(),
+            List.of(),
+            Map.of(),
+            Map.of(),
+            List.of(),
+            33
+        ));
+
+        MockEnvironment environment = new MockEnvironment()
+            .withProperty("ai.providers.llm-provider", "behavior-local")
+            .withProperty("ai.behavior.enabled", "true")
+            .withProperty("ai.behavior.mode", "FULL");
+        BehaviorDemoController controller = new BehaviorDemoController(service, environment, new DefaultResourceLoader());
+        ReflectionTestUtils.setField(controller, "appName", "behavior-churn-signals");
+        ReflectionTestUtils.setField(controller, "appVersion", "1.0.0-test");
+        ReflectionTestUtils.setField(controller, "aiFabricVersion", "0.3.2-test");
+        ReflectionTestUtils.setField(controller, "buildInfoPath", "classpath:/behavior-build-info-test.properties");
+
+        Map<String, Object> health = controller.health();
+
+        assertThat(health).containsEntry("app", "behavior-churn-signals");
+        assertThat(health).containsEntry("version", "1.2.3");
+        assertThat(health).containsEntry("aiFabricVersion", "0.3.2");
+        assertThat(health).containsEntry("commit", "abc1234");
+        assertThat(health).containsEntry("buildBranch", "main");
+        assertThat(health).containsEntry("provider", "behavior-local");
+        assertThat(health).containsEntry("providerMode", "deterministic-local");
+        assertThat(health).containsEntry("behaviorEnabled", true);
+        assertThat(health).containsEntry("behaviorMode", "FULL");
+        assertThat(health).containsEntry("totalEvents", 33L);
+        assertThat(health).containsEntry("scenarios", 0);
+    }
+}

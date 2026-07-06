@@ -12,6 +12,8 @@
 
 ARG AI_FABRIC_VERSION=0.3.2
 ARG APP_VERSION=1.0.0-SNAPSHOT
+ARG SOURCE_COMMIT=
+ARG SOURCE_BRANCH=
 ARG BUILD_COMMIT=unknown
 ARG BUILD_BRANCH=unknown
 ARG BUILD_TIME=
@@ -31,6 +33,8 @@ WORKDIR /app
 
 ARG AI_FABRIC_VERSION
 ARG APP_VERSION
+ARG SOURCE_COMMIT
+ARG SOURCE_BRANCH
 ARG BUILD_COMMIT
 ARG BUILD_BRANCH
 ARG BUILD_TIME
@@ -39,17 +43,16 @@ ENV PORT=8097
 ENV JAVA_OPTS=""
 ENV AI_FABRIC_VERSION="${AI_FABRIC_VERSION}"
 ENV APP_VERSION="${APP_VERSION}"
-ENV APP_BUILD_COMMIT="${BUILD_COMMIT}"
-ENV APP_BUILD_BRANCH="${BUILD_BRANCH}"
-ENV APP_BUILD_TIME="${BUILD_TIME}"
 
 RUN addgroup -S app && adduser -S app -G app \
     && mkdir -p /app/data \
     && chown -R app:app /app
 
 RUN actual_build_time="${BUILD_TIME:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}" \
+    && actual_commit="${SOURCE_COMMIT:-${BUILD_COMMIT:-unknown}}" \
+    && actual_branch="${SOURCE_BRANCH:-${BUILD_BRANCH:-unknown}}" \
     && printf 'version=%s\ncommit=%s\nbranch=%s\nbuiltAt=%s\naiFabricVersion=%s\n' \
-      "${APP_VERSION}" "${BUILD_COMMIT}" "${BUILD_BRANCH}" "${actual_build_time}" "${AI_FABRIC_VERSION}" \
+      "${APP_VERSION}" "${actual_commit}" "${actual_branch}" "${actual_build_time}" "${AI_FABRIC_VERSION}" \
       > /app/build-info.properties \
     && chown app:app /app/build-info.properties
 

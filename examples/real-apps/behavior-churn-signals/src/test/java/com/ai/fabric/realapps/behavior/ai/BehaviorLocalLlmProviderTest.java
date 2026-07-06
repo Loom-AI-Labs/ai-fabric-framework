@@ -32,8 +32,27 @@ class BehaviorLocalLlmProviderTest {
         assertThat(json.path("segment").asText()).isEqualTo("at_risk");
         assertThat(json.path("sentiment").path("label").asText()).isNotBlank();
         assertThat(json.path("churn").path("risk").asDouble()).isGreaterThan(0.7);
-        assertThat(json.path("patterns")).hasSize(5);
+        assertThat(json.path("patterns")).hasSize(9);
         assertThat(json.path("insights").path("signals").path("payment_failed").asInt()).isEqualTo(2);
+    }
+
+    @Test
+    void distinguishesRegressionAndSilentChurnSignals() throws Exception {
+        AIGenerationResponse regression = provider.generateContent(AIGenerationRequest.builder()
+            .prompt("feature_error timeout usage_drop support complaint after release")
+            .build());
+        JsonNode regressionJson = objectMapper.readTree(regression.getContent());
+
+        assertThat(regressionJson.path("segment").asText()).isEqualTo("product_regression_risk");
+        assertThat(regressionJson.path("recommendations").toString()).contains("Escalate product regression");
+
+        AIGenerationResponse silent = provider.generateContent(AIGenerationRequest.builder()
+            .prompt("usage_drop no_login no login quiet account")
+            .build());
+        JsonNode silentJson = objectMapper.readTree(silent.getContent());
+
+        assertThat(silentJson.path("segment").asText()).isEqualTo("quiet_disengagement");
+        assertThat(silentJson.path("churn").path("reason").asText()).contains("Quiet disengagement");
     }
 
     @Test

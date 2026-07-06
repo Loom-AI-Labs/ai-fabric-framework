@@ -15,13 +15,15 @@ class RetentionStudioServiceTest {
             "user-2001",
             "pro",
             65,
-            0,
-            1
+            2,
+            3
         ));
 
         assertThat(result.riskCategory()).isEqualTo("HIGH");
+        assertThat(result.actionFamily()).isEqualTo("RETENTION_OFFER");
         assertThat(result.evidenceIds()).contains("insight-acct-1001-user-2001", "plan-pro");
         assertThat(result.recommendation()).contains("Offer retention credit");
+        assertThat(result.policyExplanation()).contains("confirmation-gated retention offer");
     }
 
     @Test
@@ -39,6 +41,38 @@ class RetentionStudioServiceTest {
 
         assertThat(executed.success()).isTrue();
         assertThat(executed.data()).containsEntry("accountId", "acct-1001");
+        assertThat(executed.data()).containsEntry("policyDecision", "APPROVED");
+        assertThat(executed.message()).contains("within the demo auto-approval limit");
+    }
+
+    @Test
+    void retentionOfferExplainsDiscountCap() {
+        RetentionStudioService.RetentionOfferResult executed = service.createOffer(
+            new RetentionStudioService.RetentionOfferRequest("acct-1001", "user-2001", 50, true)
+        );
+
+        assertThat(executed.success()).isTrue();
+        assertThat(executed.data()).containsEntry("requestedDiscountPercent", 50);
+        assertThat(executed.data()).containsEntry("discountPercent", 40);
+        assertThat(executed.data()).containsEntry("policyDecision", "APPROVED_WITH_CAP");
+        assertThat(executed.message()).contains("capped");
+    }
+
+    @Test
+    void releaseRegressionRoutesToEngineeringInsteadOfDiscount() {
+        RetentionStudioService.RetentionReviewResult result = service.review(new RetentionStudioService.RetentionReviewRequest(
+            "acct-1004",
+            "user-1004",
+            "pro",
+            58,
+            0,
+            2
+        ));
+
+        assertThat(result.riskCategory()).isEqualTo("HIGH");
+        assertThat(result.actionFamily()).isEqualTo("ENGINEERING_ESCALATION");
+        assertThat(result.recommendation()).contains("engineering");
+        assertThat(result.policyExplanation()).contains("safer than discounting");
     }
 
     @Test

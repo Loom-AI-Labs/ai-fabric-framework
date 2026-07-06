@@ -1055,6 +1055,118 @@ must not include `historyMessages`; the backend should still have enough context
 - Do not bypass the required `ChatSessionAccessControlPolicy`; chat memory is user/session scoped.
 - Do not confuse chat panel UI state with framework conversation state.
 
+## Lesson 16: Make Non-Chat AI Demo Provider Posture Explicit
+
+### User Symptom
+
+The Behavior Signals demo looked useful, but it was unclear whether insight generation was backed by
+a live LLM or by the local deterministic provider. That made the demo hard to explain:
+
+```text
+Is this real AI behavior analysis, or just a scripted page?
+```
+
+### Where It Happened
+
+Real app:
+
+```text
+examples/real-apps/behavior-churn-signals
+```
+
+Public UI:
+
+```text
+aifabric/src/pages/demos/AIFabricBehaviorSignals.tsx
+```
+
+### Root Cause
+
+The app correctly used AI Fabric's behavior module:
+
+```text
+ExternalEventProvider
+  -> BehaviorAnalysisService
+  -> AICoreService
+  -> structured BehaviorInsights
+```
+
+But the default provider was intentionally no-key and deterministic:
+
+```yaml
+ai.providers.llm-provider: behavior-local
+```
+
+That is excellent for local development and CI, but a public demo must say so. Otherwise users may
+assume the UI is faking intelligence, or assume the app is using a live provider when it is not.
+
+### Fix Pattern
+
+Expose a demo health endpoint that reports runtime truth:
+
+```text
+GET /api/behavior-demo/health
+```
+
+Include:
+
+```json
+{
+  "provider": "behavior-local",
+  "providerMode": "deterministic-local",
+  "behaviorEnabled": true,
+  "behaviorMode": "LIGHT",
+  "commit": "...",
+  "aiFabricVersion": "0.3.2"
+}
+```
+
+Then make the UI show the posture directly:
+
+```text
+Offline deterministic provider
+```
+
+or:
+
+```text
+Live LLM provider
+```
+
+The deterministic provider can stay, but it must still travel through AI Fabric services and the UI
+must not pretend it is a live external model.
+
+### Public Demo State Pattern
+
+Behavior Signals is not a chat app, but it still writes demo state when users inject signals or
+preview actions. Use the same public-demo lifecycle rules:
+
+- create session-cloned users such as `behavior-demo-user-<sessionId>-user-1001`;
+- seed real behavior events for those cloned users;
+- analyze cloned users through `BehaviorAnalysisService`;
+- keep action policy explanations in backend result data;
+- render only the useful action fields in the UI, not raw JSON;
+- clean old session clones with a TTL job.
+
+### Regression Tests
+
+Add focused tests for:
+
+- provider posture in `/api/behavior-demo/health`;
+- session creation clones all scenarios;
+- session reset requires `confirm=true`;
+- deterministic provider distinguishes cancellation, expansion, onboarding friction, release
+  regression, and silent churn;
+- action policy caps or explanations are returned by the backend service.
+
+### What Not To Do
+
+- Do not call a deterministic provider "live AI".
+- Do not fake behavior insight in frontend code.
+- Do not use one shared public user set for write-action demos.
+- Do not put retention/discount policy truth only in UI labels.
+- Do not leave public demo clones without cleanup.
+
 ## Quick Triage Checklist
 
 ### Orchestration Error Before Any AI Response

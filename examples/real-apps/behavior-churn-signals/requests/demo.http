@@ -19,14 +19,26 @@ GET http://localhost:8097/api/behavior/analytics/rapid-decline
 ### 6) Public demo dashboard
 GET http://localhost:8097/api/behavior-demo/dashboard
 
-### 7) Seed and analyze all public demo scenarios
-POST http://localhost:8097/api/behavior-demo/seed-and-analyze
+### 7) Public demo health and provider posture
+GET http://localhost:8097/api/behavior-demo/health
 
-### 8) Analyze one public demo scenario
-POST http://localhost:8097/api/behavior-demo/scenarios/user-1001/analyze
+### 8) Create an isolated public demo session
+POST http://localhost:8097/api/behavior-demo/sessions
+Content-Type: application/json
 
-### 9) Inject a new behavior signal and re-analyze
-POST http://localhost:8097/api/behavior-demo/scenarios/user-1001/signals
+{
+  "sessionId": "local-browser-1",
+  "analyze": true
+}
+
+### 9) Session dashboard
+GET http://localhost:8097/api/behavior-demo/dashboard?sessionId=local-browser-1
+
+### 10) Analyze one public demo scenario
+POST http://localhost:8097/api/behavior-demo/scenarios/behavior-demo-user-local-browser-1-user-1001/analyze
+
+### 11) Inject a new behavior signal and re-analyze
+POST http://localhost:8097/api/behavior-demo/scenarios/behavior-demo-user-local-browser-1-user-1001/signals
 Content-Type: application/json
 
 {
@@ -37,8 +49,8 @@ Content-Type: application/json
   "source": "demo-ui"
 }
 
-### 10) Preview confirmation-gated retention offer
-POST http://localhost:8097/api/behavior-demo/scenarios/user-1001/retention-offer
+### 12) Preview confirmation-gated retention offer
+POST http://localhost:8097/api/behavior-demo/scenarios/behavior-demo-user-local-browser-1-user-1001/retention-offer
 Content-Type: application/json
 
 {
@@ -46,11 +58,20 @@ Content-Type: application/json
   "confirmed": false
 }
 
-### 11) Confirm retention offer
-POST http://localhost:8097/api/behavior-demo/scenarios/user-1001/retention-offer
+### 13) Confirm retention offer
+POST http://localhost:8097/api/behavior-demo/scenarios/behavior-demo-user-local-browser-1-user-1001/retention-offer
 Content-Type: application/json
 
 {
   "discountPercent": 25,
   "confirmed": true
+}
+
+### 14) Reset only this public demo session
+POST http://localhost:8097/api/behavior-demo/reset
+Content-Type: application/json
+
+{
+  "sessionId": "local-browser-1",
+  "confirm": true
 }

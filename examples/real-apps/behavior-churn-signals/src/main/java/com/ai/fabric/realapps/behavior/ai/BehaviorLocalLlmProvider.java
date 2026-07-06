@@ -49,36 +49,55 @@ public class BehaviorLocalLlmProvider implements AIProvider {
         int complaints = counts.getOrDefault("complaint", 0);
         int upgrades = counts.getOrDefault("upgrade", 0);
         int logins = counts.getOrDefault("login", 0);
+        int usageDrops = counts.getOrDefault("usage_drop", 0);
+        int featureErrors = counts.getOrDefault("feature_error", 0);
+        int helpSearches = counts.getOrDefault("help_search", 0);
+        int positiveSignals = counts.getOrDefault("positive", 0);
+        int noLoginSignals = counts.getOrDefault("no_login", 0);
 
         double churnRisk = 0.2
             + 0.35 * clamp01(paymentFailures / 3.0)
             + 0.45 * clamp01(cancellations / 2.0)
             + 0.25 * clamp01(complaints / 3.0)
-            - 0.15 * clamp01(upgrades / 2.0);
+            + 0.25 * clamp01(usageDrops / 2.0)
+            + 0.2 * clamp01(noLoginSignals / 2.0)
+            + 0.18 * clamp01(featureErrors / 2.0)
+            - 0.15 * clamp01(upgrades / 2.0)
+            - 0.12 * clamp01(positiveSignals / 2.0);
         churnRisk = clamp01(churnRisk);
 
         double sentimentScore = 0.1
             + 0.25 * clamp01(logins / 5.0)
             + 0.3 * clamp01(upgrades / 2.0)
+            + 0.25 * clamp01(positiveSignals / 2.0)
             - 0.35 * clamp01(complaints / 3.0)
             - 0.4 * clamp01(paymentFailures / 3.0)
-            - 0.45 * clamp01(cancellations / 2.0);
+            - 0.45 * clamp01(cancellations / 2.0)
+            - 0.25 * clamp01(usageDrops / 2.0)
+            - 0.28 * clamp01(featureErrors / 2.0)
+            - 0.12 * clamp01(helpSearches / 2.0);
         sentimentScore = Math.max(-1.0, Math.min(1.0, sentimentScore));
 
         String label = sentimentLabel(sentimentScore, churnRisk);
         String trend = trendLabel(churnRisk, sentimentScore);
-        String segment = churnRisk > 0.7 ? "at_risk" : upgrades > 0 ? "expanding" : "steady";
+        String segment = featureErrors > 0 && usageDrops > 0
+            ? "product_regression_risk"
+            : usageDrops > 0 && complaints == 0 && cancellations == 0
+                ? "quiet_disengagement"
+                : churnRisk > 0.7
+                    ? "at_risk"
+                    : upgrades > 0 || positiveSignals > 0
+                        ? "expanding"
+                        : helpSearches > 1
+                            ? "onboarding_friction"
+                            : "steady";
 
-        String reason = churnRisk > 0.7
-            ? "Repeated negative signals (payment issues / cancellation intent)"
-            : churnRisk > 0.45
-                ? "Early risk signals detected"
-                : "Healthy activity";
+        String reason = reason(churnRisk, cancellations, paymentFailures, complaints, usageDrops, featureErrors, helpSearches, noLoginSignals);
 
         String responseJson = """
             {
               "segment": "%s",
-              "patterns": ["payment_signals:%d","cancel_signals:%d","complaints:%d","logins:%d","upgrades:%d"],
+              "patterns": ["payment_signals:%d","cancel_signals:%d","complaints:%d","logins:%d","upgrades:%d","usage_drops:%d","feature_errors:%d","help_searches:%d","positive_signals:%d"],
               "sentiment": {"score": %.3f, "label": "%s"},
               "churn": {"risk": %.3f, "reason": "%s"},
               "trend": "%s",
@@ -93,12 +112,16 @@ public class BehaviorLocalLlmProvider implements AIProvider {
             complaints,
             logins,
             upgrades,
+            usageDrops,
+            featureErrors,
+            helpSearches,
+            positiveSignals,
             sentimentScore,
             label,
             churnRisk,
             reason.replace("\"", "'"),
             trend,
-            recommendationsJson(churnRisk, label),
+            recommendationsJson(churnRisk, label, featureErrors, usageDrops, helpSearches, positiveSignals, noLoginSignals),
             toJson(counts)
         );
 
@@ -174,6 +197,11 @@ public class BehaviorLocalLlmProvider implements AIProvider {
         counts.put("complaint", countMatches(lower, "complaint") + countMatches(lower, "refund"));
         counts.put("upgrade", countMatches(lower, "upgrade") + countMatches(lower, "expanded"));
         counts.put("login", countMatches(lower, "login"));
+        counts.put("usage_drop", countMatches(lower, "usage_drop") + countMatches(lower, "usage drop"));
+        counts.put("feature_error", countMatches(lower, "feature_error") + countMatches(lower, "feature error") + countMatches(lower, "timeout"));
+        counts.put("help_search", countMatches(lower, "help_center_search") + countMatches(lower, "help search"));
+        counts.put("positive", countMatches(lower, "positive_feedback") + countMatches(lower, "loves") + countMatches(lower, "delighted"));
+        counts.put("no_login", countMatches(lower, "no_login") + countMatches(lower, "no login"));
         return counts;
     }
 
@@ -232,14 +260,55 @@ public class BehaviorLocalLlmProvider implements AIProvider {
         return "STABLE";
     }
 
-    private String recommendationsJson(double churnRisk, String sentimentLabel) {
+    private String reason(double churnRiskSignals,
+                          int cancellations,
+                          int paymentFailures,
+                          int complaints,
+                          int usageDrops,
+                          int featureErrors,
+                          int helpSearches,
+                          int noLoginSignals) {
+        if (featureErrors > 0 && usageDrops > 0) {
+            return "Usage dropped after repeated feature errors, suggesting a product regression needs escalation";
+        }
+        if (noLoginSignals > 0 && usageDrops > 0 && cancellations == 0 && complaints == 0) {
+            return "Quiet disengagement detected from usage decline and login absence before explicit complaints";
+        }
+        if (helpSearches > 1 && complaints > 0) {
+            return "Onboarding friction detected from repeated help searches and support complaints";
+        }
+        if (cancellations > 0 || paymentFailures > 1) {
+            return "Repeated negative signals (payment issues / cancellation intent)";
+        }
+        if (churnRiskSignals > 0) {
+            return "Early risk signals detected";
+        }
+        return "Healthy activity";
+    }
+
+    private String recommendationsJson(double churnRisk,
+                                       String sentimentLabel,
+                                       int featureErrors,
+                                       int usageDrops,
+                                       int helpSearches,
+                                       int positiveSignals,
+                                       int noLoginSignals) {
+        if (featureErrors > 0 && usageDrops > 0) {
+            return "\"Escalate product regression\", \"Attach engineering owner\", \"Notify affected account team\"";
+        }
+        if (noLoginSignals > 0 && usageDrops > 0) {
+            return "\"Send proactive check-in\", \"Offer adoption review\", \"Monitor next 7 days\"";
+        }
+        if (helpSearches > 1) {
+            return "\"Schedule onboarding help\", \"Share admin setup guide\", \"Assign adoption specialist\"";
+        }
         if (churnRisk > 0.8) {
             return "\"Escalate to CSM outreach\", \"Offer retention credit\", \"Fix billing/payment issues\"";
         }
         if (churnRisk > 0.55) {
             return "\"Send proactive check-in\", \"Offer onboarding assistance\", \"Monitor next 7 days\"";
         }
-        if ("DELIGHTED".equalsIgnoreCase(sentimentLabel) || "SATISFIED".equalsIgnoreCase(sentimentLabel)) {
+        if (positiveSignals > 0 || "DELIGHTED".equalsIgnoreCase(sentimentLabel) || "SATISFIED".equalsIgnoreCase(sentimentLabel)) {
             return "\"Prompt for review\", \"Suggest upgrade path\", \"Share advanced features\"";
         }
         return "\"Continue monitoring\", \"Collect feedback\"";

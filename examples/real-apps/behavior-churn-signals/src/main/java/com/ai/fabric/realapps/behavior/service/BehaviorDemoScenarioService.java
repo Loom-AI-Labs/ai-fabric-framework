@@ -19,10 +19,14 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
 public class BehaviorDemoScenarioService {
+
+    public static final String SESSION_USER_PREFIX = "behavior-demo-user-";
+    public static final String SESSION_ACCOUNT_PREFIX = "behavior-demo-account-";
 
     private static final Map<String, DemoScenarioDefinition> SCENARIOS = createScenarios();
 
@@ -40,16 +44,40 @@ public class BehaviorDemoScenarioService {
     }
 
     @Transactional
+    public BehaviorDemoDashboard seed(String sessionId) {
+        if (StringUtils.hasText(sessionId)) {
+            seedSessionScenarios(sessionId);
+            return dashboard(sessionId);
+        }
+        return seed();
+    }
+
+    @Transactional
     public BehaviorDemoDashboard seedAndAnalyze() {
         seeder.seed();
         SCENARIOS.keySet().forEach(behaviorAnalysisService::analyzeUser);
         return dashboard();
     }
 
+    @Transactional
+    public BehaviorDemoDashboard seedAndAnalyze(String sessionId) {
+        if (!StringUtils.hasText(sessionId)) {
+            return seedAndAnalyze();
+        }
+        List<DemoScenarioDefinition> scenarios = seedSessionScenarios(sessionId);
+        scenarios.forEach(scenario -> behaviorAnalysisService.analyzeUser(scenario.userId()));
+        return dashboard(sessionId);
+    }
+
     @Transactional(readOnly = true)
     public BehaviorDemoDashboard dashboard() {
+        return dashboard(null);
+    }
+
+    @Transactional(readOnly = true)
+    public BehaviorDemoDashboard dashboard(String sessionId) {
         List<BehaviorInsights> insights = insightsRepository.findAll();
-        List<DemoScenarioSummary> summaries = SCENARIOS.values().stream()
+        List<DemoScenarioSummary> summaries = scenariosForSession(sessionId).stream()
             .map(definition -> summarize(definition, findInsight(insights, definition.userId())))
             .toList();
 
@@ -64,6 +92,47 @@ public class BehaviorDemoScenarioService {
                 .toList(),
             eventRepository.count()
         );
+    }
+
+    @Transactional
+    public DemoSessionResponse createSession(CreateDemoSessionRequest request) {
+        String sessionId = request != null && StringUtils.hasText(request.sessionId())
+            ? normalizeSessionId(request.sessionId())
+            : "behavior-session-" + UUID.randomUUID();
+        boolean analyze = request == null || request.analyze() == null || Boolean.TRUE.equals(request.analyze());
+        List<DemoScenarioDefinition> scenarios = seedSessionScenarios(sessionId);
+        if (analyze) {
+            scenarios.forEach(scenario -> behaviorAnalysisService.analyzeUser(scenario.userId()));
+        }
+        return new DemoSessionResponse(
+            sessionId,
+            scenarios.stream().map(scenario -> summarize(scenario, insightsRepository.findByUserId(scenario.userId()))).toList(),
+            dashboard(sessionId)
+        );
+    }
+
+    @Transactional
+    public ResetResult reset(ResetRequest request) {
+        ResetRequest effective = request != null ? request : new ResetRequest(null, null);
+        if (!Boolean.TRUE.equals(effective.confirm())) {
+            return new ResetResult(false, "confirm=true is required to reset behavior demo data", 0, dashboard(effective.sessionId()));
+        }
+
+        int deletedUsers;
+        if (StringUtils.hasText(effective.sessionId())) {
+            List<DemoScenarioDefinition> scenarios = scenariosForSession(effective.sessionId());
+            scenarios.forEach(scenario -> {
+                insightsRepository.deleteByUserId(scenario.userId());
+                eventRepository.deleteByUserId(scenario.userId());
+            });
+            deletedUsers = scenarios.size();
+            return new ResetResult(true, "Behavior demo session reset", deletedUsers, dashboard(effective.sessionId()));
+        }
+
+        deletedUsers = eventRepository.findDistinctUserIds().size();
+        insightsRepository.deleteAll();
+        eventRepository.deleteAll();
+        return new ResetResult(true, "Behavior demo data reset", deletedUsers, dashboard());
     }
 
     @Transactional
@@ -145,6 +214,7 @@ public class BehaviorDemoScenarioService {
     private DemoScenarioSummary summarize(DemoScenarioDefinition definition, Optional<BehaviorInsights> insight) {
         return new DemoScenarioSummary(
             definition.id(),
+            definition.baseUserId(),
             definition.userId(),
             definition.accountId(),
             definition.customerName(),
@@ -158,6 +228,7 @@ public class BehaviorDemoScenarioService {
             definition.usageDropPercent(),
             definition.failedPayments(),
             definition.supportTickets(),
+            definition.expectedActionFamily(),
             eventRepository.findByUserIdOrderByEventTimestampAsc(definition.userId()).size(),
             insight.map(this::toInsightSummary).orElse(null)
         );
@@ -210,11 +281,11 @@ public class BehaviorDemoScenarioService {
     }
 
     private DemoScenarioDefinition requireScenario(String userId) {
-        DemoScenarioDefinition scenario = SCENARIOS.get(userId);
-        if (scenario == null) {
+        Optional<DemoScenarioDefinition> scenario = resolveScenario(userId);
+        if (scenario.isEmpty()) {
             throw new IllegalArgumentException("Unknown behavior demo user: " + userId);
         }
-        return scenario;
+        return scenario.get();
     }
 
     private String toJson(Map<String, Object> data) {
@@ -230,6 +301,7 @@ public class BehaviorDemoScenarioService {
         scenarios.put("user-1001", new DemoScenarioDefinition(
             "billing-cancellation-risk",
             "user-1001",
+            "user-1001",
             "acct-1001",
             "Acme Finance",
             "pro",
@@ -241,10 +313,12 @@ public class BehaviorDemoScenarioService {
             25,
             62,
             2,
-            3
+            3,
+            "RETENTION_OFFER"
         ));
         scenarios.put("user-1002", new DemoScenarioDefinition(
             "expansion-ready-account",
+            "user-1002",
             "user-1002",
             "acct-1002",
             "Northstar Analytics",
@@ -257,10 +331,12 @@ public class BehaviorDemoScenarioService {
             0,
             0,
             0,
-            0
+            0,
+            "EXPANSION_FOLLOW_UP"
         ));
         scenarios.put("user-1003", new DemoScenarioDefinition(
             "onboarding-friction",
+            "user-1003",
             "user-1003",
             "acct-1003",
             "Harbor Clinics",
@@ -273,9 +349,120 @@ public class BehaviorDemoScenarioService {
             10,
             34,
             0,
-            1
+            2,
+            "ADOPTION_HELP"
+        ));
+        scenarios.put("user-1004", new DemoScenarioDefinition(
+            "release-regression",
+            "user-1004",
+            "user-1004",
+            "acct-1004",
+            "BrightMarket",
+            "pro",
+            "Release regression signal",
+            "A team hit dashboard errors after a release and report exports dropped sharply.",
+            "Escalate product regression evidence instead of offering a discount first.",
+            "FEATURE_ERROR",
+            "Reports stopped loading after the dashboard release and export usage fell.",
+            0,
+            58,
+            0,
+            2,
+            "ENGINEERING_ESCALATION"
+        ));
+        scenarios.put("user-1005", new DemoScenarioDefinition(
+            "silent-churn",
+            "user-1005",
+            "user-1005",
+            "acct-1005",
+            "QuietRiver Legal",
+            "starter",
+            "Silent churn",
+            "A customer has no complaints, but usage and logins are steadily disappearing.",
+            "Detect quiet disengagement before a cancellation request exists.",
+            "NO_LOGIN_14D",
+            "No logins for 14 days and weekly usage dropped without any support tickets.",
+            0,
+            41,
+            0,
+            0,
+            "PROACTIVE_CHECK_IN"
         ));
         return Collections.unmodifiableMap(scenarios);
+    }
+
+    private List<DemoScenarioDefinition> seedSessionScenarios(String sessionId) {
+        String normalized = normalizeSessionId(sessionId);
+        LocalDateTime base = LocalDateTime.now().minusHours(2);
+        return SCENARIOS.values().stream()
+            .map(definition -> cloneForSession(definition, normalized))
+            .peek(definition -> seeder.seedScenario(
+                definition.userId(),
+                definition.id(),
+                "demo-session",
+                base.plusMinutes(Math.abs(definition.id().hashCode() % 60))
+            ))
+            .toList();
+    }
+
+    private List<DemoScenarioDefinition> scenariosForSession(String sessionId) {
+        if (!StringUtils.hasText(sessionId)) {
+            return List.copyOf(SCENARIOS.values());
+        }
+        String normalized = normalizeSessionId(sessionId);
+        return SCENARIOS.values().stream()
+            .map(definition -> cloneForSession(definition, normalized))
+            .toList();
+    }
+
+    private Optional<DemoScenarioDefinition> resolveScenario(String userId) {
+        if (!StringUtils.hasText(userId)) {
+            return Optional.empty();
+        }
+        DemoScenarioDefinition canonical = SCENARIOS.get(userId);
+        if (canonical != null) {
+            return Optional.of(canonical);
+        }
+        if (!userId.startsWith(SESSION_USER_PREFIX)) {
+            return Optional.empty();
+        }
+        return SCENARIOS.values().stream()
+            .filter(definition -> userId.endsWith("-" + definition.baseUserId()))
+            .findFirst()
+            .map(definition -> cloneForUserId(definition, userId));
+    }
+
+    private DemoScenarioDefinition cloneForSession(DemoScenarioDefinition definition, String sessionId) {
+        return cloneForUserId(definition, SESSION_USER_PREFIX + sessionId + "-" + definition.baseUserId());
+    }
+
+    private DemoScenarioDefinition cloneForUserId(DemoScenarioDefinition definition, String userId) {
+        String suffix = userId.replace(SESSION_USER_PREFIX, "");
+        return new DemoScenarioDefinition(
+            definition.id(),
+            definition.baseUserId(),
+            userId,
+            SESSION_ACCOUNT_PREFIX + suffix + "-" + definition.accountId(),
+            definition.customerName(),
+            definition.planId(),
+            definition.title(),
+            definition.useCase(),
+            definition.operatorGoal(),
+            definition.defaultSignalType(),
+            definition.defaultSignalMessage(),
+            definition.defaultDiscountPercent(),
+            definition.usageDropPercent(),
+            definition.failedPayments(),
+            definition.supportTickets(),
+            definition.expectedActionFamily()
+        );
+    }
+
+    private String normalizeSessionId(String sessionId) {
+        if (!StringUtils.hasText(sessionId)) {
+            return "behavior-session-" + UUID.randomUUID();
+        }
+        return sessionId.trim().replaceAll("[^A-Za-z0-9_-]", "-");
     }
 
     public record BehaviorDemoDashboard(
@@ -289,6 +476,7 @@ public class BehaviorDemoScenarioService {
 
     public record DemoScenarioSummary(
         String id,
+        String baseUserId,
         String userId,
         String accountId,
         String customerName,
@@ -302,6 +490,7 @@ public class BehaviorDemoScenarioService {
         int usageDropPercent,
         int failedPayments,
         int supportTickets,
+        String expectedActionFamily,
         int eventCount,
         InsightSummary insight
     ) {}
@@ -371,8 +560,32 @@ public class BehaviorDemoScenarioService {
         RetentionStudioService.RetentionOfferResult result
     ) {}
 
+    public record CreateDemoSessionRequest(
+        String sessionId,
+        Boolean analyze
+    ) {}
+
+    public record ResetRequest(
+        String sessionId,
+        Boolean confirm
+    ) {}
+
+    public record ResetResult(
+        boolean success,
+        String message,
+        int deletedUsers,
+        BehaviorDemoDashboard dashboard
+    ) {}
+
+    public record DemoSessionResponse(
+        String sessionId,
+        List<DemoScenarioSummary> scenarios,
+        BehaviorDemoDashboard dashboard
+    ) {}
+
     private record DemoScenarioDefinition(
         String id,
+        String baseUserId,
         String userId,
         String accountId,
         String customerName,
@@ -385,6 +598,7 @@ public class BehaviorDemoScenarioService {
         int defaultDiscountPercent,
         int usageDropPercent,
         int failedPayments,
-        int supportTickets
+        int supportTickets,
+        String expectedActionFamily
     ) {}
 }
