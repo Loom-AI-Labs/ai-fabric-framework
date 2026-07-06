@@ -83,6 +83,12 @@ The demo shows an operator workflow for a SaaS behavior team:
 6. Confirm a retention offer when the selected scenario actually calls for one.
 7. Compose an agentic UI plan where the LLM selects safe component types and the backend fills trusted component props.
 
+Agentic UI planning deliberately keeps the LLM contract small. The backend sends a component catalog
+with each component name, description, and recommended use case. The LLM returns a short ordered list
+of component `name` plus `reason`; it does not return props, CSS, React configuration, or arbitrary UI
+data. The backend validates names against the allowlist and fills all component props from trusted
+behavior insight, events, retention review, and offer-preview data.
+
 The public UI is intentionally evidence-first. It displays the active provider posture, deployed
 commit/build metadata, behavior pipeline steps, scenario queue, model used for each insight, and
 governed action state. It should never present deterministic output as live AI; check

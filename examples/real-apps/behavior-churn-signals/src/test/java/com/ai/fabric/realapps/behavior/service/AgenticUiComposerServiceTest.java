@@ -39,9 +39,9 @@ class AgenticUiComposerServiceTest {
                       "layout": "custom-workbench",
                       "summary": "Show the save motion.",
                       "components": [
-                        {"type": "RISK_SUMMARY_CARD", "title": "Risk", "priority": 2, "rationale": "High churn risk.", "props": {"invented": true}},
-                        {"type": "ARBITRARY_WIDGET", "title": "Unsafe", "priority": 1, "rationale": "Should be ignored.", "props": {}},
-                        {"type": "RETENTION_OFFER_PANEL", "title": "Offer", "priority": 3, "rationale": "Needs confirmation.", "props": {}}
+                        {"name": "RISK_SUMMARY_CARD", "reason": "High churn risk."},
+                        {"name": "ARBITRARY_WIDGET", "reason": "Should be ignored."},
+                        {"name": "RETENTION_OFFER_PANEL", "reason": "Needs confirmation."}
                       ]
                     }
                     """)
@@ -58,11 +58,13 @@ class AgenticUiComposerServiceTest {
             .containsExactly("RISK_SUMMARY_CARD", "RETENTION_OFFER_PANEL");
 
         AgenticUiComposerService.AgenticUiComponent risk = response.plan().components().get(0);
+        assertThat(risk.title()).isEqualTo("Risk Summary Card");
+        assertThat(risk.rationale()).isEqualTo("High churn risk.");
         assertThat(risk.props()).containsEntry("segment", "at_risk");
         assertThat(risk.props()).containsEntry("churnRisk", 0.91);
-        assertThat(risk.props()).doesNotContainKey("invented");
 
         AgenticUiComposerService.AgenticUiComponent offer = response.plan().components().get(1);
+        assertThat(offer.title()).isEqualTo("Retention Offer Panel");
         assertThat(offer.props()).containsEntry("discountPercent", 25);
         assertThat(offer.props()).containsEntry("confirmationRequired", true);
     }

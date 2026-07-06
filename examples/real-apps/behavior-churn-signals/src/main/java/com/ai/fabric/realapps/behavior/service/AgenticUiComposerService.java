@@ -21,7 +21,6 @@ import org.springframework.util.StringUtils;
 
 import java.time.Instant;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -43,6 +42,59 @@ public class AgenticUiComposerService {
         "MONITORING_CARD",
         "HEALTH_SCORE_CARD",
         "NEXT_BEST_ACTIONS"
+    );
+
+    private static final List<ComponentCatalogItem> COMPONENT_CATALOG = List.of(
+        new ComponentCatalogItem(
+            "RISK_SUMMARY_CARD",
+            "Shows churn risk, sentiment, trend, churn reason, confidence, and immediate-action posture.",
+            "Use for high-risk, negative sentiment, commercial friction, cancellation risk, or accounts needing urgent operator attention."
+        ),
+        new ComponentCatalogItem(
+            "RECOMMENDED_ACTION_CARD",
+            "Shows the backend recommendation, action family, policy explanation, and evidence ids.",
+            "Use when the operator needs a clear next action backed by policy and evidence."
+        ),
+        new ComponentCatalogItem(
+            "EVENT_TIMELINE",
+            "Shows recent raw app behavior events with source, timestamp, and compact event summaries.",
+            "Use when event evidence explains why the UI changed; useful for most scenarios."
+        ),
+        new ComponentCatalogItem(
+            "RETENTION_OFFER_PANEL",
+            "Shows a confirmation-gated retention offer, discount policy, and offer confirmation message.",
+            "Use only for RETENTION_OFFER, high commercial churn, failed payments, cancellation intent, or save-motion scenarios."
+        ),
+        new ComponentCatalogItem(
+            "EXPANSION_NUDGE_CARD",
+            "Shows customer, plan, and an expansion-friendly recommendation.",
+            "Use for EXPANSION_FOLLOW_UP, healthy enterprise accounts, seat growth, upgrades, or positive expansion signals."
+        ),
+        new ComponentCatalogItem(
+            "PRODUCT_ESCALATION_PANEL",
+            "Shows product regression context, policy explanation, and escalation evidence ids.",
+            "Use for ENGINEERING_ESCALATION, feature errors, release regressions, dashboard/report failures, or product defects."
+        ),
+        new ComponentCatalogItem(
+            "ADOPTION_HELP_PANEL",
+            "Shows customer, support-ticket count, and the operator goal for guided setup help.",
+            "Use for ADOPTION_HELP, onboarding friction, help-center searches, setup confusion, or training/support guidance."
+        ),
+        new ComponentCatalogItem(
+            "MONITORING_CARD",
+            "Shows customer, usage-drop percent, and action family for low-friction monitoring.",
+            "Use for PROACTIVE_CHECK_IN, silent churn, usage decay, no-login signals, or watchlist follow-up."
+        ),
+        new ComponentCatalogItem(
+            "HEALTH_SCORE_CARD",
+            "Shows a compact account health score derived from churn risk, sentiment, and confidence.",
+            "Use for healthy or improving accounts, expansion-ready accounts, and positive posture summaries."
+        ),
+        new ComponentCatalogItem(
+            "NEXT_BEST_ACTIONS",
+            "Shows the behavior insight recommendation list and action family as concise next steps.",
+            "Use when multiple lightweight follow-up options should be shown."
+        )
     );
 
     private final AICoreService aiCoreService;
@@ -74,7 +126,7 @@ public class AgenticUiComposerService {
             .prompt(prompt)
             .parameters(StructuredJsonProviderHints.jsonObjectResponseParameters())
             .temperature(0.1)
-            .maxTokens(900)
+            .maxTokens(700)
             .authContext(AIAccessSubjectContexts.system("agentic-ui-composer"))
             .build();
 
@@ -130,14 +182,16 @@ public class AgenticUiComposerService {
             .prompt("""
                 Repair the previous response into valid JSON only.
                 It must include layout, summary, and components.
-                Allowed component types: %s
+                Each component must contain only name and reason.
+                Available component catalog:
+                %s
 
                 Previous response:
                 %s
-                """.formatted(ALLOWED_COMPONENT_TYPES, previousRawContent))
+                """.formatted(toJsonString(COMPONENT_CATALOG), previousRawContent))
             .parameters(StructuredJsonProviderHints.jsonObjectResponseParameters())
             .temperature(0.0)
-            .maxTokens(700)
+            .maxTokens(500)
             .authContext(AIAccessSubjectContexts.system("agentic-ui-composer"))
             .build();
     }
@@ -154,21 +208,20 @@ public class AgenticUiComposerService {
                 if (!(item instanceof Map<?, ?> rawComponent)) {
                     continue;
                 }
-                String type = stringValue(rawComponent.get("type")).toUpperCase(Locale.ROOT);
+                String type = stringValue(firstText(rawComponent, "name", "type")).toUpperCase(Locale.ROOT);
                 if (!ALLOWED_COMPONENT_TYPES.contains(type)) {
                     continue;
                 }
-                int priority = intValue(rawComponent.get("priority"), index + 1);
-                String title = StringUtils.hasText(stringValue(rawComponent.get("title")))
-                    ? stringValue(rawComponent.get("title"))
-                    : defaultTitle(type);
-                String rationale = StringUtils.hasText(stringValue(rawComponent.get("rationale")))
+                int priority = index + 1;
+                String rationale = StringUtils.hasText(stringValue(rawComponent.get("reason")))
+                    ? stringValue(rawComponent.get("reason"))
+                    : StringUtils.hasText(stringValue(rawComponent.get("rationale")))
                     ? stringValue(rawComponent.get("rationale"))
                     : "Selected from current behavior insight.";
                 components.add(new AgenticUiComponent(
                     stableComponentId(type, components.size() + 1),
                     type,
-                    title,
+                    defaultTitle(type),
                     priority,
                     rationale,
                     trustedProps(type, behaviorResult)
@@ -177,7 +230,6 @@ public class AgenticUiComposerService {
             }
         }
 
-        components.sort(Comparator.comparingInt(AgenticUiComponent::priority));
         return new AgenticUiPlan(
             stringOrDefault(raw.get("layout"), "adaptive-retention-workbench"),
             stringOrDefault(raw.get("summary"), "UI composed from current behavior insight."),
@@ -355,11 +407,11 @@ public class AgenticUiComposerService {
               "layout": "short-layout-name",
               "summary": "one sentence",
               "components": [
-                {"type": "ONE_ALLOWED_TYPE", "title": "short title", "priority": 1, "rationale": "why this component helps", "props": {}}
+                {"name": "ONE_ALLOWED_COMPONENT_NAME", "reason": "why this component belongs in this UI"}
               ]
             }
 
-            Allowed component types:
+            Available component catalog:
             %s
 
             Current trusted insight and account context:
@@ -367,15 +419,16 @@ public class AgenticUiComposerService {
 
             Rules:
             - Return 3 to 5 components.
-            - Use only allowed component types.
+            - Use only component names from the catalog.
+            - Return only names and reasons for components.
             - Choose components from the current insight and action family.
             - Do not invent facts, numbers, ids, offers, or event data.
-            - Put explanatory text only in title, summary, and rationale.
-            """.formatted(ALLOWED_COMPONENT_TYPES, toJsonString(context));
+            - Do not return component props, titles, config, CSS, or layout instructions beyond the short layout name.
+            """.formatted(toJsonString(COMPONENT_CATALOG), toJsonString(context));
     }
 
     private String systemPrompt() {
-        return "You are an agentic UI planner. Return only valid JSON. Choose a small allowlisted component plan from trusted behavior insight.";
+        return "You are an agentic UI planner. Return only valid JSON. Pick a short ordered list of component names from the provided catalog.";
     }
 
     private String toJsonString(Object value) {
@@ -404,6 +457,19 @@ public class AgenticUiComposerService {
         } catch (Exception ignored) {
             return fallback;
         }
+    }
+
+    private Object firstText(Map<?, ?> raw, String... keys) {
+        if (raw == null || keys == null) {
+            return "";
+        }
+        for (String key : keys) {
+            Object value = raw.get(key);
+            if (StringUtils.hasText(stringValue(value))) {
+                return value;
+            }
+        }
+        return "";
     }
 
     private String stableComponentId(String type, int index) {
@@ -458,5 +524,11 @@ public class AgenticUiComposerService {
         int priority,
         String rationale,
         Map<String, Object> props
+    ) {}
+
+    private record ComponentCatalogItem(
+        String name,
+        String description,
+        String useWhen
     ) {}
 }
