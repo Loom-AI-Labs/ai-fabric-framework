@@ -153,7 +153,7 @@ public class AgenticUiComposerService {
 
         if (!result.isSuccess() || result.getValue() == null) {
             String reason = result.getLastFailure() != null ? result.getLastFailure().message() : "unknown";
-            return fallbackPlan(behaviorResult, "fallback: " + reason);
+            throw new IllegalStateException("Agentic UI composition failed: " + reason);
         }
 
         AgenticUiPlan plan = normalizePlan(
@@ -162,7 +162,10 @@ public class AgenticUiComposerService {
             lastResponse.get() != null ? lastResponse.get().getModel() : "unknown",
             result.getAttempts()
         );
-        return plan.components().isEmpty() ? fallbackPlan(behaviorResult, "fallback: no valid components") : plan;
+        if (plan.components().isEmpty()) {
+            throw new IllegalStateException("Agentic UI composition failed: no valid components");
+        }
+        return plan;
     }
 
     private void validateRawPlan(Map<?, ?> raw) {
@@ -244,44 +247,6 @@ public class AgenticUiComposerService {
         );
     }
 
-    private AgenticUiPlan fallbackPlan(BehaviorScenarioResult result, String source) {
-        List<String> types = fallbackComponentTypes(result.retentionReview().actionFamily());
-        List<AgenticUiComponent> components = new ArrayList<>();
-        for (int i = 0; i < types.size(); i++) {
-            String type = types.get(i);
-            components.add(new AgenticUiComponent(
-                stableComponentId(type, i + 1),
-                type,
-                defaultTitle(type),
-                i + 1,
-                "Fallback selection from trusted behavior insight and action family.",
-                trustedProps(type, result)
-            ));
-        }
-        return new AgenticUiPlan(
-            "safe-default-workbench",
-            "Safe fallback UI composed from current behavior insight.",
-            source,
-            "fallback",
-            0,
-            Instant.now().toString(),
-            ALLOWED_COMPONENT_TYPES,
-            components
-        );
-    }
-
-    private List<String> fallbackComponentTypes(String actionFamily) {
-        String family = actionFamily != null ? actionFamily.toUpperCase(Locale.ROOT) : "";
-        return switch (family) {
-            case "RETENTION_OFFER" -> List.of("ACCOUNT_STATUS_BANNER", "PERSONALIZED_NEXT_STEP", "BEHAVIOR_EVIDENCE_FEED", "RETENTION_OFFER");
-            case "EXPANSION_FOLLOW_UP" -> List.of("ACTIVITY_POINTS", "UPGRADE_RECOMMENDATION", "BEHAVIOR_EVIDENCE_FEED");
-            case "ADOPTION_HELP" -> List.of("QUICK_SETUP_SHORTCUTS", "BEHAVIOR_EVIDENCE_FEED", "SMART_SHORTCUTS");
-            case "ENGINEERING_ESCALATION" -> List.of("SERVICE_RECOVERY_UPDATE", "BEHAVIOR_EVIDENCE_FEED", "PERSONALIZED_NEXT_STEP");
-            case "PROACTIVE_CHECK_IN" -> List.of("ENGAGEMENT_WATCH", "BEHAVIOR_EVIDENCE_FEED", "SMART_SHORTCUTS");
-            default -> List.of("ACCOUNT_STATUS_BANNER", "BEHAVIOR_EVIDENCE_FEED", "SMART_SHORTCUTS");
-        };
-    }
-
     private Map<String, Object> trustedProps(String type, BehaviorScenarioResult result) {
         return switch (type) {
             case "ACCOUNT_STATUS_BANNER" -> riskProps(result.insight());
@@ -350,10 +315,9 @@ public class AgenticUiComposerService {
     private Map<String, Object> retentionProps(BehaviorScenarioResult result) {
         Map<String, Object> props = new LinkedHashMap<>();
         props.put("discountPercent", result.scenario().defaultDiscountPercent());
-        props.put("confirmationMessage", result.retentionOfferPreview().confirmationMessage());
-        props.put("confirmationRequired", result.retentionOfferPreview().result().confirmationRequired());
-        props.put("message", result.retentionOfferPreview().result().message());
-        props.put("data", result.retentionOfferPreview().result().data());
+        props.put("recommendation", result.retentionReview().recommendation());
+        props.put("policyExplanation", result.retentionReview().policyExplanation());
+        props.put("confirmationRequired", false);
         return props;
     }
 

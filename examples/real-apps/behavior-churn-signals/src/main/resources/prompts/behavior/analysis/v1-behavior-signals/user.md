@@ -10,11 +10,12 @@ For mixed evidence, keep the analysis balanced: name both the remaining blocker 
 
 Output one compact JSON object only. Prefer concise evidence summaries over long explanations.
 If this is the first analysis for the user, set trend to NEW_USER unless the event sequence clearly shows rapid improvement or decline.
-Map the strongest operator need into insights.action_family when possible:
+Always map the strongest operator need into insights.action_family:
 - RETENTION_OFFER for billing failures, cancellation intent, refund pressure, or renewal risk
 - EXPANSION_FOLLOW_UP for healthy adoption, positive sentiment, upgrade signals, or increasing usage
 - ADOPTION_HELP for onboarding confusion, repeated help searches, setup friction, or unresolved usage questions
 - ENGINEERING_ESCALATION for release regressions, repeated feature errors, timeouts, or performance failures
 - PROACTIVE_CHECK_IN for no-login, quiet usage drop, or disengagement without direct complaint
+- MONITOR_ONLY for steady low-risk behavior with no clear operator intervention
 
 Return valid JSON only.

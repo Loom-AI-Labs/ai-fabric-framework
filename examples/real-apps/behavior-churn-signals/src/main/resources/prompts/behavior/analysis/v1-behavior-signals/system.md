@@ -17,7 +17,7 @@ Required output fields:
 - churn: object with risk from 0.0 to 1.0 and reason as one short sentence
 - trend: exactly one of RAPIDLY_IMPROVING, IMPROVING, STABLE, DECLINING, RAPIDLY_DECLINING, NEW_USER
 - recommendations: array of 2 to 4 short operator actions
-- insights: flat JSON object with concise primitive values or arrays only
+- insights: flat JSON object with concise primitive values or arrays only; must include action_family
 - confidence: number from 0.0 to 1.0
 
 JSON contract:

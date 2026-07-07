@@ -40,7 +40,7 @@ class BehaviorDemoScenarioServiceTest {
     );
 
     @Test
-    void analyzeReturnsBehaviorEvidenceAndConfirmationGatedRetentionOffer() {
+    void analyzeReturnsBehaviorEvidenceAndAiSelectedRecommendation() {
         BehaviorInsights insight = BehaviorInsights.builder()
             .userId("user-1001")
             .segment("at_risk")
@@ -51,6 +51,7 @@ class BehaviorDemoScenarioServiceTest {
             .trend(BehaviorTrend.RAPIDLY_DECLINING)
             .patterns(List.of("payment_signals:2", "cancel_signals:2"))
             .recommendations(List.of("Offer retention credit", "Assign CSM outreach"))
+            .insights(Map.of("action_family", "RETENTION_OFFER"))
             .confidence(0.82)
             .aiModelUsed("behavior-local")
             .processingTimeMs(12L)
@@ -67,9 +68,10 @@ class BehaviorDemoScenarioServiceTest {
         assertThat(result.insight().patterns()).contains("payment_signals:2", "cancel_signals:2");
         assertThat(result.events()).hasSize(2);
         assertThat(result.retentionReview().riskCategory()).isEqualTo("HIGH");
+        assertThat(result.retentionReview().actionFamily()).isEqualTo("RETENTION_OFFER");
+        assertThat(result.retentionReview().recommendation()).contains("Offer retention credit");
         assertThat(result.retentionReview().evidenceIds()).contains("insight-acct-1001-user-1001", "plan-pro");
-        assertThat(result.retentionOfferPreview().result().confirmationRequired()).isTrue();
-        assertThat(result.retentionOfferPreview().actionName()).isEqualTo("create_retention_offer");
+        assertThat(result.retentionOfferPreview()).isNull();
         verify(behaviorAnalysisService).analyzeUser("user-1001");
     }
 
@@ -117,6 +119,7 @@ class BehaviorDemoScenarioServiceTest {
 
     @Test
     void recordSignalDefaultsToStructuredRawAppEventData() throws Exception {
+        when(behaviorAnalysisService.analyzeUser("user-1001")).thenReturn(insight("user-1001", "RETENTION_OFFER"));
         when(eventRepository.findByUserIdOrderByEventTimestampAsc("user-1001")).thenReturn(List.of());
 
         service.recordSignal("user-1001", new BehaviorDemoScenarioService.RecordBehaviorSignalRequest(null, null, null));
@@ -140,6 +143,7 @@ class BehaviorDemoScenarioServiceTest {
 
     @Test
     void recordPositiveRecoveryAddsRawPositiveEventsAndReanalyzesOnce() {
+        when(behaviorAnalysisService.analyzeUser("user-1001")).thenReturn(insight("user-1001", "EXPANSION_FOLLOW_UP"));
         when(eventRepository.findByUserIdOrderByEventTimestampAsc("user-1001")).thenReturn(List.of());
 
         service.recordPositiveRecovery("user-1001");
@@ -192,5 +196,24 @@ class BehaviorDemoScenarioServiceTest {
         event.setEventData("{}");
         event.setSource("test");
         return event;
+    }
+
+    private static BehaviorInsights insight(String userId, String actionFamily) {
+        return BehaviorInsights.builder()
+            .userId(userId)
+            .segment("test_segment")
+            .sentimentLabel(SentimentLabel.SATISFIED)
+            .sentimentScore(0.3)
+            .churnRisk(0.2)
+            .churnReason("Test reason")
+            .trend(BehaviorTrend.STABLE)
+            .patterns(List.of("test-pattern"))
+            .recommendations(List.of("Test recommendation"))
+            .insights(Map.of("action_family", actionFamily))
+            .confidence(0.8)
+            .aiModelUsed("test-model")
+            .processingTimeMs(10L)
+            .analyzedAt(LocalDateTime.now())
+            .build();
     }
 }

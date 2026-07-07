@@ -14,6 +14,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
@@ -74,7 +75,7 @@ class AgenticUiComposerServiceTest {
         AgenticUiComposerService.AgenticUiComponent offer = response.plan().components().get(1);
         assertThat(offer.title()).isEqualTo("Retention Offer");
         assertThat(offer.props()).containsEntry("discountPercent", 25);
-        assertThat(offer.props()).containsEntry("confirmationRequired", true);
+        assertThat(offer.props()).containsEntry("confirmationRequired", false);
     }
 
     @Test
@@ -102,20 +103,16 @@ class AgenticUiComposerServiceTest {
     }
 
     @Test
-    void fallsBackWhenLlmDoesNotReturnUsableJson() {
+    void failsWhenLlmDoesNotReturnUsableJson() {
         when(aiCoreService.generateContent(any(AIGenerationRequest.class), eq(LlmPurpose.ORCHESTRATION)))
             .thenReturn(AIGenerationResponse.builder()
                 .model("broken-model")
                 .content("not json")
                 .build());
 
-        AgenticUiComposerService.AgenticUiResponse response = service.compose(sampleResult("ENGINEERING_ESCALATION"));
-
-        assertThat(response.plan().source()).contains("fallback");
-        assertThat(response.plan().model()).isEqualTo("fallback");
-        assertThat(response.plan().components())
-            .extracting(AgenticUiComposerService.AgenticUiComponent::type)
-            .containsExactly("SERVICE_RECOVERY_UPDATE", "BEHAVIOR_EVIDENCE_FEED", "PERSONALIZED_NEXT_STEP");
+        assertThatThrownBy(() -> service.compose(sampleResult("ENGINEERING_ESCALATION")))
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessageContaining("Agentic UI composition failed");
     }
 
     private static BehaviorDemoScenarioService.BehaviorScenarioResult sampleResult(String actionFamily) {

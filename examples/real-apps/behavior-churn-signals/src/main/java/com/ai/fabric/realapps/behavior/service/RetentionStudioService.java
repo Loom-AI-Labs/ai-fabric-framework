@@ -4,17 +4,28 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 
 @Service
 public class RetentionStudioService {
 
     private static final int MAX_AUTO_DISCOUNT_PERCENT = 40;
+    private static final Set<String> ALLOWED_ACTION_FAMILIES = Set.of(
+        "RETENTION_OFFER",
+        "EXPANSION_FOLLOW_UP",
+        "ADOPTION_HELP",
+        "ENGINEERING_ESCALATION",
+        "PROACTIVE_CHECK_IN",
+        "MONITOR_ONLY"
+    );
 
     public RetentionReviewResult review(RetentionReviewRequest request) {
         RetentionReviewRequest effective = requireRequest(request);
-        String risk = riskCategory(effective);
-        String actionFamily = actionFamily(effective, risk);
+        RetentionAiEvidence evidence = requireAiEvidence(effective.aiEvidence(), effective.userId());
+        String actionFamily = normalizeActionFamily(evidence.actionFamily(), effective.userId());
+        String risk = riskCategory(evidence);
         String insightId = "insight-" + effective.accountId() + "-" + effective.userId();
         String planEvidenceId = "plan-" + effective.planId();
         return new RetentionReviewResult(
@@ -22,9 +33,9 @@ public class RetentionStudioService {
             effective.userId(),
             risk,
             actionFamily,
-            List.of(insightId, planEvidenceId),
-            recommendation(actionFamily, risk),
-            policyExplanation(actionFamily, risk)
+            List.of(insightId, planEvidenceId, "ai-action-" + actionFamily.toLowerCase(Locale.ROOT)),
+            recommendation(evidence),
+            policyExplanation(actionFamily, risk, evidence)
         );
     }
 
@@ -73,58 +84,70 @@ public class RetentionStudioService {
         return request;
     }
 
-    private String riskCategory(RetentionReviewRequest request) {
-        if (request.failedPayments() >= 2 || request.usageDropPercent() >= 50 || request.supportTickets() >= 3) {
+    private RetentionAiEvidence requireAiEvidence(RetentionAiEvidence evidence, String userId) {
+        if (evidence == null) {
+            throw new IllegalStateException("AI behavior analysis is required before retention review for user " + userId);
+        }
+        if (evidence.recommendations() == null || evidence.recommendations().stream().noneMatch(StringUtils::hasText)) {
+            throw new IllegalStateException("AI behavior analysis did not provide recommendations for user " + userId);
+        }
+        return evidence;
+    }
+
+    private String normalizeActionFamily(String rawActionFamily, String userId) {
+        if (!StringUtils.hasText(rawActionFamily)) {
+            throw new IllegalStateException("AI behavior analysis did not provide insights.action_family for user " + userId);
+        }
+        String normalized = rawActionFamily.trim()
+            .replace('-', '_')
+            .replace(' ', '_')
+            .toUpperCase(Locale.ROOT);
+        if (!ALLOWED_ACTION_FAMILIES.contains(normalized)) {
+            throw new IllegalStateException("AI behavior analysis returned unsupported action family '" + rawActionFamily + "' for user " + userId);
+        }
+        return normalized;
+    }
+
+    private String riskCategory(RetentionAiEvidence evidence) {
+        if (Boolean.TRUE.equals(evidence.requiresImmediateAction()) || value(evidence.churnRisk()) >= 0.75) {
             return "HIGH";
         }
-        if (request.failedPayments() > 0 || request.usageDropPercent() >= 25 || request.supportTickets() > 0) {
+        String trend = evidence.trend() != null ? evidence.trend().toUpperCase(Locale.ROOT) : "";
+        String sentiment = evidence.sentimentLabel() != null ? evidence.sentimentLabel().toUpperCase(Locale.ROOT) : "";
+        if (value(evidence.churnRisk()) >= 0.35
+            || trend.contains("DECLINING")
+            || "CONFUSED".equals(sentiment)
+            || "FRUSTRATED".equals(sentiment)
+            || "CHURNING".equals(sentiment)) {
             return "MEDIUM";
         }
         return "LOW";
     }
 
-    private String actionFamily(RetentionReviewRequest request, String risk) {
-        if (request.failedPayments() == 0 && request.supportTickets() >= 2 && request.usageDropPercent() >= 50) {
-            return "ENGINEERING_ESCALATION";
-        }
-        if (request.failedPayments() == 0 && request.supportTickets() == 0 && request.usageDropPercent() >= 25) {
-            return "PROACTIVE_CHECK_IN";
-        }
-        if (request.failedPayments() == 0 && request.supportTickets() > 0) {
-            return "ADOPTION_HELP";
-        }
-        if ("LOW".equals(risk) && "enterprise".equalsIgnoreCase(request.planId())) {
-            return "EXPANSION_FOLLOW_UP";
-        }
-        if ("HIGH".equals(risk)) {
-            return "RETENTION_OFFER";
-        }
-        if ("MEDIUM".equals(risk)) {
-            return "ADOPTION_HELP";
-        }
-        return "MONITOR_ONLY";
+    private double value(Double value) {
+        return value != null ? value : 0.0;
     }
 
-    private String recommendation(String actionFamily, String risk) {
-        return switch (actionFamily) {
-            case "RETENTION_OFFER" -> "Offer retention credit and assign CSM outreach.";
-            case "ENGINEERING_ESCALATION" -> "Escalate product regression evidence to engineering and notify the account team.";
-            case "ADOPTION_HELP" -> "Schedule adoption review and share setup guidance.";
-            case "EXPANSION_FOLLOW_UP" -> "Route to expansion follow-up and avoid unnecessary retention discount.";
-            case "PROACTIVE_CHECK_IN" -> "Send proactive check-in before quiet disengagement becomes cancellation risk.";
-            default -> "Continue monitoring behavior trend.";
-        };
+    private String recommendation(RetentionAiEvidence evidence) {
+        return evidence.recommendations().stream()
+            .filter(StringUtils::hasText)
+            .limit(3)
+            .reduce((left, right) -> left + "; " + right)
+            .orElseThrow();
     }
 
-    private String policyExplanation(String actionFamily, String risk) {
-        return switch (actionFamily) {
-            case "RETENTION_OFFER" -> "High risk with commercial friction qualifies for a confirmation-gated retention offer.";
-            case "ENGINEERING_ESCALATION" -> "Usage dropped with repeated support/product-error signals, so escalation is safer than discounting.";
-            case "ADOPTION_HELP" -> "The account shows support or setup friction without enough commercial distress for a retention discount.";
-            case "EXPANSION_FOLLOW_UP" -> "Healthy enterprise behavior should be routed to expansion, not retention rescue.";
-            case "PROACTIVE_CHECK_IN" -> "Usage is declining without explicit complaints, so the safe next step is proactive outreach.";
-            default -> "Risk is " + risk + ", so monitoring is sufficient for now.";
-        };
+    private String policyExplanation(String actionFamily, String risk, RetentionAiEvidence evidence) {
+        return "AI Fabric accepted the LLM-selected action family " + actionFamily
+            + " for analytics review after validating it against the allowed demo policy categories. "
+            + "Risk is " + risk
+            + " from churnRisk=" + String.format(Locale.ROOT, "%.2f", value(evidence.churnRisk()))
+            + ", trend=" + safe(evidence.trend())
+            + ", sentiment=" + safe(evidence.sentimentLabel())
+            + ". This page explains operator insight only; it does not execute a customer-facing offer.";
+    }
+
+    private String safe(String value) {
+        return StringUtils.hasText(value) ? value : "unknown";
     }
 
     public record RetentionReviewRequest(
@@ -133,7 +156,21 @@ public class RetentionStudioService {
         String planId,
         int usageDropPercent,
         int failedPayments,
-        int supportTickets
+        int supportTickets,
+        RetentionAiEvidence aiEvidence
+    ) {}
+
+    public record RetentionAiEvidence(
+        String actionFamily,
+        Double churnRisk,
+        String sentimentLabel,
+        String trend,
+        List<String> patterns,
+        List<String> recommendations,
+        String churnReason,
+        Double confidence,
+        String model,
+        Boolean requiresImmediateAction
     ) {}
 
     public record RetentionReviewResult(

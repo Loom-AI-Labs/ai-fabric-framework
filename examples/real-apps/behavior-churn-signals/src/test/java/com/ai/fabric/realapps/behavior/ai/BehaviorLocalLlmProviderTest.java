@@ -33,6 +33,7 @@ class BehaviorLocalLlmProviderTest {
         assertThat(json.path("sentiment").path("label").asText()).isNotBlank();
         assertThat(json.path("churn").path("risk").asDouble()).isGreaterThan(0.7);
         assertThat(json.path("patterns")).hasSize(10);
+        assertThat(json.path("insights").path("action_family").asText()).isEqualTo("RETENTION_OFFER");
         assertThat(json.path("insights").path("signals").path("payment_failed").asInt()).isEqualTo(2);
     }
 

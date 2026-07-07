@@ -5,7 +5,8 @@
 This app demonstrates behavior analytics, churn/sentiment insight generation, and governed operator
 actions using AI Fabric's behavior module. The public-demo scenario is a SaaS behavior command center:
 operators review real account behavior signals, analyze churn/upside/product-risk signals, record a
-raw application event, and confirm a retention offer only when the evidence supports it.
+raw application event, and inspect AI-selected operator recommendations without showing customer-facing
+offer execution controls.
 
 The app is fully offline by default. It uses H2, deterministic sample behavior data, and an in-app
 deterministic LLM provider so the scenario is repeatable without external API keys.
@@ -20,11 +21,11 @@ action-family analysis.
 - Application events can be exposed through the `ExternalEventProvider` SPI.
 - `BehaviorAnalysisService` produces persisted `BehaviorInsights` per user.
 - Built-in behavior analytics endpoints can query trend and rapid-decline signals.
-- Retention workflow can combine behavior evidence, plan evidence, policy explanations, and confirmation-gated actions.
+- Retention workflow can combine behavior evidence, plan evidence, policy explanations, and separate policy-gated actions.
 - Product-shaped `/api/behavior-demo` endpoints expose repeatable real-world scenarios for UI demos.
 - Agentic UI planning can ask the configured AI Fabric LLM provider for an allowlisted structured component plan.
 - Customer-safe recommendation output can cite stable evidence ids rather than raw internal state.
-- Public demo sessions can isolate each visitor's seeded users, injected signals, and action previews.
+- Public demo sessions can isolate each visitor's seeded users, injected signals, and generated insights.
 - `/api/behavior-demo/health` exposes build metadata, provider posture, behavior mode, and demo readiness counts.
 
 ## Framework Surfaces
@@ -79,16 +80,15 @@ The demo shows an operator workflow for a SaaS behavior team:
 2. Analyze five seeded behavior scenarios.
 3. Review churn, sentiment, trend, recommendation, and action-family evidence.
 4. Record a typed raw app event such as `PAYMENT_FAILED`, `FEATURE_ERROR`, `HELP_CENTER_SEARCH`, or `NO_LOGIN_14D`.
-5. Preview governed action output with backend policy explanations.
-6. Confirm a retention offer when the selected scenario actually calls for one.
-7. Compose a behavior-driven home preview where the LLM selects safe user-facing home modules and the backend fills trusted module props.
-8. Add positive recovery events to a churning user and observe how churn, sentiment, trend, and component selection react.
+5. Review the AI-selected action family with backend policy validation.
+6. Compose a behavior-driven home preview where the LLM selects safe user-facing home modules and the backend fills trusted module props.
+7. Add positive recovery events to a churning user and observe how churn, sentiment, trend, and component selection react.
 
 Agentic UI planning deliberately keeps the LLM contract small. The backend sends a component catalog
 with each component name, description, and recommended use case. The LLM returns a short ordered list
 of component `name` plus `reason`; it does not return props, CSS, React configuration, or arbitrary UI
 data. The backend validates names against the allowlist and fills all component props from trusted
-behavior insight, events, retention review, and offer-preview data.
+behavior insight, events, and retention review data.
 
 The public UI is intentionally evidence-first. It displays the active provider posture, deployed
 commit/build metadata, behavior pipeline steps, scenario queue, model used for each insight, and
@@ -99,7 +99,7 @@ governed action state. It should never present deterministic output as live AI; 
 
 This is the backend for the `aifabric` Behavior Signals UI and its behavior-driven home-preview
 subpage. It is intentionally not a RAG/vector demo; it proves AI Fabric behavior analysis,
-structured LLM output, governed action preview, and agentic UI planning.
+structured LLM output, governed analytics recommendations, and agentic UI planning.
 
 Backend dependencies:
 
@@ -132,7 +132,7 @@ Request and data flow:
 3. The UI triggers `BehaviorAnalysisService` through `/api/behavior-demo/scenarios/{userId}/analyze`
    or records a new raw event through `/signals`.
 4. AI Fabric summarizes sentiment, churn risk, trend, recommendation, action family, and evidence.
-5. Retention offer preview and confirmation stay in backend policy code, not frontend heuristics.
+5. The analytics page shows AI-selected recommendation families, not frontend heuristics or offer execution controls.
 6. The agentic UI route calls `/agentic-ui`; the LLM receives a small component catalog and returns
    component names plus reasons. The backend validates names and renders trusted, domain-specific
    module props for the UI.
@@ -188,7 +188,7 @@ From the repository root:
      }' | jq
    ```
 
-6. Preview the confirmation-gated retention offer:
+6. Optional API-only check: preview the confirmation-gated retention offer endpoint:
 
    ```bash
    curl -fsS -X POST http://localhost:8097/api/behavior-demo/scenarios/behavior-demo-user-local-browser-1-user-1001/retention-offer \
@@ -196,7 +196,7 @@ From the repository root:
      -d '{"discountPercent":25,"confirmed":false}' | jq
    ```
 
-7. Confirm the retention action:
+7. Optional API-only check: confirm the retention action endpoint:
 
    ```bash
    curl -fsS -X POST http://localhost:8097/api/behavior-demo/scenarios/behavior-demo-user-local-browser-1-user-1001/retention-offer \
@@ -236,8 +236,8 @@ For a live browser smoke against the public deployment, verify:
 2. The UI shows `API connected`, `Live LLM provider`, and the expected commit.
 3. Each seeded scenario returns a non-fallback model such as `gpt-4o-mini-2024-07-18`.
 4. Recording a typed app event re-runs behavior analysis and increases the session event count.
-5. Retention offer preview returns `confirmationRequired=true`, and confirmation executes the action.
-6. Agentic UI planning returns only allowlisted component types with backend-populated props.
+5. The recommendation panel shows an AI-selected `action_family`; if LLM analysis fails, the UI shows the failure instead of substituting a fallback recommendation.
+6. Agentic UI planning returns only allowlisted component types with backend-populated props; invalid LLM layout output fails visibly.
 7. Positive recovery events are visible as raw event evidence and cause a fresh behavior analysis.
 8. Reset the session and confirm health returns to zero public-demo events/insights for that session.
 
@@ -248,10 +248,9 @@ For a live browser smoke against the public deployment, verify:
 3. Analyze all seeded accounts or a selected account through AI Fabric `BehaviorAnalysisService`.
 4. Review persisted behavior insight summaries, trend distribution, and immediate-action signals.
 5. Record a new raw account behavior event and re-run analysis.
-6. Review behavior evidence, policy explanation, and recommended action family.
-7. Preview and optionally confirm a confirmation-gated retention offer.
-8. Generate an agentic UI component plan for the selected account and render the returned component list.
-9. For the churning account, add positive recovery events and compare before/after insight metrics.
+6. Review behavior evidence, policy explanation, and AI-selected recommended action family.
+7. Generate an agentic UI component plan for the selected account and render the returned component list.
+8. For the churning account, add positive recovery events and compare before/after insight metrics.
 
 ## Key Endpoints
 

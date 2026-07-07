@@ -231,6 +231,9 @@ public class BehaviorDemoScenarioService {
     }
 
     private BehaviorScenarioResult resultFor(DemoScenarioDefinition scenario, BehaviorInsights insight) {
+        if (insight == null) {
+            throw new IllegalStateException("AI Fabric behavior analysis returned no insight for user " + scenario.userId());
+        }
         RetentionStudioService.RetentionReviewResult review = retentionStudioService.review(
             new RetentionStudioService.RetentionReviewRequest(
                 scenario.accountId(),
@@ -238,7 +241,8 @@ public class BehaviorDemoScenarioService {
                 scenario.planId(),
                 scenario.usageDropPercent(),
                 scenario.failedPayments(),
-                scenario.supportTickets()
+                scenario.supportTickets(),
+                aiEvidence(insight)
             )
         );
 
@@ -249,8 +253,28 @@ public class BehaviorDemoScenarioService {
                 .map(BehaviorEventSummary::from)
                 .toList(),
             review,
-            retentionOffer(scenario.userId(), new RetentionOfferDemoRequest(scenario.defaultDiscountPercent(), false))
+            null
         );
+    }
+
+    private RetentionStudioService.RetentionAiEvidence aiEvidence(BehaviorInsights insight) {
+        Map<String, Object> rawInsights = insight.getInsights() != null ? insight.getInsights() : Map.of();
+        return new RetentionStudioService.RetentionAiEvidence(
+            stringValue(rawInsights.get("action_family")),
+            insight.getChurnRisk(),
+            insight.getSentimentLabel() != null ? insight.getSentimentLabel().name() : null,
+            insight.getTrend() != null ? insight.getTrend().name() : null,
+            insight.getPatterns() != null ? insight.getPatterns() : List.of(),
+            insight.getRecommendations() != null ? insight.getRecommendations() : List.of(),
+            insight.getChurnReason(),
+            insight.getConfidence(),
+            insight.getAiModelUsed(),
+            insight.requiresImmediateAction()
+        );
+    }
+
+    private String stringValue(Object value) {
+        return value != null ? String.valueOf(value) : null;
     }
 
     private DemoScenarioSummary summarize(DemoScenarioDefinition definition, Optional<BehaviorInsights> insight) {

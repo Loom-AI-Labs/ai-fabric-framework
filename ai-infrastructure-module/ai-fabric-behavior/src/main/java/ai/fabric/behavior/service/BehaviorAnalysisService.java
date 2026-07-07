@@ -203,20 +203,7 @@ public class BehaviorAnalysisService {
             return result;
         } catch (Exception e) {
             log.error("Failed to perform evolutionary analysis for user: {}", userId, e);
-
-            if (oldInsight != null) {
-                return oldInsight;
-            }
-
-            return BehaviorInsights.builder()
-                .userId(userId)
-                .segment("unknown")
-                .analyzedAt(LocalDateTime.now())
-                .confidence(0.0)
-                .aiModelUsed("fallback")
-                .trend(BehaviorTrend.STABLE)
-                .processingTimeMs(System.currentTimeMillis() - startTime)
-                .build();
+            throw new IllegalStateException("Behavior analysis failed for user " + userId, e);
         }
     }
 

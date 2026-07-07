@@ -104,6 +104,7 @@ public class BehaviorLocalLlmProvider implements AIProvider {
                             : "steady";
 
         String reason = reason(churnRisk, cancellations, paymentFailures, complaints, usageDrops, featureErrors, helpSearches, noLoginSignals);
+        String actionFamily = actionFamily(churnRisk, label, cancellations, paymentFailures, upgrades, usageDrops, featureErrors, helpSearches, positiveSignals, noLoginSignals);
 
         String responseJson = """
             {
@@ -113,7 +114,7 @@ public class BehaviorLocalLlmProvider implements AIProvider {
               "churn": {"risk": %.3f, "reason": "%s"},
               "trend": "%s",
               "recommendations": [%s],
-              "insights": {"signals": %s},
+              "insights": {"action_family": "%s", "signals": %s},
               "confidence": 0.78
             }
             """.formatted(
@@ -134,6 +135,7 @@ public class BehaviorLocalLlmProvider implements AIProvider {
             reason.replace("\"", "'"),
             trend,
             recommendationsJson(churnRisk, label, featureErrors, usageDrops, helpSearches, positiveSignals, noLoginSignals),
+            actionFamily,
             toJson(counts)
         );
 
@@ -400,6 +402,34 @@ public class BehaviorLocalLlmProvider implements AIProvider {
             return "\"Prompt for review\", \"Suggest upgrade path\", \"Share advanced features\"";
         }
         return "\"Continue monitoring\", \"Collect feedback\"";
+    }
+
+    private String actionFamily(double churnRisk,
+                                String sentimentLabel,
+                                int cancellations,
+                                int paymentFailures,
+                                int upgrades,
+                                int usageDrops,
+                                int featureErrors,
+                                int helpSearches,
+                                int positiveSignals,
+                                int noLoginSignals) {
+        if (featureErrors > 0 && usageDrops > 0) {
+            return "ENGINEERING_ESCALATION";
+        }
+        if (helpSearches > 1) {
+            return "ADOPTION_HELP";
+        }
+        if (noLoginSignals > 0 && usageDrops > 0) {
+            return "PROACTIVE_CHECK_IN";
+        }
+        if (cancellations > 0 || paymentFailures > 1 || churnRisk > 0.8) {
+            return "RETENTION_OFFER";
+        }
+        if (upgrades > 0 || positiveSignals > 0 || "DELIGHTED".equalsIgnoreCase(sentimentLabel) || "SATISFIED".equalsIgnoreCase(sentimentLabel)) {
+            return "EXPANSION_FOLLOW_UP";
+        }
+        return "MONITOR_ONLY";
     }
 
     private String toJson(Map<String, Integer> counts) {

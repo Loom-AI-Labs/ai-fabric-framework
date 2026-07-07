@@ -2,7 +2,10 @@ package com.ai.fabric.realapps.behavior.service;
 
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
+
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class RetentionStudioServiceTest {
 
@@ -16,14 +19,17 @@ class RetentionStudioServiceTest {
             "pro",
             65,
             2,
-            3
+            3,
+            aiEvidence("RETENTION_OFFER", 0.91, "CHURNING", "RAPIDLY_DECLINING",
+                List.of("Offer retention credit", "Assign CSM outreach"))
         ));
 
         assertThat(result.riskCategory()).isEqualTo("HIGH");
         assertThat(result.actionFamily()).isEqualTo("RETENTION_OFFER");
-        assertThat(result.evidenceIds()).contains("insight-acct-1001-user-2001", "plan-pro");
+        assertThat(result.evidenceIds()).contains("insight-acct-1001-user-2001", "plan-pro", "ai-action-retention_offer");
         assertThat(result.recommendation()).contains("Offer retention credit");
-        assertThat(result.policyExplanation()).contains("confirmation-gated retention offer");
+        assertThat(result.policyExplanation()).contains("LLM-selected action family RETENTION_OFFER");
+        assertThat(result.policyExplanation()).contains("does not execute a customer-facing offer");
     }
 
     @Test
@@ -66,13 +72,15 @@ class RetentionStudioServiceTest {
             "pro",
             58,
             0,
-            2
+            2,
+            aiEvidence("ENGINEERING_ESCALATION", 0.86, "FRUSTRATED", "RAPIDLY_DECLINING",
+                List.of("Escalate product regression", "Notify affected account team"))
         ));
 
         assertThat(result.riskCategory()).isEqualTo("HIGH");
         assertThat(result.actionFamily()).isEqualTo("ENGINEERING_ESCALATION");
-        assertThat(result.recommendation()).contains("engineering");
-        assertThat(result.policyExplanation()).contains("safer than discounting");
+        assertThat(result.recommendation()).contains("Escalate product regression");
+        assertThat(result.policyExplanation()).contains("ENGINEERING_ESCALATION");
     }
 
     @Test
@@ -83,10 +91,61 @@ class RetentionStudioServiceTest {
             "starter",
             12,
             1,
-            0
+            0,
+            aiEvidence("ADOPTION_HELP", 0.48, "CONFUSED", "DECLINING",
+                List.of("Schedule adoption review", "Share setup guidance"))
         ));
 
         assertThat(result.riskCategory()).isEqualTo("MEDIUM");
         assertThat(result.recommendation()).contains("adoption review");
+    }
+
+    @Test
+    void reviewFailsWhenAiActionFamilyIsMissing() {
+        assertThatThrownBy(() -> service.review(new RetentionStudioService.RetentionReviewRequest(
+            "acct-1001",
+            "user-2001",
+            "pro",
+            65,
+            2,
+            3,
+            aiEvidence(null, 0.91, "CHURNING", "RAPIDLY_DECLINING", List.of("Assign CSM outreach"))
+        )))
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessageContaining("insights.action_family");
+    }
+
+    @Test
+    void reviewFailsWhenAiActionFamilyIsUnsupported() {
+        assertThatThrownBy(() -> service.review(new RetentionStudioService.RetentionReviewRequest(
+            "acct-1001",
+            "user-2001",
+            "pro",
+            65,
+            2,
+            3,
+            aiEvidence("SEND_MAGIC_COUPON", 0.91, "CHURNING", "RAPIDLY_DECLINING", List.of("Assign CSM outreach"))
+        )))
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessageContaining("unsupported action family");
+    }
+
+    private static RetentionStudioService.RetentionAiEvidence aiEvidence(String actionFamily,
+                                                                         Double churnRisk,
+                                                                         String sentiment,
+                                                                         String trend,
+                                                                         List<String> recommendations) {
+        return new RetentionStudioService.RetentionAiEvidence(
+            actionFamily,
+            churnRisk,
+            sentiment,
+            trend,
+            List.of("test-pattern"),
+            recommendations,
+            "Test churn reason",
+            0.82,
+            "test-model",
+            churnRisk != null && churnRisk >= 0.8
+        );
     }
 }

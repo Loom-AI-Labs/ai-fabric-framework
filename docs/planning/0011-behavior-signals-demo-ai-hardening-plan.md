@@ -104,15 +104,15 @@ the page can truthfully say the behavior insight is live LLM-backed.
 Billing failures + login drop + cancellation message
   -> AI detects RAPIDLY_DECLINING trend
   -> AI explains churn reason: payment friction plus cancellation intent
-  -> AI recommends retention credit and CSM outreach
-  -> Operator confirms a retention offer
+  -> AI emits insights.action_family=RETENTION_OFFER
+  -> Operator reviews the recommendation without customer-facing offer execution
 ```
 
 Purpose:
 
 - Proves churn detection from mixed event evidence.
 - Proves behavior insight persistence.
-- Proves confirmation-gated retention action.
+- Proves AI-selected recommendation family plus backend validation.
 
 ### 2. Expansion Ready
 
@@ -283,21 +283,15 @@ Do not hardcode final insight results in the UI. The backend should seed events,
 
 ### P0. Backend-Owned Policy Explanation
 
-`RetentionStudioService` should return self-explaining policy data:
+`RetentionStudioService` should return self-explaining analytics recommendation data:
 
 ```json
 {
-  "success": true,
-  "confirmationRequired": false,
-  "message": "Retention offer created. Discount was capped at 40% by demo retention policy.",
-  "data": {
-    "offerId": "...",
-    "discountPercent": 40,
-    "requestedDiscountPercent": 50,
-    "policyDecision": "APPROVED_WITH_CAP",
-    "policyExplanation": "Requested discount exceeded the 40% demo maximum, so AI Fabric executed the capped offer.",
-    "evidenceIds": ["insight-acct-1001-user-1001", "plan-pro"]
-  }
+  "riskCategory": "HIGH",
+  "actionFamily": "RETENTION_OFFER",
+  "recommendation": "Offer retention credit; Assign CSM outreach",
+  "policyExplanation": "AI Fabric accepted the LLM-selected action family RETENTION_OFFER for analytics review...",
+  "evidenceIds": ["insight-acct-1001-user-1001", "plan-pro", "ai-action-retention_offer"]
 }
 ```
 
@@ -545,9 +539,7 @@ curl -fsS -X POST https://behavior-churn-signals.46.224.145.148.sslip.io/api/beh
   -d '{"sessionId":"live-smoke-1","analyze":true}' | jq
 curl -fsS https://behavior-churn-signals.46.224.145.148.sslip.io/api/behavior-demo/dashboard?sessionId=live-smoke-1 | jq '.scenarios | length'
 curl -fsS -X POST https://behavior-churn-signals.46.224.145.148.sslip.io/api/behavior-demo/scenarios/behavior-demo-user-live-smoke-1-user-1004/analyze | jq
-curl -fsS -X POST https://behavior-churn-signals.46.224.145.148.sslip.io/api/behavior-demo/scenarios/behavior-demo-user-live-smoke-1-user-1001/retention-offer \
-  -H 'Content-Type: application/json' \
-  -d '{"discountPercent":50,"confirmed":true}' | jq
+curl -fsS -X POST https://behavior-churn-signals.46.224.145.148.sslip.io/api/behavior-demo/scenarios/behavior-demo-user-live-smoke-1-user-1001/agentic-ui | jq
 ```
 
 Expected:
@@ -555,7 +547,8 @@ Expected:
 - health exposes commit/build/provider mode;
 - dashboard has five scenarios;
 - release regression recommends engineering/product escalation, not discount-first;
-- retention offer explains policy decision and cap.
+- behavior recommendations include a valid LLM-selected `insights.action_family`;
+- agentic UI planning returns allowlisted components, or fails visibly if the LLM output is invalid.
 
 ## Implementation Evidence
 
@@ -565,11 +558,13 @@ Implemented on 2026-07-06:
 - five scenario catalog, session-cloned users, and session reset in `BehaviorDemoScenarioService`;
 - richer deterministic behavior provider signals for cancellation, expansion, onboarding friction,
   release regression, and silent churn;
-- backend-owned retention policy explanations and discount cap results in `RetentionStudioService`;
+- backend-owned retention policy explanations in `RetentionStudioService`;
 - scheduled cleanup for old `behavior-demo-user-*` session clones;
 - README and HTTP examples updated for deterministic and live-provider modes;
 - public UI updated to create a browser session, show provider/build posture, show the behavior
   pipeline, render five scenarios, and project action result fields without raw JSON.
+- follow-up hardening requires LLM analysis failures and agentic UI composition failures to surface
+  visibly instead of falling back to synthetic recommendations.
 
 Verified locally:
 
@@ -586,7 +581,7 @@ Local API smoke proved:
 - `/api/behavior-demo/sessions` creates five cloned scenarios and 33 events;
 - release-regression analysis returns `ENGINEERING_ESCALATION`;
 - signal injection mutates only the session user;
-- a 50% confirmed retention offer returns `APPROVED_WITH_CAP` and `discountPercent=40`.
+- action recommendations come from validated `insights.action_family`.
 
 ## Rollout Plan
 

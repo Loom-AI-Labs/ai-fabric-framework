@@ -1,6 +1,5 @@
 package ai.fabric.behavior.it.realapi;
 
-import ai.fabric.behavior.entity.BehaviorInsights;
 import ai.fabric.behavior.it.BehaviorIntegrationTestApp;
 import ai.fabric.behavior.it.support.TestEventProvider;
 import ai.fabric.behavior.model.ExternalEvent;
@@ -18,9 +17,9 @@ import org.springframework.test.context.ActiveProfiles;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.when;
 
 @SpringBootTest(
@@ -51,7 +50,7 @@ class BehaviorLLMErrorResilienceRealApiIT {
     }
 
     @Test
-    void malformedJsonFallsBackAndDoesNotPersistBadState() {
+    void providerFailureSurfacesAndDoesNotPersistFallbackInsight() {
         String userId = "test-user-" + java.util.UUID.randomUUID().toString();
         eventProvider.setTargetedEvents(List.of(
             ExternalEvent.builder()
@@ -65,14 +64,11 @@ class BehaviorLLMErrorResilienceRealApiIT {
         when(aiCoreService.generateContent(ArgumentMatchers.any()))
             .thenThrow(new IllegalStateException("LLM 502"));
 
-        BehaviorInsights result = analysisService.analyzeUser(userId);
+        assertThatThrownBy(() -> analysisService.analyzeUser(userId))
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessageContaining("Behavior analysis failed for user " + userId)
+            .hasRootCauseMessage("Behavior analysis did not return a valid JSON payload: LLM 502");
 
-        assertThat(result).isNotNull();
-        assertThat(result.getUserId()).isEqualTo(userId);
-        assertThat(result.getSegment()).isEqualTo("unknown");
-        assertThat(result.getTrend()).isEqualTo(ai.fabric.behavior.model.BehaviorTrend.STABLE);
-        BehaviorInsights persisted = repository.findByUserId(userId).orElse(null);
-        assertThat(persisted).isNotNull();
-        assertThat(persisted.getSegment()).isEqualTo("unknown");
+        assertThat(repository.findByUserId(userId)).isEmpty();
     }
 }

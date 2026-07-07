@@ -29,6 +29,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.within;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
@@ -236,7 +237,7 @@ class BehaviorAnalysisServiceTest {
     }
 
     @Test
-    void fallsBackGracefullyOnMalformedLLMResponse() {
+    void surfacesMalformedLLMResponseWithoutPersistingFallbackInsight() {
         String userId = "user-malformed";
         when(eventProvider.getEventsForUser(userId, null, null)).thenReturn(
             List.of(ExternalEvent.builder().eventType("purchase").build())
@@ -246,15 +247,12 @@ class BehaviorAnalysisServiceTest {
         when(aiCoreService.generateContent(any())).thenReturn(
             AIGenerationResponse.builder().content("not-json").model("bad-model").build()
         );
-        when(storageAdapter.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
-        BehaviorInsights result = service.analyzeUser(userId);
+        assertThatThrownBy(() -> service.analyzeUser(userId))
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessageContaining("Behavior analysis failed for user " + userId);
 
-        assertThat(result).isNotNull();
-        assertThat(result.getTrend()).isEqualTo(ai.fabric.behavior.model.BehaviorTrend.STABLE);
-        assertThat(result.getConfidence()).isEqualTo(0.0);
-        assertThat(result.getAiModelUsed()).isEqualTo("fallback");
-        verify(storageAdapter).save(any(BehaviorInsights.class));
+        verify(storageAdapter, never()).save(any(BehaviorInsights.class));
     }
 
     @Test
