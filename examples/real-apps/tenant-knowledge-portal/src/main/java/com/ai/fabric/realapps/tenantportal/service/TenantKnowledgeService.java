@@ -4,6 +4,8 @@ import ai.fabric.intent.action.ActionAccessMode;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
+import java.time.Duration;
+import java.time.Instant;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -15,98 +17,90 @@ import java.util.concurrent.ConcurrentHashMap;
 @Service
 public class TenantKnowledgeService {
 
-    private final Map<String, KnowledgeDocument> documents = new ConcurrentHashMap<>();
+    private static final String CANONICAL_SESSION_ID = "canonical";
+    private static final Duration DEMO_SESSION_TTL = Duration.ofHours(6);
+
+    private final Map<String, Map<String, KnowledgeDocument>> sessionDocuments = new ConcurrentHashMap<>();
+    private final Map<String, Instant> sessionTouchedAt = new ConcurrentHashMap<>();
 
     public TenantKnowledgeService() {
         resetDemoData();
     }
 
     public synchronized TenantGuardDashboard resetDemoData() {
-        documents.clear();
-        seed(new KnowledgeDocument(
-            "doc-a",
-            "tenant-a",
-            "VPN setup",
-            "Tenant A VPN requires Okta enrollment, device compliance, and a region-specific split tunnel profile.",
-            "internal"
-        ));
-        seed(new KnowledgeDocument(
-            "doc-a-billing",
-            "tenant-a",
-            "Billing export",
-            "Tenant A finance admins can export invoices after SSO step-up approval.",
-            "internal"
-        ));
-        seed(new KnowledgeDocument(
-            "doc-admin",
-            "tenant-a",
-            "Admin policy",
-            "Admin-only billing export policy with restricted audit notes.",
-            "restricted"
-        ));
-        seed(new KnowledgeDocument(
-            "doc-b",
-            "tenant-b",
-            "VPN setup",
-            "Tenant B VPN requires hardware key enrollment and a separate privileged access group.",
-            "internal"
-        ));
-        seed(new KnowledgeDocument(
-            "doc-b-keys",
-            "tenant-b",
-            "Hardware key rotation",
-            "Tenant B rotates hardware keys every 90 days and blocks stale authenticators.",
-            "internal"
-        ));
-        seed(new KnowledgeDocument(
-            "doc-platform",
-            "platform",
-            "Platform retention",
-            "Platform operators can inspect tenant deletion evidence but cannot leak cross-tenant content.",
-            "restricted"
-        ));
-        return dashboard();
+        return resetDemoData(null);
+    }
+
+    public synchronized TenantGuardDashboard resetDemoData(String sessionId) {
+        cleanupExpiredSessions();
+        String key = sessionKey(sessionId);
+        sessionDocuments.put(key, new ConcurrentHashMap<>(seededDocuments()));
+        touch(key);
+        return dashboard(sessionId);
     }
 
     public TenantGuardDashboard dashboard() {
+        return dashboard(null);
+    }
+
+    public TenantGuardDashboard dashboard(String sessionId) {
+        cleanupExpiredSessions();
+        SearchComparison comparison = compareSearch(sessionId, "VPN");
+        CatalogSummary tenantUserCatalog = catalog(sessionId, new UserContext("tenant-a", "USER"));
+        CatalogSummary platformAdminCatalog = catalog(sessionId, new UserContext("platform", "ADMIN"));
+        ActionDecision crossTenantDenied = executeAction(
+            sessionId,
+            new UserContext("tenant-a", "USER"),
+            new TenantActionRequest("archive_document", "doc-b", ActionAccessMode.WRITE_ONLY, true)
+        );
+        ActionDecision writeActionPreview = executeAction(
+            sessionId,
+            new UserContext("tenant-a", "ADMIN"),
+            new TenantActionRequest("archive_document", "doc-a", ActionAccessMode.WRITE_ONLY, false)
+        );
+        TenantDeletionPreview deletionPreview = deletionPreview(sessionId, "tenant-b");
         return new TenantGuardDashboard(
             scenarios(),
-            documentStats(),
-            compareSearch("VPN"),
-            catalog(new UserContext("tenant-a", "USER")),
-            catalog(new UserContext("platform", "ADMIN")),
-            executeAction(
-                new UserContext("tenant-a", "USER"),
-                new TenantActionRequest("archive_document", "doc-b", ActionAccessMode.WRITE_ONLY, true)
-            ),
-            executeAction(
-                new UserContext("tenant-a", "ADMIN"),
-                new TenantActionRequest("archive_document", "doc-a", ActionAccessMode.WRITE_ONLY, false)
-            ),
-            deletionPreview("tenant-b")
+            documentStats(sessionId),
+            comparison,
+            tenantUserCatalog,
+            platformAdminCatalog,
+            crossTenantDenied,
+            writeActionPreview,
+            deletionPreview,
+            boundaryProof(comparison, tenantUserCatalog, platformAdminCatalog, crossTenantDenied, writeActionPreview, deletionPreview),
+            sessionSummary(sessionId)
         );
     }
 
     public SearchComparison compareSearch(String query) {
+        return compareSearch(null, query);
+    }
+
+    public SearchComparison compareSearch(String sessionId, String query) {
         String effectiveQuery = StringUtils.hasText(query) ? query.trim() : "VPN";
         return new SearchComparison(
             effectiveQuery,
-            search(new UserContext("tenant-a", "USER"), effectiveQuery),
-            search(new UserContext("tenant-b", "USER"), effectiveQuery),
-            search(new UserContext("platform", "ADMIN"), effectiveQuery)
+            search(sessionId, new UserContext("tenant-a", "USER"), effectiveQuery),
+            search(sessionId, new UserContext("tenant-b", "USER"), effectiveQuery),
+            search(sessionId, new UserContext("platform", "ADMIN"), effectiveQuery)
         );
     }
 
     public KnowledgeDocument seed(KnowledgeDocument document) {
         KnowledgeDocument normalized = normalize(document);
-        documents.put(normalized.id(), normalized);
+        documentsForSession(null).put(normalized.id(), normalized);
         return normalized;
     }
 
     public List<KnowledgeHit> search(UserContext context, String query) {
+        return search(null, context, query);
+    }
+
+    public List<KnowledgeHit> search(String sessionId, UserContext context, String query) {
         UserContext user = requireUser(context);
         String normalizedQuery = query == null ? "" : query.toLowerCase(Locale.ROOT);
-        return documents.values().stream()
+        return documentsForSession(sessionId).values().stream()
             .filter(document -> canRead(user, document))
             .filter(document -> !StringUtils.hasText(normalizedQuery)
                 || document.title().toLowerCase(Locale.ROOT).contains(normalizedQuery)
@@ -117,8 +111,12 @@ public class TenantKnowledgeService {
     }
 
     public CatalogSummary catalog(UserContext context) {
+        return catalog(null, context);
+    }
+
+    public CatalogSummary catalog(String sessionId, UserContext context) {
         UserContext user = requireUser(context);
-        List<KnowledgeDocument> visible = documents.values().stream()
+        List<KnowledgeDocument> visible = documentsForSession(sessionId).values().stream()
             .filter(document -> isPlatformAdmin(user) || canRead(user, document))
             .sorted(Comparator.comparing(KnowledgeDocument::id))
             .toList();
@@ -128,47 +126,101 @@ public class TenantKnowledgeService {
     }
 
     public ActionDecision executeAction(UserContext context, TenantActionRequest request) {
+        return executeAction(null, context, request);
+    }
+
+    public ActionDecision executeAction(String sessionId, UserContext context, TenantActionRequest request) {
         UserContext user = requireUser(context);
         TenantActionRequest effective = request != null
             ? request
             : new TenantActionRequest(null, null, ActionAccessMode.READ, false);
-        KnowledgeDocument document = documents.get(requireText(effective.documentId(), "documentId"));
+        String actionId = requireText(effective.actionId(), "actionId");
+        KnowledgeDocument document = documentsForSession(sessionId).get(requireText(effective.documentId(), "documentId"));
         if (document == null) {
-            return ActionDecision.failure("TARGET_NOT_FOUND", "Document does not exist.");
+            return ActionDecision.failure(
+                "TARGET_NOT_FOUND",
+                "Document does not exist.",
+                policyData("DENIED", "The requested action target was not found.", user, null, actionId, effective.accessMode())
+            );
         }
         if (!canTarget(user, document)) {
-            return ActionDecision.failure("CROSS_TENANT_DENIED", "Action target belongs to a different tenant.");
+            return ActionDecision.failure(
+                "CROSS_TENANT_DENIED",
+                "Action target belongs to tenant " + document.tenantId() + ", but the caller is scoped to " + user.tenantId() + ".",
+                policyData("DENIED", "Cross-tenant write targets are rejected before execution.", user, document, actionId, effective.accessMode())
+            );
         }
         ActionAccessMode mode = effective.accessMode() != null ? effective.accessMode() : ActionAccessMode.READ;
         if (!mode.isReadOnly() && !"ADMIN".equals(user.role())) {
-            return ActionDecision.failure("ROLE_DENIED", "Only tenant admins can execute write actions.");
+            return ActionDecision.failure(
+                "ROLE_DENIED",
+                "Only tenant admins can execute write actions.",
+                policyData("DENIED", "Write actions require an ADMIN role for the caller's tenant.", user, document, actionId, mode)
+            );
         }
         if (!mode.isReadOnly() && !effective.confirmed()) {
-            return new ActionDecision(false, true, "Confirm " + effective.actionId(), null, Map.of("documentId", document.id()));
+            return new ActionDecision(
+                false,
+                true,
+                "Confirm " + actionId + " for " + document.title() + " in " + document.tenantId() + ".",
+                null,
+                policyData("CONFIRMATION_REQUIRED", "Write actions require explicit confirmation after tenant and role checks pass.", user, document, actionId, mode)
+            );
         }
-        return new ActionDecision(true, false, "Action executed", null, Map.of(
-            "actionId", effective.actionId(),
-            "documentId", document.id(),
-            "tenantId", document.tenantId()
-        ));
+        return new ActionDecision(
+            true,
+            false,
+            "Action executed for " + document.title() + " in " + document.tenantId() + " after tenant, role, and confirmation checks.",
+            null,
+            policyData("APPROVED", "The caller is authorized for this tenant and confirmed the write action.", user, document, actionId, mode)
+        );
     }
 
     public TenantDeletionResult deleteTenant(UserContext context, String tenantId) {
+        return deleteTenant(null, context, tenantId);
+    }
+
+    public TenantDeletionResult deleteTenant(String sessionId, UserContext context, String tenantId) {
         UserContext user = requireUser(context);
         if (!"ADMIN".equals(user.role())) {
-            return new TenantDeletionResult(false, "ROLE_DENIED", 0, List.of());
+            return new TenantDeletionResult(
+                false,
+                "ROLE_DENIED",
+                0,
+                List.of(),
+                "Only admins can delete tenant evidence.",
+                "DENIED",
+                tenantIds(documentsForSession(sessionId))
+            );
         }
         String tenant = requireText(tenantId, "tenantId");
         if (!isPlatformAdmin(user) && !user.tenantId().equals(tenant)) {
-            return new TenantDeletionResult(false, "CROSS_TENANT_DENIED", 0, List.of());
+            return new TenantDeletionResult(
+                false,
+                "CROSS_TENANT_DENIED",
+                0,
+                List.of(),
+                "Tenant admins can delete only their own tenant evidence.",
+                "DENIED",
+                tenantIds(documentsForSession(sessionId))
+            );
         }
+        Map<String, KnowledgeDocument> documents = documentsForSession(sessionId);
         List<String> deletedIds = documents.values().stream()
             .filter(document -> tenant.equals(document.tenantId()))
             .map(KnowledgeDocument::id)
             .sorted()
             .toList();
         deletedIds.forEach(documents::remove);
-        return new TenantDeletionResult(true, null, deletedIds.size(), deletedIds);
+        return new TenantDeletionResult(
+            true,
+            null,
+            deletedIds.size(),
+            deletedIds,
+            "Deleted only " + tenant + " evidence. Other tenant documents remain isolated.",
+            "APPROVED",
+            tenantIds(documents)
+        );
     }
 
     private List<TenantGuardScenario> scenarios() {
@@ -203,7 +255,8 @@ public class TenantKnowledgeService {
         );
     }
 
-    private DocumentStats documentStats() {
+    private DocumentStats documentStats(String sessionId) {
+        Map<String, KnowledgeDocument> documents = documentsForSession(sessionId);
         Set<String> tenants = documents.values().stream()
             .map(KnowledgeDocument::tenantId)
             .collect(java.util.stream.Collectors.toSet());
@@ -219,13 +272,69 @@ public class TenantKnowledgeService {
         return new DocumentStats(documents.size(), tenants.size(), restricted, tenantADocs, tenantBDocs);
     }
 
-    private TenantDeletionPreview deletionPreview(String tenantId) {
-        List<String> ids = documents.values().stream()
+    private TenantDeletionPreview deletionPreview(String sessionId, String tenantId) {
+        List<String> ids = documentsForSession(sessionId).values().stream()
             .filter(document -> tenantId.equals(document.tenantId()))
             .map(KnowledgeDocument::id)
             .sorted()
             .toList();
         return new TenantDeletionPreview(tenantId, ids.size(), ids);
+    }
+
+    private BoundaryProof boundaryProof(
+        SearchComparison comparison,
+        CatalogSummary tenantUserCatalog,
+        CatalogSummary platformAdminCatalog,
+        ActionDecision crossTenantDenied,
+        ActionDecision writeActionPreview,
+        TenantDeletionPreview deletionPreview
+    ) {
+        List<ProofCheck> checks = List.of(
+            new ProofCheck(
+                "tenant-a-search-is-scoped",
+                "Tenant A search returns only tenant A evidence",
+                comparison.tenantAResults().stream().allMatch(hit -> "tenant-a".equals(hit.tenantId())),
+                comparison.tenantAResults().stream().map(KnowledgeHit::id).toList().toString()
+            ),
+            new ProofCheck(
+                "tenant-b-search-is-scoped",
+                "Tenant B search returns only tenant B evidence",
+                comparison.tenantBResults().stream().allMatch(hit -> "tenant-b".equals(hit.tenantId())),
+                comparison.tenantBResults().stream().map(KnowledgeHit::id).toList().toString()
+            ),
+            new ProofCheck(
+                "admin-catalog-is-broader",
+                "Platform admin catalog sees more evidence than a tenant user",
+                platformAdminCatalog.visibleDocuments() > tenantUserCatalog.visibleDocuments(),
+                tenantUserCatalog.visibleDocuments() + " tenant docs vs " + platformAdminCatalog.visibleDocuments() + " admin docs"
+            ),
+            new ProofCheck(
+                "cross-tenant-write-denied",
+                "Cross-tenant write target is rejected by backend policy",
+                "CROSS_TENANT_DENIED".equals(crossTenantDenied.errorCode()),
+                String.valueOf(crossTenantDenied.data().get("policyExplanation"))
+            ),
+            new ProofCheck(
+                "same-tenant-write-confirmation",
+                "Same-tenant write requires explicit confirmation",
+                writeActionPreview.confirmationRequired(),
+                String.valueOf(writeActionPreview.data().get("policyExplanation"))
+            ),
+            new ProofCheck(
+                "tenant-delete-is-scoped",
+                "Tenant deletion preview contains only tenant B documents",
+                deletionPreview.documentIds().stream().allMatch(id -> id.startsWith("doc-b")),
+                deletionPreview.documentIds().toString()
+            )
+        );
+        boolean passed = checks.stream().allMatch(ProofCheck::passed);
+        return new BoundaryProof(
+            passed,
+            passed
+                ? "All tenant-boundary checks are enforced by the backend."
+                : "One or more tenant-boundary checks failed.",
+            checks
+        );
     }
 
     private boolean canRead(UserContext user, KnowledgeDocument document) {
@@ -249,6 +358,130 @@ public class TenantKnowledgeService {
         metadata.put("visibility", document.visibility());
         metadata.put("entityType", "tenant-document");
         return Map.copyOf(metadata);
+    }
+
+    private Map<String, Object> policyData(
+        String policyDecision,
+        String policyExplanation,
+        UserContext user,
+        KnowledgeDocument document,
+        String actionId,
+        ActionAccessMode accessMode
+    ) {
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("policyDecision", policyDecision);
+        data.put("policyExplanation", policyExplanation);
+        data.put("actionId", actionId);
+        data.put("subjectTenantId", user.tenantId());
+        data.put("subjectRole", user.role());
+        data.put("accessMode", accessMode != null ? accessMode.name() : ActionAccessMode.READ.name());
+        if (document != null) {
+            data.put("documentId", document.id());
+            data.put("targetTenantId", document.tenantId());
+            data.put("targetVisibility", document.visibility());
+        }
+        return Map.copyOf(data);
+    }
+
+    private Map<String, KnowledgeDocument> documentsForSession(String sessionId) {
+        cleanupExpiredSessions();
+        String key = sessionKey(sessionId);
+        touch(key);
+        return sessionDocuments.computeIfAbsent(key, ignored -> new ConcurrentHashMap<>(seededDocuments()));
+    }
+
+    private Map<String, KnowledgeDocument> seededDocuments() {
+        Map<String, KnowledgeDocument> seeded = new LinkedHashMap<>();
+        putSeed(seeded, new KnowledgeDocument(
+            "doc-a",
+            "tenant-a",
+            "VPN setup",
+            "Tenant A VPN requires Okta enrollment, device compliance, and a region-specific split tunnel profile.",
+            "internal"
+        ));
+        putSeed(seeded, new KnowledgeDocument(
+            "doc-a-billing",
+            "tenant-a",
+            "Billing export",
+            "Tenant A finance admins can export invoices after SSO step-up approval.",
+            "internal"
+        ));
+        putSeed(seeded, new KnowledgeDocument(
+            "doc-admin",
+            "tenant-a",
+            "Admin policy",
+            "Admin-only billing export policy with restricted audit notes.",
+            "restricted"
+        ));
+        putSeed(seeded, new KnowledgeDocument(
+            "doc-b",
+            "tenant-b",
+            "VPN setup",
+            "Tenant B VPN requires hardware key enrollment and a separate privileged access group.",
+            "internal"
+        ));
+        putSeed(seeded, new KnowledgeDocument(
+            "doc-b-keys",
+            "tenant-b",
+            "Hardware key rotation",
+            "Tenant B rotates hardware keys every 90 days and blocks stale authenticators.",
+            "internal"
+        ));
+        putSeed(seeded, new KnowledgeDocument(
+            "doc-platform",
+            "platform",
+            "Platform retention",
+            "Platform operators can inspect tenant deletion evidence but cannot leak cross-tenant content.",
+            "restricted"
+        ));
+        return seeded;
+    }
+
+    private void putSeed(Map<String, KnowledgeDocument> target, KnowledgeDocument document) {
+        KnowledgeDocument normalized = normalize(document);
+        target.put(normalized.id(), normalized);
+    }
+
+    private List<String> tenantIds(Map<String, KnowledgeDocument> documents) {
+        return documents.values().stream()
+            .map(KnowledgeDocument::tenantId)
+            .distinct()
+            .sorted()
+            .toList();
+    }
+
+    private DemoSessionSummary sessionSummary(String sessionId) {
+        String key = sessionKey(sessionId);
+        return new DemoSessionSummary(
+            key,
+            !CANONICAL_SESSION_ID.equals(key),
+            DEMO_SESSION_TTL.toHours()
+        );
+    }
+
+    private String sessionKey(String sessionId) {
+        if (!StringUtils.hasText(sessionId)) {
+            return CANONICAL_SESSION_ID;
+        }
+        String normalized = sessionId.trim();
+        if (normalized.length() > 120) {
+            normalized = normalized.substring(0, 120);
+        }
+        return normalized.replaceAll("[^A-Za-z0-9_.:-]", "-");
+    }
+
+    private void touch(String key) {
+        sessionTouchedAt.put(key, Instant.now());
+    }
+
+    private void cleanupExpiredSessions() {
+        Instant cutoff = Instant.now().minus(DEMO_SESSION_TTL);
+        sessionTouchedAt.forEach((key, touchedAt) -> {
+            if (!CANONICAL_SESSION_ID.equals(key) && touchedAt.isBefore(cutoff)) {
+                sessionTouchedAt.remove(key);
+                sessionDocuments.remove(key);
+            }
+        });
     }
 
     private KnowledgeDocument normalize(KnowledgeDocument document) {
@@ -320,6 +553,12 @@ public class TenantKnowledgeService {
 
     public record TenantDeletionPreview(String targetTenantId, int matchingDocuments, List<String> documentIds) {}
 
+    public record ProofCheck(String id, String label, boolean passed, String evidence) {}
+
+    public record BoundaryProof(boolean passed, String summary, List<ProofCheck> checks) {}
+
+    public record DemoSessionSummary(String sessionId, boolean isolated, long ttlHours) {}
+
     public record TenantGuardDashboard(
         List<TenantGuardScenario> scenarios,
         DocumentStats stats,
@@ -328,7 +567,9 @@ public class TenantKnowledgeService {
         CatalogSummary platformAdminCatalog,
         ActionDecision crossTenantDenied,
         ActionDecision writeActionPreview,
-        TenantDeletionPreview deletionPreview
+        TenantDeletionPreview deletionPreview,
+        BoundaryProof boundaryProof,
+        DemoSessionSummary session
     ) {}
 
     public record ActionDecision(
@@ -339,9 +580,21 @@ public class TenantKnowledgeService {
         Map<String, Object> data
     ) {
         static ActionDecision failure(String errorCode, String message) {
-            return new ActionDecision(false, false, message, errorCode, Map.of());
+            return failure(errorCode, message, Map.of());
+        }
+
+        static ActionDecision failure(String errorCode, String message, Map<String, Object> data) {
+            return new ActionDecision(false, false, message, errorCode, data);
         }
     }
 
-    public record TenantDeletionResult(boolean success, String errorCode, int deletedDocuments, List<String> deletedIds) {}
+    public record TenantDeletionResult(
+        boolean success,
+        String errorCode,
+        int deletedDocuments,
+        List<String> deletedIds,
+        String message,
+        String policyDecision,
+        List<String> remainingTenantIds
+    ) {}
 }

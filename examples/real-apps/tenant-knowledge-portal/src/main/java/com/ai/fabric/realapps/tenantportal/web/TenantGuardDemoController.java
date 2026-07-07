@@ -18,24 +18,35 @@ public class TenantGuardDemoController {
     private final TenantKnowledgeService service;
 
     @GetMapping("/dashboard")
-    public TenantKnowledgeService.TenantGuardDashboard dashboard() {
-        return service.dashboard();
+    public TenantKnowledgeService.TenantGuardDashboard dashboard(
+        @RequestParam(value = "sessionId", required = false) String sessionId
+    ) {
+        return service.dashboard(sessionId);
     }
 
     @PostMapping("/reset")
-    public TenantKnowledgeService.TenantGuardDashboard reset() {
-        return service.resetDemoData();
+    public TenantKnowledgeService.TenantGuardDashboard reset(
+        @RequestParam(value = "sessionId", required = false) String sessionId
+    ) {
+        return service.resetDemoData(sessionId);
     }
 
     @GetMapping("/compare")
-    public TenantKnowledgeService.SearchComparison compare(@RequestParam(defaultValue = "VPN") String q) {
-        return service.compareSearch(q);
+    public TenantKnowledgeService.SearchComparison compare(
+        @RequestParam(defaultValue = "VPN") String q,
+        @RequestParam(value = "sessionId", required = false) String sessionId
+    ) {
+        return service.compareSearch(sessionId, q);
     }
 
     @PostMapping("/actions/execute")
-    public TenantKnowledgeService.ActionDecision execute(@RequestBody TenantGuardActionRequest request) {
+    public TenantKnowledgeService.ActionDecision execute(
+        @RequestParam(value = "sessionId", required = false) String sessionId,
+        @RequestBody TenantGuardActionRequest request
+    ) {
         TenantGuardActionRequest effective = request != null ? request : TenantGuardActionRequest.defaultRequest();
         return service.executeAction(
+            sessionId,
             new TenantKnowledgeService.UserContext(effective.tenantId(), effective.role()),
             new TenantKnowledgeService.TenantActionRequest(
                 effective.actionId(),
@@ -47,9 +58,13 @@ public class TenantGuardDemoController {
     }
 
     @PostMapping("/tenants/delete")
-    public TenantKnowledgeService.TenantDeletionResult deleteTenant(@RequestBody TenantGuardDeleteRequest request) {
+    public TenantKnowledgeService.TenantDeletionResult deleteTenant(
+        @RequestParam(value = "sessionId", required = false) String sessionId,
+        @RequestBody TenantGuardDeleteRequest request
+    ) {
         TenantGuardDeleteRequest effective = request != null ? request : TenantGuardDeleteRequest.defaultRequest();
         return service.deleteTenant(
+            sessionId,
             new TenantKnowledgeService.UserContext(effective.tenantId(), effective.role()),
             effective.targetTenantId()
         );

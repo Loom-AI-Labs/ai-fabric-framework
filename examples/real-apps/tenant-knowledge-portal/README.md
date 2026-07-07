@@ -17,6 +17,10 @@ have overlapping titles or similar content.
 - Tenant deletion removes only the selected tenant's documents/catalog entries.
 - Role-limited actions can be modeled as product workflows.
 - Public demo endpoints expose a repeatable browser-friendly Tenant Guard workflow.
+- Browser-session scoped demo data keeps one visitor's delete/write experiments from affecting
+  another visitor's proof state.
+- Backend action and deletion responses include policy decisions and explanations so the frontend
+  does not infer governance rules.
 
 ## Framework Surfaces
 
@@ -83,14 +87,15 @@ Providers and storage:
 Request and data flow:
 
 1. The UI calls `/api/tenant-guard-demo/dashboard` to load seeded tenant scenarios and current proof
-   state.
+   state. Public UI calls include a `sessionId` query parameter so mutations are isolated per browser.
 2. `/compare?q=...` runs the same query as tenant A, tenant B, and platform admin so the UI can show
    scoped retrieval side by side.
 3. `/actions/execute` validates target tenant, role, access mode, and confirmation before returning an
-   action decision.
+   action decision with `policyDecision` and `policyExplanation` evidence.
 4. `/tenants/delete` removes only the requested tenant's documents and returns the deleted ids as
-   evidence.
-5. The frontend renders policy outcomes from backend decisions; it does not infer tenant access
+   evidence plus remaining tenant ids.
+5. `/api/demo/health` exposes deployment commit/build metadata for live verification.
+6. The frontend renders policy outcomes from backend decisions; it does not infer tenant access
    locally.
 
 ## Run Locally
@@ -109,6 +114,7 @@ Verify the local demo API:
 
 ```bash
 curl -fsS http://localhost:8101/actuator/health
+curl -fsS http://localhost:8101/api/demo/health | jq
 curl -fsS http://localhost:8101/api/tenant-guard-demo/dashboard | jq
 curl -fsS -X POST http://localhost:8101/api/tenant-guard-demo/reset | jq
 ```
@@ -126,10 +132,12 @@ Use `requests/demo.http` to run the tenant boundary scenario.
 ## Public Demo Endpoints
 
 - `GET /api/tenant-guard-demo/dashboard`
+- `GET /api/tenant-guard-demo/dashboard?sessionId=browser-123`
 - `POST /api/tenant-guard-demo/reset`
 - `GET /api/tenant-guard-demo/compare?q=VPN`
 - `POST /api/tenant-guard-demo/actions/execute`
 - `POST /api/tenant-guard-demo/tenants/delete`
+- `GET /api/demo/health`
 
 ## Demo Flow
 
@@ -139,6 +147,7 @@ Use `requests/demo.http` to run the tenant boundary scenario.
 4. Inspect catalog as an admin.
 5. Attempt a cross-tenant action target and verify rejection.
 6. Delete one tenant and verify the other tenant's data remains.
+7. Open a second session id and verify the deletion did not leak across browser sessions.
 
 ## Docker
 

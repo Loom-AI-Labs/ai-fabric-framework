@@ -1167,6 +1167,60 @@ Add focused tests for:
 - Do not put retention/discount policy truth only in UI labels.
 - Do not leave public demo clones without cleanup.
 
+## Lesson 17: Deterministic Governance Demos Still Need Backend Proof
+
+### User Symptom
+
+The Tenant Guard demo is intentionally deterministic and no-key, but that can make the UI look like
+it is merely displaying preselected cards:
+
+```text
+Is tenant isolation actually enforced by the backend, or is the page just showing separate columns?
+```
+
+### Where It Happened
+
+Real app:
+
+```text
+examples/real-apps/tenant-knowledge-portal
+```
+
+Public UI:
+
+```text
+aifabric/src/pages/demos/AIFabricTenantGuard.tsx
+```
+
+### Root Cause
+
+Tenant Guard is not an LLM reasoning demo. It proves governance boundaries: tenant-scoped retrieval,
+catalog visibility, write-action gating, confirmation, and tenant deletion evidence. Those rules must
+come from the backend service, not from frontend labels or static assumptions.
+
+The demo also mutates state when a visitor deletes tenant evidence. Without a session id, one browser's
+deletion can affect another visitor's proof state.
+
+### Fix Pattern
+
+Keep the demo deterministic, but make backend truth explicit:
+
+- return a backend-generated `boundaryProof` checklist from `/api/tenant-guard-demo/dashboard`;
+- include `policyDecision` and `policyExplanation` in action result data;
+- include deletion `message`, `policyDecision`, deleted ids, and remaining tenant ids in deletion
+  responses;
+- pass `sessionId` on dashboard, compare, action, reset, and delete endpoints;
+- keep per-session document maps with a TTL cleanup window;
+- expose `/api/demo/health` and render the deployed commit/build metadata in the UI.
+
+### What Not To Do
+
+- Do not add a fake LLM layer just to make a governance demo feel "AI".
+- Do not make the browser decide whether tenant boundaries passed.
+- Do not let a public delete/write experiment mutate every visitor's shared data.
+- Do not hide deterministic provider posture; say clearly that this demo proves AI Fabric guardrails,
+  not live LLM generation.
+
 ## Quick Triage Checklist
 
 ### Orchestration Error Before Any AI Response
