@@ -188,6 +188,29 @@ class BehaviorDemoScenarioServiceTest {
     }
 
     @Test
+    void recordNegativeChurnSignalsAddsRiskEventsAndReanalyzesOnce() {
+        when(behaviorAnalysisService.analyzeUser("user-1002")).thenReturn(insight("user-1002", "RETENTION_OFFER"));
+        when(eventRepository.findByUserIdOrderByEventTimestampAsc("user-1002")).thenReturn(List.of());
+
+        service.recordNegativeChurnSignals("user-1002");
+
+        var eventCaptor = forClass(AppBehaviorEvent.class);
+        verify(eventRepository, times(5)).save(eventCaptor.capture());
+        assertThat(eventCaptor.getAllValues())
+            .extracting(AppBehaviorEvent::getEventType)
+            .containsExactly(
+                "PAYMENT_FAILED",
+                "USAGE_DROP",
+                "SUPPORT_COMPLAINT",
+                "NO_LOGIN_7D",
+                "CANCEL_INTENT"
+            );
+        assertThat(eventCaptor.getAllValues())
+            .allSatisfy(event -> assertThat(event.getSource()).isNotBlank());
+        verify(behaviorAnalysisService).analyzeUser("user-1002");
+    }
+
+    @Test
     void resetRequiresExplicitConfirmation() {
         BehaviorDemoScenarioService.ResetResult result = service.reset(
             new BehaviorDemoScenarioService.ResetRequest("browser-session-2", false)

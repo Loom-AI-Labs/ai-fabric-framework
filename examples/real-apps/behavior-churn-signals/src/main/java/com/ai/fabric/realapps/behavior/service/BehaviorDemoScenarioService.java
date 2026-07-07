@@ -193,20 +193,57 @@ public class BehaviorDemoScenarioService {
             ), "customer-success")
         );
 
-        LocalDateTime timestamp = LocalDateTime.now();
-        for (int i = 0; i < recoveryEvents.size(); i++) {
-            RecordBehaviorSignalRequest recovery = recoveryEvents.get(i);
-            AppBehaviorEvent event = new AppBehaviorEvent();
-            event.setUserId(userId);
-            event.setEventType(recovery.eventType());
-            event.setEventTimestamp(timestamp.plusSeconds(i));
-            event.setEventData(toJson(recovery.eventData()));
-            event.setSource(recovery.source());
-            eventRepository.save(event);
-        }
+        saveEventSequence(userId, recoveryEvents);
 
         BehaviorInsights insight = behaviorAnalysisService.analyzeUser(userId);
         return resultFor(scenario, insight);
+    }
+
+    @Transactional
+    public BehaviorScenarioResult recordNegativeChurnSignals(String userId) {
+        DemoScenarioDefinition scenario = requireScenario(userId);
+        List<RecordBehaviorSignalRequest> churnEvents = List.of(
+            new RecordBehaviorSignalRequest("PAYMENT_FAILED", Map.of(
+                "invoiceStatus", "past_due",
+                "gateway", "stripe",
+                "renewalAttempt", "2",
+                "reason", "card_declined"
+            ), "billing-service"),
+            new RecordBehaviorSignalRequest("USAGE_DROP", Map.of(
+                "metric", "weekly_active_users",
+                "dropPercent", "68"
+            ), "usage-analytics"),
+            new RecordBehaviorSignalRequest("SUPPORT_COMPLAINT", Map.of(
+                "topic", "billing",
+                "message", "renewal failed twice and the team is blocked"
+            ), "support-inbox"),
+            new RecordBehaviorSignalRequest("NO_LOGIN_7D", Map.of(
+                "days", "10"
+            ), "usage-analytics"),
+            new RecordBehaviorSignalRequest("CANCEL_INTENT", Map.of(
+                "reason", "renewal failed twice",
+                "requestedBy", "account_admin"
+            ), "support-inbox")
+        );
+
+        saveEventSequence(userId, churnEvents);
+
+        BehaviorInsights insight = behaviorAnalysisService.analyzeUser(userId);
+        return resultFor(scenario, insight);
+    }
+
+    private void saveEventSequence(String userId, List<RecordBehaviorSignalRequest> requests) {
+        LocalDateTime timestamp = LocalDateTime.now();
+        for (int i = 0; i < requests.size(); i++) {
+            RecordBehaviorSignalRequest request = requests.get(i);
+            AppBehaviorEvent event = new AppBehaviorEvent();
+            event.setUserId(userId);
+            event.setEventType(request.eventType());
+            event.setEventTimestamp(timestamp.plusSeconds(i));
+            event.setEventData(toJson(request.eventData()));
+            event.setSource(request.source());
+            eventRepository.save(event);
+        }
     }
 
     @Transactional

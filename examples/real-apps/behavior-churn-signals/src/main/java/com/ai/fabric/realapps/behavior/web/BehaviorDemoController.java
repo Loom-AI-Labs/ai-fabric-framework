@@ -128,6 +128,11 @@ public class BehaviorDemoController {
         return service.recordPositiveRecovery(userId);
     }
 
+    @PostMapping("/scenarios/{userId}/negative-churn")
+    public BehaviorDemoScenarioService.BehaviorScenarioResult recordNegativeChurnSignals(@PathVariable String userId) {
+        return service.recordNegativeChurnSignals(userId);
+    }
+
     @PostMapping("/scenarios/{userId}/agentic-ui")
     public AgenticUiComposerService.AgenticUiResponse agenticUi(@PathVariable String userId) {
         return agenticUiComposerService.compose(service.analyze(userId));
