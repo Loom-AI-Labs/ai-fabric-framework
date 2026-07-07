@@ -4,6 +4,8 @@ server:
 spring:
   application:
     name: tenant-knowledge-portal
+  profiles:
+    default: smoke
 
 app:
   cors:
@@ -15,5 +17,14 @@ ai:
   providers:
     llm-provider: ${AI_LLM_PROVIDER:smoke}
     embedding-provider: ${AI_EMBEDDING_PROVIDER:smoke}
+    openai:
+      enabled: ${OPENAI_ENABLED:false}
+      api-key: ${OPENAI_API_KEY:}
+      base-url: ${OPENAI_BASE_URL:https://api.openai.com/v1}
+      model: ${OPENAI_MODEL:gpt-4o-mini}
+      embedding-model: ${OPENAI_EMBEDDING_MODEL:text-embedding-3-small}
+      embedding-dimensions: ${OPENAI_EMBEDDING_DIMENSIONS:}
   vector-db:
-    type: ${AI_VECTOR_DB_TYPE:memory}
+    type: ${AI_VECTOR_DB_TYPE:lucene}
+    lucene:
+      index-path: ${VECTOR_INDEX_PATH:./data/tenant-guard-lucene-index}

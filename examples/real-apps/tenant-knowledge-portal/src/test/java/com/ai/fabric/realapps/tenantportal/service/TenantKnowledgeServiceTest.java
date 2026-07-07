@@ -1,13 +1,35 @@
 package com.ai.fabric.realapps.tenantportal.service;
 
+import ai.fabric.config.AIProviderConfig;
+import ai.fabric.core.AICoreService;
+import ai.fabric.dto.AIEmbeddingResponse;
+import ai.fabric.dto.AISearchRequest;
+import ai.fabric.dto.AISearchResponse;
 import ai.fabric.intent.action.ActionAccessMode;
+import ai.fabric.rag.VectorDatabaseService;
+import ai.fabric.vector.memory.InMemoryVectorDatabaseService;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
+import org.springframework.beans.factory.ObjectProvider;
+
+import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 class TenantKnowledgeServiceTest {
 
-    private final TenantKnowledgeService service = new TenantKnowledgeService();
+    private TenantKnowledgeService service;
+
+    @BeforeEach
+    void setUp() {
+        service = new TenantKnowledgeService();
+    }
 
     @Test
     void tenantSearchReturnsOnlyCallerTenant() {
@@ -113,5 +135,120 @@ class TenantKnowledgeServiceTest {
             .containsExactly("doc-b");
         assertThat(service.dashboard("browser-a").session().isolated()).isTrue();
         assertThat(service.dashboard("browser-a").session().ttlHours()).isEqualTo(6);
+    }
+
+    @Test
+    void aiFabricQueryUsesMetadataFilterAndReturnsOnlyCallerTenantEvidence() {
+        VectorDatabaseService vectorDatabaseService = new InMemoryVectorDatabaseService(new AIProviderConfig());
+        AICoreService aiCoreService = aiCoreServiceBackedBy(vectorDatabaseService);
+        TenantKnowledgeService aiService = new TenantKnowledgeService(provider(aiCoreService), provider(vectorDatabaseService));
+
+        TenantKnowledgeService.TenantRagResponse response = aiService.queryTenantKnowledge(
+            "browser-ai",
+            new TenantKnowledgeService.TenantQueryRequest("tenant-a", "USER", "VPN", 5)
+        );
+
+        assertThat(response.success()).isTrue();
+        assertThat(response.metadataFilter())
+            .containsEntry("sessionId", "browser-ai")
+            .containsEntry("tenantId", "tenant-a")
+            .containsEntry("visibleToUser", true);
+        assertThat(response.hits())
+            .extracting(TenantKnowledgeService.TenantRagHit::id)
+            .contains("doc-a")
+            .doesNotContain("doc-b", "doc-b-keys", "doc-admin", "doc-platform");
+        assertThat(response.hits())
+            .allSatisfy(hit -> {
+                assertThat(hit.tenantId()).isEqualTo("tenant-a");
+                assertThat(hit.visibility()).isNotEqualTo("restricted");
+            });
+        assertThat(response.boundaryProof().passed()).isTrue();
+        assertThat(response.indexProof().available()).isTrue();
+        assertThat(response.indexProof().indexedByTenant())
+            .containsEntry("tenant-a", 3L)
+            .containsEntry("tenant-b", 2L)
+            .containsEntry("platform", 1L);
+
+        ArgumentCaptor<AISearchRequest> requestCaptor = ArgumentCaptor.forClass(AISearchRequest.class);
+        verify(aiCoreService).performSearch(requestCaptor.capture());
+        assertThat(requestCaptor.getValue().getMetadata())
+            .containsEntry("sessionId", "browser-ai")
+            .containsEntry("tenantId", "tenant-a")
+            .containsEntry("visibleToUser", true);
+    }
+
+    @Test
+    void aiFabricQueryFailsClosedIfReturnedEvidenceDoesNotPassAppBoundaryCheck() {
+        VectorDatabaseService vectorDatabaseService = new InMemoryVectorDatabaseService(new AIProviderConfig());
+        AICoreService aiCoreService = mock(AICoreService.class);
+        when(aiCoreService.generateEmbedding(any())).thenReturn(testEmbedding());
+        when(aiCoreService.performSearch(any())).thenReturn(AISearchResponse.builder()
+            .query("VPN")
+            .results(List.of(Map.of(
+                "id", "browser-ai:doc-b",
+                "content", "Tenant B VPN requires hardware keys.",
+                "score", 0.99d,
+                "metadata", """
+                    {"sessionId":"browser-ai","documentId":"doc-b","tenantId":"tenant-b","visibility":"internal","visibleToUser":true}
+                    """
+            )))
+            .totalResults(1)
+            .build());
+        TenantKnowledgeService aiService = new TenantKnowledgeService(provider(aiCoreService), provider(vectorDatabaseService));
+
+        TenantKnowledgeService.TenantRagResponse response = aiService.queryTenantKnowledge(
+            "browser-ai",
+            new TenantKnowledgeService.TenantQueryRequest("tenant-a", "USER", "VPN", 5)
+        );
+
+        assertThat(response.success()).isTrue();
+        assertThat(response.hits()).isEmpty();
+        assertThat(response.answer()).contains("retrieved no allowed evidence");
+        assertThat(response.boundaryProof().passed()).isTrue();
+    }
+
+    @Test
+    void tenantDeletionAlsoRemovesIndexedVectorsForTargetTenant() {
+        VectorDatabaseService vectorDatabaseService = new InMemoryVectorDatabaseService(new AIProviderConfig());
+        AICoreService aiCoreService = aiCoreServiceBackedBy(vectorDatabaseService);
+        TenantKnowledgeService aiService = new TenantKnowledgeService(provider(aiCoreService), provider(vectorDatabaseService));
+        aiService.seedAiIndex("browser-delete");
+
+        TenantKnowledgeService.TenantDeletionResult result = aiService.deleteTenant(
+            "browser-delete",
+            new TenantKnowledgeService.UserContext("platform", "ADMIN"),
+            "tenant-b"
+        );
+
+        assertThat(result.success()).isTrue();
+        assertThat(result.deletedIds()).containsExactly("doc-b", "doc-b-keys");
+        assertThat(result.deletedVectors()).isEqualTo(2);
+        assertThat(result.deletedVectorEntityIds()).containsExactlyInAnyOrder("browser-delete:doc-b", "browser-delete:doc-b-keys");
+        assertThat(result.indexProof().indexedByTenant()).doesNotContainKey("tenant-b");
+    }
+
+    @SuppressWarnings("unchecked")
+    private static <T> ObjectProvider<T> provider(T value) {
+        ObjectProvider<T> provider = mock(ObjectProvider.class);
+        when(provider.getIfAvailable()).thenReturn(value);
+        return provider;
+    }
+
+    private static AICoreService aiCoreServiceBackedBy(VectorDatabaseService vectorDatabaseService) {
+        AICoreService aiCoreService = mock(AICoreService.class);
+        when(aiCoreService.generateEmbedding(any())).thenReturn(testEmbedding());
+        when(aiCoreService.performSearch(any())).thenAnswer(invocation ->
+            vectorDatabaseService.search(testEmbedding().getEmbedding(), invocation.getArgument(0))
+        );
+        return aiCoreService;
+    }
+
+    private static AIEmbeddingResponse testEmbedding() {
+        return AIEmbeddingResponse.builder()
+            .embedding(List.of(1.0d, 0.0d, 0.0d))
+            .dimensions(3)
+            .model("test")
+            .processingTimeMs(0L)
+            .build();
     }
 }

@@ -1,0 +1,5 @@
+ai:
+  vector-db:
+    type: ${AI_VECTOR_DB_TYPE:lucene}
+    lucene:
+      index-path: ${VECTOR_INDEX_PATH:./data/tenant-guard-lucene-index}

@@ -1,29 +1,62 @@
 package com.ai.fabric.realapps.tenantportal.service;
 
+import ai.fabric.core.AICoreService;
+import ai.fabric.dto.AIEmbeddingRequest;
+import ai.fabric.dto.AIEmbeddingResponse;
+import ai.fabric.dto.AISearchRequest;
+import ai.fabric.dto.AISearchResponse;
+import ai.fabric.dto.VectorRecord;
+import ai.fabric.dto.VectorScanPage;
+import ai.fabric.dto.VectorScanRequest;
 import ai.fabric.intent.action.ActionAccessMode;
+import ai.fabric.rag.VectorDatabaseService;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
 
 @Service
 public class TenantKnowledgeService {
 
     private static final String CANONICAL_SESSION_ID = "canonical";
+    private static final String VECTOR_ENTITY_TYPE = "tenant-document";
     private static final Duration DEMO_SESSION_TTL = Duration.ofHours(6);
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+    private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {};
 
     private final Map<String, Map<String, KnowledgeDocument>> sessionDocuments = new ConcurrentHashMap<>();
     private final Map<String, Instant> sessionTouchedAt = new ConcurrentHashMap<>();
+    private final Map<String, VectorIndexState> sessionIndexState = new ConcurrentHashMap<>();
+    private final ObjectProvider<AICoreService> aiCoreServiceProvider;
+    private final ObjectProvider<VectorDatabaseService> vectorDatabaseServiceProvider;
 
     public TenantKnowledgeService() {
+        this(null, null);
+    }
+
+    @Autowired
+    public TenantKnowledgeService(
+        ObjectProvider<AICoreService> aiCoreServiceProvider,
+        ObjectProvider<VectorDatabaseService> vectorDatabaseServiceProvider
+    ) {
+        this.aiCoreServiceProvider = aiCoreServiceProvider;
+        this.vectorDatabaseServiceProvider = vectorDatabaseServiceProvider;
         resetDemoData();
     }
 
@@ -34,8 +67,10 @@ public class TenantKnowledgeService {
     public synchronized TenantGuardDashboard resetDemoData(String sessionId) {
         cleanupExpiredSessions();
         String key = sessionKey(sessionId);
-        sessionDocuments.put(key, new ConcurrentHashMap<>(seededDocuments()));
+        Map<String, KnowledgeDocument> documents = new ConcurrentHashMap<>(seededDocuments());
+        sessionDocuments.put(key, documents);
         touch(key);
+        refreshAiIndex(key, documents);
         return dashboard(sessionId);
     }
 
@@ -69,8 +104,166 @@ public class TenantKnowledgeService {
             writeActionPreview,
             deletionPreview,
             boundaryProof(comparison, tenantUserCatalog, platformAdminCatalog, crossTenantDenied, writeActionPreview, deletionPreview),
-            sessionSummary(sessionId)
+            sessionSummary(sessionId),
+            indexProof(sessionId)
         );
+    }
+
+    public TenantRagResponse queryTenantKnowledge(String sessionId, TenantQueryRequest request) {
+        TenantQueryRequest effective = request != null
+            ? request
+            : new TenantQueryRequest("tenant-a", "USER", "How do I configure VPN?", 5);
+        UserContext user = requireUser(new UserContext(effective.tenantId(), effective.role()));
+        String query = requireText(effective.query(), "query");
+        int limit = effective.limit() > 0 ? Math.min(effective.limit(), 10) : 5;
+        String key = sessionKey(sessionId);
+        Map<String, KnowledgeDocument> documents = documentsForSession(sessionId);
+        ensureAiIndexCurrent(key, documents);
+
+        AICoreService aiCoreService = aiCoreService();
+        if (aiCoreService == null) {
+            return TenantRagResponse.failure(
+                query,
+                user,
+                metadataFilter(key, user),
+                indexProof(sessionId),
+                "AI_CORE_UNAVAILABLE",
+                "AICoreService is not available, so the demo cannot run AI Fabric retrieval."
+            );
+        }
+
+        Map<String, Object> filter = metadataFilter(key, user);
+        AISearchRequest searchRequest = AISearchRequest.builder()
+            .query(query)
+            .entityType(VECTOR_ENTITY_TYPE)
+            .limit(limit)
+            .threshold(0.0d)
+            .metadata(filter)
+            .build();
+
+        try {
+            AISearchResponse response = aiCoreService.performSearch(searchRequest);
+            List<TenantRagHit> hits = toTenantHits(key, user, response, documents, limit);
+            BoundaryProof proof = retrievalBoundaryProof(user, filter, hits);
+            VectorIndexProof indexProof = indexProof(sessionId);
+            return new TenantRagResponse(
+                true,
+                null,
+                query,
+                user,
+                evidenceSummary(user, query, hits),
+                filter,
+                hits,
+                proof,
+                indexProof,
+                response != null ? response.getRequestId() : null,
+                response != null ? response.getProcessingTimeMs() : null,
+                response != null ? response.getModel() : null
+            );
+        } catch (Exception ex) {
+            return TenantRagResponse.failure(
+                query,
+                user,
+                filter,
+                indexProof(sessionId),
+                ex.getClass().getSimpleName(),
+                ex.getMessage()
+            );
+        }
+    }
+
+    public VectorIndexProof seedAiIndex(String sessionId) {
+        String key = sessionKey(sessionId);
+        refreshAiIndex(key, documentsForSession(sessionId));
+        return indexProof(sessionId);
+    }
+
+    public VectorIndexProof indexProof(String sessionId) {
+        String key = sessionKey(sessionId);
+        VectorDatabaseService vectorDatabaseService = vectorDatabaseService();
+        if (vectorDatabaseService == null) {
+            VectorIndexState state = sessionIndexState.get(key);
+            String message = state != null && StringUtils.hasText(state.message())
+                ? state.message()
+                : "VectorDatabaseService is not available.";
+            return VectorIndexProof.unavailable(message);
+        }
+
+        try {
+            Map<String, Object> diagnostics = vectorDatabaseService.adminDiagnostics();
+            VectorScanPage page = vectorDatabaseService.scan(VectorScanRequest.builder()
+                .entityType(VECTOR_ENTITY_TYPE)
+                .metadataEquals(Map.of("sessionId", key))
+                .limit(200)
+                .includeContent(false)
+                .includeEmbedding(false)
+                .includeMetadata(true)
+                .build());
+            List<VectorRecord> vectors = page != null && page.getVectors() != null ? page.getVectors() : List.of();
+            Map<String, Long> byTenant = vectors.stream()
+                .map(VectorRecord::getMetadata)
+                .filter(Objects::nonNull)
+                .map(metadata -> String.valueOf(metadata.getOrDefault("tenantId", "unknown")))
+                .collect(Collectors.groupingBy(value -> value, LinkedHashMap::new, Collectors.counting()));
+            List<ProofCheck> checks = List.of(
+                new ProofCheck(
+                    "vector-service-available",
+                    "AI Fabric VectorDatabaseService is available",
+                    true,
+                    vectorDatabaseService.vectorProviderName()
+                ),
+                new ProofCheck(
+                    "metadata-filtered-search-supported",
+                    "Provider supports metadata-filtered vector search",
+                    vectorDatabaseService.supportsSearchMetadataFiltering(),
+                    vectorDatabaseService.vectorSearchFilterMode()
+                ),
+                new ProofCheck(
+                    "metadata-filtered-scan-supported",
+                    "Provider supports metadata-filtered vector scan proof",
+                    vectorDatabaseService.supportsScanMetadataFiltering(),
+                    vectorDatabaseService.vectorScanFilterMode()
+                ),
+                new ProofCheck(
+                    "session-index-is-scoped",
+                    "Index proof scans only the current demo session",
+                    vectors.stream().allMatch(vector -> vector.getMetadata() != null
+                        && key.equals(String.valueOf(vector.getMetadata().get("sessionId")))),
+                    String.valueOf(vectors.size()) + " indexed vectors"
+                )
+            );
+            return new VectorIndexProof(
+                true,
+                null,
+                "READY",
+                vectorDatabaseService.vectorProviderName(),
+                vectorDatabaseService.vectorSearchFilterMode(),
+                vectorDatabaseService.vectorScanFilterMode(),
+                vectorDatabaseService.supportsSearchMetadataFiltering(),
+                vectorDatabaseService.supportsScanMetadataFiltering(),
+                vectors.size(),
+                byTenant,
+                checks,
+                diagnosticsSummary(diagnostics),
+                stateMessage(key)
+            );
+        } catch (Exception ex) {
+            return new VectorIndexProof(
+                false,
+                ex.getClass().getSimpleName(),
+                "NOT_READY",
+                vectorDatabaseService.vectorProviderName(),
+                vectorDatabaseService.vectorSearchFilterMode(),
+                vectorDatabaseService.vectorScanFilterMode(),
+                vectorDatabaseService.supportsSearchMetadataFiltering(),
+                vectorDatabaseService.supportsScanMetadataFiltering(),
+                0,
+                Map.of(),
+                List.of(new ProofCheck("index-proof-failed", "Index proof failed closed", false, ex.getMessage())),
+                diagnosticsSummary(vectorDatabaseService.adminDiagnostics()),
+                ex.getMessage()
+            );
+        }
     }
 
     public SearchComparison compareSearch(String query) {
@@ -190,7 +383,10 @@ public class TenantKnowledgeService {
                 List.of(),
                 "Only admins can delete tenant evidence.",
                 "DENIED",
-                tenantIds(documentsForSession(sessionId))
+                tenantIds(documentsForSession(sessionId)),
+                0,
+                List.of(),
+                indexProof(sessionId)
             );
         }
         String tenant = requireText(tenantId, "tenantId");
@@ -202,7 +398,10 @@ public class TenantKnowledgeService {
                 List.of(),
                 "Tenant admins can delete only their own tenant evidence.",
                 "DENIED",
-                tenantIds(documentsForSession(sessionId))
+                tenantIds(documentsForSession(sessionId)),
+                0,
+                List.of(),
+                indexProof(sessionId)
             );
         }
         Map<String, KnowledgeDocument> documents = documentsForSession(sessionId);
@@ -211,6 +410,7 @@ public class TenantKnowledgeService {
             .map(KnowledgeDocument::id)
             .sorted()
             .toList();
+        List<String> deletedVectorEntityIds = deleteIndexedDocuments(sessionKey(sessionId), deletedIds);
         deletedIds.forEach(documents::remove);
         return new TenantDeletionResult(
             true,
@@ -219,7 +419,10 @@ public class TenantKnowledgeService {
             deletedIds,
             "Deleted only " + tenant + " evidence. Other tenant documents remain isolated.",
             "APPROVED",
-            tenantIds(documents)
+            tenantIds(documents),
+            deletedVectorEntityIds.size(),
+            deletedVectorEntityIds,
+            indexProof(sessionId)
         );
     }
 
@@ -356,8 +559,325 @@ public class TenantKnowledgeService {
         Map<String, Object> metadata = new LinkedHashMap<>();
         metadata.put("tenantId", document.tenantId());
         metadata.put("visibility", document.visibility());
-        metadata.put("entityType", "tenant-document");
+        metadata.put("visibleToUser", !"restricted".equals(document.visibility()));
+        metadata.put("documentId", document.id());
+        metadata.put("title", document.title());
+        metadata.put("entityType", VECTOR_ENTITY_TYPE);
         return Map.copyOf(metadata);
+    }
+
+    private void ensureAiIndexCurrent(String key, Map<String, KnowledgeDocument> documents) {
+        VectorIndexState state = sessionIndexState.get(key);
+        if (state == null || state.indexedDocuments() < documents.size()) {
+            refreshAiIndex(key, documents);
+        }
+    }
+
+    private synchronized void refreshAiIndex(String key, Map<String, KnowledgeDocument> documents) {
+        AICoreService aiCoreService = aiCoreService();
+        VectorDatabaseService vectorDatabaseService = vectorDatabaseService();
+        if (aiCoreService == null || vectorDatabaseService == null) {
+            sessionIndexState.put(key, new VectorIndexState(
+                false,
+                0,
+                "AICoreService or VectorDatabaseService is not available.",
+                Instant.now()
+            ));
+            return;
+        }
+        try {
+            deleteIndexedSession(key, documents.values().stream().map(KnowledgeDocument::id).toList());
+            int indexed = 0;
+            for (KnowledgeDocument document : documents.values().stream().sorted(Comparator.comparing(KnowledgeDocument::id)).toList()) {
+                String entityId = vectorEntityId(key, document.id());
+                AIEmbeddingResponse embedding = aiCoreService.generateEmbedding(AIEmbeddingRequest.builder()
+                    .text(indexContent(document))
+                    .entityType(VECTOR_ENTITY_TYPE)
+                    .entityId(entityId)
+                    .build());
+                if (embedding == null || embedding.getEmbedding() == null || embedding.getEmbedding().isEmpty()) {
+                    throw new IllegalStateException("Embedding provider returned no vector for " + document.id());
+                }
+                vectorDatabaseService.storeVector(
+                    VECTOR_ENTITY_TYPE,
+                    entityId,
+                    indexContent(document),
+                    embedding.getEmbedding(),
+                    indexedMetadata(key, document)
+                );
+                indexed++;
+            }
+            sessionIndexState.put(key, new VectorIndexState(true, indexed, "AI Fabric index refreshed.", Instant.now()));
+        } catch (Exception ex) {
+            sessionIndexState.put(key, new VectorIndexState(false, 0, ex.getMessage(), Instant.now()));
+        }
+    }
+
+    private List<String> deleteIndexedSession(String key, List<String> documentIds) {
+        VectorDatabaseService vectorDatabaseService = vectorDatabaseService();
+        if (vectorDatabaseService == null) {
+            return List.of();
+        }
+        List<String> removed = new ArrayList<>();
+        try {
+            VectorScanPage page = vectorDatabaseService.scan(VectorScanRequest.builder()
+                .entityType(VECTOR_ENTITY_TYPE)
+                .metadataEquals(Map.of("sessionId", key))
+                .limit(200)
+                .includeContent(false)
+                .includeEmbedding(false)
+                .includeMetadata(true)
+                .build());
+            if (page != null && page.getVectors() != null) {
+                for (VectorRecord vector : page.getVectors()) {
+                    if (StringUtils.hasText(vector.getEntityId())
+                        && vectorDatabaseService.removeVector(VECTOR_ENTITY_TYPE, vector.getEntityId())) {
+                        removed.add(vector.getEntityId());
+                    }
+                }
+            }
+        } catch (Exception ignored) {
+            // Fall back to known seeded ids below.
+        }
+        for (String documentId : documentIds) {
+            String entityId = vectorEntityId(key, documentId);
+            if (!removed.contains(entityId) && removeVectorIfExists(vectorDatabaseService, entityId)) {
+                removed.add(entityId);
+            }
+        }
+        return removed;
+    }
+
+    private List<String> deleteIndexedDocuments(String key, List<String> documentIds) {
+        VectorDatabaseService vectorDatabaseService = vectorDatabaseService();
+        if (vectorDatabaseService == null || documentIds == null || documentIds.isEmpty()) {
+            return List.of();
+        }
+        List<String> removed = new ArrayList<>();
+        for (String documentId : documentIds) {
+            String entityId = vectorEntityId(key, documentId);
+            if (removeVectorIfExists(vectorDatabaseService, entityId)) {
+                removed.add(entityId);
+            }
+        }
+        return removed;
+    }
+
+    private boolean removeVectorIfExists(VectorDatabaseService vectorDatabaseService, String entityId) {
+        try {
+            if (!vectorDatabaseService.vectorExists(VECTOR_ENTITY_TYPE, entityId)) {
+                return false;
+            }
+            return vectorDatabaseService.removeVector(VECTOR_ENTITY_TYPE, entityId);
+        } catch (Exception ex) {
+            return vectorDatabaseService.removeVector(VECTOR_ENTITY_TYPE, entityId);
+        }
+    }
+
+    private Map<String, Object> indexedMetadata(String key, KnowledgeDocument document) {
+        Map<String, Object> metadata = new LinkedHashMap<>(metadata(document));
+        metadata.put("sessionId", key);
+        metadata.put("visibleToUser", !"restricted".equals(document.visibility()));
+        return Map.copyOf(metadata);
+    }
+
+    private Map<String, Object> metadataFilter(String key, UserContext user) {
+        Map<String, Object> metadata = new LinkedHashMap<>();
+        metadata.put("sessionId", key);
+        if (!isPlatformAdmin(user)) {
+            metadata.put("tenantId", user.tenantId());
+            metadata.put("visibleToUser", true);
+        }
+        return Map.copyOf(metadata);
+    }
+
+    private List<TenantRagHit> toTenantHits(
+        String key,
+        UserContext user,
+        AISearchResponse response,
+        Map<String, KnowledgeDocument> documents,
+        int limit
+    ) {
+        if (response == null || response.getResults() == null || response.getResults().isEmpty()) {
+            return List.of();
+        }
+        Map<String, TenantRagHit> uniqueHits = new LinkedHashMap<>();
+        for (Map<String, Object> row : response.getResults()) {
+            Optional<TenantRagHit> hit = toTenantHit(key, user, row, documents);
+            hit.ifPresent(value -> uniqueHits.putIfAbsent(value.id(), value));
+            if (uniqueHits.size() >= limit) {
+                break;
+            }
+        }
+        return List.copyOf(uniqueHits.values());
+    }
+
+    private Optional<TenantRagHit> toTenantHit(
+        String key,
+        UserContext user,
+        Map<String, Object> row,
+        Map<String, KnowledgeDocument> documents
+    ) {
+        if (row == null) {
+            return Optional.empty();
+        }
+        Map<String, Object> metadata = parseMetadata(row.get("metadata"));
+        String documentId = String.valueOf(metadata.getOrDefault("documentId", ""));
+        if (!StringUtils.hasText(documentId)) {
+            documentId = stripVectorEntityPrefix(key, String.valueOf(row.getOrDefault("id", "")));
+        }
+        KnowledgeDocument document = documents.get(documentId);
+        if (document == null) {
+            return Optional.empty();
+        }
+        if (!key.equals(String.valueOf(metadata.get("sessionId")))) {
+            return Optional.empty();
+        }
+        if (!document.tenantId().equals(String.valueOf(metadata.get("tenantId")))) {
+            return Optional.empty();
+        }
+        if (!canRead(user, document)) {
+            return Optional.empty();
+        }
+        return Optional.of(new TenantRagHit(
+            document.id(),
+            document.title(),
+            document.tenantId(),
+            document.visibility(),
+            document.content(),
+            number(row.get("score")),
+            metadata
+        ));
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> parseMetadata(Object metadata) {
+        if (metadata instanceof Map<?, ?> raw) {
+            Map<String, Object> parsed = new LinkedHashMap<>();
+            raw.forEach((key, value) -> parsed.put(String.valueOf(key), value));
+            return parsed;
+        }
+        if (metadata instanceof String text && StringUtils.hasText(text)) {
+            try {
+                return OBJECT_MAPPER.readValue(text, MAP_TYPE);
+            } catch (Exception ignored) {
+                return Map.of();
+            }
+        }
+        return Map.of();
+    }
+
+    private BoundaryProof retrievalBoundaryProof(UserContext user, Map<String, Object> filter, List<TenantRagHit> hits) {
+        List<ProofCheck> checks = List.of(
+            new ProofCheck(
+                "request-has-session-filter",
+                "AI Fabric search request includes current session filter",
+                filter.containsKey("sessionId"),
+                filter.toString()
+            ),
+            new ProofCheck(
+                "request-has-tenant-filter",
+                "Tenant users search only their own tenant evidence",
+                isPlatformAdmin(user) || user.tenantId().equals(filter.get("tenantId")),
+                filter.toString()
+            ),
+            new ProofCheck(
+                "restricted-evidence-hidden",
+                "Restricted evidence follows role policy",
+                isPlatformAdmin(user) || hits.stream().noneMatch(hit -> "restricted".equals(hit.visibility())),
+                hits.stream().map(TenantRagHit::id).toList().toString()
+            ),
+            new ProofCheck(
+                "results-pass-app-boundary-check",
+                "Returned evidence passes app-side tenant and visibility verification",
+                hits.stream().allMatch(hit -> isPlatformAdmin(user) || user.tenantId().equals(hit.tenantId())),
+                hits.stream().map(hit -> hit.id() + ":" + hit.tenantId()).toList().toString()
+            )
+        );
+        boolean passed = checks.stream().allMatch(ProofCheck::passed);
+        return new BoundaryProof(
+            passed,
+            passed
+                ? "AI Fabric retrieval and app-side verification kept evidence inside the caller boundary."
+                : "Retrieval proof failed; results should not be trusted.",
+            checks
+        );
+    }
+
+    private String evidenceSummary(UserContext user, String query, List<TenantRagHit> hits) {
+        if (hits.isEmpty()) {
+            return "AI Fabric retrieved no allowed evidence for " + user.tenantId()
+                + " using query \"" + query + "\".";
+        }
+        String scope = isPlatformAdmin(user) ? "platform admin" : user.tenantId();
+        String evidence = hits.stream()
+            .limit(3)
+            .map(hit -> hit.title() + ": " + hit.content())
+            .collect(Collectors.joining(" "));
+        return "Based only on AI Fabric evidence allowed for " + scope + ", " + evidence;
+    }
+
+    private Map<String, Object> diagnosticsSummary(Map<String, Object> diagnostics) {
+        if (diagnostics == null || diagnostics.isEmpty()) {
+            return Map.of();
+        }
+        Map<String, Object> summary = new LinkedHashMap<>();
+        List.of(
+            "provider",
+            "nativeClient",
+            "supportsSearchMetadataFiltering",
+            "supportsScanMetadataFiltering",
+            "searchFilterMode",
+            "scanFilterMode",
+            "metadataFilterSubset",
+            "persistent",
+            "productionProfileSafe"
+        ).forEach(key -> {
+            if (diagnostics.containsKey(key)) {
+                summary.put(key, diagnostics.get(key));
+            }
+        });
+        return Map.copyOf(summary);
+    }
+
+    private String stateMessage(String key) {
+        VectorIndexState state = sessionIndexState.get(key);
+        return state != null ? state.message() : "";
+    }
+
+    private String indexContent(KnowledgeDocument document) {
+        return document.title() + "\n" + document.content();
+    }
+
+    private String vectorEntityId(String key, String documentId) {
+        return key + ":" + documentId;
+    }
+
+    private String stripVectorEntityPrefix(String key, String entityId) {
+        String prefix = key + ":";
+        return entityId != null && entityId.startsWith(prefix) ? entityId.substring(prefix.length()) : entityId;
+    }
+
+    private Double number(Object value) {
+        if (value instanceof Number number) {
+            return number.doubleValue();
+        }
+        if (value instanceof String text) {
+            try {
+                return Double.parseDouble(text);
+            } catch (NumberFormatException ignored) {
+                return 0.0d;
+            }
+        }
+        return 0.0d;
+    }
+
+    private AICoreService aiCoreService() {
+        return aiCoreServiceProvider != null ? aiCoreServiceProvider.getIfAvailable() : null;
+    }
+
+    private VectorDatabaseService vectorDatabaseService() {
+        return vectorDatabaseServiceProvider != null ? vectorDatabaseServiceProvider.getIfAvailable() : null;
     }
 
     private Map<String, Object> policyData(
@@ -480,6 +1000,8 @@ public class TenantKnowledgeService {
             if (!CANONICAL_SESSION_ID.equals(key) && touchedAt.isBefore(cutoff)) {
                 sessionTouchedAt.remove(key);
                 sessionDocuments.remove(key);
+                sessionIndexState.remove(key);
+                deleteIndexedSession(key, seededDocuments().keySet().stream().toList());
             }
         });
     }
@@ -526,6 +1048,8 @@ public class TenantKnowledgeService {
 
     public record TenantActionRequest(String actionId, String documentId, ActionAccessMode accessMode, boolean confirmed) {}
 
+    public record TenantQueryRequest(String tenantId, String role, String query, int limit) {}
+
     public record TenantGuardScenario(
         String id,
         String tenantId,
@@ -559,6 +1083,93 @@ public class TenantKnowledgeService {
 
     public record DemoSessionSummary(String sessionId, boolean isolated, long ttlHours) {}
 
+    public record TenantRagHit(
+        String id,
+        String title,
+        String tenantId,
+        String visibility,
+        String content,
+        Double score,
+        Map<String, Object> metadata
+    ) {}
+
+    public record VectorIndexProof(
+        boolean available,
+        String errorCode,
+        String status,
+        String provider,
+        String searchFilterMode,
+        String scanFilterMode,
+        boolean supportsSearchMetadataFiltering,
+        boolean supportsScanMetadataFiltering,
+        int indexedDocuments,
+        Map<String, Long> indexedByTenant,
+        List<ProofCheck> checks,
+        Map<String, Object> diagnostics,
+        String message
+    ) {
+        static VectorIndexProof unavailable(String message) {
+            return new VectorIndexProof(
+                false,
+                "VECTOR_SERVICE_UNAVAILABLE",
+                "NOT_READY",
+                "",
+                "",
+                "",
+                false,
+                false,
+                0,
+                Map.of(),
+                List.of(new ProofCheck("vector-service-unavailable", "Vector service is unavailable", false, message)),
+                Map.of(),
+                message
+            );
+        }
+    }
+
+    public record TenantRagResponse(
+        boolean success,
+        String errorCode,
+        String query,
+        UserContext user,
+        String answer,
+        Map<String, Object> metadataFilter,
+        List<TenantRagHit> hits,
+        BoundaryProof boundaryProof,
+        VectorIndexProof indexProof,
+        String requestId,
+        Long processingTimeMs,
+        String model
+    ) {
+        static TenantRagResponse failure(
+            String query,
+            UserContext user,
+            Map<String, Object> metadataFilter,
+            VectorIndexProof indexProof,
+            String errorCode,
+            String message
+        ) {
+            return new TenantRagResponse(
+                false,
+                errorCode,
+                query,
+                user,
+                message,
+                metadataFilter,
+                List.of(),
+                new BoundaryProof(
+                    false,
+                    "AI Fabric retrieval failed closed.",
+                    List.of(new ProofCheck("retrieval-failed", "Retrieval failed closed", false, message))
+                ),
+                indexProof,
+                null,
+                null,
+                null
+            );
+        }
+    }
+
     public record TenantGuardDashboard(
         List<TenantGuardScenario> scenarios,
         DocumentStats stats,
@@ -569,7 +1180,8 @@ public class TenantKnowledgeService {
         ActionDecision writeActionPreview,
         TenantDeletionPreview deletionPreview,
         BoundaryProof boundaryProof,
-        DemoSessionSummary session
+        DemoSessionSummary session,
+        VectorIndexProof indexProof
     ) {}
 
     public record ActionDecision(
@@ -595,6 +1207,11 @@ public class TenantKnowledgeService {
         List<String> deletedIds,
         String message,
         String policyDecision,
-        List<String> remainingTenantIds
+        List<String> remainingTenantIds,
+        int deletedVectors,
+        List<String> deletedVectorEntityIds,
+        VectorIndexProof indexProof
     ) {}
+
+    private record VectorIndexState(boolean ready, int indexedDocuments, String message, Instant refreshedAt) {}
 }

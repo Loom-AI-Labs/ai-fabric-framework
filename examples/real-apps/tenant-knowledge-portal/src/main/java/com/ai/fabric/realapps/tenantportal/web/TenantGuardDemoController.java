@@ -39,6 +39,37 @@ public class TenantGuardDemoController {
         return service.compareSearch(sessionId, q);
     }
 
+    @PostMapping("/query")
+    public TenantKnowledgeService.TenantRagResponse query(
+        @RequestParam(value = "sessionId", required = false) String sessionId,
+        @RequestBody TenantGuardQueryRequest request
+    ) {
+        TenantGuardQueryRequest effective = request != null ? request : TenantGuardQueryRequest.defaultRequest();
+        return service.queryTenantKnowledge(
+            sessionId,
+            new TenantKnowledgeService.TenantQueryRequest(
+                effective.tenantId(),
+                effective.role(),
+                effective.query(),
+                effective.limit()
+            )
+        );
+    }
+
+    @PostMapping("/index/seed")
+    public TenantKnowledgeService.VectorIndexProof seedIndex(
+        @RequestParam(value = "sessionId", required = false) String sessionId
+    ) {
+        return service.seedAiIndex(sessionId);
+    }
+
+    @GetMapping("/index/proof")
+    public TenantKnowledgeService.VectorIndexProof indexProof(
+        @RequestParam(value = "sessionId", required = false) String sessionId
+    ) {
+        return service.indexProof(sessionId);
+    }
+
     @PostMapping("/actions/execute")
     public TenantKnowledgeService.ActionDecision execute(
         @RequestParam(value = "sessionId", required = false) String sessionId,
@@ -87,6 +118,12 @@ public class TenantGuardDemoController {
                 ActionAccessMode.WRITE_ONLY,
                 true
             );
+        }
+    }
+
+    public record TenantGuardQueryRequest(String tenantId, String role, String query, int limit) {
+        static TenantGuardQueryRequest defaultRequest() {
+            return new TenantGuardQueryRequest("tenant-a", "USER", "How do I configure VPN?", 5);
         }
     }
 
