@@ -50,6 +50,22 @@ class DbExternalEventProviderTest {
     }
 
     @Test
+    void usesPreviousAnalysisTimestampAsImplicitLowerBound() {
+        LocalDateTime analyzedAt = LocalDateTime.now().minusMinutes(10);
+        LocalDateTime later = analyzedAt.plusMinutes(5);
+        when(insightsRepository.findByUserId("u1")).thenReturn(Optional.of(BehaviorInsights.builder()
+            .analyzedAt(analyzedAt)
+            .build()));
+        when(eventRepository.findWindow(eq("u1"), eq(analyzedAt), any(LocalDateTime.class)))
+            .thenReturn(List.of(event("u1", "cancel_intent", later, "{}")));
+
+        List<ExternalEvent> events = provider.getEventsForUser("u1", null, null);
+
+        assertThat(events).singleElement()
+            .satisfies(event -> assertThat(event.getEventType()).isEqualTo("cancel_intent"));
+    }
+
+    @Test
     void returnsNoPendingBatchWhenNoUsersNeedAnalysis() {
         when(eventRepository.findDistinctUserIds()).thenReturn(List.of());
 

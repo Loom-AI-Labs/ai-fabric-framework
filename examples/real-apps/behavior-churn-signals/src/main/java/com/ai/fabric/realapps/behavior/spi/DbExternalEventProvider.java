@@ -33,7 +33,10 @@ public class DbExternalEventProvider implements ExternalEventProvider {
             return List.of();
         }
         LocalDateTime effectiveUntil = until != null ? until : LocalDateTime.now();
-        LocalDateTime effectiveSince = since != null ? since : effectiveUntil.minusDays(30);
+        LocalDateTime effectiveSince = since != null ? since : insightsRepository.findByUserId(userId)
+            .map(BehaviorInsights::getAnalyzedAt)
+            .filter(analyzedAt -> !analyzedAt.isAfter(effectiveUntil))
+            .orElse(effectiveUntil.minusDays(30));
 
         return eventRepository.findWindow(userId, effectiveSince, effectiveUntil).stream()
             .map(this::toExternalEvent)
