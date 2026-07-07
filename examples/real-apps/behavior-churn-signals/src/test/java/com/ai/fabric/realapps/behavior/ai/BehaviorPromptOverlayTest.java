@@ -28,9 +28,12 @@ class BehaviorPromptOverlayTest {
         assertThat(system.key().version()).isEqualTo("v1-behavior-signals");
         assertThat(system.template())
             .contains("AI behavior analyst")
-            .contains("Return only valid JSON");
+            .contains("Return only valid JSON")
+            .contains("ENGINEERING_ESCALATION");
         assertThat(user.key().version()).isEqualTo("v1-behavior-signals");
-        assertThat(user.template()).contains("insights.action_family");
+        assertThat(user.template())
+            .contains("insights.action_family")
+            .contains("Prefer this over ADOPTION_HELP");
         assertThat(repair.key().version()).isEqualTo("v1-behavior-signals");
         assertThat(repair.template()).contains("strict JSON parser");
     }
