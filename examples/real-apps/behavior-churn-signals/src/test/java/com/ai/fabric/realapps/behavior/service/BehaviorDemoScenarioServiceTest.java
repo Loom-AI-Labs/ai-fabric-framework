@@ -184,6 +184,10 @@ class BehaviorDemoScenarioServiceTest {
             );
         assertThat(eventCaptor.getAllValues())
             .allSatisfy(event -> assertThat(event.getSource()).isNotBlank());
+        assertThat(eventCaptor.getAllValues())
+            .extracting(AppBehaviorEvent::getEventTimestamp)
+            .isSorted()
+            .allSatisfy(timestamp -> assertThat(timestamp).isBeforeOrEqualTo(LocalDateTime.now()));
         verify(behaviorAnalysisService).analyzeUser("user-1001");
     }
 
@@ -209,6 +213,10 @@ class BehaviorDemoScenarioServiceTest {
             );
         assertThat(eventCaptor.getAllValues())
             .allSatisfy(event -> assertThat(event.getSource()).isNotBlank());
+        assertThat(eventCaptor.getAllValues())
+            .extracting(AppBehaviorEvent::getEventTimestamp)
+            .isSorted()
+            .allSatisfy(timestamp -> assertThat(timestamp).isBeforeOrEqualTo(LocalDateTime.now()));
         verify(behaviorAnalysisService).analyzeUser("user-1002");
     }
 

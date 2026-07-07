@@ -243,13 +243,13 @@ public class BehaviorDemoScenarioService {
     }
 
     private void saveEventSequence(String userId, List<RecordBehaviorSignalRequest> requests) {
-        LocalDateTime timestamp = LocalDateTime.now();
+        LocalDateTime endTimestamp = LocalDateTime.now();
         for (int i = 0; i < requests.size(); i++) {
             RecordBehaviorSignalRequest request = requests.get(i);
             AppBehaviorEvent event = new AppBehaviorEvent();
             event.setUserId(userId);
             event.setEventType(request.eventType());
-            event.setEventTimestamp(timestamp.plusSeconds(i));
+            event.setEventTimestamp(endTimestamp.minusSeconds((long) requests.size() - 1 - i));
             event.setEventData(toJson(request.eventData()));
             event.setSource(request.source());
             eventRepository.save(event);
