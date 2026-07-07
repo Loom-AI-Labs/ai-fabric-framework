@@ -7,6 +7,7 @@ import ai.fabric.behavior.model.UserEventBatch;
 import ai.fabric.behavior.spi.ExternalEventProvider;
 import ai.fabric.core.AICoreService;
 import ai.fabric.config.PromptBundleProperties;
+import ai.fabric.dto.AIGenerationRequest;
 import ai.fabric.dto.AIGenerationResponse;
 import ai.fabric.llm.structured.DefaultStructuredJsonCallExecutor;
 import ai.fabric.llm.structured.StructuredJsonExtractor;
@@ -70,19 +71,21 @@ class BehaviorAnalysisServiceTest {
     @Test
     void analyzeUser_returnsExistingWhenNoEvents() {
         String userId = "user-12345";
+        LocalDateTime analyzedAt = LocalDateTime.now().minusHours(2);
         BehaviorInsights existing = BehaviorInsights.builder()
             .id(UUID.randomUUID())
             .userId(userId)
             .segment("existing")
-            .analyzedAt(LocalDateTime.now())
+            .analyzedAt(analyzedAt)
             .build();
 
         when(storageAdapter.findByUserId(userId)).thenReturn(Optional.of(existing));
-        when(eventProvider.getEventsForUser(userId, null, null)).thenReturn(List.of());
+        when(eventProvider.getEventsForUser(userId, analyzedAt, null)).thenReturn(List.of());
 
         BehaviorInsights result = service.analyzeUser(userId);
 
         assertThat(result).isSameAs(existing);
+        verify(eventProvider).getEventsForUser(userId, analyzedAt, null);
         verify(storageAdapter, never()).save(any());
     }
 
@@ -258,18 +261,19 @@ class BehaviorAnalysisServiceTest {
     @Test
     void recomputesTrendFromDeltasWhenStableReturned() {
         String userId = "user-trend-test";
+        LocalDateTime analyzedAt = LocalDateTime.now().minusDays(1);
         BehaviorInsights existing = BehaviorInsights.builder()
             .id(UUID.randomUUID())
             .userId(userId)
             .sentimentScore(0.5)
             .churnRisk(0.1)
             .trend(ai.fabric.behavior.model.BehaviorTrend.IMPROVING)
-            .createdAt(LocalDateTime.now().minusDays(1))
-            .analyzedAt(LocalDateTime.now().minusDays(1))
+            .createdAt(analyzedAt)
+            .analyzedAt(analyzedAt)
             .build();
 
         when(storageAdapter.findByUserId(userId)).thenReturn(Optional.of(existing));
-        when(eventProvider.getEventsForUser(userId, null, null)).thenReturn(
+        when(eventProvider.getEventsForUser(userId, analyzedAt, null)).thenReturn(
             List.of(ExternalEvent.builder().eventType("downgrade").timestamp(LocalDateTime.now()).build())
         );
         when(aiCoreService.generateContent(any())).thenReturn(
@@ -304,18 +308,19 @@ class BehaviorAnalysisServiceTest {
     @Test
     void carriesForwardPreviousValuesWhenNewInsightCreated() {
         String userId = "user-carry-forward";
+        LocalDateTime analyzedAt = LocalDateTime.now().minusDays(2);
         BehaviorInsights existing = BehaviorInsights.builder()
             .id(UUID.randomUUID())
             .userId(userId)
             .sentimentScore(0.2)
             .churnRisk(0.3)
             .trend(ai.fabric.behavior.model.BehaviorTrend.STABLE)
-            .createdAt(LocalDateTime.now().minusDays(2))
-            .analyzedAt(LocalDateTime.now().minusDays(2))
+            .createdAt(analyzedAt)
+            .analyzedAt(analyzedAt)
             .build();
 
         when(storageAdapter.findByUserId(userId)).thenReturn(Optional.of(existing));
-        when(eventProvider.getEventsForUser(userId, null, null)).thenReturn(
+        when(eventProvider.getEventsForUser(userId, analyzedAt, null)).thenReturn(
             List.of(ExternalEvent.builder().eventType("help").timestamp(LocalDateTime.now()).build())
         );
         when(aiCoreService.generateContent(any())).thenReturn(
@@ -344,5 +349,13 @@ class BehaviorAnalysisServiceTest {
         assertThat(result.getChurnDelta()).isCloseTo(-0.2, within(1e-9));
         assertThat(result.getId()).isEqualTo(existing.getId());
         assertThat(result.getCreatedAt()).isEqualTo(existing.getCreatedAt());
+
+        ArgumentCaptor<AIGenerationRequest> requestCaptor = ArgumentCaptor.forClass(AIGenerationRequest.class);
+        verify(aiCoreService).generateContent(requestCaptor.capture());
+        assertThat(requestCaptor.getValue().getPrompt())
+            .contains("=== PREVIOUS ANALYSIS ===")
+            .contains("=== NEW EVENTS (1) ===")
+            .contains("Use PREVIOUS ANALYSIS as the baseline state")
+            .contains("Use NEW EVENTS as the fresh evidence since that previous analysis");
     }
 }

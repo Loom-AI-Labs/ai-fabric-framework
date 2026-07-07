@@ -70,7 +70,9 @@ public class BehaviorAnalysisService {
         log.info("Starting targeted analysis for user: {}", userId);
         
         Optional<BehaviorInsights> existingInsight = storageAdapter.findByUserId(userId);
-        List<ExternalEvent> newEvents = eventProvider.getEventsForUser(userId, null, null);
+        BehaviorInsights oldInsight = existingInsight.orElse(null);
+        LocalDateTime eventsSince = oldInsight != null ? oldInsight.getAnalyzedAt() : null;
+        List<ExternalEvent> newEvents = eventProvider.getEventsForUser(userId, eventsSince, null);
         
         if (newEvents == null || newEvents.isEmpty()) {
             log.warn("No events found for user: {}", userId);
@@ -79,7 +81,7 @@ public class BehaviorAnalysisService {
         
         BehaviorInsights updatedInsight = performEvolutionaryAnalysis(
             userId,
-            existingInsight.orElse(null),
+            oldInsight,
             newEvents,
             null
         );
