@@ -115,6 +115,14 @@ public class BehaviorDemoController {
         return service.recordSignal(userId, request);
     }
 
+    @PostMapping("/scenarios/{userId}/events")
+    public BehaviorDemoScenarioService.BehaviorEventSummary recordEvent(
+        @PathVariable String userId,
+        @RequestBody(required = false) BehaviorDemoScenarioService.RecordBehaviorSignalRequest request
+    ) {
+        return service.recordEvent(userId, request);
+    }
+
     @PostMapping("/scenarios/{userId}/positive-recovery")
     public BehaviorDemoScenarioService.BehaviorScenarioResult recordPositiveRecovery(@PathVariable String userId) {
         return service.recordPositiveRecovery(userId);

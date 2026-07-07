@@ -144,6 +144,14 @@ public class BehaviorDemoScenarioService {
 
     @Transactional
     public BehaviorScenarioResult recordSignal(String userId, RecordBehaviorSignalRequest request) {
+        recordEvent(userId, request);
+
+        BehaviorInsights insight = behaviorAnalysisService.analyzeUser(userId);
+        return resultFor(requireScenario(userId), insight);
+    }
+
+    @Transactional
+    public BehaviorEventSummary recordEvent(String userId, RecordBehaviorSignalRequest request) {
         DemoScenarioDefinition scenario = requireScenario(userId);
         RecordBehaviorSignalRequest effective = request != null ? request : new RecordBehaviorSignalRequest(null, null, null);
 
@@ -155,10 +163,8 @@ public class BehaviorDemoScenarioService {
             ? effective.eventData()
             : defaultEventData(scenario)));
         event.setSource(StringUtils.hasText(effective.source()) ? effective.source() : "demo-ui");
-        eventRepository.save(event);
-
-        BehaviorInsights insight = behaviorAnalysisService.analyzeUser(userId);
-        return resultFor(scenario, insight);
+        AppBehaviorEvent saved = eventRepository.save(event);
+        return BehaviorEventSummary.from(saved != null ? saved : event);
     }
 
     @Transactional

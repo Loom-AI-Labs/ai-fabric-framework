@@ -20,6 +20,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -139,6 +140,28 @@ class BehaviorDemoScenarioServiceTest {
             "gateway", "stripe"
         ));
         assertThat(eventData).doesNotContainKey("message");
+    }
+
+    @Test
+    void recordEventWritesRawAppEventWithoutRunningAnalysis() throws Exception {
+        BehaviorDemoScenarioService.BehaviorEventSummary summary = service.recordEvent(
+            "user-1001",
+            new BehaviorDemoScenarioService.RecordBehaviorSignalRequest(null, null, null)
+        );
+
+        var eventCaptor = forClass(AppBehaviorEvent.class);
+        verify(eventRepository).save(eventCaptor.capture());
+        verify(behaviorAnalysisService, never()).analyzeUser(anyString());
+
+        AppBehaviorEvent saved = eventCaptor.getValue();
+        assertThat(summary.userId()).isEqualTo("user-1001");
+        assertThat(summary.eventType()).isEqualTo("PAYMENT_FAILED");
+        assertThat(summary.source()).isEqualTo("demo-ui");
+        assertThat(saved.getEventType()).isEqualTo("PAYMENT_FAILED");
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> eventData = new ObjectMapper().readValue(saved.getEventData(), Map.class);
+        assertThat(eventData).containsEntry("reason", "card_declined");
     }
 
     @Test
