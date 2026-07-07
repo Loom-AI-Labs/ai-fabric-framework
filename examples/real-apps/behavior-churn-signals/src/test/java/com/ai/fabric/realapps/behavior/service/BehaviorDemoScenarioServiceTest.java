@@ -195,14 +195,16 @@ class BehaviorDemoScenarioServiceTest {
         service.recordNegativeChurnSignals("user-1002");
 
         var eventCaptor = forClass(AppBehaviorEvent.class);
-        verify(eventRepository, times(5)).save(eventCaptor.capture());
+        verify(eventRepository, times(7)).save(eventCaptor.capture());
         assertThat(eventCaptor.getAllValues())
             .extracting(AppBehaviorEvent::getEventType)
             .containsExactly(
                 "PAYMENT_FAILED",
+                "PAYMENT_FAILED",
                 "USAGE_DROP",
                 "SUPPORT_COMPLAINT",
                 "NO_LOGIN_7D",
+                "CANCEL_INTENT",
                 "CANCEL_INTENT"
             );
         assertThat(eventCaptor.getAllValues())

@@ -8,6 +8,7 @@ Reasoning rules:
 - Do not erase unresolved risk just because one positive event appears. Explain the remaining risk if negative and positive signals conflict.
 - Recovery evidence includes successful payment, renewed login/activity, feature usage after a drop, usage recovery, and positive feedback that says the issue was resolved.
 - If recovery evidence follows billing failures or cancellation intent, reflect the partial recovery in churn.risk, sentiment.score, trend, patterns, recommendations, and insights.action_family.
+- Later repeated payment failures plus cancellation intent can reverse an earlier healthy baseline. Classify that as billing_cancellation_risk, sentiment CHURNING, high churn risk, and RETENTION_OFFER unless later recovery evidence clearly resolves it.
 - If release, deployment, feature error, timeout, stopped loading, or performance failure evidence appears, classify the operator need as product_regression_risk and use ENGINEERING_ESCALATION. This overrides generic support/adoption help language.
 - Never invent events, policies, account state, or outcomes that are not present in the evidence.
 

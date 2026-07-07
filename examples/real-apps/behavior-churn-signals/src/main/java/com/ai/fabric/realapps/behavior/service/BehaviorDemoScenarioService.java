@@ -209,9 +209,15 @@ public class BehaviorDemoScenarioService {
                 "renewalAttempt", "2",
                 "reason", "card_declined"
             ), "billing-service"),
+            new RecordBehaviorSignalRequest("PAYMENT_FAILED", Map.of(
+                "invoiceStatus", "past_due",
+                "gateway", "stripe",
+                "renewalAttempt", "3",
+                "reason", "insufficient_funds"
+            ), "billing-service"),
             new RecordBehaviorSignalRequest("USAGE_DROP", Map.of(
                 "metric", "weekly_active_users",
-                "dropPercent", "68"
+                "dropPercent", "82"
             ), "usage-analytics"),
             new RecordBehaviorSignalRequest("SUPPORT_COMPLAINT", Map.of(
                 "topic", "billing",
@@ -222,6 +228,10 @@ public class BehaviorDemoScenarioService {
             ), "usage-analytics"),
             new RecordBehaviorSignalRequest("CANCEL_INTENT", Map.of(
                 "reason", "renewal failed twice",
+                "requestedBy", "account_admin"
+            ), "support-inbox"),
+            new RecordBehaviorSignalRequest("CANCEL_INTENT", Map.of(
+                "reason", "cannot use the product after failed renewal",
                 "requestedBy", "account_admin"
             ), "support-inbox")
         );

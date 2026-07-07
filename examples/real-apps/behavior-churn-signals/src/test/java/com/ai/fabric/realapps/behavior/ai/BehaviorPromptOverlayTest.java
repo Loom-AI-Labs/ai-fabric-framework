@@ -29,7 +29,8 @@ class BehaviorPromptOverlayTest {
         assertThat(system.template())
             .contains("AI behavior analyst")
             .contains("Return only valid JSON")
-            .contains("ENGINEERING_ESCALATION");
+            .contains("ENGINEERING_ESCALATION")
+            .contains("reverse an earlier healthy baseline");
         assertThat(user.key().version()).isEqualTo("v1-behavior-signals");
         assertThat(user.template())
             .contains("insights.action_family")
