@@ -30,11 +30,13 @@ class BehaviorPromptOverlayTest {
             .contains("AI behavior analyst")
             .contains("Return only valid JSON")
             .contains("ENGINEERING_ESCALATION")
-            .contains("reverse an earlier healthy baseline");
+            .contains("reverse an earlier healthy baseline")
+            .contains("churn.risk to at least 0.80");
         assertThat(user.key().version()).isEqualTo("v1-behavior-signals");
         assertThat(user.template())
             .contains("insights.action_family")
-            .contains("Prefer this over ADOPTION_HELP");
+            .contains("Prefer this over ADOPTION_HELP")
+            .contains("two or more payment failures");
         assertThat(repair.key().version()).isEqualTo("v1-behavior-signals");
         assertThat(repair.template()).contains("strict JSON parser");
     }

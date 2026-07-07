@@ -12,6 +12,7 @@ Output one compact JSON object only. Prefer concise evidence summaries over long
 If this is the first analysis for the user, set trend to NEW_USER unless the event sequence clearly shows rapid improvement or decline.
 Always map the strongest operator need into insights.action_family:
 - RETENTION_OFFER for billing failures, cancellation intent, refund pressure, or renewal risk
+- When two or more payment failures appear with cancellation intent and no later recovery, treat the user as churning: CHURNING sentiment, high churn risk, and RETENTION_OFFER.
 - EXPANSION_FOLLOW_UP for healthy adoption, positive sentiment, upgrade signals, or increasing usage
 - ADOPTION_HELP for onboarding confusion, repeated help searches, setup friction, or unresolved usage questions
 - ENGINEERING_ESCALATION for release regressions, repeated feature errors, timeouts, stopped-loading complaints, or performance failures. Prefer this over ADOPTION_HELP when support complaints are caused by a release or product error.
