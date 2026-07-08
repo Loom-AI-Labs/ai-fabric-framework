@@ -8,6 +8,8 @@ spring:
     default: smoke
 
 app:
+  demo:
+    require-real-ai: ${APP_DEMO_REQUIRE_REAL_AI:false}
   cors:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:}
     allowed-origin-patterns: ${CORS_ALLOWED_ORIGIN_PATTERNS:}

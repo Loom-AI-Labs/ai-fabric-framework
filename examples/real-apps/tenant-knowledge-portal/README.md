@@ -42,12 +42,14 @@ have overlapping titles or similar content.
 
 ## Runtime Posture
 
-Default runtime is local and deterministic:
+Local Maven runtime is deterministic unless you provide live provider settings. Docker/public-demo
+runtime defaults to real OpenAI-backed AI and fails closed if the smoke provider is selected.
 
 - H2/in-memory fixtures
 - Lucene vector index by default
 - smoke profile supported for no-key startup and local wiring checks
 - OpenAI/Spring AI provider settings can be supplied for live LLM/embedding generation
+- `APP_DEMO_REQUIRE_REAL_AI=true` prevents smoke responses from appearing as live AI in the public demo.
 
 ## Public Demo App
 
@@ -202,9 +204,12 @@ Suggested deployment values:
 - `PORT=8101`
 - `CORS_ALLOWED_ORIGINS=https://ai-fabric.dev`
 - `JAVA_OPTS=-Xms256m -Xmx768m`
-- `AI_LLM_PROVIDER=openai` and `AI_EMBEDDING_PROVIDER=openai` for live LLM/embedding behavior.
-- `OPENAI_ENABLED=true`, `OPENAI_API_KEY`, `OPENAI_MODEL`, and `OPENAI_EMBEDDING_MODEL` when using
-  the OpenAI-backed Spring AI provider.
+- `SPRING_PROFILES_ACTIVE=production` to avoid the local `smoke` profile. The Docker image sets this
+  by default.
+- `AI_LLM_PROVIDER=openai`, `AI_EMBEDDING_PROVIDER=openai`, `OPENAI_ENABLED=true`, and
+  `APP_DEMO_REQUIRE_REAL_AI=true` are Docker defaults for the public demo.
+- `OPENAI_API_KEY`, `OPENAI_MODEL`, and `OPENAI_EMBEDDING_MODEL` must be supplied for live
+  LLM/embedding behavior.
 - Optional deployment metadata: `APP_VERSION`, `AI_FABRIC_VERSION`, `APP_BUILD_COMMIT`, `APP_BUILD_BRANCH`, `APP_BUILD_TIME`.
 - `git_repository=Loom-AI-Labs/ai-fabric-framework.git`
 - `git_branch=main`

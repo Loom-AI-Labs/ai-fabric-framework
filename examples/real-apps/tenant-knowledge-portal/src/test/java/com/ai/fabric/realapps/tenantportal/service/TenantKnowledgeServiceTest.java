@@ -15,6 +15,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.util.List;
 import java.util.Map;
@@ -220,6 +221,34 @@ class TenantKnowledgeServiceTest {
         assertThat(response.hits()).isEmpty();
         assertThat(response.answer()).contains("retrieved no allowed evidence");
         assertThat(response.boundaryProof().passed()).isTrue();
+    }
+
+    @Test
+    void aiFabricQueryFailsClosedWhenLiveDemoRequiresRealAiAndSmokeResponds() {
+        VectorDatabaseService vectorDatabaseService = new InMemoryVectorDatabaseService(new AIProviderConfig());
+        AICoreService aiCoreService = mock(AICoreService.class);
+        when(aiCoreService.generateEmbedding(any())).thenReturn(testEmbedding());
+        when(aiCoreService.performSearch(any())).thenAnswer(invocation ->
+            vectorDatabaseService.search(testEmbedding().getEmbedding(), invocation.getArgument(0))
+        );
+        when(aiCoreService.generateContent(any(AIGenerationRequest.class), eq(LlmPurpose.GENERATION))).thenReturn(
+            AIGenerationResponse.builder()
+                .content("[smoke profile] deterministic local response - no external model was called")
+                .model("smoke")
+                .build()
+        );
+        TenantKnowledgeService aiService = new TenantKnowledgeService(provider(aiCoreService), provider(vectorDatabaseService));
+        ReflectionTestUtils.setField(aiService, "requireRealAi", true);
+
+        TenantKnowledgeService.TenantRagResponse response = aiService.queryTenantKnowledge(
+            "browser-ai",
+            new TenantKnowledgeService.TenantQueryRequest("tenant-a", "USER", "VPN", 5)
+        );
+
+        assertThat(response.success()).isFalse();
+        assertThat(response.errorCode()).isEqualTo("IllegalStateException");
+        assertThat(response.answer()).contains("Real AI is required");
+        assertThat(response.boundaryProof().passed()).isFalse();
     }
 
     @Test

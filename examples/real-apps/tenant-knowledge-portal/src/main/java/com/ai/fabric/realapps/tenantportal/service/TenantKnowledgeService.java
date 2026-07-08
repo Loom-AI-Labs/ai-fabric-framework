@@ -20,6 +20,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -54,6 +55,9 @@ public class TenantKnowledgeService {
     private final Map<String, VectorIndexState> sessionIndexState = new ConcurrentHashMap<>();
     private final ObjectProvider<AICoreService> aiCoreServiceProvider;
     private final ObjectProvider<VectorDatabaseService> vectorDatabaseServiceProvider;
+
+    @Value("${app.demo.require-real-ai:false}")
+    private boolean requireRealAi;
 
     public TenantKnowledgeService() {
         this(null, null);
@@ -221,6 +225,7 @@ public class TenantKnowledgeService {
                     Map.of("policyDecision", "DENIED", "instruction", instruction)
                 );
             }
+            assertRealAiResponse(response, "natural-language action resolution");
             NaturalLanguageActionDraft draft = parseNaturalLanguageActionDraft(response.getContent());
             if (!StringUtils.hasText(draft.actionId()) || !StringUtils.hasText(draft.documentId())) {
                 return ActionDecision.failure(
@@ -951,12 +956,28 @@ public class TenantKnowledgeService {
         if (response == null || !StringUtils.hasText(response.getContent())) {
             throw new IllegalStateException("LLM returned no answer for tenant-safe evidence.");
         }
+        assertRealAiResponse(response, "tenant RAG answer generation");
         return new GeneratedTenantAnswer(
             response.getContent().trim(),
             response.getRequestId(),
             response.getProcessingTimeMs(),
             response.getModel()
         );
+    }
+
+    private void assertRealAiResponse(AIGenerationResponse response, String operation) {
+        if (!requireRealAi) {
+            return;
+        }
+        String model = response != null ? response.getModel() : null;
+        String content = response != null ? response.getContent() : null;
+        boolean smokeModel = !StringUtils.hasText(model) || "smoke".equalsIgnoreCase(model.trim());
+        boolean smokeContent = content != null && content.contains("[smoke profile]");
+        if (smokeModel || smokeContent) {
+            throw new IllegalStateException(
+                "Real AI is required for " + operation + ", but the response came from the smoke provider."
+            );
+        }
     }
 
     private String tenantAnswerSystemPrompt() {

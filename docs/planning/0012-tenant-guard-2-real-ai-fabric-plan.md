@@ -25,6 +25,8 @@ Implemented on 2026-07-08:
 - `/api/tenant-guard-demo/actions/nl` resolves natural-language action requests through
   `AICoreService.generateContent` with `LlmPurpose.ORCHESTRATION`, parses JSON-only action drafts, and
   then passes the draft through the deterministic tenant/role/confirmation policy engine.
+- Public-demo Docker runtime defaults to the production profile and OpenAI-backed provider selectors,
+  with `APP_DEMO_REQUIRE_REAL_AI=true` so smoke responses fail closed during live verification.
 - Tenant deletion removes both source documents and indexed vector entities.
 - The public UI has an AI Fabric indexed retrieval panel, LLM answer metadata/citations, NL action controls,
   vector proof display, and updated About page architecture notes.
