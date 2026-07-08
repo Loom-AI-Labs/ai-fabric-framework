@@ -2,7 +2,10 @@ package com.ai.fabric.realapps.tenantportal.service;
 
 import ai.fabric.config.AIProviderConfig;
 import ai.fabric.core.AICoreService;
+import ai.fabric.core.LlmPurpose;
 import ai.fabric.dto.AIEmbeddingResponse;
+import ai.fabric.dto.AIGenerationRequest;
+import ai.fabric.dto.AIGenerationResponse;
 import ai.fabric.dto.AISearchRequest;
 import ai.fabric.dto.AISearchResponse;
 import ai.fabric.intent.action.ActionAccessMode;
@@ -18,6 +21,7 @@ import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -157,6 +161,11 @@ class TenantKnowledgeServiceTest {
             .extracting(TenantKnowledgeService.TenantRagHit::id)
             .contains("doc-a")
             .doesNotContain("doc-b", "doc-b-keys", "doc-admin", "doc-platform");
+        assertThat(response.answer()).contains("Okta");
+        assertThat(response.citations())
+            .extracting(TenantKnowledgeService.TenantRagCitation::id)
+            .contains("doc-a")
+            .doesNotContain("doc-b", "doc-admin");
         assertThat(response.hits())
             .allSatisfy(hit -> {
                 assertThat(hit.tenantId()).isEqualTo("tenant-a");
@@ -175,6 +184,12 @@ class TenantKnowledgeServiceTest {
             .containsEntry("sessionId", "browser-ai")
             .containsEntry("tenantId", "tenant-a")
             .containsEntry("visibleToUser", true);
+
+        ArgumentCaptor<AIGenerationRequest> generationCaptor = ArgumentCaptor.forClass(AIGenerationRequest.class);
+        verify(aiCoreService).generateContent(generationCaptor.capture(), eq(LlmPurpose.GENERATION));
+        assertThat(generationCaptor.getValue().getPrompt())
+            .contains("doc-a")
+            .doesNotContain("doc-b", "doc-admin", "doc-platform");
     }
 
     @Test
@@ -227,6 +242,136 @@ class TenantKnowledgeServiceTest {
         assertThat(result.indexProof().indexedByTenant()).doesNotContainKey("tenant-b");
     }
 
+    @Test
+    void naturalLanguageActionUsesLlmDraftThenDeniesCrossTenantTarget() {
+        AICoreService aiCoreService = mock(AICoreService.class);
+        when(aiCoreService.generateContent(any(AIGenerationRequest.class), eq(LlmPurpose.ORCHESTRATION))).thenReturn(
+            AIGenerationResponse.builder()
+                .content("""
+                    {"actionId":"archive_document","documentId":"doc-b","accessMode":"WRITE_ONLY","reason":"User asked for Tenant B VPN document","confidence":0.94}
+                    """)
+                .model("gpt-test")
+                .requestId("nl-1")
+                .build()
+        );
+        TenantKnowledgeService aiService = new TenantKnowledgeService(provider(aiCoreService), provider(null));
+
+        TenantKnowledgeService.ActionDecision decision = aiService.executeNaturalLanguageAction(
+            "browser-nl",
+            new TenantKnowledgeService.TenantNlActionRequest(
+                "tenant-a",
+                "USER",
+                "Archive the Tenant B VPN document.",
+                true
+            )
+        );
+
+        assertThat(decision.errorCode()).isEqualTo("CROSS_TENANT_DENIED");
+        assertThat(decision.data())
+            .containsEntry("llmDocumentId", "doc-b")
+            .containsEntry("llmActionId", "archive_document")
+            .containsEntry("llmModel", "gpt-test")
+            .containsEntry("llmRequestId", "nl-1")
+            .containsEntry("policyDecision", "DENIED");
+
+        ArgumentCaptor<AIGenerationRequest> generationCaptor = ArgumentCaptor.forClass(AIGenerationRequest.class);
+        verify(aiCoreService).generateContent(generationCaptor.capture(), eq(LlmPurpose.ORCHESTRATION));
+        assertThat(generationCaptor.getValue().getPrompt())
+            .contains("actionTargetCatalog")
+            .contains("doc-b")
+            .doesNotContain("Tenant B VPN requires hardware key enrollment");
+    }
+
+    @Test
+    void naturalLanguageActionRequiresConfirmationBeforeSameTenantAdminWrite() {
+        AICoreService aiCoreService = mock(AICoreService.class);
+        when(aiCoreService.generateContent(any(AIGenerationRequest.class), eq(LlmPurpose.ORCHESTRATION))).thenReturn(
+            AIGenerationResponse.builder()
+                .content("""
+                    {"actionId":"archive_document","documentId":"doc-a","accessMode":"WRITE_ONLY","reason":"Tenant A VPN setup was requested","confidence":0.91}
+                    """)
+                .model("gpt-test")
+                .requestId("nl-2")
+                .build()
+        );
+        TenantKnowledgeService aiService = new TenantKnowledgeService(provider(aiCoreService), provider(null));
+
+        TenantKnowledgeService.ActionDecision preview = aiService.executeNaturalLanguageAction(
+            "browser-nl",
+            new TenantKnowledgeService.TenantNlActionRequest(
+                "tenant-a",
+                "ADMIN",
+                "Archive our VPN setup document.",
+                false
+            )
+        );
+        assertThat(preview.confirmationRequired()).isTrue();
+        assertThat(preview.data())
+            .containsEntry("policyDecision", "CONFIRMATION_REQUIRED")
+            .containsEntry("llmDocumentId", "doc-a");
+
+        TenantKnowledgeService.ActionDecision confirmed = aiService.executeNaturalLanguageAction(
+            "browser-nl",
+            new TenantKnowledgeService.TenantNlActionRequest(
+                "tenant-a",
+                "ADMIN",
+                "Archive our VPN setup document.",
+                true
+            )
+        );
+        assertThat(confirmed.success()).isTrue();
+        assertThat(confirmed.data())
+            .containsEntry("policyDecision", "APPROVED")
+            .containsEntry("confirmed", true);
+    }
+
+    @Test
+    void naturalLanguageActionFailsClosedForMalformedLlmJson() {
+        AICoreService aiCoreService = mock(AICoreService.class);
+        when(aiCoreService.generateContent(any(AIGenerationRequest.class), eq(LlmPurpose.ORCHESTRATION))).thenReturn(
+            AIGenerationResponse.builder()
+                .content("I would archive the VPN document.")
+                .model("gpt-test")
+                .build()
+        );
+        TenantKnowledgeService aiService = new TenantKnowledgeService(provider(aiCoreService), provider(null));
+
+        TenantKnowledgeService.ActionDecision decision = aiService.executeNaturalLanguageAction(
+            "browser-nl",
+            new TenantKnowledgeService.TenantNlActionRequest("tenant-a", "ADMIN", "Archive VPN.", false)
+        );
+
+        assertThat(decision.success()).isFalse();
+        assertThat(decision.errorCode()).isEqualTo("NL_ACTION_PARSE_FAILED");
+        assertThat(decision.data()).containsEntry("policyDecision", "DENIED");
+    }
+
+    @Test
+    void naturalLanguageActionReturnsTargetRequiredWhenLlmCannotResolveTarget() {
+        AICoreService aiCoreService = mock(AICoreService.class);
+        when(aiCoreService.generateContent(any(AIGenerationRequest.class), eq(LlmPurpose.ORCHESTRATION))).thenReturn(
+            AIGenerationResponse.builder()
+                .content("""
+                    {"actionId":null,"documentId":null,"accessMode":"WRITE_ONLY","reason":"No concrete document was named","confidence":0.22}
+                    """)
+                .requestId("nl-empty")
+                .build()
+        );
+        TenantKnowledgeService aiService = new TenantKnowledgeService(provider(aiCoreService), provider(null));
+
+        TenantKnowledgeService.ActionDecision decision = aiService.executeNaturalLanguageAction(
+            "browser-nl",
+            new TenantKnowledgeService.TenantNlActionRequest("tenant-a", "ADMIN", "Archive that thing.", false)
+        );
+
+        assertThat(decision.success()).isFalse();
+        assertThat(decision.errorCode()).isEqualTo("TARGET_REQUIRED");
+        assertThat(decision.data())
+            .containsEntry("policyDecision", "DENIED")
+            .containsEntry("llmReason", "No concrete document was named")
+            .containsEntry("llmRequestId", "nl-empty");
+    }
+
     @SuppressWarnings("unchecked")
     private static <T> ObjectProvider<T> provider(T value) {
         ObjectProvider<T> provider = mock(ObjectProvider.class);
@@ -240,6 +385,15 @@ class TenantKnowledgeServiceTest {
         when(aiCoreService.performSearch(any())).thenAnswer(invocation ->
             vectorDatabaseService.search(testEmbedding().getEmbedding(), invocation.getArgument(0))
         );
+        when(aiCoreService.generateContent(any(AIGenerationRequest.class), eq(LlmPurpose.GENERATION))).thenAnswer(invocation -> {
+            AIGenerationRequest request = invocation.getArgument(0);
+            return AIGenerationResponse.builder()
+                .content("Tenant A VPN requires Okta enrollment and device compliance. [doc-a]")
+                .model("gpt-test")
+                .requestId("answer-1")
+                .processingTimeMs(12L)
+                .build();
+        });
         return aiCoreService;
     }
 

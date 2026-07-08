@@ -87,6 +87,22 @@ class TenantGuardDemoControllerTest {
     }
 
     @Test
+    void exposesNaturalLanguageActionPathEvenWhenAiIsUnavailable() {
+        TenantKnowledgeService.ActionDecision decision = controller.executeNaturalLanguageAction(
+            null,
+            new TenantGuardDemoController.TenantGuardNlActionRequest(
+                "tenant-a",
+                "ADMIN",
+                "Archive our VPN setup document.",
+                false
+            )
+        );
+
+        assertThat(decision.success()).isFalse();
+        assertThat(decision.errorCode()).isEqualTo("AI_CORE_UNAVAILABLE");
+    }
+
+    @Test
     void exposesSessionScopedDashboardAndMutationPaths() {
         TenantKnowledgeService.TenantGuardDashboard dashboard = controller.dashboard("browser-one");
         assertThat(dashboard.session().sessionId()).isEqualTo("browser-one");

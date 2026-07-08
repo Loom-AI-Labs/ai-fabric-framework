@@ -12,6 +12,12 @@ have overlapping titles or similar content.
 
 - Same document title in two tenants returns only the caller tenant's result.
 - Tenant metadata is used in retrieval and catalog evidence.
+- Tenant documents are indexed into AI Fabric vector storage with `sessionId`, `tenantId`, and
+  `visibleToUser` metadata.
+- RAG answers are generated through AI Fabric LLM generation after backend evidence verification.
+- Generated answers return citations that match the backend evidence list.
+- Natural-language actions are resolved through AI Fabric LLM orchestration, then enforced by the app
+  policy engine.
 - Admin catalog visibility differs from regular user visibility.
 - Cross-tenant action targets are rejected.
 - Tenant deletion removes only the selected tenant's documents/catalog entries.
@@ -26,6 +32,9 @@ have overlapping titles or similar content.
 
 - tenant/context metadata
 - metadata filters
+- AI Fabric vector search through `AICoreService.performSearch`
+- LLM answer generation through `AICoreService.generateContent(..., LlmPurpose.GENERATION)`
+- structured natural-language action resolution through `AICoreService.generateContent(..., LlmPurpose.ORCHESTRATION)`
 - governance catalog pattern
 - role-limited actions
 - deletion lifecycle
@@ -36,9 +45,9 @@ have overlapping titles or similar content.
 Default runtime is local and deterministic:
 
 - H2/in-memory fixtures
-- no external model keys
-- no external vector service
-- smoke profile supported
+- Lucene vector index by default
+- smoke profile supported for no-key startup and local wiring checks
+- OpenAI/Spring AI provider settings can be supplied for live LLM/embedding generation
 
 ## Public Demo App
 
@@ -54,7 +63,8 @@ The demo shows:
 2. Platform admin catalog visibility compared with tenant user visibility.
 3. A cross-tenant write action rejected by policy.
 4. A same-tenant write action that requires confirmation.
-5. Tenant deletion evidence that removes only the selected tenant's documents.
+5. A natural-language action that is first resolved by the LLM and then enforced by backend policy.
+6. Tenant deletion evidence that removes only the selected tenant's documents and vectors.
 
 ## Demo Backend App Architecture
 
@@ -64,7 +74,8 @@ the tenant and role boundaries AI Fabric applications must preserve around retri
 Backend dependencies:
 
 - Spring Boot Web, Actuator, and Lombok.
-- AI Fabric modules: `ai-fabric-starter` and `ai-fabric-governance`.
+- AI Fabric modules: `ai-fabric-starter`, `ai-fabric-governance`, `ai-fabric-vector-lucene`, and
+  `ai-fabric-provider-spring-ai`.
 - `smoke-support` for shared build metadata.
 
 AI-enabled domain model:
@@ -75,12 +86,16 @@ AI-enabled domain model:
   entries, action decisions, and tenant-deletion evidence with that metadata intact.
 - `ActionAccessMode` models read/write action access so the UI can show why write attempts require
   role checks and confirmation.
+- RAG answer generation is LLM-backed, but only after the app verifies returned vector evidence is
+  inside the trusted tenant/session/visibility boundary.
+- Natural-language action resolution returns a JSON action draft. The draft cannot execute directly;
+  `TenantKnowledgeService` still performs target, tenant, role, registered-action, and confirmation checks.
 
 Providers and storage:
 
 - Default provider ids are smoke/local through configuration.
-- The default vector DB is memory, but this browser demo primarily proves scoped metadata filtering,
-  role checks, and deletion evidence rather than live LLM generation.
+- The default vector DB is Lucene, with metadata-filtered search and scan proof exposed through
+  `/api/tenant-guard-demo/index/proof`.
 - Demo data lives in the in-memory `TenantKnowledgeService` and can be reset through
   `/api/tenant-guard-demo/reset`.
 
@@ -90,12 +105,16 @@ Request and data flow:
    state. Public UI calls include a `sessionId` query parameter so mutations are isolated per browser.
 2. `/compare?q=...` runs the same query as tenant A, tenant B, and platform admin so the UI can show
    scoped retrieval side by side.
-3. `/actions/execute` validates target tenant, role, access mode, and confirmation before returning an
+3. `/query` indexes and searches tenant documents through AI Fabric, verifies evidence, then calls LLM
+   generation with only the allowed evidence.
+4. `/actions/nl` calls LLM orchestration for a structured action draft, then validates the draft
+   through the same backend policy path as manual actions.
+5. `/actions/execute` validates target tenant, role, access mode, and confirmation before returning an
    action decision with `policyDecision` and `policyExplanation` evidence.
-4. `/tenants/delete` removes only the requested tenant's documents and returns the deleted ids as
+6. `/tenants/delete` removes only the requested tenant's documents and returns the deleted ids as
    evidence plus remaining tenant ids.
-5. `/api/demo/health` exposes deployment commit/build metadata for live verification.
-6. The frontend renders policy outcomes from backend decisions; it does not infer tenant access
+7. `/api/demo/health` exposes deployment commit/build metadata for live verification.
+8. The frontend renders policy outcomes from backend decisions; it does not infer tenant access
    locally.
 
 ## Run Locally
@@ -136,6 +155,10 @@ Use `requests/demo.http` to run the tenant boundary scenario.
 - `POST /api/tenant-guard-demo/reset`
 - `GET /api/tenant-guard-demo/compare?q=VPN`
 - `POST /api/tenant-guard-demo/actions/execute`
+- `POST /api/tenant-guard-demo/actions/nl`
+- `POST /api/tenant-guard-demo/query`
+- `POST /api/tenant-guard-demo/index/seed`
+- `GET /api/tenant-guard-demo/index/proof`
 - `POST /api/tenant-guard-demo/tenants/delete`
 - `GET /api/demo/health`
 
@@ -147,7 +170,9 @@ Use `requests/demo.http` to run the tenant boundary scenario.
 4. Inspect catalog as an admin.
 5. Attempt a cross-tenant action target and verify rejection.
 6. Delete one tenant and verify the other tenant's data remains.
-7. Open a second session id and verify the deletion did not leak across browser sessions.
+7. Run a natural-language archive action and verify the LLM-selected draft still requires backend
+   policy approval.
+8. Open a second session id and verify the deletion did not leak across browser sessions.
 
 ## Docker
 
@@ -177,6 +202,9 @@ Suggested deployment values:
 - `PORT=8101`
 - `CORS_ALLOWED_ORIGINS=https://ai-fabric.dev`
 - `JAVA_OPTS=-Xms256m -Xmx768m`
+- `AI_LLM_PROVIDER=openai` and `AI_EMBEDDING_PROVIDER=openai` for live LLM/embedding behavior.
+- `OPENAI_ENABLED=true`, `OPENAI_API_KEY`, `OPENAI_MODEL`, and `OPENAI_EMBEDDING_MODEL` when using
+  the OpenAI-backed Spring AI provider.
 - Optional deployment metadata: `APP_VERSION`, `AI_FABRIC_VERSION`, `APP_BUILD_COMMIT`, `APP_BUILD_BRANCH`, `APP_BUILD_TIME`.
 - `git_repository=Loom-AI-Labs/ai-fabric-framework.git`
 - `git_branch=main`

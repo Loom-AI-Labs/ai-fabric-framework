@@ -1,6 +1,6 @@
 # ADR 0012 - Tenant Guard 2.0 real AI Fabric plan
 
-- **Status:** Implemented initial Tenant Guard 2.0 slice
+- **Status:** Implemented P0-P3 Tenant Guard 2.0 scope
 - **Date:** 2026-07-07
 - **Decision owner:** AI Fabric framework and public demo UI
 - **Applies to backend:** `examples/real-apps/tenant-knowledge-portal`
@@ -18,24 +18,30 @@ Implemented on 2026-07-08:
 - `/api/tenant-guard-demo/query` runs AI Fabric retrieval with trusted `sessionId`, `tenantId`, and
   `visibleToUser` metadata filters.
 - Returned evidence is re-checked by the app before being exposed to the UI.
+- `/api/tenant-guard-demo/query` now generates the final answer through `AICoreService.generateContent`
+  with `LlmPurpose.GENERATION`, using only the verified retrieved evidence and returning citations.
 - `/api/tenant-guard-demo/index/seed` and `/api/tenant-guard-demo/index/proof` expose vector provider,
   metadata-filtering, count, and per-tenant proof.
+- `/api/tenant-guard-demo/actions/nl` resolves natural-language action requests through
+  `AICoreService.generateContent` with `LlmPurpose.ORCHESTRATION`, parses JSON-only action drafts, and
+  then passes the draft through the deterministic tenant/role/confirmation policy engine.
 - Tenant deletion removes both source documents and indexed vector entities.
-- The public UI has an AI Fabric indexed retrieval panel, vector proof display, and updated About page
-  architecture notes.
+- The public UI has an AI Fabric indexed retrieval panel, LLM answer metadata/citations, NL action controls,
+  vector proof display, and updated About page architecture notes.
 
-Remaining optional extensions:
+Remaining optional extensions outside this implemented scope:
 
-- Promote the demo from evidence-summary retrieval to full LLM answer generation with citations.
 - Add chat-session memory if Tenant Guard becomes a multi-turn tenant-support assistant.
 - Persist tenant documents in a real app table instead of the current session-scoped demo map.
+- Consider richer portable metadata filter operators (`notEquals`, `in`, `exists`) after the current
+  positive-equality metadata model proves insufficient.
 
-The current **AI Fabric Tenant Guard** demo is valuable, but it is intentionally deterministic. It
-proves tenant-boundary behavior with in-memory documents, app-side keyword search, app-side role
-checks, and app-side deletion evidence.
+Before Tenant Guard 2.0, the **AI Fabric Tenant Guard** demo was valuable but intentionally
+deterministic. It proved tenant-boundary behavior with in-memory documents, app-side keyword search,
+app-side role checks, and app-side deletion evidence.
 
-That makes the boundary proof easy to inspect, but it does not fully expose the AI Fabric surfaces
-that this demo should eventually represent:
+That made the boundary proof easy to inspect, but it did not fully expose the AI Fabric surfaces this
+demo now represents:
 
 - tenant-aware indexing;
 - metadata-filtered vector/RAG retrieval;
@@ -44,14 +50,14 @@ that this demo should eventually represent:
 - vector lifecycle/deletion proof;
 - provider capability diagnostics around metadata filtering.
 
-Tenant Guard 2.0 should keep the existing deterministic boundary proof, then add a real AI Fabric
-retrieval/action path beside it.
+Tenant Guard 2.0 keeps the deterministic boundary proof and adds real AI Fabric retrieval, generation,
+natural-language action resolution, and vector cleanup proof beside it.
 
 ## Current Code Evidence
 
 ### Current backend posture
 
-`tenant-knowledge-portal` currently depends on AI Fabric, but uses only a small framework slice:
+The original `tenant-knowledge-portal` depended on AI Fabric, but used only a small framework slice:
 
 - `ai-fabric-starter`
 - `ai-fabric-governance`

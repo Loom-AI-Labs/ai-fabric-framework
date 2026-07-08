@@ -1,14 +1,20 @@
 package com.ai.fabric.realapps.tenantportal.service;
 
 import ai.fabric.core.AICoreService;
+import ai.fabric.core.LlmPurpose;
 import ai.fabric.dto.AIEmbeddingRequest;
 import ai.fabric.dto.AIEmbeddingResponse;
+import ai.fabric.dto.AIGenerationRequest;
+import ai.fabric.dto.AIGenerationResponse;
 import ai.fabric.dto.AISearchRequest;
 import ai.fabric.dto.AISearchResponse;
 import ai.fabric.dto.VectorRecord;
 import ai.fabric.dto.VectorScanPage;
 import ai.fabric.dto.VectorScanRequest;
 import ai.fabric.intent.action.ActionAccessMode;
+import ai.fabric.llm.structured.StructuredJsonExtraction;
+import ai.fabric.llm.structured.StructuredJsonExtractor;
+import ai.fabric.llm.structured.StructuredJsonProviderHints;
 import ai.fabric.rag.VectorDatabaseService;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -28,6 +34,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
@@ -39,6 +46,8 @@ public class TenantKnowledgeService {
     private static final Duration DEMO_SESSION_TTL = Duration.ofHours(6);
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
     private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {};
+    private static final StructuredJsonExtractor STRUCTURED_JSON_EXTRACTOR = new StructuredJsonExtractor();
+    private static final Set<String> SUPPORTED_ACTIONS = Set.of("archive_document");
 
     private final Map<String, Map<String, KnowledgeDocument>> sessionDocuments = new ConcurrentHashMap<>();
     private final Map<String, Instant> sessionTouchedAt = new ConcurrentHashMap<>();
@@ -146,19 +155,21 @@ public class TenantKnowledgeService {
             List<TenantRagHit> hits = toTenantHits(key, user, response, documents, limit);
             BoundaryProof proof = retrievalBoundaryProof(user, filter, hits);
             VectorIndexProof indexProof = indexProof(sessionId);
+            GeneratedTenantAnswer generatedAnswer = generateTenantAnswer(aiCoreService, user, query, hits);
             return new TenantRagResponse(
                 true,
                 null,
                 query,
                 user,
-                evidenceSummary(user, query, hits),
+                generatedAnswer.content(),
                 filter,
                 hits,
+                citationsFor(hits),
                 proof,
                 indexProof,
-                response != null ? response.getRequestId() : null,
-                response != null ? response.getProcessingTimeMs() : null,
-                response != null ? response.getModel() : null
+                generatedAnswer.requestId() != null ? generatedAnswer.requestId() : response != null ? response.getRequestId() : null,
+                generatedAnswer.processingTimeMs() != null ? generatedAnswer.processingTimeMs() : response != null ? response.getProcessingTimeMs() : null,
+                generatedAnswer.model()
             );
         } catch (Exception ex) {
             return TenantRagResponse.failure(
@@ -168,6 +179,93 @@ public class TenantKnowledgeService {
                 indexProof(sessionId),
                 ex.getClass().getSimpleName(),
                 ex.getMessage()
+            );
+        }
+    }
+
+    public ActionDecision executeNaturalLanguageAction(String sessionId, TenantNlActionRequest request) {
+        TenantNlActionRequest effective = request != null
+            ? request
+            : new TenantNlActionRequest("tenant-a", "USER", "Archive our VPN setup document.", false);
+        UserContext user = requireUser(new UserContext(effective.tenantId(), effective.role()));
+        String instruction = requireText(effective.instruction(), "instruction");
+        String key = sessionKey(sessionId);
+        Map<String, KnowledgeDocument> documents = documentsForSession(sessionId);
+        AICoreService aiCoreService = aiCoreService();
+        if (aiCoreService == null) {
+            return ActionDecision.failure(
+                "AI_CORE_UNAVAILABLE",
+                "AICoreService is not available, so the demo cannot resolve natural-language actions.",
+                Map.of("policyDecision", "DENIED", "instruction", instruction)
+            );
+        }
+
+        try {
+            AIGenerationResponse response = aiCoreService.generateContent(
+                AIGenerationRequest.builder()
+                    .entityId("tenant-action-" + UUID.randomUUID())
+                    .entityType("tenant-guard-action")
+                    .generationType("natural-language-action-resolution")
+                    .systemPrompt(naturalLanguageActionSystemPrompt())
+                    .prompt(naturalLanguageActionPrompt(key, user, instruction, documents))
+                    .maxTokens(350)
+                    .temperature(0.0d)
+                    .parameters(StructuredJsonProviderHints.jsonObjectResponseParameters())
+                    .build(),
+                LlmPurpose.ORCHESTRATION
+            );
+            if (response == null || !StringUtils.hasText(response.getContent())) {
+                return ActionDecision.failure(
+                    "NL_ACTION_EMPTY_RESPONSE",
+                    "The LLM returned no action resolution JSON.",
+                    Map.of("policyDecision", "DENIED", "instruction", instruction)
+                );
+            }
+            NaturalLanguageActionDraft draft = parseNaturalLanguageActionDraft(response.getContent());
+            if (!StringUtils.hasText(draft.actionId()) || !StringUtils.hasText(draft.documentId())) {
+                return ActionDecision.failure(
+                    "TARGET_REQUIRED",
+                    "The LLM could not resolve a concrete action target from the natural-language request.",
+                    naturalLanguageActionData("DENIED", user, instruction, draft, response, Map.of())
+                );
+            }
+            ActionDecision decision = executeAction(
+                sessionId,
+                user,
+                new TenantActionRequest(
+                    draft.actionId(),
+                    draft.documentId(),
+                    draft.accessMode() != null ? draft.accessMode() : ActionAccessMode.WRITE_ONLY,
+                    effective.confirmed()
+                )
+            );
+            return new ActionDecision(
+                decision.success(),
+                decision.confirmationRequired(),
+                decision.message(),
+                decision.errorCode(),
+                mergeData(
+                    decision.data(),
+                    naturalLanguageActionData(
+                        String.valueOf(decision.data().getOrDefault("policyDecision", decision.success() ? "APPROVED" : "DENIED")),
+                        user,
+                        instruction,
+                        draft,
+                        response,
+                        Map.of("confirmed", effective.confirmed())
+                    )
+                )
+            );
+        } catch (Exception ex) {
+            return ActionDecision.failure(
+                "NL_ACTION_PARSE_FAILED",
+                "The LLM action resolution failed closed: " + ex.getMessage(),
+                Map.of(
+                    "policyDecision", "DENIED",
+                    "instruction", instruction,
+                    "subjectTenantId", user.tenantId(),
+                    "subjectRole", user.role()
+                )
             );
         }
     }
@@ -328,6 +426,13 @@ public class TenantKnowledgeService {
             ? request
             : new TenantActionRequest(null, null, ActionAccessMode.READ, false);
         String actionId = requireText(effective.actionId(), "actionId");
+        if (!SUPPORTED_ACTIONS.contains(actionId)) {
+            return ActionDecision.failure(
+                "ACTION_NOT_ALLOWED",
+                "Action " + actionId + " is not registered for this demo.",
+                policyData("DENIED", "Only registered Tenant Guard actions can execute.", user, null, actionId, effective.accessMode())
+            );
+        }
         KnowledgeDocument document = documentsForSession(sessionId).get(requireText(effective.documentId(), "documentId"));
         if (document == null) {
             return ActionDecision.failure(
@@ -817,6 +922,225 @@ public class TenantKnowledgeService {
         return "Based only on AI Fabric evidence allowed for " + scope + ", " + evidence;
     }
 
+    private GeneratedTenantAnswer generateTenantAnswer(
+        AICoreService aiCoreService,
+        UserContext user,
+        String query,
+        List<TenantRagHit> hits
+    ) {
+        if (hits.isEmpty()) {
+            return new GeneratedTenantAnswer(
+                evidenceSummary(user, query, hits),
+                null,
+                null,
+                null
+            );
+        }
+        AIGenerationResponse response = aiCoreService.generateContent(
+            AIGenerationRequest.builder()
+                .entityId("tenant-answer-" + UUID.randomUUID())
+                .entityType("tenant-guard-answer")
+                .generationType("tenant-rag-answer")
+                .systemPrompt(tenantAnswerSystemPrompt())
+                .prompt(tenantAnswerPrompt(user, query, hits))
+                .maxTokens(550)
+                .temperature(0.0d)
+                .build(),
+            LlmPurpose.GENERATION
+        );
+        if (response == null || !StringUtils.hasText(response.getContent())) {
+            throw new IllegalStateException("LLM returned no answer for tenant-safe evidence.");
+        }
+        return new GeneratedTenantAnswer(
+            response.getContent().trim(),
+            response.getRequestId(),
+            response.getProcessingTimeMs(),
+            response.getModel()
+        );
+    }
+
+    private String tenantAnswerSystemPrompt() {
+        return """
+            You are AI Fabric Tenant Guard's answer generator.
+            Answer only from the evidence provided by the backend.
+            The backend already filtered evidence by trusted tenant, session, and visibility metadata.
+            Never use outside knowledge. Never mention documents that are not in the evidence list.
+            Cite evidence with the exact document id in square brackets, for example [doc-a].
+            If the evidence is insufficient, say that the allowed evidence does not answer the question.
+            """;
+    }
+
+    private String tenantAnswerPrompt(UserContext user, String query, List<TenantRagHit> hits) {
+        String evidence = hits.stream()
+            .map(hit -> "- id: " + hit.id()
+                + "\n  title: " + hit.title()
+                + "\n  tenantId: " + hit.tenantId()
+                + "\n  visibility: " + hit.visibility()
+                + "\n  content: " + hit.content())
+            .collect(Collectors.joining("\n"));
+        return """
+            Caller:
+            tenantId: %s
+            role: %s
+
+            User question:
+            %s
+
+            Allowed evidence:
+            %s
+
+            Write a concise answer using only the allowed evidence. Include citations.
+            """.formatted(user.tenantId(), user.role(), query, evidence);
+    }
+
+    private List<TenantRagCitation> citationsFor(List<TenantRagHit> hits) {
+        return hits.stream()
+            .map(hit -> new TenantRagCitation(hit.id(), hit.title(), hit.tenantId(), hit.score()))
+            .toList();
+    }
+
+    private String naturalLanguageActionSystemPrompt() {
+        return """
+            You resolve a user's natural-language Tenant Guard action into a JSON action draft.
+            Return only one JSON object. Do not include prose or markdown.
+            Allowed action ids: archive_document.
+            Allowed accessMode values: READ, WRITE_ONLY, READ_WRITE.
+            Select documentId only from the provided actionTargetCatalog.
+            If the user has not identified a concrete target, return null for actionId and documentId.
+            Do not decide authorization. The backend policy engine will enforce tenant, role, and confirmation.
+            Required JSON shape:
+            {
+              "actionId": "archive_document|null",
+              "documentId": "document id or null",
+              "accessMode": "WRITE_ONLY",
+              "reason": "short reason",
+              "confidence": 0.0
+            }
+            """;
+    }
+
+    private String naturalLanguageActionPrompt(
+        String sessionKey,
+        UserContext user,
+        String instruction,
+        Map<String, KnowledgeDocument> documents
+    ) {
+        String catalog = documents.values().stream()
+            .sorted(Comparator.comparing(KnowledgeDocument::id))
+            .map(document -> Map.<String, Object>of(
+                "id", document.id(),
+                "tenantId", document.tenantId(),
+                "title", document.title(),
+                "visibility", document.visibility()
+            ))
+            .map(this::writeJson)
+            .collect(Collectors.joining("\n"));
+        return """
+            Trusted caller context:
+            sessionId: %s
+            tenantId: %s
+            role: %s
+
+            User instruction:
+            %s
+
+            actionTargetCatalog:
+            %s
+
+            Resolve the action draft now.
+            """.formatted(sessionKey, user.tenantId(), user.role(), instruction, catalog);
+    }
+
+    private NaturalLanguageActionDraft parseNaturalLanguageActionDraft(String rawContent) {
+        StructuredJsonExtraction extraction = STRUCTURED_JSON_EXTRACTOR.extractFirstJson(rawContent);
+        if (extraction == null || !extraction.jsonFound() || extraction.truncationSuspected()) {
+            throw new IllegalArgumentException("LLM did not return a complete JSON object.");
+        }
+        try {
+            Map<String, Object> json = OBJECT_MAPPER.readValue(extraction.payload(), MAP_TYPE);
+            return new NaturalLanguageActionDraft(
+                nullableText(json.get("actionId")),
+                nullableText(json.get("documentId")),
+                parseAccessMode(nullableText(json.get("accessMode"))),
+                nullableText(json.get("reason")),
+                number(json.get("confidence"))
+            );
+        } catch (Exception ex) {
+            throw new IllegalArgumentException("Invalid action JSON: " + ex.getMessage(), ex);
+        }
+    }
+
+    private ActionAccessMode parseAccessMode(String value) {
+        if (!StringUtils.hasText(value)) {
+            return ActionAccessMode.WRITE_ONLY;
+        }
+        try {
+            return ActionAccessMode.valueOf(value.trim().toUpperCase(Locale.ROOT).replace('-', '_').replace(' ', '_'));
+        } catch (Exception ex) {
+            throw new IllegalArgumentException("Unsupported accessMode: " + value);
+        }
+    }
+
+    private Map<String, Object> naturalLanguageActionData(
+        String policyDecision,
+        UserContext user,
+        String instruction,
+        NaturalLanguageActionDraft draft,
+        AIGenerationResponse response,
+        Map<String, Object> extra
+    ) {
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("policyDecision", policyDecision);
+        data.put("instruction", instruction);
+        data.put("subjectTenantId", user.tenantId());
+        data.put("subjectRole", user.role());
+        putIfPresent(data, "llmActionId", draft.actionId());
+        putIfPresent(data, "llmDocumentId", draft.documentId());
+        putIfPresent(data, "llmAccessMode", draft.accessMode() != null ? draft.accessMode().name() : null);
+        putIfPresent(data, "llmReason", draft.reason());
+        putIfPresent(data, "llmConfidence", draft.confidence());
+        putIfPresent(data, "llmRequestId", response.getRequestId());
+        putIfPresent(data, "llmModel", response.getModel());
+        data.putAll(extra);
+        return Map.copyOf(data);
+    }
+
+    private void putIfPresent(Map<String, Object> target, String key, Object value) {
+        if (value != null) {
+            target.put(key, value);
+        }
+    }
+
+    private Map<String, Object> mergeData(Map<String, Object> first, Map<String, Object> second) {
+        Map<String, Object> merged = new LinkedHashMap<>();
+        if (first != null) {
+            merged.putAll(first);
+        }
+        if (second != null) {
+            merged.putAll(second);
+        }
+        return Map.copyOf(merged);
+    }
+
+    private String writeJson(Map<String, Object> value) {
+        try {
+            return OBJECT_MAPPER.writeValueAsString(value);
+        } catch (Exception ex) {
+            return value.toString();
+        }
+    }
+
+    private String nullableText(Object value) {
+        if (value == null) {
+            return null;
+        }
+        String text = String.valueOf(value).trim();
+        if (!StringUtils.hasText(text) || "null".equalsIgnoreCase(text)) {
+            return null;
+        }
+        return text;
+    }
+
     private Map<String, Object> diagnosticsSummary(Map<String, Object> diagnostics) {
         if (diagnostics == null || diagnostics.isEmpty()) {
             return Map.of();
@@ -1050,6 +1374,8 @@ public class TenantKnowledgeService {
 
     public record TenantQueryRequest(String tenantId, String role, String query, int limit) {}
 
+    public record TenantNlActionRequest(String tenantId, String role, String instruction, boolean confirmed) {}
+
     public record TenantGuardScenario(
         String id,
         String tenantId,
@@ -1093,6 +1419,8 @@ public class TenantKnowledgeService {
         Map<String, Object> metadata
     ) {}
 
+    public record TenantRagCitation(String id, String title, String tenantId, Double score) {}
+
     public record VectorIndexProof(
         boolean available,
         String errorCode,
@@ -1135,6 +1463,7 @@ public class TenantKnowledgeService {
         String answer,
         Map<String, Object> metadataFilter,
         List<TenantRagHit> hits,
+        List<TenantRagCitation> citations,
         BoundaryProof boundaryProof,
         VectorIndexProof indexProof,
         String requestId,
@@ -1156,6 +1485,7 @@ public class TenantKnowledgeService {
                 user,
                 message,
                 metadataFilter,
+                List.of(),
                 List.of(),
                 new BoundaryProof(
                     false,
@@ -1214,4 +1544,14 @@ public class TenantKnowledgeService {
     ) {}
 
     private record VectorIndexState(boolean ready, int indexedDocuments, String message, Instant refreshedAt) {}
+
+    private record GeneratedTenantAnswer(String content, String requestId, Long processingTimeMs, String model) {}
+
+    private record NaturalLanguageActionDraft(
+        String actionId,
+        String documentId,
+        ActionAccessMode accessMode,
+        String reason,
+        Double confidence
+    ) {}
 }

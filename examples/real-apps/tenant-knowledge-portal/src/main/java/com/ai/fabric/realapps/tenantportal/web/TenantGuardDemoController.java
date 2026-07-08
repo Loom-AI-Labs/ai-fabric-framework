@@ -88,6 +88,23 @@ public class TenantGuardDemoController {
         );
     }
 
+    @PostMapping("/actions/nl")
+    public TenantKnowledgeService.ActionDecision executeNaturalLanguageAction(
+        @RequestParam(value = "sessionId", required = false) String sessionId,
+        @RequestBody TenantGuardNlActionRequest request
+    ) {
+        TenantGuardNlActionRequest effective = request != null ? request : TenantGuardNlActionRequest.defaultRequest();
+        return service.executeNaturalLanguageAction(
+            sessionId,
+            new TenantKnowledgeService.TenantNlActionRequest(
+                effective.tenantId(),
+                effective.role(),
+                effective.instruction(),
+                effective.confirmed()
+            )
+        );
+    }
+
     @PostMapping("/tenants/delete")
     public TenantKnowledgeService.TenantDeletionResult deleteTenant(
         @RequestParam(value = "sessionId", required = false) String sessionId,
@@ -124,6 +141,12 @@ public class TenantGuardDemoController {
     public record TenantGuardQueryRequest(String tenantId, String role, String query, int limit) {
         static TenantGuardQueryRequest defaultRequest() {
             return new TenantGuardQueryRequest("tenant-a", "USER", "How do I configure VPN?", 5);
+        }
+    }
+
+    public record TenantGuardNlActionRequest(String tenantId, String role, String instruction, boolean confirmed) {
+        static TenantGuardNlActionRequest defaultRequest() {
+            return new TenantGuardNlActionRequest("tenant-a", "ADMIN", "Archive our VPN setup document.", false);
         }
     }
 
