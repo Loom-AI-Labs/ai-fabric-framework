@@ -17,6 +17,12 @@ spring:
         format_sql: false
     open-in-view: false
 
+app:
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:}
+    allowed-origin-patterns: ${CORS_ALLOWED_ORIGIN_PATTERNS:}
+    allow-credentials: ${CORS_ALLOW_CREDENTIALS:false}
+
 ai:
   enabled: true
   config:

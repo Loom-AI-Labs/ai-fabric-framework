@@ -9,5 +9,11 @@ public interface SupportMessageRepository extends JpaRepository<SupportMessage, 
 
     List<SupportMessage> findByCustomerId(String customerId);
 
+    List<SupportMessage> findByCustomerIdStartingWithOrderByCreatedAtDesc(String customerIdPrefix);
+
+    long countByCustomerIdStartingWith(String customerIdPrefix);
+
     long deleteByCustomerId(String customerId);
+
+    long deleteByCustomerIdStartingWith(String customerIdPrefix);
 }

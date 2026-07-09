@@ -73,6 +73,33 @@ public class SupportMessageService {
         return repository.findByCustomerId(customerId);
     }
 
+    public List<SupportMessage> findByCustomerIdPrefix(String customerIdPrefix) {
+        return repository.findByCustomerIdStartingWithOrderByCreatedAtDesc(customerIdPrefix);
+    }
+
+    public long countByCustomerIdPrefix(String customerIdPrefix) {
+        return repository.countByCustomerIdStartingWith(customerIdPrefix);
+    }
+
+    @Transactional
+    public long deleteByCustomerIdPrefix(String customerIdPrefix) {
+        return repository.deleteByCustomerIdStartingWith(customerIdPrefix);
+    }
+
+    public PrivacyProcessingEvidence processForPrivacy(String text) {
+        PIIDetectionResult result = piiDetectionService.detectAndProcess(text);
+        List<PIIDetection> detections = result != null && result.getDetections() != null
+            ? result.getDetections()
+            : List.of();
+        return new PrivacyProcessingEvidence(
+            safeProcessedText(text, result),
+            result != null && result.isPiiDetected(),
+            detections.size(),
+            summarizeDetections(detections),
+            Objects.toString(result != null ? result.getModeApplied() : null, null)
+        );
+    }
+
     public List<SupportMessage> semanticSearch(String query, int limit) {
         AICoreService aiCoreService = aiCoreServiceProvider.getIfAvailable();
         if (aiCoreService == null) {
@@ -175,4 +202,12 @@ public class SupportMessageService {
             .distinct()
             .collect(Collectors.joining(","));
     }
+
+    public record PrivacyProcessingEvidence(
+        String processedText,
+        boolean piiDetected,
+        int detectionsCount,
+        String detectionsSummary,
+        String modeApplied
+    ) {}
 }
