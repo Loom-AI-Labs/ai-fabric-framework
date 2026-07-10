@@ -7,7 +7,7 @@
 
     <groupId>io.github.loom-ai-labs</groupId>
     <artifactId>ai-fabric-bom</artifactId>
-    <version>0.3.2</version>
+    <version>0.3.3</version>
     <packaging>pom</packaging>
 
     <name>AI Fabric Framework BOM</name>

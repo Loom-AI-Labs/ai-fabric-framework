@@ -1,4 +1,8 @@
 ai:
+  prompts:
+    bundle:
+      overlays:
+        - v1-support
   orchestration:
     profile: PRODUCTION_CHAT
     always-generate-information: true

@@ -8,6 +8,15 @@ through Spring Boot auto-configuration.
 These guides are written for **external users** adopting the framework in their own applications.
 Read them in order, or jump to what you need.
 
+## Recommended Start
+
+For new integrations, use the canonical [Getting Started](../getting-started/README.md) path first.
+It is shorter, task-oriented, and includes an [LLM Start Here](../getting-started/00-llm-start-here.md)
+page for coding assistant sessions. Keep this `docs/guides` section as the deeper legacy guide set.
+
+If you are building training material for external users, start from the
+[AI Fabric External User Course Structure](../course/AI_FABRIC_EXTERNAL_USER_COURSE.md).
+
 | # | Guide | What you'll get |
 |---|-------|-----------------|
 | 1 | [Installation & Setup](01-installation.md) | Requirements, the BOM, your first dependency set, local ONNX assets. |
@@ -21,7 +30,7 @@ Read them in order, or jump to what you need.
 ## At a glance
 
 - **Coordinates:** group `io.github.loom-ai-labs`, BOM `ai-fabric-bom`, modules `ai-fabric-*`.
-- **Latest version:** `0.3.2`.
+- **Latest version:** `0.3.3`.
 - **Java packages:** `ai.fabric.*`.
 - **Requirements:** Java 21, Maven 3.9+, Spring Boot 4.1.x.
 - **Entry point:** annotate a Spring Boot app with `@EnableAIInfrastructure` and add the starter.

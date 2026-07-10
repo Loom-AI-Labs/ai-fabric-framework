@@ -14,7 +14,7 @@
 
     <groupId>com.ai.fabric.examples</groupId>
     <artifactId>smoke-support</artifactId>
-    <version>0.3.2</version>
+    <version>0.3.3</version>
     <name>AI Fabric Real Apps :: Smoke Support</name>
     <description>Shared offline deterministic providers that let the example apps boot under the "smoke"
         profile with no API keys or external services.</description>
@@ -24,7 +24,7 @@
         <maven.compiler.source>21</maven.compiler.source>
         <maven.compiler.target>21</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <ai-fabric.version>0.3.2</ai-fabric.version>
+        <ai-fabric.version>0.3.3</ai-fabric.version>
     </properties>
 
     <dependencies>

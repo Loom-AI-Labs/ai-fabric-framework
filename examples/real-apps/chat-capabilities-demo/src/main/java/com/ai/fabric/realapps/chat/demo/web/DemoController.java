@@ -56,7 +56,7 @@ public class DemoController {
     @Value("${project.version:1.0.0-SNAPSHOT}")
     private String appVersion;
 
-    @Value("${ai-fabric.version:0.3.2}")
+    @Value("${ai-fabric.version:0.3.3}")
     private String aiFabricVersion;
 
     @Value("${app.build-info.path:file:/app/build-info.properties}")

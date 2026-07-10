@@ -1221,6 +1221,53 @@ Keep the demo deterministic, but make backend truth explicit:
 - Do not hide deterministic provider posture; say clearly that this demo proves AI Fabric guardrails,
   not live LLM generation.
 
+## Lesson: Privacy Demos Must Prove Redaction At The Backend Boundary
+
+### Symptom
+
+A public demo for sensitive customer text can look polished while accidentally proving the wrong
+thing if the browser masks fields, chooses what to display, or simulates privacy results.
+
+### Example
+
+Backend:
+
+```text
+examples/real-apps/privacy-first-customer-facing-support
+```
+
+Public UI:
+
+```text
+aifabric/src/pages/demos/AIFabricPrivacyShield.tsx
+```
+
+### Root Cause
+
+PII handling is a framework/backend contract. The browser may collect raw text for a user action, but
+it must not become the source of truth for detection, redaction, storage posture, query sanitization,
+or governance evidence.
+
+### Fix Pattern
+
+- Run `PIIDetectionService.detectAndProcess(...)` before support text is saved or indexed.
+- Return public demo DTOs that include processed subject/message, detection count, detection summary,
+  mode applied, and original-evidence policy.
+- Do not return raw submitted payloads from public demo endpoints after submission.
+- Sanitize semantic-search queries before calling AI Fabric retrieval and return the processed query
+  as proof.
+- Scope public demo records by browser session id so one visitor's support records cannot leak into
+  another visitor's proof.
+- Add tests for session seeding, redacted DTOs, query sanitization, and cross-session filtering.
+- Show backend health/build metadata in the UI so deployment freshness is visible.
+
+### What Not To Do
+
+- Do not mask raw input in React and call that privacy.
+- Do not show encrypted/hash evidence as if it were the original sensitive text.
+- Do not let semantic search receive raw email/phone/SSN queries.
+- Do not hide PII detection failures behind generic "safe" UI labels.
+
 ## Quick Triage Checklist
 
 ### Orchestration Error Before Any AI Response

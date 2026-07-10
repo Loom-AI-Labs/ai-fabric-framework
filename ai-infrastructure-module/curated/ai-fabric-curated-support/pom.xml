@@ -7,7 +7,7 @@
     <parent>
         <groupId>io.github.loom-ai-labs</groupId>
         <artifactId>ai-fabric-bom</artifactId>
-        <version>0.3.2</version>
+        <version>0.3.3</version>
         <relativePath>../../pom.xml</relativePath>
     </parent>
 
@@ -21,6 +21,12 @@
         <dependency>
             <groupId>io.github.loom-ai-labs</groupId>
             <artifactId>ai-fabric-core</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>io.github.loom-ai-labs</groupId>
+            <artifactId>ai-fabric-curated-default</artifactId>
             <version>${project.version}</version>
         </dependency>
 

@@ -38,14 +38,14 @@ class BehaviorDemoControllerTest {
         BehaviorDemoController controller = new BehaviorDemoController(service, agenticUiComposerService, environment, new DefaultResourceLoader());
         ReflectionTestUtils.setField(controller, "appName", "behavior-churn-signals");
         ReflectionTestUtils.setField(controller, "appVersion", "1.0.0-test");
-        ReflectionTestUtils.setField(controller, "aiFabricVersion", "0.3.2-test");
+        ReflectionTestUtils.setField(controller, "aiFabricVersion", "0.3.3-test");
         ReflectionTestUtils.setField(controller, "buildInfoPath", "classpath:/behavior-build-info-test.properties");
 
         Map<String, Object> health = controller.health();
 
         assertThat(health).containsEntry("app", "behavior-churn-signals");
         assertThat(health).containsEntry("version", "1.2.3");
-        assertThat(health).containsEntry("aiFabricVersion", "0.3.2");
+        assertThat(health).containsEntry("aiFabricVersion", "0.3.3");
         assertThat(health).containsEntry("commit", "abc1234");
         assertThat(health).containsEntry("buildBranch", "main");
         assertThat(health).containsEntry("provider", "behavior-local");

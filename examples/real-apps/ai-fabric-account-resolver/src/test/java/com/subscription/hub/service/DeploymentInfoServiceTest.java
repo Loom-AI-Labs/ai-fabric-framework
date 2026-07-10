@@ -13,7 +13,7 @@ class DeploymentInfoServiceTest {
     void healthIncludesDeploymentMetadataFromEnvironment() {
         MockEnvironment environment = new MockEnvironment()
             .withProperty("APP_VERSION", "1.2.3")
-            .withProperty("AI_FABRIC_VERSION", "0.3.2")
+            .withProperty("AI_FABRIC_VERSION", "0.3.3")
             .withProperty("APP_BUILD_COMMIT", "unknown")
             .withProperty("git_commit", "abc1234")
             .withProperty("APP_BUILD_BRANCH", "unknown")
@@ -26,7 +26,7 @@ class DeploymentInfoServiceTest {
             .containsEntry("status", "UP")
             .containsEntry("service", "ai-fabric-account-resolver")
             .containsEntry("version", "1.2.3")
-            .containsEntry("aiFabricVersion", "0.3.2")
+            .containsEntry("aiFabricVersion", "0.3.3")
             .containsEntry("commit", "abc1234")
             .containsEntry("branch", "main")
             .containsEntry("builtAt", "2026-07-03T12:00:00Z");

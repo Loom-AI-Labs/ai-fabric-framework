@@ -25,7 +25,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
     "app.demo.controls.api-key=",
     "spring.application.name=chat-capabilities-demo",
     "project.version=1.0.0-test",
-    "ai-fabric.version=0.3.2-test",
+    "ai-fabric.version=0.3.3-test",
     "APP_BUILD_COMMIT=test-commit",
     "APP_BUILD_TIME=2026-07-04T00:00:00Z"
 })
@@ -87,7 +87,7 @@ class DemoControllerTest {
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.app").value("chat-capabilities-demo"))
             .andExpect(jsonPath("$.version").value("1.0.0-test"))
-            .andExpect(jsonPath("$.aiFabricVersion").value("0.3.2-test"))
+            .andExpect(jsonPath("$.aiFabricVersion").value("0.3.3-test"))
             .andExpect(jsonPath("$.commit").value("test-commit"))
             .andExpect(jsonPath("$.buildTime").value("2026-07-04T00:00:00Z"))
             .andExpect(jsonPath("$.demoControlsEnabled").value(true))
