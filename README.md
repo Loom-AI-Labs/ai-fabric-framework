@@ -163,7 +163,7 @@ Use [examples/real-apps/REAL_APP_CAPABILITIES.md](examples/real-apps/REAL_APP_CA
 
 ## Maintainer And Community
 
-Created and maintained by **Mahmoud Ashraf Elgammal**.
+AI Fabric is created and maintained by **[Mahmoud Elgammal](https://www.linkedin.com/in/engmahmoudalgammal/)**, with source code published under the [Loom AI Labs GitHub organization](https://github.com/Loom-AI-Labs).
 
 - GitHub: [@mahmoudashraf](https://github.com/mahmoudashraf)
 - LinkedIn: [engmahmoudalgammal](https://www.linkedin.com/in/engmahmoudalgammal/)
