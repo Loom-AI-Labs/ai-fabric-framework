@@ -1,5 +1,10 @@
 # AI Fabric Framework
 
+[![Framework Verify](https://github.com/Loom-AI-Labs/ai-fabric-framework/actions/workflows/framework-verify.yml/badge.svg)](https://github.com/Loom-AI-Labs/ai-fabric-framework/actions/workflows/framework-verify.yml)
+[![Maven Central](https://img.shields.io/maven-central/v/io.github.loom-ai-labs/ai-fabric-bom?label=Maven%20Central)](https://repo1.maven.org/maven2/io/github/loom-ai-labs/ai-fabric-bom/)
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
+[![Website](https://img.shields.io/badge/site-ai--fabric.dev-111827)](https://ai-fabric.dev)
+
 AI Fabric Framework is an open-source Java/Spring Boot framework for building AI-enabled applications with orchestration, retrieval, provider integrations, vector stores, action execution, and reusable runtime primitives.
 
 This repository contains the framework only. It does not include private managed-product code, deployment operations, customer configuration, or commercial product code.
@@ -134,8 +139,38 @@ export AI_FABRIC_ONNX_TOKENIZER_PATH="$(pwd)/models/embeddings/tokenizer.json"
 ```text
 ai-infrastructure-module/          Maven multi-module framework reactor
 examples/minimal-spring-boot/      Minimal consumer application
+examples/real-apps/                Real Spring Boot apps used by public demos and smoke tests
 docs/                              Release and consumer docs
 ```
+
+## Architecture
+
+AI Fabric keeps the application in charge of domain state and side effects. The framework supplies reusable AI runtime pieces around that app: intent/action orchestration, retrieval, vector storage, provider adapters, PII handling, chat memory, behavior analysis, and access-policy hooks.
+
+See the [public architecture overview](docs/architecture/AI_FABRIC_PUBLIC_ARCHITECTURE.md) for the request flow and module map.
+
+## Live Demos And Examples
+
+The public site links to five deployed real-app demos backed by this repository:
+
+- AI Shopping Experience: RAG stages, chat memory, cart actions, and checkout confirmation.
+- AI Fabric Account Resolver: policy-aware account repair, current-account actions, and confirmations.
+- AI Fabric Behavior Signals: raw event analysis, behavior insight, and behavior-aware UI composition.
+- AI Fabric Tenant Guard: tenant-scoped retrieval, role visibility, guarded writes, and cleanup evidence.
+- AI Fabric Privacy Shield: PII detection, redacted persistence, and sanitized search.
+
+Use [examples/real-apps/REAL_APP_CAPABILITIES.md](examples/real-apps/REAL_APP_CAPABILITIES.md) to choose a real app by framework capability.
+
+## Maintainer And Community
+
+Created and maintained by **Mahmoud Ashraf Elgammal**.
+
+- GitHub: [@mahmoudashraf](https://github.com/mahmoudashraf)
+- Project site: [ai-fabric.dev](https://ai-fabric.dev)
+- Organization repo: [Loom-AI-Labs/ai-fabric-framework](https://github.com/Loom-AI-Labs/ai-fabric-framework)
+- Starter issue backlog: [docs/community/STARTER_ISSUES.md](docs/community/STARTER_ISSUES.md)
+
+New contributors should start with [CONTRIBUTING.md](CONTRIBUTING.md), then pick a scoped documentation, test, example, or real-app issue. The project intentionally favors small, well-tested changes over broad rewrites.
 
 ## Release Status
 

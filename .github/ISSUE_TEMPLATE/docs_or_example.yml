@@ -1,0 +1,38 @@
+name: Docs or example improvement
+description: Improve docs, examples, README content, or real-app clarity.
+title: "[Docs]: "
+labels: ["documentation"]
+body:
+  - type: dropdown
+    id: doc_area
+    attributes:
+      label: Area
+      options:
+        - getting started
+        - module docs
+        - LLM assistant context
+        - real apps
+        - release docs
+        - README
+        - website
+        - other
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: What is confusing or missing?
+    validations:
+      required: true
+  - type: textarea
+    id: suggestion
+    attributes:
+      label: Suggested improvement
+    validations:
+      required: true
+  - type: textarea
+    id: links
+    attributes:
+      label: Relevant files or links
+    validations:
+      required: false

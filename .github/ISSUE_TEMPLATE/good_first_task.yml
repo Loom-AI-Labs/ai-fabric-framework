@@ -1,0 +1,32 @@
+name: Good first task
+description: Propose or claim a small contribution.
+title: "[Good first task]: "
+labels: ["good first issue", "help wanted"]
+body:
+  - type: dropdown
+    id: task_type
+    attributes:
+      label: Task type
+      options:
+        - test coverage
+        - documentation
+        - example app
+        - error message
+        - small bug fix
+        - cleanup
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Proposed scope
+      description: Keep this small enough for one focused PR.
+    validations:
+      required: true
+  - type: textarea
+    id: verification
+    attributes:
+      label: Suggested verification
+      placeholder: "Example: mvn -f ai-infrastructure-module/pom.xml -pl ai-fabric-core test"
+    validations:
+      required: true

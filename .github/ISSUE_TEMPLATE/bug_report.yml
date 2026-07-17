@@ -1,0 +1,63 @@
+name: Bug report
+description: Report a reproducible AI Fabric framework issue.
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug. Please keep credentials, API keys, and private user data out of the issue.
+  - type: input
+    id: version
+    attributes:
+      label: AI Fabric version
+      placeholder: "0.3.3"
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - core/orchestration
+        - RAG/retrieval
+        - vector provider
+        - LLM/embedding provider
+        - actions/confirmation
+        - PII/security
+        - chat-session memory
+        - behavior analysis
+        - real app/demo
+        - documentation
+        - other
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Reproduction steps
+      placeholder: |
+        1. Create app with ...
+        2. Configure ...
+        3. Run ...
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs or stack trace
+      render: shell
+    validations:
+      required: false

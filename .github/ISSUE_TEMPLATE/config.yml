@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: AI Fabric documentation
+    url: https://ai-fabric.dev/docs
+    about: Start here for installation, module selection, and live demos.
+  - name: Security policy
+    url: https://github.com/Loom-AI-Labs/ai-fabric-framework/security/policy
+    about: Please report security issues through the security policy, not public issues.
