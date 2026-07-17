@@ -4,6 +4,8 @@ Use this index to decide which files a coding assistant should read.
 
 | User asks for | Read first | Then read |
 | --- | --- | --- |
+| "What can AI Fabric unlock in this app?" | `docs/llm-context/AI_FABRIC_OPPORTUNITY_SCANNER.md` | `docs/llm-context/AI_FABRIC_CAPABILITY_MAP.md`, `docs/getting-started/12-real-apps-map.md` |
+| "Find AI opportunities in my Java app" | `docs/llm-context/AI_FABRIC_OPPORTUNITY_SCANNER.md` | `docs/getting-started/01-choose-your-path.md`, `docs/llm-context/AI_FABRIC_COMMON_TASK_RECIPES.md` |
 | "Add AI Fabric to my app" | `docs/getting-started/02-installation.md` | `docs/getting-started/01-choose-your-path.md` |
 | "Semantic search" | `docs/getting-started/03-first-semantic-search.md` | `docs/getting-started/09-vector-storage-lucene.md` |
 | "RAG chat" | `docs/getting-started/04-first-rag-chat.md` | `docs/Framework-Dev-Guides/retrieval-vectorization/RAG_EMBEDDING_QUERY_COMPOSITION_GUIDE.md` |
@@ -16,4 +18,3 @@ Use this index to decide which files a coding assistant should read.
 | "Production release" | `docs/getting-started/13-production-checklist.md` | `docs/Framework-Dev-Guides/testing-verification/VERIFICATION_PLAYBOOK.md` |
 
 Read the source code only after the relevant guide identifies the module boundary.
-
