@@ -166,6 +166,7 @@ Use [examples/real-apps/REAL_APP_CAPABILITIES.md](examples/real-apps/REAL_APP_CA
 Created and maintained by **Mahmoud Ashraf Elgammal**.
 
 - GitHub: [@mahmoudashraf](https://github.com/mahmoudashraf)
+- LinkedIn: [engmahmoudalgammal](https://www.linkedin.com/in/engmahmoudalgammal/)
 - Project site: [ai-fabric.dev](https://ai-fabric.dev)
 - Organization repo: [Loom-AI-Labs/ai-fabric-framework](https://github.com/Loom-AI-Labs/ai-fabric-framework)
 - Starter issue backlog: [docs/community/STARTER_ISSUES.md](docs/community/STARTER_ISSUES.md)
