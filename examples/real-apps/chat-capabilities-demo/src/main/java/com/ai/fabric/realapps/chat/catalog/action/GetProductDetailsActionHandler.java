@@ -16,7 +16,7 @@ import org.springframework.util.StringUtils;
 
 @AIAction(
     name = "get_product_details",
-    description = "Get full product details by SKU",
+    description = "Get full product details by SKU or exact product title",
     category = "commerce",
     accessMode = ActionAccessMode.READ,
     requiresConfirmation = false
@@ -28,15 +28,15 @@ public class GetProductDetailsActionHandler {
     private final ProductService productService;
 
     @ActionExecute
-    public ActionResult execute(@Param(value = "sku", description = "Product SKU", required = true) String sku,
+    public ActionResult execute(@Param(value = "sku", description = "Product SKU or exact product title", required = true) String sku,
                                 ActionContext context) {
         try {
             if (!StringUtils.hasText(sku)) {
                 throw new IllegalArgumentException("Missing required parameter: sku");
             }
 
-            Product product = productService.findBySku(sku)
-                .orElseThrow(() -> new IllegalArgumentException("Product not found for sku: " + sku));
+            Product product = productService.findBySkuOrName(sku)
+                .orElseThrow(() -> new IllegalArgumentException("Product not found for sku or title: " + sku));
 
             return ActionResult.builder()
                 .success(true)

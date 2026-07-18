@@ -13,7 +13,7 @@ class CommerceModeResolverTest {
         assertThat(resolver.resolve("landing", null).mode()).isEqualTo("navigator");
         assertThat(resolver.resolve("catalog", null).mode()).isEqualTo("navigator");
         assertThat(resolver.resolve("search", null).mode()).isEqualTo("navigator_deep");
-        assertThat(resolver.resolve("product-detail", null).mode()).isEqualTo("navigator_deep");
+        assertThat(resolver.resolve("product-detail", null).mode()).isEqualTo("cart_assistant");
         assertThat(resolver.resolve("cart", null).mode()).isEqualTo("cart_assistant");
         assertThat(resolver.resolve("checkout", null).mode()).isEqualTo("executor");
         assertThat(resolver.resolve("orders", null).mode()).isEqualTo("cart_assistant");

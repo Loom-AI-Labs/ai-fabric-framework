@@ -2,6 +2,7 @@ package com.ai.fabric.realapps.chat.cart.action;
 
 import com.ai.fabric.realapps.chat.cart.domain.Cart;
 import com.ai.fabric.realapps.chat.cart.service.CartService;
+import com.ai.fabric.realapps.chat.catalog.service.ProductService;
 import ai.fabric.intent.action.ActionAccessMode;
 import ai.fabric.intent.action.ActionContext;
 import ai.fabric.intent.action.ActionResult;
@@ -20,7 +21,7 @@ import org.springframework.util.StringUtils;
 
 @AIAction(
     name = "add_to_cart",
-    description = "Add one or more product SKUs to my active cart",
+    description = "Add one or more products to my active cart using product SKUs or exact product titles from attached product cards",
     category = "commerce",
     accessMode = ActionAccessMode.WRITE_ONLY,
     requiresConfirmation = true
@@ -30,6 +31,7 @@ import org.springframework.util.StringUtils;
 public class AddToCartActionHandler {
 
     private final CartService cartService;
+    private final ProductService productService;
 
     public record CartItemInput(
         String sku,
@@ -49,10 +51,10 @@ public class AddToCartActionHandler {
             String sku = item != null ? item.sku() : null;
             Integer qty = item != null ? item.quantity() : null;
             if (StringUtils.hasText(sku) && qty != null) {
-                return "Add " + qty + " × " + sku.trim() + " to your cart?";
+                return "Add " + qty + " × " + displayNameFor(sku) + " to your cart?";
             }
             if (StringUtils.hasText(sku)) {
-                return "Add 1 × " + sku.trim() + " to your cart?";
+                return "Add 1 × " + displayNameFor(sku) + " to your cart?";
             }
             return "Add item to your cart?";
         }
@@ -63,7 +65,7 @@ public class AddToCartActionHandler {
                 continue;
             }
             int qty = item.quantity() != null ? item.quantity() : 1;
-            parts.add(qty + " × " + item.sku().trim());
+            parts.add(qty + " × " + displayNameFor(item.sku()));
             if (parts.size() >= 4) {
                 break;
             }
@@ -130,6 +132,20 @@ public class AddToCartActionHandler {
                 .message("Failed to add to cart: " + e.getMessage())
                 .errorCode("ADD_TO_CART_FAILED")
                 .build();
+        }
+    }
+
+    private String displayNameFor(String productReference) {
+        if (!StringUtils.hasText(productReference)) {
+            return "item";
+        }
+        String trimmed = productReference.trim();
+        try {
+            return productService.findBySkuOrName(trimmed)
+                .map(product -> StringUtils.hasText(product.getName()) ? product.getName().trim() : trimmed)
+                .orElse(trimmed);
+        } catch (Exception ex) {
+            return trimmed;
         }
     }
 }

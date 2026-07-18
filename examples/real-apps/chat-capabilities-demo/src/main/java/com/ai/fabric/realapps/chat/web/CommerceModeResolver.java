@@ -15,7 +15,7 @@ public class CommerceModeResolver {
         "landing", "navigator",
         "catalog", "navigator",
         "search", "navigator_deep",
-        "product_detail", "navigator_deep",
+        "product_detail", "cart_assistant",
         "cart", "cart_assistant",
         "checkout", "executor",
         "orders", "cart_assistant",

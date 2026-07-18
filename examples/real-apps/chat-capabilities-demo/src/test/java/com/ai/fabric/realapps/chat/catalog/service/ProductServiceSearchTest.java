@@ -14,6 +14,7 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class ProductServiceSearchTest {
@@ -49,6 +50,27 @@ class ProductServiceSearchTest {
             .build());
 
         assertThat(service.search("missing", 5, 0.2d)).isEmpty();
+    }
+
+    @Test
+    void findBySkuOrNameUsesSkuLookupFirst() {
+        Product product = product(1L, "SKU-LAP-9001");
+        when(productRepository.findBySku("sku-lap-9001")).thenReturn(Optional.of(product));
+
+        assertThat(service.findBySkuOrName(" SKU-LAP-9001 ")).containsSame(product);
+    }
+
+    @Test
+    void findBySkuOrNameFallsBackToExactProductTitleWithoutRemovingSpaces() {
+        Product product = product(1L, "SKU-LAP-9001");
+        product.setName("Alienware M18 R2 Gaming Laptop");
+        when(productRepository.findBySku("alienwarem18r2gaminglaptop")).thenReturn(Optional.empty());
+        when(productRepository.findBySkuIgnoreCase("alienwarem18r2gaminglaptop")).thenReturn(Optional.empty());
+        when(productRepository.findFirstByNameIgnoreCaseOrderByIdAsc("Alienware M18 R2 Gaming Laptop"))
+            .thenReturn(Optional.of(product));
+
+        assertThat(service.findBySkuOrName(" Alienware M18 R2 Gaming Laptop ")).containsSame(product);
+        verify(productRepository).findFirstByNameIgnoreCaseOrderByIdAsc("Alienware M18 R2 Gaming Laptop");
     }
 
     private static Product product(long id, String sku) {

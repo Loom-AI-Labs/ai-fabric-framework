@@ -51,6 +51,17 @@ public class ProductService {
             .or(() -> productRepository.findBySkuIgnoreCase(normalized));
     }
 
+    @Transactional(readOnly = true)
+    public Optional<Product> findBySkuOrName(String productReference) {
+        if (!StringUtils.hasText(productReference)) {
+            return Optional.empty();
+        }
+        String trimmed = productReference.trim();
+
+        return findBySku(trimmed)
+            .or(() -> productRepository.findFirstByNameIgnoreCaseOrderByIdAsc(trimmed));
+    }
+
     @Transactional
     @AIProcess(entityType = "product", processType = "create", generateEmbedding = true, indexForSearch = true)
     public Product createProduct(String sku,

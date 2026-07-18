@@ -58,14 +58,14 @@ public class CartService {
     }
 
     @Transactional
-    public Cart addItem(String userId, String sku, int quantity) {
+    public Cart addItem(String userId, String productReference, int quantity) {
         if (quantity <= 0) {
             throw new IllegalArgumentException("quantity must be > 0");
         }
         Cart cart = getOrCreateActiveCart(userId);
 
-        Product product = productService.findBySku(sku)
-            .orElseThrow(() -> new EntityNotFoundException("Product not found for sku: " + sku));
+        Product product = productService.findBySkuOrName(productReference)
+            .orElseThrow(() -> new EntityNotFoundException("Product not found for sku or title: " + productReference));
 
         String normalizedSku = product.getSku();
         CartItem existing = cart.getItems().stream()
