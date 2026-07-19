@@ -24,8 +24,8 @@ Current assumptions:
    - [First Governed Action](05-first-governed-action.md)
 5. Add production guardrails from [Production Checklist](13-production-checklist.md).
 
-For a teachable external-user curriculum, use the
-[AI Fabric External User Course Structure](../course/AI_FABRIC_EXTERNAL_USER_COURSE.md).
+For the public learner curriculum, use
+[Build Production-Oriented AI Workflows with Java and Spring Boot](../course/AI_FABRIC_EXTERNAL_USER_COURSE.md).
 
 ## Docs In This Section
 

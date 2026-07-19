@@ -1,627 +1,1509 @@
-# AI Fabric External User Course Structure
+# Build Production-Oriented AI Workflows with Java and Spring Boot
 
-This course teaches external Java/Spring Boot developers how to build real AI-enabled applications
-with AI Fabric. It is designed as a public course, workshop series, or documentation-led training
-path. It should stay aligned with the canonical implementation docs in `docs/getting-started` and
-the assistant context pack in `docs/llm-context`.
+> Master curriculum and implementation specification for the public AI Fabric course.
 
-Current baseline:
+## Document Status
 
-- AI Fabric version: `0.3.3`
-- Java: `21`
-- Spring Boot: `4.1.x`
-- Maven group: `io.github.loom-ai-labs`
-- Java packages: `ai.fabric.*`
+| Field | Value |
+| --- | --- |
+| Status | Ready for course asset implementation after the release blockers in this document are fixed |
+| Course baseline | AI Fabric `0.3.3` |
+| Framework release tag | `ai-fabric-framework-v0.3.3` |
+| Course content version | `0.3.3-course.1` |
+| Planned course source tag | `ai-fabric-course-v0.3.3.1` |
+| Java | `21` |
+| Spring Boot | `4.1.x` |
+| Maven group | `io.github.loom-ai-labs` |
+| Framework packages | `ai.fabric.*` |
+| Public course title | Build Production-Oriented AI Workflows with Java and Spring Boot |
+| Public subtitle | Semantic search, evidence-grounded RAG, governed actions, chat memory, and tenant security with AI Fabric |
+
+This file is the curriculum source of truth. It defines what must be built in the framework
+repository, the learner repository, the `aifabric` website, and the NotebookLM production workflow.
+It is not itself a learner lesson.
+
+Do not publicly label the course "AI Fabric External User Course." That phrase is an internal
+description. Use the public title above.
 
 ## Course Promise
 
-By the end, a developer can:
+The course teaches a Java developer to add useful AI workflows to an existing Spring Boot
+application while keeping domain rules, authorization, state changes, and failure handling under
+application control.
 
-- Add AI Fabric to a Spring Boot app.
-- Index app data for semantic search.
-- Build RAG chat backed by retrieved evidence.
-- Expose governed app actions with confirmation.
-- Keep multi-turn chat state in the backend.
-- Configure OpenAI through Spring AI and local ONNX embeddings.
-- Use vector storage and indexing lifecycle controls.
-- Apply tenant/user access policy and privacy guardrails.
-- Test locally, in CI, and with live provider keys.
-- Use a coding assistant safely without drifting away from AI Fabric patterns.
+By the end of the core course, a learner can:
+
+- Install AI Fabric from Maven Central in a standalone Spring Boot app.
+- Model and index application data for semantic retrieval.
+- Produce answers grounded in retrieved evidence.
+- Register read and write actions with typed parameters.
+- Require confirmation before side effects.
+- Continue a conversation using backend-owned chat session state.
+- Apply tenant, user, and role policy before exposing evidence or actions.
+- Test success, failure, and no-evidence behavior without hiding provider failures.
+
+The production and elective tracks add:
+
+- Local ONNX and OpenAI provider profiles.
+- Indexing, migration, update, and delete lifecycle coverage.
+- Provider and vector diagnostics.
+- PII-safe application patterns.
+- RAG quality evaluation.
+- Real application architecture studies.
+- Safe use of coding assistants with AI Fabric.
+
+## Course Philosophy
+
+The course must consistently demonstrate these principles:
+
+1. AI Fabric supplies orchestration, retrieval, governed action, memory, policy, and diagnostics.
+2. The application owns domain truth, authorization, persistence, and side effects.
+3. The LLM supplies interpretation and generation. UI code must not fake intelligence.
+4. Retrieved evidence and trusted action facts must remain visible and inspectable.
+5. Write actions require explicit confirmation.
+6. Security and tenant boundaries fail closed.
+7. Provider failures stay visible. A deterministic fallback must never masquerade as live AI.
+8. Tests preserve behavior before refactoring or release.
+9. Learners use published artifacts. Course success must not depend on framework source being
+   installed locally.
+
+The framework philosophy remains authoritative:
+
+- `docs/Framework-Dev-Guides/LLM-guides/AI_FABRIC_FRAMEWORK_PHILOSOPHY.md`
+- `docs/Framework-Dev-Guides/LLM-guides/AI_FABRIC_LLM_SESSION_LESSONS_LEARNED.md`
 
 ## Audience
 
 Primary audience:
 
-- Java/Spring Boot backend developers.
-- Technical leads evaluating AI enablement for existing products.
-- Developer advocates or solution engineers creating demos.
+- Java and Spring Boot backend developers.
+- Technical leads evaluating AI enablement for an existing product.
+- Solution engineers building secure enterprise AI workflows.
+- Developer advocates teaching AI Fabric through working applications.
 
 Secondary audience:
 
-- Frontend developers integrating AI Fabric-backed chat or action flows.
-- Coding-assistant users who want reliable, framework-aware implementation sessions.
+- Frontend developers consuming AI Fabric-backed chat and action APIs.
+- Engineers using coding assistants to add AI Fabric to an application.
+- Contributors who first want to understand the external-user experience.
 
 Prerequisites:
 
-- Java and Spring Boot basics.
-- Maven basics.
-- Basic REST/API testing with curl or HTTP clients.
-- Optional: OpenAI API key for live-provider labs.
+- Comfortable reading and editing a small Spring Boot application.
+- Basic Java, Maven, REST, JSON, and JUnit knowledge.
+- Java 21 and Maven 3.9 or later.
+- Git and a command-line HTTP client.
+- Optional OpenAI API key for explicitly marked live-provider labs.
 
-## Recommended Formats
+Not required for the quickstart or core local path:
 
-| Format | Duration | Shape |
+- Cloning or building the AI Fabric framework reactor.
+- Docker.
+- A cloud vector database.
+- An LLM API key.
+
+## Definition Of Learner-Ready
+
+A lesson is not ready merely because its topic outline exists. Every public lesson must provide:
+
+- An estimated duration.
+- Prerequisite lessons and software.
+- A pinned framework version.
+- A starter checkpoint and a solution checkpoint.
+- Exact files to inspect and edit.
+- Copyable build, run, and request commands.
+- Expected status codes and important response fields.
+- One intentional failure or incomplete-state exercise.
+- A clear "done when" checklist.
+- Reset and cleanup instructions.
+- Troubleshooting for likely errors.
+- Focused tests that run from a clean checkout.
+- A NotebookLM source pack and reviewed video brief.
+
+No lesson may be marked ready until a clean-environment CI job proves its checkpoint.
+
+## Publishing Architecture
+
+The course is one product published through four connected surfaces.
+
+| Surface | Responsibility | Planned location |
 | --- | --- | --- |
-| Self-paced course | 8-12 hours | Read guide, run labs, complete capstone. |
-| Two-day workshop | 2 x 4 hours | Instructor-led modules plus labs. |
-| Developer onboarding | 3-5 days | One or two modules per day with code review. |
-| Conference workshop | 90-120 minutes | Modules 1, 2, 3, and one live demo path. |
+| Framework repository | Canonical curriculum, lesson Markdown, manifests, API evidence, release compatibility | `AI-Fabric-Framework/docs/course` |
+| Learner repository | Standalone Spring Boot app, Maven wrapper, fixtures, checkpoints, tests | `Loom-AI-Labs/ai-fabric-course-support-assistant` |
+| Website repository | Human-readable course hub, lesson renderer, progress, video embeds, downloads | `aifabric` under `/course` |
+| NotebookLM | Source-grounded explanation videos, study guides, quizzes, and supporting artifacts | One notebook per lesson or tightly coupled lesson pair |
 
-## Course Architecture
+The learner repository must consume AI Fabric only through Maven Central. It must not use relative
+paths into the framework source tree or depend on unpublished `examples/real-apps` artifacts.
 
-Each module should use the same structure:
+### Canonical Content Rule
 
-1. Concept: what problem this capability solves.
-2. AI Fabric shape: modules, annotations, APIs, and runtime flow.
-3. Code walk: current docs or real-app reference.
-4. Lab: build or modify a small vertical slice.
-5. Verification: unit test, smoke test, or live endpoint proof.
-6. Reflection: common mistakes and production guardrails.
+Course Markdown is authored in this framework repository. The website receives a generated,
+version-pinned copy. Website developers must not edit generated course lesson text directly.
 
-Use these source docs as the course backbone:
+Planned canonical authoring structure:
 
-- `docs/getting-started/README.md`
-- `docs/getting-started/00-llm-start-here.md`
+```text
+docs/course/
+  README.md
+  AI_FABRIC_EXTERNAL_USER_COURSE.md
+  course.yml
+  shared/
+    glossary.md
+    troubleshooting-index.md
+    architecture/
+  quickstart/
+    01-first-useful-result/
+      lesson.md
+      lab.md
+      expected-results.md
+      troubleshooting.md
+      quiz.md
+      notebooklm/
+  core/
+    01-mental-model/
+    02-model-and-index/
+    03-evidence-grounded-rag/
+    04-governed-actions/
+    05-chat-memory/
+    06-security-and-privacy/
+    07-test-and-ship/
+  production/
+    01-provider-profiles/
+    02-indexing-lifecycle/
+    03-rag-quality/
+    04-managed-vector-provider/
+    05-release-readiness/
+  case-studies/
+  coding-assistants/
+  capstone/
+```
+
+The synchronization process must:
+
+1. Read the course manifest from the immutable course source tag.
+2. Copy only declared public course assets.
+3. Record the course source tag, framework compatibility tag, and source commit in a generated manifest.
+4. Fail when generated website content differs from canonical source.
+5. Preserve website-only presentation components outside the generated content directory.
+
+Suggested website generated directory:
+
+```text
+src/content/course/0.3.3/
+  course.yml
+  quickstart/
+  core/
+  production/
+  case-studies/
+  coding-assistants/
+  capstone/
+  source-manifest.json
+```
+
+### Versioning Rule
+
+Every published course release is pinned to a framework release. Course content receives its own
+immutable source tag because documentation may be completed after the framework release tag was
+created. Do not make old lessons silently follow `main` or a moving `latest` version.
+
+For this course release:
+
+- Framework API compatibility: `ai-fabric-framework-v0.3.3`.
+- Course content source: `ai-fabric-course-v0.3.3.1` after Phase 0 is complete.
+- Learner checkpoint tags: `course-0.3.3-*` in the standalone learner repository.
+
+Checkpoint naming convention:
+
+```text
+course-0.3.3-00-starter
+course-0.3.3-01-first-search
+course-0.3.3-02-rag
+course-0.3.3-03-actions
+course-0.3.3-04-memory
+course-0.3.3-05-security
+course-0.3.3-06-tested-solution
+```
+
+Checkpoint tags are immutable. A course correction creates a patch checkpoint or a new course
+release rather than moving an existing tag.
+
+## Course Product Structure
+
+The complete course is a set of selectable tracks, not an eight-hour promise for every topic.
+
+| Track | Duration | Outcome |
+| --- | --- | --- |
+| Quickstart | 60-90 minutes | Run a standalone app and prove a first semantic search |
+| Core course | 7-9 hours | Build search, RAG, actions, memory, security, and tests in one app |
+| Production track | 6-8 hours | Add providers, lifecycle, quality, diagnostics, and release checks |
+| Real-app case studies | 2-4 hours | Study five deployed application shapes |
+| Coding-assistant track | 1-2 hours | Use an assistant without inventing APIs or bypassing policy |
+| Capstone | 4-8 hours | Build and defend a complete AI Fabric vertical slice |
+
+Expected total for every track and capstone: approximately 21-33 hours.
+
+The website must let learners distinguish:
+
+- Required core lessons.
+- Optional live-provider work.
+- Production lessons.
+- Case studies.
+- Capstone work.
+
+## Continuing Application
+
+All quickstart and core lessons evolve one application:
+
+> **Support Knowledge Assistant**
+
+The application starts as a normal support knowledge service and grows into an evidence-grounded,
+policy-aware assistant. This domain naturally supports retrieval, governed actions, memory,
+privacy, and tenant safety without changing business context between lessons.
+
+### Business Scenario
+
+A software company stores support articles and customer tickets. Customers ask questions, retrieve
+approved knowledge, inspect their own tickets, create or escalate a ticket, and continue follow-up
+conversations. Support agents can access additional tenant-approved evidence, but no user can see
+another tenant's private records.
+
+### Domain Model
+
+| Type | Purpose | AI Fabric role |
+| --- | --- | --- |
+| `KnowledgeArticle` | Approved support content | Searchable and embeddable evidence |
+| `SupportPolicy` | Return, escalation, privacy, and service rules | RAG evidence |
+| `SupportTicket` | Application-owned ticket state | Read and governed write actions |
+| `CustomerAccount` | Current user, tenant, plan, and entitlements | Trusted action input and access context |
+| `ChatSession` | Conversation and pending confirmation state | `ai-fabric-chat-session` persistence |
+
+### AI Surfaces
+
+| Surface | Contract |
+| --- | --- |
+| Semantic search | Search articles by meaning and return IDs, scores, and metadata |
+| RAG query | Answer only from retrieved article or policy evidence when the lesson requires grounding |
+| Read action | Read current user's ticket status without asking for an ID already known by the app |
+| Write action | Create or escalate a ticket after confirmation |
+| Chat memory | Resolve follow-ups from backend conversation state |
+| Access policy | Scope evidence and actions to the current user and tenant |
+| PII policy | Prevent raw sensitive data from being logged or indexed in privacy exercises |
+
+### Provider Profiles
+
+| Profile | Purpose | Expected dependency |
+| --- | --- | --- |
+| `local` | No-key semantic retrieval using real local embeddings | `ai-fabric-onnx-starter` plus Lucene |
+| `test` | Fast deterministic contract tests with app-owned test providers | Test-scoped fixtures plus memory or Lucene |
+| `openai` | Optional live generation and embeddings | `ai-fabric-provider-spring-ai` plus Lucene |
+
+The local course path uses ONNX for real semantic behavior. Deterministic hash or fixture embeddings
+may be used in unit tests, but lessons must label them as test wiring and must not present them as
+semantic intelligence.
+
+### Planned Learner Repository Shape
+
+```text
+ai-fabric-course-support-assistant/
+  .mvn/
+  mvnw
+  mvnw.cmd
+  pom.xml
+  README.md
+  scripts/
+    download-onnx-model.sh
+    reset-course.sh
+  requests/
+    quickstart.http
+    rag.http
+    actions.http
+    memory.http
+    security.http
+  src/main/java/dev/aifabric/course/support/
+    SupportAssistantApplication.java
+    account/
+    actions/
+    chat/
+    knowledge/
+    policy/
+    security/
+    web/
+  src/main/resources/
+    application.yml
+    application-local.yml
+    application-openai.yml
+    ai-entity-config.yml
+  src/test/java/dev/aifabric/course/support/
+```
+
+### Stable Course API
+
+The course app should keep a small API stable across checkpoints:
+
+| Endpoint | Purpose |
+| --- | --- |
+| `POST /api/demo/reset` | Clear learner-owned fixtures, vectors, and sessions |
+| `POST /api/demo/seed` | Seed the lesson's domain data |
+| `POST /api/demo/index` | Index current course evidence |
+| `GET /api/demo/readiness` | Report data, vector, provider, and build readiness |
+| `GET /api/knowledge/search?q=...` | Prove semantic retrieval directly |
+| `POST /api/assistant/query` | Run RAG, action, and memory scenarios |
+| `GET /actuator/health` | Prove application health |
+
+Confirmation should use the same conversation endpoint and backend chat-session state. The learner
+must be able to send a short follow-up such as `yes` with the same conversation ID. Do not teach a
+frontend-owned confirmation or history protocol.
+
+## Lesson Contract
+
+Each lesson directory must include this front matter in `lesson.md`:
+
+```yaml
+---
+id: core-03
+slug: governed-actions
+title: Governed Actions and Confirmation
+track: core
+order: 3
+durationMinutes: 75
+courseVersion: 0.3.3-course.1
+frameworkVersion: 0.3.3
+frameworkTag: ai-fabric-framework-v0.3.3
+courseSourceTag: ai-fabric-course-v0.3.3.1
+starterRef: course-0.3.3-02-rag
+solutionRef: course-0.3.3-03-actions
+requiresOpenAi: false
+requiresDocker: false
+sourcePaths:
+  - docs/getting-started/05-first-governed-action.md
+  - examples/real-apps/it-support-action-bot/README.md
+video:
+  status: planned
+  generator: notebooklm
+  notebookSource: notebooklm-source.md
+  publicUrl: null
+  transcript: null
+  reviewedBy: null
+  reviewedAt: null
+---
+```
+
+Every `lesson.md` follows this order:
+
+1. Outcome.
+2. Why this matters.
+3. Starting state.
+4. Architecture and request flow.
+5. Files to inspect.
+6. Build steps.
+7. Run and request commands.
+8. Expected result.
+9. Intentional failure exercise.
+10. Tests.
+11. Done when.
+12. Reset and cleanup.
+13. Troubleshooting.
+14. What changed from the previous checkpoint.
+15. Next lesson.
+
+## Quickstart
+
+### QS-01: First Useful Result
+
+**Duration:** 60-90 minutes
+
+**Checkpoint:** `course-0.3.3-00-starter` to `course-0.3.3-01-first-search`
+
+**Keys required:** No
+
+Outcome:
+
+- Start a standalone Spring Boot app that resolves AI Fabric from Maven Central.
+- Seed and index five support articles.
+- Search using wording different from the stored article title.
+- Inspect entity ID, score, content, and metadata in the response.
+
+The learner does not clone or build the framework reactor.
+
+Files to edit:
+
+- `pom.xml`
+- `src/main/resources/application-local.yml`
+- `src/main/resources/ai-entity-config.yml`
+- `knowledge/KnowledgeArticle.java`
+- `knowledge/KnowledgeArticleService.java`
+- `web/KnowledgeSearchController.java`
+
+Required sequence:
+
+1. Verify Java 21.
+2. Check out the starter tag.
+3. Download the local ONNX assets with the supplied script.
+4. Run tests.
+5. Start the app with the `local` profile.
+6. Call reset, seed, and index.
+7. Run a semantic query.
+
+Intentional failure:
+
+- Search before indexing.
+- Observe a successful request with no evidence rather than a fabricated answer.
+- Index the records and repeat the same query.
+
+Done when:
+
+- Dependencies resolve from a clean Maven repository.
+- The app starts without cloud keys.
+- Search returns the expected article ID for the golden quickstart query.
+- The response exposes evidence metadata.
+- The learner can explain the difference between domain storage and vector storage.
+
+Quickstart source material:
+
 - `docs/getting-started/01-choose-your-path.md`
 - `docs/getting-started/02-installation.md`
 - `docs/getting-started/03-first-semantic-search.md`
-- `docs/getting-started/04-first-rag-chat.md`
-- `docs/getting-started/05-first-governed-action.md`
-- `docs/getting-started/06-chat-session-memory.md`
-- `docs/getting-started/07-real-provider-openai.md`
 - `docs/getting-started/08-local-onnx-embeddings.md`
 - `docs/getting-started/09-vector-storage-lucene.md`
-- `docs/getting-started/10-security-access-policy.md`
-- `docs/getting-started/11-testing-and-verification.md`
-- `docs/getting-started/12-real-apps-map.md`
-- `docs/getting-started/13-production-checklist.md`
 
-## Module 0: Orientation
+## Core Course
 
-Goal: understand what AI Fabric is and where it fits.
+QS-01 and CORE-02 share the first-search solution checkpoint. The quickstart is the compressed build
+path; CORE-02 supplies the deeper data-modeling, metadata, update, and delete explanation. A learner
+who completed QS-01 inspects and extends the same code instead of rebuilding it from scratch.
 
-Topics:
+### CORE-01: AI Fabric Mental Model
 
-- AI Fabric as a Java/Spring Boot AI enablement framework.
-- What AI Fabric owns: orchestration, RAG, actions, policy, diagnostics, chat memory, indexing.
-- What providers own: LLM calls, embedding generation, vector storage.
-- Why demos are real app proofs, not just UI animations.
+**Duration:** 35-45 minutes
+
+**Code checkpoint:** no code change
+
+Outcome:
+
+- Distinguish application responsibilities, AI Fabric responsibilities, and provider
+  responsibilities.
+- Select the smallest module set for a feature.
+- Trace a request from REST input through retrieval or action execution.
 
 Lab:
 
-- Clone the repository.
-- Run the framework test command from `docs/getting-started/11-testing-and-verification.md`.
-- Open `examples/real-apps/README.md` and choose one app to study.
+- Map three requirements to AI Fabric modules.
+- Identify one requirement that should remain ordinary application code.
+- Draw the Support Knowledge Assistant request flow.
 
-Deliverable:
+Intentional failure:
 
-- A short written capability map for one target app.
+- Review a proposed design that lets an LLM write directly to a repository.
+- Replace it with a registered, confirmation-gated application action.
 
-## Module 1: Choose The Right Integration Path
+Done when:
 
-Goal: choose the smallest AI Fabric module set for a product requirement.
+- The module-selection table names required and deliberately excluded modules.
+- The learner can explain why AI Fabric is not another persistence layer.
 
-Topics:
+Sources:
 
-- Semantic search only.
-- RAG chat.
-- Governed actions.
-- Chat memory and follow-up turns.
-- Tenant-safe retrieval.
-- Local vs cloud providers.
-
-Source:
-
+- `docs/getting-started/00-llm-start-here.md`
 - `docs/getting-started/01-choose-your-path.md`
 - `docs/llm-context/AI_FABRIC_MODULE_DECISION_TREE.md`
+- `docs/llm-context/AI_FABRIC_CAPABILITY_MAP.md`
 
-Lab:
+### CORE-02: Model And Index Application Data
 
-- Given three product requirements, map each to required modules.
-- Explain what should not be added yet.
+**Duration:** 60 minutes
 
-Deliverable:
+**Checkpoint:** `course-0.3.3-00-starter` to `course-0.3.3-01-first-search`
 
-- A module selection table with reasoning.
+Outcome:
 
-## Module 2: Installation And First App Setup
+- Define searchable, embeddable, context, and metadata fields.
+- Index a `KnowledgeArticle` into a dedicated vector space.
+- Preserve stable entity and tenant metadata.
 
-Goal: create a minimal Spring Boot app that has AI Fabric dependencies and configuration.
+Lab changes:
 
-Topics:
+- Add `KnowledgeArticle` and repository fixtures.
+- Add annotation or YAML-driven AI entity configuration.
+- Add explicit seed and indexing services.
+- Add a golden retrieval test.
 
-- BOM and Maven coordinates.
-- Java 21 and Spring Boot 4.1.x assumptions.
-- `@EnableAIInfrastructure`.
-- Local no-key smoke profile.
-- Where app-specific code belongs.
+Intentional failure:
 
-Source:
+- Index an article without the expected tenant/category metadata.
+- Observe the failing test, correct the metadata, and reindex.
 
-- `docs/getting-started/02-installation.md`
+Done when:
 
-Lab:
+- Create, update, and delete are reflected in retrieval.
+- Metadata required by later security lessons is present.
+- A test proves the expected article is retrieved by a semantically related query.
 
-- Add AI Fabric to a starter Spring Boot project.
-- Boot the app with smoke-safe config.
-
-Verification:
-
-- `mvn test`
-- App starts without cloud API keys when configured for local/smoke behavior.
-
-## Module 3: Semantic Search With App Data
-
-Goal: index domain data and retrieve by meaning.
-
-Topics:
-
-- `@AICapable` entity shape.
-- Searchable fields and metadata.
-- Vector spaces.
-- Lucene vector provider for local development.
-- Evidence quality and why seed data matters.
-
-Source:
+Sources:
 
 - `docs/getting-started/03-first-semantic-search.md`
 - `docs/getting-started/09-vector-storage-lucene.md`
+- `examples/real-apps/smart-faq-assistant/README.md`
 
-Lab:
+### CORE-03: Evidence-Grounded RAG
 
-- Add semantic search to a product, FAQ, policy, or document entity.
-- Seed at least five realistic records.
-- Search with wording that differs from stored text.
+**Duration:** 75 minutes
 
-Verification:
+**Checkpoint:** `course-0.3.3-01-first-search` to `course-0.3.3-02-rag`
 
-- Retrieval returns relevant entity IDs and metadata.
+Outcome:
 
-## Module 4: RAG Chat With Evidence
+- Retrieve approved evidence before answer generation.
+- Expose evidence IDs and snippets with the answer.
+- Report no-evidence state without replacing it with generic model knowledge.
 
-Goal: answer questions using retrieved context instead of generic model guesses.
+Lab changes:
 
-Topics:
+- Add `SupportPolicy` evidence.
+- Add `ai-fabric-rag`.
+- Add the assistant query endpoint.
+- Add response projection for answer, evidence, mode, and diagnostics.
 
-- Retrieval before generation.
-- Evidence panels and document snippets.
-- Staged data readiness.
-- What happens when no evidence exists.
-- Why UI must not fake RAG readiness.
+Intentional failure:
 
-Source:
+- Clear the vector index and ask a policy question.
+- Verify the app reports that no indexed evidence is available.
+- Reseed, reindex, and repeat the query.
+
+Done when:
+
+- The answer is supported by returned article or policy IDs.
+- The UI/API never labels database rows as retrieved evidence before indexing.
+- A test fails if an expected source is absent.
+
+Sources:
 
 - `docs/getting-started/04-first-rag-chat.md`
+- `examples/real-apps/smart-faq-assistant/README.md`
 - `examples/real-apps/chat-capabilities-demo/README.md`
 
-Lab:
+### CORE-04: Governed Actions And Confirmation
 
-- Build a chat endpoint that answers from seeded documents.
-- Clear evidence, ask the same question, then reseed and compare.
+**Duration:** 75-90 minutes
 
-Verification:
+**Checkpoint:** `course-0.3.3-02-rag` to `course-0.3.3-03-actions`
 
-- Response includes retrieved evidence when data is indexed.
-- The app clearly reports no evidence when data is not indexed.
+Outcome:
 
-## Module 5: Governed Actions And Confirmations
+- Register one read action and one write action.
+- Extract typed parameters through `@Param`.
+- Require confirmation before changing ticket state.
+- Return an `ActionResult` containing concise trusted facts.
 
-Goal: let AI propose useful app actions while the application remains in control.
+Required action shape:
 
-Topics:
+```java
+@AIAction(
+    name = "create_support_ticket",
+    description = "Create a support ticket for the current customer.",
+    category = "support",
+    accessMode = ActionAccessMode.WRITE_ONLY,
+    requiresConfirmation = true
+)
+public class CreateSupportTicketActionHandler {
 
-- `@AIAction`.
-- Read actions vs write actions.
-- Confirmation-required flows.
-- Post-action generation from trusted facts.
-- Error handling and validation.
-- Why actions should be domain-specific, not generic shortcuts.
+    @ActionExecute
+    public ActionResult execute(
+        @Param(value = "subject", description = "Short ticket subject", required = true)
+        String subject,
+        @Param(value = "description", description = "Issue details", required = true)
+        String description,
+        ActionContext context
+    ) {
+        // Application service owns authorization and persistence.
+        return ticketService.createForCurrentCustomer(subject, description, context);
+    }
+}
+```
 
-Source:
+Lab changes:
+
+- Add `get_my_ticket_status` as a `READ` action.
+- Add `create_support_ticket` as a `WRITE_ONLY` action.
+- Add `@ActionAllowed` where application authorization is required.
+- Add confirmation, rejection, and duplicate-confirmation tests.
+
+Intentional failure:
+
+- Submit a write request with a missing required parameter.
+- Verify clarification is returned and no ticket is created.
+- Reject a complete action and verify state remains unchanged.
+
+Done when:
+
+- Registration tests prove both actions are discoverable.
+- The write action cannot execute before confirmation.
+- Confirm executes once.
+- Reject does not mutate state.
+- The response does not dump raw persistence objects.
+
+Sources:
 
 - `docs/getting-started/05-first-governed-action.md`
 - `docs/Framework-Dev-Guides/actions-governance/ACTIONS_AND_CONFIRMATION_INTERCEPTORS_GUIDE.md`
-- `docs/Framework-Dev-Guides/actions-governance/POST_ACTION_GENERATION_FOR_ACTION_HANDLERS_GUIDE.md`
+- `examples/real-apps/it-support-action-bot/README.md`
 
-Lab:
+### CORE-05: Backend-Owned Conversation Memory
 
-- Add one read action and one write action.
-- Require confirmation for the write action.
-- Return a clean user-facing action result.
+**Duration:** 60 minutes
 
-Verification:
+**Checkpoint:** `course-0.3.3-03-actions` to `course-0.3.3-04-memory`
 
-- Confirmation is requested before execution.
-- Rejected action does not mutate state.
-- Confirmed action mutates state and returns trusted facts.
+Outcome:
 
-## Module 6: Chat Session Memory
+- Create and reuse a stable conversation ID.
+- Store recent turns and pending confirmation in the backend.
+- Resolve a short follow-up without the client rebuilding a history prompt.
 
-Goal: support follow-up turns without sending all chat history from the UI.
+Lab sequence:
 
-Topics:
+1. Ask why a ticket remains unresolved.
+2. Receive a grounded answer and suggested escalation.
+3. Reply `escalate it` using the same conversation ID.
+4. Reply `yes` to confirm.
 
-- Backend-owned chat session memory.
-- Conversation IDs.
-- Pending confirmations.
-- Pinned targets and follow-up intent.
-- Why UI should send the new message, not own the full reasoning history.
+Intentional failure:
 
-Source:
+- Send the follow-up with a new conversation ID.
+- Observe that prior context is unavailable.
+- Repeat with the original ID.
+
+Done when:
+
+- The client request contains only the new message and stable identity fields.
+- Backend session state supplies recent context.
+- Pending action state survives the confirmation turn.
+- Tests prove sessions cannot cross users.
+
+Sources:
 
 - `docs/getting-started/06-chat-session-memory.md`
 - `examples/real-apps/ai-fabric-account-resolver/README.md`
 
-Lab:
+### CORE-06: Tenant Security And Privacy
 
-- Ask a question.
-- Accept a suggested action with a follow-up phrase.
-- Confirm the action.
+**Duration:** 75-90 minutes
 
-Verification:
+**Checkpoint:** `course-0.3.3-04-memory` to `course-0.3.3-05-security`
 
-- The backend resolves the follow-up from stored session context.
-- The UI does not need to resend full history.
+Outcome:
 
-## Module 7: Providers, OpenAI, And ONNX
+- Apply tenant and user scope before evidence reaches generation.
+- Authorize actions against application identity.
+- Redact sensitive support text before storage or indexing.
 
-Goal: understand provider posture and choose cloud or local embedding paths.
+Lab changes:
 
-Topics:
+- Seed two tenants with overlapping article and ticket names.
+- Add an `EntityAccessPolicy`.
+- Add action authorization for customer and support-agent roles.
+- Add a PII-safe intake exercise.
 
-- OpenAI through Spring AI.
-- AI Fabric policy/orchestration above provider calls.
-- ONNX local embeddings.
-- Provider fallback and diagnostics.
-- What belongs in AI Fabric vs provider layer.
+Intentional failure:
 
-Source:
+- Attempt cross-tenant search.
+- Attempt escalation as an unauthenticated or unauthorized user.
+- Submit a message containing an email, phone number, or test SSN.
+
+Done when:
+
+- Cross-tenant evidence is absent rather than filtered in the UI.
+- Unauthorized actions fail closed.
+- Raw sensitive values are not returned, logged, or indexed in the privacy path.
+- Security tests run without an LLM key.
+
+Sources:
+
+- `docs/getting-started/10-security-access-policy.md`
+- `examples/real-apps/tenant-knowledge-portal/README.md`
+- `examples/real-apps/privacy-first-customer-facing-support/README.md`
+
+### CORE-07: Test And Ship The Vertical Slice
+
+**Duration:** 60-75 minutes
+
+**Checkpoint:** `course-0.3.3-05-security` to `course-0.3.3-06-tested-solution`
+
+Outcome:
+
+- Separate deterministic tests from live-provider tests.
+- Prove retrieval, RAG, actions, memory, security, and failure behavior.
+- Publish health and build metadata.
+
+Required test layers:
+
+- Domain and action unit tests.
+- Application context and action-registration tests.
+- Local retrieval/index lifecycle tests.
+- Chat-session integration tests.
+- Tenant and PII regression tests.
+- Docker or packaged-jar smoke test.
+- Optional keyed OpenAI smoke test.
+
+Intentional failure:
+
+- Configure an unavailable provider while generation is enabled.
+- Verify the failure is explicit and no deterministic answer is presented as live AI.
+
+Done when:
+
+- `./mvnw clean verify` passes from a clean checkout.
+- The packaged app starts in the local profile.
+- Health includes application status and deployed source metadata.
+- Skipped live-provider tests state exactly why they were skipped.
+
+Sources:
+
+- `docs/getting-started/11-testing-and-verification.md`
+- `docs/getting-started/13-production-checklist.md`
+- `docs/Framework-Dev-Guides/testing-verification/CI_PIPELINE_GUIDE.md`
+
+## Production Track
+
+### PROD-01: OpenAI And Local ONNX Provider Profiles
+
+**Duration:** 75 minutes
+
+**Keys required:** OpenAI portion only
+
+Build:
+
+- Keep local ONNX embeddings available without cloud keys.
+- Add OpenAI generation and embedding configuration through Spring AI.
+- Externalize model, base URL, key, and embedding dimensions.
+- Expose provider diagnostics without exposing credentials.
+
+Failure exercise:
+
+- Use an invalid key or endpoint and confirm the provider error remains visible.
+
+Done when:
+
+- Local and OpenAI profiles are explicitly distinguishable.
+- Tests prove secret redaction.
+- The selected provider appears in diagnostics.
+
+Sources:
 
 - `docs/getting-started/07-real-provider-openai.md`
 - `docs/getting-started/08-local-onnx-embeddings.md`
 - `docs/Framework-Dev-Guides/runtime-integration/SPRING_AI_PROVIDER_INTEGRATION_GUIDE.md`
 
-Lab:
+### PROD-02: Indexing, Backfill, And Vector Lifecycle
 
-- Run a no-key local embedding scenario.
-- Optional: run the same semantic search path with OpenAI embeddings.
+**Duration:** 90 minutes
 
-Verification:
+Build:
 
-- Provider diagnostics show which provider was used.
-- OpenAI key failures fail clearly and are not hidden by fake fallback.
+- Index new records.
+- Update indexed content.
+- Delete records and associated vectors.
+- Backfill existing data.
+- Report vector readiness and counts.
 
-## Module 8: Indexing, Migration, And Vector Lifecycle
+Failure exercise:
 
-Goal: keep vector data accurate as application data changes.
+- Change embedding dimensions without changing the Lucene index path.
+- Observe the mismatch and apply the documented migration/reset behavior.
 
-Topics:
+Done when:
 
-- Sync, async, and batch indexing.
-- Backfill and migration.
-- Reindexing and deletion.
-- Vector lifecycle/admin checks.
-- Demo readiness and reset mechanics.
+- Search reflects create, update, and delete.
+- Backfill is repeatable or safely resumable.
+- Readiness proves expected evidence is retrievable, not merely present in the database.
 
-Source:
+Sources:
 
 - `docs/Framework-Dev-Guides/retrieval-vectorization/MIGRATION_BACKFILL_GUIDE.md`
 - `docs/Framework-Dev-Guides/retrieval-vectorization/RAG_INDEXING_LIFECYCLE_GUIDE.md`
 - `examples/real-apps/vector-readiness-playground/README.md`
 - `examples/real-apps/migration-enabled-product-catalog/README.md`
 
-Lab:
+### PROD-03: RAG Quality And Prompt Regression
 
-- Create, update, and delete an indexed entity.
-- Prove search reflects the change.
+**Duration:** 60-75 minutes
 
-Verification:
+Build:
 
-- Search finds the entity after create/update.
-- Search no longer finds the entity after delete.
+- Define golden support questions and expected evidence IDs.
+- Record retrieval scores and missing-evidence failures.
+- Add optional evaluator-backed checks.
+- Preserve prompt and mode identifiers in diagnostics.
 
-## Module 9: Security, Access Policy, And Privacy
+Failure exercise:
 
-Goal: make AI retrieval and actions safe for tenants, users, and sensitive data.
+- Remove a required article and run the quality gate.
+- Verify the gate fails rather than grading an unsupported answer as acceptable.
 
-Topics:
+Done when:
 
-- `EntityAccessPolicy`.
-- Tenant/user-scoped retrieval.
-- Role-aware action authorization.
-- Fail-closed behavior.
-- PII and transient data handling.
-- Why policy text should be user-friendly while enforcement remains application-owned.
+- Golden questions pass with expected sources.
+- No-evidence cases are explicit.
+- Prompt changes can be regression-tested before release.
 
-Source:
+Sources:
 
-- `docs/getting-started/10-security-access-policy.md`
-- `examples/real-apps/tenant-knowledge-portal/README.md`
-- `examples/real-apps/privacy-first-customer-facing-support/README.md`
-
-Lab:
-
-- Seed records for two tenants.
-- Attempt cross-tenant retrieval.
-- Attempt restricted action as a low-privilege user.
-
-Verification:
-
-- Cross-tenant data is not returned.
-- Restricted actions fail closed.
-
-## Module 10: Real App Workshops
-
-Goal: study complete app shapes that external users can copy.
-
-Recommended sequence:
-
-1. AI Shopping Experience: `examples/real-apps/chat-capabilities-demo`
-2. Account Resolver: `examples/real-apps/ai-fabric-account-resolver`
-3. Behavior Signals and Agentic UI: `examples/real-apps/behavior-churn-signals`
-4. Tenant Guard: `examples/real-apps/tenant-knowledge-portal`
-
-For each app, teach:
-
-- Business problem.
-- AI Fabric modules used.
-- Entities and vector spaces.
-- Actions and confirmation policy.
-- Provider setup.
-- Request/response flow.
-- How to reset or seed demo data.
-- What tests prove it.
-
-Deliverable:
-
-- A short architecture note for one real app.
-
-## Module 11: Testing, CI, And Release Readiness
-
-Goal: know what proof is required before shipping.
-
-Topics:
-
-- Unit tests.
-- Real API tests.
-- Manual provider matrix.
-- Docker/local smoke tests.
-- Health/build metadata.
-- No fallback that hides LLM/provider failure.
-
-Source:
-
-- `docs/getting-started/11-testing-and-verification.md`
-- `docs/getting-started/13-production-checklist.md`
-- `docs/Framework-Dev-Guides/testing-verification/CI_PIPELINE_GUIDE.md`
+- `examples/real-apps/smart-faq-assistant/README.md`
 - `docs/Framework-Dev-Guides/testing-verification/REALAPI_PROVIDER_MATRIX_TESTING_GUIDE.md`
 
-Lab:
+### PROD-04: Move From Local Lucene To A Managed Vector Provider
 
-- Run unit tests for a focused module.
-- Run one real-app smoke profile.
-- Optional: run OpenAI-backed real API tests.
+**Duration:** 75-90 minutes
 
-Verification:
+**Docker required:** Yes for the recommended Qdrant lab
 
-- Test results are captured.
-- Any skipped live-provider test has a documented reason.
+Build:
 
-## Capstone Project
+- Keep the AI Fabric retrieval contract unchanged while selecting a different vector provider.
+- Run Qdrant locally with Docker.
+- Configure collection dimensions to match the selected embedding provider.
+- Preserve tenant and entity metadata filters.
+- Compare provider readiness, lifecycle, and admin diagnostics with the Lucene profile.
 
-Build one real AI Fabric vertical slice for a domain app.
+Failure exercise:
 
-Minimum requirements:
+- Start with an unavailable Qdrant endpoint or a dimension mismatch.
+- Verify readiness and search diagnostics identify the real provider problem.
+- Correct provider configuration without changing application retrieval code.
 
-- One annotated searchable entity.
-- One RAG-backed chat/query endpoint.
-- One read action.
-- One confirmation-required write action.
-- Backend-owned chat memory.
-- Access policy for at least tenant or user ownership.
-- Local no-key smoke mode.
-- Optional OpenAI live-provider mode.
-- README with setup, env vars, test commands, and request examples.
+Done when:
 
-Suggested capstone domains:
+- The same golden retrieval tests pass against Lucene and Qdrant profiles.
+- Tenant metadata remains enforced.
+- Provider-specific failure is visible and is not replaced by another provider silently.
 
-- Support knowledge assistant.
-- Account resolver.
-- Tenant knowledge portal.
-- Product advisor with cart actions.
-- Document intake and retrieval workbench.
+Sources:
 
-Assessment rubric:
+- `examples/real-apps/vector-readiness-playground/README.md`
+- `examples/real-apps/cloud-qdrant-openai-vector-search/README.md`
+- `docs/Framework-Dev-Guides/retrieval-vectorization/RAG_INDEXING_LIFECYCLE_GUIDE.md`
 
-| Area | Pass condition |
-| --- | --- |
-| Framework fit | Uses AI Fabric modules directly, no duplicate mini-framework. |
-| Evidence | RAG answers show or expose retrieved evidence. |
-| Actions | Writes require confirmation and return trusted facts. |
-| Memory | Follow-up turns work without UI-owned full history. |
-| Security | Access policy fails closed. |
-| Testing | Unit/smoke tests are documented and runnable. |
-| Operations | README documents provider keys, local smoke mode, and health checks. |
+### PROD-05: Operations And Release Readiness
 
-## Dedicated Track: Using Coding Assistants With AI Fabric
+**Duration:** 60 minutes
 
-This section can be taught as a standalone module or inserted throughout the course. The goal is to
-help developers use AI coding assistants productively without letting them invent APIs, bypass
-framework policy, or fake AI behavior.
+Build:
 
-### Assistant Setup
+- Package the app with Docker.
+- Include source commit, course version, and build time in readiness output.
+- Document required and optional environment variables.
+- Run local smoke and optional live-provider gates.
 
-Before asking a coding assistant to edit code, provide this context in order:
+Done when:
+
+- Deployment metadata identifies the running commit.
+- Reset and seed operations are explicit and protected appropriately.
+- Logs and diagnostics contain no API keys or raw PII.
+- The release checklist records every executed test layer.
+
+Sources:
+
+- `docs/getting-started/13-production-checklist.md`
+- `docs/Framework-Dev-Guides/testing-verification/VERIFICATION_PLAYBOOK.md`
+- `docs/Framework-Dev-Guides/testing-verification/CI_PIPELINE_GUIDE.md`
+
+## Real-App Case Studies
+
+Case studies are not substitutes for the continuing lab app. They show how the same framework
+contracts adapt to different domains.
+
+### CASE-01: AI Shopping Experience
+
+Reference: `examples/real-apps/chat-capabilities-demo`
+
+Teach:
+
+- Staged RAG readiness.
+- Product and policy evidence.
+- Attachments and target resolution.
+- Cart and checkout actions.
+- Confirmation and domain-specific action results.
+
+### CASE-02: AI Fabric Account Resolver
+
+Reference: `examples/real-apps/ai-fabric-account-resolver`
+
+Teach:
+
+- Resolver mode.
+- Reading current-account facts.
+- Policy-grounded blocker explanation.
+- Payment, address, cancellation, plan, and refund actions.
+- Backend-owned follow-up context.
+
+### CASE-03: AI Fabric Behavior Signals
+
+Reference: `examples/real-apps/behavior-churn-signals`
+
+Teach:
+
+- Raw application events as evidence.
+- Previous insight plus newly recorded events.
+- Structured behavior insight.
+- LLM-selected allowlisted UI components.
+- Explicit AI failure without hidden fallback.
+
+### CASE-04: AI Fabric Tenant Guard
+
+Reference: `examples/real-apps/tenant-knowledge-portal`
+
+Teach:
+
+- Tenant metadata and retrieval boundaries.
+- Role-aware evidence.
+- Governed writes.
+- Denied cross-tenant scenarios.
+
+### CASE-05: AI Fabric Privacy Shield
+
+Reference: `examples/real-apps/privacy-first-customer-facing-support`
+
+Teach:
+
+- PII detection and redaction.
+- Safe support-message storage.
+- Sanitized indexing and retrieval.
+- Difference between privacy capability proof and live LLM generation.
+
+Each case-study page must include:
+
+- Business problem.
+- AI Fabric modules.
+- Annotated or configured entities.
+- Provider and vector choices.
+- Request and data flow.
+- Actions and policy boundaries.
+- Test evidence.
+- Live demo link.
+- Backend source link.
+- A statement identifying which behavior is live AI, deterministic framework behavior, or ordinary
+  application logic.
+
+## Coding-Assistant Track
+
+### ASSIST-01: Give An Assistant Correct Context
+
+**Duration:** 30 minutes
+
+Provide context in this order:
 
 1. `docs/getting-started/00-llm-start-here.md`
 2. `docs/llm-context/AI_FABRIC_CONTEXT_INDEX.md`
 3. `docs/llm-context/AI_FABRIC_RULES_FOR_CODING_ASSISTANTS.md`
 4. `docs/llm-context/AI_FABRIC_CAPABILITY_MAP.md`
-5. The specific task guide from `docs/getting-started`
-6. The closest real app README from `examples/real-apps`
+5. The relevant Getting Started task guide.
+6. The nearest real-app README.
 
-Recommended first prompt:
+Starter prompt:
 
 ```text
-You are helping me build an AI Fabric app.
-Use AI Fabric 0.3.3, Java 21, Spring Boot 4.1.x, groupId io.github.loom-ai-labs,
-and Java packages ai.fabric.*.
-Read the attached AI Fabric docs first.
+You are helping me build an AI Fabric application.
+Use AI Fabric 0.3.3, Java 21, Spring Boot 4.1.x,
+Maven group io.github.loom-ai-labs, and framework packages ai.fabric.*.
+
+Read the supplied AI Fabric documents before proposing code.
 Do not invent framework APIs.
 Do not fake AI intelligence in the UI or backend.
-Prefer an existing real-app pattern from examples/real-apps.
-Before code changes, identify the AI Fabric modules, entities, actions, providers,
-tests, and access policy needed for this task.
+Keep domain state, authorization, and side effects in application services.
+Require confirmation for writes.
+Use backend-owned chat-session memory.
+Before editing, identify modules, entities, providers, actions, policies, and tests.
 ```
 
-### Assistant Task Template
+### ASSIST-02: Implement A Small Capability Safely
 
-Use this template for each implementation task:
+**Duration:** 45-60 minutes
+
+Task template:
 
 ```text
 Goal:
-Build [capability] for [domain app].
+Build [capability] for [domain application].
 
-AI Fabric capabilities required:
-- [semantic search/RAG/actions/chat memory/security/provider/etc.]
+AI Fabric capabilities:
+- [semantic search/RAG/actions/chat memory/security/provider]
 
-Existing references:
-- docs/getting-started/[file].md
-- examples/real-apps/[app]/README.md
+References:
+- docs/getting-started/[task].md
+- examples/real-apps/[closest-app]/README.md
 
 Constraints:
-- Use backend-owned chat session memory.
-- Use app-owned action handlers.
-- Writes must require confirmation.
-- Return trusted facts from actions; do not show raw internal JSON.
-- No fallback that hides LLM/provider failure.
-- Keep smoke mode runnable without API keys unless the task explicitly needs live OpenAI.
+- Use application-owned handlers and policies.
+- Writes require confirmation.
+- Return trusted, domain-shaped action facts.
+- Do not display raw internal JSON.
+- Do not hide LLM or provider failures.
+- Preserve a local no-key test path.
 
 Validation:
-- Add or update tests.
-- Run [commands].
-- Explain any skipped live-provider tests.
+- Add tests before or with the change.
+- Run [exact commands].
+- Explain any unexecuted live-provider checks.
 ```
 
-### What To Ask The Assistant To Do
+Lab:
 
-Good tasks:
+- Ask an assistant to add one action or retrieval field to the course app.
+- Require it to identify the current framework API from code or canonical docs.
+- Review its diff manually.
+- Run tests independently.
+- Ask it for a release-readiness review.
 
-- "Add semantic search to this entity using `@AICapable` and Lucene."
-- "Create a read action that returns account profile facts for RAG/action reasoning."
-- "Add a confirmation-required write action for updating payment method."
-- "Wire chat-session memory so follow-up turns work from backend state."
-- "Add an access policy that blocks cross-tenant retrieval."
-- "Create smoke tests that prove indexed data appears and disappears after delete."
-- "Review this app for AI Fabric philosophy violations."
+Done when:
 
-Risky tasks that need extra review:
-
-- "Make the AI smarter" without defining evidence, actions, or tests.
-- "Just add a shortcut button" when the purpose is to prove natural-language AI behavior.
-- "Add fallback response" if it can hide an LLM/provider failure.
-- "Parse LLM text with string matching" when structured output or framework contracts exist.
-- "Let the frontend send all chat history" when backend chat-session memory should own it.
+- The generated code follows current AI Fabric contracts.
+- The learner can explain every change.
+- Tests prove the behavior.
+- No duplicate orchestration, history, or policy layer was introduced.
 
 ### Assistant Review Checklist
 
-After code generation, ask the assistant to verify:
+- Are coordinates, release version, and packages current?
+- Does every annotated action have exactly one `@ActionExecute` method?
+- Are non-context action parameters annotated with `@Param`?
+- Do write actions use `WRITE_ONLY` or `READ_WRITE` and require confirmation?
+- Are answers grounded by evidence or trusted action facts?
+- Is access enforced before evidence or execution?
+- Does the UI avoid raw action JSON?
+- Are provider failures visible?
+- Does backend chat-session state own conversation history?
+- Were focused tests added and run?
 
-- Does the code use current coordinates and packages?
-- Are all AI answers backed by retrieved evidence or trusted action facts?
-- Are write actions confirmation-gated?
-- Does the UI show domain-specific results instead of raw JSON?
-- Is user/tenant access enforced in the backend?
-- Are provider failures visible instead of hidden?
-- Are tests added or updated?
-- Did the assistant avoid duplicate abstractions that already exist in AI Fabric?
+## Capstone
 
-### Assistant Debugging Prompts
+### Goal
 
-Use these when behavior is wrong:
+Build a production-oriented AI Fabric vertical slice for a domain application. The capstone may use
+the Support Knowledge Assistant or a learner-owned domain.
+
+### Minimum Requirements
+
+- One searchable application entity.
+- One explicit vector space with stable metadata.
+- One evidence-grounded RAG endpoint.
+- One read action.
+- One confirmation-required write action.
+- Backend-owned chat memory.
+- Tenant or user access policy.
+- One privacy or sensitive-data rule.
+- Local no-key profile.
+- Optional OpenAI profile.
+- Index create, update, and delete proof.
+- Unit, integration, and packaged-app smoke tests.
+- README with setup, environment variables, requests, reset, and troubleshooting.
+
+### Suggested Domains
+
+- Support knowledge and ticket resolution.
+- Account repair.
+- Tenant knowledge portal.
+- Product advisor with governed cart actions.
+- Document intake and retrieval workbench.
+
+### Assessment Rubric
+
+| Area | Weight | Pass condition |
+| --- | ---: | --- |
+| Framework fit | 15% | Uses AI Fabric directly without a duplicate mini-framework |
+| Retrieval | 15% | Indexed evidence is relevant, visible, and lifecycle-tested |
+| RAG | 10% | Answers distinguish grounded evidence from no-evidence state |
+| Actions | 15% | Writes require confirmation and return trusted facts |
+| Memory | 10% | Follow-ups work from backend state |
+| Security and privacy | 15% | Access fails closed and sensitive data follows declared policy |
+| Testing | 15% | Deterministic and optional live-provider gates are documented |
+| Operations | 5% | Health, build metadata, configuration, and reset are clear |
+
+A capstone passes at 75% only when every security, action-confirmation, and testing pass condition is
+also satisfied. A high total cannot compensate for unsafe writes or cross-tenant leakage.
+
+## NotebookLM Production Contract
+
+NotebookLM is a production aid for explanations, not the source of framework truth. Create one
+notebook per lesson or tightly coupled lesson pair so unrelated modules do not contaminate the
+explanation.
+
+Each lesson may publish two different media artifacts:
+
+1. A short NotebookLM concept explainer grounded in the reviewed lesson source pack.
+2. An optional maintainer-recorded lab walkthrough when exact terminal output, IDE edits, or live
+   application behavior needs to be visible.
+
+The website lesson, checkpoint, and tests remain authoritative. A generated video must never be the
+only place where a command, API contract, expected result, or security requirement is documented.
+
+### Required Source Pack
+
+Each lesson's `notebooklm/` directory contains:
 
 ```text
-Investigate this AI Fabric behavior.
-Do not change framework code until you identify whether the bug is in app config,
-prompt config, action registration, chat-session state, access policy, vector data,
-or provider response.
-Show the request path, selected mode, retrieved evidence, chosen action,
-missing parameters, confirmation state, and final response.
+notebooklm/
+  00-lesson-brief.md
+  01-concepts-and-request-flow.md
+  02-reviewed-code-walk.md
+  03-lab-and-expected-results.md
+  04-failure-and-troubleshooting.md
+  05-glossary.md
+  06-video-steering-prompt.md
+  source-manifest.yml
 ```
+
+Source rules:
+
+- Include only the framework release and checkpoint used by the lesson.
+- Copy reviewed code excerpts rather than uploading the entire repository.
+- Include exact source paths and commit or tag references.
+- Explain which output comes from an LLM, AI Fabric, a provider, or application code.
+- Remove secrets, private operational notes, and live customer data.
+- Keep expected LLM wording outcome-based. Do not require a model to reproduce one exact paragraph.
+
+### Video Steering Prompt Template
 
 ```text
-The UI is showing raw action result data.
-Find the backend action result shape and frontend renderer.
-Use domain-specific presentation fields from trusted action facts.
-Do not fake or rewrite the AI answer client-side.
+Create a concise technical explainer for Java and Spring Boot developers.
+Focus only on lesson [ID]: [TITLE].
+
+Use the supplied AI Fabric 0.3.3 sources as authoritative.
+Explain the business problem first, then the request flow, then the code changes,
+then the verification and intentional failure case.
+
+Clearly distinguish:
+- application-owned domain logic
+- AI Fabric orchestration and policy
+- LLM or embedding provider behavior
+- vector storage behavior
+
+Do not invent classes, annotations, configuration properties, endpoints, performance numbers,
+compliance claims, or expected LLM wording.
+Use Java 21 and Spring Boot 4.1.x terminology.
+End with the lesson's "done when" checks.
 ```
+
+### Video Review Gate
+
+Every generated video must be reviewed against:
+
+- Current framework enum values and annotations.
+- Current Maven coordinates and release version.
+- Correct action handler and confirmation flow.
+- Correct provider and vector responsibility.
+- Correct test commands.
+- No unsupported performance, uptime, accuracy, compliance, or production-readiness claims.
+- No implication that deterministic fixtures are live AI.
+- No raw secrets, PII, or private documentation.
+
+Reject and regenerate a video when any code, API, or security statement is wrong. Editing the lesson
+source is preferable when NotebookLM repeatedly misinterprets an ambiguous source pack.
+
+After review, record the following in lesson front matter:
+
+- Public or embedded video URL.
+- Transcript path.
+- Course source tag.
+- Reviewer and review date.
+- Output language.
+- Any correction note that learners must see.
+
+## Website Course Experience
+
+### Routes
 
 ```text
-The follow-up message is not using previous context.
-Verify the app is wired to ai-fabric-chat-session.
-The UI should send only the new message and conversationId.
-The backend should supply recent session context to AI Fabric.
+/course
+/course/quickstart
+/course/core/:lessonSlug
+/course/production/:lessonSlug
+/course/case-studies/:caseSlug
+/course/coding-assistants
+/course/capstone
 ```
 
-### Coding Assistant Lab
+### Course Hub
 
-Lab goal: use a coding assistant to add a small feature safely.
+The hub shows:
 
-Exercise:
+- Public title and outcome.
+- Current pinned framework version.
+- Quickstart call to action.
+- Track cards with honest duration.
+- Prerequisites.
+- Continuing application architecture.
+- Progress summary stored locally unless accounts are introduced later.
+- Links to the learner repository, Maven Central, live demos, and community.
 
-1. Pick `smart-faq-assistant` or `ai-fabric-account-resolver`.
-2. Give the assistant the setup prompt and task template.
-3. Add one small action or retrieval path.
-4. Ask the assistant to add tests.
-5. Run the tests manually.
-6. Ask the assistant for a release-readiness review.
+### Lesson Page
 
-Pass condition:
+Each lesson page renders:
 
-- The assistant produces code that follows AI Fabric patterns.
-- The developer can explain what the assistant changed.
-- Tests or smoke verification prove the change.
+- Track, lesson number, duration, and version badge.
+- Learning outcome.
+- Embedded reviewed video when available.
+- Architecture/request-flow visual.
+- Exact files and code excerpts.
+- Copyable commands and requests.
+- Expected output and evidence fields.
+- Intentional failure exercise.
+- Test and completion checklist.
+- Starter and solution checkpoint links.
+- Reset and troubleshooting sections.
+- Previous and next lesson navigation.
+- Downloadable NotebookLM source pack for transparent source review.
 
-## Course Assets To Create
+The website must not execute fake AI responses. Interactive results must come from a deployed course
+backend or be clearly labeled static expected-output examples.
 
-Recommended public course materials:
+### Website Content Sync
 
-- Course landing page with audience, prerequisites, and outcomes.
-- Module pages mirroring this structure.
-- One slide deck per module.
-- One lab branch or starter app per major capability.
-- Instructor demo scripts for the four public demos.
-- "Use AI Fabric with a coding assistant" downloadable prompt sheet.
-- Capstone checklist.
-- Troubleshooting FAQ.
+Add a repeatable command in `aifabric`, for example:
 
-## Publishing Plan
+```bash
+npm run course:sync -- --course-ref ai-fabric-course-v0.3.3.1
+npm run course:verify
+```
 
-Suggested public navigation:
+The exact implementation may clone the tagged framework repository or download the tagged archive.
+The generated `source-manifest.json` must contain:
 
-1. Start Here
-2. Install AI Fabric
-3. Build Semantic Search
-4. Build RAG Chat
-5. Add Governed Actions
-6. Add Chat Memory
-7. Add Security And Tenant Policy
-8. Configure Providers
-9. Real App Workshops
-10. Use Coding Assistants
-11. Production Checklist
-12. Capstone
+- Framework repository.
+- Course source tag.
+- Framework compatibility tag.
+- Source commit.
+- Course schema version.
+- Synced file list and checksums.
+- Generation timestamp.
 
-The public `aifabric` website can render this as a course hub, while this framework repo remains
-the source of truth for exact implementation docs.
+## Course Manifest
 
+Create `docs/course/course.yml` before website implementation. It is the machine-readable navigation
+and release contract.
+
+Minimum shape:
+
+```yaml
+schemaVersion: 1
+courseId: ai-fabric-production-oriented-java
+courseVersion: 0.3.3-course.1
+title: Build Production-Oriented AI Workflows with Java and Spring Boot
+subtitle: Semantic search, evidence-grounded RAG, governed actions, chat memory, and tenant security with AI Fabric
+frameworkVersion: 0.3.3
+frameworkTag: ai-fabric-framework-v0.3.3
+courseSourceTag: ai-fabric-course-v0.3.3.1
+javaVersion: 21
+springBootVersion: 4.1.x
+learnerRepository: https://github.com/Loom-AI-Labs/ai-fabric-course-support-assistant
+tracks:
+  - id: quickstart
+    title: Quickstart
+    required: true
+    lessons:
+      - id: qs-01
+        slug: first-useful-result
+        source: quickstart/01-first-useful-result/lesson.md
+  - id: core
+    title: Core Course
+    required: true
+    lessons:
+      - id: core-01
+        slug: mental-model
+        source: core/01-mental-model/lesson.md
+```
+
+## Course CI And Release Gates
+
+### Learner Checkpoint CI
+
+Every starter and solution checkpoint must run in a clean environment:
+
+1. Checkout only the learner repository.
+2. Use Java 21.
+3. Use an empty temporary Maven repository.
+4. Resolve AI Fabric from Maven Central.
+5. Run `./mvnw clean verify`.
+6. Start the packaged app in the local profile.
+7. Reset, seed, index, and execute the lesson smoke request.
+8. Stop the app and upload test reports.
+
+Do not install the framework reactor before this job. Doing so would hide a missing Maven Central
+artifact or dependency.
+
+### Documentation CI
+
+The framework repository must validate:
+
+- Course manifest schema.
+- Every declared lesson and source path exists.
+- Internal links resolve.
+- Framework version, compatibility tag, and course source tag agree with the manifest.
+- Code-backed annotation and enum references match current source.
+- No stale `ActionAccessMode.WRITE` example exists.
+- Real-app Maven commands use the reactor when sibling modules are required.
+- Public demo count and names match the current real-app map.
+
+### Website CI
+
+The website must validate:
+
+- Generated course checksums match the framework tag.
+- Every manifest route renders.
+- Previous and next navigation is complete.
+- Code blocks and long paths fit desktop and mobile layouts.
+- Videos have titles, captions when available, and source/version labels.
+- Starter and solution links resolve.
+- No unpublished lesson is visible in public navigation.
+
+### Optional Live-Provider Gate
+
+Live OpenAI tests remain a separate keyed job. It must:
+
+- Run only lessons marked `requiresOpenAi: true`.
+- Use real credentials from secret storage.
+- Record provider/model diagnostics without printing credentials.
+- Fail when the provider call fails.
+- Never replace failure with a local canned answer.
+
+## Release Blockers Before Recording
+
+These issues are verified against the `0.3.3` source and must be fixed before course recording:
+
+### Blocker 1: Governed Action Example
+
+`docs/getting-started/05-first-governed-action.md` currently uses the nonexistent
+`ActionAccessMode.WRITE` and omits the required `@ActionExecute` and `@Param` shape.
+
+Required fix:
+
+- Use `WRITE_ONLY` for the example write action.
+- Add exactly one `@ActionExecute` method.
+- Add typed `@Param` parameters.
+- Return a current domain-shaped `ActionResult`.
+- Add a documentation or example compilation test.
+
+### Blocker 2: Standalone No-Key Installation
+
+`docs/getting-started/02-installation.md` selects `memory` and `smoke`, but the listed minimal
+dependencies do not provide the memory vector module or the example-only smoke providers.
+
+Required fix:
+
+- Make the public quickstart use ONNX plus Lucene, with a tested model-download step.
+- Keep deterministic providers in learner tests only, clearly labeled test fixtures.
+- Remove any suggestion that external applications receive `smoke-support` from Maven Central.
+
+### Blocker 3: Clean Real-App Commands
+
+`docs/getting-started/11-testing-and-verification.md` runs individual app POMs that depend on the
+sibling `smoke-support` module.
+
+Required command shape:
+
+```bash
+mvn -B -V --no-transfer-progress \
+  -f examples/real-apps/pom.xml \
+  -pl chat-capabilities-demo \
+  -am test
+```
+
+Apply the same reactor form to smoke runtime instructions or explicitly install/package the reactor
+first.
+
+### Blocker 4: Website Documentation Drift
+
+The framework and website copies of Getting Started content already differ. Implement the pinned
+course synchronization contract before adding another manually copied content tree.
+
+### Blocker 5: Public Demo Count
+
+The previous curriculum mentioned four public demos. The case-study track now includes five:
+
+1. AI Shopping Experience.
+2. AI Fabric Account Resolver.
+3. AI Fabric Behavior Signals.
+4. AI Fabric Tenant Guard.
+5. AI Fabric Privacy Shield.
+
+## Implementation Backlog
+
+### Phase 0: Correctness Gate
+
+- [ ] Fix the governed-action guide and add compile-backed coverage.
+- [ ] Replace the broken standalone smoke instructions.
+- [ ] Correct real-app reactor commands.
+- [ ] Align the framework and website real-app maps.
+- [ ] Verify all Getting Started source links against `0.3.3`.
+
+### Phase 1: Course Foundation
+
+- [ ] Create `docs/course/course.yml`.
+- [ ] Create the lesson directory structure.
+- [ ] Create the standalone learner repository.
+- [ ] Add Maven wrapper, local ONNX setup, reset, seed, and readiness contracts.
+- [ ] Add clean Maven Central consumer CI.
+- [ ] Publish immutable starter and solution checkpoints.
+
+### Phase 2: Quickstart Beta
+
+- [ ] Write QS-01 completely.
+- [ ] Build the quickstart website page.
+- [ ] Create the first NotebookLM source pack.
+- [ ] Generate and technically review the first video.
+- [ ] Run the quickstart with at least three external learners.
+- [ ] Record setup time, failure points, and completion rate.
+- [ ] Fix every reproducible blocker before recording the core track.
+
+### Phase 3: Core Course
+
+- [ ] Implement CORE-01 through CORE-07.
+- [ ] Create and test every checkpoint.
+- [ ] Publish lesson pages and reviewed videos incrementally.
+- [ ] Add quizzes and completion checks.
+- [ ] Run a second external learner beta.
+
+### Phase 4: Production And Case Studies
+
+- [ ] Implement PROD-01 through PROD-05.
+- [ ] Publish all five code-backed case studies.
+- [ ] Add optional live-provider CI.
+- [ ] Add production and security review exercises.
+
+### Phase 5: Coding Assistants And Capstone
+
+- [ ] Publish the assistant context lesson and prompt sheet.
+- [ ] Publish the capstone starter and rubric.
+- [ ] Add project submission guidance.
+- [ ] Collect learner projects, corrections, and testimonials with permission.
+
+## Course Readiness Scorecard
+
+| Area | Ready when |
+| --- | --- |
+| Technical correctness | Every snippet and checkpoint is compiled or exercised against the pinned release |
+| Reproducibility | A clean learner machine can complete the quickstart without framework source |
+| Lab quality | Every lesson satisfies the lesson contract |
+| Website | Course manifest renders complete routes and navigation |
+| Video | Every NotebookLM output passes technical review |
+| Security | Unsafe writes, cross-tenant access, and hidden provider failures are tested |
+| Versioning | Website, checkpoints, videos, and docs identify the same framework release |
+| External proof | Beta learners complete the quickstart without maintainer intervention |
+
+The course is ready for full public launch only when all eight areas pass. Until then, individual
+lessons may be published as clearly versioned beta material.
+
+## Authoritative References
+
+Start with:
+
+- `docs/getting-started/README.md`
+- `docs/llm-context/AI_FABRIC_CONTEXT_INDEX.md`
+- `docs/Framework-Dev-Guides/LLM-guides/AI_FABRIC_FRAMEWORK_PHILOSOPHY.md`
+- `docs/Framework-Dev-Guides/LLM-guides/AI_FABRIC_LLM_SESSION_LESSONS_LEARNED.md`
+- `docs/release-notes/0.3.3.md`
+- `examples/real-apps/README.md`
+
+NotebookLM product references:
+
+- `https://support.google.com/notebooklm/answer/16215270`
+- `https://support.google.com/notebooklm/answer/16454555`

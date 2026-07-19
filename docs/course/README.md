@@ -1,9 +1,11 @@
 # AI Fabric Course Materials
 
-This directory contains curriculum outlines for teaching external developers how to adopt AI Fabric
-in their own Spring Boot applications.
+This directory is the canonical source for the public AI Fabric course. It defines the curriculum,
+learner application, website publishing contract, NotebookLM source packs, and release gates.
 
 Start with:
 
-- [External User Course Structure](AI_FABRIC_EXTERNAL_USER_COURSE.md)
+- [Build Production-Oriented AI Workflows with Java and Spring Boot](AI_FABRIC_EXTERNAL_USER_COURSE.md)
 
+The course is pinned to a framework release. Public website copies and generated learning assets
+must identify the source tag and must not silently follow `main`.

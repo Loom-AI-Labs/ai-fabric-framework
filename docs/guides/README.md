@@ -14,8 +14,8 @@ For new integrations, use the canonical [Getting Started](../getting-started/REA
 It is shorter, task-oriented, and includes an [LLM Start Here](../getting-started/00-llm-start-here.md)
 page for coding assistant sessions. Keep this `docs/guides` section as the deeper legacy guide set.
 
-If you are building training material for external users, start from the
-[AI Fabric External User Course Structure](../course/AI_FABRIC_EXTERNAL_USER_COURSE.md).
+If you are building training material for external users, start from
+[Build Production-Oriented AI Workflows with Java and Spring Boot](../course/AI_FABRIC_EXTERNAL_USER_COURSE.md).
 
 | # | Guide | What you'll get |
 |---|-------|-----------------|
