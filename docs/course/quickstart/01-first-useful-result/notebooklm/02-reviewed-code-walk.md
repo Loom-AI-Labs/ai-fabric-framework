@@ -1,7 +1,7 @@
 # Reviewed Code Shape
 
 The video may show only these conceptual shapes. Exact compilable code belongs to the validated
-learner checkpoint.
+published checkpoint.
 
 ```java
 @AICapable(entityType = "knowledge-article")
@@ -26,4 +26,3 @@ search(query) -> embedding contract -> vector search -> evidence response
 
 Do not invent an endpoint, method signature, or property that is not present in the reviewed lesson
 checkpoint when the video is generated.
-

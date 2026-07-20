@@ -1,6 +1,6 @@
 # Lab And Expected Results
 
-The final lab will:
+In the final lab, you will:
 
 1. Start a no-key Spring Boot application.
 2. Reset and seed five support articles.
@@ -12,10 +12,9 @@ The final lab will:
 
 Expected learning evidence:
 
-- the learner can distinguish source records from vectors;
-- the learner can place each request step at the correct ownership boundary;
-- the learner does not accept generic or canned text as retrieval proof.
+- you can distinguish source records from vectors;
+- you can place each request step at the correct ownership boundary;
+- you do not accept generic or canned text as retrieval proof.
 
 The exact IDs, commands, and output must be copied from the validated checkpoint before this lesson
 moves from preview to executable.
-
