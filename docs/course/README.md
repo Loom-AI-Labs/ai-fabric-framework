@@ -5,7 +5,9 @@ learner application, website publishing contract, NotebookLM source packs, and r
 
 Start with:
 
+- [Machine-readable course catalog](course.yml)
 - [Build Production-Oriented AI Workflows with Java and Spring Boot](AI_FABRIC_EXTERNAL_USER_COURSE.md)
+- [QS-01 preview lesson package](quickstart/01-first-useful-result/lesson.md)
 - [Real-application field lessons](../Framework-Dev-Guides/LLM-guides/AI_FABRIC_LLM_SESSION_LESSONS_LEARNED.md)
 
 The curriculum integrates these field lessons into intentional failures, troubleshooting exercises,
@@ -25,3 +27,14 @@ maintainer-recorded artifacts.
 
 The course is pinned to a framework release. Public website copies and generated learning assets
 must identify the source tag and must not silently follow `main`.
+
+## Publishing Contract
+
+`course.yml` is the website catalog source. A rendered lesson must also provide lesson Markdown,
+a deterministic knowledge check, implementation and independent-review prompts, and a NotebookLM
+source manifest. The website sync validates these files, writes checksummed generated artifacts,
+and fails when IDs, routes, versions, answer keys, or required publication evidence disagree.
+
+The QS-01 package is intentionally marked `preview`: its conceptual content and questions are ready,
+while the learner repository checkpoints and approved theory video are not. Preview material must
+not be described as a completed or executable public lab.

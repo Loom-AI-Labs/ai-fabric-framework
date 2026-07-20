@@ -1,0 +1,57 @@
+schemaVersion: 1
+lessonId: qs-01
+passingScorePercent: 80
+questions:
+  - id: qs-01-q1
+    type: single-choice
+    competency: request-flow
+    prompt: What makes an application support article retrievable through semantic search?
+    options:
+      - id: database-row
+        text: Saving the article in the application database
+      - id: indexed-vector
+        text: Projecting approved content, generating an embedding, and storing it in the configured vector space
+      - id: browser-copy
+        text: Sending the full article list from the browser with every query
+    correctOptionIds:
+      - indexed-vector
+    explanation: Database persistence and vector retrieval are separate lifecycle steps. AI Fabric can retrieve the article only after approved content has been embedded and indexed.
+    sourcePaths:
+      - docs/getting-started/03-first-semantic-search.md
+  - id: qs-01-q2
+    type: multiple-choice
+    competency: ownership
+    prompt: Which responsibilities remain application-owned in this lesson?
+    options:
+      - id: article-lifecycle
+        text: Support article lifecycle and approved content
+      - id: stable-metadata
+        text: Stable entity IDs and category metadata
+      - id: onnx-inference
+        text: ONNX model inference implementation
+      - id: lucene-similarity
+        text: Lucene similarity-search implementation
+    correctOptionIds:
+      - article-lifecycle
+      - stable-metadata
+    explanation: The application owns domain records and approved metadata. Provider modules own model inference and vector-store implementation details behind AI Fabric contracts.
+    sourcePaths:
+      - docs/getting-started/03-first-semantic-search.md
+      - docs/getting-started/08-local-onnx-embeddings.md
+  - id: qs-01-q3
+    type: single-choice
+    competency: failure-diagnosis
+    prompt: A seeded application returns no semantic evidence. What should be checked first?
+    options:
+      - id: add-generic-answer
+        text: Add a generic model answer so the page is never empty
+      - id: inspect-index-readiness
+        text: Verify the records were indexed and the expected vector space is ready
+      - id: browser-keywords
+        text: Add browser keyword matching for the expected article title
+    correctOptionIds:
+      - inspect-index-readiness
+    explanation: No evidence is an honest state. Verify indexing and vector readiness instead of fabricating intelligence in the model, application, or browser.
+    sourcePaths:
+      - docs/getting-started/03-first-semantic-search.md
+

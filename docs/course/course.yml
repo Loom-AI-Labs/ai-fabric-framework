@@ -1,0 +1,171 @@
+schemaVersion: 1
+assistantPromptSchemaVersion: 1
+knowledgeCheckSchemaVersion: 1
+notebookLmVideoSchemaVersion: 1
+courseId: ai-fabric-production-oriented-java
+courseVersion: 0.3.3-course.1-beta
+status: beta
+title: Build Production-Oriented AI Workflows with Java and Spring Boot
+subtitle: Semantic search, evidence-grounded RAG, governed actions, chat memory, and tenant security with AI Fabric
+frameworkVersion: 0.3.3
+frameworkTag: ai-fabric-framework-v0.3.3
+courseSourceTag: unreleased
+javaVersion: 21
+springBootVersion: 4.1.x
+learnerRepository: https://github.com/Loom-AI-Labs/ai-fabric-course-support-assistant
+certificate:
+  enabled: false
+  title: AI Fabric Course Certificate of Completion
+  reason: Certificate applications open after the complete required course and capstone are published.
+tracks:
+  - id: quickstart
+    title: Quickstart
+    description: Reach a useful semantic-search result and understand the complete evidence path.
+    required: true
+    lessons:
+      - id: qs-01
+        slug: first-useful-result
+        title: First Useful Result
+        description: Index support knowledge and retrieve it by meaning without cloud credentials.
+        durationMinutes: 75
+        availability: preview
+        source: quickstart/01-first-useful-result/lesson.md
+        knowledgeCheck: quickstart/01-first-useful-result/knowledge-check.yml
+        assistantPrompt: quickstart/01-first-useful-result/assistant-prompt.md
+        assistantReviewPrompt: quickstart/01-first-useful-result/assistant-review-prompt.md
+        notebookSourceManifest: quickstart/01-first-useful-result/notebooklm/source-manifest.yml
+  - id: core
+    title: Core Course
+    description: Build one support assistant through retrieval, RAG, governed actions, memory, security, and testing.
+    required: true
+    lessons:
+      - id: core-01
+        slug: mental-model
+        title: AI Fabric Mental Model
+        description: Map application, framework, provider, vector, and UI ownership.
+        durationMinutes: 40
+        availability: planned
+      - id: core-02
+        slug: model-and-index-data
+        title: Model And Index Application Data
+        description: Define content and metadata, then prove the complete vector lifecycle.
+        durationMinutes: 60
+        availability: planned
+      - id: core-03
+        slug: evidence-grounded-rag
+        title: Evidence-Grounded RAG
+        description: Retrieve approved evidence before generation and expose its source IDs.
+        durationMinutes: 75
+        availability: planned
+      - id: core-04
+        slug: governed-actions
+        title: Governed Actions And Confirmation
+        description: Register typed actions, collect parameters, and confirm writes before execution.
+        durationMinutes: 85
+        availability: planned
+      - id: core-05
+        slug: backend-conversation-memory
+        title: Backend-Owned Conversation Memory
+        description: Resolve follow-ups and pending confirmations from framework session state.
+        durationMinutes: 60
+        availability: planned
+      - id: core-06
+        slug: tenant-security-and-privacy
+        title: Tenant Security And Privacy
+        description: Apply identity, tenant, access, and PII policy before evidence or execution.
+        durationMinutes: 85
+        availability: planned
+      - id: core-07
+        slug: test-and-ship
+        title: Test And Ship The Vertical Slice
+        description: Separate deterministic, packaged-runtime, and live-provider release evidence.
+        durationMinutes: 70
+        availability: planned
+  - id: production
+    title: Production Track
+    description: Operate providers, indexing, RAG quality, managed vectors, and release workflows.
+    required: true
+    lessons:
+      - id: prod-01
+        slug: provider-profiles
+        title: OpenAI And Local ONNX Provider Profiles
+        description: Make local and live provider posture explicit without hidden fallback.
+        durationMinutes: 75
+        availability: planned
+      - id: prod-02
+        slug: indexing-and-backfill
+        title: Indexing, Backfill, And Vector Lifecycle
+        description: Keep source data, embeddings, and vector storage synchronized through change.
+        durationMinutes: 90
+        availability: planned
+      - id: prod-03
+        slug: rag-quality
+        title: RAG Quality And Prompt Regression
+        description: Test expected evidence, no-source behavior, and application prompt overlays.
+        durationMinutes: 70
+        availability: planned
+      - id: prod-04
+        slug: managed-vector-provider
+        title: Move From Lucene To A Managed Vector Provider
+        description: Preserve the retrieval contract while making Qdrant operations and failures visible.
+        durationMinutes: 85
+        availability: planned
+      - id: prod-05
+        slug: operations-and-release
+        title: Operations And Release Readiness
+        description: Package, identify, isolate, clean, and verify the deployed application.
+        durationMinutes: 60
+        availability: planned
+  - id: case-studies
+    title: Real-App Case Studies
+    description: Inspect five deployed applications and the failures that improved their architecture.
+    required: false
+    lessons:
+      - id: case-01
+        slug: ai-shopping-experience
+        title: AI Shopping Experience
+        description: Staged commerce RAG, attachments, governed cart actions, and result projection.
+        durationMinutes: 45
+        availability: planned
+      - id: case-02
+        slug: account-resolver
+        title: AI Fabric Account Resolver
+        description: Profile reads, policy-grounded blockers, follow-ups, and governed remedies.
+        durationMinutes: 45
+        availability: planned
+      - id: case-03
+        slug: behavior-signals
+        title: AI Fabric Behavior Signals
+        description: Incremental insight generation and allowlisted agentic UI composition.
+        durationMinutes: 45
+        availability: planned
+      - id: case-04
+        slug: tenant-guard
+        title: AI Fabric Tenant Guard
+        description: Tenant-scoped evidence, role policy, denied retrieval, and governed writes.
+        durationMinutes: 45
+        availability: planned
+      - id: case-05
+        slug: privacy-shield
+        title: AI Fabric Privacy Shield
+        description: Backend PII processing, sanitized indexing, and privacy proof without false AI claims.
+        durationMinutes: 45
+        availability: planned
+  - id: coding-assistants
+    title: Coding-Assistant Track
+    description: Give an assistant correct evidence, bound its work, and independently review the result.
+    required: false
+    lessons:
+      - id: assist-01
+        slug: correct-context
+        title: Give An Assistant Correct Context
+        description: Assemble release-pinned context and require an ownership map before code.
+        durationMinutes: 30
+        availability: planned
+      - id: assist-02
+        slug: implement-safely
+        title: Implement A Small Capability Safely
+        description: Use bounded prompts, current APIs, tests, and a fresh findings-first review.
+        durationMinutes: 55
+        availability: planned
+
