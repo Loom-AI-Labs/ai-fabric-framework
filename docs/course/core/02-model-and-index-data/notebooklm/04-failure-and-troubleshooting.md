@@ -19,4 +19,3 @@ query returns the expected evidence ID.
 - Wrong Lucene path: environment/index selection problem.
 - Metadata missing: application projection/index lifecycle problem.
 - Answer appears with no evidence: hidden fallback or application-authored response; stop and inspect.
-

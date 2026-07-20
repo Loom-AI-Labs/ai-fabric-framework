@@ -20,7 +20,7 @@ certificate:
 tracks:
   - id: quickstart
     title: Quickstart
-    description: Reach a useful semantic-search result and understand the complete evidence path.
+    description: Reach one useful semantic-search result before the Core track explains the complete architecture.
     required: true
     lessons:
       - id: qs-01
@@ -33,7 +33,6 @@ tracks:
         knowledgeCheck: quickstart/01-first-useful-result/knowledge-check.yml
         assistantPrompt: quickstart/01-first-useful-result/assistant-prompt.md
         assistantReviewPrompt: quickstart/01-first-useful-result/assistant-review-prompt.md
-        notebookSourceManifest: quickstart/01-first-useful-result/notebooklm/source-manifest.yml
   - id: core
     title: Core Course
     description: Build one support assistant through retrieval, RAG, governed actions, memory, security, and testing.
@@ -41,8 +40,8 @@ tracks:
     lessons:
       - id: core-01
         slug: mental-model
-        title: AI Fabric Mental Model
-        description: Map application, framework, provider, vector, and UI ownership.
+        title: What Is AI Fabric? Architecture And Mental Model
+        description: Learn why AI Fabric exists, when to use it, how its modules fit together, and what remains application-owned.
         durationMinutes: 40
         availability: planned
       - id: core-02
@@ -168,4 +167,3 @@ tracks:
         description: Use bounded prompts, current APIs, tests, and a fresh findings-first review.
         durationMinutes: 55
         availability: planned
-

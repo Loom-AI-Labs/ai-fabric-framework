@@ -1,0 +1,26 @@
+schemaVersion: 1
+lessonId: core-02
+status: script-ready
+frameworkVersion: 0.3.3
+frameworkTag: ai-fabric-framework-v0.3.3
+courseVersion: 0.3.3-course.1-beta
+reviewedAt: null
+reviewedBy: null
+sources:
+  - path: docs/course/AI_FABRIC_EXTERNAL_USER_COURSE.md
+  - path: docs/course/core/02-model-and-index-data/notebooklm/00-lesson-brief.md
+  - path: docs/course/core/02-model-and-index-data/notebooklm/01-concepts-and-request-flow.md
+  - path: docs/course/core/02-model-and-index-data/notebooklm/02-reviewed-code-walk.md
+  - path: docs/course/core/02-model-and-index-data/notebooklm/03-lab-and-expected-results.md
+  - path: docs/course/core/02-model-and-index-data/notebooklm/04-failure-and-troubleshooting.md
+  - path: docs/course/core/02-model-and-index-data/notebooklm/05-glossary.md
+  - path: docs/course/core/02-model-and-index-data/notebooklm/06-video-steering-prompt.md
+  - path: docs/course/core/02-model-and-index-data/notebooklm/07-video-script.md
+  - path: docs/getting-started/02-installation.md
+  - path: docs/getting-started/03-first-semantic-search.md
+  - path: docs/getting-started/08-local-onnx-embeddings.md
+  - path: docs/getting-started/09-vector-storage-lucene.md
+outputs:
+  videoUrl: null
+  transcript: docs/course/core/02-model-and-index-data/notebooklm/07-video-script.md
+  actualDurationMinutes: null

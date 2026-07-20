@@ -18,5 +18,5 @@ display.
 
 **Evidence**: Retrieved content and source identity returned by the search contract.
 
-**RAG**: Retrieval-augmented generation. It is introduced later; QS-01 proves retrieval only.
-
+**RAG**: Retrieval-augmented generation. CORE-02 proves the indexing and retrieval lifecycle that RAG
+depends on.

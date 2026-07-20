@@ -3,7 +3,8 @@
 ## Production Direction
 
 - Target duration: 6-8 minutes.
-- Audience: Java and Spring Boot developers seeing AI Fabric for the first time.
+- Audience: Java and Spring Boot developers who completed QS-01 and the CORE-01 framework
+  introduction.
 - Voice: direct, practical, calm, and technically precise. Address the developer as **you**.
 - Format: architecture explanation before the lab, not a code-along.
 - Primary objective: make the indexing and search flow predictable before any implementation begins.
@@ -21,8 +22,9 @@ You already know how to store a support article in a Spring Boot application. Bu
 does not make it available to semantic search. A user may ask a question with different words from
 the article, and exact keyword matching may miss it.
 
-In this lesson, your first useful AI Fabric result is not a chatbot response. It is stronger and
-easier to prove: a paraphrased question retrieves the expected application-owned article as evidence.
+In this lesson, you will look beneath your first useful AI Fabric retrieval result. A paraphrased
+question retrieves the expected application-owned article as evidence, but now you will understand
+the complete data and indexing lifecycle that makes that result trustworthy.
 
 You will build this without an LLM and without an OpenAI key. Local ONNX embeddings and a local
 Lucene vector index are enough.
@@ -215,7 +217,7 @@ Carry your answer into the lesson and knowledge check.
 ## Accuracy Guardrails For NotebookLM
 
 - Do not call database records vector evidence before indexing.
-- Do not imply an LLM is used in QS-01.
+- Do not imply an LLM is required for the CORE-02 retrieval flow.
 - Do not invent method signatures, endpoints, properties, or executable output.
 - Do not describe a similarity score as probability or guaranteed confidence.
 - Do not claim the starter, solution, or video has already been published.

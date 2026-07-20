@@ -5,9 +5,8 @@ Create a concise 6-8 minute technical explainer for Java and Spring Boot develop
 Title: From Application Record To Semantic Evidence.
 
 Use `07-video-script.md` as the primary narration and scene-order source. Use the rest of the supplied
-AI Fabric 0.3.3 QS-01 source pack only to verify terminology and add supporting visuals. This is a
-pre-lesson architecture explainer, not a code-along and not proof that the future checkpoint was
-executed.
+AI Fabric 0.3.3 CORE-02 source pack only to verify terminology and add supporting visuals. This is an
+architecture explainer, not a code-along and not proof that the future checkpoint was executed.
 
 Speak directly to the Java developer using "you". Do not describe the audience as "the learner".
 

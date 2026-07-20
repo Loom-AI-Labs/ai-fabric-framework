@@ -1,9 +1,10 @@
-# QS-01 NotebookLM Lesson Brief
+# CORE-02 NotebookLM Lesson Brief
 
 ## Purpose
 
-Create a 6-8 minute pre-lesson architecture explanation titled **From Application Record To Semantic
-Evidence** for Java and Spring Boot developers who have not used AI Fabric.
+Create a 6-8 minute architecture explanation titled **From Application Record To Semantic Evidence**
+for Java and Spring Boot developers extending the QS-01 retrieval flow after the CORE-01 framework
+introduction.
 
 This is theory orientation, not a code-along. Address the developer directly as **you**. By the end,
 the developer should be able to explain why a database row is not vector evidence and trace one
@@ -25,7 +26,7 @@ semantic-search request end to end.
 
 ## Prohibited Claims
 
-- Do not describe this preview as an executed lab.
+- Do not describe the planned CORE-02 lab as executed.
 - Do not claim the NotebookLM video is already published.
 - Do not invent performance, accuracy, compliance, or production-readiness numbers.
 - Do not describe database records as indexed evidence.

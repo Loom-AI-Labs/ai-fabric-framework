@@ -20,10 +20,12 @@ Both paths finish with the same reviewed, source-backed knowledge check. Choice 
 deterministically; explanation and implementation-defense questions use explicit review criteria and
 must never present LLM-generated grading as course evidence.
 
-Before either implementation path, every lesson uses a short, reviewed NotebookLM architecture
-explainer. Its lesson-specific theory brief covers the request/data flow, ownership boundaries, and
-important failure behavior. Exact IDE, terminal, and live-application walkthroughs remain separate
-maintainer-recorded artifacts.
+The Quickstart is action-first and intentionally has no required theory video. It introduces AI
+Fabric in one short paragraph, proves one useful capability, and then hands the developer to the Core
+track. CORE-01 provides the full framework introduction: why AI Fabric exists, when to use it,
+module and ownership boundaries, and the main request flows. Later lessons may use a reviewed
+NotebookLM architecture explainer when conceptual preparation adds value. Exact IDE, terminal, and
+live-application walkthroughs remain separate maintainer-recorded artifacts.
 
 The course is pinned to a framework release. Public website copies and generated learning assets
 must identify the source tag and must not silently follow `main`.
@@ -31,10 +33,12 @@ must identify the source tag and must not silently follow `main`.
 ## Publishing Contract
 
 `course.yml` is the website catalog source. A rendered lesson must also provide lesson Markdown,
-a deterministic knowledge check, implementation and independent-review prompts, and a NotebookLM
-source manifest. The website sync validates these files, writes checksummed generated artifacts,
-and fails when IDs, routes, versions, answer keys, or required publication evidence disagree.
+a deterministic knowledge check, and implementation and independent-review prompts. A lesson that
+declares a theory video must also declare its NotebookLM source manifest; video metadata and the
+manifest are optional only as a pair. The website sync validates these files, writes checksummed
+generated artifacts, and fails when IDs, routes, versions, answer keys, or required publication
+evidence disagree.
 
-The QS-01 package is intentionally marked `preview`: its conceptual content and questions are ready,
-while the learner repository checkpoints and approved theory video are not. Preview material must
-not be described as a completed or executable public lab.
+The QS-01 package is intentionally marked `preview`: its practical content and questions are ready,
+while the learner repository checkpoints are not. It intentionally has no theory-video gate. Preview
+material must not be described as a completed or executable public lab.

@@ -39,4 +39,3 @@
 If step 3-5 never ran, the database record exists but similarity search has no vector to return. The
 correct response is no evidence plus readiness diagnostics. The correction is indexing, not a canned
 answer or browser keyword rule.
-

@@ -165,9 +165,9 @@ A lesson is not ready merely because its topic outline exists. Every public less
   the lesson's track.
 - Deterministic answer keys and explanations for scored questions, plus explicit review criteria for
   questions that ask the learner to explain or defend an implementation.
-- A lesson-specific NotebookLM pre-lesson theory brief covering architecture, request/data flow,
-  ownership boundaries, and important failure behavior.
-- A reviewed NotebookLM source pack and pre-lesson architecture explainer.
+- For lessons that declare theory media, a lesson-specific NotebookLM brief covering architecture,
+  request/data flow, ownership boundaries, and important failure behavior.
+- For those lessons, a reviewed NotebookLM source pack and pre-lesson architecture explainer.
 
 No lesson may be marked ready until a clean-environment CI job proves its checkpoint.
 
@@ -180,7 +180,7 @@ The course is one product published through four connected surfaces.
 | Framework repository | Canonical curriculum, lesson Markdown, knowledge checks, assistant prompts, manifests, API evidence, release compatibility | `AI-Fabric-Framework/docs/course` |
 | Learner repository | Standalone Spring Boot app, Maven wrapper, fixtures, checkpoints, tests | `Loom-AI-Labs/ai-fabric-course-support-assistant` |
 | Website repository | Human-readable course hub, manual/assistant lesson paths, progress, video embeds, downloads | `aifabric` under `/course` |
-| NotebookLM | Source-grounded explanation videos, study guides, quizzes, and supporting artifacts | One notebook per lesson or tightly coupled lesson pair |
+| NotebookLM | Source-grounded conceptual explainers and supporting artifacts | One notebook per concept-bearing lesson or tightly coupled lesson pair; none is required for the action-first Quickstart |
 
 The learner repository must consume AI Fabric only through Maven Central. It must not use relative
 paths into the framework source tree or depend on unpublished `examples/real-apps` artifacts.
@@ -421,7 +421,8 @@ frontend-owned confirmation or history protocol.
 
 ## Lesson Contract
 
-Each lesson source directory uses this shape:
+Each lesson source directory uses this shape. The `notebooklm/` directory is present only when the
+lesson declares a theory video:
 
 ```text
 <track>/<lesson>/
@@ -489,11 +490,15 @@ video:
 ---
 ```
 
+The `video` block is optional. If it is present, `course.yml` must declare the matching
+`notebookSourceManifest`; if it is absent, the lesson has no theory-video completion gate. A
+published lesson may omit theory media by design, as QS-01 does.
+
 Every `lesson.md` follows this order:
 
 1. Outcome.
 2. Why this matters.
-3. NotebookLM pre-lesson theory brief.
+3. Optional NotebookLM pre-lesson theory brief when the lesson declares theory media.
 4. Starting state.
 5. Architecture and request flow.
 6. Files to inspect.
@@ -760,16 +765,15 @@ evidence model, and security boundary.
 
 **Keys required:** No
 
-**NotebookLM pre-lesson theory:**
+**Introduction:**
 
-- Why semantic similarity is different from keyword matching and from asking an LLM to answer from
-  its general knowledge.
-- The first-search flow: application entity -> configured content fields -> embedding provider ->
-  Lucene vector index -> similarity query -> evidence result.
-- The ownership split between application domain records, AI Fabric indexing/retrieval, the ONNX
-  embedding provider, and Lucene vector storage.
-- Why existing database rows are not retrievable evidence until indexing succeeds, and why an empty
-  result is more trustworthy than a fabricated answer.
+AI Fabric adds application-level AI capabilities to Spring Boot, including retrieval, governed
+actions, memory, privacy, and provider orchestration. This quickstart demonstrates one small
+capability before the Core track explains the complete architecture.
+
+The Quickstart has no required NotebookLM video. Its purpose is to give the developer a useful,
+inspectable result before a long conceptual explanation. CORE-01 introduces the framework in full,
+and CORE-02 explains semantic evidence and indexing lifecycle in depth.
 
 Outcome:
 
@@ -836,7 +840,7 @@ QS-01 and CORE-02 share the first-search solution checkpoint. The quickstart is 
 path; CORE-02 supplies the deeper data-modeling, metadata, update, and delete explanation. A learner
 who completed QS-01 inspects and extends the same code instead of rebuilding it from scratch.
 
-### CORE-01: AI Fabric Mental Model
+### CORE-01: What Is AI Fabric? Architecture And Mental Model
 
 **Duration:** 35-45 minutes
 
@@ -844,12 +848,25 @@ who completed QS-01 inspects and extends the same code instead of rebuilding it 
 
 **NotebookLM pre-lesson theory:**
 
-- AI Fabric's layered architecture: application domain, framework orchestration, model/embedding
-  providers, vector storage, and presentation.
-- The two main request paths: evidence retrieval and governed action execution, including where they
-  converge in orchestration and where they remain separate.
-- How modules add bounded capabilities rather than replacing repositories, services, authorization,
-  or domain policy.
+- What AI Fabric is: a modular application-level coordination framework for AI workflows in Java and
+  Spring Boot applications.
+- What AI Fabric is not: an LLM, vector database, chatbot UI, persistence replacement, authorization
+  system, or substitute for application business rules.
+- Why the framework exists: to replace scattered provider calls, prompt strings, browser-owned
+  intelligence, direct model-driven writes, and duplicated session/security logic with explicit,
+  testable boundaries.
+- When AI Fabric is a strong fit and when one direct Spring AI or native-provider call is the simpler
+  design.
+- The ownership split between application domain services and policy, AI Fabric orchestration and
+  contracts, and concrete LLM, embedding, and vector providers.
+- AI Fabric's layered architecture: application UI/API, application domain, capability modules,
+  provider/vector contracts, and concrete models and stores.
+- The smallest-capability module strategy: foundation, retrieval/indexing, RAG/provider, governed
+  actions/session, and optional privacy, governance, behavior, and managed-vector modules.
+- The two main request paths: evidence retrieval and confirmation-gated action execution, including
+  where they converge in orchestration and where side effects remain application-owned.
+- How backend chat memory, PII policy, and tenant-scoped retrieval protect multi-turn and sensitive
+  workflows.
 - Why modes are typed orchestration policy while positions are request context, and why neither the
   browser nor the LLM should directly own side effects.
 
@@ -898,6 +915,14 @@ Sources:
 
 **NotebookLM pre-lesson theory:**
 
+- Why semantic similarity is different from keyword matching and from asking an LLM to answer from
+  general knowledge.
+- The evidence path from application entity through approved field projection, embedding provider,
+  vector index, similarity query, and evidence result.
+- The ownership split between application domain records, AI Fabric indexing and retrieval, the
+  embedding provider, and vector storage.
+- Why existing database rows are not retrievable evidence until indexing succeeds, and why an empty
+  result is more trustworthy than a fabricated answer.
 - The meaning of searchable, embeddable, contextual, and metadata fields and how each affects
   retrieval without making every domain field model-visible.
 - The indexing lifecycle from stable entity identity through field projection, embedding, vector
@@ -1945,23 +1970,29 @@ also satisfied. A high total cannot compensate for unsafe writes or cross-tenant
 
 ## NotebookLM Production Contract
 
-NotebookLM is a production aid for explanations, not the source of framework truth. Create one
-notebook per lesson or tightly coupled lesson pair so unrelated modules do not contaminate the
-explanation.
+NotebookLM is a production aid for conceptual explanations, not the source of framework truth.
+Create one notebook per concept-bearing lesson or tightly coupled lesson pair so unrelated modules
+do not contaminate the explanation. A lesson does not need a video merely to satisfy a uniform
+template.
 
 Coding-assistant prompts and NotebookLM steering prompts serve different purposes. The former may
 edit and verify the learner repository; the latter generates reviewed educational media. Never use
 `06-video-steering-prompt.md` as an implementation prompt or present generated video narration as
 execution evidence.
 
-Each lesson publishes one required orientation artifact and may publish one implementation artifact:
+Theory media follows the learning purpose rather than a per-lesson quota:
 
-1. A reviewed NotebookLM **pre-lesson architecture explainer**, normally 5-8 minutes and shown
-   before either implementation path. The Quickstart may use a 3-5 minute version. It must cover the
-   lesson's declared `NotebookLM pre-lesson theory` topics: business purpose, architecture/request
-   flow, ownership boundaries, and important failure behavior.
-2. An optional maintainer-recorded lab walkthrough when exact terminal output, IDE edits, or live
-   application behavior needs to be visible.
+1. The Quickstart is action-first. It has one short written AI Fabric introduction and no required
+   NotebookLM video.
+2. CORE-01 publishes the full, reviewed **AI Fabric architecture and mental-model explainer** before
+   its analysis exercise. It explains what the framework is, why it exists, when to use it, module
+   and ownership boundaries, and the main request flows.
+3. Later lessons may publish a reviewed 5-8 minute **pre-lesson architecture explainer** when a new
+   conceptual model materially helps the developer. It must cover only the lesson's declared theory
+   topics: business purpose, architecture/request flow, ownership boundaries, and important failure
+   behavior.
+4. Any lesson may publish an optional maintainer-recorded lab walkthrough when exact terminal output,
+   IDE edits, or live application behavior needs to be visible.
 
 The NotebookLM explainer prepares the learner to understand the lab; it is not a generated
 code-along. It may show a small reviewed code shape when needed to explain a contract, but it must
@@ -1971,9 +2002,9 @@ walkthrough owns any exact screen-by-screen execution demonstration.
 The website lesson, checkpoint, and tests remain authoritative. A generated video must never be the
 only place where a command, API contract, expected result, or security requirement is documented.
 
-### Required Source Pack
+### Source Pack For Lessons With Theory Media
 
-Each lesson's `notebooklm/` directory contains:
+Each lesson that declares a NotebookLM video has a `notebooklm/` directory containing:
 
 ```text
 notebooklm/
@@ -2103,10 +2134,10 @@ Each lesson page renders:
 
 - Track, lesson number, duration, and version badge.
 - Learning outcome.
-- The reviewed NotebookLM pre-lesson architecture explainer immediately after the outcome and before
-  either implementation path.
-- A clear `Theory first` label, video purpose, framework/course version, duration, transcript, and
-  source-pack link.
+- When the lesson declares theory media, the reviewed NotebookLM architecture explainer immediately
+  after the outcome and before either implementation path.
+- For those lessons, a clear `Theory first` label, video purpose, framework/course version, duration,
+  transcript, and source-pack link.
 - Architecture/request-flow visual.
 - Exact files and code excerpts.
 - A segmented path control for `Build manually` and `Use a coding assistant`.
@@ -2121,7 +2152,7 @@ Each lesson page renders:
 - Starter and solution checkpoint links.
 - Reset and troubleshooting sections.
 - Previous and next lesson navigation.
-- Downloadable NotebookLM source pack for transparent source review.
+- A downloadable NotebookLM source pack for transparent source review when theory media is declared.
 - An optional maintainer-recorded lab walkthrough beside the relevant implementation or verification
   section, never presented as the theory explainer.
 
@@ -2161,8 +2192,8 @@ The generated `source-manifest.json` must contain:
 - Generation timestamp.
 - Assistant prompt paths, modes, validation status, and checksums.
 - Knowledge-check paths, schema versions, question counts, pass thresholds, and checksums.
-- Pre-lesson video purpose, placement, theory-topic checksum, source-manifest checksum, review status,
-  duration, transcript, and public URL.
+- For lessons that declare theory media: video purpose, placement, theory-topic checksum,
+  source-manifest checksum, review status, duration, transcript, and public URL.
 
 ## Course Manifest
 
@@ -2249,10 +2280,11 @@ The framework repository must validate:
 
 - Course manifest schema.
 - Every declared lesson and source path exists.
-- Every lesson declares a non-empty `NotebookLM pre-lesson theory` block that covers architecture or
-  request flow, ownership, and failure behavior.
-- Every NotebookLM lesson brief matches the declared theory topics, and its source manifest pins all
+- A lesson either declares both NotebookLM video metadata and a source manifest or declares neither.
+- Every declared NotebookLM lesson brief matches its theory topics, and its source manifest pins all
   reviewed sources and checksums.
+- QS-01 declares no video and contains only the approved short AI Fabric introduction; CORE-01 owns
+  the complete framework architecture introduction.
 - Every lesson declares an existing `knowledge-check.yml` with the required track question count.
 - Knowledge-check schema versions and lesson IDs match the course manifest and lesson front matter.
 - Question IDs are globally unique; options, answer keys, explanations, source paths, and review
@@ -2283,11 +2315,11 @@ The website must validate:
 - Every manifest route renders.
 - Previous and next navigation is complete.
 - Code blocks and long paths fit desktop and mobile layouts.
-- Videos have titles, captions when available, and source/version labels.
-- Every published lesson places its reviewed pre-lesson theory video before the manual/assistant path
-  and labels optional maintainer walkthroughs separately.
-- Video purpose, theory-topic checksum, source-pack link, transcript, duration, and review status
-  match the pinned course manifest.
+- Declared videos have titles, captions when available, and source/version labels.
+- Every published lesson that declares theory media places its reviewed explainer before the
+  manual/assistant path and labels optional maintainer walkthroughs separately.
+- For declared videos, purpose, theory-topic checksum, source-pack link, transcript, duration, and
+  review status match the pinned course manifest.
 - Starter and solution links resolve.
 - Manual and assistant path controls render for every lesson and remain usable on mobile.
 - Copying a prompt never marks a lesson complete; reviewed verification remains required.
@@ -2405,7 +2437,7 @@ The previous curriculum mentioned four public demos. The case-study track now in
 - [ ] Implement the knowledge-check schema, competency rules, deterministic validator, and authoring
   template.
 - [ ] Publish the shared troubleshooting resource and field-lesson content schema.
-- [ ] Implement the pre-lesson theory brief schema and validate it against NotebookLM source packs.
+- [ ] Implement optional theory-media metadata and validate declared NotebookLM source packs.
 - [ ] Create the standalone learner repository.
 - [ ] Add Maven wrapper, local ONNX setup, reset, seed, and readiness contracts.
 - [ ] Add clean Maven Central consumer CI.
@@ -2419,9 +2451,8 @@ The previous curriculum mentioned four public demos. The case-study track now in
 - [ ] Verify the no-index field failure and readiness proof from a clean checkout.
 - [ ] Build the quickstart website page with manual/assistant path controls, prompt copy actions, and
   the accessible deterministic knowledge-check renderer.
-- [ ] Create the first NotebookLM source pack.
-- [ ] Generate and technically review the QS-01 pre-lesson architecture explainer against every
-  declared theory topic.
+- [ ] Verify QS-01 remains action-first, uses the approved short written introduction, and declares
+  no theory-video publication gate.
 - [ ] Run the quickstart with at least three external learners.
 - [ ] Record setup time, failure points, and completion rate.
 - [ ] Fix every reproducible blocker before recording the core track.
@@ -2429,6 +2460,8 @@ The previous curriculum mentioned four public demos. The case-study track now in
 ### Phase 3: Core Course
 
 - [ ] Implement CORE-01 through CORE-07.
+- [ ] Generate and technically review the complete CORE-01 AI Fabric architecture explainer from its
+  release-pinned NotebookLM script and source manifest.
 - [ ] Author and validate the mode-appropriate implementation/analysis and review prompt for every
   core lesson.
 - [ ] Add one executable field lesson and ownership diagnosis to every core lesson.
@@ -2478,7 +2511,7 @@ The previous curriculum mentioned four public demos. The case-study track now in
 | Assessment | Every lesson has a reviewed, source-backed knowledge check; deterministic scoring and self-review behavior pass CI |
 | Assistant path | Every published prompt pair passes clean-starter execution, independent review, and manifest checksum validation |
 | Website | Course manifest renders complete routes and navigation |
-| Video | Every lesson declares its theory topics and places a reviewed, source-grounded NotebookLM architecture explainer before the lab; optional walkthroughs are labeled separately |
+| Video | QS-01 remains action-first; CORE-01 publishes the complete framework introduction; every other declared theory video is reviewed, source-grounded, and placed before the lab; optional walkthroughs are labeled separately |
 | Security | Unsafe writes, cross-tenant access, and hidden provider failures are tested |
 | Versioning | Website, checkpoints, videos, and docs identify the same framework release |
 | External proof | Beta learners complete the quickstart without maintainer intervention |
