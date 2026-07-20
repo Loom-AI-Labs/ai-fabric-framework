@@ -8,6 +8,8 @@ Start with:
 - [Machine-readable course catalog](course.yml)
 - [Build Production-Oriented AI Workflows with Java and Spring Boot](AI_FABRIC_EXTERNAL_USER_COURSE.md)
 - [QS-01 preview lesson package](quickstart/01-first-useful-result/lesson.md)
+- [Single-source course introduction video script](notebooklm/AI_FABRIC_COURSE_INTRO_NOTEBOOKLM_SCRIPT.md)
+- [Single-source AI Fabric introduction video script](core/01-ai-fabric-mental-model/notebooklm/AI_FABRIC_INTRO_NOTEBOOKLM_SCRIPT.md)
 - [Real-application field lessons](../Framework-Dev-Guides/LLM-guides/AI_FABRIC_LLM_SESSION_LESSONS_LEARNED.md)
 
 The curriculum integrates these field lessons into intentional failures, troubleshooting exercises,

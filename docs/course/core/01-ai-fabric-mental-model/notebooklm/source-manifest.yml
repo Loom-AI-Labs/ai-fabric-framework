@@ -6,9 +6,9 @@ frameworkTag: ai-fabric-framework-v0.3.3
 courseVersion: 0.3.3-course.1-beta
 reviewedAt: null
 reviewedBy: null
+# Review provenance only. Upload only outputs.transcript to NotebookLM.
 sources:
-  - path: docs/course/core/01-ai-fabric-mental-model/notebooklm/00-video-script.md
-  - path: docs/course/core/01-ai-fabric-mental-model/notebooklm/01-video-steering-prompt.md
+  - path: docs/course/core/01-ai-fabric-mental-model/notebooklm/AI_FABRIC_INTRO_NOTEBOOKLM_SCRIPT.md
   - path: docs/architecture/AI_FABRIC_PUBLIC_ARCHITECTURE.md
   - path: docs/guides/03-modules.md
   - path: docs/getting-started/01-choose-your-path.md
@@ -16,5 +16,5 @@ sources:
   - path: docs/llm-context/AI_FABRIC_MODULE_DECISION_TREE.md
 outputs:
   videoUrl: null
-  transcript: docs/course/core/01-ai-fabric-mental-model/notebooklm/00-video-script.md
+  transcript: docs/course/core/01-ai-fabric-mental-model/notebooklm/AI_FABRIC_INTRO_NOTEBOOKLM_SCRIPT.md
   actualDurationMinutes: null

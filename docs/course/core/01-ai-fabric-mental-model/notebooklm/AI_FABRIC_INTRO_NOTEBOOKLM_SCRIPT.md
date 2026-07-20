@@ -1,4 +1,18 @@
-# NotebookLM Video Script: What Is AI Fabric?
+# NotebookLM Single-Source Production Script: What Is AI Fabric?
+
+## Generator Instructions - Do Not Narrate
+
+Use this file as the only source for the video. Do not supplement it with general AI knowledge,
+external sources, or assumptions about AI Fabric.
+
+Create a structured technical Explainer video titled **What Is AI Fabric? Why It Exists, When To
+Use It, And How It Works**. Follow the twelve scenes in order. Use each **Visual** block as production
+direction and each **Narration** block as the spoken message. Natural transitions are allowed, but do
+not replace, omit, or contradict the technical claims in the narration.
+
+AI Fabric must remain the subject throughout the video. This is not a generic introduction to AI,
+RAG, agents, Spring AI, or vector databases. Do not invent APIs, modules, diagrams, benchmarks,
+customers, or compliance claims. Apply the final accuracy guardrails to the complete output.
 
 ## Production Direction
 
