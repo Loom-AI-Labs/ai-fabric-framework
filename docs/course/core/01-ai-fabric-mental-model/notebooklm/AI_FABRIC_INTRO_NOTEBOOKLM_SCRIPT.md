@@ -351,4 +351,4 @@ and identify one responsibility that must stay in ordinary application code.
 - Do not invent annotations, methods, configuration properties, module names, or provider support.
 - Do not hide provider, access-control, retrieval, or PII failures behind fallback wording.
 - Do not introduce performance, accuracy, compliance, adoption, or uptime claims.
-- Use only capabilities and module names present in the supplied source pack.
+- Use only capabilities and module names defined in this production script.

@@ -1,0 +1,29 @@
+schemaVersion: 1
+lessonId: core-07
+status: script-ready
+frameworkVersion: 0.3.3
+frameworkTag: ai-fabric-framework-v0.3.3
+courseVersion: 0.3.3-course.1-beta
+reviewedAt: null
+reviewedBy: null
+# Review provenance only. Upload only outputs.transcript to NotebookLM.
+sources:
+  - path: docs/course/core/07-test-and-ship/notebooklm/AI_FABRIC_TESTING_SHIPPING_WORKFLOWS_NOTEBOOKLM_SCRIPT.md
+  - path: docs/getting-started/11-testing-and-verification.md
+  - path: docs/getting-started/13-production-checklist.md
+  - path: docs/Framework-Dev-Guides/testing-verification/CI_PIPELINE_GUIDE.md
+  - path: .github/workflows/framework-verify.yml
+  - path: .github/workflows/integration-tests-manual.yml
+  - path: .github/workflows/provider-suite-keys-only.yml
+  - path: .github/scripts/validate-framework-release-guards.sh
+  - path: .github/scripts/validate-workflow-test-policy.sh
+  - path: .github/scripts/validate-no-production-stubs.sh
+  - path: .github/scripts/smoke-boot-realapps.sh
+  - path: .github/scripts/smoke-ecommerce-chat-datasync.sh
+  - path: .github/scripts/smoke-p1-realapp-scenarios.sh
+  - path: .github/scripts/run-vector-container-contracts.sh
+  - path: examples/real-apps/smoke-support/src/main/java/com/ai/fabric/examples/smoke/health/DemoDeploymentInfoService.java
+outputs:
+  videoUrl: null
+  transcript: docs/course/core/07-test-and-ship/notebooklm/AI_FABRIC_TESTING_SHIPPING_WORKFLOWS_NOTEBOOKLM_SCRIPT.md
+  actualDurationMinutes: null

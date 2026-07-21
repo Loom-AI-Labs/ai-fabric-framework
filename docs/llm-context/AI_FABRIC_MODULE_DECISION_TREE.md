@@ -5,7 +5,9 @@
 Every Spring Boot integration normally starts with:
 
 - `ai-fabric-starter`
-- `@EnableAIInfrastructure`
+
+`@EnableAIInfrastructure` is an optional discoverability marker. Installed modules are wired through
+standard Spring Boot auto-configuration and do not require the annotation.
 
 ## Need LLM Generation?
 
@@ -77,4 +79,3 @@ Add:
 - provider capability checks
 
 Do not trust client-supplied tenant/account IDs.
-

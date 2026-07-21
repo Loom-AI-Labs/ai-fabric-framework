@@ -1,0 +1,30 @@
+schemaVersion: 1
+lessonId: core-03
+status: script-ready
+frameworkVersion: 0.3.3
+frameworkTag: ai-fabric-framework-v0.3.3
+courseVersion: 0.3.3-course.1-beta
+reviewedAt: null
+reviewedBy: null
+# Review provenance only. Upload only outputs.transcript to NotebookLM.
+sources:
+  - path: docs/course/core/03-evidence-grounded-rag/notebooklm/AI_FABRIC_EVIDENCE_GROUNDED_RAG_NOTEBOOKLM_SCRIPT.md
+  - path: ai-infrastructure-module/ai-fabric-core/src/main/java/ai/fabric/spi/RAGProvider.java
+  - path: ai-infrastructure-module/ai-fabric-core/src/main/java/ai/fabric/dto/RAGRequest.java
+  - path: ai-infrastructure-module/ai-fabric-core/src/main/java/ai/fabric/dto/RAGResponse.java
+  - path: ai-infrastructure-module/ai-fabric-core/src/main/java/ai/fabric/intent/orchestration/pipeline/steps/IntentHandlingStep.java
+  - path: ai-infrastructure-module/ai-fabric-core/src/main/java/ai/fabric/intent/orchestration/pipeline/steps/InformationVectorSpaceRoutingSupport.java
+  - path: ai-infrastructure-module/ai-fabric-core/src/main/java/ai/fabric/intent/orchestration/pipeline/steps/InformationRetrievalQuerySupport.java
+  - path: ai-infrastructure-module/ai-fabric-core/src/main/java/ai/fabric/intent/orchestration/pipeline/steps/InformationRagExecutionSupport.java
+  - path: ai-infrastructure-module/ai-fabric-core/src/main/java/ai/fabric/intent/orchestration/pipeline/steps/RagContextSupport.java
+  - path: ai-infrastructure-module/ai-fabric-core/src/main/java/ai/fabric/intent/orchestration/pipeline/steps/RagResponseGenerationSupport.java
+  - path: ai-infrastructure-module/ai-fabric-core/src/main/java/ai/fabric/intent/orchestration/policy/OrchestrationPolicy.java
+  - path: ai-infrastructure-module/ai-fabric-rag/src/main/java/ai/fabric/rag/config/RAGAutoConfiguration.java
+  - path: ai-infrastructure-module/ai-fabric-rag/src/main/java/ai/fabric/rag/service/RAGService.java
+  - path: ai-infrastructure-module/ai-fabric-rag/src/main/java/ai/fabric/rag/service/RAGDocumentMapper.java
+  - path: ai-infrastructure-module/curated/ai-fabric-curated-default/src/main/resources/prompts/rag/generation/v1/answer.md
+  - path: ai-infrastructure-module/curated/ai-fabric-curated-default/src/main/resources/prompts/rag/generation/v1/no-context.md
+outputs:
+  videoUrl: null
+  transcript: docs/course/core/03-evidence-grounded-rag/notebooklm/AI_FABRIC_EVIDENCE_GROUNDED_RAG_NOTEBOOKLM_SCRIPT.md
+  actualDurationMinutes: null

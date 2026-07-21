@@ -1,7 +1,7 @@
 # AI Fabric Course Materials
 
 This directory is the canonical source for the public AI Fabric course. It defines the curriculum,
-learner application, website publishing contract, NotebookLM source packs, and release gates.
+learner application, website publishing contract, single-source NotebookLM scripts, and release gates.
 
 Start with:
 
@@ -10,6 +10,15 @@ Start with:
 - [QS-01 preview lesson package](quickstart/01-first-useful-result/lesson.md)
 - [Single-source course introduction video script](notebooklm/AI_FABRIC_COURSE_INTRO_NOTEBOOKLM_SCRIPT.md)
 - [Single-source AI Fabric introduction video script](core/01-ai-fabric-mental-model/notebooklm/AI_FABRIC_INTRO_NOTEBOOKLM_SCRIPT.md)
+- [Single-source architecture and module map video script](core/01-ai-fabric-mental-model/notebooklm/AI_FABRIC_ARCHITECTURE_MODULE_MAP_NOTEBOOKLM_SCRIPT.md)
+- [Single-source request lifecycle video script](core/01-ai-fabric-mental-model/notebooklm/AI_FABRIC_REQUEST_LIFECYCLE_NOTEBOOKLM_SCRIPT.md)
+- [Single-source configuration and extension model video script](core/01-ai-fabric-mental-model/notebooklm/AI_FABRIC_CONFIGURATION_EXTENSION_MODEL_NOTEBOOKLM_SCRIPT.md)
+- [Single-source searchable evidence video script](core/02-model-and-index-data/notebooklm/AI_FABRIC_SEARCHABLE_EVIDENCE_NOTEBOOKLM_SCRIPT.md)
+- [Single-source evidence-grounded RAG video script](core/03-evidence-grounded-rag/notebooklm/AI_FABRIC_EVIDENCE_GROUNDED_RAG_NOTEBOOKLM_SCRIPT.md)
+- [Single-source governed actions and confirmation video script](core/04-governed-actions/notebooklm/AI_FABRIC_GOVERNED_ACTIONS_CONFIRMATION_NOTEBOOKLM_SCRIPT.md)
+- [Single-source backend-owned conversation memory video script](core/05-backend-conversation-memory/notebooklm/AI_FABRIC_BACKEND_CONVERSATION_MEMORY_NOTEBOOKLM_SCRIPT.md)
+- [Single-source tenant security and privacy video script](core/06-tenant-security-and-privacy/notebooklm/AI_FABRIC_TENANT_SECURITY_PRIVACY_NOTEBOOKLM_SCRIPT.md)
+- [Single-source testing and shipping AI workflows video script](core/07-test-and-ship/notebooklm/AI_FABRIC_TESTING_SHIPPING_WORKFLOWS_NOTEBOOKLM_SCRIPT.md)
 - [Real-application field lessons](../Framework-Dev-Guides/LLM-guides/AI_FABRIC_LLM_SESSION_LESSONS_LEARNED.md)
 
 The curriculum integrates these field lessons into intentional failures, troubleshooting exercises,
@@ -26,8 +35,10 @@ The Quickstart is action-first and intentionally has no required theory video. I
 Fabric in one short paragraph, proves one useful capability, and then hands the developer to the Core
 track. CORE-01 provides the full framework introduction: why AI Fabric exists, when to use it,
 module and ownership boundaries, and the main request flows. Later lessons may use a reviewed
-NotebookLM architecture explainer when conceptual preparation adds value. Exact IDE, terminal, and
-live-application walkthroughs remain separate maintainer-recorded artifacts.
+NotebookLM architecture explainer when conceptual preparation adds value. NotebookLM receives one
+self-contained production script per video; supporting manifests are maintainer review provenance,
+not additional upload sources. Exact IDE, terminal, and live-application walkthroughs remain
+separate maintainer-recorded artifacts.
 
 The course is pinned to a framework release. Public website copies and generated learning assets
 must identify the source tag and must not silently follow `main`.

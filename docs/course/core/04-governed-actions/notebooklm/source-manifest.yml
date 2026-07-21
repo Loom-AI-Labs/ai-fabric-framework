@@ -1,0 +1,30 @@
+schemaVersion: 1
+lessonId: core-04
+status: script-ready
+frameworkVersion: 0.3.3
+frameworkTag: ai-fabric-framework-v0.3.3
+courseVersion: 0.3.3-course.1-beta
+reviewedAt: null
+reviewedBy: null
+# Review provenance only. Upload only outputs.transcript to NotebookLM.
+sources:
+  - path: docs/course/core/04-governed-actions/notebooklm/AI_FABRIC_GOVERNED_ACTIONS_CONFIRMATION_NOTEBOOKLM_SCRIPT.md
+  - path: ai-infrastructure-module/ai-fabric-core/src/main/java/ai/fabric/intent/action/annotation/AIAction.java
+  - path: ai-infrastructure-module/ai-fabric-core/src/main/java/ai/fabric/intent/action/annotation/Param.java
+  - path: ai-infrastructure-module/ai-fabric-core/src/main/java/ai/fabric/intent/action/annotation/ActionAllowed.java
+  - path: ai-infrastructure-module/ai-fabric-core/src/main/java/ai/fabric/intent/action/annotation/ActionExecute.java
+  - path: ai-infrastructure-module/ai-fabric-core/src/main/java/ai/fabric/intent/action/annotation/ActionFacts.java
+  - path: ai-infrastructure-module/ai-fabric-core/src/main/java/ai/fabric/intent/action/ActionAccessMode.java
+  - path: ai-infrastructure-module/ai-fabric-core/src/main/java/ai/fabric/intent/action/ActionContext.java
+  - path: ai-infrastructure-module/ai-fabric-core/src/main/java/ai/fabric/intent/action/AIActionRegistry.java
+  - path: ai-infrastructure-module/ai-fabric-core/src/main/java/ai/fabric/intent/action/AnnotatedAIActionHandler.java
+  - path: ai-infrastructure-module/ai-fabric-core/src/main/java/ai/fabric/intent/action/PendingAction.java
+  - path: ai-infrastructure-module/ai-fabric-core/src/main/java/ai/fabric/intent/action/ActionResult.java
+  - path: ai-infrastructure-module/ai-fabric-core/src/main/java/ai/fabric/intent/action/ActionResultContracts.java
+  - path: ai-infrastructure-module/ai-fabric-core/src/main/java/ai/fabric/intent/orchestration/pipeline/steps/IntentHandlingStep.java
+  - path: ai-infrastructure-module/ai-fabric-chat-session/src/main/java/ai/fabric/chat/resolver/ConfirmationResolverSupport.java
+  - path: ai-infrastructure-module/ai-fabric-chat-session/src/main/java/ai/fabric/chat/storage/ChatSessionPendingActionStore.java
+outputs:
+  videoUrl: null
+  transcript: docs/course/core/04-governed-actions/notebooklm/AI_FABRIC_GOVERNED_ACTIONS_CONFIRMATION_NOTEBOOKLM_SCRIPT.md
+  actualDurationMinutes: null

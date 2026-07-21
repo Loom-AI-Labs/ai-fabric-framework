@@ -1,0 +1,30 @@
+schemaVersion: 1
+lessonId: core-05
+status: script-ready
+frameworkVersion: 0.3.3
+frameworkTag: ai-fabric-framework-v0.3.3
+courseVersion: 0.3.3-course.1-beta
+reviewedAt: null
+reviewedBy: null
+# Review provenance only. Upload only outputs.transcript to NotebookLM.
+sources:
+  - path: docs/course/core/05-backend-conversation-memory/notebooklm/AI_FABRIC_BACKEND_CONVERSATION_MEMORY_NOTEBOOKLM_SCRIPT.md
+  - path: ai-infrastructure-module/ai-fabric-chat-session/src/main/java/ai/fabric/chat/config/ChatSessionProperties.java
+  - path: ai-infrastructure-module/ai-fabric-chat-session/src/main/java/ai/fabric/chat/config/ChatSessionBaseConfiguration.java
+  - path: ai-infrastructure-module/ai-fabric-chat-session/src/main/java/ai/fabric/chat/domain/ChatSession.java
+  - path: ai-infrastructure-module/ai-fabric-chat-session/src/main/java/ai/fabric/chat/domain/ChatTurn.java
+  - path: ai-infrastructure-module/ai-fabric-chat-session/src/main/java/ai/fabric/chat/domain/SessionStatus.java
+  - path: ai-infrastructure-module/ai-fabric-chat-session/src/main/java/ai/fabric/chat/service/ChatSessionServiceImpl.java
+  - path: ai-infrastructure-module/ai-fabric-chat-session/src/main/java/ai/fabric/chat/spi/ChatSessionAccessControlPolicy.java
+  - path: ai-infrastructure-module/ai-fabric-chat-session/src/main/java/ai/fabric/chat/strategy/SlidingWindowMemoryStrategy.java
+  - path: ai-infrastructure-module/ai-fabric-chat-session/src/main/java/ai/fabric/chat/pipeline/ConversationEnrichmentStep.java
+  - path: ai-infrastructure-module/ai-fabric-chat-session/src/main/java/ai/fabric/chat/pipeline/ConfirmationResolutionStep.java
+  - path: ai-infrastructure-module/ai-fabric-chat-session/src/main/java/ai/fabric/chat/pipeline/ConversationRecordingStep.java
+  - path: ai-infrastructure-module/ai-fabric-chat-session/src/main/java/ai/fabric/chat/storage/ChatSessionPendingActionStore.java
+  - path: ai-infrastructure-module/ai-fabric-chat-session/src/main/java/ai/fabric/chat/storage/ChatSessionActionDraftStore.java
+  - path: ai-infrastructure-module/ai-fabric-chat-session/src/main/java/ai/fabric/chat/resolver/ConfirmationResolverSupport.java
+  - path: ai-infrastructure-module/ai-fabric-chat-session/src/main/java/ai/fabric/chat/resolver/ExpiredConfirmationResolver.java
+outputs:
+  videoUrl: null
+  transcript: docs/course/core/05-backend-conversation-memory/notebooklm/AI_FABRIC_BACKEND_CONVERSATION_MEMORY_NOTEBOOKLM_SCRIPT.md
+  actualDurationMinutes: null

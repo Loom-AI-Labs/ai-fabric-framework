@@ -42,7 +42,7 @@ tracks:
         slug: mental-model
         title: What Is AI Fabric? Architecture And Mental Model
         description: Learn why AI Fabric exists, when to use it, how its modules fit together, and what remains application-owned.
-        durationMinutes: 40
+        durationMinutes: 70
         availability: planned
       - id: core-02
         slug: model-and-index-data

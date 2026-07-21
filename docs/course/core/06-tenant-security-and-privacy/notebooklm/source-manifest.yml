@@ -1,0 +1,30 @@
+schemaVersion: 1
+lessonId: core-06
+status: script-ready
+frameworkVersion: 0.3.3
+frameworkTag: ai-fabric-framework-v0.3.3
+courseVersion: 0.3.3-course.1-beta
+reviewedAt: null
+reviewedBy: null
+# Review provenance only. Upload only outputs.transcript to NotebookLM.
+sources:
+  - path: docs/course/core/06-tenant-security-and-privacy/notebooklm/AI_FABRIC_TENANT_SECURITY_PRIVACY_NOTEBOOKLM_SCRIPT.md
+  - path: ai-infrastructure-module/ai-fabric-core/src/main/java/ai/fabric/intent/orchestration/OrchestrationContextMetadataKeys.java
+  - path: ai-infrastructure-module/ai-fabric-core/src/main/java/ai/fabric/dto/AIAccessSubjectContext.java
+  - path: ai-infrastructure-module/ai-fabric-core/src/main/java/ai/fabric/access/policy/EntityAccessPolicy.java
+  - path: ai-infrastructure-module/ai-fabric-core/src/main/java/ai/fabric/access/AIAccessControlService.java
+  - path: ai-infrastructure-module/ai-fabric-core/src/main/java/ai/fabric/intent/orchestration/pipeline/steps/SecurityAnalysisStep.java
+  - path: ai-infrastructure-module/ai-fabric-core/src/main/java/ai/fabric/intent/orchestration/pipeline/steps/AccessControlStep.java
+  - path: ai-infrastructure-module/ai-fabric-core/src/main/java/ai/fabric/rag/VectorDatabaseService.java
+  - path: ai-infrastructure-module/ai-fabric-core/src/main/java/ai/fabric/util/VectorMetadataFilterSupport.java
+  - path: ai-infrastructure-module/ai-fabric-core/src/main/java/ai/fabric/config/ResponseSanitizationProperties.java
+  - path: ai-infrastructure-module/ai-fabric-core/src/main/java/ai/fabric/security/ResponseSanitizer.java
+  - path: ai-infrastructure-module/ai-fabric-core/src/main/java/ai/fabric/intent/orchestration/pipeline/steps/ResponseSanitizationStep.java
+  - path: ai-infrastructure-module/ai-fabric-pii/src/main/java/ai/fabric/config/PIIDetectionProperties.java
+  - path: ai-infrastructure-module/ai-fabric-pii/src/main/java/ai/fabric/privacy/pii/DefaultPIIDetectionService.java
+  - path: ai-infrastructure-module/ai-fabric-pii/src/main/java/ai/fabric/intent/orchestration/pipeline/steps/PIIDetectionStep.java
+  - path: examples/real-apps/tenant-knowledge-portal/src/main/java/com/ai/fabric/realapps/tenantportal/service/TenantKnowledgeService.java
+outputs:
+  videoUrl: null
+  transcript: docs/course/core/06-tenant-security-and-privacy/notebooklm/AI_FABRIC_TENANT_SECURITY_PRIVACY_NOTEBOOKLM_SCRIPT.md
+  actualDurationMinutes: null
