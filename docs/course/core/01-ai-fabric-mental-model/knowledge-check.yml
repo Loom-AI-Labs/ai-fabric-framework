@@ -1,0 +1,102 @@
+schemaVersion: 1
+lessonId: core-01
+passingScorePercent: 80
+questions:
+  - id: core-01-q1
+    type: single-choice
+    competency: ownership-boundary
+    prompt: Who owns the transaction that closes a support ticket?
+    options:
+      - id: a
+        text: The LLM provider
+      - id: b
+        text: The browser confirmation component
+      - id: c
+        text: The application service invoked by the registered action handler
+      - id: d
+        text: The vector provider
+    correctOptionIds: [c]
+    explanation: AI Fabric coordinates discovery and confirmation, while the application service owns business policy and the transaction.
+    sourcePaths:
+      - docs/course/core/01-ai-fabric-mental-model/notebooklm/AI_FABRIC_INTRO_NOTEBOOKLM_SCRIPT.md
+
+  - id: core-01-q2
+    type: multiple-choice
+    competency: module-selection
+    prompt: Which capabilities are required for a grounded, multi-turn answer that can propose a confirmed application write?
+    options:
+      - id: a
+        text: Retrieval and a vector provider
+      - id: b
+        text: RAG and an LLM provider
+      - id: c
+        text: Registered actions and backend chat-session state
+      - id: d
+        text: Behavior analysis for every request
+    correctOptionIds: [a, b, c]
+    explanation: Retrieval, grounded generation, governed actions, and backend memory serve the stated workflow. Behavior analysis is optional and unrelated.
+    sourcePaths:
+      - docs/guides/03-modules.md
+      - docs/llm-context/AI_FABRIC_MODULE_DECISION_TREE.md
+
+  - id: core-01-q3
+    type: single-choice
+    competency: orchestration-policy
+    prompt: What is the correct relationship between request position and orchestration mode?
+    options:
+      - id: a
+        text: Position automatically activates a mode with the same name
+      - id: b
+        text: Position is context metadata, while a mode is explicitly selected typed workflow policy
+      - id: c
+        text: Both are free-form prompts interpreted only by the LLM
+      - id: d
+        text: Position is more authoritative because it comes from the browser
+    correctOptionIds: [b]
+    explanation: Position can describe request context. It does not configure the named orchestration policy used by the backend.
+    sourcePaths:
+      - ai-infrastructure-module/ai-fabric-core/src/main/java/ai/fabric/config/OrchestrationProperties.java
+      - docs/course/core/01-ai-fabric-mental-model/notebooklm/AI_FABRIC_REQUEST_LIFECYCLE_NOTEBOOKLM_SCRIPT.md
+
+  - id: core-01-q4
+    type: multiple-choice
+    competency: retrieval-proof
+    prompt: Which observations prove that a response used the intended retrieval path?
+    options:
+      - id: a
+        text: Evidence IDs and scores are present
+      - id: b
+        text: Tenant or metadata scope is inspectable
+      - id: c
+        text: The answer sounds fluent
+      - id: d
+        text: Provider and no-evidence states remain visible
+    correctOptionIds: [a, b, d]
+    explanation: Fluent wording alone does not prove retrieval. Evidence identity, scope, and honest failure states do.
+    sourcePaths:
+      - docs/architecture/AI_FABRIC_PUBLIC_ARCHITECTURE.md
+      - docs/course/core/01-ai-fabric-mental-model/notebooklm/AI_FABRIC_REQUEST_LIFECYCLE_NOTEBOOKLM_SCRIPT.md
+
+  - id: core-01-q5
+    type: answer-reveal
+    competency: request-lifecycle
+    prompt: In four to six steps, explain how a confirmed ticket-closing request reaches application code.
+    modelAnswer: The backend authenticates the user and selects an allowed mode. AI Fabric resolves intent and typed parameters, discovers an allowed registered action, and application policy authorizes the user and ticket. AI Fabric stores and returns a confirmation request. After confirmation, it resolves the pending action and invokes the application-owned handler, which calls the ticket service inside the application's transaction boundary.
+    sourcePaths:
+      - docs/course/core/01-ai-fabric-mental-model/notebooklm/AI_FABRIC_REQUEST_LIFECYCLE_NOTEBOOKLM_SCRIPT.md
+      - docs/course/core/01-ai-fabric-mental-model/notebooklm/AI_FABRIC_ARCHITECTURE_MODULE_MAP_NOTEBOOKLM_SCRIPT.md
+
+  - id: core-01-q6
+    type: implementation-defense
+    competency: architecture-review
+    prompt: Defend your replacement for a design where the browser matches action keywords and the LLM writes directly to a repository.
+    reviewCriteria:
+      - Natural-language intent is resolved by the backend AI Fabric workflow, not browser text matching.
+      - Authenticated identity and tenant scope come from application-owned trusted context.
+      - Only registered and authorized actions can be proposed.
+      - State-changing execution waits for backend-owned confirmation.
+      - An application service owns the transaction and side effect.
+      - Provider failure is visible and is not replaced with a fake success response.
+    sourcePaths:
+      - docs/course/core/01-ai-fabric-mental-model/notebooklm/AI_FABRIC_INTRO_NOTEBOOKLM_SCRIPT.md
+      - docs/course/core/01-ai-fabric-mental-model/notebooklm/AI_FABRIC_CONFIGURATION_EXTENSION_MODEL_NOTEBOOKLM_SCRIPT.md

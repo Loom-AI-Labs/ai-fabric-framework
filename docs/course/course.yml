@@ -5,7 +5,7 @@ notebookLmVideoSchemaVersion: 1
 courseId: ai-fabric-production-oriented-java
 courseVersion: 0.3.3-course.1-beta
 status: beta
-title: Build Production-Oriented AI Workflows with Java and Spring Boot
+title: Build AI-Enabled Applications with Java and Spring Boot
 subtitle: Semantic search, evidence-grounded RAG, governed actions, chat memory, and tenant security with AI Fabric
 frameworkVersion: 0.3.3
 frameworkTag: ai-fabric-framework-v0.3.3
@@ -43,7 +43,16 @@ tracks:
         title: What Is AI Fabric? Architecture And Mental Model
         description: Learn why AI Fabric exists, when to use it, how its modules fit together, and what remains application-owned.
         durationMinutes: 70
-        availability: planned
+        availability: preview
+        source: core/01-ai-fabric-mental-model/lesson.md
+        knowledgeCheck: core/01-ai-fabric-mental-model/knowledge-check.yml
+        assistantPrompt: core/01-ai-fabric-mental-model/assistant-prompt.md
+        assistantReviewPrompt: core/01-ai-fabric-mental-model/assistant-review-prompt.md
+        theoryVideoIds:
+          - what-is-ai-fabric
+          - architecture-and-modules
+          - request-lifecycle
+          - configuration-and-extension-model
       - id: core-02
         slug: model-and-index-data
         title: Model And Index Application Data
