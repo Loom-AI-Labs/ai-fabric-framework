@@ -1,0 +1,112 @@
+schemaVersion: 1
+lessonId: core-02
+passingScorePercent: 80
+questions:
+  - id: core-02-q1
+    type: single-choice
+    competency: evidence-lifecycle
+    prompt: What proves that a saved KnowledgeArticle is available for semantic retrieval?
+    options:
+      - id: a
+        text: The database transaction committed
+      - id: b
+        text: The entity has an @AICapable annotation
+      - id: c
+        text: A lifecycle check retrieves the expected stable entity ID from the configured vector provider
+      - id: d
+        text: The application has an LLM API key
+    correctOptionIds: [c]
+    explanation: Configuration describes intent; retrieved vector evidence proves that projection, embedding, and storage completed.
+    sourcePaths:
+      - ai-infrastructure-module/ai-fabric-core/src/main/java/ai/fabric/service/AICapabilityService.java
+
+  - id: core-02-q2
+    type: multiple-choice
+    competency: field-projection
+    prompt: Which fields belong in the approved AI-facing projection for this lesson?
+    options:
+      - id: a
+        text: Title and body as searchable content
+      - id: b
+        text: Tenant, category, and publication status as structured metadata
+      - id: c
+        text: Internal staff notes because the entity already contains them
+      - id: d
+        text: Stable entity identity
+    correctOptionIds: [a, b, d]
+    explanation: Projection is allowlisted. Searchable prose, required metadata, and stable identity are included; internal notes remain excluded.
+    sourcePaths:
+      - ai-infrastructure-module/ai-fabric-core/src/main/java/ai/fabric/annotation/AISearchable.java
+      - ai-infrastructure-module/ai-fabric-core/src/main/java/ai/fabric/annotation/AIContext.java
+
+  - id: core-02-q3
+    type: single-choice
+    competency: configuration-precedence
+    prompt: What happens when explicit YAML entity configuration conflicts with annotation defaults?
+    options:
+      - id: a
+        text: Annotation defaults always win
+      - id: b
+        text: Explicit YAML remains authoritative
+      - id: c
+        text: Both values are ignored
+      - id: d
+        text: The vector provider chooses
+    correctOptionIds: [b]
+    explanation: AI Fabric's annotation contract documents YAML configuration above annotation defaults and framework defaults.
+    sourcePaths:
+      - ai-infrastructure-module/ai-fabric-core/src/main/java/ai/fabric/annotation/AISearchable.java
+
+  - id: core-02-q4
+    type: single-choice
+    competency: update-delete-lifecycle
+    prompt: Which test best protects an article update and delete lifecycle?
+    options:
+      - id: a
+        text: Verify repository save and delete methods were called
+      - id: b
+        text: Verify the controller returned HTTP 200
+      - id: c
+        text: Reindex the same stable ID, prove stale content is absent, remove its vector, then prove it cannot be retrieved
+      - id: d
+        text: Compare two generated answers
+    correctOptionIds: [c]
+    explanation: Vector state is the behavior under test; repository or controller success alone cannot prove index consistency.
+    sourcePaths:
+      - docs/getting-started/09-vector-storage-lucene.md
+
+  - id: core-02-q5
+    type: multiple-choice
+    competency: embedding-compatibility
+    prompt: Which changes can require a controlled vector-index rebuild?
+    options:
+      - id: a
+        text: Changing the embedding model
+      - id: b
+        text: Changing embedding dimensions
+      - id: c
+        text: Changing the Lucene index location or vector-space convention
+      - id: d
+        text: Renaming an unrelated controller method
+    correctOptionIds: [a, b, c]
+    explanation: Model, dimensions, preprocessing, and storage conventions define the compatible vector space.
+    sourcePaths:
+      - docs/getting-started/09-vector-storage-lucene.md
+
+  - id: core-02-q6
+    type: single-choice
+    competency: tenant-metadata
+    prompt: Semantic search still finds an article, but its tenantId metadata is missing. Should the lifecycle test pass?
+    options:
+      - id: a
+        text: Yes, similarity is the only indexing requirement
+      - id: b
+        text: Yes, the browser can add tenantId later
+      - id: c
+        text: No, required security metadata is part of evidence readiness
+      - id: d
+        text: No, because tenantId should be embedded into searchable prose
+    correctOptionIds: [c]
+    explanation: Later tenant policy depends on trusted metadata being present in stored evidence; client-supplied scope cannot repair an incomplete index.
+    sourcePaths:
+      - docs/course/core/02-model-and-index-data/notebooklm/AI_FABRIC_SEARCHABLE_EVIDENCE_NOTEBOOKLM_SCRIPT.md

@@ -2454,6 +2454,8 @@ The previous curriculum mentioned four public demos. The case-study track now in
 
 - [x] Publish the CORE-01 preview with four assigned theory videos, a user-directed architecture
   exercise, expected artifacts, intentional failure, assistant prompts, and a sourced knowledge check.
+- [x] Publish the CORE-02 preview with searchable-evidence theory, an explicit projection and vector
+  lifecycle lab, metadata failure proof, assistant prompts, and a sourced knowledge check.
 - [ ] Implement CORE-01 through CORE-07.
 - [ ] Generate and technically review the complete CORE-01 AI Fabric architecture explainer from its
   release-pinned NotebookLM script and source manifest.

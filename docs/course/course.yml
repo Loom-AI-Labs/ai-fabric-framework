@@ -58,7 +58,13 @@ tracks:
         title: Model And Index Application Data
         description: Define content and metadata, then prove the complete vector lifecycle.
         durationMinutes: 60
-        availability: planned
+        availability: preview
+        source: core/02-model-and-index-data/lesson.md
+        knowledgeCheck: core/02-model-and-index-data/knowledge-check.yml
+        assistantPrompt: core/02-model-and-index-data/assistant-prompt.md
+        assistantReviewPrompt: core/02-model-and-index-data/assistant-review-prompt.md
+        theoryVideoIds:
+          - searchable-evidence
       - id: core-03
         slug: evidence-grounded-rag
         title: Evidence-Grounded RAG
