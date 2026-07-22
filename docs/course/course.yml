@@ -201,7 +201,12 @@ tracks:
         title: Move To A Managed Vector Provider
         description: Preserve the retrieval contract while proving Qdrant lifecycle, filtering, readiness, and failure behavior.
         durationMinutes: 90
-        availability: planned
+        availability: preview
+        source: production/07-qdrant/lesson.md
+        knowledgeCheck: production/07-qdrant/knowledge-check.yml
+        assistantPrompt: production/07-qdrant/assistant-prompt.md
+        assistantReviewPrompt: production/07-qdrant/assistant-review-prompt.md
+        notebookSourceManifest: production/07-qdrant/notebooklm/source-manifest.yml
       - id: prod-08
         slug: production-ready
         title: Operations And Release Readiness

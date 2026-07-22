@@ -604,7 +604,7 @@ Each lesson must provide:
 
 - [x] Build PROD-06 golden evidence and prompt regression scorecard.
 - [ ] Run optional OpenAI answer/evaluator checks without replacing deterministic assertions.
-- [ ] Build PROD-07 local Docker Qdrant profile and provider contract smoke.
+- [x] Build PROD-07 local Docker Qdrant profile and provider contract smoke.
 - [ ] Optionally verify Qdrant Cloud through protected CI/deployment secrets.
 - [ ] Build PROD-08 packaged, restart, cleanup, metadata, and readiness evidence.
 - [ ] Publish final Production checkpoint.
@@ -677,8 +677,8 @@ This plan is complete only when:
 | Theory scripts/videos | In progress: five complete NotebookLM source scripts are ready; recordings and catalog IDs remain |
 | Provider/mode/prompt lessons | Complete: PROD-01 through PROD-03 checkpoints and canonical lessons verified |
 | Migration/live-sync lessons | Complete: PROD-04 and PROD-05 checkpoints and canonical lessons verified |
-| Quality/Qdrant/operations lessons | In progress: PROD-06 quality checkpoint complete; Qdrant and operations remain |
-| Learner checkpoints | In progress: PROD-01 through PROD-06 checkpoints published |
+| Quality/Qdrant/operations lessons | In progress: PROD-06 quality and PROD-07 Qdrant checkpoints complete; operations remains |
+| Learner checkpoints | In progress: PROD-01 through PROD-07 checkpoints published |
 | Keyless verification | In progress: PROD-01 through PROD-06 clean verification and packaged smokes pass |
 | Keyed maintainer verification | Not started |
 | Website course support | In progress: PROD-01 preview route and key posture implemented |

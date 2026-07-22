@@ -1,0 +1,85 @@
+schemaVersion: 1
+lessonId: prod-07
+passingScorePercent: 80
+questions:
+  - id: prod-07-q1
+    type: single-choice
+    competency: provider-contract
+    prompt: What should application business code change when Lucene is replaced by Qdrant?
+    options:
+      - id: a
+        text: Only provider dependency and configuration; the retrieval contract remains
+      - id: b
+        text: Every controller must call the Qdrant SDK
+      - id: c
+        text: Tenant filters must be removed
+    correctOptionIds: [a]
+    explanation: AI Fabric's vector contract keeps application services independent of the native provider client.
+    sourcePaths:
+      - ai-infrastructure-module/ai-fabric-core/src/main/java/ai/fabric/rag/VectorDatabaseService.java
+  - id: prod-07-q2
+    type: multiple-choice
+    competency: parity-proof
+    prompt: Which checks establish useful provider parity?
+    options:
+      - id: a
+        text: Embedding dimensions
+      - id: b
+        text: Tenant metadata filtering and post-hit checks
+      - id: c
+        text: Upsert, delete, count, and readiness
+      - id: d
+        text: Process startup alone
+    correctOptionIds: [a, b, c]
+    explanation: Startup does not prove storage connectivity or lifecycle semantics.
+    sourcePaths:
+      - docs/course/production/07-qdrant/lesson.md
+  - id: prod-07-q3
+    type: single-choice
+    competency: dimensions
+    prompt: What should happen before switching to an embedding model with different dimensions?
+    options:
+      - id: a
+        text: Use a new compatible collection or controlled reindex
+      - id: b
+        text: Pad vectors silently
+      - id: c
+        text: Disable Qdrant validation
+    correctOptionIds: [a]
+    explanation: A collection has a fixed vector dimension contract.
+    sourcePaths:
+      - docs/course/production/07-qdrant/lesson.md
+  - id: prod-07-q4
+    type: single-choice
+    competency: failure-visibility
+    prompt: What is the expected behavior when selected Qdrant is unreachable?
+    options:
+      - id: a
+        text: Return a visible provider failure and preserve source truth
+      - id: b
+        text: Silently switch to Lucene
+      - id: c
+        text: Report a successful index count
+    correctOptionIds: [a]
+    explanation: Fallback is disabled so operations cannot claim success against another store.
+    sourcePaths:
+      - docs/course/production/07-qdrant/lesson.md
+  - id: prod-07-q5
+    type: answer-reveal
+    competency: tenancy
+    prompt: Why are collection prefixes and tenant metadata both needed in this lesson?
+    modelAnswer: The collection prefix isolates this application's entity collections from unrelated applications. Tenant metadata separates authenticated tenants inside the shared knowledge collection. Exact provider filtering narrows results and application post-hit verification fails closed if the adapter returns an invalid hit.
+    sourcePaths:
+      - docs/course/production/07-qdrant/lesson.md
+  - id: prod-07-q6
+    type: implementation-defense
+    competency: cloud-evidence
+    prompt: Defend labelling Qdrant Cloud separately from the local Docker proof.
+    modelAnswer: Docker proves the adapter contract against a pinned real Qdrant server without credentials. Cloud adds endpoint, TLS, authentication, and deployment-specific behavior. It remains NOT RUN until the same contract is executed with protected secrets; local success must not be presented as cloud verification.
+    reviewCriteria:
+      - Distinguishes adapter and deployment evidence
+      - Requires protected secrets
+      - Requires the same lifecycle and filter assertions
+      - Rejects inferred cloud success
+    sourcePaths:
+      - docs/course/production/07-qdrant/lesson.md
