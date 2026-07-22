@@ -606,8 +606,8 @@ Each lesson must provide:
 - [ ] Run optional OpenAI answer/evaluator checks without replacing deterministic assertions.
 - [x] Build PROD-07 local Docker Qdrant profile and provider contract smoke.
 - [ ] Optionally verify Qdrant Cloud through protected CI/deployment secrets.
-- [ ] Build PROD-08 packaged, restart, cleanup, metadata, and readiness evidence.
-- [ ] Publish final Production checkpoint.
+- [x] Build PROD-08 packaged, restart, cleanup, metadata, and readiness evidence.
+- [x] Publish final Production checkpoint after exact-commit release verification.
 
 ### P5: Website And Release
 
@@ -677,9 +677,9 @@ This plan is complete only when:
 | Theory scripts/videos | In progress: five complete NotebookLM source scripts are ready; recordings and catalog IDs remain |
 | Provider/mode/prompt lessons | Complete: PROD-01 through PROD-03 checkpoints and canonical lessons verified |
 | Migration/live-sync lessons | Complete: PROD-04 and PROD-05 checkpoints and canonical lessons verified |
-| Quality/Qdrant/operations lessons | In progress: PROD-06 quality and PROD-07 Qdrant checkpoints complete; operations remains |
-| Learner checkpoints | In progress: PROD-01 through PROD-07 checkpoints published |
-| Keyless verification | In progress: PROD-01 through PROD-06 clean verification and packaged smokes pass |
+| Quality/Qdrant/operations lessons | Complete in source: PROD-06 quality, PROD-07 Qdrant, and PROD-08 operations are implemented |
+| Learner checkpoints | Complete: PROD-01 through PROD-08 are published as immutable tags |
+| Keyless verification | Complete: PROD-01 through PROD-08 required gates pass; PROD-08 exact-commit container evidence records 71 tests, dependency readiness, restart persistence, bounded cleanup, and missing-key fail-fast behavior |
 | Keyed maintainer verification | Not started |
 | Website course support | In progress: PROD-01 preview route and key posture implemented |
 | Course release | Not started |

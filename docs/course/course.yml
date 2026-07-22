@@ -212,7 +212,12 @@ tracks:
         title: Operations And Release Readiness
         description: Package, identify, restart, clean, and verify the deployed application with separate keyless and keyed evidence.
         durationMinutes: 70
-        availability: planned
+        availability: preview
+        source: production/08-production-ready/lesson.md
+        knowledgeCheck: production/08-production-ready/knowledge-check.yml
+        assistantPrompt: production/08-production-ready/assistant-prompt.md
+        assistantReviewPrompt: production/08-production-ready/assistant-review-prompt.md
+        notebookSourceManifest: production/08-production-ready/notebooklm/source-manifest.yml
   - id: case-studies
     title: Real-App Case Studies
     description: Inspect five deployed applications and the failures that improved their architecture.

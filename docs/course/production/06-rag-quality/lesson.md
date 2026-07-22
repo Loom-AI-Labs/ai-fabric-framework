@@ -1,13 +1,45 @@
 ---
 id: prod-06
+slug: rag-quality
 title: RAG Quality And Prompt Regression
 track: production
+order: 6
 durationMinutes: 75
+availability: preview
+courseVersion: 0.3.3-course.1-beta
 frameworkVersion: 0.3.3
-starterTag: course-0.3.3-p05-live-data-sync
-solutionTag: course-0.3.3-p06-rag-quality
-keyPosture: No external key required; OpenAI answer observation is optional
+frameworkTag: ai-fabric-framework-v0.3.3
+courseSourceTag: ai-fabric-course-v0.3.3.1
+starterRef: course-0.3.3-p05-live-data-sync
+solutionRef: course-0.3.3-p06-rag-quality
+requiresOpenAi: false
+requiresDocker: false
+optionalProviderExercises:
+  - openai
+sourcePaths:
+  - docs/course/production/03-prompt-overlays/notebooklm/AI_FABRIC_PROMPT_BUNDLES_CURATED_OVERLAYS_NOTEBOOKLM_SCRIPT.md
+  - ai-infrastructure-module/ai-fabric-rag/src/main/java/ai/fabric/rag/evaluation/springai/SpringAiRagEvaluationService.java
+  - ai-infrastructure-module/ai-fabric-core/src/main/java/ai/fabric/prompt/PromptTemplateResolver.java
 theoryVideoIds: []
+assistant:
+  mode: implement
+  implementationPrompt: assistant-prompt.md
+  reviewPrompt: assistant-review-prompt.md
+  validationStatus: passed
+knowledgeCheck:
+  source: knowledge-check.yml
+  required: true
+  passingScorePercent: 80
+video:
+  status: script-ready
+  generator: NotebookLM
+  purpose: pre-lesson-theory
+  placement: before-lab
+  targetDurationMinutes: 10
+  title: Prompt Bundles, Curated Packs, And Application Overlays
+  publicUrl: null
+  transcript: ../03-prompt-overlays/notebooklm/AI_FABRIC_PROMPT_BUNDLES_CURATED_OVERLAYS_NOTEBOOKLM_SCRIPT.md
+  sourceManifest: notebooklm/source-manifest.yml
 ---
 
 # RAG Quality And Prompt Regression

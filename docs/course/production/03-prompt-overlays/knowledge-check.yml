@@ -73,7 +73,11 @@ questions:
     type: implementation-defense
     competency: application-delta
     prompt: Defend overriding only three prompt keys while allowing action selection to fall back to v1.
-    modelAnswer: The application owns only behavior that is domain-specific: support follow-up classification, compound follow-up handling, and support answer projection. The framework action selector remains suitable and is inherited. This minimizes copied defaults, preserves future framework improvements, and makes the application delta explicit and testable.
+    modelAnswer: >-
+      The application owns only behavior that is domain-specific: support follow-up classification,
+      compound follow-up handling, and support answer projection. The framework action selector
+      remains suitable and is inherited. This minimizes copied defaults, preserves future framework
+      improvements, and makes the application delta explicit and testable.
     reviewCriteria:
       - Identifies application-owned behavior
       - Explains ordered fallback

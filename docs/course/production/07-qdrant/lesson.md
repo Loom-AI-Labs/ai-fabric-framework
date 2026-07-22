@@ -1,13 +1,46 @@
 ---
 id: prod-07
+slug: qdrant
 title: Move To A Managed Vector Provider
 track: production
+order: 7
 durationMinutes: 90
+availability: preview
+courseVersion: 0.3.3-course.1-beta
 frameworkVersion: 0.3.3
-starterTag: course-0.3.3-p06-rag-quality
-solutionTag: course-0.3.3-p07-qdrant
-keyPosture: Local Docker Qdrant requires no key; Qdrant Cloud is optional
+frameworkTag: ai-fabric-framework-v0.3.3
+courseSourceTag: ai-fabric-course-v0.3.3.1
+starterRef: course-0.3.3-p06-rag-quality
+solutionRef: course-0.3.3-p07-qdrant
+requiresOpenAi: false
+requiresDocker: true
+optionalProviderExercises:
+  - qdrant-cloud
+sourcePaths:
+  - docs/course/production/04-migration-backfill/notebooklm/AI_FABRIC_STATE_STORAGE_MAP_NOTEBOOKLM_SCRIPT.md
+  - ai-infrastructure-module/ai-fabric-core/src/main/java/ai/fabric/rag/VectorDatabaseService.java
+  - ai-infrastructure-module/victor-databases/ai-fabric-vector-qdrant/src/main/java/ai/fabric/vector/qdrant/QdrantVectorAutoConfiguration.java
+  - ai-infrastructure-module/victor-databases/ai-fabric-vector-qdrant/src/main/java/ai/fabric/vector/qdrant/QdrantVectorDatabaseService.java
 theoryVideoIds: []
+assistant:
+  mode: implement
+  implementationPrompt: assistant-prompt.md
+  reviewPrompt: assistant-review-prompt.md
+  validationStatus: passed
+knowledgeCheck:
+  source: knowledge-check.yml
+  required: true
+  passingScorePercent: 80
+video:
+  status: script-ready
+  generator: NotebookLM
+  purpose: pre-lesson-theory
+  placement: before-lab
+  targetDurationMinutes: 10
+  title: State And Storage In An AI Fabric Application
+  publicUrl: null
+  transcript: ../04-migration-backfill/notebooklm/AI_FABRIC_STATE_STORAGE_MAP_NOTEBOOKLM_SCRIPT.md
+  sourceManifest: notebooklm/source-manifest.yml
 ---
 
 # Move To A Managed Vector Provider

@@ -1,0 +1,91 @@
+schemaVersion: 1
+lessonId: prod-08
+passingScorePercent: 80
+questions:
+  - id: prod-08-q1
+    type: multiple-choice
+    competency: readiness
+    prompt: Which concerns should release readiness report independently?
+    options:
+      - id: a
+        text: Application database
+      - id: b
+        text: Vector provider
+      - id: c
+        text: Session and pending-work storage
+      - id: d
+        text: Generation provider posture
+      - id: e
+        text: One process-up boolean only
+    correctOptionIds: [a, b, c, d]
+    explanation: Independent component status identifies the failed dependency and keeps optional providers distinct from required stores.
+    sourcePaths:
+      - docs/course/production/08-production-ready/lesson.md
+  - id: prod-08-q2
+    type: single-choice
+    competency: build-identity
+    prompt: Why does the Docker build receive SOURCE_COMMIT explicitly?
+    options:
+      - id: a
+        text: The image can prove its source revision without copying the local .git directory
+      - id: b
+        text: It replaces application versioning
+      - id: c
+        text: It lets the browser choose a deployed commit
+    correctOptionIds: [a]
+    explanation: Release evidence needs an immutable source identity even when the secure build context excludes repository history.
+    sourcePaths:
+      - docs/course/production/08-production-ready/lesson.md
+  - id: prod-08-q3
+    type: single-choice
+    competency: provider-posture
+    prompt: What should happen when the OpenAI profile is explicitly selected without its key?
+    options:
+      - id: a
+        text: Startup fails with a clear provider configuration error
+      - id: b
+        text: A local provider silently writes an answer
+      - id: c
+        text: Readiness reports OpenAI as verified
+    correctOptionIds: [a]
+    explanation: Explicit provider selection makes the credential required; fallback is disabled so missing configuration remains visible.
+    sourcePaths:
+      - docs/course/production/08-production-ready/lesson.md
+  - id: prod-08-q4
+    type: multiple-choice
+    competency: restart-proof
+    prompt: Which evidence makes an application restart test meaningful?
+    options:
+      - id: a
+        text: A changed process start time
+      - id: b
+        text: Preserved source and vector state
+      - id: c
+        text: Preserved backend conversation and work state
+      - id: d
+        text: A quality scorecard after restart
+      - id: e
+        text: Re-seeding everything after restart
+    correctOptionIds: [a, b, c, d]
+    explanation: Re-seeding would hide lost persistence. The test must observe retained state and retained behavior.
+    sourcePaths:
+      - docs/course/production/08-production-ready/lesson.md
+  - id: prod-08-q5
+    type: answer-reveal
+    competency: retention-ownership
+    prompt: What may the lesson retention operation delete, and what must it preserve?
+    modelAnswer: It may delete expired course chat sessions plus old completed migration and completed/failed/dead-letter indexing records. It must preserve application-owned knowledge, policy, account, and ticket rows and must not erase vector evidence as an incidental side effect. The operation is admin-scoped and explicitly enabled.
+    sourcePaths:
+      - docs/course/production/08-production-ready/lesson.md
+  - id: prod-08-q6
+    type: implementation-defense
+    competency: evidence-separation
+    prompt: Defend keeping OpenAI evidence separate from the keyless release summary.
+    modelAnswer: The keyless gate proves deterministic code, real local ONNX, real Lucene/Qdrant, storage, restart, and policy behavior. It cannot prove a hosted model invocation. The separate artifact records PASS, FAIL, or NOT_RUN based on whether a protected key and real request were used, preventing local success from becoming a false live-provider claim.
+    reviewCriteria:
+      - Identifies what the keyless gate genuinely proves
+      - Rejects inferred hosted-provider success
+      - Requires explicit PASS, FAIL, or NOT_RUN status
+      - Keeps credentials out of reports
+    sourcePaths:
+      - docs/course/production/08-production-ready/lesson.md
