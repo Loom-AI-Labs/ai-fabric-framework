@@ -168,7 +168,12 @@ tracks:
         title: Backfill Existing Application Data
         description: Migrate existing source records into semantic evidence with bounded, resumable, idempotent jobs.
         durationMinutes: 95
-        availability: planned
+        availability: preview
+        source: production/04-migration-backfill/lesson.md
+        knowledgeCheck: production/04-migration-backfill/knowledge-check.yml
+        assistantPrompt: production/04-migration-backfill/assistant-prompt.md
+        assistantReviewPrompt: production/04-migration-backfill/assistant-review-prompt.md
+        notebookSourceManifest: production/04-migration-backfill/notebooklm/source-manifest.yml
       - id: prod-05
         slug: live-data-sync
         title: Keep Application Data Synchronized

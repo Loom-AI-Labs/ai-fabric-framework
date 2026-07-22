@@ -1,0 +1,86 @@
+schemaVersion: 1
+lessonId: prod-04
+passingScorePercent: 80
+questions:
+  - id: prod-04-q1
+    type: single-choice
+    competency: state-ownership
+    prompt: Which store remains the business source of truth after migration?
+    options:
+      - id: a
+        text: The vector provider
+      - id: b
+        text: The application database
+      - id: c
+        text: The migration job table
+    correctOptionIds: [b]
+    explanation: Vector evidence is derived and rebuildable; application-owned source rows remain authoritative.
+    sourcePaths:
+      - docs/course/production/04-migration-backfill/lesson.md
+  - id: prod-04-q2
+    type: multiple-choice
+    competency: readiness
+    prompt: What must be true before the app can claim that a full backfill is retrievable?
+    options:
+      - id: a
+        text: The migration job is completed
+      - id: b
+        text: Pending and processing queue counts are zero
+      - id: c
+        text: Expected vectors exist and dead-letter count is zero
+      - id: d
+        text: The browser received HTTP 200 from the start request
+    correctOptionIds: [a, b, c]
+    explanation: Start acceptance is not readiness; source scan, asynchronous work, failures, and final evidence all matter.
+    sourcePaths:
+      - ai-infrastructure-module/ai-fabric-migration/src/main/java/ai/fabric/migration/service/DataMigrationService.java
+      - ai-infrastructure-module/ai-fabric-indexing/src/main/java/ai/fabric/indexing/queue/IndexingQueueService.java
+  - id: prod-04-q3
+    type: single-choice
+    competency: privacy-boundary
+    prompt: Why is internalNotes excluded before a migration entry is serialized?
+    options:
+      - id: a
+        text: The durable queue payload is already part of the AI data path
+      - id: b
+        text: Lucene automatically removes private fields later
+      - id: c
+        text: It makes the migration run faster only
+    correctOptionIds: [a]
+    explanation: Sensitive fields must be removed before durable queue, embedding, retrieval, and prompt stages.
+    sourcePaths:
+      - docs/course/production/04-migration-backfill/lesson.md
+  - id: prod-04-q4
+    type: single-choice
+    competency: metrics-honesty
+    prompt: How should the app report exact per-job skipped rows on AI Fabric 0.3.3?
+    options:
+      - id: a
+        text: Compute processed minus queued
+      - id: b
+        text: Report that the exact metric is not exposed
+      - id: c
+        text: Treat every filtered row as failed
+    correctOptionIds: [b]
+    explanation: The release reports scanned and failed rows; deriving skipped from unrelated counters is misleading.
+    sourcePaths:
+      - docs/course/production/04-migration-backfill/lesson.md
+  - id: prod-04-q5
+    type: answer-reveal
+    competency: idempotency
+    prompt: What evidence proves an idempotent rerun with reindexExisting=false?
+    modelAnswer: Stable entity/vector identities, an unchanged vector count, and no increase in durable queue entries prove that the rerun scanned the source without duplicating indexing work.
+    sourcePaths:
+      - docs/course/production/04-migration-backfill/lesson.md
+  - id: prod-04-q6
+    type: implementation-defense
+    competency: security-boundary
+    prompt: Defend exposing a knowledge-article-specific migration API instead of accepting any entity type from the client.
+    modelAnswer: The application owns which datasets may be migrated and who may administer them. A fixed endpoint plus a server-verified migration:admin scope prevents an untrusted caller from selecting arbitrary repositories or entity types. AI Fabric executes the bounded job after that application boundary has been enforced.
+    reviewCriteria:
+      - Identifies application ownership
+      - Requires server-verified identity and scope
+      - Rejects arbitrary client-selected entity classes
+      - Keeps lifecycle errors visible
+    sourcePaths:
+      - docs/course/production/04-migration-backfill/lesson.md

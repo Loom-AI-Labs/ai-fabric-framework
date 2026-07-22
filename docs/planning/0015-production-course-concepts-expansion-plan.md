@@ -574,9 +574,9 @@ Each lesson must provide:
 ### P1: Theory Sources
 
 - [x] Create `PROVIDER_ARCHITECTURE_PURPOSE_ROUTING_NOTEBOOKLM_SCRIPT.md`.
-- [ ] Create `MODES_POSITIONS_ORCHESTRATION_POLICY_NOTEBOOKLM_SCRIPT.md`.
-- [ ] Create `PROMPT_BUNDLES_CURATED_OVERLAYS_NOTEBOOKLM_SCRIPT.md`.
-- [ ] Create `AI_FABRIC_STATE_STORAGE_MAP_NOTEBOOKLM_SCRIPT.md`.
+- [x] Create `MODES_POSITIONS_ORCHESTRATION_POLICY_NOTEBOOKLM_SCRIPT.md`.
+- [x] Create `PROMPT_BUNDLES_CURATED_OVERLAYS_NOTEBOOKLM_SCRIPT.md`.
+- [x] Create `AI_FABRIC_STATE_STORAGE_MAP_NOTEBOOKLM_SCRIPT.md`.
 - [ ] Create `MIGRATION_BACKFILL_LIVE_SYNC_NOTEBOOKLM_SCRIPT.md`.
 - [ ] Review every script against current code and the framework philosophy.
 - [ ] Generate/review English videos; add Arabic versions when available.
@@ -587,15 +587,15 @@ Each lesson must provide:
 - [x] Build PROD-01 lesson, tests, assistant prompts, and checkpoint.
 - [x] Run PROD-01 keyless verification: 42 tests and packaged ONNX/Lucene HTTP smoke pass.
 - [ ] Run and retain PROD-01 OpenAI maintainer evidence using repository/deployment secrets.
-- [ ] Build PROD-02 lesson, application mode resolver, tests, and checkpoint.
-- [ ] Build PROD-03 overlay resources, prompt regression tests, and checkpoint.
-- [ ] Verify no lesson relies on prompt text for authorization.
+- [x] Build PROD-02 lesson, application mode resolver, tests, and checkpoint.
+- [x] Build PROD-03 overlay resources, prompt regression tests, and checkpoint.
+- [x] Verify no lesson relies on prompt text for authorization.
 
 ### P3: Migration And Live Sync Lessons
 
-- [ ] Add realistic pre-existing support data and migration repository registration.
-- [ ] Build PROD-04 job lifecycle, idempotency, failure, and retrieval tests.
-- [ ] Publish PROD-04 checkpoint only after a clean packaged runtime smoke.
+- [x] Add realistic pre-existing support data and migration repository registration.
+- [x] Build PROD-04 job lifecycle, idempotency, failure, and retrieval tests.
+- [x] Publish PROD-04 checkpoint only after a clean packaged runtime smoke.
 - [ ] Build PROD-05 trusted upsert/update/delete flows.
 - [ ] Test stale-vector deletion, access denial, limits, and partial failure.
 - [ ] Publish PROD-05 checkpoint only after a clean packaged runtime smoke.
@@ -675,8 +675,8 @@ This plan is complete only when:
 | --- | --- |
 | Curriculum contract | Complete |
 | Theory scripts/videos | In progress: PROD-01 script ready; four scripts and all new recordings remain |
-| Provider/mode/prompt lessons | In progress: PROD-01 checkpoint published; PROD-02 and PROD-03 remain |
-| Migration/live-sync lessons | Not started |
+| Provider/mode/prompt lessons | Complete: PROD-01 through PROD-03 checkpoints and canonical lessons verified |
+| Migration/live-sync lessons | In progress: PROD-04 verified; PROD-05 remains |
 | Quality/Qdrant/operations lessons | Not started |
 | Learner checkpoints | In progress: 1 of 8 Production checkpoints published |
 | Keyless verification | In progress: PROD-01 clean verify and packaged smoke pass |
