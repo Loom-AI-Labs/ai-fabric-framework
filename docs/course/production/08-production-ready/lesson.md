@@ -37,7 +37,7 @@ video:
   purpose: pre-lesson-theory
   placement: before-lab
   targetDurationMinutes: 10
-  title: Operations And Release Readiness
+  title: Proving The Exact Release Artifact
   publicUrl: null
   transcript: notebooklm/AI_FABRIC_OPERATIONS_RELEASE_READINESS_NOTEBOOKLM_SCRIPT.md
   sourceManifest: notebooklm/source-manifest.yml

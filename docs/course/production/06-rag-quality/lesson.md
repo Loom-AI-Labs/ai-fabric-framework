@@ -36,7 +36,7 @@ video:
   purpose: pre-lesson-theory
   placement: before-lab
   targetDurationMinutes: 10
-  title: RAG Quality And Prompt Regression
+  title: Measuring RAG Quality Before Generation
   publicUrl: null
   transcript: notebooklm/AI_FABRIC_RAG_QUALITY_PROMPT_REGRESSION_NOTEBOOKLM_SCRIPT.md
   sourceManifest: notebooklm/source-manifest.yml

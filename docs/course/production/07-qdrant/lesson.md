@@ -37,7 +37,7 @@ video:
   purpose: pre-lesson-theory
   placement: before-lab
   targetDurationMinutes: 10
-  title: Managed Vector Providers And Qdrant Lifecycle
+  title: Replacing A Vector Provider Without Rewriting The App
   publicUrl: null
   transcript: notebooklm/AI_FABRIC_MANAGED_VECTOR_PROVIDER_QDRANT_NOTEBOOKLM_SCRIPT.md
   sourceManifest: notebooklm/source-manifest.yml
