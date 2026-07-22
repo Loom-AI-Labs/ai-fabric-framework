@@ -611,11 +611,11 @@ Each lesson must provide:
 
 ### P5: Website And Release
 
-- [ ] Sync canonical content into `aifabric`.
+- [x] Sync canonical content into `aifabric`.
 - [ ] Render all eight Production lessons and five theory videos.
-- [ ] Add key-posture labels and configuration panels.
-- [ ] Run desktop/mobile course E2E tests.
-- [ ] Validate all external checkpoint and canonical-source links.
+- [x] Add key-posture labels and configuration panels.
+- [x] Run desktop/mobile course E2E tests.
+- [x] Validate all external checkpoint and canonical-source links.
 - [ ] Tag the canonical course source.
 - [ ] Retain keyless CI and separately named keyed evidence.
 - [ ] Publish release notes describing new lessons without implying optional providers are required.
@@ -658,16 +658,16 @@ This plan is complete only when:
 
 - [ ] Five code-accurate theory scripts and reviewed videos are published.
 - [ ] PROD-01 through PROD-08 are learner-ready and marked published in `course.yml`.
-- [ ] Every lesson has immutable starter/solution checkpoints.
-- [ ] Every checkpoint passes clean compilation, tests, packaged startup, and its documented HTTP flow.
-- [ ] Keyless completion is possible for the entire required path.
+- [x] Every lesson has immutable starter/solution checkpoints.
+- [x] Every checkpoint passes clean compilation, tests, packaged startup, and its documented HTTP flow.
+- [x] Keyless completion is possible for the entire required path.
 - [ ] OpenAI-dependent claims have separate retained keyed evidence.
-- [ ] Secret configuration is documented for terminal, IDE, Docker, CI, and deployment environments.
+- [x] Secret configuration is documented for terminal, IDE, Docker, CI, and deployment environments.
 - [ ] No secret appears in Git history, logs, reports, screenshots, or website assets.
-- [ ] Position/mode, raw-event ownership, migration/backfill, and live-sync boundaries are taught
+- [x] Position/mode, raw-event ownership, migration/backfill, and live-sync boundaries are taught
   accurately.
-- [ ] Website desktop/mobile tests pass and all source/checkpoint links resolve.
-- [ ] The canonical framework course and website identify the same course/framework versions.
+- [x] Website desktop/mobile tests pass and all source/checkpoint links resolve.
+- [x] The canonical framework course and website identify the same course/framework versions.
 
 ## Tracking Summary
 
@@ -681,5 +681,5 @@ This plan is complete only when:
 | Learner checkpoints | Complete: PROD-01 through PROD-08 are published as immutable tags |
 | Keyless verification | Complete: PROD-01 through PROD-08 required gates pass; PROD-08 exact-commit container evidence records 71 tests, dependency readiness, restart persistence, bounded cleanup, and missing-key fail-fast behavior |
 | Keyed maintainer verification | Not started |
-| Website course support | In progress: PROD-01 preview route and key posture implemented |
+| Website course support | Complete for lesson previews: PROD-01 through PROD-08 render with key posture, provider configuration, valid source/checkpoint links, and desktop/mobile coverage; Production recordings remain pending |
 | Course release | Not started |
