@@ -9,7 +9,7 @@ title: Build AI-Enabled Applications with Java and Spring Boot
 subtitle: Semantic search, evidence-grounded RAG, governed actions, chat memory, and tenant security with AI Fabric
 frameworkVersion: 0.3.3
 frameworkTag: ai-fabric-framework-v0.3.3
-courseSourceTag: unreleased
+courseSourceTag: ai-fabric-course-v0.3.3.1
 javaVersion: 21
 springBootVersion: 4.1.x
 learnerRepository: https://github.com/Loom-AI-Labs/ai-fabric-course-support-assistant
@@ -28,7 +28,7 @@ tracks:
         title: First Useful Result
         description: Index support knowledge and retrieve it by meaning without cloud credentials.
         durationMinutes: 75
-        availability: preview
+        availability: published
         source: quickstart/01-first-useful-result/lesson.md
         knowledgeCheck: quickstart/01-first-useful-result/knowledge-check.yml
         assistantPrompt: quickstart/01-first-useful-result/assistant-prompt.md
@@ -43,7 +43,7 @@ tracks:
         title: What Is AI Fabric? Architecture And Mental Model
         description: Learn why AI Fabric exists, when to use it, how its modules fit together, and what remains application-owned.
         durationMinutes: 70
-        availability: preview
+        availability: published
         source: core/01-ai-fabric-mental-model/lesson.md
         knowledgeCheck: core/01-ai-fabric-mental-model/knowledge-check.yml
         assistantPrompt: core/01-ai-fabric-mental-model/assistant-prompt.md
@@ -58,7 +58,7 @@ tracks:
         title: Model And Index Application Data
         description: Define content and metadata, then prove the complete vector lifecycle.
         durationMinutes: 60
-        availability: preview
+        availability: published
         source: core/02-model-and-index-data/lesson.md
         knowledgeCheck: core/02-model-and-index-data/knowledge-check.yml
         assistantPrompt: core/02-model-and-index-data/assistant-prompt.md
@@ -70,7 +70,7 @@ tracks:
         title: Evidence-Grounded RAG
         description: Retrieve approved evidence before generation and expose its source IDs.
         durationMinutes: 75
-        availability: preview
+        availability: published
         source: core/03-evidence-grounded-rag/lesson.md
         knowledgeCheck: core/03-evidence-grounded-rag/knowledge-check.yml
         assistantPrompt: core/03-evidence-grounded-rag/assistant-prompt.md
@@ -82,7 +82,7 @@ tracks:
         title: Governed Actions And Confirmation
         description: Register typed actions, collect parameters, and confirm writes before execution.
         durationMinutes: 85
-        availability: preview
+        availability: published
         source: core/04-governed-actions/lesson.md
         knowledgeCheck: core/04-governed-actions/knowledge-check.yml
         assistantPrompt: core/04-governed-actions/assistant-prompt.md
@@ -94,7 +94,7 @@ tracks:
         title: Backend-Owned Conversation Memory
         description: Resolve follow-ups and pending confirmations from framework session state.
         durationMinutes: 60
-        availability: preview
+        availability: published
         source: core/05-backend-conversation-memory/lesson.md
         knowledgeCheck: core/05-backend-conversation-memory/knowledge-check.yml
         assistantPrompt: core/05-backend-conversation-memory/assistant-prompt.md
@@ -106,7 +106,7 @@ tracks:
         title: Tenant Security And Privacy
         description: Apply identity, tenant, access, and PII policy before evidence or execution.
         durationMinutes: 85
-        availability: preview
+        availability: published
         source: core/06-tenant-security-and-privacy/lesson.md
         knowledgeCheck: core/06-tenant-security-and-privacy/knowledge-check.yml
         assistantPrompt: core/06-tenant-security-and-privacy/assistant-prompt.md
@@ -118,7 +118,7 @@ tracks:
         title: Test And Ship The Vertical Slice
         description: Separate deterministic, packaged-runtime, and live-provider release evidence.
         durationMinutes: 70
-        availability: preview
+        availability: published
         source: core/07-test-and-ship/lesson.md
         knowledgeCheck: core/07-test-and-ship/knowledge-check.yml
         assistantPrompt: core/07-test-and-ship/assistant-prompt.md

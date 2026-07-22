@@ -5,13 +5,13 @@ title: Evidence-Grounded RAG
 track: core
 order: 3
 durationMinutes: 75
-availability: preview
+availability: published
 courseVersion: 0.3.3-course.1-beta
 frameworkVersion: 0.3.3
 frameworkTag: ai-fabric-framework-v0.3.3
-courseSourceTag: unreleased
-starterRef: planned
-solutionRef: planned
+courseSourceTag: ai-fabric-course-v0.3.3.1
+starterRef: course-0.3.3-01-first-search
+solutionRef: course-0.3.3-02-rag
 requiresOpenAi: true
 requiresDocker: false
 sourcePaths:
@@ -31,7 +31,7 @@ assistant:
   mode: implement
   implementationPrompt: assistant-prompt.md
   reviewPrompt: assistant-review-prompt.md
-  validationStatus: planned
+  validationStatus: passed
 knowledgeCheck:
   source: knowledge-check.yml
   required: true
@@ -55,10 +55,12 @@ The result is not merely an answer string. Your endpoint will return:
 When no approved evidence exists, the application will return an explicit `NO_EVIDENCE` state and
 will not ask the model to improvise from general knowledge.
 
-> **Current lesson status: Preview.** The lesson, theory video, assistant prompts, and knowledge
-> check are ready. The standalone starter and immutable checkpoints remain `planned`. A real OpenAI
-> profile is part of the intended manual proof; tests must use controlled provider doubles and must
-> never hide a failed live provider behind a fake answer.
+> **Published lab.** Start from
+> [`course-0.3.3-01-first-search`](https://github.com/Loom-AI-Labs/ai-fabric-course-support-assistant/tree/course-0.3.3-01-first-search)
+> and compare your work with
+> [`course-0.3.3-02-rag`](https://github.com/Loom-AI-Labs/ai-fabric-course-support-assistant/tree/course-0.3.3-02-rag).
+> Deterministic tests use controlled providers. The optional OpenAI run must expose a real provider
+> failure instead of returning a fake answer.
 
 ## What You Will Learn
 
@@ -74,7 +76,7 @@ By the end of the lesson, you will be able to:
 
 ## Step 1: Add The RAG Runtime Contract
 
-The planned checkpoint adds the RAG module and a real generation provider alongside the embedding
+The solution checkpoint adds the RAG module and a real generation provider alongside the embedding
 and Lucene modules already used in CORE-02:
 
 ```xml
@@ -330,22 +332,26 @@ This failure proves why retrieval configuration is not retrieval readiness. The 
 RAG module, an LLM provider, and database data throughout. Only indexed evidence made grounding
 possible.
 
-## Planned Commands And Requests
+## Commands And Requests
 
 ```bash
 ./mvnw clean verify
+./scripts/download-onnx-model.sh
 OPENAI_API_KEY=<set-locally> ./mvnw spring-boot:run -Dspring-boot.run.profiles=openai
 ```
 
 ```http
 POST /api/demo/reset
-POST /api/knowledge/seed-and-index
+POST /api/demo/seed
+POST /api/demo/index
 POST /api/assistant/query
 POST /api/demo/vectors/clear
 POST /api/assistant/query
-POST /api/knowledge/reindex
+POST /api/demo/index
 POST /api/assistant/query
 ```
+
+Open `requests/02-evidence-grounded-rag.http` for the exact executable sequence.
 
 Never place the API key in source, example requests, test fixtures, logs, screenshots, or course
 progress data.
@@ -376,7 +382,7 @@ progress data.
 
 ## Done When
 
-You are done with this preview lesson when:
+You are done with this lesson when:
 
 - the runtime proves a usable `RAGProvider` exists;
 - retrieval returns the expected support-policy ID before generation;

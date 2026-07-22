@@ -1,5 +1,7 @@
 # CORE-03 Independent Review Prompt
 
+Status: Published for independently reviewing the CORE-03 checkpoint behavior.
+
 Review a developer's CORE-03 implementation against AI Fabric Framework 0.3.3, the current CORE-03
 course source, and pinned RAG and generation APIs.
 

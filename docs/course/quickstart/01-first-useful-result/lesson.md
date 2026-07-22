@@ -5,13 +5,13 @@ title: First Useful Result
 track: quickstart
 order: 1
 durationMinutes: 75
-availability: preview
+availability: published
 courseVersion: 0.3.3-course.1-beta
 frameworkVersion: 0.3.3
 frameworkTag: ai-fabric-framework-v0.3.3
-courseSourceTag: unreleased
-starterRef: planned
-solutionRef: planned
+courseSourceTag: ai-fabric-course-v0.3.3.1
+starterRef: course-0.3.3-00-starter
+solutionRef: course-0.3.3-01-first-search
 requiresOpenAi: false
 requiresDocker: false
 sourcePaths:
@@ -23,7 +23,7 @@ assistant:
   mode: implement
   implementationPrompt: assistant-prompt.md
   reviewPrompt: assistant-review-prompt.md
-  validationStatus: planned
+  validationStatus: passed
 knowledgeCheck:
   source: knowledge-check.yml
   required: true
@@ -44,13 +44,16 @@ inspectable result before a long architecture discussion.
 
 You do not need an LLM, an OpenAI key, Docker, or a framework source checkout for this workflow.
 
-> **Current lesson status: Preview.** The lesson, assistant prompts, and knowledge check are ready.
-> The standalone starter project and immutable starter and solution checkpoints must be published
-> before the commands below become a clean-checkout executable lab.
+> **Published lab.** Start from
+> [`course-0.3.3-00-starter`](https://github.com/Loom-AI-Labs/ai-fabric-course-support-assistant/tree/course-0.3.3-00-starter)
+> and use
+> [`course-0.3.3-01-first-search`](https://github.com/Loom-AI-Labs/ai-fabric-course-support-assistant/tree/course-0.3.3-01-first-search)
+> to review your result. Both refs are immutable learner-repository checkpoints validated from a
+> clean checkout.
 
 ## What You Will Prove
 
-By completing the executable version of this quickstart, you will prove that:
+By completing this quickstart, you will prove that:
 
 - your Spring Boot application resolves AI Fabric from Maven Central;
 - local ONNX embeddings and local Lucene vector storage start without cloud credentials;
@@ -61,7 +64,7 @@ By completing the executable version of this quickstart, you will prove that:
 
 ## Application Shape
 
-The published starter will contain this small support-knowledge application:
+The standalone course repository begins with this small support-knowledge application:
 
 ```text
 pom.xml
@@ -103,7 +106,7 @@ depth.
 
 ## Build Sequence
 
-When the starter checkpoint is available, follow this sequence:
+From the starter checkpoint, follow this sequence:
 
 1. Verify Java 21 and check out the published starter ref.
 2. Run the starter tests before editing anything.
@@ -128,20 +131,18 @@ Give your coding assistant the supplied QS-01 implementation prompt. It must ins
 Fabric APIs, preserve application ownership, reproduce the no-index result, and run the same tests as
 the manual path. It must not copy the solution checkpoint or invent framework APIs.
 
-The assistant prompt remains `planned` until it has passed from the published starter in a clean
-checkout.
+The assistant prompt has been validated against the same starter and behavioral checks as the
+manual path. You still own the diff review and must run the declared tests yourself.
 
-## Planned Commands
-
-These commands define the intended lab contract. They are not executable proof until `starterRef` and
-`solutionRef` replace `planned` in the lesson metadata.
+## Commands
 
 ```bash
 ./mvnw clean verify
+./scripts/download-onnx-model.sh
 ./mvnw spring-boot:run -Dspring-boot.run.profiles=local
 ```
 
-## Planned Requests
+## Requests
 
 ```http
 POST /api/demo/reset
@@ -214,17 +215,13 @@ Before the knowledge check, make sure you can answer:
 
 ## Done When
 
-For this preview, you are done when you can explain the intended build sequence, identify the
-intentional failure, and pass the knowledge check.
-
-For the published lab, you are done when the app starts without cloud keys, the golden query returns
+You are done when the app starts without cloud keys, the golden query returns
 the expected evidence only after indexing, and all focused tests pass from a clean checkout.
 
 ## Reset And Cleanup
 
-The published starter will expose a reset operation that removes only the five course fixtures and
-the lesson's local Lucene index. This preview does not provide that command because the standalone
-application has not been published.
+With the solution application running, use `./scripts/reset-course.sh` to remove and reseed only the
+course fixtures and clear the lesson's local vector state.
 
 ## Next Lesson
 

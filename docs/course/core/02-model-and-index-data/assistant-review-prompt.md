@@ -1,5 +1,7 @@
 # CORE-02 Independent Review Prompt
 
+Status: Published for independently reviewing the CORE-02 checkpoint behavior.
+
 Review a developer's CORE-02 implementation against AI Fabric Framework 0.3.3, the current CORE-02
 course source, and the pinned Java APIs.
 

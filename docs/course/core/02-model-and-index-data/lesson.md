@@ -5,13 +5,13 @@ title: Model And Index Application Data
 track: core
 order: 2
 durationMinutes: 60
-availability: preview
+availability: published
 courseVersion: 0.3.3-course.1-beta
 frameworkVersion: 0.3.3
 frameworkTag: ai-fabric-framework-v0.3.3
-courseSourceTag: unreleased
-starterRef: planned
-solutionRef: planned
+courseSourceTag: ai-fabric-course-v0.3.3.1
+starterRef: course-0.3.3-00-starter
+solutionRef: course-0.3.3-01-first-search
 requiresOpenAi: false
 requiresDocker: false
 sourcePaths:
@@ -31,7 +31,7 @@ assistant:
   mode: implement
   implementationPrompt: assistant-prompt.md
   reviewPrompt: assistant-review-prompt.md
-  validationStatus: planned
+  validationStatus: passed
 knowledgeCheck:
   source: knowledge-check.yml
   required: true
@@ -51,14 +51,15 @@ In this lesson, you will extend the Support Knowledge Assistant from CORE-01 wit
 `KnowledgeArticle` lifecycle. You will define what can be searched, preserve trusted metadata, and
 prove create, update, query, and delete behavior. No LLM or cloud key is required.
 
-> **Current lesson status: Preview.** The lesson, searchable-evidence theory video, assistant
-> prompts, and knowledge check are ready. The standalone starter and immutable checkpoint refs are
-> still `planned`, so the commands and endpoint names below define the reviewed lab contract rather
-> than a clean-checkout completion claim.
+> **Published lab.** Start from
+> [`course-0.3.3-00-starter`](https://github.com/Loom-AI-Labs/ai-fabric-course-support-assistant/tree/course-0.3.3-00-starter)
+> and compare your work with
+> [`course-0.3.3-01-first-search`](https://github.com/Loom-AI-Labs/ai-fabric-course-support-assistant/tree/course-0.3.3-01-first-search).
+> The solution checkpoint includes the executable HTTP scenarios and focused lifecycle tests.
 
 ## What You Will Build
 
-The executable checkpoint will add this vertical slice:
+The solution checkpoint adds this vertical slice:
 
 ```text
 KnowledgeArticleController
@@ -98,7 +99,7 @@ not transfer ownership of the record to AI Fabric.
 
 ## Step 2: Model Approved Fields
 
-The planned starter will use the current annotation contract:
+The published solution uses the current annotation contract:
 
 ```java
 @Entity
@@ -283,25 +284,26 @@ Metadata added only at query time cannot repair vectors that were indexed withou
 Later lessons can enforce tenant policy only when identity comes from trusted application context
 and indexed evidence carries the required scope.
 
-## Planned Commands And Requests
-
-These become executable when the starter and solution refs are published:
+## Commands And Requests
 
 ```bash
 ./mvnw clean verify
+./scripts/download-onnx-model.sh
 ./mvnw spring-boot:run -Dspring-boot.run.profiles=local
 ```
 
 ```http
 POST /api/demo/reset
-POST /api/knowledge/seed-without-index
+POST /api/demo/seed
 GET /api/knowledge/search?q=How+can+I+sign+in+after+too+many+failed+attempts
-POST /api/knowledge/index
+POST /api/demo/index
 GET /api/knowledge/search?q=How+can+I+sign+in+after+too+many+failed+attempts
-PUT /api/knowledge/article-account-lockout
-DELETE /api/knowledge/article-account-lockout
-GET /api/demo/vector-readiness
+PUT /api/knowledge/articles/article-account-lockout
+DELETE /api/knowledge/articles/article-account-lockout
+GET /api/demo/readiness
 ```
+
+Open `requests/01-semantic-search.http` in the solution checkpoint for complete copyable requests.
 
 ## Common Mistakes
 
@@ -328,7 +330,7 @@ GET /api/demo/vector-readiness
 
 ## Done When
 
-You are done with this preview lesson when:
+You are done with this lesson when:
 
 - your evidence contract excludes unapproved domain fields;
 - annotation/YAML resolution is covered by a focused test;

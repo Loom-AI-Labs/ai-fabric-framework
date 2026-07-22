@@ -1,13 +1,14 @@
 # CORE-03 Coding-Assistant Implementation Prompt
 
-Status: Planned. Do not use this prompt as a validated implementation handoff until the published
-starter checkpoint replaces `planned`.
+Status: Validated against `course-0.3.3-01-first-search` and the CORE-03 behavioral contract.
 
 ```text
 You are implementing AI Fabric course lesson CORE-03: Evidence-Grounded RAG.
 
-Use AI Fabric 0.3.3 / ai-fabric-framework-v0.3.3, Java 21, and Spring Boot 4.1.x. Work only from the
-published CORE-03 starter checkpoint when it becomes available. Do not copy a solution checkpoint.
+Use AI Fabric 0.3.3 / ai-fabric-framework-v0.3.3, Java 21, and Spring Boot 4.1.x. Work only from
+`course-0.3.3-01-first-search` in
+https://github.com/Loom-AI-Labs/ai-fabric-course-support-assistant. Do not inspect or copy the
+`course-0.3.3-02-rag` solution checkpoint while implementing.
 
 Read first:
 - docs/course/core/03-evidence-grounded-rag/lesson.md

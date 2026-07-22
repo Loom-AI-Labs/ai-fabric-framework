@@ -5,13 +5,13 @@ title: Backend-Owned Conversation Memory
 track: core
 order: 5
 durationMinutes: 60
-availability: preview
+availability: published
 courseVersion: 0.3.3-course.1-beta
 frameworkVersion: 0.3.3
 frameworkTag: ai-fabric-framework-v0.3.3
-courseSourceTag: unreleased
-starterRef: planned
-solutionRef: planned
+courseSourceTag: ai-fabric-course-v0.3.3.1
+starterRef: course-0.3.3-03-actions
+solutionRef: course-0.3.3-04-memory
 requiresOpenAi: true
 requiresDocker: false
 sourcePaths:
@@ -35,7 +35,7 @@ assistant:
   mode: implement
   implementationPrompt: assistant-prompt.md
   reviewPrompt: assistant-review-prompt.md
-  validationStatus: planned
+  validationStatus: passed
 knowledgeCheck:
   source: knowledge-check.yml
   required: true
@@ -62,10 +62,12 @@ The final two messages are ambiguous in isolation. In this lesson, you will let
 action. The client will send only the new message and a stable conversation ID. The server will
 derive the owner from authenticated identity.
 
-> **Current lesson status: Preview.** The lesson, theory video, assistant prompts, and knowledge
-> check are ready. The standalone starter and immutable checkpoints remain `planned`.
-> Deterministic tests prove storage, ownership, bounds, and pending-state behavior. The optional
-> OpenAI smoke proves natural-language follow-up interpretation and must expose provider failure.
+> **Published lab.** Start from
+> [`course-0.3.3-03-actions`](https://github.com/Loom-AI-Labs/ai-fabric-course-support-assistant/tree/course-0.3.3-03-actions)
+> and compare your work with
+> [`course-0.3.3-04-memory`](https://github.com/Loom-AI-Labs/ai-fabric-course-support-assistant/tree/course-0.3.3-04-memory).
+> Deterministic tests prove storage, ownership, bounds, and pending state. The optional OpenAI smoke
+> proves natural-language follow-up interpretation and keeps provider failure visible.
 
 ## The Ownership Boundary
 
@@ -408,13 +410,16 @@ Then repeat `Escalate it.` with a new conversation ID. A provider error, malform
 unexpected classification is a real failed smoke. Do not replace it with a text-matching fallback
 or a canned successful response.
 
-## Planned Commands
+## Commands And Requests
 
 ```bash
-./mvnw -pl ai-infrastructure-module/ai-fabric-chat-session -am test
 ./mvnw clean verify
+./scripts/download-onnx-model.sh
 OPENAI_API_KEY=<set-locally> ./mvnw spring-boot:run -Dspring-boot.run.profiles=openai
 ```
+
+Open `requests/04-backend-memory.http` for the latest-message-only, panel-reopen, confirmation,
+duplicate-confirmation, and conversation-isolation sequence.
 
 ## Common Mistakes
 
@@ -446,7 +451,7 @@ OPENAI_API_KEY=<set-locally> ./mvnw spring-boot:run -Dspring-boot.run.profiles=o
 
 ## Done When
 
-You are done with this preview lesson when:
+You are done with this lesson when:
 
 - the client sends only the new message, stable conversation ID, and current attachments;
 - the backend derives the owner and checks policy plus stored ownership;

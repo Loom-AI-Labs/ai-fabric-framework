@@ -1,13 +1,14 @@
 # CORE-06 Coding-Assistant Implementation Prompt
 
-Status: Planned. Do not use this prompt as a validated implementation handoff until the published
-starter checkpoint replaces `planned`.
+Status: Validated against `course-0.3.3-04-memory` and the CORE-06 behavioral contract.
 
 ```text
 You are implementing AI Fabric course lesson CORE-06: Tenant Security And Privacy.
 
-Use AI Fabric 0.3.3 / ai-fabric-framework-v0.3.3, Java 21, and Spring Boot 4.1.x. Work only from the
-published CORE-06 starter checkpoint when available. Do not copy a solution checkpoint.
+Use AI Fabric 0.3.3 / ai-fabric-framework-v0.3.3, Java 21, and Spring Boot 4.1.x. Work only from
+`course-0.3.3-04-memory` in
+https://github.com/Loom-AI-Labs/ai-fabric-course-support-assistant. Do not inspect or copy the
+`course-0.3.3-05-security` solution checkpoint while implementing.
 
 Read first:
 - docs/course/core/06-tenant-security-and-privacy/lesson.md
@@ -84,4 +85,3 @@ indexed metadata, retrieval filters, complete allowed/denied responses, action p
 counts, PII values used and every inspected sink, encryption/hash posture, packaged smoke status,
 unexecuted checks, and the final protected data flow.
 ```
-

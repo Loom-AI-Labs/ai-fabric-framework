@@ -5,13 +5,13 @@ title: Governed Actions And Confirmation
 track: core
 order: 4
 durationMinutes: 85
-availability: preview
+availability: published
 courseVersion: 0.3.3-course.1-beta
 frameworkVersion: 0.3.3
 frameworkTag: ai-fabric-framework-v0.3.3
-courseSourceTag: unreleased
-starterRef: planned
-solutionRef: planned
+courseSourceTag: ai-fabric-course-v0.3.3.1
+starterRef: course-0.3.3-02-rag
+solutionRef: course-0.3.3-03-actions
 requiresOpenAi: true
 requiresDocker: false
 sourcePaths:
@@ -33,7 +33,7 @@ assistant:
   mode: implement
   implementationPrompt: assistant-prompt.md
   reviewPrompt: assistant-review-prompt.md
-  validationStatus: planned
+  validationStatus: passed
 knowledgeCheck:
   source: knowledge-check.yml
   required: true
@@ -57,10 +57,12 @@ Support Knowledge Assistant:
 You will prove the complete state machine, including clarification, denial, confirmation, rejection,
 single execution, and safe result projection.
 
-> **Current lesson status: Preview.** The lesson, governed-actions theory video, assistant prompts,
-> and knowledge check are ready. The standalone starter and immutable checkpoints remain `planned`.
-> Deterministic tests inject structured intent; the optional live run uses a real LLM for action
-> selection and must expose provider failure rather than replacing it with keyword logic.
+> **Published lab.** Start from
+> [`course-0.3.3-02-rag`](https://github.com/Loom-AI-Labs/ai-fabric-course-support-assistant/tree/course-0.3.3-02-rag)
+> and compare your work with
+> [`course-0.3.3-03-actions`](https://github.com/Loom-AI-Labs/ai-fabric-course-support-assistant/tree/course-0.3.3-03-actions).
+> Deterministic tests inject structured intent; the optional live run uses a real LLM and keeps
+> provider failure visible instead of replacing it with keyword logic.
 
 ## The Governing Rule
 
@@ -413,12 +415,16 @@ state transition. Do not log API keys, full prompts, or sensitive user content.
 If the provider fails or returns malformed intent, report the real failure. Do not add text matching
 such as `message.contains("ticket")` to make the smoke pass.
 
-## Planned Commands
+## Commands And Requests
 
 ```bash
 ./mvnw clean verify
+./scripts/download-onnx-model.sh
 OPENAI_API_KEY=<set-locally> ./mvnw spring-boot:run -Dspring-boot.run.profiles=openai
 ```
+
+Open `requests/03-governed-actions.http` for the read, clarification, confirmation, execution, and
+duplicate-confirmation sequence.
 
 ## Common Mistakes
 
@@ -447,7 +453,7 @@ OPENAI_API_KEY=<set-locally> ./mvnw spring-boot:run -Dspring-boot.run.profiles=o
 
 ## Done When
 
-You are done with this preview lesson when:
+You are done with this lesson when:
 
 - both actions are registered with the expected metadata;
 - model-visible schemas contain only user-provided values;

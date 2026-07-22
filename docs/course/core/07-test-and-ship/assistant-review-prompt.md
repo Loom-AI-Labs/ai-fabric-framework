@@ -1,5 +1,7 @@
 # CORE-07 Independent Release-Gate Review Prompt
 
+Status: Published for independently reviewing the CORE-07 release evidence.
+
 Review a developer's CORE-07 evidence against AI Fabric Framework 0.3.3, the current CORE-07 course
 source, the application implementation, and the exact artifacts being proposed for release.
 

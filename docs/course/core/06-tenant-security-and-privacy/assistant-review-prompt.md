@@ -1,5 +1,7 @@
 # CORE-06 Independent Review Prompt
 
+Status: Published for independently reviewing the CORE-06 checkpoint behavior.
+
 Review a developer's CORE-06 implementation against AI Fabric Framework 0.3.3, the current CORE-06
 course source, and pinned access, vector-filter, PII, response-sanitization, action, and chat APIs.
 

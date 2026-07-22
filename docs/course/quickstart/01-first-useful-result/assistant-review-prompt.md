@@ -1,6 +1,6 @@
 # QS-01 Independent Review Prompt
 
-Status: Planned. Use only after the implementation prompt and starter checkpoint have been validated.
+Status: Published for independently reviewing the QS-01 checkpoint behavior.
 
 ```text
 Review the QS-01 implementation as potentially incomplete or unsafe.
@@ -20,4 +20,3 @@ current framework source/docs as evidence.
 Report findings first, ordered by severity with file/line references. Then list commands and results,
 unverified checks, and a concise request/data-flow assessment. Do not edit unless explicitly asked.
 ```
-

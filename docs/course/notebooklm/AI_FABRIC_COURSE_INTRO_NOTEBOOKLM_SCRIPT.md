@@ -11,8 +11,10 @@ direction and each **Narration** block as the spoken message. Keep AI Fabric and
 learning journey central throughout the video.
 
 Do not turn this into a detailed framework architecture lesson. CORE-01 provides that explanation.
-Do not turn it into a semantic-search tutorial. The Quickstart demonstrates that capability. Do not
-claim that planned lessons, starter checkpoints, certificates, or videos are already published.
+Do not turn it into a semantic-search tutorial. The Quickstart demonstrates that capability. The
+Quickstart and Core lessons, learner checkpoints, and assigned theory videos are published. Do not
+claim that the planned Production, case-study, coding-assistant, capstone, or certificate tracks are
+already available.
 
 ## Production Direction
 

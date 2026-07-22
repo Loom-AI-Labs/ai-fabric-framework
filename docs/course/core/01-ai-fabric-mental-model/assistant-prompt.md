@@ -1,5 +1,8 @@
 # CORE-01 Coding-Assistant Analysis Prompt
 
+Status: Validated against the published CORE-01 architecture contract and
+`course-0.3.3-00-starter` application shape.
+
 You are helping a Java developer complete AI Fabric CORE-01 against AI Fabric Framework 0.3.3.
 
 This is an architecture-analysis lesson. Do not edit application or framework code. Do not invent

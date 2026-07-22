@@ -5,13 +5,13 @@ title: Test And Ship The Vertical Slice
 track: core
 order: 7
 durationMinutes: 70
-availability: preview
+availability: published
 courseVersion: 0.3.3-course.1-beta
 frameworkVersion: 0.3.3
 frameworkTag: ai-fabric-framework-v0.3.3
-courseSourceTag: unreleased
-starterRef: planned
-solutionRef: planned
+courseSourceTag: ai-fabric-course-v0.3.3.1
+starterRef: course-0.3.3-05-security
+solutionRef: course-0.3.3-06-tested-solution
 requiresOpenAi: false
 requiresDocker: false
 sourcePaths:
@@ -35,7 +35,7 @@ assistant:
   mode: verify
   implementationPrompt: assistant-prompt.md
   reviewPrompt: assistant-review-prompt.md
-  validationStatus: planned
+  validationStatus: passed
 knowledgeCheck:
   source: knowledge-check.yml
   required: true
@@ -59,10 +59,12 @@ gate. You will prove deterministic behavior, start the packaged application, exe
 scenarios, make provider posture explicit, expose build identity, and record what did and did not
 run.
 
-> **Current lesson status: Preview.** The lesson, theory video, verification-assistant prompts, and
-> knowledge check are ready. The standalone starter and immutable checkpoints remain `planned`.
-> The required completion path is keyless. Docker and hosted-provider runs are additional evidence
-> when those dependencies are part of your release claim.
+> **Published lab.** Start from
+> [`course-0.3.3-05-security`](https://github.com/Loom-AI-Labs/ai-fabric-course-support-assistant/tree/course-0.3.3-05-security)
+> and compare your release evidence with
+> [`course-0.3.3-06-tested-solution`](https://github.com/Loom-AI-Labs/ai-fabric-course-support-assistant/tree/course-0.3.3-06-tested-solution).
+> The required completion path is keyless. Docker and hosted-provider runs remain additional,
+> explicitly labelled evidence when your release claim includes them.
 
 ## The Evidence Classes
 
@@ -186,7 +188,7 @@ profile labeled live.
 From the standalone course project:
 
 ```bash
-mvn -B -V --no-transfer-progress clean verify
+./mvnw --batch-mode --no-transfer-progress clean verify
 ```
 
 Do not use `-DskipTests` or `-Dmaven.test.skip`. Save the Surefire/Failsafe reports, not only the
@@ -200,16 +202,16 @@ not replace your application's own test gate.
 
 ## Step 7: Start The Packaged Artifact
 
-Package and launch the jar, not the IDE classpath:
+Download the local model and run the packaged smoke gate, not the IDE classpath:
 
 ```bash
-mvn -B -V --no-transfer-progress package
-java -jar target/support-knowledge-assistant-*.jar \
-  --spring.profiles.active=smoke \
-  --server.port=18081
+./scripts/download-onnx-model.sh
+COURSE_SMOKE_USE_EXISTING_JAR=true ./scripts/smoke-packaged.sh
+jq . target/course-release-evidence/packaged-smoke-summary.json
 ```
 
-Wait for a health endpoint and call it. Then execute representative HTTP scenarios:
+The script starts `ai-fabric-course-support-assistant-*.jar` with the `local` profile on an isolated
+port, waits for health, and executes representative HTTP scenarios:
 
 ```text
 seed/index known articles
@@ -253,12 +255,9 @@ release requires that evidence.
 When an OpenAI path is part of the release claim, supply secrets at runtime:
 
 ```bash
-OPENAI_ENABLED=true \
 OPENAI_API_KEY=<set-locally> \
 OPENAI_MODEL=gpt-4o-mini \
-OPENAI_EMBEDDING_MODEL=text-embedding-3-small \
-OPENAI_EMBEDDING_DIMENSIONS=512 \
-mvn -B -V --no-transfer-progress spring-boot:run \
+./mvnw --batch-mode --no-transfer-progress spring-boot:run \
   -Dspring-boot.run.profiles=openai
 ```
 
@@ -303,17 +302,20 @@ Expose a safe health payload:
 ```json
 {
   "status": "UP",
-  "service": "support-knowledge-assistant",
-  "version": "1.0.0",
+  "service": "ai-fabric-course-support-assistant",
+  "version": "0.1.0-SNAPSHOT",
   "aiFabricVersion": "0.3.3",
   "commit": "candidate-source-sha",
   "branch": "main",
   "builtAt": "build timestamp",
+  "checkpoint": "course-0.3.3-06-tested-solution",
   "provider": {
+    "mode": "live-openai",
+    "generationEnabled": true,
     "generation": "openai",
-    "embedding": "openai",
+    "embedding": "onnx",
     "vector": "lucene",
-    "mode": "live"
+    "fallbackEnabled": false
   }
 }
 ```

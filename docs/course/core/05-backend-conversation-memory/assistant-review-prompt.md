@@ -1,5 +1,7 @@
 # CORE-05 Independent Review Prompt
 
+Status: Published for independently reviewing the CORE-05 checkpoint behavior.
+
 Review a developer's CORE-05 implementation against AI Fabric Framework 0.3.3, the current CORE-05
 course source, and pinned chat-session APIs.
 

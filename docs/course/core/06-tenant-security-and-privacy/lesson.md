@@ -5,13 +5,13 @@ title: Tenant Security And Privacy
 track: core
 order: 6
 durationMinutes: 85
-availability: preview
+availability: published
 courseVersion: 0.3.3-course.1-beta
 frameworkVersion: 0.3.3
 frameworkTag: ai-fabric-framework-v0.3.3
-courseSourceTag: unreleased
-starterRef: planned
-solutionRef: planned
+courseSourceTag: ai-fabric-course-v0.3.3.1
+starterRef: course-0.3.3-04-memory
+solutionRef: course-0.3.3-05-security
 requiresOpenAi: false
 requiresDocker: false
 sourcePaths:
@@ -35,7 +35,7 @@ assistant:
   mode: implement
   implementationPrompt: assistant-prompt.md
   reviewPrompt: assistant-review-prompt.md
-  validationStatus: planned
+  validationStatus: passed
 knowledgeCheck:
   source: knowledge-check.yml
   required: true
@@ -54,10 +54,12 @@ You will seed two tenants with overlapping support content, derive tenant identi
 server authentication, apply exact-match metadata filters before vector results are accepted, deny
 cross-tenant actions, and redact representative PII before ordinary persistence or AI processing.
 
-> **Current lesson status: Preview.** The lesson, theory video, assistant prompts, and knowledge
-> check are ready. The standalone starter and immutable checkpoints remain `planned`. The core
-> completion path uses deterministic policies, a local vector provider, and PII tests, so it needs
-> no LLM key. An optional live-provider smoke may be added as extra evidence, not as a substitute.
+> **Published lab.** Start from
+> [`course-0.3.3-04-memory`](https://github.com/Loom-AI-Labs/ai-fabric-course-support-assistant/tree/course-0.3.3-04-memory)
+> and compare your work with
+> [`course-0.3.3-05-security`](https://github.com/Loom-AI-Labs/ai-fabric-course-support-assistant/tree/course-0.3.3-05-security).
+> The required path uses deterministic policy, local vector, and PII tests, so it needs no LLM key.
+> A live-provider run is additional evidence, not a substitute.
 
 ## The Protected Request Flow
 
@@ -398,14 +400,16 @@ was absent before provider invocation.
 Provider failure must remain visible. Do not replace a failed generation call with a deterministic
 answer labeled as live AI.
 
-## Planned Commands
+## Commands And Requests
 
 ```bash
-./mvnw -pl ai-infrastructure-module/ai-fabric-pii -am test
-./mvnw -pl examples/real-apps/privacy-first-customer-facing-support -am test
-./mvnw -pl examples/real-apps/tenant-knowledge-portal -am test
 ./mvnw clean verify
+./scripts/download-onnx-model.sh
+./mvnw spring-boot:run -Dspring-boot.run.profiles=local
 ```
+
+Open `requests/05-tenant-security-privacy.http` for missing-identity, tenant-isolation,
+cross-tenant-action, PII-redaction, and readiness proof against the standalone application.
 
 ## Common Mistakes
 
@@ -439,7 +443,7 @@ answer labeled as live AI.
 
 ## Done When
 
-You are done with this preview lesson when:
+You are done with this lesson when:
 
 - subject, tenant, scopes, and session come from verified server context;
 - missing identity, missing policy, denial, and policy exceptions fail closed;

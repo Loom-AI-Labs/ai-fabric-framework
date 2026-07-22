@@ -1,5 +1,7 @@
 # CORE-04 Independent Review Prompt
 
+Status: Published for independently reviewing the CORE-04 checkpoint behavior.
+
 Review a developer's CORE-04 implementation against AI Fabric Framework 0.3.3, the current CORE-04
 course source, and pinned action APIs.
 

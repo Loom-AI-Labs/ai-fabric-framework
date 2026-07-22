@@ -5,13 +5,13 @@ title: What Is AI Fabric? Architecture And Mental Model
 track: core
 order: 1
 durationMinutes: 70
-availability: preview
+availability: published
 courseVersion: 0.3.3-course.1-beta
 frameworkVersion: 0.3.3
 frameworkTag: ai-fabric-framework-v0.3.3
-courseSourceTag: unreleased
-starterRef: ai-fabric-framework-v0.3.3
-solutionRef: ai-fabric-framework-v0.3.3
+courseSourceTag: ai-fabric-course-v0.3.3.1
+starterRef: course-0.3.3-00-starter
+solutionRef: course-0.3.3-00-starter
 requiresOpenAi: false
 requiresDocker: false
 sourcePaths:
@@ -34,7 +34,7 @@ assistant:
   mode: analyze
   implementationPrompt: assistant-prompt.md
   reviewPrompt: assistant-review-prompt.md
-  validationStatus: planned
+  validationStatus: passed
 knowledgeCheck:
   source: knowledge-check.yml
   required: true
@@ -59,9 +59,10 @@ You will analyze one support application and produce four concrete artifacts:
 There is no code change in this lesson. The output is an architecture contract that you will use in
 every later lab.
 
-> **Current lesson status: Preview.** The lesson, four theory recordings, assistant prompts, and
-> knowledge check are available. Completion remains disabled until the course receives an immutable
-> release checkpoint and this analysis path is independently reviewed.
+> **Published analysis lesson.** Use
+> [`course-0.3.3-00-starter`](https://github.com/Loom-AI-Labs/ai-fabric-course-support-assistant/tree/course-0.3.3-00-starter)
+> as the concrete application shape for both the starter and result. This lesson changes no code;
+> its validated output is the architecture contract you carry into CORE-02.
 
 ## What You Will Learn
 
@@ -346,7 +347,7 @@ Before opening the knowledge check, explain these statements in your own words:
 
 ## Done When
 
-You are done with this preview lesson when:
+You are done with this lesson when:
 
 - your ownership map has no repository or authorization responsibility under the LLM;
 - your module table contains both required and deliberately excluded modules;

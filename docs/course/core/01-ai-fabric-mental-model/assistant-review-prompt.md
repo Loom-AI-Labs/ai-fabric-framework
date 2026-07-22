@@ -1,5 +1,7 @@
 # CORE-01 Independent Review Prompt
 
+Status: Published for independently reviewing the CORE-01 architecture artifacts.
+
 Review a developer's CORE-01 architecture document against AI Fabric Framework 0.3.3 and the current
 CORE-01 course source.
 

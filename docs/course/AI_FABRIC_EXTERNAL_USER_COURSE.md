@@ -6,11 +6,11 @@
 
 | Field | Value |
 | --- | --- |
-| Status | Core preview lessons complete; immutable learner checkpoints and external beta validation remain pending |
+| Status | Quickstart and Core lessons published; Production track and external learner beta remain pending |
 | Course baseline | AI Fabric `0.3.3` |
 | Framework release tag | `ai-fabric-framework-v0.3.3` |
-| Course content version | `0.3.3-course.1` |
-| Planned course source tag | `ai-fabric-course-v0.3.3.1` |
+| Course content version | `0.3.3-course.1-beta` |
+| Course source tag | `ai-fabric-course-v0.3.3.1` |
 | Java | `21` |
 | Spring Boot | `4.1.x` |
 | Maven group | `io.github.loom-ai-labs` |
@@ -176,7 +176,7 @@ No lesson may be marked ready until a clean-environment CI job proves its checkp
 
 The course is one product published through four connected surfaces.
 
-| Surface | Responsibility | Planned location |
+| Surface | Responsibility | Location |
 | --- | --- | --- |
 | Framework repository | Canonical curriculum, lesson Markdown, knowledge checks, assistant prompts, manifests, API evidence, release compatibility | `AI-Fabric-Framework/docs/course` |
 | Learner repository | Standalone Spring Boot app, Maven wrapper, fixtures, checkpoints, tests | `Loom-AI-Labs/ai-fabric-course-support-assistant` |
@@ -191,7 +191,7 @@ paths into the framework source tree or depend on unpublished `examples/real-app
 Course Markdown is authored in this framework repository. The website receives a generated,
 version-pinned copy. Website developers must not edit generated course lesson text directly.
 
-Planned canonical authoring structure:
+Canonical authoring structure:
 
 ```text
 docs/course/
@@ -260,7 +260,7 @@ created. Do not make old lessons silently follow `main` or a moving `latest` ver
 For this course release:
 
 - Framework API compatibility: `ai-fabric-framework-v0.3.3`.
-- Course content source: `ai-fabric-course-v0.3.3.1` after Phase 0 is complete.
+- Course content source: `ai-fabric-course-v0.3.3.1`.
 - Learner checkpoint tags: `course-0.3.3-*` in the standalone learner repository.
 
 Checkpoint naming convention:
@@ -361,13 +361,13 @@ another tenant's private records.
 | --- | --- | --- |
 | `local` | No-key semantic retrieval using real local embeddings | `ai-fabric-onnx-starter` plus Lucene |
 | `test` | Fast deterministic contract tests with app-owned test providers | Test-scoped fixtures plus memory or Lucene |
-| `openai` | Optional live generation and embeddings | `ai-fabric-provider-spring-ai` plus Lucene |
+| `openai` | Optional live generation with local embeddings and vector search | `ai-fabric-provider-spring-ai`, `ai-fabric-onnx-starter`, and Lucene |
 
 The local course path uses ONNX for real semantic behavior. Deterministic hash or fixture embeddings
 may be used in unit tests, but lessons must label them as test wiring and must not present them as
 semantic intelligence.
 
-### Planned Learner Repository Shape
+### Published Learner Repository Shape
 
 ```text
 ai-fabric-course-support-assistant/
@@ -379,12 +379,15 @@ ai-fabric-course-support-assistant/
   scripts/
     download-onnx-model.sh
     reset-course.sh
+    smoke-packaged.sh
   requests/
     quickstart.http
-    rag.http
-    actions.http
-    memory.http
-    security.http
+    01-semantic-search.http
+    02-evidence-grounded-rag.http
+    03-governed-actions.http
+    04-backend-memory.http
+    05-tenant-security-privacy.http
+    06-test-and-ship.http
   src/main/java/dev/aifabric/course/support/
     SupportAssistantApplication.java
     account/
@@ -413,8 +416,12 @@ The course app should keep a small API stable across checkpoints:
 | `POST /api/demo/index` | Index current course evidence |
 | `GET /api/demo/readiness` | Report data, vector, provider, and build readiness |
 | `GET /api/knowledge/search?q=...` | Prove semantic retrieval directly |
-| `POST /api/assistant/query` | Run RAG, action, and memory scenarios |
-| `GET /actuator/health` | Prove application health |
+| `POST /api/assistant/query` | Run the evidence-grounded RAG scenario |
+| `POST /api/assistant/orchestrate` | Run governed actions and backend-memory scenarios |
+| `GET /api/assistant/conversations/{id}` | Reload an authorized backend-owned conversation |
+| `POST /api/support/messages` | Prove app-owned PII redaction before storage and indexing |
+| `GET /api/demo/health` | Prove source-derived build identity and provider posture |
+| `GET /actuator/health` | Prove Spring Boot application health |
 
 Confirmation should use the same conversation endpoint and backend chat-session state. The learner
 must be able to send a short follow-up such as `yes` with the same conversation ID. Do not teach a
@@ -2423,28 +2430,28 @@ The previous curriculum mentioned four public demos. The case-study track now in
 
 ### Phase 1: Course Foundation
 
-- [ ] Create `docs/course/course.yml`.
-- [ ] Create the lesson directory structure.
-- [ ] Implement the assistant prompt schema, authoring template, and static validation rules.
-- [ ] Implement the knowledge-check schema, competency rules, deterministic validator, and authoring
+- [x] Create `docs/course/course.yml`.
+- [x] Create the lesson directory structure.
+- [x] Implement the assistant prompt schema, authoring template, and static validation rules.
+- [x] Implement the knowledge-check schema, competency rules, deterministic validator, and authoring
   template.
 - [ ] Publish the shared troubleshooting resource and field-lesson content schema.
-- [ ] Implement optional theory-media metadata and validate declared single-source NotebookLM
+- [x] Implement optional theory-media metadata and validate declared single-source NotebookLM
   scripts and provenance manifests.
-- [ ] Create the standalone learner repository.
-- [ ] Add Maven wrapper, local ONNX setup, reset, seed, and readiness contracts.
-- [ ] Add clean Maven Central consumer CI.
-- [ ] Publish immutable starter and solution checkpoints.
+- [x] Create the standalone learner repository.
+- [x] Add Maven wrapper, local ONNX setup, reset, seed, and readiness contracts.
+- [x] Add clean Maven Central consumer CI.
+- [x] Publish immutable starter and solution checkpoints.
 
 ### Phase 2: Quickstart Beta
 
-- [ ] Write QS-01 completely.
-- [ ] Author and validate QS-01 implementation and review prompts from the clean starter ref.
-- [ ] Author and review the QS-01 knowledge check against its lesson evidence.
-- [ ] Verify the no-index field failure and readiness proof from a clean checkout.
-- [ ] Build the quickstart website page with manual/assistant path controls, prompt copy actions, and
+- [x] Write QS-01 completely.
+- [x] Author and validate QS-01 implementation and review prompts from the clean starter ref.
+- [x] Author and review the QS-01 knowledge check against its lesson evidence.
+- [x] Verify the no-index field failure and readiness proof from a clean checkout.
+- [x] Build the quickstart website page with manual/assistant path controls, prompt copy actions, and
   the accessible deterministic knowledge-check renderer.
-- [ ] Verify QS-01 remains action-first, uses the approved short written introduction, and declares
+- [x] Verify QS-01 remains action-first, uses the approved short written introduction, and declares
   no theory-video publication gate.
 - [ ] Run the quickstart with at least three external learners.
 - [ ] Record setup time, failure points, and completion rate.
@@ -2452,33 +2459,33 @@ The previous curriculum mentioned four public demos. The case-study track now in
 
 ### Phase 3: Core Course
 
-- [x] Publish the CORE-01 preview with four assigned theory videos, a user-directed architecture
+- [x] Publish CORE-01 with four assigned theory videos, a user-directed architecture
   exercise, expected artifacts, intentional failure, assistant prompts, and a sourced knowledge check.
-- [x] Publish the CORE-02 preview with searchable-evidence theory, an explicit projection and vector
+- [x] Publish CORE-02 with searchable-evidence theory, an explicit projection and vector
   lifecycle lab, metadata failure proof, assistant prompts, and a sourced knowledge check.
-- [x] Publish the CORE-03 preview with evidence-grounded RAG theory, separate retrieval and
+- [x] Publish CORE-03 with evidence-grounded RAG theory, separate retrieval and
   generation proof, explicit no-evidence behavior, assistant prompts, and a sourced knowledge check.
-- [x] Publish the CORE-04 preview with governed-action theory, typed read/write handlers,
+- [x] Publish CORE-04 with governed-action theory, typed read/write handlers,
   context-owned identity, confirmation state-machine tests, assistant prompts, and a sourced check.
-- [x] Publish the CORE-05 preview with backend-owned conversation theory, authenticated ownership,
+- [x] Publish CORE-05 with backend-owned conversation theory, authenticated ownership,
   bounded context, follow-up and pending-confirmation tests, assistant prompts, and a sourced check.
-- [x] Publish the CORE-06 preview with tenant-security and privacy theory, canonical identity,
+- [x] Publish CORE-06 with tenant-security and privacy theory, canonical identity,
   pre-generation evidence filtering, action denial, PII boundary tests, prompts, and a sourced check.
-- [x] Publish the CORE-07 preview with testing-and-shipping theory, deterministic and packaged
+- [x] Publish CORE-07 with testing-and-shipping theory, deterministic and packaged
   release gates, explicit live-provider evidence, deployment proof, prompts, and a sourced check.
-- [x] Implement the preview assets for CORE-01 through CORE-07.
-- [ ] Publish validated starter and solution checkpoints for CORE-01 through CORE-07.
+- [x] Implement the lesson assets for CORE-01 through CORE-07.
+- [x] Publish validated starter and solution checkpoints for CORE-01 through CORE-07.
 - [ ] Generate and technically review the complete CORE-01 AI Fabric architecture explainer from its
   release-pinned NotebookLM script and source manifest.
-- [ ] Author and validate the mode-appropriate implementation/analysis and review prompt for every
+- [x] Author and validate the mode-appropriate implementation/analysis and review prompt for every
   core lesson.
-- [ ] Add one executable field lesson and ownership diagnosis to every core lesson.
-- [ ] Create and test every checkpoint.
-- [ ] Publish lesson pages and reviewed videos incrementally.
+- [x] Add one executable field lesson and ownership diagnosis to every core lesson.
+- [x] Create and test every checkpoint.
+- [x] Publish lesson pages and reviewed videos incrementally.
 - [ ] Review each Core video as a theory-first architecture explanation rather than a generated
   code-along.
-- [ ] Add quizzes and completion checks.
-- [ ] Validate every core knowledge check for track count, competencies, answer accuracy, and source
+- [x] Add quizzes and completion checks.
+- [x] Validate every core knowledge check for track count, competencies, answer accuracy, and source
   evidence.
 - [ ] Run a second external learner beta.
 

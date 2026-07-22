@@ -7,7 +7,7 @@ Start with:
 
 - [Machine-readable course catalog](course.yml)
 - [Build AI-Enabled Applications with Java and Spring Boot](AI_FABRIC_EXTERNAL_USER_COURSE.md)
-- [QS-01 preview lesson package](quickstart/01-first-useful-result/lesson.md)
+- [QS-01 published lesson package](quickstart/01-first-useful-result/lesson.md)
 - [Single-source course introduction video script](notebooklm/AI_FABRIC_COURSE_INTRO_NOTEBOOKLM_SCRIPT.md)
 - [Single-source AI Fabric introduction video script](core/01-ai-fabric-mental-model/notebooklm/AI_FABRIC_INTRO_NOTEBOOKLM_SCRIPT.md)
 - [Single-source architecture and module map video script](core/01-ai-fabric-mental-model/notebooklm/AI_FABRIC_ARCHITECTURE_MODULE_MAP_NOTEBOOKLM_SCRIPT.md)
@@ -25,7 +25,7 @@ The curriculum integrates these field lessons into intentional failures, trouble
 and deployed case-study postmortems. The shared troubleshooting playbook is defined in the master
 course document and will be published at `/course/troubleshooting`.
 
-Every published lesson is planned with two equivalent completion paths: a manual lab and a validated
+Every published lesson provides two equivalent completion paths: a manual lab and a validated
 assistant-assisted build using lesson-specific implementation and independent review prompts.
 Both paths finish with the same reviewed, source-backed knowledge check. Choice questions are scored
 deterministically; explanation and implementation-defense questions use explicit review criteria and
@@ -52,6 +52,7 @@ manifest are optional only as a pair. The website sync validates these files, wr
 generated artifacts, and fails when IDs, routes, versions, answer keys, or required publication
 evidence disagree.
 
-The QS-01 package is intentionally marked `preview`: its practical content and questions are ready,
-while the learner repository checkpoints are not. It intentionally has no theory-video gate. Preview
-material must not be described as a completed or executable public lab.
+QS-01 and CORE-01 through CORE-07 are published against immutable checkpoints in the
+[`ai-fabric-course-support-assistant`](https://github.com/Loom-AI-Labs/ai-fabric-course-support-assistant)
+repository. QS-01 intentionally has no theory-video gate. Production, case-study, and
+coding-assistant lessons remain planned and must not be described as executable public labs.
