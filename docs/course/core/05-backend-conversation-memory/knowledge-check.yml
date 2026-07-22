@@ -1,0 +1,112 @@
+schemaVersion: 1
+lessonId: core-05
+passingScorePercent: 80
+questions:
+  - id: core-05-q1
+    type: multiple-choice
+    competency: request-authority
+    prompt: Which values should the browser send for a normal follow-up turn?
+    options:
+      - id: a
+        text: The new user message
+      - id: b
+        text: A stable conversation ID
+      - id: c
+        text: A browser-rebuilt pending action payload
+      - id: d
+        text: Current user-selected attachments, when present
+    correctOptionIds: [a, b, d]
+    explanation: The browser supplies current-turn input and a stable scope; backend state owns prior turns and pending work.
+    sourcePaths:
+      - docs/course/core/05-backend-conversation-memory/notebooklm/AI_FABRIC_BACKEND_CONVERSATION_MEMORY_NOTEBOOKLM_SCRIPT.md
+
+  - id: core-05-q2
+    type: single-choice
+    competency: ownership
+    prompt: A test access policy returns true, but the stored conversation belongs to another owner. What should happen?
+    options:
+      - id: a
+        text: Return the session because policy is authoritative
+      - id: b
+        text: Copy the session to the requesting owner
+      - id: c
+        text: Deny access because stored ownership must also match
+      - id: d
+        text: Ask the LLM whether access is reasonable
+    correctOptionIds: [c]
+    explanation: ChatSessionServiceImpl applies policy and independently checks the stored session owner.
+    sourcePaths:
+      - ai-infrastructure-module/ai-fabric-chat-session/src/test/java/ai/fabric/chat/service/ChatSessionServiceImplTest.java
+
+  - id: core-05-q3
+    type: single-choice
+    competency: bounded-memory
+    prompt: How does the default memory path enforce max-context-chars?
+    options:
+      - id: a
+        text: It keeps every turn and truncates the current user message
+      - id: b
+        text: It drops the oldest whole history messages until the cap is met
+      - id: c
+        text: It asks the browser to summarize old turns
+      - id: d
+        text: It deletes all old turns from storage
+    correctOptionIds: [b]
+    explanation: Prompt context is bounded independently of persistence by dropping complete old messages.
+    sourcePaths:
+      - ai-infrastructure-module/ai-fabric-chat-session/src/test/java/ai/fabric/chat/service/ChatSessionServiceImplTest.java
+
+  - id: core-05-q4
+    type: multiple-choice
+    competency: confirmation-continuity
+    prompt: Which assertions prove a pending confirmation remains backend-governed?
+    options:
+      - id: a
+        text: The first request creates pending state without executing the write
+      - id: b
+        text: A later approval uses the same owner and conversation
+      - id: c
+        text: The browser reposts the complete action payload as authority
+      - id: d
+        text: Successful approval consumes pending state so it cannot execute twice
+    correctOptionIds: [a, b, d]
+    explanation: The session-backed stack stores complete pending work, scopes it by owner, and pops it on resolution.
+    sourcePaths:
+      - ai-infrastructure-module/ai-fabric-chat-session/src/test/java/ai/fabric/chat/storage/ChatSessionPendingActionStoreTest.java
+
+  - id: core-05-q5
+    type: single-choice
+    competency: transient-conversations
+    prompt: What should a request marked NEVER_PERSIST do in the chat-session pipeline?
+    options:
+      - id: a
+        text: Load history but skip the assistant response
+      - id: b
+        text: Record only metadata
+      - id: c
+        text: Skip both conversation enrichment and turn recording
+      - id: d
+        text: Store the raw message in a browser-only table
+    correctOptionIds: [c]
+    explanation: Both enrichment and recording explicitly bypass requests whose trusted persistence mode is NEVER_PERSIST.
+    sourcePaths:
+      - ai-infrastructure-module/ai-fabric-chat-session/src/test/java/ai/fabric/chat/pipeline/ConversationEnrichmentStepTest.java
+      - ai-infrastructure-module/ai-fabric-chat-session/src/test/java/ai/fabric/chat/pipeline/ConversationRecordingStepTest.java
+
+  - id: core-05-q6
+    type: single-choice
+    competency: follow-up-intelligence
+    prompt: Backend history is present, but a supported short follow-up is classified OUT_OF_SCOPE. What is the appropriate next fix?
+    options:
+      - id: a
+        text: Add controller keyword matching for the action name
+      - id: b
+        text: Let the UI resend a rewritten transcript
+      - id: c
+        text: Add a narrow application prompt overlay and regression-test its precedence
+      - id: d
+        text: Execute the last suggested action automatically
+    correctOptionIds: [c]
+    explanation: A domain overlay can guide the model to use recent turns while preserving AI interpretation and backend governance.
+    sourcePaths:
+      - examples/real-apps/ai-fabric-account-resolver/src/main/resources/prompts/intent-extraction/multi-step/v1-account-resolver/classify.md

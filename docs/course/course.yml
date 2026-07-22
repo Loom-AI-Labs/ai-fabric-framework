@@ -94,7 +94,13 @@ tracks:
         title: Backend-Owned Conversation Memory
         description: Resolve follow-ups and pending confirmations from framework session state.
         durationMinutes: 60
-        availability: planned
+        availability: preview
+        source: core/05-backend-conversation-memory/lesson.md
+        knowledgeCheck: core/05-backend-conversation-memory/knowledge-check.yml
+        assistantPrompt: core/05-backend-conversation-memory/assistant-prompt.md
+        assistantReviewPrompt: core/05-backend-conversation-memory/assistant-review-prompt.md
+        theoryVideoIds:
+          - backend-conversation-memory
       - id: core-06
         slug: tenant-security-and-privacy
         title: Tenant Security And Privacy

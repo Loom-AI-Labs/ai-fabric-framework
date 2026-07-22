@@ -2460,6 +2460,8 @@ The previous curriculum mentioned four public demos. The case-study track now in
   generation proof, explicit no-evidence behavior, assistant prompts, and a sourced knowledge check.
 - [x] Publish the CORE-04 preview with governed-action theory, typed read/write handlers,
   context-owned identity, confirmation state-machine tests, assistant prompts, and a sourced check.
+- [x] Publish the CORE-05 preview with backend-owned conversation theory, authenticated ownership,
+  bounded context, follow-up and pending-confirmation tests, assistant prompts, and a sourced check.
 - [ ] Implement CORE-01 through CORE-07.
 - [ ] Generate and technically review the complete CORE-01 AI Fabric architecture explainer from its
   release-pinned NotebookLM script and source manifest.
