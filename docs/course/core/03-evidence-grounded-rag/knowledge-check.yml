@@ -1,0 +1,111 @@
+schemaVersion: 1
+lessonId: core-03
+passingScorePercent: 80
+questions:
+  - id: core-03-q1
+    type: single-choice
+    competency: rag-boundary
+    prompt: What does the default AI Fabric RAGService return from performRAGQuery?
+    options:
+      - id: a
+        text: A generated answer with no evidence
+      - id: b
+        text: Retrieved documents, context, and retrieval metadata for downstream generation
+      - id: c
+        text: A database transaction result
+      - id: d
+        text: An authorization decision
+    correctOptionIds: [b]
+    explanation: The default RAGService is retrieval-only; generation belongs to orchestration or a higher-level application service.
+    sourcePaths:
+      - ai-infrastructure-module/ai-fabric-rag/src/main/java/ai/fabric/rag/service/RAGService.java
+
+  - id: core-03-q2
+    type: multiple-choice
+    competency: grounding-proof
+    prompt: Which artifacts make a public answer verifiably evidence-grounded?
+    options:
+      - id: a
+        text: Stable IDs for the retrieved documents
+      - id: b
+        text: Approved evidence snippets or titles
+      - id: c
+        text: Safe retrieval and generation diagnostics
+      - id: d
+        text: Fluent wording by itself
+    correctOptionIds: [a, b, c]
+    explanation: Grounding proof requires inspectable sources and execution state; fluent text alone proves nothing about retrieval.
+    sourcePaths:
+      - ai-infrastructure-module/ai-fabric-core/src/main/java/ai/fabric/dto/RAGResponse.java
+
+  - id: core-03-q3
+    type: single-choice
+    competency: no-evidence
+    prompt: What should the application do when retrieval succeeds but returns zero approved documents?
+    options:
+      - id: a
+        text: Ask the LLM to answer from general knowledge
+      - id: b
+        text: Return NO_EVIDENCE and do not invoke generation
+      - id: c
+        text: Return a hard-coded support answer
+      - id: d
+        text: Search every configured vector space
+    correctOptionIds: [b]
+    explanation: Empty retrieval is an explicit application state; generation must not manufacture an answer that appears grounded.
+    sourcePaths:
+      - docs/getting-started/04-first-rag-chat.md
+
+  - id: core-03-q4
+    type: multiple-choice
+    competency: rag-readiness
+    prompt: Which conditions are independently required for a live grounded answer?
+    options:
+      - id: a
+        text: Approved indexed evidence
+      - id: b
+        text: Compatible embedding and vector providers
+      - id: c
+        text: A usable RAGProvider and allowed evidence space
+      - id: d
+        text: An available generation provider
+    correctOptionIds: [a, b, c, d]
+    explanation: A healthy LLM cannot repair an empty index, and indexed evidence cannot replace missing generation or policy readiness.
+    sourcePaths:
+      - ai-infrastructure-module/ai-fabric-rag/src/main/java/ai/fabric/rag/config/RAGAutoConfiguration.java
+
+  - id: core-03-q5
+    type: single-choice
+    competency: vector-space-policy
+    prompt: The intent model proposes the vector space knowledge-article. What authorizes the search?
+    options:
+      - id: a
+        text: The model proposal itself
+      - id: b
+        text: The browser position value
+      - id: c
+        text: Server-owned configuration, mode policy, and trusted caller scope
+      - id: d
+        text: The similarity threshold
+    correctOptionIds: [c]
+    explanation: Model output requests work; server policy validates and authorizes eligible evidence spaces.
+    sourcePaths:
+      - docs/course/core/03-evidence-grounded-rag/notebooklm/AI_FABRIC_EVIDENCE_GROUNDED_RAG_NOTEBOOKLM_SCRIPT.md
+
+  - id: core-03-q6
+    type: single-choice
+    competency: quality-testing
+    prompt: Which assertion is most stable for a golden RAG question?
+    options:
+      - id: a
+        text: The answer must match one exact paragraph
+      - id: b
+        text: The top score must always equal 92 percent
+      - id: c
+        text: The expected evidence ID must be retrieved and remain attached to the answer
+      - id: d
+        text: The provider model name must never change
+    correctOptionIds: [c]
+    explanation: Generated wording and similarity values can vary; expected evidence identity is the stable grounding contract.
+    sourcePaths:
+      - examples/real-apps/smart-faq-assistant/src/test/java/com/ai/fabric/realapps/faq/service/FaqQualityServiceTest.java

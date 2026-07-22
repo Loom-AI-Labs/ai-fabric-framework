@@ -70,7 +70,13 @@ tracks:
         title: Evidence-Grounded RAG
         description: Retrieve approved evidence before generation and expose its source IDs.
         durationMinutes: 75
-        availability: planned
+        availability: preview
+        source: core/03-evidence-grounded-rag/lesson.md
+        knowledgeCheck: core/03-evidence-grounded-rag/knowledge-check.yml
+        assistantPrompt: core/03-evidence-grounded-rag/assistant-prompt.md
+        assistantReviewPrompt: core/03-evidence-grounded-rag/assistant-review-prompt.md
+        theoryVideoIds:
+          - evidence-grounded-rag
       - id: core-04
         slug: governed-actions
         title: Governed Actions And Confirmation
