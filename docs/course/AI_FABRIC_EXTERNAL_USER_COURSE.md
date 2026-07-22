@@ -2464,7 +2464,10 @@ The previous curriculum mentioned four public demos. The case-study track now in
   bounded context, follow-up and pending-confirmation tests, assistant prompts, and a sourced check.
 - [x] Publish the CORE-06 preview with tenant-security and privacy theory, canonical identity,
   pre-generation evidence filtering, action denial, PII boundary tests, prompts, and a sourced check.
-- [ ] Implement CORE-01 through CORE-07.
+- [x] Publish the CORE-07 preview with testing-and-shipping theory, deterministic and packaged
+  release gates, explicit live-provider evidence, deployment proof, prompts, and a sourced check.
+- [x] Implement the preview assets for CORE-01 through CORE-07.
+- [ ] Publish validated starter and solution checkpoints for CORE-01 through CORE-07.
 - [ ] Generate and technically review the complete CORE-01 AI Fabric architecture explainer from its
   release-pinned NotebookLM script and source manifest.
 - [ ] Author and validate the mode-appropriate implementation/analysis and review prompt for every

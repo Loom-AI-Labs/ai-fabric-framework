@@ -1,0 +1,114 @@
+schemaVersion: 1
+lessonId: core-07
+passingScorePercent: 80
+questions:
+  - id: core-07-q1
+    type: multiple-choice
+    competency: evidence-classes
+    prompt: Which evidence classes prove different release concerns?
+    options:
+      - id: a
+        text: Deterministic no-key tests
+      - id: b
+        text: Packaged-runtime and HTTP scenario tests
+      - id: c
+        text: Container vector contracts
+      - id: d
+        text: Keyed hosted-provider tests
+    correctOptionIds: [a, b, c, d]
+    explanation: Each class proves a distinct boundary; none should be relabeled as another.
+    sourcePaths:
+      - docs/course/core/07-test-and-ship/notebooklm/AI_FABRIC_TESTING_SHIPPING_WORKFLOWS_NOTEBOOKLM_SCRIPT.md
+
+  - id: core-07-q2
+    type: single-choice
+    competency: packaged-proof
+    prompt: What does a Spring Started marker from a packaged jar prove?
+    options:
+      - id: a
+        text: Every business endpoint passed
+      - id: b
+        text: The packaged artifact and selected profile reached application startup
+      - id: c
+        text: OpenAI generated a correct answer
+      - id: d
+        text: Tenant security and PII behavior passed
+    correctOptionIds: [b]
+    explanation: Startup is packaging/wiring proof; representative HTTP scenarios are a separate gate.
+    sourcePaths:
+      - .github/scripts/smoke-boot-realapps.sh
+
+  - id: core-07-q3
+    type: single-choice
+    competency: live-provider-scope
+    prompt: How does the full RealAPI provider matrix run in the current framework repository?
+    options:
+      - id: a
+        text: Automatically for every pull request with all providers
+      - id: b
+        text: Only inside unit tests with fake credentials
+      - id: c
+        text: Through explicit manually triggered workflows with available credentials and services
+      - id: d
+        text: It is replaced entirely by Docker
+    correctOptionIds: [c]
+    explanation: Hosted provider matrices are manual because they require secrets, services, quota, cost, and longer execution.
+    sourcePaths:
+      - .github/workflows/integration-tests-manual.yml
+      - .github/workflows/provider-suite-keys-only.yml
+
+  - id: core-07-q4
+    type: multiple-choice
+    competency: failure-visibility
+    prompt: A live provider is selected but unavailable. Which results are acceptable?
+    options:
+      - id: a
+        text: Expose a provider or configuration failure
+      - id: b
+        text: Preserve zero domain mutations
+      - id: c
+        text: Return a canned answer labeled as live AI
+      - id: d
+        text: Report the effective provider posture honestly
+    correctOptionIds: [a, b, d]
+    explanation: A live-path failure must stay visible and non-mutating; hidden deterministic success is misleading.
+    sourcePaths:
+      - docs/course/core/07-test-and-ship/notebooklm/AI_FABRIC_TESTING_SHIPPING_WORKFLOWS_NOTEBOOKLM_SCRIPT.md
+
+  - id: core-07-q5
+    type: multiple-choice
+    competency: deployment-proof
+    prompt: Which checks are needed when frontend and backend deploy separately?
+    options:
+      - id: a
+        text: Backend health and source commit
+      - id: b
+        text: The actual hashed JavaScript asset referenced by public HTML
+      - id: c
+        text: A public end-to-end interaction and its network response
+      - id: d
+        text: Only the deployment dashboard's green status
+    correctOptionIds: [a, b, c]
+    explanation: Backend identity, served frontend identity, and behavior are separate pieces of evidence.
+    sourcePaths:
+      - docs/course/core/07-test-and-ship/notebooklm/AI_FABRIC_TESTING_SHIPPING_WORKFLOWS_NOTEBOOKLM_SCRIPT.md
+      - examples/real-apps/smoke-support/src/main/java/com/ai/fabric/examples/smoke/health/DemoDeploymentInfoService.java
+
+  - id: core-07-q6
+    type: single-choice
+    competency: skipped-evidence
+    prompt: A required hosted-provider matrix row did not run because its secret was absent. How should release evidence classify it?
+    options:
+      - id: a
+        text: Passed because the workflow stayed green
+      - id: b
+        text: Not run or skipped with the reason and release decision recorded
+      - id: c
+        text: Equivalent to the local deterministic profile
+      - id: d
+        text: Proven by a different provider row
+    correctOptionIds: [b]
+    explanation: Conditional absence is not provider proof; counts and skip/not-run reasons must remain visible.
+    sourcePaths:
+      - docs/Framework-Dev-Guides/testing-verification/CI_PIPELINE_GUIDE.md
+

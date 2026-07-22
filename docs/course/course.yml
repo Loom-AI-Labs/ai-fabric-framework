@@ -118,7 +118,13 @@ tracks:
         title: Test And Ship The Vertical Slice
         description: Separate deterministic, packaged-runtime, and live-provider release evidence.
         durationMinutes: 70
-        availability: planned
+        availability: preview
+        source: core/07-test-and-ship/lesson.md
+        knowledgeCheck: core/07-test-and-ship/knowledge-check.yml
+        assistantPrompt: core/07-test-and-ship/assistant-prompt.md
+        assistantReviewPrompt: core/07-test-and-ship/assistant-review-prompt.md
+        theoryVideoIds:
+          - testing-and-shipping
   - id: production
     title: Production Track
     description: Operate providers, indexing, RAG quality, managed vectors, and release workflows.
