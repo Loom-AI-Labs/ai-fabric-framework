@@ -1,0 +1,111 @@
+schemaVersion: 1
+lessonId: core-04
+passingScorePercent: 80
+questions:
+  - id: core-04-q1
+    type: single-choice
+    competency: action-authority
+    prompt: What is the LLM allowed to do in a governed write flow?
+    options:
+      - id: a
+        text: Call the repository after extracting a valid entity ID
+      - id: b
+        text: Propose a registered action and typed parameters for server-side validation
+      - id: c
+        text: Authorize the current tenant
+      - id: d
+        text: Mark its own output as confirmed
+    correctOptionIds: [b]
+    explanation: Model output requests work; the registry, application policy, confirmation state, and domain service control execution.
+    sourcePaths:
+      - docs/course/core/04-governed-actions/notebooklm/AI_FABRIC_GOVERNED_ACTIONS_CONFIRMATION_NOTEBOOKLM_SCRIPT.md
+
+  - id: core-04-q2
+    type: multiple-choice
+    competency: parameter-ownership
+    prompt: Which create_support_ticket values should be supplied through ActionContext or application lookup rather than @Param?
+    options:
+      - id: a
+        text: Authenticated user ID
+      - id: b
+        text: Tenant ID
+      - id: c
+        text: Issue description
+      - id: d
+        text: Conversation ID
+    correctOptionIds: [a, b, d]
+    explanation: Identity, tenant, and session boundaries are backend-owned; issue details are legitimate user input.
+    sourcePaths:
+      - ai-infrastructure-module/ai-fabric-core/src/main/java/ai/fabric/intent/action/ActionContext.java
+
+  - id: core-04-q3
+    type: single-choice
+    competency: action-access-mode
+    prompt: Which current ActionAccessMode is treated as pure read-only work?
+    options:
+      - id: a
+        text: READ
+      - id: b
+        text: READ_WRITE
+      - id: c
+        text: WRITE_ONLY
+      - id: d
+        text: WRITE
+    correctOptionIds: [a]
+    explanation: The current enum provides READ, READ_WRITE, and WRITE_ONLY; only READ returns true from isReadOnly.
+    sourcePaths:
+      - ai-infrastructure-module/ai-fabric-core/src/main/java/ai/fabric/intent/action/ActionAccessMode.java
+
+  - id: core-04-q4
+    type: single-choice
+    competency: clarification
+    prompt: A required description is missing from create_support_ticket. What is the correct result?
+    options:
+      - id: a
+        text: Execute with an empty description
+      - id: b
+        text: Ask the model to invent a description
+      - id: c
+        text: Return clarification and create neither a ticket nor a complete pending confirmation
+      - id: d
+        text: Skip directly to confirmation
+    correctOptionIds: [c]
+    explanation: Required-parameter validation must stop the flow before confirmation and execution.
+    sourcePaths:
+      - ai-infrastructure-module/ai-fabric-core/src/test/java/ai/fabric/intent/orchestration/pipeline/steps/IntentHandlingStepRequiredParamsPlaceholderTest.java
+
+  - id: core-04-q5
+    type: multiple-choice
+    competency: confirmation-state-machine
+    prompt: Which assertions prove confirmation is governed correctly?
+    options:
+      - id: a
+        text: No mutation occurs when confirmation is first requested
+      - id: b
+        text: Rejection removes pending work without mutation
+      - id: c
+        text: Confirmation executes once and consumes pending state
+      - id: d
+        text: A second yes repeats the same side effect
+    correctOptionIds: [a, b, c]
+    explanation: A governed pending action is complete but unexecuted, rejection is non-mutating, and consumption prevents duplicate execution.
+    sourcePaths:
+      - ai-infrastructure-module/ai-fabric-core/src/main/java/ai/fabric/intent/action/PendingActionStore.java
+
+  - id: core-04-q6
+    type: single-choice
+    competency: result-projection
+    prompt: What should a successful create_support_ticket ActionResult expose?
+    options:
+      - id: a
+        text: The full JPA entity graph
+      - id: b
+        text: A raw JSON string containing repository state
+      - id: c
+        text: Concise structured facts such as ticket number, status, and priority
+      - id: d
+        text: The generation prompt and provider credentials
+    correctOptionIds: [c]
+    explanation: Explicit ActionPayload contracts preserve useful machine-readable facts without leaking persistence or provider internals.
+    sourcePaths:
+      - ai-infrastructure-module/ai-fabric-core/src/main/java/ai/fabric/intent/action/ActionResult.java

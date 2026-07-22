@@ -82,7 +82,13 @@ tracks:
         title: Governed Actions And Confirmation
         description: Register typed actions, collect parameters, and confirm writes before execution.
         durationMinutes: 85
-        availability: planned
+        availability: preview
+        source: core/04-governed-actions/lesson.md
+        knowledgeCheck: core/04-governed-actions/knowledge-check.yml
+        assistantPrompt: core/04-governed-actions/assistant-prompt.md
+        assistantReviewPrompt: core/04-governed-actions/assistant-review-prompt.md
+        theoryVideoIds:
+          - governed-actions-and-confirmation
       - id: core-05
         slug: backend-conversation-memory
         title: Backend-Owned Conversation Memory
