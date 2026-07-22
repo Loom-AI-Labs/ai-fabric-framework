@@ -1,0 +1,85 @@
+schemaVersion: 1
+lessonId: prod-05
+passingScorePercent: 80
+questions:
+  - id: prod-05-q1
+    type: single-choice
+    competency: lifecycle
+    prompt: What is the main difference between migration and live Data Sync?
+    options:
+      - id: a
+        text: Migration scans existing rows as a controlled job; Data Sync handles later trusted operations
+      - id: b
+        text: Data Sync owns the business database
+      - id: c
+        text: Migration is only for cloud vector providers
+    correctOptionIds: [a]
+    explanation: They converge on vector evidence but have different invocation, progress, and recovery contracts.
+    sourcePaths:
+      - docs/course/production/05-live-data-sync/lesson.md
+  - id: prod-05-q2
+    type: multiple-choice
+    competency: trusted-boundary
+    prompt: Which values must the application derive instead of trusting from a browser request?
+    options:
+      - id: a
+        text: Verified subject and scopes
+      - id: b
+        text: Tenant identity
+      - id: c
+        text: Allowed vector space
+      - id: d
+        text: User-authored article title and body
+    correctOptionIds: [a, b, c]
+    explanation: Domain content is input; identity, tenant, and infrastructure routing are server-owned context.
+    sourcePaths:
+      - ai-infrastructure-module/ai-fabric-data-sync/src/main/java/ai/fabric/datasync/dto/DataSyncVerifiedAuthContext.java
+  - id: prod-05-q3
+    type: single-choice
+    competency: stable-identity
+    prompt: How does a whole-article update replace existing evidence instead of creating a second vector?
+    options:
+      - id: a
+        text: It uses the same logical article ID and no new chunk ID
+      - id: b
+        text: It changes tenant metadata
+      - id: c
+        text: It creates a new random ID for every version
+    correctOptionIds: [a]
+    explanation: Stable logical identity makes upsert retry-safe and allows delete to address the same evidence.
+    sourcePaths:
+      - ai-infrastructure-module/ai-fabric-data-sync/src/main/java/ai/fabric/datasync/service/DataSyncService.java
+  - id: prod-05-q4
+    type: single-choice
+    competency: bypass-policy
+    prompt: When should allowTrustedPlatformInternalSyncBypass be enabled?
+    options:
+      - id: a
+        text: Whenever a frontend sends a system-looking auth context
+      - id: b
+        text: Only behind a trusted backend that verifies and injects the exact platform/system context
+      - id: c
+        text: For every local development profile
+    correctOptionIds: [b]
+    explanation: The bypass is disabled by default because request DTO fields are not proof of identity.
+    sourcePaths:
+      - ai-infrastructure-module/ai-fabric-data-sync/src/main/java/ai/fabric/datasync/AIDataSyncProperties.java
+  - id: prod-05-q5
+    type: answer-reveal
+    competency: partial-failure
+    prompt: What should an operator do when one reconciliation operation succeeds and one fails?
+    modelAnswer: Keep the application source rows authoritative, inspect each operation result and trace, correct the failed projection or provider condition, and retry only the failed stable IDs. Do not describe the whole batch as successful or roll back an already completed external vector operation by guessing.
+    sourcePaths:
+      - docs/course/production/05-live-data-sync/lesson.md
+  - id: prod-05-q6
+    type: implementation-defense
+    competency: transactional-boundary
+    prompt: Defend throwing when an article upsert fails while still requiring reconciliation.
+    modelAnswer: Throwing rolls back the local source transaction when normalization, authorization, embedding, or vector write reports failure. However, the source database and external vector provider do not share one transaction, so commit-time or network ambiguity can still create divergence. Stable IDs, traces, visible errors, and a bounded reconciliation endpoint are still required.
+    reviewCriteria:
+      - Explains local rollback
+      - Rejects claims of a distributed transaction
+      - Keeps source data authoritative
+      - Requires stable-ID reconciliation
+    sourcePaths:
+      - docs/course/production/05-live-data-sync/lesson.md

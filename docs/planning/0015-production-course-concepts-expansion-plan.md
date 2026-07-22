@@ -577,7 +577,7 @@ Each lesson must provide:
 - [x] Create `MODES_POSITIONS_ORCHESTRATION_POLICY_NOTEBOOKLM_SCRIPT.md`.
 - [x] Create `PROMPT_BUNDLES_CURATED_OVERLAYS_NOTEBOOKLM_SCRIPT.md`.
 - [x] Create `AI_FABRIC_STATE_STORAGE_MAP_NOTEBOOKLM_SCRIPT.md`.
-- [ ] Create `MIGRATION_BACKFILL_LIVE_SYNC_NOTEBOOKLM_SCRIPT.md`.
+- [x] Create `MIGRATION_BACKFILL_LIVE_SYNC_NOTEBOOKLM_SCRIPT.md`.
 - [ ] Review every script against current code and the framework philosophy.
 - [ ] Generate/review English videos; add Arabic versions when available.
 - [ ] Register final video IDs in the course video catalog.
@@ -596,9 +596,9 @@ Each lesson must provide:
 - [x] Add realistic pre-existing support data and migration repository registration.
 - [x] Build PROD-04 job lifecycle, idempotency, failure, and retrieval tests.
 - [x] Publish PROD-04 checkpoint only after a clean packaged runtime smoke.
-- [ ] Build PROD-05 trusted upsert/update/delete flows.
-- [ ] Test stale-vector deletion, access denial, limits, and partial failure.
-- [ ] Publish PROD-05 checkpoint only after a clean packaged runtime smoke.
+- [x] Build PROD-05 trusted upsert/update/delete flows.
+- [x] Test stale-vector deletion, access denial, limits, and partial failure.
+- [x] Publish PROD-05 checkpoint only after a clean packaged runtime smoke.
 
 ### P4: Quality, Managed Vector, And Operations
 
@@ -676,7 +676,7 @@ This plan is complete only when:
 | Curriculum contract | Complete |
 | Theory scripts/videos | In progress: PROD-01 script ready; four scripts and all new recordings remain |
 | Provider/mode/prompt lessons | Complete: PROD-01 through PROD-03 checkpoints and canonical lessons verified |
-| Migration/live-sync lessons | In progress: PROD-04 verified; PROD-05 remains |
+| Migration/live-sync lessons | Complete: PROD-04 and PROD-05 checkpoints and canonical lessons verified |
 | Quality/Qdrant/operations lessons | Not started |
 | Learner checkpoints | In progress: 1 of 8 Production checkpoints published |
 | Keyless verification | In progress: PROD-01 clean verify and packaged smoke pass |

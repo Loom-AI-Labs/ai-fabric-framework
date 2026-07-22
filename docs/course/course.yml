@@ -179,7 +179,12 @@ tracks:
         title: Keep Application Data Synchronized
         description: Apply trusted create, update, and delete changes without leaving stale vector evidence.
         durationMinutes: 85
-        availability: planned
+        availability: preview
+        source: production/05-live-data-sync/lesson.md
+        knowledgeCheck: production/05-live-data-sync/knowledge-check.yml
+        assistantPrompt: production/05-live-data-sync/assistant-prompt.md
+        assistantReviewPrompt: production/05-live-data-sync/assistant-review-prompt.md
+        notebookSourceManifest: production/05-live-data-sync/notebooklm/source-manifest.yml
       - id: prod-06
         slug: rag-quality
         title: RAG Quality And Prompt Regression
