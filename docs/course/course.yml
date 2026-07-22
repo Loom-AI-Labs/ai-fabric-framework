@@ -146,7 +146,12 @@ tracks:
         title: Modes, Positions, And Orchestration Policy
         description: Map application positions to server-owned capability bundles without trusting arbitrary client mode names.
         durationMinutes: 75
-        availability: planned
+        availability: preview
+        source: production/02-modes-positions/lesson.md
+        knowledgeCheck: production/02-modes-positions/knowledge-check.yml
+        assistantPrompt: production/02-modes-positions/assistant-prompt.md
+        assistantReviewPrompt: production/02-modes-positions/assistant-review-prompt.md
+        notebookSourceManifest: production/02-modes-positions/notebooklm/source-manifest.yml
       - id: prod-03
         slug: prompt-overlays
         title: Prompt Management And Application Overlays

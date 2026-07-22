@@ -1,0 +1,84 @@
+schemaVersion: 1
+lessonId: prod-02
+passingScorePercent: 80
+questions:
+  - id: prod-02-q1
+    type: single-choice
+    competency: position-versus-mode
+    prompt: What does an application position represent?
+    options:
+      - id: a
+        text: A product or UI context that the application may map to a mode
+      - id: b
+        text: An authorization decision made by the browser
+      - id: c
+        text: An LLM provider name
+    correctOptionIds: [a]
+    explanation: Position describes application context; a server-owned mode controls orchestration capabilities.
+    sourcePaths:
+      - ai-infrastructure-module/ai-fabric-core/src/main/java/ai/fabric/intent/orchestration/OrchestrationContext.java
+  - id: prod-02-q2
+    type: single-choice
+    competency: enforcement
+    prompt: Which setting deterministically prevents write intents from executing in support_assistant?
+    options:
+      - id: a
+        text: actions-preferred false
+      - id: b
+        text: actions-enabled false
+      - id: c
+        text: A prompt asking the model not to write
+    correctOptionIds: [b]
+    explanation: actions-enabled is the server policy gate; prompts and preferences are guidance.
+    sourcePaths:
+      - ai-infrastructure-module/ai-fabric-core/src/main/java/ai/fabric/config/OrchestrationProperties.java
+  - id: prod-02-q3
+    type: multiple-choice
+    competency: strict-routing
+    prompt: Which failures should remain visible?
+    options:
+      - id: a
+        text: An unknown application position under strict position routing
+      - id: b
+        text: An unknown explicit mode under strict Core routing
+      - id: c
+        text: A disabled action should be executed through fallback
+    correctOptionIds: [a, b]
+    explanation: Unknown routing inputs are contract failures; fallback must not create authority.
+    sourcePaths:
+      - ai-infrastructure-module/ai-fabric-core/src/main/java/ai/fabric/intent/orchestration/pipeline/steps/OrchestrationPolicyResolutionStep.java
+  - id: prod-02-q4
+    type: single-choice
+    competency: precedence
+    prompt: What happens when a request supplies both position ticket and explicit mode support_assistant?
+    options:
+      - id: a
+        text: The position always overrides the explicit mode
+      - id: b
+        text: The explicit mode is preserved and Core validates it
+      - id: c
+        text: The browser gains both modes
+    correctOptionIds: [b]
+    explanation: Explicit selection wins over application position mapping, but only Core-defined modes are accepted.
+    sourcePaths:
+      - docs/course/production/02-modes-positions/lesson.md
+  - id: prod-02-q5
+    type: answer-reveal
+    competency: compatibility
+    prompt: Why does this checkpoint keep the no-hint default action-capable?
+    modelAnswer: Earlier Core checkpoints already expose governed action flows without mode or position fields. Keeping support_resolver as the server default preserves that public behavior while the knowledge position demonstrates retrieval-only policy explicitly.
+    sourcePaths:
+      - docs/course/production/02-modes-positions/lesson.md
+  - id: prod-02-q6
+    type: implementation-defense
+    competency: architecture
+    prompt: Defend the placement of SupportModeResolver in the application instead of Core.
+    modelAnswer: Positions are application vocabulary such as knowledge and ticket. The application owns their meaning and maps them to allowlisted server modes. Core remains product-agnostic and resolves the selected mode into deterministic retrieval, action, suggestion, and budget policy. Authentication and action authorization remain independent controls.
+    reviewCriteria:
+      - Separates application context from framework mode enforcement
+      - Keeps Core mode allowlisting authoritative
+      - Does not treat position or prompt text as authorization
+      - Preserves visible unknown-input failures
+    sourcePaths:
+      - ai-infrastructure-module/ai-fabric-core/src/main/java/ai/fabric/config/OrchestrationProperties.java
+      - examples/real-apps/chat-capabilities-demo/src/main/java/com/ai/fabric/realapps/chat/web/CommerceModeResolver.java
