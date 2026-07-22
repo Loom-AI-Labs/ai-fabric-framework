@@ -5,8 +5,8 @@
 Use this file as the only source for the video. Do not supplement it with general AI knowledge,
 external sources, or assumptions about AI Fabric.
 
-Create a concise two-to-three-minute Explainer video titled **Build Production-Oriented AI Workflows
-With Java And Spring Boot**. Follow the six scenes in order. Use each **Visual** block as production
+Create a concise two-to-three-minute Explainer video titled **Build AI-Enabled Applications With
+Java And Spring Boot**. Follow the six scenes in order. Use each **Visual** block as production
 direction and each **Narration** block as the spoken message. Keep AI Fabric and the developer's
 learning journey central throughout the video.
 
@@ -32,7 +32,7 @@ authorization, and a database. Add a new requirement labeled "AI-enabled workflo
 
 **Narration:**
 
-Welcome to **Build Production-Oriented AI Workflows With Java And Spring Boot**.
+Welcome to **Build AI-Enabled Applications With Java And Spring Boot**.
 
 This course is for developers who already understand ordinary application development and now need
 to add useful AI capabilities without losing control of business rules, security, data, or testing.

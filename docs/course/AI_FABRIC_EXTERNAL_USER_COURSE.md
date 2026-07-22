@@ -1,4 +1,4 @@
-# Build Production-Oriented AI Workflows with Java and Spring Boot
+# Build AI-Enabled Applications with Java and Spring Boot
 
 > Master curriculum and implementation specification for the public AI Fabric course.
 
@@ -6,7 +6,7 @@
 
 | Field | Value |
 | --- | --- |
-| Status | Ready for course asset implementation after the release blockers in this document are fixed |
+| Status | Core preview lessons complete; immutable learner checkpoints and external beta validation remain pending |
 | Course baseline | AI Fabric `0.3.3` |
 | Framework release tag | `ai-fabric-framework-v0.3.3` |
 | Course content version | `0.3.3-course.1` |
@@ -15,7 +15,7 @@
 | Spring Boot | `4.1.x` |
 | Maven group | `io.github.loom-ai-labs` |
 | Framework packages | `ai.fabric.*` |
-| Public course title | Build Production-Oriented AI Workflows with Java and Spring Boot |
+| Public course title | Build AI-Enabled Applications with Java and Spring Boot |
 | Public subtitle | Semantic search, evidence-grounded RAG, governed actions, chat memory, and tenant security with AI Fabric |
 
 This file is the curriculum source of truth. It defines what must be built in the framework
@@ -2201,7 +2201,7 @@ knowledgeCheckSchemaVersion: 1
 notebookLmVideoSchemaVersion: 1
 courseId: ai-fabric-production-oriented-java
 courseVersion: 0.3.3-course.1
-title: Build Production-Oriented AI Workflows with Java and Spring Boot
+title: Build AI-Enabled Applications with Java and Spring Boot
 subtitle: Semantic search, evidence-grounded RAG, governed actions, chat memory, and tenant security with AI Fabric
 frameworkVersion: 0.3.3
 frameworkTag: ai-fabric-framework-v0.3.3
