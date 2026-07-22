@@ -1,0 +1,85 @@
+schemaVersion: 1
+lessonId: prod-06
+passingScorePercent: 80
+questions:
+  - id: prod-06-q1
+    type: single-choice
+    competency: deterministic-gates
+    prompt: What should block a RAG release before generated wording is reviewed?
+    options:
+      - id: a
+        text: Missing expected evidence or returned forbidden tenant evidence
+      - id: b
+        text: A different sentence structure from the previous model run
+      - id: c
+        text: A lower token count
+    correctOptionIds: [a]
+    explanation: Evidence identity and policy boundaries are deterministic release contracts; prose is model-dependent.
+    sourcePaths:
+      - docs/course/production/06-rag-quality/lesson.md
+  - id: prod-06-q2
+    type: single-choice
+    competency: no-source
+    prompt: What is the correct behavior when the vector index contains no approved evidence?
+    options:
+      - id: a
+        text: Skip generation and return a visible no-evidence result
+      - id: b
+        text: Ask the LLM to answer from general knowledge
+      - id: c
+        text: Search another tenant
+    correctOptionIds: [a]
+    explanation: No-source behavior must remain explicit and cannot widen the factual or tenant boundary.
+    sourcePaths:
+      - docs/course/production/06-rag-quality/lesson.md
+  - id: prod-06-q3
+    type: multiple-choice
+    competency: freshness
+    prompt: Which checks detect a stale vector after a source update?
+    options:
+      - id: a
+        text: The stable evidence ID is observed
+      - id: b
+        text: A required fragment from the new source is present
+      - id: c
+        text: A forbidden fragment from the old source is absent
+      - id: d
+        text: The model answer sounds confident
+    correctOptionIds: [a, b, c]
+    explanation: Stable identity plus current/old content checks prove replacement; confidence does not.
+    sourcePaths:
+      - docs/course/production/06-rag-quality/lesson.md
+  - id: prod-06-q4
+    type: single-choice
+    competency: prompt-regression
+    prompt: Why does the prompt gate assert slots and resolution versions instead of exact generated prose?
+    options:
+      - id: a
+        text: Template structure is deterministic while model wording can vary
+      - id: b
+        text: Prompt content is an authorization mechanism
+      - id: c
+        text: Citation IDs are unnecessary
+    correctOptionIds: [a]
+    explanation: Prompt packaging can be tested deterministically without pretending that model sentences are stable.
+    sourcePaths:
+      - ai-infrastructure-module/ai-fabric-core/src/main/java/ai/fabric/prompt/PromptTemplateResolver.java
+  - id: prod-06-q5
+    type: answer-reveal
+    competency: scorecard-semantics
+    prompt: Why can a quality endpoint return HTTP 200 with passed=false?
+    modelAnswer: HTTP 200 means the evaluation operation completed. The structured result means the evaluated retrieval contract failed. CI must inspect passed and failureCodes rather than treating transport success as quality success.
+    sourcePaths:
+      - docs/course/production/06-rag-quality/lesson.md
+  - id: prod-06-q6
+    type: implementation-defense
+    competency: live-evaluation
+    prompt: Defend keeping an optional OpenAI answer run separate from the keyless scorecard.
+    modelAnswer: The keyless scorecard deterministically proves evidence IDs, tenant exclusions, freshness, no-source behavior, and prompt packaging. A live OpenAI run observes one provider/model configuration and may vary. It can add compatibility evidence but cannot override a failed retrieval or security gate, and skipped keyed work must remain NOT RUN.
+    reviewCriteria:
+      - Separates deterministic and model-dependent evidence
+      - Keeps tenant and evidence gates blocking
+      - Requires visible provider failure
+      - Labels skipped keyed work accurately
+    sourcePaths:
+      - docs/course/production/06-rag-quality/lesson.md

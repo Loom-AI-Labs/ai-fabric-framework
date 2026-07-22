@@ -190,7 +190,12 @@ tracks:
         title: RAG Quality And Prompt Regression
         description: Gate expected evidence, no-source behavior, tenant boundaries, and prompt changes deterministically.
         durationMinutes: 75
-        availability: planned
+        availability: preview
+        source: production/06-rag-quality/lesson.md
+        knowledgeCheck: production/06-rag-quality/knowledge-check.yml
+        assistantPrompt: production/06-rag-quality/assistant-prompt.md
+        assistantReviewPrompt: production/06-rag-quality/assistant-review-prompt.md
+        notebookSourceManifest: production/06-rag-quality/notebooklm/source-manifest.yml
       - id: prod-07
         slug: qdrant
         title: Move To A Managed Vector Provider
