@@ -106,7 +106,13 @@ tracks:
         title: Tenant Security And Privacy
         description: Apply identity, tenant, access, and PII policy before evidence or execution.
         durationMinutes: 85
-        availability: planned
+        availability: preview
+        source: core/06-tenant-security-and-privacy/lesson.md
+        knowledgeCheck: core/06-tenant-security-and-privacy/knowledge-check.yml
+        assistantPrompt: core/06-tenant-security-and-privacy/assistant-prompt.md
+        assistantReviewPrompt: core/06-tenant-security-and-privacy/assistant-review-prompt.md
+        theoryVideoIds:
+          - tenant-security-and-privacy
       - id: core-07
         slug: test-and-ship
         title: Test And Ship The Vertical Slice

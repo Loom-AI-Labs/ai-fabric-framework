@@ -1,0 +1,113 @@
+schemaVersion: 1
+lessonId: core-06
+passingScorePercent: 80
+questions:
+  - id: core-06-q1
+    type: single-choice
+    competency: security-ordering
+    prompt: When must tenant evidence policy be applied?
+    options:
+      - id: a
+        text: After generation, before React renders citations
+      - id: b
+        text: Before forbidden evidence can enter generation context
+      - id: c
+        text: Only when a user asks about another tenant
+      - id: d
+        text: After the LLM decides whether the evidence is sensitive
+    correctOptionIds: [b]
+    explanation: A model cannot undo disclosure after forbidden evidence has entered its prompt or provider request.
+    sourcePaths:
+      - docs/course/core/06-tenant-security-and-privacy/notebooklm/AI_FABRIC_TENANT_SECURITY_PRIVACY_NOTEBOOKLM_SCRIPT.md
+
+  - id: core-06-q2
+    type: multiple-choice
+    competency: policy-scope
+    prompt: Which statements about EntityAccessPolicy are correct?
+    options:
+      - id: a
+        text: It receives canonical subject context and immutable request/entity metadata
+      - id: b
+        text: A missing policy becomes an implicit grant
+      - id: c
+        text: It gates request access but does not automatically filter every vector record
+      - id: d
+        text: A policy exception must not become a successful decision
+    correctOptionIds: [a, c, d]
+    explanation: The policy is fail-closed entry authorization; retrieval and action boundaries still need narrower enforcement.
+    sourcePaths:
+      - ai-infrastructure-module/ai-fabric-core/src/main/java/ai/fabric/access/policy/EntityAccessPolicy.java
+      - ai-infrastructure-module/ai-fabric-core/src/main/java/ai/fabric/access/AIAccessControlService.java
+
+  - id: core-06-q3
+    type: single-choice
+    competency: portable-filtering
+    prompt: Which visibility filter best fits AI Fabric's portable metadata contract?
+    options:
+      - id: a
+        text: visibility != restricted
+      - id: b
+        text: visibleToUser = true
+      - id: c
+        text: ask the LLM to omit restricted documents
+      - id: d
+        text: retrieve everything and hide restricted cards
+    correctOptionIds: [b]
+    explanation: The portable subset is exact-match oriented, so applications should index and query a reviewed positive flag.
+    sourcePaths:
+      - ai-infrastructure-module/ai-fabric-core/src/main/java/ai/fabric/util/VectorMetadataFilterSupport.java
+
+  - id: core-06-q4
+    type: multiple-choice
+    competency: action-authorization
+    prompt: What must happen before a cross-record write enters pending confirmation?
+    options:
+      - id: a
+        text: Resolve tenant and subject from trusted backend context
+      - id: b
+        text: Verify role, object ownership, and current state
+      - id: c
+        text: Treat the user's confirmation as the authorization grant
+      - id: d
+        text: Deny an unauthorized target without creating pending work
+    correctOptionIds: [a, b, d]
+    explanation: Confirmation records approval after authorization; it cannot make a forbidden operation permissible.
+    sourcePaths:
+      - docs/course/core/06-tenant-security-and-privacy/notebooklm/AI_FABRIC_TENANT_SECURITY_PRIVACY_NOTEBOOKLM_SCRIPT.md
+
+  - id: core-06-q5
+    type: single-choice
+    competency: pii-posture
+    prompt: What is the default PII configuration posture?
+    options:
+      - id: a
+        text: Enabled with REDACT
+      - id: b
+        text: Enabled with DETECT_ONLY
+      - id: c
+        text: Disabled with PASS_THROUGH as the default mode
+      - id: d
+        text: Enabled only for output
+    correctOptionIds: [c]
+    explanation: Applications must explicitly enable detection and choose a reviewed mode and direction.
+    sourcePaths:
+      - ai-infrastructure-module/ai-fabric-pii/src/main/java/ai/fabric/config/PIIDetectionProperties.java
+
+  - id: core-06-q6
+    type: multiple-choice
+    competency: privacy-failure-semantics
+    prompt: Which privacy statements are accurate for AI Fabric 0.3.3?
+    options:
+      - id: a
+        text: A HASH protected-original record is not recoverable encryption
+      - id: b
+        text: Built-in regex detection proves regulatory compliance
+      - id: c
+        text: Privacy-critical persistence should reject, quarantine, or use NEVER_PERSIST when redaction cannot be proved
+      - id: d
+        text: UI masking proves raw data never reached the backend
+    correctOptionIds: [a, c]
+    explanation: Hash fallback and detector limitations must be stated precisely; backend leakage tests, not UI appearance, provide proof.
+    sourcePaths:
+      - docs/course/core/06-tenant-security-and-privacy/notebooklm/AI_FABRIC_TENANT_SECURITY_PRIVACY_NOTEBOOKLM_SCRIPT.md
+
