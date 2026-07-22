@@ -1,0 +1,123 @@
+schemaVersion: 1
+lessonId: prod-01
+passingScorePercent: 80
+questions:
+  - id: prod-01-q1
+    type: multiple-choice
+    competency: provider-role-separation
+    prompt: Which components can be selected independently in this lesson?
+    options:
+      - id: a
+        text: The orchestration LLM provider and model
+      - id: b
+        text: The answer-generation LLM provider and model
+      - id: c
+        text: The embedding provider
+      - id: d
+        text: The vector database provider
+    correctOptionIds: [a, b, c, d]
+    explanation: AI Fabric separates both LLM purposes from embeddings and vector storage so each concern can be configured and verified deliberately.
+    sourcePaths:
+      - ai-infrastructure-module/ai-fabric-core/src/main/java/ai/fabric/config/AIProviderConfig.java
+      - ai-infrastructure-module/ai-fabric-core/src/main/java/ai/fabric/core/LlmPurpose.java
+
+  - id: prod-01-q2
+    type: single-choice
+    competency: purpose-routing
+    prompt: Which LlmPurpose should evidence-grounded user-facing answer generation use?
+    options:
+      - id: a
+        text: ORCHESTRATION
+      - id: b
+        text: GENERATION
+      - id: c
+        text: EMBEDDINGS
+      - id: d
+        text: The browser chooses the purpose
+    correctOptionIds: [b]
+    explanation: GENERATION resolves the answer-generation provider/model; ORCHESTRATION is for intent, classification, planning, and related control work.
+    sourcePaths:
+      - ai-infrastructure-module/ai-fabric-core/src/main/java/ai/fabric/core/LlmPurpose.java
+      - ai-infrastructure-module/ai-fabric-core/src/main/java/ai/fabric/core/AICoreService.java
+
+  - id: prod-01-q3
+    type: single-choice
+    competency: keyless-evidence
+    prompt: What does the required keyless purpose-routing test prove?
+    options:
+      - id: a
+        text: A real OpenAI credential and network call work
+      - id: b
+        text: AI Fabric selects the configured purpose provider/model and does not hide a failed route with fallback
+      - id: c
+        text: Every hosted provider is compatible
+      - id: d
+        text: Generated prose quality is stable
+    correctOptionIds: [b]
+    explanation: Recording providers prove deterministic routing and failure policy; a separately labelled keyed test is required for hosted-provider compatibility.
+    sourcePaths:
+      - docs/course/production/01-provider-routing/notebooklm/AI_FABRIC_PROVIDER_ARCHITECTURE_PURPOSE_ROUTING_NOTEBOOKLM_SCRIPT.md
+
+  - id: prod-01-q4
+    type: multiple-choice
+    competency: secret-safety
+    prompt: Which facts are safe and useful in provider health diagnostics?
+    options:
+      - id: a
+        text: Effective provider name
+      - id: b
+        text: Effective model name
+      - id: c
+        text: API key value
+      - id: d
+        text: Fallback enabled or disabled
+      - id: e
+        text: Full user prompt and provider response
+    correctOptionIds: [a, b, d]
+    explanation: Operational posture is useful; credentials and user/provider content must not be projected through health.
+    sourcePaths:
+      - docs/getting-started/07-real-provider-openai.md
+      - docs/course/production/01-provider-routing/notebooklm/AI_FABRIC_PROVIDER_ARCHITECTURE_PURPOSE_ROUTING_NOTEBOOKLM_SCRIPT.md
+
+  - id: prod-01-q5
+    type: single-choice
+    competency: local-profile-truth
+    prompt: The local profile has ONNX/Lucene enabled and LLM generation disabled. What should health report for orchestration and generation?
+    options:
+      - id: a
+        text: openai, because OpenAI is the global default
+      - id: b
+        text: course-test, because tests use a recording provider
+      - id: c
+        text: disabled, because no runtime LLM generation route is active
+      - id: d
+        text: unknown, even though the application knows generation is disabled
+    correctOptionIds: [c]
+    explanation: Health describes active runtime posture, not a default that was never called or a test-only fixture absent from runtime.
+    sourcePaths:
+      - docs/course/production/01-provider-routing/notebooklm/AI_FABRIC_PROVIDER_ARCHITECTURE_PURPOSE_ROUTING_NOTEBOOKLM_SCRIPT.md
+
+  - id: prod-01-q6
+    type: answer-reveal
+    competency: failure-visibility
+    prompt: Why must an invalid OpenAI key not produce a deterministic local answer labeled as success?
+    modelAnswer: It would hide that the selected live provider path is broken, mislabel the evidence class, and make operators or users believe OpenAI served a request that never reached it. With fallback disabled, the provider or startup failure must remain explicit and no write action may execute.
+    sourcePaths:
+      - docs/getting-started/07-real-provider-openai.md
+      - ai-infrastructure-module/ai-fabric-core/src/main/java/ai/fabric/provider/AIProviderManager.java
+
+  - id: prod-01-q7
+    type: implementation-defense
+    competency: test-design
+    prompt: Defend a test design that proves purpose routing without a paid key or text-matching application logic.
+    modelAnswer: Register explicitly named recording AIProvider implementations for orchestration and generation, configure distinct provider/model values, call AICoreService with LlmPurpose.ORCHESTRATION and LlmPurpose.GENERATION, and assert the provider and request model captured by each. Inject structured fixture responses only at the provider boundary, keep fallback false, and add a deliberate provider failure asserting one call and no alternate provider. Run the real Spring context and full packaged local smoke separately.
+    reviewCriteria:
+      - Uses provider-boundary recording fixtures rather than application keyword branches
+      - Configures and asserts distinct provider and model identities
+      - Calls the real AI Fabric purpose-aware service path
+      - Proves failure visibility and no fallback
+      - Does not claim that the keyless test proves OpenAI
+    sourcePaths:
+      - ai-infrastructure-module/ai-fabric-core/src/main/java/ai/fabric/core/AICoreService.java
+      - ai-infrastructure-module/ai-fabric-core/src/main/java/ai/fabric/provider/AIProviderManager.java
+

@@ -1316,29 +1316,64 @@ Sources:
 
 ## Production Track
 
-### PROD-01: OpenAI And Local ONNX Provider Profiles
+The Production track keeps application source data, derived AI evidence, durable workflow state,
+and optional provider services visibly separate.
 
-**Duration:** 75 minutes
+### State And Storage Ownership Reference
 
-**Keys required:** OpenAI portion only
+| State | Source of truth | AI Fabric role | Durability expectation |
+| --- | --- | --- | --- |
+| Business entities | application database | project selected fields into AI evidence | durable, application-owned |
+| Semantic evidence | derived from business data | store/search through the selected vector provider | rebuildable; provider-dependent |
+| Indexing work | AI Fabric indexing queue | schedule, retry, and expose indexing status | durable when JPA-backed |
+| Migration jobs | AI Fabric migration module | batch, pause/resume/cancel, and report backfill | durable control/progress state |
+| Chat turns and sessions | chat-session SPI | bounded backend history and ownership checks | durable for production conversations |
+| Pending actions and drafts | Core or chat-session adapter | preserve governed confirmation state | durable when confirmation must survive restart |
+| Raw behavior events | application/platform | read through `ExternalEventProvider` | application-defined; not a framework event warehouse |
+| Behavior insights | behavior insight SPI | persist derived analysis | durable when an insight store is configured |
+| Registered actions | optional action registry | discover approved dynamic action metadata | durable when database-backed |
+| Prompt templates | framework/application classpath | resolve base, curated, and overlay versions | versioned with the artifact |
+| Caches and debug snapshots | runtime cache | optimization and bounded diagnostics only | ephemeral unless explicitly externalized |
+
+### External-Key Reference
+
+| Capability | Required course path | Optional live path | Secret variables |
+| --- | --- | --- | --- |
+| ONNX embeddings | keyless | none | none |
+| Lucene vectors | keyless | none | none |
+| orchestration/generation | recording-provider tests | OpenAI | `OPENAI_API_KEY`; optional model/base URL overrides |
+| prompt regression | keyless template/fixture tests | OpenAI observation | `OPENAI_API_KEY` |
+| migration and Data Sync | keyless | external database only if selected | application database credentials |
+| Qdrant | local Docker, no key | Qdrant Cloud | Qdrant host, port/TLS, and API key |
+| release operations | keyless packaged gate | deployed hosted-provider gate | deployment secret store |
+
+The course never asks a learner to paste a provider key into the public website. Optional keys belong
+in private terminal/IDE environments, CI secrets, Docker runtime injection, or the deployment
+platform's encrypted secret store. A skipped keyed gate remains `SKIPPED`, not `PASS`.
+
+### PROD-01: Provider Routing And Purpose-Specific Models
+
+**Duration:** 80 minutes
+
+**Keys required:** none for completion; OpenAI is an optional live-provider exercise
 
 **NotebookLM pre-lesson theory:**
 
-- The separate roles of generation models and embedding models, and how AI Fabric uses Spring AI
-  underneath provider-neutral application contracts where appropriate.
-- The local path using ONNX embeddings and the live path using OpenAI generation/embeddings,
-  including which capabilities each profile enables.
-- How profile selection, model name, endpoint, key, dimensions, and runtime bean availability resolve
-  into the effective provider posture.
+- The separate roles of orchestration LLMs, generation LLMs, embedding providers, and vector
+  providers.
+- How `LlmPurpose` resolves global defaults or purpose-specific provider/model settings.
+- How AI Fabric uses Spring AI underneath provider-neutral application contracts where appropriate.
+- The local path using ONNX embeddings and Lucene, plus the optional live OpenAI LLM path.
 - Why provider diagnostics may expose safe model/mode facts but never credentials, and why a failed
   live provider must not be hidden by a local or deterministic fallback.
 
 Build:
 
-- Keep local ONNX embeddings available without cloud keys.
-- Add OpenAI generation and embedding configuration through Spring AI.
-- Externalize model, base URL, key, and embedding dimensions.
-- Expose provider diagnostics without exposing credentials.
+- Keep local ONNX embeddings and Lucene retrieval available without cloud keys.
+- Configure separate orchestration and generation provider/model settings.
+- Prove purpose routing with explicitly test-only recording providers.
+- Expose both LLM purpose routes, embedding provider, vector provider, and fallback posture without
+  exposing credentials.
 
 Failure exercise:
 
@@ -1357,9 +1392,11 @@ Field lesson - provider posture must be runtime truth:
 
 Done when:
 
-- Local and OpenAI profiles are explicitly distinguishable.
+- Deterministic tests prove different orchestration and generation provider/model identities.
+- Local and optional OpenAI profiles are explicitly distinguishable.
 - Tests prove secret redaction.
-- The selected provider appears in diagnostics.
+- A failed generation route does not call the orchestration provider as fallback.
+- Both selected purpose routes appear in diagnostics when generation is active.
 
 Sources:
 
@@ -1367,14 +1404,92 @@ Sources:
 - `docs/getting-started/08-local-onnx-embeddings.md`
 - `docs/Framework-Dev-Guides/runtime-integration/SPRING_AI_PROVIDER_INTEGRATION_GUIDE.md`
 
-### PROD-02: Indexing, Backfill, And Vector Lifecycle
+### PROD-02: Modes, Positions, And Orchestration Policy
 
-**Duration:** 90 minutes
+**Duration:** 75 minutes
+
+**Keys required:** none
 
 **NotebookLM pre-lesson theory:**
 
-- The complete vector lifecycle: create, update, delete, reindex, backfill, query, and readiness
-  proof, including how it relates to the application's source-of-truth data lifecycle.
+- The difference between application position and server-owned orchestration mode.
+- How modes gate retrieval, actions, planning, suggestions, and RAG budgets.
+- Why current Core does not automatically turn `position-routing` configuration into an active mode
+  decision, and why the application must use a small allowlisted resolver.
+- Why an arbitrary client mode name cannot be trusted to enable capabilities.
+
+Build:
+
+- Define retrieval-oriented `support_assistant` and governed `support_resolver` modes.
+- Pass application positions such as `knowledge` and `ticket` as context.
+- Map positions to allowlisted modes in application code only when no approved explicit mode exists.
+- Prove explicit mode, default mode, mapped position, unknown mode, and unknown position behavior.
+
+Failure exercise:
+
+- Submit an unknown or action-enabling client mode and prove strict routing does not grant the
+  requested capabilities.
+
+Done when:
+
+- Position remains descriptive application context.
+- Mode remains a server-owned behavior bundle.
+- Retrieval/action behavior and orchestration diagnostics prove the selected policy.
+
+Sources:
+
+- `ai-infrastructure-module/ai-fabric-core/src/main/java/ai/fabric/intent/orchestration/OrchestrationProperties.java`
+- `ai-infrastructure-module/ai-fabric-core/src/main/java/ai/fabric/intent/orchestration/pipeline/steps/OrchestrationPolicyResolutionStep.java`
+- `examples/real-apps/chat-capabilities-demo/src/main/java/com/ai/fabric/realapps/chat/commerce/CommerceModeResolver.java`
+
+### PROD-03: Prompt Management And Application Overlays
+
+**Duration:** 80 minutes
+
+**Keys required:** none; optional OpenAI observation
+
+**NotebookLM pre-lesson theory:**
+
+- Base prompt bundles, curated packs, ordered overlays, and classpath resource resolution.
+- Why an application contributes only its domain delta and keeps curated/default prompts as fallback.
+- Why prompts guide model interpretation but do not replace authorization, typed schemas, modes, or
+  confirmation.
+- How packaging and prompt regression tests prevent a source-only prompt from disappearing in the
+  executable JAR.
+
+Build:
+
+- Keep the curated support pack.
+- Add a narrow `v1-course-support` overlay under the supported family/version/name structure.
+- Prove overlay-first and base-fallback resolution.
+- Improve one support follow-up through prompt policy without Java keyword routing.
+- Add packaged-resource and behavior regression tests.
+
+Failure exercise:
+
+- Rename or remove one overlay resource and prove the resolution/behavior gate fails rather than
+  silently claiming the custom prompt is active.
+
+Done when:
+
+- The application overlay is narrow and versioned.
+- Omitted prompt families resolve from curated support and then base `v1`.
+- Prompt tests assert decisions and contracts, not exact narrative prose.
+
+Sources:
+
+- `ai-infrastructure-module/ai-fabric-core/src/main/java/ai/fabric/config/PromptBundleProperties.java`
+- `ai-infrastructure-module/ai-fabric-core/src/main/java/ai/fabric/prompt/PromptTemplateResolver.java`
+- `ai-infrastructure-module/ai-fabric-curated-support`
+
+### PROD-04: Backfill Existing Application Data
+
+**Duration:** 95 minutes
+
+**NotebookLM pre-lesson theory:**
+
+- The initial migration lifecycle from application-owned source records to derived semantic
+  evidence.
 - How resumable backfill, stable IDs, checkpoints, retries, and idempotency prevent duplicate or
   partially migrated evidence.
 - Why embedding-model or dimension changes are index-schema migrations rather than ordinary runtime
@@ -1384,11 +1499,11 @@ Sources:
 
 Build:
 
-- Index new records.
-- Update indexed content.
-- Delete records and associated vectors.
-- Backfill existing data.
-- Report vector readiness and counts.
+- Register the supported migration repository for existing support articles.
+- Start a bounded backfill with explicit fields, filters, and batches.
+- Observe queued, running, paused/resumed, completed, cancelled, and failed states as applicable.
+- Repeat a completed migration without duplicate vector identity.
+- Report source, indexed, skipped, and failed counts plus retrievable evidence.
 
 Failure exercise:
 
@@ -1407,7 +1522,6 @@ Field lesson - database readiness is not vector readiness:
 
 Done when:
 
-- Search reflects create, update, and delete.
 - Backfill is repeatable or safely resumable.
 - Readiness proves expected evidence is retrievable, not merely present in the database.
 
@@ -1418,9 +1532,45 @@ Sources:
 - `examples/real-apps/vector-readiness-playground/README.md`
 - `examples/real-apps/migration-enabled-product-catalog/README.md`
 
-### PROD-03: RAG Quality And Prompt Regression
+### PROD-05: Keep Application Data Synchronized
 
-**Duration:** 60-75 minutes
+**Duration:** 85 minutes
+
+**Keys required:** none
+
+**NotebookLM pre-lesson theory:**
+
+- Why migration establishes initial vector state while Data Sync handles later changes.
+- Stable entity IDs, trusted upsert/delete boundaries, vector-space allowlists, and batch limits.
+- How source database, embedding provider, indexing work, and vector state remain separate.
+- Why deleting a source row without deleting derived evidence creates a stale-answer risk.
+
+Build:
+
+- Enable Data Sync only behind a trusted application boundary.
+- Upsert a new support article, update it under the same stable identity, and delete its evidence.
+- Exercise batch limits, allowlists, access denial, invalid content, and partial failure.
+- Compare Data Sync traces with migration job evidence.
+
+Failure exercise:
+
+- Delete a source record without the sync delete, prove stale evidence remains, then fix the flow and
+  assert that retrieval no longer returns it.
+
+Done when:
+
+- Create, update, and delete converge source truth and semantic evidence.
+- Trusted context cannot be supplied by an arbitrary public request.
+- Partial failures are visible and retryable rather than reported as full success.
+
+Sources:
+
+- `ai-infrastructure-module/ai-fabric-data-sync`
+- `docs/Framework-Dev-Guides/retrieval-vectorization/RAG_INDEXING_LIFECYCLE_GUIDE.md`
+
+### PROD-06: RAG Quality And Prompt Regression
+
+**Duration:** 75 minutes
 
 **NotebookLM pre-lesson theory:**
 
@@ -1466,9 +1616,9 @@ Sources:
 - `examples/real-apps/smart-faq-assistant/README.md`
 - `docs/Framework-Dev-Guides/testing-verification/REALAPI_PROVIDER_MATRIX_TESTING_GUIDE.md`
 
-### PROD-04: Move From Local Lucene To A Managed Vector Provider
+### PROD-07: Move To A Managed Vector Provider
 
-**Duration:** 75-90 minutes
+**Duration:** 90 minutes
 
 **Docker required:** Yes for the recommended Qdrant lab
 
@@ -1519,9 +1669,9 @@ Sources:
 - `examples/real-apps/cloud-qdrant-openai-vector-search/README.md`
 - `docs/Framework-Dev-Guides/retrieval-vectorization/RAG_INDEXING_LIFECYCLE_GUIDE.md`
 
-### PROD-05: Operations And Release Readiness
+### PROD-08: Operations And Release Readiness
 
-**Duration:** 60 minutes
+**Duration:** 70 minutes
 
 **NotebookLM pre-lesson theory:**
 

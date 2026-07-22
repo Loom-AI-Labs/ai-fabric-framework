@@ -1,0 +1,24 @@
+schemaVersion: 1
+lessonId: prod-01
+status: script-ready
+frameworkVersion: 0.3.3
+frameworkTag: ai-fabric-framework-v0.3.3
+courseVersion: 0.3.3-course.1-beta
+reviewedAt: null
+reviewedBy: null
+# Review provenance only. Upload only outputs.transcript to NotebookLM.
+sources:
+  - path: docs/course/production/01-provider-routing/notebooklm/AI_FABRIC_PROVIDER_ARCHITECTURE_PURPOSE_ROUTING_NOTEBOOKLM_SCRIPT.md
+  - path: docs/getting-started/07-real-provider-openai.md
+  - path: docs/getting-started/08-local-onnx-embeddings.md
+  - path: docs/Framework-Dev-Guides/runtime-integration/SPRING_AI_PROVIDER_INTEGRATION_GUIDE.md
+  - path: ai-infrastructure-module/ai-fabric-core/src/main/java/ai/fabric/core/LlmPurpose.java
+  - path: ai-infrastructure-module/ai-fabric-core/src/main/java/ai/fabric/config/AIProviderConfig.java
+  - path: ai-infrastructure-module/ai-fabric-core/src/main/java/ai/fabric/core/AICoreService.java
+  - path: ai-infrastructure-module/ai-fabric-core/src/main/java/ai/fabric/provider/AIProviderManager.java
+  - path: ai-infrastructure-module/providers/ai-fabric-provider-spring-ai/src/main/java/ai/fabric/provider/springai/SpringAiModelResolver.java
+outputs:
+  videoUrl: null
+  transcript: docs/course/production/01-provider-routing/notebooklm/AI_FABRIC_PROVIDER_ARCHITECTURE_PURPOSE_ROUTING_NOTEBOOKLM_SCRIPT.md
+  actualDurationMinutes: null
+
