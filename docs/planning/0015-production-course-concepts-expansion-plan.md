@@ -161,9 +161,12 @@ combine scattered repository sources.
 | --- | --- | --- | --- |
 | `provider-architecture-purpose-routing` | Provider Architecture And Purpose-Specific Models | LLM versus embedding versus vector providers; `LlmPurpose`; global defaults; orchestration/generation overrides; endpoint profiles; visible failure; cost/latency trade-offs | PROD-01 |
 | `modes-positions-orchestration-policy` | Modes, Positions, And Orchestration Policy | profile, requested/default mode, allowlists, position context, app-owned mapping, retrieval/action gates, planning and RAG budgets | PROD-02 |
-| `prompt-bundles-curated-overlays` | Prompt Bundles, Curated Packs, And Application Overlays | base version, ordered overlays, classpath resource shape, curated packs, app delta, regression tests, prompt versus policy | PROD-03 and PROD-06 |
-| `ai-fabric-state-storage-map` | State And Storage In An AI Fabric Application | source DB, vectors, chat sessions, pending actions/drafts, migration jobs, indexing queue, raw events versus insights, action registry, cache/diagnostics, restart boundaries | PROD-04, PROD-05, PROD-08 |
+| `prompt-bundles-curated-overlays` | Prompt Bundles, Curated Packs, And Application Overlays | base version, ordered overlays, classpath resource shape, curated packs, app delta, regression tests, prompt versus policy | PROD-03 |
+| `ai-fabric-state-storage-map` | State And Storage In An AI Fabric Application | source DB, vectors, chat sessions, pending actions/drafts, migration jobs, indexing queue, raw events versus insights, action registry, cache/diagnostics, restart boundaries | PROD-04 |
 | `migration-backfill-live-sync` | From Existing Data To Continuous AI Evidence | initial backfill, stable IDs, batching, queue/worker, upsert/delete, source-of-truth ownership, reindexing, recovery and readiness | PROD-04 and PROD-05 |
+| `rag-quality-prompt-regression` | RAG Quality And Prompt Regression | golden evidence IDs, stale content, no-source behavior, tenant safety, prompt structure, optional Spring AI evaluation, visible failures | PROD-06 |
+| `managed-vector-provider-qdrant` | Managed Vector Providers And Qdrant Lifecycle | vector contract, dimensions, Qdrant scope, metadata filters, lifecycle parity, provider readiness, durability, and no hidden fallback | PROD-07 |
+| `operations-release-readiness` | Operations And Release Readiness | exact artifact identity, dependency readiness, state ownership, restart persistence, bounded retention, credential validation, and separate evidence | PROD-08 |
 
 Each video script must include:
 
@@ -578,6 +581,9 @@ Each lesson must provide:
 - [x] Create `PROMPT_BUNDLES_CURATED_OVERLAYS_NOTEBOOKLM_SCRIPT.md`.
 - [x] Create `AI_FABRIC_STATE_STORAGE_MAP_NOTEBOOKLM_SCRIPT.md`.
 - [x] Create `MIGRATION_BACKFILL_LIVE_SYNC_NOTEBOOKLM_SCRIPT.md`.
+- [x] Create `AI_FABRIC_RAG_QUALITY_PROMPT_REGRESSION_NOTEBOOKLM_SCRIPT.md`.
+- [x] Create `AI_FABRIC_MANAGED_VECTOR_PROVIDER_QDRANT_NOTEBOOKLM_SCRIPT.md`.
+- [x] Create `AI_FABRIC_OPERATIONS_RELEASE_READINESS_NOTEBOOKLM_SCRIPT.md`.
 - [ ] Review every script against current code and the framework philosophy.
 - [ ] Generate/review English videos; add Arabic versions when available.
 - [ ] Register final video IDs in the course video catalog.
@@ -612,7 +618,7 @@ Each lesson must provide:
 ### P5: Website And Release
 
 - [x] Sync canonical content into `aifabric`.
-- [ ] Render all eight Production lessons and five theory videos.
+- [ ] Render all eight Production lessons and eight theory videos.
 - [x] Add key-posture labels and configuration panels.
 - [x] Run desktop/mobile course E2E tests.
 - [x] Validate all external checkpoint and canonical-source links.
@@ -656,7 +662,7 @@ Skipped keyed checks must report `SKIPPED: credential not supplied`; they must n
 
 This plan is complete only when:
 
-- [ ] Five code-accurate theory scripts and reviewed videos are published.
+- [ ] Eight code-accurate theory scripts and reviewed videos are published.
 - [ ] PROD-01 through PROD-08 are learner-ready and marked published in `course.yml`.
 - [x] Every lesson has immutable starter/solution checkpoints.
 - [x] Every checkpoint passes clean compilation, tests, packaged startup, and its documented HTTP flow.
@@ -674,7 +680,7 @@ This plan is complete only when:
 | Workstream | Status |
 | --- | --- |
 | Curriculum contract | Complete |
-| Theory scripts/videos | In progress: five complete NotebookLM source scripts are ready; recordings and catalog IDs remain |
+| Theory scripts/videos | In progress: eight complete NotebookLM source scripts are ready; recordings and catalog IDs remain |
 | Provider/mode/prompt lessons | Complete: PROD-01 through PROD-03 checkpoints and canonical lessons verified |
 | Migration/live-sync lessons | Complete: PROD-04 and PROD-05 checkpoints and canonical lessons verified |
 | Quality/Qdrant/operations lessons | Complete in source: PROD-06 quality, PROD-07 Qdrant, and PROD-08 operations are implemented |

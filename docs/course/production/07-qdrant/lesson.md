@@ -17,7 +17,7 @@ requiresDocker: true
 optionalProviderExercises:
   - qdrant-cloud
 sourcePaths:
-  - docs/course/production/04-migration-backfill/notebooklm/AI_FABRIC_STATE_STORAGE_MAP_NOTEBOOKLM_SCRIPT.md
+  - docs/course/production/07-qdrant/notebooklm/AI_FABRIC_MANAGED_VECTOR_PROVIDER_QDRANT_NOTEBOOKLM_SCRIPT.md
   - ai-infrastructure-module/ai-fabric-core/src/main/java/ai/fabric/rag/VectorDatabaseService.java
   - ai-infrastructure-module/victor-databases/ai-fabric-vector-qdrant/src/main/java/ai/fabric/vector/qdrant/QdrantVectorAutoConfiguration.java
   - ai-infrastructure-module/victor-databases/ai-fabric-vector-qdrant/src/main/java/ai/fabric/vector/qdrant/QdrantVectorDatabaseService.java
@@ -37,9 +37,9 @@ video:
   purpose: pre-lesson-theory
   placement: before-lab
   targetDurationMinutes: 10
-  title: State And Storage In An AI Fabric Application
+  title: Managed Vector Providers And Qdrant Lifecycle
   publicUrl: null
-  transcript: ../04-migration-backfill/notebooklm/AI_FABRIC_STATE_STORAGE_MAP_NOTEBOOKLM_SCRIPT.md
+  transcript: notebooklm/AI_FABRIC_MANAGED_VECTOR_PROVIDER_QDRANT_NOTEBOOKLM_SCRIPT.md
   sourceManifest: notebooklm/source-manifest.yml
 ---
 

@@ -17,7 +17,7 @@ requiresDocker: false
 optionalProviderExercises:
   - openai
 sourcePaths:
-  - docs/course/production/03-prompt-overlays/notebooklm/AI_FABRIC_PROMPT_BUNDLES_CURATED_OVERLAYS_NOTEBOOKLM_SCRIPT.md
+  - docs/course/production/06-rag-quality/notebooklm/AI_FABRIC_RAG_QUALITY_PROMPT_REGRESSION_NOTEBOOKLM_SCRIPT.md
   - ai-infrastructure-module/ai-fabric-rag/src/main/java/ai/fabric/rag/evaluation/springai/SpringAiRagEvaluationService.java
   - ai-infrastructure-module/ai-fabric-core/src/main/java/ai/fabric/prompt/PromptTemplateResolver.java
 theoryVideoIds: []
@@ -36,9 +36,9 @@ video:
   purpose: pre-lesson-theory
   placement: before-lab
   targetDurationMinutes: 10
-  title: Prompt Bundles, Curated Packs, And Application Overlays
+  title: RAG Quality And Prompt Regression
   publicUrl: null
-  transcript: ../03-prompt-overlays/notebooklm/AI_FABRIC_PROMPT_BUNDLES_CURATED_OVERLAYS_NOTEBOOKLM_SCRIPT.md
+  transcript: notebooklm/AI_FABRIC_RAG_QUALITY_PROMPT_REGRESSION_NOTEBOOKLM_SCRIPT.md
   sourceManifest: notebooklm/source-manifest.yml
 ---
 

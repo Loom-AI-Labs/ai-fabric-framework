@@ -17,7 +17,7 @@ requiresDocker: true
 optionalProviderExercises:
   - openai
 sourcePaths:
-  - docs/course/production/04-migration-backfill/notebooklm/AI_FABRIC_STATE_STORAGE_MAP_NOTEBOOKLM_SCRIPT.md
+  - docs/course/production/08-production-ready/notebooklm/AI_FABRIC_OPERATIONS_RELEASE_READINESS_NOTEBOOKLM_SCRIPT.md
   - ai-infrastructure-module/ai-fabric-chat-session/src/main/java/ai/fabric/chat/spi/ChatSessionStorageProvider.java
   - ai-infrastructure-module/ai-fabric-migration/src/main/java/ai/fabric/migration/repository/MigrationJobRepository.java
   - ai-infrastructure-module/ai-fabric-indexing/src/main/java/ai/fabric/repository/IndexingQueueRepository.java
@@ -37,9 +37,9 @@ video:
   purpose: pre-lesson-theory
   placement: before-lab
   targetDurationMinutes: 10
-  title: State And Storage In An AI Fabric Application
+  title: Operations And Release Readiness
   publicUrl: null
-  transcript: ../04-migration-backfill/notebooklm/AI_FABRIC_STATE_STORAGE_MAP_NOTEBOOKLM_SCRIPT.md
+  transcript: notebooklm/AI_FABRIC_OPERATIONS_RELEASE_READINESS_NOTEBOOKLM_SCRIPT.md
   sourceManifest: notebooklm/source-manifest.yml
 ---
 
