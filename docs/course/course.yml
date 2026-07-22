@@ -157,7 +157,12 @@ tracks:
         title: Prompt Management And Application Overlays
         description: Extend curated prompt bundles with narrow application-owned overlays and regression proof.
         durationMinutes: 80
-        availability: planned
+        availability: preview
+        source: production/03-prompt-overlays/lesson.md
+        knowledgeCheck: production/03-prompt-overlays/knowledge-check.yml
+        assistantPrompt: production/03-prompt-overlays/assistant-prompt.md
+        assistantReviewPrompt: production/03-prompt-overlays/assistant-review-prompt.md
+        notebookSourceManifest: production/03-prompt-overlays/notebooklm/source-manifest.yml
       - id: prod-04
         slug: migration-backfill
         title: Backfill Existing Application Data

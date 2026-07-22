@@ -1,0 +1,83 @@
+schemaVersion: 1
+lessonId: prod-03
+passingScorePercent: 80
+questions:
+  - id: prod-03-q1
+    type: single-choice
+    competency: resolution-order
+    prompt: Which version wins when the same template exists in all three candidates?
+    options:
+      - id: a
+        text: v1-course-support
+      - id: b
+        text: v1-support
+      - id: c
+        text: v1
+    correctOptionIds: [a]
+    explanation: Candidate versions are resolved in order and the first matching complete template wins.
+    sourcePaths:
+      - ai-infrastructure-module/ai-fabric-core/src/main/java/ai/fabric/prompt/PromptTemplateResolver.java
+  - id: prod-03-q2
+    type: single-choice
+    competency: overlay-model
+    prompt: How does an AI Fabric prompt overlay modify a template?
+    options:
+      - id: a
+        text: It patches individual Markdown lines
+      - id: b
+        text: It supplies a complete template for one family, version, and name key
+      - id: c
+        text: It changes Java authorization annotations
+    correctOptionIds: [b]
+    explanation: Overlay resolution selects one complete classpath resource; it is not textual patching.
+    sourcePaths:
+      - ai-infrastructure-module/ai-fabric-core/src/main/java/ai/fabric/prompt/ClasspathPromptTemplateStore.java
+  - id: prod-03-q3
+    type: multiple-choice
+    competency: regression-proof
+    prompt: What should deterministic prompt tests assert?
+    options:
+      - id: a
+        text: Resolved version
+      - id: b
+        text: Required placeholders and critical policy invariants
+      - id: c
+        text: Exact prose from a hosted model
+      - id: d
+        text: Packaged classpath availability
+    correctOptionIds: [a, b, d]
+    explanation: Model prose varies; template resolution, resources, placeholders, and required rules are deterministic.
+    sourcePaths:
+      - docs/course/production/03-prompt-overlays/lesson.md
+  - id: prod-03-q4
+    type: single-choice
+    competency: policy-boundary
+    prompt: Can an instruction in answer.md replace actions-enabled false?
+    options:
+      - id: a
+        text: Yes, prompts are deterministic authorization
+      - id: b
+        text: No, prompt guidance and server policy have different responsibilities
+    correctOptionIds: [b]
+    explanation: Modes, trusted context, validation, authorization, and confirmation enforce behavior.
+    sourcePaths:
+      - docs/course/production/03-prompt-overlays/lesson.md
+  - id: prod-03-q5
+    type: answer-reveal
+    competency: diagnostics
+    prompt: Why does the prompt diagnostics endpoint expose versions but not template bodies?
+    modelAnswer: Version identities prove which bundle resolved and help operators detect packaging mistakes. Returning prompt bodies adds no readiness proof and may expose internal guidance, proprietary language, sensitive examples, or future secrets.
+    sourcePaths:
+      - docs/course/production/03-prompt-overlays/lesson.md
+  - id: prod-03-q6
+    type: implementation-defense
+    competency: application-delta
+    prompt: Defend overriding only three prompt keys while allowing action selection to fall back to v1.
+    modelAnswer: The application owns only behavior that is domain-specific: support follow-up classification, compound follow-up handling, and support answer projection. The framework action selector remains suitable and is inherited. This minimizes copied defaults, preserves future framework improvements, and makes the application delta explicit and testable.
+    reviewCriteria:
+      - Identifies application-owned behavior
+      - Explains ordered fallback
+      - Avoids copying every framework prompt
+      - Requires regression and packaging tests
+    sourcePaths:
+      - ai-infrastructure-module/ai-fabric-core/src/main/java/ai/fabric/config/PromptBundleProperties.java
