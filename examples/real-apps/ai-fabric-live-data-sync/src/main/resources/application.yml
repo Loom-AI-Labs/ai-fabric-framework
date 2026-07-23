@@ -1,0 +1,70 @@
+server:
+  port: ${PORT:8104}
+  forward-headers-strategy: framework
+
+spring:
+  application:
+    name: ai-fabric-live-data-sync
+  datasource:
+    url: jdbc:h2:file:./data/live-data-sync.db
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+  jpa:
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
+
+ai:
+  enabled: true
+  config:
+    default-file: ai-entity-config.yml
+  providers:
+    llm-provider: openai
+    embedding-provider: openai
+    openai:
+      enabled: ${OPENAI_ENABLED:false}
+      api-key: ${OPENAI_API_KEY:}
+      base-url: ${OPENAI_BASE_URL:https://api.openai.com/v1}
+      model: ${OPENAI_MODEL:gpt-4o-mini}
+      embedding-model: ${OPENAI_EMBEDDING_MODEL:text-embedding-3-small}
+      embedding-dimensions: ${OPENAI_EMBEDDING_DIMENSIONS:512}
+      timeout: 45
+  vector-db:
+    type: lucene
+    lucene:
+      index-path: ./data/live-sync-lucene-${OPENAI_EMBEDDING_DIMENSIONS:512}
+      vector-dimension: ${OPENAI_EMBEDDING_DIMENSIONS:512}
+      similarity-threshold: 0.0
+  indexing:
+    enabled: true
+    async-worker:
+      enabled: false
+  service:
+    features:
+      enable-generation: ${OPENAI_ENABLED:false}
+      enable-embeddings: true
+      enable-search: true
+      enable-rag: true
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+app:
+  demo:
+    require-real-ai: ${APP_DEMO_REQUIRE_REAL_AI:false}
+    workspace:
+      ttl: ${APP_DEMO_WORKSPACE_TTL:PT6H}
+      cleanup-cron: ${APP_DEMO_WORKSPACE_CLEANUP_CRON:0 23 * * * *}
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:}
+    allowed-origin-patterns: ${CORS_ALLOWED_ORIGIN_PATTERNS:}
+    allow-credentials: ${CORS_ALLOW_CREDENTIALS:false}
+
+logging:
+  level:
+    com.ai.fabric.realapps.livesync: INFO
+    ai.fabric: INFO

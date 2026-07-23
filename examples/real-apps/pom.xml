@@ -16,6 +16,7 @@
         <module>smoke-support</module>
         <module>behavior-churn-signals</module>
         <module>chat-capabilities-demo</module>
+        <module>ai-fabric-live-data-sync</module>
         <module>cloud-qdrant-openai-vector-search</module>
         <module>customer-runtime-demo</module>
         <module>db-action-registry-lab</module>

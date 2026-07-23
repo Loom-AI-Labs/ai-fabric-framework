@@ -13,6 +13,7 @@ The apps are intentionally scenario-focused:
 - `relationship-query-crm-insights`: natural language relationship query with an offline deterministic LLM.
 - `behavior-churn-signals`: behavior analytics and churn/sentiment insight flow with deterministic local or live OpenAI-backed LLM analysis.
 - `chat-capabilities-demo`: chat-session storage, conversation-aware orchestration, staged RAG readiness, and the AI Shopping Experience demo.
+- `ai-fabric-live-data-sync`: annotation-driven JPA create/update/delete synchronization with vector revision and live RAG proof.
 - `customer-runtime-demo`: customer-owned domain fixture with data-sync, tenant-scoped retrieval, and governed actions.
 - `db-action-registry-lab`: DB-backed connector action registration, approval, discovery, execution, and deregistration.
 - `document-ingestion-workbench`: trusted document upload, preview, indexing, reindex, and delete lifecycle.
@@ -40,6 +41,8 @@ Live UI-backed backend apps:
 | `https://ai-fabric.dev/demos/ai-fabric-behavior-signals` | `behavior-churn-signals` | `https://behavior-churn-signals.46.224.145.148.sslip.io` | Behavior insights, session-scoped events, governed retention actions, and provider-posture proof |
 | `https://ai-fabric.dev/demos/ai-fabric-behavior-signals/agentic-ui` | `behavior-churn-signals` | `https://behavior-churn-signals.46.224.145.148.sslip.io` | LLM-selected allowlisted home modules with backend-populated trusted props |
 | `https://ai-fabric.dev/demos/ai-fabric-tenant-guard` | `tenant-knowledge-portal` | `https://ai-fabric-tenant-guard.46.224.145.148.sslip.io` | Tenant-scoped retrieval, role-aware catalog visibility, governed actions, and deletion evidence |
+| `https://ai-fabric.dev/demos/ai-fabric-privacy-shield` | `privacy-first-customer-facing-support` | `https://ai-fabric-privacy-shield.46.224.145.148.sslip.io` | PII detection, redacted persistence, safe indexing, and sanitized retrieval |
+| `https://ai-fabric.dev/demos/ai-fabric-live-data-sync` | `ai-fabric-live-data-sync` | `https://ai-fabric-live-data-sync.46.224.145.148.sslip.io` | Annotation-driven create/update/delete indexing, independent database/vector revision proof, and evidence-grounded chat |
 
 UI pages that exist on `aifabric` but are not live backend clients yet:
 
@@ -57,6 +60,8 @@ Public demo backends:
 - Account Resolver: `https://ai-fabric-account-resolver.46.224.145.148.sslip.io`
 - Behavior Signals: `https://behavior-churn-signals.46.224.145.148.sslip.io`
 - Tenant Guard: `https://ai-fabric-tenant-guard.46.224.145.148.sslip.io`
+- Privacy Shield: `https://ai-fabric-privacy-shield.46.224.145.148.sslip.io`
+- Live Data Sync: `https://ai-fabric-live-data-sync.46.224.145.148.sslip.io`
 
 To run the Behavior Signals backend locally from the repository root:
 
