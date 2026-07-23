@@ -1,6 +1,6 @@
 schemaVersion: 1
 lessonId: prod-04
-status: script-ready
+status: published
 frameworkVersion: 0.3.3
 frameworkTag: ai-fabric-framework-v0.3.3
 courseVersion: 0.3.3-course.1-beta
@@ -13,6 +13,6 @@ sources:
   - path: ai-infrastructure-module/ai-fabric-indexing/src/main/java/ai/fabric/indexing/queue/IndexingQueueService.java
   - path: ai-infrastructure-module/ai-fabric-core/src/main/java/ai/fabric/annotation/AICapable.java
 outputs:
-  videoUrl: null
+  videoUrl: https://www.youtube.com/watch?v=epjF29WfEUM
   transcript: docs/course/production/04-migration-backfill/notebooklm/AI_FABRIC_STATE_STORAGE_MAP_NOTEBOOKLM_SCRIPT.md
-  actualDurationMinutes: null
+  actualDurationMinutes: 8.03

@@ -1,6 +1,6 @@
 schemaVersion: 1
 lessonId: prod-05
-status: script-ready
+status: published
 frameworkVersion: 0.3.3
 frameworkTag: ai-fabric-framework-v0.3.3
 courseVersion: 0.3.3-course.1-beta
@@ -13,6 +13,6 @@ sources:
   - path: ai-infrastructure-module/ai-fabric-data-sync/src/main/java/ai/fabric/datasync/dto/DataSyncVerifiedAuthContext.java
   - path: ai-infrastructure-module/ai-fabric-data-sync/src/main/java/ai/fabric/datasync/normalize/DataSyncEntityNormalizer.java
 outputs:
-  videoUrl: null
+  videoUrl: https://www.youtube.com/watch?v=wZ5e0MPSXRI
   transcript: docs/course/production/05-live-data-sync/notebooklm/AI_FABRIC_MIGRATION_BACKFILL_LIVE_SYNC_NOTEBOOKLM_SCRIPT.md
-  actualDurationMinutes: null
+  actualDurationMinutes: 7.65

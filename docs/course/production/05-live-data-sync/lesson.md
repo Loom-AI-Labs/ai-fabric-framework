@@ -21,7 +21,8 @@ sourcePaths:
   - ai-infrastructure-module/ai-fabric-data-sync/src/main/java/ai/fabric/datasync/AIDataSyncProperties.java
   - ai-infrastructure-module/ai-fabric-data-sync/src/main/java/ai/fabric/datasync/dto/DataSyncVerifiedAuthContext.java
   - ai-infrastructure-module/ai-fabric-data-sync/src/main/java/ai/fabric/datasync/normalize/DataSyncEntityNormalizer.java
-theoryVideoIds: []
+theoryVideoIds:
+  - live-data-sync
 assistant:
   mode: implement
   implementationPrompt: assistant-prompt.md
@@ -32,13 +33,13 @@ knowledgeCheck:
   required: true
   passingScorePercent: 80
 video:
-  status: script-ready
+  status: published
   generator: NotebookLM
   purpose: pre-lesson-theory
   placement: before-lab
   targetDurationMinutes: 11
   title: From Existing Data To Continuous AI Evidence
-  publicUrl: null
+  publicUrl: https://www.youtube.com/watch?v=wZ5e0MPSXRI
   transcript: notebooklm/AI_FABRIC_MIGRATION_BACKFILL_LIVE_SYNC_NOTEBOOKLM_SCRIPT.md
   sourceManifest: notebooklm/source-manifest.yml
 ---

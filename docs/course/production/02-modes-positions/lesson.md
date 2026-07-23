@@ -22,7 +22,8 @@ sourcePaths:
   - ai-infrastructure-module/ai-fabric-core/src/main/java/ai/fabric/intent/orchestration/OrchestrationContext.java
   - ai-infrastructure-module/ai-fabric-core/src/main/java/ai/fabric/intent/orchestration/pipeline/steps/OrchestrationPolicyResolutionStep.java
   - examples/real-apps/chat-capabilities-demo/src/main/java/com/ai/fabric/realapps/chat/web/CommerceModeResolver.java
-theoryVideoIds: []
+theoryVideoIds:
+  - modes-positions-orchestration-policy
 assistant:
   mode: implement
   implementationPrompt: assistant-prompt.md
@@ -33,13 +34,13 @@ knowledgeCheck:
   required: true
   passingScorePercent: 80
 video:
-  status: script-ready
+  status: published
   generator: NotebookLM
   purpose: pre-lesson-theory
   placement: before-lab
   targetDurationMinutes: 10
   title: Modes, Positions, And Orchestration Policy
-  publicUrl: null
+  publicUrl: https://www.youtube.com/watch?v=G0WvJ1PQj0s
   transcript: notebooklm/AI_FABRIC_MODES_POSITIONS_ORCHESTRATION_POLICY_NOTEBOOKLM_SCRIPT.md
   sourceManifest: notebooklm/source-manifest.yml
 ---

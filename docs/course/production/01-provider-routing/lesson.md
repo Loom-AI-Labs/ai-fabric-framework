@@ -26,7 +26,8 @@ sourcePaths:
   - ai-infrastructure-module/ai-fabric-core/src/main/java/ai/fabric/core/AICoreService.java
   - ai-infrastructure-module/ai-fabric-core/src/main/java/ai/fabric/provider/AIProviderManager.java
   - ai-infrastructure-module/providers/ai-fabric-provider-spring-ai/src/main/java/ai/fabric/provider/springai/SpringAiModelResolver.java
-theoryVideoIds: []
+theoryVideoIds:
+  - provider-architecture-purpose-routing
 assistant:
   mode: implement
   implementationPrompt: assistant-prompt.md
@@ -37,13 +38,13 @@ knowledgeCheck:
   required: true
   passingScorePercent: 80
 video:
-  status: script-ready
+  status: published
   generator: NotebookLM
   purpose: pre-lesson-theory
   placement: before-lab
   targetDurationMinutes: 10
   title: Provider Architecture And Purpose-Specific Models
-  publicUrl: null
+  publicUrl: https://www.youtube.com/watch?v=2lRTNp63NNI
   transcript: notebooklm/AI_FABRIC_PROVIDER_ARCHITECTURE_PURPOSE_ROUTING_NOTEBOOKLM_SCRIPT.md
   sourceManifest: notebooklm/source-manifest.yml
 ---

@@ -21,7 +21,8 @@ sourcePaths:
   - ai-infrastructure-module/ai-fabric-migration/src/main/java/ai/fabric/migration/domain/MigrationJob.java
   - ai-infrastructure-module/ai-fabric-indexing/src/main/java/ai/fabric/indexing/queue/IndexingQueueService.java
   - ai-infrastructure-module/ai-fabric-core/src/main/java/ai/fabric/annotation/AICapable.java
-theoryVideoIds: []
+theoryVideoIds:
+  - state-storage-map
 assistant:
   mode: implement
   implementationPrompt: assistant-prompt.md
@@ -32,13 +33,13 @@ knowledgeCheck:
   required: true
   passingScorePercent: 80
 video:
-  status: script-ready
+  status: published
   generator: NotebookLM
   purpose: pre-lesson-theory
   placement: before-lab
   targetDurationMinutes: 11
   title: State And Storage In An AI Fabric Application
-  publicUrl: null
+  publicUrl: https://www.youtube.com/watch?v=epjF29WfEUM
   transcript: notebooklm/AI_FABRIC_STATE_STORAGE_MAP_NOTEBOOKLM_SCRIPT.md
   sourceManifest: notebooklm/source-manifest.yml
 ---
