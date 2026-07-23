@@ -21,7 +21,8 @@ sourcePaths:
   - ai-infrastructure-module/ai-fabric-core/src/main/java/ai/fabric/rag/VectorDatabaseService.java
   - ai-infrastructure-module/victor-databases/ai-fabric-vector-qdrant/src/main/java/ai/fabric/vector/qdrant/QdrantVectorAutoConfiguration.java
   - ai-infrastructure-module/victor-databases/ai-fabric-vector-qdrant/src/main/java/ai/fabric/vector/qdrant/QdrantVectorDatabaseService.java
-theoryVideoIds: []
+theoryVideoIds:
+  - managed-vector-provider-qdrant
 assistant:
   mode: implement
   implementationPrompt: assistant-prompt.md
@@ -32,13 +33,13 @@ knowledgeCheck:
   required: true
   passingScorePercent: 80
 video:
-  status: script-ready
+  status: published
   generator: NotebookLM
   purpose: pre-lesson-theory
   placement: before-lab
   targetDurationMinutes: 10
   title: Replacing A Vector Provider Without Rewriting The App
-  publicUrl: null
+  publicUrl: https://www.youtube.com/watch?v=TCgEbDsUzic
   transcript: notebooklm/AI_FABRIC_MANAGED_VECTOR_PROVIDER_QDRANT_NOTEBOOKLM_SCRIPT.md
   sourceManifest: notebooklm/source-manifest.yml
 ---

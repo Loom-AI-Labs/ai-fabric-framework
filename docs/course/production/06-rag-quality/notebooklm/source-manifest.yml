@@ -1,6 +1,6 @@
 schemaVersion: 1
 lessonId: prod-06
-status: script-ready
+status: published
 frameworkVersion: 0.3.3
 frameworkTag: ai-fabric-framework-v0.3.3
 courseVersion: 0.3.3-course.1-beta
@@ -12,6 +12,6 @@ sources:
   - path: ai-infrastructure-module/ai-fabric-rag/src/main/java/ai/fabric/rag/evaluation/springai/SpringAiRagEvaluationService.java
   - path: ai-infrastructure-module/ai-fabric-core/src/main/java/ai/fabric/prompt/PromptTemplateResolver.java
 outputs:
-  videoUrl: null
+  videoUrl: https://www.youtube.com/watch?v=bSyMDQORJOY
   transcript: docs/course/production/06-rag-quality/notebooklm/AI_FABRIC_RAG_QUALITY_PROMPT_REGRESSION_NOTEBOOKLM_SCRIPT.md
-  actualDurationMinutes: null
+  actualDurationMinutes: 9.77

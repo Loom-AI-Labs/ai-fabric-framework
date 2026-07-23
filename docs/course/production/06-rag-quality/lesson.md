@@ -20,7 +20,8 @@ sourcePaths:
   - docs/course/production/06-rag-quality/notebooklm/AI_FABRIC_RAG_QUALITY_PROMPT_REGRESSION_NOTEBOOKLM_SCRIPT.md
   - ai-infrastructure-module/ai-fabric-rag/src/main/java/ai/fabric/rag/evaluation/springai/SpringAiRagEvaluationService.java
   - ai-infrastructure-module/ai-fabric-core/src/main/java/ai/fabric/prompt/PromptTemplateResolver.java
-theoryVideoIds: []
+theoryVideoIds:
+  - rag-quality-prompt-regression
 assistant:
   mode: implement
   implementationPrompt: assistant-prompt.md
@@ -31,13 +32,13 @@ knowledgeCheck:
   required: true
   passingScorePercent: 80
 video:
-  status: script-ready
+  status: published
   generator: NotebookLM
   purpose: pre-lesson-theory
   placement: before-lab
   targetDurationMinutes: 10
   title: Measuring RAG Quality Before Generation
-  publicUrl: null
+  publicUrl: https://www.youtube.com/watch?v=bSyMDQORJOY
   transcript: notebooklm/AI_FABRIC_RAG_QUALITY_PROMPT_REGRESSION_NOTEBOOKLM_SCRIPT.md
   sourceManifest: notebooklm/source-manifest.yml
 ---

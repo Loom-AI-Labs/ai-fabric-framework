@@ -1,6 +1,6 @@
 schemaVersion: 1
 lessonId: prod-08
-status: script-ready
+status: published
 frameworkVersion: 0.3.3
 frameworkTag: ai-fabric-framework-v0.3.3
 courseVersion: 0.3.3-course.1-beta
@@ -13,6 +13,6 @@ sources:
   - path: ai-infrastructure-module/ai-fabric-migration/src/main/java/ai/fabric/migration/repository/MigrationJobRepository.java
   - path: ai-infrastructure-module/ai-fabric-indexing/src/main/java/ai/fabric/repository/IndexingQueueRepository.java
 outputs:
-  videoUrl: null
+  videoUrl: https://www.youtube.com/watch?v=MrvMGlUN0fs
   transcript: docs/course/production/08-production-ready/notebooklm/AI_FABRIC_OPERATIONS_RELEASE_READINESS_NOTEBOOKLM_SCRIPT.md
-  actualDurationMinutes: null
+  actualDurationMinutes: 7.82

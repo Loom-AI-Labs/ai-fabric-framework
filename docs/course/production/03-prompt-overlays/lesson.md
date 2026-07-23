@@ -22,7 +22,8 @@ sourcePaths:
   - ai-infrastructure-module/ai-fabric-core/src/main/java/ai/fabric/prompt/PromptTemplateResolver.java
   - ai-infrastructure-module/ai-fabric-core/src/main/java/ai/fabric/prompt/ClasspathPromptTemplateStore.java
   - ai-infrastructure-module/curated/ai-fabric-curated-support/src/main/resources/prompts/rag/generation/v1-support/answer.md
-theoryVideoIds: []
+theoryVideoIds:
+  - prompt-bundles-curated-overlays
 assistant:
   mode: implement
   implementationPrompt: assistant-prompt.md
@@ -33,13 +34,13 @@ knowledgeCheck:
   required: true
   passingScorePercent: 80
 video:
-  status: script-ready
+  status: published
   generator: NotebookLM
   purpose: pre-lesson-theory
   placement: before-lab
   targetDurationMinutes: 10
   title: Prompt Bundles, Curated Packs, And Application Overlays
-  publicUrl: null
+  publicUrl: https://www.youtube.com/watch?v=bvKibVVbPcA
   transcript: notebooklm/AI_FABRIC_PROMPT_BUNDLES_CURATED_OVERLAYS_NOTEBOOKLM_SCRIPT.md
   sourceManifest: notebooklm/source-manifest.yml
 ---

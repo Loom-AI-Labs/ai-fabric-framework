@@ -680,12 +680,12 @@ This plan is complete only when:
 | Workstream | Status |
 | --- | --- |
 | Curriculum contract | Complete |
-| Theory scripts/videos | In progress: eight complete NotebookLM source scripts are ready; PROD-01, PROD-02, PROD-04, and PROD-05 recordings are published and cataloged; four recordings remain |
+| Theory scripts/videos | Complete: all eight NotebookLM source scripts and their published recordings are cataloged for PROD-01 through PROD-08 |
 | Provider/mode/prompt lessons | Complete: PROD-01 through PROD-03 checkpoints and canonical lessons verified |
 | Migration/live-sync lessons | Complete: PROD-04 and PROD-05 checkpoints and canonical lessons verified |
 | Quality/Qdrant/operations lessons | Complete in source: PROD-06 quality, PROD-07 Qdrant, and PROD-08 operations are implemented |
 | Learner checkpoints | Complete: PROD-01 through PROD-08 are published as immutable tags |
 | Keyless verification | Complete: PROD-01 through PROD-08 required gates pass; PROD-08 exact-commit container evidence records 71 tests, dependency readiness, restart persistence, bounded cleanup, and missing-key fail-fast behavior |
 | Keyed maintainer verification | Not started |
-| Website course support | Complete for lesson previews: PROD-01 through PROD-08 render with key posture, provider configuration, valid source/checkpoint links, and desktop/mobile coverage; four Production recordings are published and four remain pending |
+| Website course support | Complete for lesson previews: PROD-01 through PROD-08 render with key posture, provider configuration, valid source/checkpoint links, all eight Production recordings, and desktop/mobile coverage |
 | Course release | Not started |

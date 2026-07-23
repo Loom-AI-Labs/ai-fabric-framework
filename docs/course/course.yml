@@ -167,6 +167,8 @@ tracks:
         assistantPrompt: production/03-prompt-overlays/assistant-prompt.md
         assistantReviewPrompt: production/03-prompt-overlays/assistant-review-prompt.md
         notebookSourceManifest: production/03-prompt-overlays/notebooklm/source-manifest.yml
+        theoryVideoIds:
+          - prompt-bundles-curated-overlays
       - id: prod-04
         slug: migration-backfill
         title: Backfill Existing Application Data
@@ -204,6 +206,8 @@ tracks:
         assistantPrompt: production/06-rag-quality/assistant-prompt.md
         assistantReviewPrompt: production/06-rag-quality/assistant-review-prompt.md
         notebookSourceManifest: production/06-rag-quality/notebooklm/source-manifest.yml
+        theoryVideoIds:
+          - rag-quality-prompt-regression
       - id: prod-07
         slug: qdrant
         title: Move To A Managed Vector Provider
@@ -215,6 +219,8 @@ tracks:
         assistantPrompt: production/07-qdrant/assistant-prompt.md
         assistantReviewPrompt: production/07-qdrant/assistant-review-prompt.md
         notebookSourceManifest: production/07-qdrant/notebooklm/source-manifest.yml
+        theoryVideoIds:
+          - managed-vector-provider-qdrant
       - id: prod-08
         slug: production-ready
         title: Operations And Release Readiness
@@ -226,6 +232,8 @@ tracks:
         assistantPrompt: production/08-production-ready/assistant-prompt.md
         assistantReviewPrompt: production/08-production-ready/assistant-review-prompt.md
         notebookSourceManifest: production/08-production-ready/notebooklm/source-manifest.yml
+        theoryVideoIds:
+          - operations-release-readiness
   - id: case-studies
     title: Real-App Case Studies
     description: Inspect five deployed applications and the failures that improved their architecture.

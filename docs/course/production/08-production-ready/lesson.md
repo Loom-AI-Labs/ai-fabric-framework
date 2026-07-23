@@ -21,7 +21,8 @@ sourcePaths:
   - ai-infrastructure-module/ai-fabric-chat-session/src/main/java/ai/fabric/chat/spi/ChatSessionStorageProvider.java
   - ai-infrastructure-module/ai-fabric-migration/src/main/java/ai/fabric/migration/repository/MigrationJobRepository.java
   - ai-infrastructure-module/ai-fabric-indexing/src/main/java/ai/fabric/repository/IndexingQueueRepository.java
-theoryVideoIds: []
+theoryVideoIds:
+  - operations-release-readiness
 assistant:
   mode: implement
   implementationPrompt: assistant-prompt.md
@@ -32,13 +33,13 @@ knowledgeCheck:
   required: true
   passingScorePercent: 80
 video:
-  status: script-ready
+  status: published
   generator: NotebookLM
   purpose: pre-lesson-theory
   placement: before-lab
   targetDurationMinutes: 10
   title: Proving The Exact Release Artifact
-  publicUrl: null
+  publicUrl: https://www.youtube.com/watch?v=MrvMGlUN0fs
   transcript: notebooklm/AI_FABRIC_OPERATIONS_RELEASE_READINESS_NOTEBOOKLM_SCRIPT.md
   sourceManifest: notebooklm/source-manifest.yml
 ---
