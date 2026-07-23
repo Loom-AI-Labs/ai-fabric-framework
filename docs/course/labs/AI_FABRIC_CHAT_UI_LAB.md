@@ -7,7 +7,7 @@ source of retrieval, intent resolution, action policy, conversation authority, o
 Repository:
 [Loom-AI-Labs/ai-fabric-chat-ui](https://github.com/Loom-AI-Labs/ai-fabric-chat-ui)
 
-Pinned UI version: `v0.2.0`
+Pinned UI version: `v0.3.0`
 
 ## What The UI Provides
 
@@ -20,6 +20,7 @@ Pinned UI version: `v0.2.0`
 - Safe Markdown, Arabic/RTL labels, dark mode, structured attachments, and server-allowlisted
   modes and positions.
 - Bounded host component slots and a metadata-only engineering inspector.
+- Host-owned domain tools that open responsive side panels or emit explicit command events.
 - Visible HTTP, provider, renderer, reset, and response-contract failures.
 
 AI Fabric and the application backend still provide all intelligence and policy.
@@ -66,13 +67,13 @@ DELETE /api/assistant/conversations/{conversationId}
 After the npm package is published:
 
 ```bash
-npm install @loom-ai-labs/ai-fabric-chat-ui@0.2.0
+npm install @loom-ai-labs/ai-fabric-chat-ui@0.3.0
 ```
 
 Until then, build the immutable Git tag:
 
 ```bash
-git clone --branch v0.2.0 --depth 1 https://github.com/Loom-AI-Labs/ai-fabric-chat-ui.git
+git clone --branch v0.3.0 --depth 1 https://github.com/Loom-AI-Labs/ai-fabric-chat-ui.git
 cd ai-fabric-chat-ui
 npm ci
 npm run verify
@@ -110,6 +111,10 @@ Create `src/main/resources/static/assistant.html`:
       }
       main { margin: 0 auto; max-width: 960px; padding: 48px 24px 120px; }
       .chat-context { color: #056b4c; font-size: 12px; font-weight: 700; }
+      .ticket-tool { padding: 18px; }
+      .ticket-tool dl { display: grid; gap: 10px; }
+      .ticket-tool div { display: flex; justify-content: space-between; }
+      .ticket-tool button { margin-top: 14px; width: 100%; }
     </style>
   </head>
   <body>
@@ -129,6 +134,15 @@ Create `src/main/resources/static/assistant.html`:
       debug>
       <span slot="header-context" class="chat-context">Support workspace</span>
       <span slot="dock-actions" class="chat-context">Online</span>
+      <section slot="tool-current-ticket" class="ticket-tool" aria-label="Current support ticket">
+        <h2>Ticket T-1042</h2>
+        <dl>
+          <div><dt>Status</dt><dd>Open</dd></div>
+          <div><dt>Priority</dt><dd>High</dd></div>
+          <div><dt>Queue</dt><dd>Account access</dd></div>
+        </dl>
+        <button id="ask-current-ticket" type="button">Ask AI about this ticket</button>
+      </section>
     </ai-fabric-chat>
     <script type="module">
       const chat = document.querySelector("#support-chat");
@@ -140,6 +154,34 @@ Create `src/main/resources/static/assistant.html`:
         { value: "support", label: "Support" },
         { value: "policy", label: "Policy" },
       ];
+      chat.tools = [
+        {
+          id: "current-ticket",
+          label: "Current ticket",
+          description: "Application-owned ticket summary",
+          icon: "file-text",
+          position: "support",
+        },
+        {
+          id: "policy-runbook",
+          label: "Policy runbook",
+          icon: "shield",
+          kind: "command",
+          placement: "overflow",
+          position: "policy",
+        },
+      ];
+
+      document.querySelector("#ask-current-ticket").addEventListener("click", () => {
+        chat.closeTool();
+        void chat.sendMessage("Explain why ticket T-1042 is still open.");
+      });
+
+      chat.addEventListener("ai-fabric-tool-selected", (event) => {
+        if (event.detail.tool.id === "policy-runbook") {
+          void chat.sendMessage("Show the approved escalation policy for ticket T-1042.");
+        }
+      });
     </script>
   </body>
 </html>
@@ -149,7 +191,28 @@ Open `http://localhost:8080/assistant.html`. The default transport sends same-or
 Click the bottom chat box to open the workspace. MAX expands the same conversation but does not
 change the `ITERATIVE` request mode or `support` position.
 
-## Step 3: Verify Evidence-Grounded Answers
+## Step 3: Add An Application-Owned Tool
+
+Open `Current ticket`. In MAX or a wide docked workspace, it appears beside the conversation. On a
+small screen, it becomes a bottom sheet while the composer remains available.
+
+The ticket component is ordinary application UI:
+
+- AI Fabric Chat UI owns the toolbar, panel placement, focus handling, and open/close lifecycle.
+- The Spring Boot application owns ticket data, access control, and any API used to populate it.
+- Opening the panel does not send ticket data to the model.
+- Choosing `Ask AI about this ticket` explicitly sends a new natural-language turn.
+- Choosing `Policy runbook` emits a command event; the host listener decides to send a turn.
+
+Inspect the request after opening and closing the panel without choosing either command. There
+must be no request. Then choose `Ask AI about this ticket` and verify that only the explicit
+message, conversation ID, and allowlisted route context are sent.
+
+Replace the seeded `T-1042` values with data from an authenticated application endpoint when you
+adopt this pattern outside the course. Never treat a tool descriptor or visible component as
+trusted identity, tenant, authorization, or model context.
+
+## Step 4: Verify Evidence-Grounded Answers
 
 Ask the CORE-03 account-lockout question. The UI must show the backend answer and the expected
 stable evidence ID. Then clear the index and repeat.
@@ -165,7 +228,7 @@ provider failure -> visible failure, no canned success
 An evidence badge by itself is not proof. Inspect the POST response and verify the IDs originated
 from the backend result.
 
-## Step 4: Verify Governed Actions
+## Step 5: Verify Governed Actions
 
 Request a support ticket without one required user-owned field. Complete the clarification form,
 then confirm or reject the pending action.
@@ -198,7 +261,7 @@ Add a domain renderer so the result card contains only useful public fields:
 The backend must already provide a safe `sanitizedPayload`. A renderer is presentation, not a
 redaction or authorization boundary.
 
-## Step 5: Verify Backend-Owned Memory
+## Step 6: Verify Backend-Owned Memory
 
 Run one conversation:
 
@@ -217,7 +280,7 @@ new conversation and verify that a short follow-up does not inherit the old targ
 DELETE fails, the existing conversation must stay visible with an error; a failed reset must not
 look successful.
 
-## Step 6: Verify Security And Privacy
+## Step 7: Verify Security And Privacy
 
 Run the CORE-06 second-user and cross-tenant tests against the public page:
 
@@ -231,7 +294,7 @@ Run the CORE-06 second-user and cross-tenant tests against the public page:
 The widget is not a security boundary. CSS hiding, disabled controls, and unknown conversation IDs
 provide no authorization.
 
-## Step 7: Add Browser Release Proof
+## Step 8: Add Browser Release Proof
 
 Cover these cases with Playwright or the application's browser test stack:
 
@@ -247,6 +310,7 @@ Cover these cases with Playwright or the application's browser test stack:
 | Invalid response | UI shows a contract error |
 | Responsive UI | composer and commands remain usable on desktop and mobile |
 | Dock and MAX | opening, closing, maximizing, and restoring preserve mode, position, and conversation |
+| Domain tools | host component opens responsively; panel selection sends no hidden request |
 | Safe debug | trace shows type/timing/counts but no prompt, evidence, or action payload bodies |
 | Accessibility | no serious or critical automated findings in the tested flow |
 
@@ -281,13 +345,14 @@ conversation history and send it back to AI Fabric.
 
 Give the coding assistant these sources before it edits the application:
 
-1. [`llms.txt`](https://github.com/Loom-AI-Labs/ai-fabric-chat-ui/blob/v0.2.0/llms.txt)
-2. [Course integration guide](https://github.com/Loom-AI-Labs/ai-fabric-chat-ui/blob/v0.2.0/docs/COURSE_INTEGRATION.md)
-3. [Backend contract](https://github.com/Loom-AI-Labs/ai-fabric-chat-ui/blob/v0.2.0/docs/BACKEND_CONTRACT.md)
-4. [Security model](https://github.com/Loom-AI-Labs/ai-fabric-chat-ui/blob/v0.2.0/docs/SECURITY.md)
-5. [Presentation guide](https://github.com/Loom-AI-Labs/ai-fabric-chat-ui/blob/v0.2.0/docs/PRESENTATION.md)
-6. [Coding-assistant guide](https://github.com/Loom-AI-Labs/ai-fabric-chat-ui/blob/v0.2.0/docs/CODING_ASSISTANT_GUIDE.md)
-7. The application's real controller, authentication, and public response DTOs.
+1. [`llms.txt`](https://github.com/Loom-AI-Labs/ai-fabric-chat-ui/blob/v0.3.0/llms.txt)
+2. [Course integration guide](https://github.com/Loom-AI-Labs/ai-fabric-chat-ui/blob/v0.3.0/docs/COURSE_INTEGRATION.md)
+3. [Backend contract](https://github.com/Loom-AI-Labs/ai-fabric-chat-ui/blob/v0.3.0/docs/BACKEND_CONTRACT.md)
+4. [Security model](https://github.com/Loom-AI-Labs/ai-fabric-chat-ui/blob/v0.3.0/docs/SECURITY.md)
+5. [Domain tools guide](https://github.com/Loom-AI-Labs/ai-fabric-chat-ui/blob/v0.3.0/docs/TOOLS.md)
+6. [Presentation guide](https://github.com/Loom-AI-Labs/ai-fabric-chat-ui/blob/v0.3.0/docs/PRESENTATION.md)
+7. [Coding-assistant guide](https://github.com/Loom-AI-Labs/ai-fabric-chat-ui/blob/v0.3.0/docs/CODING_ASSISTANT_GUIDE.md)
+8. The application's real controller, authentication, and public response DTOs.
 
 Require it to identify the endpoint envelope, backend identity source, authorized conversation
 routes, safe action fields, and executed browser tests. Do not accept a screenshot as the only
@@ -302,8 +367,9 @@ proof.
 - The browser never sends copied history or trusted identity values.
 - Action results avoid raw nested JSON.
 - Provider, transport, renderer, contract, and reset failures remain visible.
+- Domain panels render application-owned components and send no implicit orchestration request.
 - MAX remains a presentation state and the debug inspector contains metadata only.
 - Desktop and mobile browser tests pass against the packaged application.
 
 Full package documentation lives in the
-[AI Fabric Chat UI repository](https://github.com/Loom-AI-Labs/ai-fabric-chat-ui/tree/v0.2.0/docs).
+[AI Fabric Chat UI repository](https://github.com/Loom-AI-Labs/ai-fabric-chat-ui/tree/v0.3.0/docs).
