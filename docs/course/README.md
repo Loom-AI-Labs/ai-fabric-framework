@@ -6,6 +6,7 @@ learner application, website publishing contract, single-source NotebookLM scrip
 Start with:
 
 - [Machine-readable course catalog](course.yml)
+- [AI Fabric architecture mind map blueprint](../architecture/AI_FABRIC_ARCHITECTURE_MIND_MAP_BLUEPRINT.md)
 - [Build AI-Enabled Applications with Java and Spring Boot](AI_FABRIC_EXTERNAL_USER_COURSE.md)
 - [QS-01 published lesson package](quickstart/01-first-useful-result/lesson.md)
 - [Single-source course introduction video script](notebooklm/AI_FABRIC_COURSE_INTRO_NOTEBOOKLM_SCRIPT.md)

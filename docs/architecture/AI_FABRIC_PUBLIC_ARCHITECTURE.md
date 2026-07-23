@@ -2,6 +2,9 @@
 
 AI Fabric is a Java/Spring Boot framework for adding AI workflows to existing applications while keeping domain ownership inside the application.
 
+For a mind-map-ready production brief, module hierarchy, cross-link register, and diagram guardrails,
+see [AI Fabric Architecture Mind Map Blueprint](AI_FABRIC_ARCHITECTURE_MIND_MAP_BLUEPRINT.md).
+
 ## Request Flow
 
 ```mermaid
