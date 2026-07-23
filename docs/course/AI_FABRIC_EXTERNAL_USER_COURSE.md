@@ -433,7 +433,9 @@ The independent
 [`@loom-ai-labs/ai-fabric-chat-ui`](https://github.com/Loom-AI-Labs/ai-fabric-chat-ui) package gives
 learners and application teams a reusable Web Component and React wrapper after the backend
 capability works. It renders AI Fabric orchestration results, evidence, clarification, confirmation,
-safe action projections, and authorized conversation history.
+safe action projections, and authorized conversation history. The `v0.2.0` lab also demonstrates a
+bottom-docked chat, presentation-only MAX workspace, visible allowlisted mode/position context,
+bounded host component injection, and metadata-only client diagnostics.
 
 It remains optional and frontend-only:
 
