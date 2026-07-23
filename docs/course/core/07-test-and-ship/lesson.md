@@ -6,10 +6,10 @@ track: core
 order: 7
 durationMinutes: 70
 availability: published
-courseVersion: 0.3.3-course.1-beta
+courseVersion: 0.3.3-course.2-beta
 frameworkVersion: 0.3.3
 frameworkTag: ai-fabric-framework-v0.3.3
-courseSourceTag: ai-fabric-course-v0.3.3.1
+courseSourceTag: ai-fabric-course-v0.3.3.2
 starterRef: course-0.3.3-05-security
 solutionRef: course-0.3.3-06-tested-solution
 requiresOpenAi: false
@@ -18,6 +18,7 @@ sourcePaths:
   - docs/course/core/07-test-and-ship/notebooklm/AI_FABRIC_TESTING_SHIPPING_WORKFLOWS_NOTEBOOKLM_SCRIPT.md
   - docs/getting-started/11-testing-and-verification.md
   - docs/getting-started/13-production-checklist.md
+  - docs/course/labs/AI_FABRIC_CHAT_UI_LAB.md
   - docs/Framework-Dev-Guides/testing-verification/CI_PIPELINE_GUIDE.md
   - .github/workflows/framework-verify.yml
   - .github/workflows/integration-tests-manual.yml
@@ -341,6 +342,14 @@ does not prove the backend action or provider behavior.
 
 Use Playwright for visible workflows and viewport checks. Keep direct HTTP assertions for backend
 security and privacy boundaries.
+
+### Optional Chat UI Release Gate
+
+Adopt the browser matrix in the
+[AI Fabric Chat UI lab](../../labs/AI_FABRIC_CHAT_UI_LAB.md): evidence, clarification,
+confirmation, safe action projection, authorized history, failed reset, provider outage, malformed
+contract, accessibility, and mobile framing. Pin the UI release and verify the served asset; do not
+load a moving branch in a production application.
 
 ## Step 13: Assemble The Release Evidence
 

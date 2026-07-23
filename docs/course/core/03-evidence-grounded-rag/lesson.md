@@ -6,10 +6,10 @@ track: core
 order: 3
 durationMinutes: 75
 availability: published
-courseVersion: 0.3.3-course.1-beta
+courseVersion: 0.3.3-course.2-beta
 frameworkVersion: 0.3.3
 frameworkTag: ai-fabric-framework-v0.3.3
-courseSourceTag: ai-fabric-course-v0.3.3.1
+courseSourceTag: ai-fabric-course-v0.3.3.2
 starterRef: course-0.3.3-01-first-search
 solutionRef: course-0.3.3-02-rag
 requiresOpenAi: true
@@ -25,6 +25,7 @@ sourcePaths:
   - ai-infrastructure-module/ai-fabric-rag/src/main/java/ai/fabric/rag/service/RAGService.java
   - ai-infrastructure-module/ai-fabric-core/src/main/java/ai/fabric/intent/orchestration/pipeline/steps/RagResponseGenerationSupport.java
   - examples/real-apps/smart-faq-assistant/src/test/java/com/ai/fabric/realapps/faq/service/FaqQualityServiceTest.java
+  - docs/course/labs/AI_FABRIC_CHAT_UI_LAB.md
 theoryVideoIds:
   - evidence-grounded-rag
 assistant:
@@ -283,6 +284,14 @@ public response.
 
 The `0.0` score above is a shape placeholder, not an expected value. Tests must use the actual
 result and avoid claiming a universal score.
+
+### Optional Chat UI Checkpoint
+
+After the endpoint tests pass, use the pinned
+[AI Fabric Chat UI lab](../../labs/AI_FABRIC_CHAT_UI_LAB.md) to render the answer and its evidence.
+The component must receive evidence IDs from this endpoint; it must not create a document badge or
+fallback answer when retrieval or generation failed. This is an optional presentation exercise, not
+a replacement for the direct API and expected-source tests below.
 
 ## Step 7: Add Layered Tests
 

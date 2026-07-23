@@ -8,6 +8,7 @@ Start with:
 - [Machine-readable course catalog](course.yml)
 - [AI Fabric architecture mind map blueprint](../architecture/AI_FABRIC_ARCHITECTURE_MIND_MAP_BLUEPRINT.md)
 - [Build AI-Enabled Applications with Java and Spring Boot](AI_FABRIC_EXTERNAL_USER_COURSE.md)
+- [Optional AI Fabric Chat UI lab](labs/AI_FABRIC_CHAT_UI_LAB.md)
 - [QS-01 published lesson package](quickstart/01-first-useful-result/lesson.md)
 - [Single-source course introduction video script](notebooklm/AI_FABRIC_COURSE_INTRO_NOTEBOOKLM_SCRIPT.md)
 - [Single-source AI Fabric introduction video script](core/01-ai-fabric-mental-model/notebooklm/AI_FABRIC_INTRO_NOTEBOOKLM_SCRIPT.md)

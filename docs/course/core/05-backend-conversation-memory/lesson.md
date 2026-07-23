@@ -6,10 +6,10 @@ track: core
 order: 5
 durationMinutes: 60
 availability: published
-courseVersion: 0.3.3-course.1-beta
+courseVersion: 0.3.3-course.2-beta
 frameworkVersion: 0.3.3
 frameworkTag: ai-fabric-framework-v0.3.3
-courseSourceTag: ai-fabric-course-v0.3.3.1
+courseSourceTag: ai-fabric-course-v0.3.3.2
 starterRef: course-0.3.3-03-actions
 solutionRef: course-0.3.3-04-memory
 requiresOpenAi: true
@@ -29,6 +29,7 @@ sourcePaths:
   - ai-infrastructure-module/ai-fabric-chat-session/src/test/java/ai/fabric/chat/pipeline/ConversationEnrichmentStepTest.java
   - ai-infrastructure-module/ai-fabric-chat-session/src/test/java/ai/fabric/chat/pipeline/ConversationRecordingStepTest.java
   - examples/real-apps/ai-fabric-account-resolver/src/main/resources/prompts/intent-extraction/multi-step/v1-account-resolver/classify.md
+  - docs/course/labs/AI_FABRIC_CHAT_UI_LAB.md
 theoryVideoIds:
   - backend-conversation-memory
 assistant:
@@ -371,6 +372,14 @@ owner and session status
 
 Reset must create or select a new authorized conversation scope. A demo reset may also delete the
 old session through a protected backend endpoint, but changing a React key is not a backend reset.
+
+### Optional Chat UI Checkpoint
+
+Wire the authorized conversation GET/DELETE routes through the
+[AI Fabric Chat UI lab](../../labs/AI_FABRIC_CHAT_UI_LAB.md). Inspect the browser network trace:
+each orchestration POST sends only the newest message and stable conversation ID. Closing the panel
+must preserve backend state, and a failed reset must leave the old conversation visible with an
+explicit error.
 
 ## Step 11: Build The Regression Suite
 

@@ -6,10 +6,10 @@ track: core
 order: 4
 durationMinutes: 85
 availability: published
-courseVersion: 0.3.3-course.1-beta
+courseVersion: 0.3.3-course.2-beta
 frameworkVersion: 0.3.3
 frameworkTag: ai-fabric-framework-v0.3.3
-courseSourceTag: ai-fabric-course-v0.3.3.1
+courseSourceTag: ai-fabric-course-v0.3.3.2
 starterRef: course-0.3.3-02-rag
 solutionRef: course-0.3.3-03-actions
 requiresOpenAi: true
@@ -27,6 +27,7 @@ sourcePaths:
   - examples/real-apps/chat-capabilities-demo/src/main/java/com/ai/fabric/realapps/chat/support/action/CreateSupportTicketActionHandler.java
   - ai-infrastructure-module/ai-fabric-core/src/test/java/ai/fabric/intent/action/AIActionRegistryTest.java
   - ai-infrastructure-module/ai-fabric-core/src/test/java/ai/fabric/intent/orchestration/pipeline/steps/IntentHandlingStepRequiredParamsPlaceholderTest.java
+  - docs/course/labs/AI_FABRIC_CHAT_UI_LAB.md
 theoryVideoIds:
   - governed-actions-and-confirmation
 assistant:
@@ -398,6 +399,13 @@ Ticket entity -> customer -> tickets -> comments -> audit entries -> ...
 
 The API test should assert the safe structured fields remain available. The UI test should reject
 raw serialized payloads in the primary result card.
+
+### Optional Chat UI Checkpoint
+
+Use the [AI Fabric Chat UI lab](../../labs/AI_FABRIC_CHAT_UI_LAB.md) to exercise clarification,
+confirmation, rejection, denial, and execution against the real orchestration endpoint. Confirm and
+Reject send `yes` or `no` as the next turn in the same backend conversation. Register a domain
+renderer for `create_support_ticket`; do not make the browser reconstruct or execute the action.
 
 ## Step 10: Run One Real-Provider Smoke
 

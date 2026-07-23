@@ -9,8 +9,8 @@
 | Status | Quickstart and Core lessons published; Production track and external learner beta remain pending |
 | Course baseline | AI Fabric `0.3.3` |
 | Framework release tag | `ai-fabric-framework-v0.3.3` |
-| Course content version | `0.3.3-course.1-beta` |
-| Course source tag | `ai-fabric-course-v0.3.3.1` |
+| Course content version | `0.3.3-course.2-beta` |
+| Course source tag | `ai-fabric-course-v0.3.3.2` |
 | Java | `21` |
 | Spring Boot | `4.1.x` |
 | Maven group | `io.github.loom-ai-labs` |
@@ -260,7 +260,7 @@ created. Do not make old lessons silently follow `main` or a moving `latest` ver
 For this course release:
 
 - Framework API compatibility: `ai-fabric-framework-v0.3.3`.
-- Course content source: `ai-fabric-course-v0.3.3.1`.
+- Course content source: `ai-fabric-course-v0.3.3.2`.
 - Learner checkpoint tags: `course-0.3.3-*` in the standalone learner repository.
 
 Checkpoint naming convention:
@@ -427,6 +427,28 @@ Confirmation should use the same conversation endpoint and backend chat-session 
 must be able to send a short follow-up such as `yes` with the same conversation ID. Do not teach a
 frontend-owned confirmation or history protocol.
 
+### Optional Learner Chat UI
+
+The independent
+[`@loom-ai-labs/ai-fabric-chat-ui`](https://github.com/Loom-AI-Labs/ai-fabric-chat-ui) package gives
+learners and application teams a reusable Web Component and React wrapper after the backend
+capability works. It renders AI Fabric orchestration results, evidence, clarification, confirmation,
+safe action projections, and authorized conversation history.
+
+It remains optional and frontend-only:
+
+- the Spring Boot application is the only intelligence and policy source;
+- the browser sends the newest message, stable conversation ID, and current structured attachments;
+- `ai-fabric-chat-session` owns authorized history and pending actions;
+- identity, tenant, roles, provider credentials, and domain context stay backend-owned;
+- provider, transport, renderer, and contract failures remain visible;
+- no UI fallback may imitate a successful LLM or action result.
+
+CORE-03 through CORE-07 progressively apply the shared
+[chat UI lab](labs/AI_FABRIC_CHAT_UI_LAB.md). The required Java checkpoints remain usable without
+Node or a frontend build, while learners who choose the UI path finish with desktop/mobile browser
+proof against the same API contract.
+
 ## Lesson Contract
 
 Each lesson source directory uses this shape. The `notebooklm/` directory is present only when the
@@ -453,10 +475,10 @@ title: Governed Actions and Confirmation
 track: core
 order: 4
 durationMinutes: 90
-courseVersion: 0.3.3-course.1
+courseVersion: 0.3.3-course.2
 frameworkVersion: 0.3.3
 frameworkTag: ai-fabric-framework-v0.3.3
-courseSourceTag: ai-fabric-course-v0.3.3.1
+courseSourceTag: ai-fabric-course-v0.3.3.2
 starterRef: course-0.3.3-02-rag
 solutionRef: course-0.3.3-03-actions
 requiresOpenAi: false
@@ -2325,7 +2347,7 @@ backend or be clearly labeled static expected-output examples.
 Add a repeatable command in `aifabric`, for example:
 
 ```bash
-npm run course:sync -- --course-ref ai-fabric-course-v0.3.3.1
+npm run course:sync -- --course-ref ai-fabric-course-v0.3.3.2
 npm run course:verify
 ```
 
@@ -2357,12 +2379,12 @@ assistantPromptSchemaVersion: 1
 knowledgeCheckSchemaVersion: 1
 notebookLmVideoSchemaVersion: 1
 courseId: ai-fabric-production-oriented-java
-courseVersion: 0.3.3-course.1
+courseVersion: 0.3.3-course.2
 title: Build AI-Enabled Applications with Java and Spring Boot
 subtitle: Semantic search, evidence-grounded RAG, governed actions, chat memory, and tenant security with AI Fabric
 frameworkVersion: 0.3.3
 frameworkTag: ai-fabric-framework-v0.3.3
-courseSourceTag: ai-fabric-course-v0.3.3.1
+courseSourceTag: ai-fabric-course-v0.3.3.2
 javaVersion: 21
 springBootVersion: 4.1.x
 learnerRepository: https://github.com/Loom-AI-Labs/ai-fabric-course-support-assistant

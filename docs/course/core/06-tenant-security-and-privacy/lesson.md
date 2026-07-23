@@ -6,10 +6,10 @@ track: core
 order: 6
 durationMinutes: 85
 availability: published
-courseVersion: 0.3.3-course.1-beta
+courseVersion: 0.3.3-course.2-beta
 frameworkVersion: 0.3.3
 frameworkTag: ai-fabric-framework-v0.3.3
-courseSourceTag: ai-fabric-course-v0.3.3.1
+courseSourceTag: ai-fabric-course-v0.3.3.2
 starterRef: course-0.3.3-04-memory
 solutionRef: course-0.3.3-05-security
 requiresOpenAi: false
@@ -17,6 +17,7 @@ requiresDocker: false
 sourcePaths:
   - docs/course/core/06-tenant-security-and-privacy/notebooklm/AI_FABRIC_TENANT_SECURITY_PRIVACY_NOTEBOOKLM_SCRIPT.md
   - docs/getting-started/10-security-access-policy.md
+  - docs/course/labs/AI_FABRIC_CHAT_UI_LAB.md
   - ai-infrastructure-module/ai-fabric-core/src/main/java/ai/fabric/intent/orchestration/OrchestrationContextMetadataKeys.java
   - ai-infrastructure-module/ai-fabric-core/src/main/java/ai/fabric/intent/orchestration/OrchestrationAuthContextResolver.java
   - ai-infrastructure-module/ai-fabric-core/src/main/java/ai/fabric/access/policy/EntityAccessPolicy.java
@@ -367,6 +368,14 @@ The current conversation recorder attempts a second PII pass over the query, but
 original query if that helper throws. A privacy-critical application therefore needs an explicit
 fail-closed persistence boundary or `NEVER_PERSIST`; do not claim the generic recorder alone
 guarantees fail-closed storage during detector failure.
+
+### Optional Chat UI Checkpoint
+
+Run the cross-user, cross-tenant, and PII scenarios through the
+[AI Fabric Chat UI lab](../../labs/AI_FABRIC_CHAT_UI_LAB.md). The component uses same-origin
+authentication and prefers `sanitizedPayload`, but it is not a security boundary. Identity, tenant,
+roles, authorization, and redaction remain backend-owned, and forbidden data must never reach the
+browser response.
 
 ## Step 12: Run The Boundary Regression Matrix
 
