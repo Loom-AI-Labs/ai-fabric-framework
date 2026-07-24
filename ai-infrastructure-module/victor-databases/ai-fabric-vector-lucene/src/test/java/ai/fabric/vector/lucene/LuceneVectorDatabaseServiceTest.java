@@ -97,6 +97,29 @@ class LuceneVectorDatabaseServiceTest {
     }
 
     @Test
+    void searchAppliesMetadataFilterBeforeKnnCandidateSelection() {
+        service = createService();
+        for (int i = 0; i < 8; i++) {
+            service.storeVector("guide", "other-" + i, "Guide from another workspace",
+                vector(1.0, 0.0, 0.0), Map.of("workspaceId", "other-workspace"));
+        }
+        service.storeVector("guide", "current-guide", "Guide from the current workspace",
+            vector(0.99, 0.1, 0.0), Map.of("workspaceId", "current-workspace"));
+
+        AISearchResponse response = service.search(vector(1.0, 0.0, 0.0), AISearchRequest.builder()
+            .query("workspace guide")
+            .entityType("guide")
+            .metadata(Map.of("workspaceId", "current-workspace"))
+            .limit(1)
+            .threshold(0.0d)
+            .build());
+
+        assertThat(response.getResults())
+            .extracting(row -> row.get("id"))
+            .containsExactly("current-guide");
+    }
+
+    @Test
     void adminDiagnosticsExposeStableCapabilityKeysAndIndexPath() {
         service = createService();
 

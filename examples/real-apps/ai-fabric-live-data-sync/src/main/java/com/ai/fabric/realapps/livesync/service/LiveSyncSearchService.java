@@ -21,6 +21,7 @@ import org.springframework.util.StringUtils;
 @RequiredArgsConstructor
 public class LiveSyncSearchService {
 
+    private static final int SCOPED_SEARCH_CANDIDATE_LIMIT = 100;
     private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {
     };
 
@@ -40,7 +41,7 @@ public class LiveSyncSearchService {
             AISearchResponse response = aiCoreService.performSearch(AISearchRequest.builder()
                 .query(query.trim())
                 .entityType(kind.entityType())
-                .limit(Math.min(limit, 4))
+                .limit(SCOPED_SEARCH_CANDIDATE_LIMIT)
                 .threshold(0.25d)
                 .metadata(Map.of("workspaceId", workspaceId))
                 .build());

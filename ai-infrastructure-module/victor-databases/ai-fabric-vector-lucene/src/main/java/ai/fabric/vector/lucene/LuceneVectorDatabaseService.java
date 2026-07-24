@@ -258,27 +258,23 @@ public class LuceneVectorDatabaseService implements VectorDatabaseService {
             int limit = resolveResultLimit(request);
             double threshold = resolveSimilarityThreshold(request);
             int k = Math.max(limit, Math.min(limit * 2, Math.max(limit, maxResults) * 2)); // Get more candidates for threshold filtering
-            KnnVectorQuery vectorQuery = new KnnVectorQuery(VECTOR_FIELD, queryVectorArray, k);
-            
-            // Apply entity type and metadata filters if specified.
+            // Apply entity type and metadata filters during nearest-neighbor candidate selection.
+            // Wrapping an unfiltered top-k query in a BooleanQuery can discard every global
+            // candidate when the matching scope is outside that initial candidate set.
             Query filterQuery = null;
             String entityType = request != null ? request.getEntityType() : null;
             Optional<Query> requestedFilters = buildFilterQuery(entityType, request != null ? request.getMetadata() : null);
             if (requestedFilters.isPresent()) {
                 filterQuery = requestedFilters.get();
             }
+            KnnVectorQuery vectorQuery = filterQuery != null
+                ? new KnnVectorQuery(VECTOR_FIELD, queryVectorArray, k, filterQuery)
+                : new KnnVectorQuery(VECTOR_FIELD, queryVectorArray, k);
 
             // Perform k-NN search (Lucene handles similarity internally)
             TopDocs topDocs;
             try {
-                if (filterQuery != null) {
-                    BooleanQuery.Builder boolQueryBuilder = new BooleanQuery.Builder();
-                    boolQueryBuilder.add(vectorQuery, BooleanClause.Occur.MUST);
-                    boolQueryBuilder.add(filterQuery, BooleanClause.Occur.FILTER);
-                    topDocs = indexSearcher.search(boolQueryBuilder.build(), k);
-                } else {
-                    topDocs = indexSearcher.search(vectorQuery, k);
-                }
+                topDocs = indexSearcher.search(vectorQuery, k);
             } catch (org.apache.lucene.store.AlreadyClosedException e) {
                 // IndexReader was closed during search (concurrency issue) - refresh and retry once
                 log.debug("IndexReader closed during search, refreshing and retrying");
@@ -287,14 +283,7 @@ public class LuceneVectorDatabaseService implements VectorDatabaseService {
                     if (indexSearcher == null) {
                         throw new AIServiceException("IndexSearcher not available after refresh");
                     }
-                    if (filterQuery != null) {
-                        BooleanQuery.Builder boolQueryBuilder = new BooleanQuery.Builder();
-                        boolQueryBuilder.add(vectorQuery, BooleanClause.Occur.MUST);
-                        boolQueryBuilder.add(filterQuery, BooleanClause.Occur.FILTER);
-                        topDocs = indexSearcher.search(boolQueryBuilder.build(), k);
-                    } else {
-                        topDocs = indexSearcher.search(vectorQuery, k);
-                    }
+                    topDocs = indexSearcher.search(vectorQuery, k);
                 }
             }
             

@@ -13,6 +13,7 @@ import com.ai.fabric.realapps.livesync.web.DemoModels.DemoState;
 import com.ai.fabric.realapps.livesync.web.DemoModels.EntityRecord;
 import com.ai.fabric.realapps.livesync.web.DemoModels.EntityUpdateRequest;
 import java.math.BigDecimal;
+import java.util.stream.IntStream;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -155,6 +156,25 @@ class LiveDataSyncIntegrationTest {
                     .doesNotContainValue(secondWorkspace);
             });
         assertThat(chat.result().metadata()).containsEntry("actionsEnabled", false);
+    }
+
+    @Test
+    void workspaceScopedSearchRemainsReliableWithManyDuplicateWorkspaces() {
+        IntStream.range(0, 8).forEach(ignored -> workspaceService.createWorkspace());
+        String currentWorkspace = workspaceService.createWorkspace();
+        EntityRecord currentGuide = entity(stateService.state(currentWorkspace), "amber-synclight");
+
+        var search = searchService.search(
+            currentWorkspace,
+            currentGuide.vector().content(),
+            1
+        );
+
+        assertThat(search.hits())
+            .extracting(hit -> hit.recordKey())
+            .containsExactly("amber-synclight");
+        assertThat(search.hits().getFirst().metadata())
+            .containsEntry("workspaceId", currentWorkspace);
     }
 
     private EntityRecord entity(DemoState state, String recordKey) {
