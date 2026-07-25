@@ -9,8 +9,8 @@
 | Status | Quickstart and Core lessons published; Production track and external learner beta remain pending |
 | Course baseline | AI Fabric `0.4.0` |
 | Framework release tag | `ai-fabric-framework-v0.4.0` |
-| Course content version | `0.4.0-course.2-beta` |
-| Course source tag | `ai-fabric-course-v0.4.0.2` |
+| Course content version | `0.4.0-course.3-beta` |
+| Course source tag | `ai-fabric-course-v0.4.0.3` |
 | Java | `21` |
 | Spring Boot | `4.1.x` |
 | Maven group | `io.github.loom-ai-labs` |
@@ -260,7 +260,7 @@ created. Do not make old lessons silently follow `main` or a moving `latest` ver
 For this course release:
 
 - Framework API compatibility: `ai-fabric-framework-v0.4.0`.
-- Course content source: `ai-fabric-course-v0.4.0.2`.
+- Course content source: `ai-fabric-course-v0.4.0.3`.
 - Learner checkpoint tags: `course-0.4.0-*` in the standalone learner repository.
 
 Checkpoint naming convention:
@@ -480,10 +480,10 @@ title: Governed Actions and Confirmation
 track: core
 order: 4
 durationMinutes: 90
-courseVersion: 0.4.0-course.2
+courseVersion: 0.4.0-course.3
 frameworkVersion: 0.4.0
 frameworkTag: ai-fabric-framework-v0.4.0
-courseSourceTag: ai-fabric-course-v0.4.0.2
+courseSourceTag: ai-fabric-course-v0.4.0.3
 starterRef: course-0.4.0-02-rag
 solutionRef: course-0.4.0-03-actions
 requiresOpenAi: false
@@ -2352,7 +2352,7 @@ backend or be clearly labeled static expected-output examples.
 Add a repeatable command in `aifabric`, for example:
 
 ```bash
-npm run course:sync -- --course-ref ai-fabric-course-v0.4.0.2
+npm run course:sync -- --course-ref ai-fabric-course-v0.4.0.3
 npm run course:verify
 ```
 
@@ -2384,12 +2384,12 @@ assistantPromptSchemaVersion: 1
 knowledgeCheckSchemaVersion: 1
 notebookLmVideoSchemaVersion: 1
 courseId: ai-fabric-production-oriented-java
-courseVersion: 0.4.0-course.2
+courseVersion: 0.4.0-course.3
 title: Build AI-Enabled Applications with Java and Spring Boot
 subtitle: Semantic search, evidence-grounded RAG, governed actions, chat memory, and tenant security with AI Fabric
 frameworkVersion: 0.4.0
 frameworkTag: ai-fabric-framework-v0.4.0
-courseSourceTag: ai-fabric-course-v0.4.0.2
+courseSourceTag: ai-fabric-course-v0.4.0.3
 javaVersion: 21
 springBootVersion: 4.1.x
 learnerRepository: https://github.com/Loom-AI-Labs/ai-fabric-course-support-assistant

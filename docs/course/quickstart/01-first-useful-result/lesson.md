@@ -6,10 +6,10 @@ track: quickstart
 order: 1
 durationMinutes: 75
 availability: published
-courseVersion: 0.4.0-course.2-beta
+courseVersion: 0.4.0-course.3-beta
 frameworkVersion: 0.4.0
 frameworkTag: ai-fabric-framework-v0.4.0
-courseSourceTag: ai-fabric-course-v0.4.0.2
+courseSourceTag: ai-fabric-course-v0.4.0.3
 starterRef: course-0.4.0-00-starter
 solutionRef: course-0.4.0-01-first-search
 requiresOpenAi: false
@@ -45,7 +45,7 @@ inspectable result before a long architecture discussion.
 You do not need an LLM, an OpenAI key, Docker, or a framework source checkout for this workflow.
 
 > **Verified checkpoints:** start from `course-0.4.0-00-starter` and finish at
-> `course-0.4.0-01-first-search`. Both are published immutable tags in the learner repository.
+> `course-0.4.0-01-first-search`. Both are published immutable tags in the course repository.
 
 ## What You Will Prove
 

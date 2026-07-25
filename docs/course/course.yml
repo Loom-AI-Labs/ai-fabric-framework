@@ -3,13 +3,13 @@ assistantPromptSchemaVersion: 1
 knowledgeCheckSchemaVersion: 1
 notebookLmVideoSchemaVersion: 1
 courseId: ai-fabric-production-oriented-java
-courseVersion: 0.4.0-course.2-beta
+courseVersion: 0.4.0-course.3-beta
 status: beta
 title: Build AI-Enabled Applications with Java and Spring Boot
 subtitle: Semantic search, evidence-grounded RAG, governed actions, chat memory, and tenant security with AI Fabric
 frameworkVersion: 0.4.0
 frameworkTag: ai-fabric-framework-v0.4.0
-courseSourceTag: ai-fabric-course-v0.4.0.2
+courseSourceTag: ai-fabric-course-v0.4.0.3
 javaVersion: 21
 springBootVersion: 4.1.x
 learnerRepository: https://github.com/Loom-AI-Labs/ai-fabric-course-support-assistant

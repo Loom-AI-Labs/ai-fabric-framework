@@ -6,10 +6,10 @@ track: production
 order: 4
 durationMinutes: 95
 availability: preview
-courseVersion: 0.4.0-course.2-beta
+courseVersion: 0.4.0-course.3-beta
 frameworkVersion: 0.4.0
 frameworkTag: ai-fabric-framework-v0.4.0
-courseSourceTag: ai-fabric-course-v0.4.0.2
+courseSourceTag: ai-fabric-course-v0.4.0.3
 starterRef: course-0.4.0-p03-prompt-overlays
 solutionRef: course-0.4.0-p04-migration-backfill
 requiresOpenAi: false

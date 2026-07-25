@@ -6,10 +6,10 @@ track: production
 order: 7
 durationMinutes: 90
 availability: preview
-courseVersion: 0.4.0-course.2-beta
+courseVersion: 0.4.0-course.3-beta
 frameworkVersion: 0.4.0
 frameworkTag: ai-fabric-framework-v0.4.0
-courseSourceTag: ai-fabric-course-v0.4.0.2
+courseSourceTag: ai-fabric-course-v0.4.0.3
 starterRef: course-0.4.0-p06-rag-quality
 solutionRef: course-0.4.0-p07-qdrant
 requiresOpenAi: false

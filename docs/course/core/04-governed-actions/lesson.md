@@ -6,10 +6,10 @@ track: core
 order: 4
 durationMinutes: 85
 availability: published
-courseVersion: 0.4.0-course.2-beta
+courseVersion: 0.4.0-course.3-beta
 frameworkVersion: 0.4.0
 frameworkTag: ai-fabric-framework-v0.4.0
-courseSourceTag: ai-fabric-course-v0.4.0.2
+courseSourceTag: ai-fabric-course-v0.4.0.3
 starterRef: course-0.4.0-02-rag
 solutionRef: course-0.4.0-03-actions
 requiresOpenAi: true

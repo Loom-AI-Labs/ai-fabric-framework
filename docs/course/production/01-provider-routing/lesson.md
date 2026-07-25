@@ -6,10 +6,10 @@ track: production
 order: 1
 durationMinutes: 80
 availability: preview
-courseVersion: 0.4.0-course.2-beta
+courseVersion: 0.4.0-course.3-beta
 frameworkVersion: 0.4.0
 frameworkTag: ai-fabric-framework-v0.4.0
-courseSourceTag: ai-fabric-course-v0.4.0.2
+courseSourceTag: ai-fabric-course-v0.4.0.3
 starterRef: course-0.4.0-06-tested-solution
 solutionRef: course-0.4.0-p01-provider-routing
 requiresOpenAi: false

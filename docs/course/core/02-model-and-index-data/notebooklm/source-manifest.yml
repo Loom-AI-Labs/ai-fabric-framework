@@ -3,7 +3,7 @@ lessonId: core-02
 status: script-ready
 frameworkVersion: 0.4.0
 frameworkTag: ai-fabric-framework-v0.4.0
-courseVersion: 0.4.0-course.2-beta
+courseVersion: 0.4.0-course.3-beta
 reviewedAt: null
 reviewedBy: null
 # Review provenance only. Upload only outputs.transcript to NotebookLM.
