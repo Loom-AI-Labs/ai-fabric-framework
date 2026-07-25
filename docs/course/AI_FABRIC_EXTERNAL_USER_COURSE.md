@@ -9,8 +9,8 @@
 | Status | Quickstart and Core lessons published; Production track and external learner beta remain pending |
 | Course baseline | AI Fabric `0.4.0` |
 | Framework release tag | `ai-fabric-framework-v0.4.0` |
-| Course content version | `0.4.0-course.3-beta` |
-| Course source tag | `ai-fabric-course-v0.4.0.3` |
+| Course content version | `0.4.0-course.4-beta` |
+| Course source tag | `ai-fabric-course-v0.4.0.4` |
 | Java | `21` |
 | Spring Boot | `4.1.x` |
 | Maven group | `io.github.loom-ai-labs` |
@@ -260,7 +260,7 @@ created. Do not make old lessons silently follow `main` or a moving `latest` ver
 For this course release:
 
 - Framework API compatibility: `ai-fabric-framework-v0.4.0`.
-- Course content source: `ai-fabric-course-v0.4.0.3`.
+- Course content source: `ai-fabric-course-v0.4.0.4`.
 - Learner checkpoint tags: `course-0.4.0-*` in the standalone learner repository.
 
 Checkpoint naming convention:
@@ -287,7 +287,7 @@ The complete course is a set of selectable tracks, not an eight-hour promise for
 | Quickstart | 60-90 minutes | Run a standalone app and prove a first semantic search |
 | Core course | 7-9 hours | Build search, RAG, actions, memory, security, and tests in one app |
 | Production track | 6-8 hours | Add providers, lifecycle, quality, diagnostics, and release checks |
-| Real-app case studies | 2-4 hours | Study five deployed application shapes |
+| Real-app case studies | 4-6 hours | Reproduce six deployed application shapes |
 | Coding-assistant track | 1-2 hours | Use an assistant without inventing APIs or bypassing policy |
 | Capstone | 4-8 hours | Build and defend a complete AI Fabric vertical slice |
 
@@ -483,7 +483,7 @@ durationMinutes: 90
 courseVersion: 0.4.0-course.3
 frameworkVersion: 0.4.0
 frameworkTag: ai-fabric-framework-v0.4.0
-courseSourceTag: ai-fabric-course-v0.4.0.3
+courseSourceTag: ai-fabric-course-v0.4.0.4
 starterRef: course-0.4.0-02-rag
 solutionRef: course-0.4.0-03-actions
 requiresOpenAi: false
@@ -781,6 +781,7 @@ not a second implementation narrative.
 | CASE-03 | `reproduce` | Compare provider posture, add behavior events, regenerate insight, and inspect allowlisted agentic UI |
 | CASE-04 | `reproduce` | Prove allowed and denied tenant retrieval plus confirmed/rejected writes and deletion evidence |
 | CASE-05 | `reproduce` | Prove backend PII processing, sanitized indexing/search, provider posture, and session isolation |
+| CASE-06 | `reproduce` | Prove annotation-driven product, policy, and guide create/update/delete synchronization without stale evidence |
 | ASSIST-01 | `analyze` | Assemble the minimum correct context pack and critique an under-specified assistant request |
 | ASSIST-02 | `implement` | Use the standard prompt contract to add one bounded capability and independently review the result |
 
@@ -1920,6 +1921,36 @@ Deployed failure postmortem:
   search with a sensitive query, prove the processed query reached retrieval, and verify another
   session cannot see the record.
 
+### CASE-06: AI Fabric Live Data Sync
+
+Reference: `examples/real-apps/ai-fabric-live-data-sync`
+
+**Pre-lesson walkthrough:**
+
+- The annotation contract formed by `@AICapable`, `@AISearchable`, `@AIContext`, and `@AIProcess`.
+- The difference between source database truth, canonical searchable projection, typed metadata,
+  embedding output, and vector evidence.
+- Why stable logical identity is required for updates and idempotent deletes.
+- Why a plausible generated answer is not synchronization proof.
+
+Teach:
+
+- Multi-entity annotation extraction for products, policies, and guides.
+- Source and vector count/revision diagnostics.
+- Update replacement under stable identity.
+- Delete convergence and stale-evidence search/chat checks.
+
+Deployed failure postmortem:
+
+- **What failed:** early annotation paths could appear configured while vector-space and lifecycle
+  ownership were split across annotation and configuration surfaces.
+- **Why:** duplicate metadata authorities made it unclear which definition governed synchronization.
+- **Corrected design:** AI Fabric 0.4 makes the annotation contract authoritative, validates extracted
+  metadata, and tests create/update/delete behavior end to end.
+- **Proof learners inspect:** edit a distinctive product fact, verify the same vector ID contains the
+  new revision and no old text, delete a policy or guide, and prove source state, vector search, and
+  chat all stop exposing it.
+
 Each case-study page must include:
 
 - Business problem.
@@ -2352,7 +2383,7 @@ backend or be clearly labeled static expected-output examples.
 Add a repeatable command in `aifabric`, for example:
 
 ```bash
-npm run course:sync -- --course-ref ai-fabric-course-v0.4.0.3
+npm run course:sync -- --course-ref ai-fabric-course-v0.4.0.4
 npm run course:verify
 ```
 
@@ -2389,7 +2420,7 @@ title: Build AI-Enabled Applications with Java and Spring Boot
 subtitle: Semantic search, evidence-grounded RAG, governed actions, chat memory, and tenant security with AI Fabric
 frameworkVersion: 0.4.0
 frameworkTag: ai-fabric-framework-v0.4.0
-courseSourceTag: ai-fabric-course-v0.4.0.3
+courseSourceTag: ai-fabric-course-v0.4.0.4
 javaVersion: 21
 springBootVersion: 4.1.x
 learnerRepository: https://github.com/Loom-AI-Labs/ai-fabric-course-support-assistant
@@ -2587,13 +2618,14 @@ course synchronization contract before adding another manually copied content tr
 
 ### Blocker 5: Public Demo Count
 
-The previous curriculum mentioned four public demos. The case-study track now includes five:
+The previous curriculum mentioned four public demos. The case-study track now includes six:
 
 1. AI Shopping Experience.
 2. AI Fabric Account Resolver.
 3. AI Fabric Behavior Signals.
 4. AI Fabric Tenant Guard.
 5. AI Fabric Privacy Shield.
+6. AI Fabric Live Data Sync.
 
 ## Implementation Backlog
 
@@ -2671,7 +2703,7 @@ The previous curriculum mentioned four public demos. The case-study track now in
 - [ ] Implement PROD-01 through PROD-05.
 - [ ] Author and validate production implementation/verification prompts and case-study reproduction
   prompts.
-- [ ] Publish all five code-backed case studies.
+- [x] Publish all six code-backed case studies.
 - [ ] Publish the deployed-failure postmortem and reproduction proof for every case study.
 - [ ] Produce and review the Production and Case Study pre-lesson architecture explainers from their
   declared theory briefs.

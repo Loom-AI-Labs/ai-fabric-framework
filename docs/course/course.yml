@@ -3,13 +3,13 @@ assistantPromptSchemaVersion: 1
 knowledgeCheckSchemaVersion: 1
 notebookLmVideoSchemaVersion: 1
 courseId: ai-fabric-production-oriented-java
-courseVersion: 0.4.0-course.3-beta
+courseVersion: 0.4.0-course.4-beta
 status: beta
 title: Build AI-Enabled Applications with Java and Spring Boot
 subtitle: Semantic search, evidence-grounded RAG, governed actions, chat memory, and tenant security with AI Fabric
 frameworkVersion: 0.4.0
 frameworkTag: ai-fabric-framework-v0.4.0
-courseSourceTag: ai-fabric-course-v0.4.0.3
+courseSourceTag: ai-fabric-course-v0.4.0.4
 javaVersion: 21
 springBootVersion: 4.1.x
 learnerRepository: https://github.com/Loom-AI-Labs/ai-fabric-course-support-assistant
@@ -236,39 +236,81 @@ tracks:
           - operations-release-readiness
   - id: case-studies
     title: Real-App Case Studies
-    description: Inspect five deployed applications and the failures that improved their architecture.
+    description: Reproduce six deployed applications and connect their visible behavior to backend framework proof.
     required: false
     lessons:
       - id: case-01
         slug: ai-shopping-experience
         title: AI Shopping Experience
         description: Staged commerce RAG, attachments, governed cart actions, and result projection.
-        durationMinutes: 45
-        availability: planned
+        durationMinutes: 55
+        availability: published
+        source: case-studies/01-ai-shopping-experience/lesson.md
+        knowledgeCheck: case-studies/01-ai-shopping-experience/knowledge-check.yml
+        assistantPrompt: case-studies/01-ai-shopping-experience/assistant-prompt.md
+        assistantReviewPrompt: case-studies/01-ai-shopping-experience/assistant-review-prompt.md
+        theoryVideoIds:
+          - case-shopping-walkthrough
       - id: case-02
         slug: account-resolver
         title: AI Fabric Account Resolver
         description: Profile reads, policy-grounded blockers, follow-ups, and governed remedies.
-        durationMinutes: 45
-        availability: planned
+        durationMinutes: 55
+        availability: published
+        source: case-studies/02-account-resolver/lesson.md
+        knowledgeCheck: case-studies/02-account-resolver/knowledge-check.yml
+        assistantPrompt: case-studies/02-account-resolver/assistant-prompt.md
+        assistantReviewPrompt: case-studies/02-account-resolver/assistant-review-prompt.md
+        theoryVideoIds:
+          - case-account-resolver-walkthrough
       - id: case-03
         slug: behavior-signals
         title: AI Fabric Behavior Signals
         description: Incremental insight generation and allowlisted agentic UI composition.
-        durationMinutes: 45
-        availability: planned
+        durationMinutes: 55
+        availability: published
+        source: case-studies/03-behavior-signals/lesson.md
+        knowledgeCheck: case-studies/03-behavior-signals/knowledge-check.yml
+        assistantPrompt: case-studies/03-behavior-signals/assistant-prompt.md
+        assistantReviewPrompt: case-studies/03-behavior-signals/assistant-review-prompt.md
+        theoryVideoIds:
+          - case-behavior-signals-walkthrough
       - id: case-04
         slug: tenant-guard
         title: AI Fabric Tenant Guard
         description: Tenant-scoped evidence, role policy, denied retrieval, and governed writes.
-        durationMinutes: 45
-        availability: planned
+        durationMinutes: 55
+        availability: published
+        source: case-studies/04-tenant-guard/lesson.md
+        knowledgeCheck: case-studies/04-tenant-guard/knowledge-check.yml
+        assistantPrompt: case-studies/04-tenant-guard/assistant-prompt.md
+        assistantReviewPrompt: case-studies/04-tenant-guard/assistant-review-prompt.md
+        theoryVideoIds:
+          - case-tenant-guard-walkthrough
       - id: case-05
         slug: privacy-shield
         title: AI Fabric Privacy Shield
         description: Backend PII processing, sanitized indexing, and privacy proof without false AI claims.
-        durationMinutes: 45
-        availability: planned
+        durationMinutes: 55
+        availability: published
+        source: case-studies/05-privacy-shield/lesson.md
+        knowledgeCheck: case-studies/05-privacy-shield/knowledge-check.yml
+        assistantPrompt: case-studies/05-privacy-shield/assistant-prompt.md
+        assistantReviewPrompt: case-studies/05-privacy-shield/assistant-review-prompt.md
+        theoryVideoIds:
+          - case-privacy-shield-walkthrough
+      - id: case-06
+        slug: live-data-sync
+        title: AI Fabric Live Data Sync
+        description: Annotation-driven create, update, and delete synchronization with stale-evidence proof.
+        durationMinutes: 55
+        availability: published
+        source: case-studies/06-live-data-sync/lesson.md
+        knowledgeCheck: case-studies/06-live-data-sync/knowledge-check.yml
+        assistantPrompt: case-studies/06-live-data-sync/assistant-prompt.md
+        assistantReviewPrompt: case-studies/06-live-data-sync/assistant-review-prompt.md
+        theoryVideoIds:
+          - case-live-data-sync-walkthrough
   - id: coding-assistants
     title: Coding-Assistant Track
     description: Give an assistant correct evidence, bound its work, and independently review the result.

@@ -1,0 +1,45 @@
+schemaVersion: 1
+lessonId: case-04
+passingScorePercent: 80
+questions:
+  - id: case-04-q1
+    type: multiple-choice
+    competency: retrieval-isolation
+    prompt: Which layers enforce tenant-safe retrieval?
+    options:
+      - id: a
+        text: Trusted backend identity and role policy
+      - id: b
+        text: Provider metadata filtering
+      - id: c
+        text: Application post-hit verification
+      - id: d
+        text: Prompt wording alone
+    correctOptionIds: [a, b, c]
+    explanation: Prompts can explain policy but cannot enforce evidence access.
+    sourcePaths:
+      - examples/real-apps/tenant-knowledge-portal/src/main/java/com/ai/fabric/realapps/tenantportal/service/TenantKnowledgeService.java
+  - id: case-04-q2
+    type: single-choice
+    competency: cross-tenant-action
+    prompt: What is the correct result for a known cross-tenant action target?
+    options:
+      - id: a
+        text: Execute after model confirmation
+      - id: b
+        text: Deny before mutation
+      - id: c
+        text: Hide it only in the UI
+      - id: d
+        text: Change the request tenant
+    correctOptionIds: [b]
+    explanation: Confirmation cannot override tenant authorization.
+    sourcePaths:
+      - examples/real-apps/tenant-knowledge-portal/src/test/java/com/ai/fabric/realapps/tenantportal/service/TenantKnowledgeServiceTest.java
+  - id: case-04-q3
+    type: answer-reveal
+    competency: deletion
+    prompt: What proves tenant deletion is correctly scoped?
+    modelAnswer: Deleted-tenant source/vector IDs are absent, surviving-tenant IDs remain, and the surviving tenant still retrieves its approved evidence.
+    sourcePaths:
+      - examples/real-apps/tenant-knowledge-portal/src/main/java/com/ai/fabric/realapps/tenantportal/web/TenantGuardDemoController.java

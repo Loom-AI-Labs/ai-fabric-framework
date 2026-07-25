@@ -1,0 +1,45 @@
+schemaVersion: 1
+lessonId: case-01
+passingScorePercent: 80
+questions:
+  - id: case-01-q1
+    type: single-choice
+    competency: evidence-readiness
+    prompt: What proves that a shopping answer is RAG-backed?
+    options:
+      - id: a
+        text: The answer sounds specific
+      - id: b
+        text: Current indexed evidence IDs and readiness state are visible
+      - id: c
+        text: The browser contains product cards
+      - id: d
+        text: OpenAI is enabled
+    correctOptionIds: [b]
+    explanation: Provider availability and UI data do not prove that retrieval supplied current evidence.
+    sourcePaths:
+      - examples/real-apps/chat-capabilities-demo/src/main/java/com/ai/fabric/realapps/chat/demo/service/DemoStageSeedService.java
+  - id: case-01-q2
+    type: multiple-choice
+    competency: governed-write
+    prompt: Which boundaries protect add-to-cart?
+    options:
+      - id: a
+        text: Typed action selection and target resolution
+      - id: b
+        text: Backend authorization and confirmation
+      - id: c
+        text: Application-owned CartService execution
+      - id: d
+        text: A green frontend button alone
+    correctOptionIds: [a, b, c]
+    explanation: The UI presents state; backend policy and domain execution own the write.
+    sourcePaths:
+      - examples/real-apps/chat-capabilities-demo/src/main/java/com/ai/fabric/realapps/chat/cart/action/AddToCartActionHandler.java
+  - id: case-01-q3
+    type: answer-reveal
+    competency: memory
+    prompt: Why should the UI send only the newest shopping message?
+    modelAnswer: AI Fabric chat-session state authorizes and loads recent turns and pending actions on the backend. Copying history from the browser makes the client an untrusted memory authority and can lose or forge context.
+    sourcePaths:
+      - examples/real-apps/chat-capabilities-demo/src/test/java/com/ai/fabric/realapps/chat/web/ChatControllerConversationsTest.java

@@ -6,10 +6,10 @@ track: quickstart
 order: 1
 durationMinutes: 75
 availability: published
-courseVersion: 0.4.0-course.3-beta
+courseVersion: 0.4.0-course.4-beta
 frameworkVersion: 0.4.0
 frameworkTag: ai-fabric-framework-v0.4.0
-courseSourceTag: ai-fabric-course-v0.4.0.3
+courseSourceTag: ai-fabric-course-v0.4.0.4
 starterRef: course-0.4.0-00-starter
 solutionRef: course-0.4.0-01-first-search
 requiresOpenAi: false

@@ -1,0 +1,45 @@
+schemaVersion: 1
+lessonId: case-05
+passingScorePercent: 80
+questions:
+  - id: case-05-q1
+    type: single-choice
+    competency: safe-indexing
+    prompt: Which text should reach the vector index?
+    options:
+      - id: a
+        text: Raw customer input
+      - id: b
+        text: The approved redacted projection
+      - id: c
+        text: Encrypted bytes
+      - id: d
+        text: Browser-rendered HTML
+    correctOptionIds: [b]
+    explanation: Detection and redaction happen before persistence and indexing.
+    sourcePaths:
+      - examples/real-apps/privacy-first-customer-facing-support/src/main/java/com/ai/fabric/realapps/privacyfirst/service/SupportMessageService.java
+  - id: case-05-q2
+    type: multiple-choice
+    competency: public-boundary
+    prompt: What must remain absent from public responses?
+    options:
+      - id: a
+        text: Raw PII
+      - id: b
+        text: Encryption secrets
+      - id: c
+        text: Detection count
+      - id: d
+        text: Safe redacted content
+    correctOptionIds: [a, b]
+    explanation: Safe evidence may be visible; raw values and keys may not.
+    sourcePaths:
+      - examples/real-apps/privacy-first-customer-facing-support/src/test/java/com/ai/fabric/realapps/privacyfirst/service/SupportMessageProjectionTest.java
+  - id: case-05-q3
+    type: answer-reveal
+    competency: provider-posture
+    prompt: Why is Privacy Shield not a live-LLM proof?
+    modelAnswer: The demo intentionally uses PII detection, a local embedding provider, and Lucene retrieval. A configured OpenAI key does not mean generation ran.
+    sourcePaths:
+      - examples/real-apps/privacy-first-customer-facing-support/README.md

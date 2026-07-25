@@ -1,0 +1,46 @@
+schemaVersion: 1
+lessonId: case-02
+passingScorePercent: 80
+questions:
+  - id: case-02-q1
+    type: single-choice
+    competency: context-ownership
+    prompt: Who supplies the current subscription target to a resolver action?
+    options:
+      - id: a
+        text: The user types subscriptionId
+      - id: b
+        text: The browser reads it from HTML
+      - id: c
+        text: The backend resolves it from current-account context
+      - id: d
+        text: The LLM invents it
+    correctOptionIds: [c]
+    explanation: Current-account identity is application-owned context, not a model parameter.
+    sourcePaths:
+      - examples/real-apps/ai-fabric-account-resolver/src/main/java/com/subscription/hub/ai/ResolverAccountOwnedTargetResolutionStep.java
+  - id: case-02-q2
+    type: multiple-choice
+    competency: blocker-reasoning
+    prompt: What should the blocker explanation use?
+    options:
+      - id: a
+        text: Current profile facts from a read action
+      - id: b
+        text: Retrieved human-readable policies
+      - id: c
+        text: A frontend hardcoded blocker
+      - id: d
+        text: Model reasoning over approved context
+    correctOptionIds: [a, b, d]
+    explanation: The UI displays the result but does not manufacture the diagnosis.
+    sourcePaths:
+      - examples/real-apps/ai-fabric-account-resolver/src/main/java/com/subscription/hub/action/handler/GetAccountProfileActionHandler.java
+      - examples/real-apps/ai-fabric-account-resolver/src/main/java/com/subscription/hub/config/ResolverPolicyRagIndexer.java
+  - id: case-02-q3
+    type: answer-reveal
+    competency: confirmation
+    prompt: What must rejection of an address update prove?
+    modelAnswer: The pending action is closed or rejected, no address mutation occurs, and a different conversation cannot inherit the pending confirmation.
+    sourcePaths:
+      - examples/real-apps/ai-fabric-account-resolver/src/test/java/com/subscription/hub/action/handler/AccountResolverActionHandlerTest.java

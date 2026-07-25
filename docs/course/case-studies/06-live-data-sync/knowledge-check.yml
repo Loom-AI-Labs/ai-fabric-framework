@@ -1,0 +1,45 @@
+schemaVersion: 1
+lessonId: case-06
+passingScorePercent: 80
+questions:
+  - id: case-06-q1
+    type: multiple-choice
+    competency: annotation-contract
+    prompt: What do the live-sync annotations define?
+    options:
+      - id: a
+        text: Entity vector-space identity
+      - id: b
+        text: Searchable content projection
+      - id: c
+        text: Typed context metadata
+      - id: d
+        text: Database authorization
+    correctOptionIds: [a, b, c]
+    explanation: Authorization remains application-owned; annotations describe AI evidence.
+    sourcePaths:
+      - examples/real-apps/ai-fabric-live-data-sync/src/main/java/com/ai/fabric/realapps/livesync/domain/SyncProduct.java
+  - id: case-06-q2
+    type: single-choice
+    competency: stable-update
+    prompt: What should an update do to vector identity?
+    options:
+      - id: a
+        text: Create a second unrelated vector
+      - id: b
+        text: Preserve stable identity and replace stale projected content
+      - id: c
+        text: Keep the old vector until restart
+      - id: d
+        text: Change the database primary key
+    correctOptionIds: [b]
+    explanation: Stable logical identity supports idempotent replacement.
+    sourcePaths:
+      - examples/real-apps/ai-fabric-live-data-sync/src/test/java/com/ai/fabric/realapps/livesync/LiveDataSyncIntegrationTest.java
+  - id: case-06-q3
+    type: answer-reveal
+    competency: delete-proof
+    prompt: What proves delete synchronization?
+    modelAnswer: The source row is absent, vector counts/revisions converge, a distinctive search returns no hit, and chat cannot cite the deleted evidence.
+    sourcePaths:
+      - examples/real-apps/ai-fabric-live-data-sync/src/test/java/com/ai/fabric/realapps/livesync/AnnotationSyncContractTest.java

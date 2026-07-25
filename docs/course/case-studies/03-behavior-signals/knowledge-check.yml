@@ -1,0 +1,45 @@
+schemaVersion: 1
+lessonId: case-03
+passingScorePercent: 80
+questions:
+  - id: case-03-q1
+    type: single-choice
+    competency: incremental-analysis
+    prompt: What should a follow-up behavior analysis receive?
+    options:
+      - id: a
+        text: Every historical event relabeled as new
+      - id: b
+        text: Previous insight plus events recorded since that insight
+      - id: c
+        text: Only the frontend summary
+      - id: d
+        text: A fixed churn score
+    correctOptionIds: [b]
+    explanation: Incremental analysis distinguishes prior understanding from fresh evidence.
+    sourcePaths:
+      - examples/real-apps/behavior-churn-signals/src/main/java/com/ai/fabric/realapps/behavior/spi/DbExternalEventProvider.java
+  - id: case-03-q2
+    type: multiple-choice
+    competency: agentic-ui
+    prompt: What may the agentic UI model return?
+    options:
+      - id: a
+        text: Allowlisted component names
+      - id: b
+        text: Short selection reasons
+      - id: c
+        text: Arbitrary HTML and JavaScript
+      - id: d
+        text: Trusted prices and permissions
+    correctOptionIds: [a, b]
+    explanation: Backend validation owns names and backend state supplies props.
+    sourcePaths:
+      - examples/real-apps/behavior-churn-signals/src/main/java/com/ai/fabric/realapps/behavior/service/AgenticUiComposerService.java
+  - id: case-03-q3
+    type: answer-reveal
+    competency: failure-visibility
+    prompt: How should a selected live LLM failure appear?
+    modelAnswer: As an explicit failed analysis or unavailable-provider result with no deterministic insight mislabeled as live output.
+    sourcePaths:
+      - examples/real-apps/behavior-churn-signals/README.md
