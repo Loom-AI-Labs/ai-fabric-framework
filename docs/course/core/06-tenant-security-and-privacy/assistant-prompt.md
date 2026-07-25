@@ -1,14 +1,18 @@
 # CORE-06 Coding-Assistant Implementation Prompt
 
-Status: Validated against `course-0.3.3-04-memory` and the CORE-06 behavioral contract.
+Status: Migrated to the AI Fabric 0.4 CORE-06 behavioral contract. Immutable checkpoint validation
+is pending publication of `course-0.4.0-04-memory`.
 
 ```text
 You are implementing AI Fabric course lesson CORE-06: Tenant Security And Privacy.
 
-Use AI Fabric 0.3.3 / ai-fabric-framework-v0.3.3, Java 21, and Spring Boot 4.1.x. Work only from
-`course-0.3.3-04-memory` in
+Use AI Fabric 0.4.0 / ai-fabric-framework-v0.4.0, Java 21, and Spring Boot 4.1.x. Before editing,
+verify that the declared starter ref exists. If it does not, stop and report that the 0.4 learner
+checkpoint is not published; never substitute `main` or an older 0.3 tag. Once published, work only
+from
+`course-0.4.0-04-memory` in
 https://github.com/Loom-AI-Labs/ai-fabric-course-support-assistant. Do not inspect or copy the
-`course-0.3.3-05-security` solution checkpoint while implementing.
+`course-0.4.0-05-security` solution checkpoint while implementing.
 
 Read first:
 - docs/course/core/06-tenant-security-and-privacy/lesson.md

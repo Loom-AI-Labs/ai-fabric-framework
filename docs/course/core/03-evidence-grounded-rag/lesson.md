@@ -6,12 +6,12 @@ track: core
 order: 3
 durationMinutes: 75
 availability: published
-courseVersion: 0.3.3-course.2-beta
-frameworkVersion: 0.3.3
-frameworkTag: ai-fabric-framework-v0.3.3
-courseSourceTag: ai-fabric-course-v0.3.3.2
-starterRef: course-0.3.3-01-first-search
-solutionRef: course-0.3.3-02-rag
+courseVersion: 0.4.0-course.2-beta
+frameworkVersion: 0.4.0
+frameworkTag: ai-fabric-framework-v0.4.0
+courseSourceTag: unreleased
+starterRef: course-0.4.0-01-first-search
+solutionRef: course-0.4.0-02-rag
 requiresOpenAi: true
 requiresDocker: false
 sourcePaths:
@@ -56,12 +56,10 @@ The result is not merely an answer string. Your endpoint will return:
 When no approved evidence exists, the application will return an explicit `NO_EVIDENCE` state and
 will not ask the model to improvise from general knowledge.
 
-> **Published lab.** Start from
-> [`course-0.3.3-01-first-search`](https://github.com/Loom-AI-Labs/ai-fabric-course-support-assistant/tree/course-0.3.3-01-first-search)
-> and compare your work with
-> [`course-0.3.3-02-rag`](https://github.com/Loom-AI-Labs/ai-fabric-course-support-assistant/tree/course-0.3.3-02-rag).
-> Deterministic tests use controlled providers. The optional OpenAI run must expose a real provider
-> failure instead of returning a fake answer.
+> **AI Fabric 0.4 migration preview.** The planned immutable starter is
+> `course-0.4.0-01-first-search` and the planned solution is `course-0.4.0-02-rag`. They will be
+> linked only after clean-checkout publication. Deterministic tests use controlled providers; the
+> optional OpenAI run must expose a real provider failure instead of returning a fake answer.
 
 ## What You Will Learn
 

@@ -6,12 +6,12 @@ track: production
 order: 8
 durationMinutes: 70
 availability: preview
-courseVersion: 0.3.3-course.2-beta
-frameworkVersion: 0.3.3
-frameworkTag: ai-fabric-framework-v0.3.3
-courseSourceTag: ai-fabric-course-v0.3.3.2
-starterRef: course-0.3.3-p07-qdrant
-solutionRef: course-0.3.3-p08-production-ready
+courseVersion: 0.4.0-course.2-beta
+frameworkVersion: 0.4.0
+frameworkTag: ai-fabric-framework-v0.4.0
+courseSourceTag: unreleased
+starterRef: course-0.4.0-p07-qdrant
+solutionRef: course-0.4.0-p08-production-ready
 requiresOpenAi: false
 requiresDocker: true
 optionalProviderExercises:
@@ -73,7 +73,10 @@ You will:
 ```bash
 git clone https://github.com/Loom-AI-Labs/ai-fabric-course-support-assistant.git
 cd ai-fabric-course-support-assistant
-git switch --detach course-0.3.3-p07-qdrant
+git fetch --tags
+git show-ref --verify --quiet refs/tags/course-0.4.0-p07-qdrant \
+  || { echo "The 0.4 starter checkpoint is not published yet."; exit 1; }
+git switch --detach course-0.4.0-p07-qdrant
 ./mvnw --batch-mode --no-transfer-progress clean verify
 ./scripts/download-onnx-model.sh
 ```
@@ -138,7 +141,7 @@ boolean:
 
 ```json
 {
-  "checkpoint": "course-0.3.3-p08-production-ready",
+  "checkpoint": "course-0.4.0-p08-production-ready",
   "status": "READY",
   "components": {
     "build": { "status": "UP", "required": true },
@@ -284,8 +287,9 @@ jq . target/course-release-evidence/release-keyless-summary.json
 jq . target/course-release-evidence/openai-keyed-summary.json
 ```
 
-Expected checkpoint: `course-0.3.3-p08-production-ready`. The Java suite contains 71 tests.
-`release-keyless-summary.json` must report `PASS` and the exact source commit.
+Planned checkpoint: `course-0.4.0-p08-production-ready`. The current complete local 0.4 migration
+passes 71 tests. Before publication, `release-keyless-summary.json` must report `PASS` and the exact
+source commit.
 `openai-keyed-summary.json` may report `NOT_RUN` when no key was supplied; that is honest evidence,
 not a skipped required gate.
 
@@ -333,7 +337,7 @@ borrow success from deterministic test providers. A keyed failure is `FAIL`, not
 ```bash
 docker compose -f compose.release.yml down -v
 ./scripts/reset-course.sh
-git switch --detach course-0.3.3-p07-qdrant
+git switch --detach course-0.4.0-p07-qdrant
 ```
 
 `down -v` removes only the named course volumes from this compose project. Do not run destructive

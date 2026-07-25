@@ -6,12 +6,12 @@ track: production
 order: 7
 durationMinutes: 90
 availability: preview
-courseVersion: 0.3.3-course.2-beta
-frameworkVersion: 0.3.3
-frameworkTag: ai-fabric-framework-v0.3.3
-courseSourceTag: ai-fabric-course-v0.3.3.2
-starterRef: course-0.3.3-p06-rag-quality
-solutionRef: course-0.3.3-p07-qdrant
+courseVersion: 0.4.0-course.2-beta
+frameworkVersion: 0.4.0
+frameworkTag: ai-fabric-framework-v0.4.0
+courseSourceTag: unreleased
+starterRef: course-0.4.0-p06-rag-quality
+solutionRef: course-0.4.0-p07-qdrant
 requiresOpenAi: false
 requiresDocker: true
 optionalProviderExercises:
@@ -69,7 +69,10 @@ You will:
 ```bash
 git clone https://github.com/Loom-AI-Labs/ai-fabric-course-support-assistant.git
 cd ai-fabric-course-support-assistant
-git switch --detach course-0.3.3-p06-rag-quality
+git fetch --tags
+git show-ref --verify --quiet refs/tags/course-0.4.0-p06-rag-quality \
+  || { echo "The 0.4 starter checkpoint is not published yet."; exit 1; }
+git switch --detach course-0.4.0-p06-rag-quality
 ./mvnw --batch-mode --no-transfer-progress clean verify
 ./scripts/download-onnx-model.sh
 ```
@@ -234,8 +237,8 @@ COURSE_SMOKE_USE_EXISTING_JAR=true ./scripts/smoke-qdrant.sh
 jq . target/course-release-evidence/qdrant-smoke-summary.json
 ```
 
-Expected checkpoint: `course-0.3.3-p07-qdrant`. The Java suite contains 64 tests. Both the packaged
-Lucene gate and Docker Qdrant gate are blocking.
+Planned checkpoint: `course-0.4.0-p07-qdrant`. Both the packaged Lucene gate and Docker Qdrant gate
+must be blocking before that checkpoint is published.
 
 ## Optional Qdrant Cloud
 
@@ -280,7 +283,7 @@ required.
 ```bash
 docker compose -f compose.qdrant.yml down -v
 ./scripts/reset-course.sh
-git switch --detach course-0.3.3-p06-rag-quality
+git switch --detach course-0.4.0-p06-rag-quality
 ```
 
 The automated smoke removes its temporary container. The manual compose command above removes the

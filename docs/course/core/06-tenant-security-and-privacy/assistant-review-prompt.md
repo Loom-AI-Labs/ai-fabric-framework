@@ -1,8 +1,9 @@
 # CORE-06 Independent Review Prompt
 
-Status: Published for independently reviewing the CORE-06 checkpoint behavior.
+Status: Migrated for independent review of the AI Fabric 0.4 CORE-06 behavior contract. Immutable
+checkpoint comparison is pending publication.
 
-Review a developer's CORE-06 implementation against AI Fabric Framework 0.3.3, the current CORE-06
+Review a developer's CORE-06 implementation against AI Fabric Framework 0.4.0, the current CORE-06
 course source, and pinned access, vector-filter, PII, response-sanitization, action, and chat APIs.
 
 Use a findings-first review. Order findings by severity and cite changed files/tests plus the course

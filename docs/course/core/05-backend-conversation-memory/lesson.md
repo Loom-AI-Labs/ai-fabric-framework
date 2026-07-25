@@ -6,12 +6,12 @@ track: core
 order: 5
 durationMinutes: 60
 availability: published
-courseVersion: 0.3.3-course.2-beta
-frameworkVersion: 0.3.3
-frameworkTag: ai-fabric-framework-v0.3.3
-courseSourceTag: ai-fabric-course-v0.3.3.2
-starterRef: course-0.3.3-03-actions
-solutionRef: course-0.3.3-04-memory
+courseVersion: 0.4.0-course.2-beta
+frameworkVersion: 0.4.0
+frameworkTag: ai-fabric-framework-v0.4.0
+courseSourceTag: unreleased
+starterRef: course-0.4.0-03-actions
+solutionRef: course-0.4.0-04-memory
 requiresOpenAi: true
 requiresDocker: false
 sourcePaths:
@@ -63,12 +63,11 @@ The final two messages are ambiguous in isolation. In this lesson, you will let
 action. The client will send only the new message and a stable conversation ID. The server will
 derive the owner from authenticated identity.
 
-> **Published lab.** Start from
-> [`course-0.3.3-03-actions`](https://github.com/Loom-AI-Labs/ai-fabric-course-support-assistant/tree/course-0.3.3-03-actions)
-> and compare your work with
-> [`course-0.3.3-04-memory`](https://github.com/Loom-AI-Labs/ai-fabric-course-support-assistant/tree/course-0.3.3-04-memory).
-> Deterministic tests prove storage, ownership, bounds, and pending state. The optional OpenAI smoke
-> proves natural-language follow-up interpretation and keeps provider failure visible.
+> **AI Fabric 0.4 migration preview.** The planned immutable starter is
+> `course-0.4.0-03-actions` and the planned solution is `course-0.4.0-04-memory`. They will be linked
+> only after clean-checkout publication. Deterministic tests prove storage, ownership, bounds, and
+> pending state. The optional OpenAI smoke proves natural-language follow-up interpretation and
+> keeps provider failure visible.
 
 ## The Ownership Boundary
 

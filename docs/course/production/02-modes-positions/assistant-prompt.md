@@ -1,7 +1,10 @@
 # Coding Assistant Prompt: Implement PROD-02 Modes And Positions
 
 Work in `Loom-AI-Labs/ai-fabric-course-support-assistant` from tag
-`course-0.3.3-p01-provider-routing`.
+`course-0.4.0-p01-provider-routing`.
+
+Before editing, verify that the tag exists. If it does not, stop and report that the 0.4 learner
+checkpoint is not published; never substitute `main` or an older 0.3 tag.
 
 Implement the PROD-02 lesson contract without changing AI Fabric framework code:
 

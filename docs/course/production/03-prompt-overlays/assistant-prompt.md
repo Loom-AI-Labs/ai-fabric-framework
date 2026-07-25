@@ -1,6 +1,9 @@
 # Coding Assistant Prompt: Implement PROD-03 Prompt Overlays
 
-Work from `course-0.3.3-p02-modes-positions` in the learner repository.
+Work from `course-0.4.0-p02-modes-positions` in the learner repository.
+
+Before editing, verify that the tag exists. If it does not, stop and report that the 0.4 learner
+checkpoint is not published; never substitute `main` or an older 0.3 tag.
 
 Implement a complete `v1-course-support` RAG answer template while preserving the existing
 classifier overlays and inherited framework action selector. Add safe diagnostics exposing only

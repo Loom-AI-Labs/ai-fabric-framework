@@ -1,8 +1,9 @@
 # CORE-01 Independent Review Prompt
 
-Status: Published for independently reviewing the CORE-01 architecture artifacts.
+Status: Migrated for independent review of the AI Fabric 0.4 CORE-01 architecture contract.
+Immutable application-shape comparison is pending publication.
 
-Review a developer's CORE-01 architecture document against AI Fabric Framework 0.3.3 and the current
+Review a developer's CORE-01 architecture document against AI Fabric Framework 0.4.0 and the current
 CORE-01 course source.
 
 Use a findings-first review. Do not rewrite the document until you have identified concrete issues.

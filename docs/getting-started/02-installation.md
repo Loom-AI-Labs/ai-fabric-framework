@@ -127,7 +127,9 @@ ai:
     llm-provider: smoke
     embedding-provider: smoke
   vector-db:
-    type: memory
+    type: lucene
+    lucene:
+      index-path: ./target/ai-fabric-smoke-index
   service:
     features:
       enable-generation: true

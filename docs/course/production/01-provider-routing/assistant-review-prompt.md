@@ -5,11 +5,14 @@ Review a completed `PROD-01` implementation in
 
 ## Contract To Review
 
-- Framework `0.3.3`, Java 21, Spring Boot 4.1.x
-- Starter `course-0.3.3-06-tested-solution`
-- Target checkpoint `course-0.3.3-p01-provider-routing`
+- Framework `0.4.0`, Java 21, Spring Boot 4.1.x
+- Starter `course-0.4.0-06-tested-solution`
+- Target checkpoint `course-0.4.0-p01-provider-routing`
 - Required completion is keyless
 - Optional OpenAI evidence must be separately labelled
+
+Before reviewing, verify that both declared refs exist. If either is missing, stop and report that
+the 0.4 checkpoint comparison is not published; never substitute `main` or an older 0.3 tag.
 
 ## Review Priorities
 
@@ -35,7 +38,7 @@ Review a completed `PROD-01` implementation in
 ## Required Commands
 
 ```bash
-git diff course-0.3.3-06-tested-solution...HEAD --check
+git diff course-0.4.0-06-tested-solution...HEAD --check
 ./mvnw --batch-mode --no-transfer-progress clean verify
 ./scripts/download-onnx-model.sh
 COURSE_SMOKE_USE_EXISTING_JAR=true ./scripts/smoke-packaged.sh
@@ -56,4 +59,3 @@ Report findings first, ordered by severity, with file/line references. Then prov
 - a short change summary only after findings.
 
 If there are no findings, say so directly and name any residual unexecuted live-provider risk.
-

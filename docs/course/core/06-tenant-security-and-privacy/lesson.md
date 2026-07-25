@@ -6,12 +6,12 @@ track: core
 order: 6
 durationMinutes: 85
 availability: published
-courseVersion: 0.3.3-course.2-beta
-frameworkVersion: 0.3.3
-frameworkTag: ai-fabric-framework-v0.3.3
-courseSourceTag: ai-fabric-course-v0.3.3.2
-starterRef: course-0.3.3-04-memory
-solutionRef: course-0.3.3-05-security
+courseVersion: 0.4.0-course.2-beta
+frameworkVersion: 0.4.0
+frameworkTag: ai-fabric-framework-v0.4.0
+courseSourceTag: unreleased
+starterRef: course-0.4.0-04-memory
+solutionRef: course-0.4.0-05-security
 requiresOpenAi: false
 requiresDocker: false
 sourcePaths:
@@ -55,12 +55,11 @@ You will seed two tenants with overlapping support content, derive tenant identi
 server authentication, apply exact-match metadata filters before vector results are accepted, deny
 cross-tenant actions, and redact representative PII before ordinary persistence or AI processing.
 
-> **Published lab.** Start from
-> [`course-0.3.3-04-memory`](https://github.com/Loom-AI-Labs/ai-fabric-course-support-assistant/tree/course-0.3.3-04-memory)
-> and compare your work with
-> [`course-0.3.3-05-security`](https://github.com/Loom-AI-Labs/ai-fabric-course-support-assistant/tree/course-0.3.3-05-security).
-> The required path uses deterministic policy, local vector, and PII tests, so it needs no LLM key.
-> A live-provider run is additional evidence, not a substitute.
+> **AI Fabric 0.4 migration preview.** The planned immutable starter is
+> `course-0.4.0-04-memory` and the planned solution is `course-0.4.0-05-security`. They will be linked
+> only after clean-checkout publication. The required path uses deterministic policy, local vector,
+> and PII tests, so it needs no LLM key. A live-provider run is additional evidence, not a
+> substitute.
 
 ## The Protected Request Flow
 
@@ -312,12 +311,22 @@ String safeMessage = requireProvenProcessedText(rawMessage, result);
 SupportMessage saved = repository.save(
     SupportMessage.fromSafeContent(customerId, safeMessage, result.getDetections())
 );
-capabilityService.processEntityForAI(saved, "support-message");
+IndexingOutcome outcome = indexingGateway.upsert(
+    saved,
+    AIProcessOperation.CREATE,
+    IndexingStrategy.SYNC
+);
+requireCompletedIndexing(outcome);
 ```
 
 `requireProvenProcessedText` must mask detected spans or reject/quarantine the record when safe
 processing cannot be proved. In privacy-critical paths, do not return raw input when the detector is
 null, throws, or reports PII without usable positions and masked values.
+
+The example calls the public `AIEntityIndexingGateway` from the application-owned transaction
+boundary. A service method annotated with
+`@AIProcess(operation = AIProcessOperation.CREATE)` is the equivalent AOP path. The removed
+`processEntityForAI` lifecycle must not be used in a 0.4 application.
 
 Use this test input:
 

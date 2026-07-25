@@ -1,8 +1,9 @@
 # CORE-07 Independent Release-Gate Review Prompt
 
-Status: Published for independently reviewing the CORE-07 release evidence.
+Status: Migrated for independent review of the AI Fabric 0.4 CORE-07 release contract. Immutable
+checkpoint comparison is pending publication.
 
-Review a developer's CORE-07 evidence against AI Fabric Framework 0.3.3, the current CORE-07 course
+Review a developer's CORE-07 evidence against AI Fabric Framework 0.4.0, the current CORE-07 course
 source, the application implementation, and the exact artifacts being proposed for release.
 
 Use a findings-first review. Order findings by severity and cite tests, reports, commands,

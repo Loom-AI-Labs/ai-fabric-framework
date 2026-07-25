@@ -1,11 +1,12 @@
 # QS-01 Independent Review Prompt
 
-Status: Published for independently reviewing the QS-01 checkpoint behavior.
+Status: Migrated for independent review of the AI Fabric 0.4 behavior contract. Immutable
+checkpoint comparison is pending publication.
 
 ```text
 Review the QS-01 implementation as potentially incomplete or unsafe.
 
-Use AI Fabric 0.3.3 / ai-fabric-framework-v0.3.3, Java 21, Spring Boot 4.1.x, the QS-01 lesson, and
+Use AI Fabric 0.4.0 / ai-fabric-framework-v0.4.0, Java 21, Spring Boot 4.1.x, the QS-01 lesson, and
 current framework source/docs as evidence.
 
 1. Inspect the actual diff and repository; do not trust the implementation report.

@@ -1,15 +1,18 @@
 # CORE-02 Coding-Assistant Implementation Prompt
 
-Status: Validated against `course-0.3.3-00-starter` and the CORE-02 behavioral contract.
+Status: Migrated to the AI Fabric 0.4 CORE-02 behavioral contract. Immutable checkpoint validation
+is pending publication of `course-0.4.0-00-starter`.
 
 ```text
 You are implementing AI Fabric course lesson CORE-02: Model And Index Application Data.
 
 Use the framework version and immutable starter ref declared in the lesson front matter, Java 21,
-and Spring Boot 4.1.x. Work only from
-`course-0.3.3-00-starter` in
+and Spring Boot 4.1.x. Before editing, verify that the declared starter ref exists. If it does not,
+stop and report that the 0.4 learner checkpoint is not published; never substitute `main` or an
+older 0.3 tag. Once published, work only from
+`course-0.4.0-00-starter` in
 https://github.com/Loom-AI-Labs/ai-fabric-course-support-assistant. Do not inspect or copy the
-`course-0.3.3-01-first-search` solution checkpoint while implementing.
+`course-0.4.0-01-first-search` solution checkpoint while implementing.
 
 Read first:
 - docs/course/core/02-model-and-index-data/lesson.md

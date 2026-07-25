@@ -6,12 +6,12 @@ track: production
 order: 5
 durationMinutes: 85
 availability: preview
-courseVersion: 0.3.3-course.2-beta
-frameworkVersion: 0.3.3
-frameworkTag: ai-fabric-framework-v0.3.3
-courseSourceTag: ai-fabric-course-v0.3.3.2
-starterRef: course-0.3.3-p04-migration-backfill
-solutionRef: course-0.3.3-p05-live-data-sync
+courseVersion: 0.4.0-course.2-beta
+frameworkVersion: 0.4.0
+frameworkTag: ai-fabric-framework-v0.4.0
+courseSourceTag: unreleased
+starterRef: course-0.4.0-p04-migration-backfill
+solutionRef: course-0.4.0-p05-live-data-sync
 requiresOpenAi: false
 requiresDocker: false
 optionalProviderExercises: []
@@ -52,9 +52,10 @@ PROD-04 established the initial vector state. Your application is still changing
 are created, corrected, and deleted. This lesson routes those trusted source operations through AI
 Fabric Data Sync so semantic evidence converges on current business truth.
 
-> Start from `course-0.3.3-p04-migration-backfill`; compare with
-> `course-0.3.3-p05-live-data-sync`. The solution passed 58 deterministic tests and a packaged
-> ONNX/Lucene sync lifecycle. No external provider key or Docker service is required.
+> **AI Fabric 0.4 migration preview.** The planned immutable starter is
+> `course-0.4.0-p04-migration-backfill` and the planned solution is
+> `course-0.4.0-p05-live-data-sync`. These stage tags are not published yet. No external provider key
+> or Docker service is required for the planned lab.
 
 ## Migration And Sync Are Different
 
@@ -97,7 +98,10 @@ queue or serialize the source entity.
 ```bash
 git clone https://github.com/Loom-AI-Labs/ai-fabric-course-support-assistant.git
 cd ai-fabric-course-support-assistant
-git switch --detach course-0.3.3-p04-migration-backfill
+git fetch --tags
+git show-ref --verify --quiet refs/tags/course-0.4.0-p04-migration-backfill \
+  || { echo "The 0.4 starter checkpoint is not published yet."; exit 1; }
+git switch --detach course-0.4.0-p04-migration-backfill
 git switch -c lesson/prod-05-live-data-sync
 ./mvnw --batch-mode --no-transfer-progress clean verify
 ```
@@ -223,7 +227,7 @@ COURSE_SMOKE_USE_EXISTING_JAR=true ./scripts/smoke-packaged.sh
 jq '.liveDataSync' target/course-release-evidence/packaged-smoke-summary.json
 ```
 
-Expected checkpoint: `course-0.3.3-p05-live-data-sync`; capability `liveDataSync=true`.
+Expected checkpoint: `course-0.4.0-p05-live-data-sync`; capability `liveDataSync=true`.
 
 ## Done When
 
@@ -239,7 +243,7 @@ Expected checkpoint: `course-0.3.3-p05-live-data-sync`; capability `liveDataSync
 
 ```bash
 ./scripts/reset-course.sh
-git switch --detach course-0.3.3-p04-migration-backfill
+git switch --detach course-0.4.0-p04-migration-backfill
 ```
 
 ## Troubleshooting

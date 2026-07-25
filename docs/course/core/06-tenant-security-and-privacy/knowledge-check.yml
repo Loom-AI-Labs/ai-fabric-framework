@@ -96,7 +96,7 @@ questions:
   - id: core-06-q6
     type: multiple-choice
     competency: privacy-failure-semantics
-    prompt: Which privacy statements are accurate for AI Fabric 0.3.3?
+    prompt: Which privacy statements are accurate for AI Fabric 0.4.0?
     options:
       - id: a
         text: A HASH protected-original record is not recoverable encryption

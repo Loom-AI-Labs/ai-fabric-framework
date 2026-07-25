@@ -7,10 +7,10 @@
 | Field | Value |
 | --- | --- |
 | Status | Quickstart and Core lessons published; Production track and external learner beta remain pending |
-| Course baseline | AI Fabric `0.3.3` |
-| Framework release tag | `ai-fabric-framework-v0.3.3` |
-| Course content version | `0.3.3-course.2-beta` |
-| Course source tag | `ai-fabric-course-v0.3.3.2` |
+| Course baseline | AI Fabric `0.4.0` |
+| Framework release tag | `ai-fabric-framework-v0.4.0` |
+| Course content version | `0.4.0-course.2-beta` |
+| Course source tag | `unreleased` |
 | Java | `21` |
 | Spring Boot | `4.1.x` |
 | Maven group | `io.github.loom-ai-labs` |
@@ -240,7 +240,7 @@ The synchronization process must:
 Suggested website generated directory:
 
 ```text
-src/content/course/0.3.3/
+src/content/course/0.4.0/
   course.yml
   quickstart/
   core/
@@ -259,20 +259,20 @@ created. Do not make old lessons silently follow `main` or a moving `latest` ver
 
 For this course release:
 
-- Framework API compatibility: `ai-fabric-framework-v0.3.3`.
-- Course content source: `ai-fabric-course-v0.3.3.2`.
-- Learner checkpoint tags: `course-0.3.3-*` in the standalone learner repository.
+- Framework API compatibility: `ai-fabric-framework-v0.4.0`.
+- Course content source: `unreleased`.
+- Learner checkpoint tags: `course-0.4.0-*` in the standalone learner repository.
 
 Checkpoint naming convention:
 
 ```text
-course-0.3.3-00-starter
-course-0.3.3-01-first-search
-course-0.3.3-02-rag
-course-0.3.3-03-actions
-course-0.3.3-04-memory
-course-0.3.3-05-security
-course-0.3.3-06-tested-solution
+course-0.4.0-00-starter
+course-0.4.0-01-first-search
+course-0.4.0-02-rag
+course-0.4.0-03-actions
+course-0.4.0-04-memory
+course-0.4.0-05-security
+course-0.4.0-06-tested-solution
 ```
 
 Checkpoint tags are immutable. A course correction creates a patch checkpoint or a new course
@@ -337,7 +337,7 @@ another tenant's private records.
 
 | Type | Purpose | AI Fabric role |
 | --- | --- | --- |
-| `KnowledgeArticle` | Approved support content | Searchable and embeddable evidence |
+| `KnowledgeArticle` | Approved support content | Searchable evidence projected to semantic search and RAG |
 | `SupportPolicy` | Return, escalation, privacy, and service rules | RAG evidence |
 | `SupportTicket` | Application-owned ticket state | Read and governed write actions |
 | `CustomerAccount` | Current user, tenant, plan, and entitlements | Trusted action input and access context |
@@ -433,10 +433,11 @@ The independent
 [`@loom-ai-labs/ai-fabric-chat-ui`](https://github.com/Loom-AI-Labs/ai-fabric-chat-ui) package gives
 learners and application teams a reusable Web Component and React wrapper after the backend
 capability works. It renders AI Fabric orchestration results, evidence, clarification, confirmation,
-safe action projections, and authorized conversation history. The `v0.3.0` lab also demonstrates a
-bottom-docked chat, presentation-only MAX workspace, visible allowlisted mode/position context,
-host-owned domain tools with responsive panels and explicit commands, bounded component injection,
-and metadata-only client diagnostics.
+safe action projections, and authorized conversation history. The lab is pinned to the independently
+versioned AI Fabric Chat UI `v0.3.0` release; that is not the Java framework version. It also
+demonstrates a bottom-docked chat, presentation-only MAX workspace, visible allowlisted
+mode/position context, host-owned domain tools with responsive panels and explicit commands,
+bounded component injection, and metadata-only client diagnostics.
 
 It remains optional and frontend-only:
 
@@ -479,12 +480,12 @@ title: Governed Actions and Confirmation
 track: core
 order: 4
 durationMinutes: 90
-courseVersion: 0.3.3-course.2
-frameworkVersion: 0.3.3
-frameworkTag: ai-fabric-framework-v0.3.3
-courseSourceTag: ai-fabric-course-v0.3.3.2
-starterRef: course-0.3.3-02-rag
-solutionRef: course-0.3.3-03-actions
+courseVersion: 0.4.0-course.2
+frameworkVersion: 0.4.0
+frameworkTag: ai-fabric-framework-v0.4.0
+courseSourceTag: unreleased
+starterRef: course-0.4.0-02-rag
+solutionRef: course-0.4.0-03-actions
 requiresOpenAi: false
 requiresDocker: false
 sourcePaths:
@@ -495,7 +496,7 @@ assistant:
   mode: implement
   implementationPrompt: assistant-prompt.md
   reviewPrompt: assistant-review-prompt.md
-  validatedStarterRef: course-0.3.3-02-rag
+  validatedStarterRef: course-0.4.0-02-rag
   validationStatus: planned
   reviewedBy: null
   reviewedAt: null
@@ -793,7 +794,7 @@ evidence model, and security boundary.
 
 **Duration:** 60-90 minutes
 
-**Checkpoint:** `course-0.3.3-00-starter` to `course-0.3.3-01-first-search`
+**Checkpoint:** `course-0.4.0-00-starter` to `course-0.4.0-01-first-search`
 
 **Keys required:** No
 
@@ -953,7 +954,7 @@ Sources:
 
 **Duration:** 60 minutes
 
-**Checkpoint:** `course-0.3.3-00-starter` to `course-0.3.3-01-first-search`
+**Checkpoint:** `course-0.4.0-00-starter` to `course-0.4.0-01-first-search`
 
 **NotebookLM pre-lesson theory:**
 
@@ -965,7 +966,7 @@ Sources:
   embedding provider, and vector storage.
 - Why existing database rows are not retrievable evidence until indexing succeeds, and why an empty
   result is more trustworthy than a fabricated answer.
-- The meaning of searchable, embeddable, contextual, and metadata fields and how each affects
+- The meaning of searchable destinations and typed context destinations, and how each affects
   retrieval without making every domain field model-visible.
 - The indexing lifecycle from stable entity identity through field projection, embedding, vector
   storage, metadata filtering, update, and deletion.
@@ -976,7 +977,7 @@ Sources:
 
 Outcome:
 
-- Define searchable, embeddable, context, and metadata fields.
+- Define searchable fields plus typed vector-metadata, LLM-context, and API-response destinations.
 - Index a `KnowledgeArticle` into a dedicated vector space.
 - Preserve stable entity and tenant metadata.
 
@@ -994,8 +995,8 @@ Intentional failure:
 
 Field lesson - configured entities still need lifecycle proof:
 
-- **Symptom:** an entity is annotated or declared indexable, but updates, deletes, or metadata filters
-  do not appear in retrieval.
+- **Symptom:** indexing is enabled for an entity, but updates, deletes, or metadata filters do not
+  appear in retrieval.
 - **Cause:** entity configuration describes the contract; it does not prove that every application
   lifecycle path invoked indexing correctly.
 - **Correct pattern:** make seed, index, update, delete, and backfill flows explicit and preserve stable
@@ -1020,7 +1021,7 @@ Sources:
 
 **Duration:** 75 minutes
 
-**Checkpoint:** `course-0.3.3-01-first-search` to `course-0.3.3-02-rag`
+**Checkpoint:** `course-0.4.0-01-first-search` to `course-0.4.0-02-rag`
 
 **NotebookLM pre-lesson theory:**
 
@@ -1080,7 +1081,7 @@ Sources:
 
 **Duration:** 75-90 minutes
 
-**Checkpoint:** `course-0.3.3-02-rag` to `course-0.3.3-03-actions`
+**Checkpoint:** `course-0.4.0-02-rag` to `course-0.4.0-03-actions`
 
 **NotebookLM pre-lesson theory:**
 
@@ -1168,7 +1169,7 @@ Sources:
 
 **Duration:** 60 minutes
 
-**Checkpoint:** `course-0.3.3-03-actions` to `course-0.3.3-04-memory`
+**Checkpoint:** `course-0.4.0-03-actions` to `course-0.4.0-04-memory`
 
 **NotebookLM pre-lesson theory:**
 
@@ -1225,7 +1226,7 @@ Sources:
 
 **Duration:** 75-90 minutes
 
-**Checkpoint:** `course-0.3.3-04-memory` to `course-0.3.3-05-security`
+**Checkpoint:** `course-0.4.0-04-memory` to `course-0.4.0-05-security`
 
 **NotebookLM pre-lesson theory:**
 
@@ -1284,7 +1285,7 @@ Sources:
 
 **Duration:** 60-75 minutes
 
-**Checkpoint:** `course-0.3.3-05-security` to `course-0.3.3-06-tested-solution`
+**Checkpoint:** `course-0.4.0-05-security` to `course-0.4.0-06-tested-solution`
 
 **NotebookLM pre-lesson theory:**
 
@@ -1971,7 +1972,7 @@ Starter prompt:
 
 ```text
 You are helping me build an AI Fabric application.
-Use AI Fabric 0.3.3, Java 21, Spring Boot 4.1.x,
+Use AI Fabric 0.4.0, Java 21, Spring Boot 4.1.x,
 Maven group io.github.loom-ai-labs, and framework packages ai.fabric.*.
 
 Read the supplied AI Fabric documents before proposing code.
@@ -2351,7 +2352,7 @@ backend or be clearly labeled static expected-output examples.
 Add a repeatable command in `aifabric`, for example:
 
 ```bash
-npm run course:sync -- --course-ref ai-fabric-course-v0.3.3.2
+npm run course:sync -- --course-ref unreleased
 npm run course:verify
 ```
 
@@ -2383,12 +2384,12 @@ assistantPromptSchemaVersion: 1
 knowledgeCheckSchemaVersion: 1
 notebookLmVideoSchemaVersion: 1
 courseId: ai-fabric-production-oriented-java
-courseVersion: 0.3.3-course.2
+courseVersion: 0.4.0-course.2
 title: Build AI-Enabled Applications with Java and Spring Boot
 subtitle: Semantic search, evidence-grounded RAG, governed actions, chat memory, and tenant security with AI Fabric
-frameworkVersion: 0.3.3
-frameworkTag: ai-fabric-framework-v0.3.3
-courseSourceTag: ai-fabric-course-v0.3.3.2
+frameworkVersion: 0.4.0
+frameworkTag: ai-fabric-framework-v0.4.0
+courseSourceTag: unreleased
 javaVersion: 21
 springBootVersion: 4.1.x
 learnerRepository: https://github.com/Loom-AI-Labs/ai-fabric-course-support-assistant
@@ -2415,7 +2416,7 @@ tracks:
           mode: implement
           implementationPrompt: quickstart/01-first-useful-result/assistant-prompt.md
           reviewPrompt: quickstart/01-first-useful-result/assistant-review-prompt.md
-          validatedStarterRef: course-0.3.3-00-starter
+          validatedStarterRef: course-0.4.0-00-starter
           validationStatus: passed
           completionRequiresReview: true
   - id: core
@@ -2536,7 +2537,7 @@ Live OpenAI tests remain a separate keyed job. It must:
 
 ## Release Blockers Before Recording
 
-These issues are verified against the `0.3.3` source and must be fixed before course recording:
+These issues are verified against the `0.4.0` source and must be fixed before course recording:
 
 ### Blocker 1: Governed Action Example
 
@@ -2602,7 +2603,7 @@ The previous curriculum mentioned four public demos. The case-study track now in
 - [ ] Replace the broken standalone smoke instructions.
 - [ ] Correct real-app reactor commands.
 - [ ] Align the framework and website real-app maps.
-- [ ] Verify all Getting Started source links against `0.3.3`.
+- [ ] Verify all Getting Started source links against `0.4.0`.
 
 ### Phase 1: Course Foundation
 
@@ -2718,7 +2719,7 @@ Start with:
 - `docs/llm-context/AI_FABRIC_CONTEXT_INDEX.md`
 - `docs/Framework-Dev-Guides/LLM-guides/AI_FABRIC_FRAMEWORK_PHILOSOPHY.md`
 - `docs/Framework-Dev-Guides/LLM-guides/AI_FABRIC_LLM_SESSION_LESSONS_LEARNED.md`
-- `docs/release-notes/0.3.3.md`
+- `docs/release-notes/0.4.0.md`
 - `examples/real-apps/README.md`
 
 NotebookLM product references:

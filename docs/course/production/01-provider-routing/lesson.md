@@ -6,12 +6,12 @@ track: production
 order: 1
 durationMinutes: 80
 availability: preview
-courseVersion: 0.3.3-course.2-beta
-frameworkVersion: 0.3.3
-frameworkTag: ai-fabric-framework-v0.3.3
-courseSourceTag: ai-fabric-course-v0.3.3.2
-starterRef: course-0.3.3-06-tested-solution
-solutionRef: course-0.3.3-p01-provider-routing
+courseVersion: 0.4.0-course.2-beta
+frameworkVersion: 0.4.0
+frameworkTag: ai-fabric-framework-v0.4.0
+courseSourceTag: unreleased
+starterRef: course-0.4.0-06-tested-solution
+solutionRef: course-0.4.0-p01-provider-routing
 requiresOpenAi: false
 requiresDocker: false
 optionalProviderExercises:
@@ -67,12 +67,10 @@ The required lab is keyless. Two explicitly test-only recording providers prove 
 provider and model for each purpose. The optional OpenAI section uses the same application
 configuration with a real key supplied at runtime.
 
-> **Preview lab with a verified checkpoint.** Start from
-> [`course-0.3.3-06-tested-solution`](https://github.com/Loom-AI-Labs/ai-fabric-course-support-assistant/tree/course-0.3.3-06-tested-solution)
-> and compare your result with
-> [`course-0.3.3-p01-provider-routing`](https://github.com/Loom-AI-Labs/ai-fabric-course-support-assistant/tree/course-0.3.3-p01-provider-routing).
-> The code checkpoint is tested and immutable. The lesson remains preview until its theory recording
-> is reviewed and published.
+> **AI Fabric 0.4 migration preview.** The planned immutable starter is
+> `course-0.4.0-06-tested-solution` and the planned solution is
+> `course-0.4.0-p01-provider-routing`. The complete local 0.4 reference migration passes its
+> deterministic suite, but these stage tags are not published yet.
 
 ## What You Will Prove
 
@@ -132,7 +130,10 @@ Start from a clean checkpoint:
 ```bash
 git clone https://github.com/Loom-AI-Labs/ai-fabric-course-support-assistant.git
 cd ai-fabric-course-support-assistant
-git switch --detach course-0.3.3-06-tested-solution
+git fetch --tags
+git show-ref --verify --quiet refs/tags/course-0.4.0-06-tested-solution \
+  || { echo "The 0.4 starter checkpoint is not published yet."; exit 1; }
+git switch --detach course-0.4.0-06-tested-solution
 git switch -c lesson/prod-01-provider-routing
 ./mvnw --batch-mode --no-transfer-progress clean verify
 ```
@@ -343,7 +344,7 @@ Expected summary fields include:
 ```json
 {
   "status": "PASS",
-  "checkpoint": "course-0.3.3-p01-provider-routing",
+  "checkpoint": "course-0.4.0-p01-provider-routing",
   "profile": "local",
   "deployment": {
     "provider": {
@@ -477,10 +478,10 @@ unset AI_GENERATION_PROVIDER AI_GENERATION_MODEL AI_GENERATION_MAX_TOKENS
 rm -rf data/lucene-knowledge-384 target/course-release-evidence
 ```
 
-To restart the lesson from its immutable starter:
+After the checkpoint series is published, restart the lesson from its immutable starter:
 
 ```bash
-./scripts/reset-course.sh course-0.3.3-06-tested-solution
+./scripts/reset-course.sh course-0.4.0-06-tested-solution
 ```
 
 The reset script refuses to run with a dirty worktree. Commit useful work or move experiments before
@@ -507,7 +508,7 @@ resetting.
 - [ ] a failed generation call makes one provider call and remains visible.
 - [ ] health reports orchestration, generation, embedding, vector, and fallback posture.
 - [ ] `./mvnw --batch-mode --no-transfer-progress clean verify` passes all 42 tests.
-- [ ] the packaged local smoke passes and reports checkpoint `course-0.3.3-p01-provider-routing`.
+- [ ] the packaged local smoke passes and reports checkpoint `course-0.4.0-p01-provider-routing`.
 - [ ] any OpenAI run is recorded separately as optional keyed evidence.
 
 ## Next Lesson

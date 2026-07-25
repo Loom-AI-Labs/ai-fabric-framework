@@ -1,14 +1,18 @@
 # CORE-04 Coding-Assistant Implementation Prompt
 
-Status: Validated against `course-0.3.3-02-rag` and the CORE-04 behavioral contract.
+Status: Migrated to the AI Fabric 0.4 CORE-04 behavioral contract. Immutable checkpoint validation
+is pending publication of `course-0.4.0-02-rag`.
 
 ```text
 You are implementing AI Fabric course lesson CORE-04: Governed Actions And Confirmation.
 
-Use AI Fabric 0.3.3 / ai-fabric-framework-v0.3.3, Java 21, and Spring Boot 4.1.x. Work only from
-`course-0.3.3-02-rag` in
+Use AI Fabric 0.4.0 / ai-fabric-framework-v0.4.0, Java 21, and Spring Boot 4.1.x. Before editing,
+verify that the declared starter ref exists. If it does not, stop and report that the 0.4 learner
+checkpoint is not published; never substitute `main` or an older 0.3 tag. Once published, work only
+from
+`course-0.4.0-02-rag` in
 https://github.com/Loom-AI-Labs/ai-fabric-course-support-assistant. Do not inspect or copy the
-`course-0.3.3-03-actions` solution checkpoint while implementing.
+`course-0.4.0-03-actions` solution checkpoint while implementing.
 
 Read first:
 - docs/course/core/04-governed-actions/lesson.md

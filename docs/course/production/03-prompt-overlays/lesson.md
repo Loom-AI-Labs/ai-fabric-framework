@@ -6,12 +6,12 @@ track: production
 order: 3
 durationMinutes: 80
 availability: preview
-courseVersion: 0.3.3-course.2-beta
-frameworkVersion: 0.3.3
-frameworkTag: ai-fabric-framework-v0.3.3
-courseSourceTag: ai-fabric-course-v0.3.3.2
-starterRef: course-0.3.3-p02-modes-positions
-solutionRef: course-0.3.3-p03-prompt-overlays
+courseVersion: 0.4.0-course.2-beta
+frameworkVersion: 0.4.0
+frameworkTag: ai-fabric-framework-v0.4.0
+courseSourceTag: unreleased
+starterRef: course-0.4.0-p02-modes-positions
+solutionRef: course-0.4.0-p03-prompt-overlays
 requiresOpenAi: false
 requiresDocker: false
 optionalProviderExercises:
@@ -56,9 +56,9 @@ bundle: application overlays first, curated pack next, framework base last.
 In this lesson you will retain the existing `v1-course-support` follow-up classifiers, add one
 complete support-answer template, verify base fallback, and expose safe version diagnostics.
 
-> Start from `course-0.3.3-p02-modes-positions`; compare with
-> `course-0.3.3-p03-prompt-overlays`. The executable checkpoint is verified. Publication still waits
-> for the reviewed theory recording.
+> **AI Fabric 0.4 migration preview.** The planned immutable starter is
+> `course-0.4.0-p02-modes-positions` and the planned solution is
+> `course-0.4.0-p03-prompt-overlays`. These stage tags are not published yet.
 
 ## Resolution Model
 
@@ -88,7 +88,10 @@ keys your application must own and let all other keys fall through.
 ```bash
 git clone https://github.com/Loom-AI-Labs/ai-fabric-course-support-assistant.git
 cd ai-fabric-course-support-assistant
-git switch --detach course-0.3.3-p02-modes-positions
+git fetch --tags
+git show-ref --verify --quiet refs/tags/course-0.4.0-p02-modes-positions \
+  || { echo "The 0.4 starter checkpoint is not published yet."; exit 1; }
+git switch --detach course-0.4.0-p02-modes-positions
 git switch -c lesson/prod-03-prompt-overlays
 ./mvnw --batch-mode --no-transfer-progress clean verify
 ```
@@ -180,7 +183,7 @@ packaging, placeholders, evidence boundaries, and policy enforcement.
 ./scripts/smoke-packaged.sh
 ```
 
-Expected readiness checkpoint: `course-0.3.3-p03-prompt-overlays`; capability
+Expected readiness checkpoint: `course-0.4.0-p03-prompt-overlays`; capability
 `promptOverlays=true`.
 
 ## Done When
@@ -196,7 +199,7 @@ Expected readiness checkpoint: `course-0.3.3-p03-prompt-overlays`; capability
 
 ```bash
 ./scripts/reset-course.sh
-git switch --detach course-0.3.3-p02-modes-positions
+git switch --detach course-0.4.0-p02-modes-positions
 ```
 
 ## Next Lesson

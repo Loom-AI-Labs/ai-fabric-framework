@@ -6,12 +6,12 @@ track: quickstart
 order: 1
 durationMinutes: 75
 availability: published
-courseVersion: 0.3.3-course.2-beta
-frameworkVersion: 0.3.3
-frameworkTag: ai-fabric-framework-v0.3.3
-courseSourceTag: ai-fabric-course-v0.3.3.2
-starterRef: course-0.3.3-00-starter
-solutionRef: course-0.3.3-01-first-search
+courseVersion: 0.4.0-course.2-beta
+frameworkVersion: 0.4.0
+frameworkTag: ai-fabric-framework-v0.4.0
+courseSourceTag: unreleased
+starterRef: course-0.4.0-00-starter
+solutionRef: course-0.4.0-01-first-search
 requiresOpenAi: false
 requiresDocker: false
 sourcePaths:
@@ -44,12 +44,10 @@ inspectable result before a long architecture discussion.
 
 You do not need an LLM, an OpenAI key, Docker, or a framework source checkout for this workflow.
 
-> **Published lab.** Start from
-> [`course-0.3.3-00-starter`](https://github.com/Loom-AI-Labs/ai-fabric-course-support-assistant/tree/course-0.3.3-00-starter)
-> and use
-> [`course-0.3.3-01-first-search`](https://github.com/Loom-AI-Labs/ai-fabric-course-support-assistant/tree/course-0.3.3-01-first-search)
-> to review your result. Both refs are immutable learner-repository checkpoints validated from a
-> clean checkout.
+> **AI Fabric 0.4 migration preview.** The planned immutable starter is
+> `course-0.4.0-00-starter` and the planned solution is `course-0.4.0-01-first-search`. These names
+> are intentionally not linked until the migrated learner checkpoints are published and verified
+> from a clean checkout.
 
 ## What You Will Prove
 
@@ -85,6 +83,10 @@ class KnowledgeArticle {
     @AIContext(
         key = "entityId",
         dataType = AIContextDataType.ID,
+        destinations = {
+            AIContextDestination.VECTOR_METADATA,
+            AIContextDestination.API_RESPONSE
+        },
         priority = 100,
         required = true
     )
@@ -103,8 +105,9 @@ class KnowledgeArticle {
 
 For this quickstart, remember only this distinction:
 
-- `@AISearchable` marks approved text that contributes to semantic retrieval.
-- `@AIContext` preserves structured identity and metadata without embedding those values.
+- `@AISearchable` marks approved text and its semantic-search/RAG projection.
+- `@AIContext` sends structured values only to the declared metadata, LLM-context, or API-response
+  destinations.
 
 CORE-01 explains the complete AI Fabric ownership and module model. CORE-02 returns to this entity and
 explains projection, embedding compatibility, metadata, indexing, update, delete, and backfill in
@@ -114,7 +117,7 @@ depth.
 
 From the starter checkpoint, follow this sequence:
 
-1. Verify Java 21 and check out the published starter ref.
+1. Verify Java 21 and confirm that the planned 0.4 starter tag has been published before checkout.
 2. Run the starter tests before editing anything.
 3. Add the AI Fabric BOM and the smallest required module set.
 4. Configure local ONNX embeddings and local Lucene storage.
@@ -137,8 +140,9 @@ Give your coding assistant the supplied QS-01 implementation prompt. It must ins
 Fabric APIs, preserve application ownership, reproduce the no-index result, and run the same tests as
 the manual path. It must not copy the solution checkpoint or invent framework APIs.
 
-The assistant prompt has been validated against the same starter and behavioral checks as the
-manual path. You still own the diff review and must run the declared tests yourself.
+The assistant prompt is migrated to the 0.4 contract and stops if the planned starter is not
+published. Staged prompt validation will be recorded with the immutable checkpoint. You still own
+the diff review and must run the declared tests yourself.
 
 ## Commands
 

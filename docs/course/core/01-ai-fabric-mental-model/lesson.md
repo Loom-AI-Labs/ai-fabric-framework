@@ -6,12 +6,12 @@ track: core
 order: 1
 durationMinutes: 70
 availability: published
-courseVersion: 0.3.3-course.2-beta
-frameworkVersion: 0.3.3
-frameworkTag: ai-fabric-framework-v0.3.3
-courseSourceTag: ai-fabric-course-v0.3.3.2
-starterRef: course-0.3.3-00-starter
-solutionRef: course-0.3.3-00-starter
+courseVersion: 0.4.0-course.2-beta
+frameworkVersion: 0.4.0
+frameworkTag: ai-fabric-framework-v0.4.0
+courseSourceTag: unreleased
+starterRef: course-0.4.0-00-starter
+solutionRef: course-0.4.0-00-starter
 requiresOpenAi: false
 requiresDocker: false
 sourcePaths:
@@ -59,10 +59,10 @@ You will analyze one support application and produce four concrete artifacts:
 There is no code change in this lesson. The output is an architecture contract that you will use in
 every later lab.
 
-> **Published analysis lesson.** Use
-> [`course-0.3.3-00-starter`](https://github.com/Loom-AI-Labs/ai-fabric-course-support-assistant/tree/course-0.3.3-00-starter)
-> as the concrete application shape for both the starter and result. This lesson changes no code;
-> its validated output is the architecture contract you carry into CORE-02.
+> **AI Fabric 0.4 migration preview.** The planned application reference is
+> `course-0.4.0-00-starter`. It will be linked after the migrated checkpoint is published and
+> verified from a clean checkout. This lesson changes no code; its output is the architecture
+> contract you carry into CORE-02.
 
 ## What You Will Learn
 

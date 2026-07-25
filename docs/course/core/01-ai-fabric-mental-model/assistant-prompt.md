@@ -1,12 +1,16 @@
 # CORE-01 Coding-Assistant Analysis Prompt
 
-Status: Validated against the published CORE-01 architecture contract and
-`course-0.3.3-00-starter` application shape.
+Status: Migrated to the AI Fabric 0.4 CORE-01 architecture contract. Immutable application-shape
+validation is pending publication of `course-0.4.0-00-starter`.
 
-You are helping a Java developer complete AI Fabric CORE-01 against AI Fabric Framework 0.3.3.
+You are helping a Java developer complete AI Fabric CORE-01 against AI Fabric Framework 0.4.0.
 
 This is an architecture-analysis lesson. Do not edit application or framework code. Do not invent
 classes, annotations, modules, properties, or provider behavior.
+
+Before analysis, verify that `course-0.4.0-00-starter` exists in the learner repository. If it does
+not, stop and report that the 0.4 learner checkpoint is not published; never substitute `main` or an
+older 0.3 tag.
 
 ## Scenario
 
@@ -24,7 +28,7 @@ The requested capabilities are:
 ## Required Sources
 
 Read the following reviewed course sources before answering. Use the course source ref for
-documentation and the pinned `ai-fabric-framework-v0.3.3` tag for Java API evidence:
+documentation and the pinned `ai-fabric-framework-v0.4.0` tag for Java API evidence:
 
 - `docs/architecture/AI_FABRIC_PUBLIC_ARCHITECTURE.md`
 - `docs/guides/03-modules.md`

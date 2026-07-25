@@ -1,9 +1,9 @@
 schemaVersion: 1
 lessonId: prod-07
 status: published
-frameworkVersion: 0.3.3
-frameworkTag: ai-fabric-framework-v0.3.3
-courseVersion: 0.3.3-course.2-beta
+frameworkVersion: 0.4.0
+frameworkTag: ai-fabric-framework-v0.4.0
+courseVersion: 0.4.0-course.2-beta
 reviewedAt: null
 reviewedBy: null
 sources:

@@ -1,14 +1,17 @@
 # QS-01 Assistant Implementation Prompt
 
-Status: Validated against `course-0.3.3-00-starter` and the QS-01 behavioral contract.
+Status: Migrated to the AI Fabric 0.4 contract. Immutable checkpoint validation is pending
+publication of `course-0.4.0-00-starter`.
 
 ```text
 You are implementing AI Fabric course lesson QS-01: First Useful Result.
 
-Use AI Fabric 0.3.3 / ai-fabric-framework-v0.3.3, Java 21, and Spring Boot 4.1.x.
-Work only from `course-0.3.3-00-starter` in
+Use AI Fabric 0.4.0 / ai-fabric-framework-v0.4.0, Java 21, and Spring Boot 4.1.x.
+Before editing, verify that `course-0.4.0-00-starter` exists. If it does not, stop and report that
+the 0.4 learner checkpoint is not published; never substitute `main` or an older 0.3 tag. Once
+published, work only from `course-0.4.0-00-starter` in
 https://github.com/Loom-AI-Labs/ai-fabric-course-support-assistant. Do not inspect or copy the
-`course-0.3.3-01-first-search` solution checkpoint while implementing.
+`course-0.4.0-01-first-search` solution checkpoint while implementing.
 
 Read first:
 - docs/getting-started/02-installation.md

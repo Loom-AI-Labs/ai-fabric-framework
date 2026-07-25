@@ -6,12 +6,12 @@ track: core
 order: 2
 durationMinutes: 60
 availability: published
-courseVersion: 0.3.3-course.2-beta
-frameworkVersion: 0.3.3
-frameworkTag: ai-fabric-framework-v0.3.3
-courseSourceTag: ai-fabric-course-v0.3.3.2
-starterRef: course-0.3.3-00-starter
-solutionRef: course-0.3.3-01-first-search
+courseVersion: 0.4.0-course.2-beta
+frameworkVersion: 0.4.0
+frameworkTag: ai-fabric-framework-v0.4.0
+courseSourceTag: unreleased
+starterRef: course-0.4.0-00-starter
+solutionRef: course-0.4.0-01-first-search
 requiresOpenAi: false
 requiresDocker: false
 sourcePaths:
@@ -53,11 +53,10 @@ In this lesson, you will extend the Support Knowledge Assistant from CORE-01 wit
 `KnowledgeArticle` lifecycle. You will define what can be searched, preserve trusted metadata, and
 prove create, update, query, and delete behavior. No LLM or cloud key is required.
 
-> **Published lab.** Start from
-> [`course-0.3.3-00-starter`](https://github.com/Loom-AI-Labs/ai-fabric-course-support-assistant/tree/course-0.3.3-00-starter)
-> and compare your work with
-> [`course-0.3.3-01-first-search`](https://github.com/Loom-AI-Labs/ai-fabric-course-support-assistant/tree/course-0.3.3-01-first-search).
-> The solution checkpoint includes the executable HTTP scenarios and focused lifecycle tests.
+> **AI Fabric 0.4 migration preview.** The planned immutable starter is
+> `course-0.4.0-00-starter` and the planned solution is `course-0.4.0-01-first-search`. They will be
+> linked only after the migrated checkpoints, executable HTTP scenarios, and focused lifecycle
+> tests are published and verified from a clean checkout.
 
 ## What You Will Build
 
@@ -102,7 +101,7 @@ not transfer ownership of the record to AI Fabric.
 
 ## Step 2: Model Approved Fields
 
-The published solution uses the current annotation contract:
+The migrated 0.4 lesson uses the current annotation contract:
 
 ```java
 @Entity
@@ -113,6 +112,10 @@ public class KnowledgeArticle {
     @AIContext(
         key = "entityId",
         dataType = AIContextDataType.ID,
+        destinations = {
+            AIContextDestination.VECTOR_METADATA,
+            AIContextDestination.API_RESPONSE
+        },
         priority = 100,
         required = true
     )
@@ -125,6 +128,12 @@ public class KnowledgeArticle {
     private String body;
 
     @AIContext(
+        dataType = AIContextDataType.STRING,
+        destinations = {
+            AIContextDestination.VECTOR_METADATA,
+            AIContextDestination.LLM_CONTEXT,
+            AIContextDestination.API_RESPONSE
+        },
         description = "Support taxonomy used for filtering",
         priority = 70
     )
@@ -132,6 +141,7 @@ public class KnowledgeArticle {
 
     @AIContext(
         dataType = AIContextDataType.ID,
+        destinations = {AIContextDestination.VECTOR_METADATA},
         description = "Application-owned tenant identifier",
         priority = 100,
         required = true
@@ -182,7 +192,7 @@ resolved entity type = knowledge-article
 indexing = enabled
 searchable fields include title and body
 context fields include entityId, category, tenantId, status
-internalNotes is absent from searchable, embeddable, and metadata fields
+internalNotes is absent from searchable and context projections
 projection hash is stable
 ```
 
@@ -354,7 +364,7 @@ Open `requests/01-semantic-search.http` in the solution checkpoint for complete 
 | Search returns the wrong entity type | `entityType` on stored vectors and `AISearchRequest` |
 | Metadata is missing | `@AIContext`, YAML metadata fields, and the stored vector record |
 | Updates return old wording | Stable identity and the update/reindex path |
-| Deleted records still appear | Application delete event and `removeVector(entityType, entityId)` proof |
+| Deleted records still appear | Application delete event and `AIEntityIndexingGateway.delete(...)` proof |
 | Source committed but vector is delayed | Queue status, worker enablement, retry count, and dead-letter state |
 | Source rolled back but queue exists | Source and indexing repositories are not sharing the expected transaction manager |
 | Search fails after a model change | Embedding dimensions and index compatibility |

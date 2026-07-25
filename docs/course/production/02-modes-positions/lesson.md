@@ -6,12 +6,12 @@ track: production
 order: 2
 durationMinutes: 75
 availability: preview
-courseVersion: 0.3.3-course.2-beta
-frameworkVersion: 0.3.3
-frameworkTag: ai-fabric-framework-v0.3.3
-courseSourceTag: ai-fabric-course-v0.3.3.2
-starterRef: course-0.3.3-p01-provider-routing
-solutionRef: course-0.3.3-p02-modes-positions
+courseVersion: 0.4.0-course.2-beta
+frameworkVersion: 0.4.0
+frameworkTag: ai-fabric-framework-v0.4.0
+courseSourceTag: unreleased
+starterRef: course-0.4.0-p01-provider-routing
+solutionRef: course-0.4.0-p02-modes-positions
 requiresOpenAi: false
 requiresDocker: false
 optionalProviderExercises:
@@ -61,9 +61,9 @@ The application maps `knowledge` and `ticket` positions to those modes. AI Fabri
 and enforces the selected capability bundle. Position mapping remains application-owned because a UI
 position describes product context; it is not authorization.
 
-> Start from `course-0.3.3-p01-provider-routing`. The verified solution is
-> `course-0.3.3-p02-modes-positions`. The lesson remains preview until its theory recording is
-> reviewed and published.
+> **AI Fabric 0.4 migration preview.** The planned immutable starter is
+> `course-0.4.0-p01-provider-routing` and the planned solution is
+> `course-0.4.0-p02-modes-positions`. These stage tags are not published yet.
 
 ## What You Will Prove
 
@@ -105,7 +105,10 @@ parameters, confirmation, and execution remain server controls.
 ```bash
 git clone https://github.com/Loom-AI-Labs/ai-fabric-course-support-assistant.git
 cd ai-fabric-course-support-assistant
-git switch --detach course-0.3.3-p01-provider-routing
+git fetch --tags
+git show-ref --verify --quiet refs/tags/course-0.4.0-p01-provider-routing \
+  || { echo "The 0.4 starter checkpoint is not published yet."; exit 1; }
+git switch --detach course-0.4.0-p01-provider-routing
 git switch -c lesson/prod-02-modes-positions
 ./mvnw --batch-mode --no-transfer-progress clean verify
 ```
@@ -237,7 +240,7 @@ metadata. This observation does not replace the keyless tests.
 ```
 
 Expected: all tests pass, packaged ONNX/Lucene smoke passes, and readiness reports
-`course-0.3.3-p02-modes-positions` with `modeRouting=true`.
+`course-0.4.0-p02-modes-positions` with `modeRouting=true`.
 
 ## Done When
 
@@ -252,7 +255,7 @@ Expected: all tests pass, packaged ONNX/Lucene smoke passes, and readiness repor
 
 ```bash
 ./scripts/reset-course.sh
-git switch --detach course-0.3.3-p01-provider-routing
+git switch --detach course-0.4.0-p01-provider-routing
 ```
 
 ## Troubleshooting

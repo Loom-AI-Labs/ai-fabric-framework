@@ -5,9 +5,12 @@ Implement AI Fabric course lesson `PROD-01` in the standalone learner repository
 ## Repository And Refs
 
 - Repository: `https://github.com/Loom-AI-Labs/ai-fabric-course-support-assistant`
-- Start from immutable tag: `course-0.3.3-06-tested-solution`
-- Expected solution behavior: `course-0.3.3-p01-provider-routing`
-- Framework contract: AI Fabric `0.3.3`, Java 21, Spring Boot 4.1.x
+- Start from immutable tag: `course-0.4.0-06-tested-solution`
+- Expected solution behavior: `course-0.4.0-p01-provider-routing`
+- Framework contract: AI Fabric `0.4.0`, Java 21, Spring Boot 4.1.x
+
+Before editing, verify that the starter tag exists. If it does not, stop and report that the 0.4
+learner checkpoint is not published; never substitute `main` or an older 0.3 tag.
 
 Do not edit or depend on a local AI Fabric source checkout. Use the Maven Central artifacts already
 declared by the learner application.
@@ -84,7 +87,7 @@ Expected mandatory evidence:
 
 - 42 tests pass with no skips or external keys;
 - packaged smoke status is `PASS`;
-- checkpoint is `course-0.3.3-p01-provider-routing`;
+- checkpoint is `course-0.4.0-p01-provider-routing`;
 - local health says LLM purposes disabled, embeddings `onnx`, vectors `lucene`, fallback false;
 - no credential is present in source, logs, reports, or response payloads.
 
@@ -100,4 +103,3 @@ local model/index artifact.
 
 Finish with a concise change summary, exact test/smoke results, and a separate statement for any
 optional live-provider gate.
-

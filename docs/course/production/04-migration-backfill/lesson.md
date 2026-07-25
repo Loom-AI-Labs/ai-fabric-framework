@@ -6,12 +6,12 @@ track: production
 order: 4
 durationMinutes: 95
 availability: preview
-courseVersion: 0.3.3-course.2-beta
-frameworkVersion: 0.3.3
-frameworkTag: ai-fabric-framework-v0.3.3
-courseSourceTag: ai-fabric-course-v0.3.3.2
-starterRef: course-0.3.3-p03-prompt-overlays
-solutionRef: course-0.3.3-p04-migration-backfill
+courseVersion: 0.4.0-course.2-beta
+frameworkVersion: 0.4.0
+frameworkTag: ai-fabric-framework-v0.4.0
+courseSourceTag: unreleased
+starterRef: course-0.4.0-p03-prompt-overlays
+solutionRef: course-0.4.0-p04-migration-backfill
 requiresOpenAi: false
 requiresDocker: false
 optionalProviderExercises: []
@@ -55,9 +55,10 @@ rows again just to trigger indexing is unsafe and unrealistic. This lesson adds 
 admin-scoped migration that reads existing application-owned rows, creates durable indexing work,
 and proves when semantic evidence is actually retrievable.
 
-> Start from `course-0.3.3-p03-prompt-overlays`; compare with
-> `course-0.3.3-p04-migration-backfill`. The checkpoint passed 55 deterministic tests and a packaged
-> ONNX/Lucene migration smoke. No external API key or Docker service is required.
+> **AI Fabric 0.4 migration preview.** The planned immutable starter is
+> `course-0.4.0-p03-prompt-overlays` and the planned solution is
+> `course-0.4.0-p04-migration-backfill`. These stage tags are not published yet. No external API key
+> or Docker service is required for the planned lab.
 
 ## The Four Observable States
 
@@ -93,7 +94,10 @@ itself, prove the queue drained or vectors are queryable.
 ```bash
 git clone https://github.com/Loom-AI-Labs/ai-fabric-course-support-assistant.git
 cd ai-fabric-course-support-assistant
-git switch --detach course-0.3.3-p03-prompt-overlays
+git fetch --tags
+git show-ref --verify --quiet refs/tags/course-0.4.0-p03-prompt-overlays \
+  || { echo "The 0.4 starter checkpoint is not published yet."; exit 1; }
+git switch --detach course-0.4.0-p03-prompt-overlays
 git switch -c lesson/prod-04-migration-backfill
 ./mvnw --batch-mode --no-transfer-progress clean verify
 ```
@@ -249,7 +253,7 @@ jq '.migration, .migrationRerun' \
   target/course-release-evidence/packaged-smoke-summary.json
 ```
 
-Expected checkpoint: `course-0.3.3-p04-migration-backfill`; capability
+Expected checkpoint: `course-0.4.0-p04-migration-backfill`; capability
 `migrationBackfill=true`.
 
 ## Done When
@@ -266,7 +270,7 @@ Expected checkpoint: `course-0.3.3-p04-migration-backfill`; capability
 
 ```bash
 ./scripts/reset-course.sh
-git switch --detach course-0.3.3-p03-prompt-overlays
+git switch --detach course-0.4.0-p03-prompt-overlays
 ```
 
 ## Troubleshooting

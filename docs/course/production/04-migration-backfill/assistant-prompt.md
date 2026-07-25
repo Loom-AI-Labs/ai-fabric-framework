@@ -1,6 +1,9 @@
 # Coding Assistant Prompt: Implement PROD-04 Migration Backfill
 
-Work from `course-0.3.3-p03-prompt-overlays` in the learner repository.
+Work from `course-0.4.0-p03-prompt-overlays` in the learner repository.
+
+Before editing, verify that the tag exists. If it does not, stop and report that the 0.4 learner
+checkpoint is not published; never substitute `main` or an older 0.3 tag.
 
 Add the released migration module, explicitly register required JPA entities/repositories, bind
 `KnowledgeArticleRepository` through `@AICapable.migrationRepository`, and expose a fixed

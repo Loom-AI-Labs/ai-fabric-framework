@@ -1,7 +1,10 @@
 # Independent Review Prompt: PROD-02 Modes And Positions
 
-Review the diff from `course-0.3.3-p01-provider-routing` to
-`course-0.3.3-p02-modes-positions` findings-first.
+Review the diff from `course-0.4.0-p01-provider-routing` to
+`course-0.4.0-p02-modes-positions` findings-first.
+
+Before reviewing, verify that both refs exist. If either is missing, stop and report that the 0.4
+checkpoint comparison is not published; never substitute `main` or an older 0.3 tag.
 
 Verify:
 

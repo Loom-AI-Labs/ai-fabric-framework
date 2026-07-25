@@ -604,7 +604,7 @@ making the prompt more forceful.
 | Decision | Resolution order |
 | --- | --- |
 | Spring properties | Normal Spring Boot property-source precedence; curated pack defaults are explicitly last. |
-| Searchable entity content | `@AISearchable` fields when present; otherwise entity YAML searchable or embeddable fields. |
+| Searchable entity content | Typed `@AISearchable` declarations for Java entities, or typed YAML searchable fields for YAML-only push entities. |
 | Annotation metadata merge | Existing YAML metadata definition; annotation fills missing type or appends missing field; optional generated minimal config last. |
 | Indexing strategy | Explicit method `@AIProcess`; operation-specific `@AICapable`; entity default; `ASYNC` fallback. |
 | LLM provider name | Purpose-specific provider; global LLM provider. |

@@ -5,7 +5,9 @@ Assistant.
 
 Constraints:
 
-- start from `course-0.3.3-p07-qdrant`;
+- start from `course-0.4.0-p07-qdrant`;
+- verify that the starter tag exists before editing; if it is missing, stop and report that the 0.4
+  checkpoint is unpublished, and never substitute `main` or an older 0.3 tag;
 - preserve every existing Lucene/Qdrant, tenant, privacy, action, memory, migration, Data Sync, and
   quality contract;
 - add a source-labelled, multi-stage, non-root Docker image whose build runs tests normally;

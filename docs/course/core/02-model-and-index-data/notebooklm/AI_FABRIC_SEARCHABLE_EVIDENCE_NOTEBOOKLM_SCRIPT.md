@@ -415,8 +415,9 @@ Use this table to verify all generated diagrams and labels.
 - Do not describe a database row as vector evidence before indexing completes.
 - Do not imply that annotations or YAML execute indexing by themselves.
 - State that YAML remains authoritative when generated annotation metadata conflicts with it.
-- Do not invent a separate `AIEmbeddable` annotation. Explain that embeddable fields exist in entity
-  configuration and that annotation-driven searchable content is used as embeddable content.
+- Do not invent a separate `AIEmbeddable` annotation or `embeddable-fields` YAML list. In 0.4,
+  `@AISearchable` and typed YAML searchable fields declare destination-specific semantic-search and
+  RAG projections.
 - Do not imply that asynchronous queue acceptance proves vector readiness.
 - Do not imply that an LLM or API key is required for the ONNX and Lucene retrieval path.
 - Do not call a similarity score a probability, calibrated confidence, or correctness guarantee.

@@ -6,12 +6,12 @@ track: core
 order: 7
 durationMinutes: 70
 availability: published
-courseVersion: 0.3.3-course.2-beta
-frameworkVersion: 0.3.3
-frameworkTag: ai-fabric-framework-v0.3.3
-courseSourceTag: ai-fabric-course-v0.3.3.2
-starterRef: course-0.3.3-05-security
-solutionRef: course-0.3.3-06-tested-solution
+courseVersion: 0.4.0-course.2-beta
+frameworkVersion: 0.4.0
+frameworkTag: ai-fabric-framework-v0.4.0
+courseSourceTag: unreleased
+starterRef: course-0.4.0-05-security
+solutionRef: course-0.4.0-06-tested-solution
 requiresOpenAi: false
 requiresDocker: false
 sourcePaths:
@@ -60,12 +60,11 @@ gate. You will prove deterministic behavior, start the packaged application, exe
 scenarios, make provider posture explicit, expose build identity, and record what did and did not
 run.
 
-> **Published lab.** Start from
-> [`course-0.3.3-05-security`](https://github.com/Loom-AI-Labs/ai-fabric-course-support-assistant/tree/course-0.3.3-05-security)
-> and compare your release evidence with
-> [`course-0.3.3-06-tested-solution`](https://github.com/Loom-AI-Labs/ai-fabric-course-support-assistant/tree/course-0.3.3-06-tested-solution).
-> The required completion path is keyless. Docker and hosted-provider runs remain additional,
-> explicitly labelled evidence when your release claim includes them.
+> **AI Fabric 0.4 migration preview.** The planned immutable starter is
+> `course-0.4.0-05-security` and the planned solution is `course-0.4.0-06-tested-solution`. They will
+> be linked only after clean-checkout publication. The required completion path is keyless. Docker
+> and hosted-provider runs remain additional, explicitly labelled evidence when your release claim
+> includes them.
 
 ## The Evidence Classes
 
@@ -305,11 +304,11 @@ Expose a safe health payload:
   "status": "UP",
   "service": "ai-fabric-course-support-assistant",
   "version": "0.1.0-SNAPSHOT",
-  "aiFabricVersion": "0.3.3",
+  "aiFabricVersion": "0.4.0",
   "commit": "candidate-source-sha",
   "branch": "main",
   "builtAt": "build timestamp",
-  "checkpoint": "course-0.3.3-06-tested-solution",
+  "checkpoint": "course-0.4.0-06-tested-solution",
   "provider": {
     "mode": "live-openai",
     "generationEnabled": true,

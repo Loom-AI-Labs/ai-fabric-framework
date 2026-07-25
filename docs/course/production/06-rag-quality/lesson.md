@@ -6,12 +6,12 @@ track: production
 order: 6
 durationMinutes: 75
 availability: preview
-courseVersion: 0.3.3-course.2-beta
-frameworkVersion: 0.3.3
-frameworkTag: ai-fabric-framework-v0.3.3
-courseSourceTag: ai-fabric-course-v0.3.3.2
-starterRef: course-0.3.3-p05-live-data-sync
-solutionRef: course-0.3.3-p06-rag-quality
+courseVersion: 0.4.0-course.2-beta
+frameworkVersion: 0.4.0
+frameworkTag: ai-fabric-framework-v0.4.0
+courseSourceTag: unreleased
+starterRef: course-0.4.0-p05-live-data-sync
+solutionRef: course-0.4.0-p06-rag-quality
 requiresOpenAi: false
 requiresDocker: false
 optionalProviderExercises:
@@ -70,7 +70,10 @@ You will:
 ```bash
 git clone https://github.com/Loom-AI-Labs/ai-fabric-course-support-assistant.git
 cd ai-fabric-course-support-assistant
-git switch --detach course-0.3.3-p05-live-data-sync
+git fetch --tags
+git show-ref --verify --quiet refs/tags/course-0.4.0-p05-live-data-sync \
+  || { echo "The 0.4 starter checkpoint is not published yet."; exit 1; }
+git switch --detach course-0.4.0-p05-live-data-sync
 ./mvnw --batch-mode --no-transfer-progress clean verify
 ```
 
@@ -227,10 +230,9 @@ COURSE_SMOKE_USE_EXISTING_JAR=true ./scripts/smoke-packaged.sh
 jq '.ragQuality' target/course-release-evidence/packaged-smoke-summary.json
 ```
 
-Expected checkpoint: `course-0.3.3-p06-rag-quality`.
-
-The suite contains 63 tests. The packaged smoke runs both tenant suites, insufficient-context,
-stale-source, empty-index, prompt-structure, and disabled-generation cases with real ONNX/Lucene.
+Planned checkpoint: `course-0.4.0-p06-rag-quality`. Its publication gate must run both tenant suites,
+insufficient-context, stale-source, empty-index, prompt-structure, and disabled-generation cases
+with real ONNX/Lucene.
 
 ## Optional OpenAI Observation
 
@@ -272,7 +274,7 @@ canned answer.
 
 ```bash
 ./scripts/reset-course.sh
-git switch --detach course-0.3.3-p05-live-data-sync
+git switch --detach course-0.4.0-p05-live-data-sync
 ```
 
 ## Troubleshooting
