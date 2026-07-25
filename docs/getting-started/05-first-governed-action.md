@@ -41,7 +41,7 @@ import org.springframework.stereotype.Component;
     name = "update_payment_method",
     description = "Update the current account payment method after user confirmation.",
     category = "billing",
-    accessMode = ActionAccessMode.WRITE,
+    accessMode = ActionAccessMode.WRITE_ONLY,
     requiresConfirmation = true
 )
 public class UpdatePaymentMethodActionHandler {
@@ -95,4 +95,3 @@ Copy from:
 - `examples/real-apps/it-support-action-bot`
 - `examples/real-apps/db-action-registry-lab`
 - `examples/real-apps/chat-capabilities-demo`
-
