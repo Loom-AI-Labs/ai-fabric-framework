@@ -9,7 +9,7 @@ availability: preview
 courseVersion: 0.4.0-course.2-beta
 frameworkVersion: 0.4.0
 frameworkTag: ai-fabric-framework-v0.4.0
-courseSourceTag: unreleased
+courseSourceTag: ai-fabric-course-v0.4.0.2
 starterRef: course-0.4.0-p02-modes-positions
 solutionRef: course-0.4.0-p03-prompt-overlays
 requiresOpenAi: false
@@ -56,9 +56,8 @@ bundle: application overlays first, curated pack next, framework base last.
 In this lesson you will retain the existing `v1-course-support` follow-up classifiers, add one
 complete support-answer template, verify base fallback, and expose safe version diagnostics.
 
-> **AI Fabric 0.4 migration preview.** The planned immutable starter is
-> `course-0.4.0-p02-modes-positions` and the planned solution is
-> `course-0.4.0-p03-prompt-overlays`. These stage tags are not published yet.
+> **Verified checkpoints:** start from `course-0.4.0-p02-modes-positions` and finish at
+> `course-0.4.0-p03-prompt-overlays`. Both are published immutable tags.
 
 ## Resolution Model
 
@@ -90,7 +89,7 @@ git clone https://github.com/Loom-AI-Labs/ai-fabric-course-support-assistant.git
 cd ai-fabric-course-support-assistant
 git fetch --tags
 git show-ref --verify --quiet refs/tags/course-0.4.0-p02-modes-positions \
-  || { echo "The 0.4 starter checkpoint is not published yet."; exit 1; }
+  || { echo "The required 0.4 starter checkpoint could not be resolved."; exit 1; }
 git switch --detach course-0.4.0-p02-modes-positions
 git switch -c lesson/prod-03-prompt-overlays
 ./mvnw --batch-mode --no-transfer-progress clean verify

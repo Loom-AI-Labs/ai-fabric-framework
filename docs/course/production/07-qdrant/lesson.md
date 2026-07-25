@@ -9,7 +9,7 @@ availability: preview
 courseVersion: 0.4.0-course.2-beta
 frameworkVersion: 0.4.0
 frameworkTag: ai-fabric-framework-v0.4.0
-courseSourceTag: unreleased
+courseSourceTag: ai-fabric-course-v0.4.0.2
 starterRef: course-0.4.0-p06-rag-quality
 solutionRef: course-0.4.0-p07-qdrant
 requiresOpenAi: false
@@ -71,7 +71,7 @@ git clone https://github.com/Loom-AI-Labs/ai-fabric-course-support-assistant.git
 cd ai-fabric-course-support-assistant
 git fetch --tags
 git show-ref --verify --quiet refs/tags/course-0.4.0-p06-rag-quality \
-  || { echo "The 0.4 starter checkpoint is not published yet."; exit 1; }
+  || { echo "The required 0.4 starter checkpoint could not be resolved."; exit 1; }
 git switch --detach course-0.4.0-p06-rag-quality
 ./mvnw --batch-mode --no-transfer-progress clean verify
 ./scripts/download-onnx-model.sh
@@ -237,8 +237,8 @@ COURSE_SMOKE_USE_EXISTING_JAR=true ./scripts/smoke-qdrant.sh
 jq . target/course-release-evidence/qdrant-smoke-summary.json
 ```
 
-Planned checkpoint: `course-0.4.0-p07-qdrant`. Both the packaged Lucene gate and Docker Qdrant gate
-must be blocking before that checkpoint is published.
+Published checkpoint: `course-0.4.0-p07-qdrant`. Both the packaged Lucene gate and the Docker
+Qdrant lifecycle/outage gate passed before publication.
 
 ## Optional Qdrant Cloud
 

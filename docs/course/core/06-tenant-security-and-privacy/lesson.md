@@ -9,7 +9,7 @@ availability: published
 courseVersion: 0.4.0-course.2-beta
 frameworkVersion: 0.4.0
 frameworkTag: ai-fabric-framework-v0.4.0
-courseSourceTag: unreleased
+courseSourceTag: ai-fabric-course-v0.4.0.2
 starterRef: course-0.4.0-04-memory
 solutionRef: course-0.4.0-05-security
 requiresOpenAi: false
@@ -55,11 +55,9 @@ You will seed two tenants with overlapping support content, derive tenant identi
 server authentication, apply exact-match metadata filters before vector results are accepted, deny
 cross-tenant actions, and redact representative PII before ordinary persistence or AI processing.
 
-> **AI Fabric 0.4 migration preview.** The planned immutable starter is
-> `course-0.4.0-04-memory` and the planned solution is `course-0.4.0-05-security`. They will be linked
-> only after clean-checkout publication. The required path uses deterministic policy, local vector,
-> and PII tests, so it needs no LLM key. A live-provider run is additional evidence, not a
-> substitute.
+> **Verified checkpoints:** start from `course-0.4.0-04-memory` and finish at
+> `course-0.4.0-05-security`. The required path uses deterministic policy, local vector, and PII
+> tests, so it needs no LLM key. A live-provider run is additional evidence, not a substitute.
 
 ## The Protected Request Flow
 

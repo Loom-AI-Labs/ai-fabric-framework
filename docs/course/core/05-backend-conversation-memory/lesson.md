@@ -9,7 +9,7 @@ availability: published
 courseVersion: 0.4.0-course.2-beta
 frameworkVersion: 0.4.0
 frameworkTag: ai-fabric-framework-v0.4.0
-courseSourceTag: unreleased
+courseSourceTag: ai-fabric-course-v0.4.0.2
 starterRef: course-0.4.0-03-actions
 solutionRef: course-0.4.0-04-memory
 requiresOpenAi: true
@@ -63,11 +63,10 @@ The final two messages are ambiguous in isolation. In this lesson, you will let
 action. The client will send only the new message and a stable conversation ID. The server will
 derive the owner from authenticated identity.
 
-> **AI Fabric 0.4 migration preview.** The planned immutable starter is
-> `course-0.4.0-03-actions` and the planned solution is `course-0.4.0-04-memory`. They will be linked
-> only after clean-checkout publication. Deterministic tests prove storage, ownership, bounds, and
-> pending state. The optional OpenAI smoke proves natural-language follow-up interpretation and
-> keeps provider failure visible.
+> **Verified checkpoints:** start from `course-0.4.0-03-actions` and finish at
+> `course-0.4.0-04-memory`. Deterministic tests prove storage, ownership, bounds, and pending state.
+> The optional OpenAI smoke proves natural-language follow-up interpretation and keeps provider
+> failure visible.
 
 ## The Ownership Boundary
 

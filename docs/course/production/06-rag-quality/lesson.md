@@ -9,7 +9,7 @@ availability: preview
 courseVersion: 0.4.0-course.2-beta
 frameworkVersion: 0.4.0
 frameworkTag: ai-fabric-framework-v0.4.0
-courseSourceTag: unreleased
+courseSourceTag: ai-fabric-course-v0.4.0.2
 starterRef: course-0.4.0-p05-live-data-sync
 solutionRef: course-0.4.0-p06-rag-quality
 requiresOpenAi: false
@@ -72,7 +72,7 @@ git clone https://github.com/Loom-AI-Labs/ai-fabric-course-support-assistant.git
 cd ai-fabric-course-support-assistant
 git fetch --tags
 git show-ref --verify --quiet refs/tags/course-0.4.0-p05-live-data-sync \
-  || { echo "The 0.4 starter checkpoint is not published yet."; exit 1; }
+  || { echo "The required 0.4 starter checkpoint could not be resolved."; exit 1; }
 git switch --detach course-0.4.0-p05-live-data-sync
 ./mvnw --batch-mode --no-transfer-progress clean verify
 ```
@@ -230,9 +230,9 @@ COURSE_SMOKE_USE_EXISTING_JAR=true ./scripts/smoke-packaged.sh
 jq '.ragQuality' target/course-release-evidence/packaged-smoke-summary.json
 ```
 
-Planned checkpoint: `course-0.4.0-p06-rag-quality`. Its publication gate must run both tenant suites,
-insufficient-context, stale-source, empty-index, prompt-structure, and disabled-generation cases
-with real ONNX/Lucene.
+Published checkpoint: `course-0.4.0-p06-rag-quality`. Its verification gate passed both tenant
+suites, insufficient-context, stale-source, empty-index, prompt-structure, and disabled-generation
+cases with real ONNX/Lucene.
 
 ## Optional OpenAI Observation
 

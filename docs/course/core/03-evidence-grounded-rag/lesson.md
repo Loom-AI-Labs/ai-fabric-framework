@@ -9,7 +9,7 @@ availability: published
 courseVersion: 0.4.0-course.2-beta
 frameworkVersion: 0.4.0
 frameworkTag: ai-fabric-framework-v0.4.0
-courseSourceTag: unreleased
+courseSourceTag: ai-fabric-course-v0.4.0.2
 starterRef: course-0.4.0-01-first-search
 solutionRef: course-0.4.0-02-rag
 requiresOpenAi: true
@@ -56,10 +56,9 @@ The result is not merely an answer string. Your endpoint will return:
 When no approved evidence exists, the application will return an explicit `NO_EVIDENCE` state and
 will not ask the model to improvise from general knowledge.
 
-> **AI Fabric 0.4 migration preview.** The planned immutable starter is
-> `course-0.4.0-01-first-search` and the planned solution is `course-0.4.0-02-rag`. They will be
-> linked only after clean-checkout publication. Deterministic tests use controlled providers; the
-> optional OpenAI run must expose a real provider failure instead of returning a fake answer.
+> **Verified checkpoints:** start from `course-0.4.0-01-first-search` and finish at
+> `course-0.4.0-02-rag`. Deterministic tests use controlled providers; the optional OpenAI run must
+> expose a real provider failure instead of returning a fake answer.
 
 ## What You Will Learn
 

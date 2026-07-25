@@ -9,7 +9,7 @@ availability: published
 courseVersion: 0.4.0-course.2-beta
 frameworkVersion: 0.4.0
 frameworkTag: ai-fabric-framework-v0.4.0
-courseSourceTag: unreleased
+courseSourceTag: ai-fabric-course-v0.4.0.2
 starterRef: course-0.4.0-05-security
 solutionRef: course-0.4.0-06-tested-solution
 requiresOpenAi: false
@@ -60,10 +60,9 @@ gate. You will prove deterministic behavior, start the packaged application, exe
 scenarios, make provider posture explicit, expose build identity, and record what did and did not
 run.
 
-> **AI Fabric 0.4 migration preview.** The planned immutable starter is
-> `course-0.4.0-05-security` and the planned solution is `course-0.4.0-06-tested-solution`. They will
-> be linked only after clean-checkout publication. The required completion path is keyless. Docker
-> and hosted-provider runs remain additional, explicitly labelled evidence when your release claim
+> **Verified checkpoints:** start from `course-0.4.0-05-security` and finish at
+> `course-0.4.0-06-tested-solution`. The required completion path is keyless. Docker and
+> hosted-provider runs remain additional, explicitly labelled evidence when your release claim
 > includes them.
 
 ## The Evidence Classes

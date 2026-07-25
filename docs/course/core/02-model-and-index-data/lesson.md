@@ -9,7 +9,7 @@ availability: published
 courseVersion: 0.4.0-course.2-beta
 frameworkVersion: 0.4.0
 frameworkTag: ai-fabric-framework-v0.4.0
-courseSourceTag: unreleased
+courseSourceTag: ai-fabric-course-v0.4.0.2
 starterRef: course-0.4.0-00-starter
 solutionRef: course-0.4.0-01-first-search
 requiresOpenAi: false
@@ -53,10 +53,9 @@ In this lesson, you will extend the Support Knowledge Assistant from CORE-01 wit
 `KnowledgeArticle` lifecycle. You will define what can be searched, preserve trusted metadata, and
 prove create, update, query, and delete behavior. No LLM or cloud key is required.
 
-> **AI Fabric 0.4 migration preview.** The planned immutable starter is
-> `course-0.4.0-00-starter` and the planned solution is `course-0.4.0-01-first-search`. They will be
-> linked only after the migrated checkpoints, executable HTTP scenarios, and focused lifecycle
-> tests are published and verified from a clean checkout.
+> **Verified checkpoints:** start from `course-0.4.0-00-starter` and finish at
+> `course-0.4.0-01-first-search`. The published solution includes executable HTTP scenarios and
+> focused lifecycle tests.
 
 ## What You Will Build
 

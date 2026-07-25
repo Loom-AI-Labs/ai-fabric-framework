@@ -9,7 +9,7 @@ availability: preview
 courseVersion: 0.4.0-course.2-beta
 frameworkVersion: 0.4.0
 frameworkTag: ai-fabric-framework-v0.4.0
-courseSourceTag: unreleased
+courseSourceTag: ai-fabric-course-v0.4.0.2
 starterRef: course-0.4.0-p07-qdrant
 solutionRef: course-0.4.0-p08-production-ready
 requiresOpenAi: false
@@ -75,7 +75,7 @@ git clone https://github.com/Loom-AI-Labs/ai-fabric-course-support-assistant.git
 cd ai-fabric-course-support-assistant
 git fetch --tags
 git show-ref --verify --quiet refs/tags/course-0.4.0-p07-qdrant \
-  || { echo "The 0.4 starter checkpoint is not published yet."; exit 1; }
+  || { echo "The required 0.4 starter checkpoint could not be resolved."; exit 1; }
 git switch --detach course-0.4.0-p07-qdrant
 ./mvnw --batch-mode --no-transfer-progress clean verify
 ./scripts/download-onnx-model.sh
@@ -287,9 +287,9 @@ jq . target/course-release-evidence/release-keyless-summary.json
 jq . target/course-release-evidence/openai-keyed-summary.json
 ```
 
-Planned checkpoint: `course-0.4.0-p08-production-ready`. The current complete local 0.4 migration
-passes 71 tests. Before publication, `release-keyless-summary.json` must report `PASS` and the exact
-source commit.
+Published checkpoint: `course-0.4.0-p08-production-ready`. The complete 0.4 Maven suite, packaged
+runtime smoke, Docker Qdrant gate, and release-container gate passed before publication.
+`release-keyless-summary.json` reports `PASS` and the exact source commit.
 `openai-keyed-summary.json` may report `NOT_RUN` when no key was supplied; that is honest evidence,
 not a skipped required gate.
 

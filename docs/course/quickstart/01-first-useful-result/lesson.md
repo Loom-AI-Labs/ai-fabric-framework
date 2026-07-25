@@ -9,7 +9,7 @@ availability: published
 courseVersion: 0.4.0-course.2-beta
 frameworkVersion: 0.4.0
 frameworkTag: ai-fabric-framework-v0.4.0
-courseSourceTag: unreleased
+courseSourceTag: ai-fabric-course-v0.4.0.2
 starterRef: course-0.4.0-00-starter
 solutionRef: course-0.4.0-01-first-search
 requiresOpenAi: false
@@ -44,10 +44,8 @@ inspectable result before a long architecture discussion.
 
 You do not need an LLM, an OpenAI key, Docker, or a framework source checkout for this workflow.
 
-> **AI Fabric 0.4 migration preview.** The planned immutable starter is
-> `course-0.4.0-00-starter` and the planned solution is `course-0.4.0-01-first-search`. These names
-> are intentionally not linked until the migrated learner checkpoints are published and verified
-> from a clean checkout.
+> **Verified checkpoints:** start from `course-0.4.0-00-starter` and finish at
+> `course-0.4.0-01-first-search`. Both are published immutable tags in the learner repository.
 
 ## What You Will Prove
 

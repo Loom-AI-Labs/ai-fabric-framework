@@ -9,7 +9,7 @@ availability: published
 courseVersion: 0.4.0-course.2-beta
 frameworkVersion: 0.4.0
 frameworkTag: ai-fabric-framework-v0.4.0
-courseSourceTag: unreleased
+courseSourceTag: ai-fabric-course-v0.4.0.2
 starterRef: course-0.4.0-02-rag
 solutionRef: course-0.4.0-03-actions
 requiresOpenAi: true
@@ -58,11 +58,9 @@ Support Knowledge Assistant:
 You will prove the complete state machine, including clarification, denial, confirmation, rejection,
 single execution, and safe result projection.
 
-> **AI Fabric 0.4 migration preview.** The planned immutable starter is
-> `course-0.4.0-02-rag` and the planned solution is `course-0.4.0-03-actions`. They will be linked
-> only after clean-checkout publication. Deterministic tests inject structured intent; the optional
-> live run uses a real LLM and keeps provider failure visible instead of replacing it with keyword
-> logic.
+> **Verified checkpoints:** start from `course-0.4.0-02-rag` and finish at
+> `course-0.4.0-03-actions`. Deterministic tests inject structured intent; the optional live run
+> uses a real LLM and keeps provider failure visible instead of replacing it with keyword logic.
 
 ## The Governing Rule
 

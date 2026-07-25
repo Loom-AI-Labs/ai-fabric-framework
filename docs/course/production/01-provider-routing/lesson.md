@@ -9,7 +9,7 @@ availability: preview
 courseVersion: 0.4.0-course.2-beta
 frameworkVersion: 0.4.0
 frameworkTag: ai-fabric-framework-v0.4.0
-courseSourceTag: unreleased
+courseSourceTag: ai-fabric-course-v0.4.0.2
 starterRef: course-0.4.0-06-tested-solution
 solutionRef: course-0.4.0-p01-provider-routing
 requiresOpenAi: false
@@ -67,10 +67,9 @@ The required lab is keyless. Two explicitly test-only recording providers prove 
 provider and model for each purpose. The optional OpenAI section uses the same application
 configuration with a real key supplied at runtime.
 
-> **AI Fabric 0.4 migration preview.** The planned immutable starter is
-> `course-0.4.0-06-tested-solution` and the planned solution is
-> `course-0.4.0-p01-provider-routing`. The complete local 0.4 reference migration passes its
-> deterministic suite, but these stage tags are not published yet.
+> **Verified checkpoints:** start from `course-0.4.0-06-tested-solution` and finish at
+> `course-0.4.0-p01-provider-routing`. Both immutable tags are published, and the solution passes
+> its deterministic purpose-routing suite.
 
 ## What You Will Prove
 
@@ -132,7 +131,7 @@ git clone https://github.com/Loom-AI-Labs/ai-fabric-course-support-assistant.git
 cd ai-fabric-course-support-assistant
 git fetch --tags
 git show-ref --verify --quiet refs/tags/course-0.4.0-06-tested-solution \
-  || { echo "The 0.4 starter checkpoint is not published yet."; exit 1; }
+  || { echo "The required 0.4 starter checkpoint could not be resolved."; exit 1; }
 git switch --detach course-0.4.0-06-tested-solution
 git switch -c lesson/prod-01-provider-routing
 ./mvnw --batch-mode --no-transfer-progress clean verify

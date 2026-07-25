@@ -9,7 +9,7 @@ availability: preview
 courseVersion: 0.4.0-course.2-beta
 frameworkVersion: 0.4.0
 frameworkTag: ai-fabric-framework-v0.4.0
-courseSourceTag: unreleased
+courseSourceTag: ai-fabric-course-v0.4.0.2
 starterRef: course-0.4.0-p01-provider-routing
 solutionRef: course-0.4.0-p02-modes-positions
 requiresOpenAi: false
@@ -61,9 +61,8 @@ The application maps `knowledge` and `ticket` positions to those modes. AI Fabri
 and enforces the selected capability bundle. Position mapping remains application-owned because a UI
 position describes product context; it is not authorization.
 
-> **AI Fabric 0.4 migration preview.** The planned immutable starter is
-> `course-0.4.0-p01-provider-routing` and the planned solution is
-> `course-0.4.0-p02-modes-positions`. These stage tags are not published yet.
+> **Verified checkpoints:** start from `course-0.4.0-p01-provider-routing` and finish at
+> `course-0.4.0-p02-modes-positions`. Both are published immutable tags.
 
 ## What You Will Prove
 
@@ -107,7 +106,7 @@ git clone https://github.com/Loom-AI-Labs/ai-fabric-course-support-assistant.git
 cd ai-fabric-course-support-assistant
 git fetch --tags
 git show-ref --verify --quiet refs/tags/course-0.4.0-p01-provider-routing \
-  || { echo "The 0.4 starter checkpoint is not published yet."; exit 1; }
+  || { echo "The required 0.4 starter checkpoint could not be resolved."; exit 1; }
 git switch --detach course-0.4.0-p01-provider-routing
 git switch -c lesson/prod-02-modes-positions
 ./mvnw --batch-mode --no-transfer-progress clean verify

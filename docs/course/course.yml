@@ -9,7 +9,7 @@ title: Build AI-Enabled Applications with Java and Spring Boot
 subtitle: Semantic search, evidence-grounded RAG, governed actions, chat memory, and tenant security with AI Fabric
 frameworkVersion: 0.4.0
 frameworkTag: ai-fabric-framework-v0.4.0
-courseSourceTag: unreleased
+courseSourceTag: ai-fabric-course-v0.4.0.2
 javaVersion: 21
 springBootVersion: 4.1.x
 learnerRepository: https://github.com/Loom-AI-Labs/ai-fabric-course-support-assistant

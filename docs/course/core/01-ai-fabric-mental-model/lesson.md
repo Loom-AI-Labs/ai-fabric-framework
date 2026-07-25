@@ -9,7 +9,7 @@ availability: published
 courseVersion: 0.4.0-course.2-beta
 frameworkVersion: 0.4.0
 frameworkTag: ai-fabric-framework-v0.4.0
-courseSourceTag: unreleased
+courseSourceTag: ai-fabric-course-v0.4.0.2
 starterRef: course-0.4.0-00-starter
 solutionRef: course-0.4.0-00-starter
 requiresOpenAi: false
@@ -59,10 +59,9 @@ You will analyze one support application and produce four concrete artifacts:
 There is no code change in this lesson. The output is an architecture contract that you will use in
 every later lab.
 
-> **AI Fabric 0.4 migration preview.** The planned application reference is
-> `course-0.4.0-00-starter`. It will be linked after the migrated checkpoint is published and
-> verified from a clean checkout. This lesson changes no code; its output is the architecture
-> contract you carry into CORE-02.
+> **Verified checkpoint:** `course-0.4.0-00-starter` is the immutable application reference for
+> this lesson. This lesson changes no code; its output is the architecture contract you carry into
+> CORE-02.
 
 ## What You Will Learn
 
