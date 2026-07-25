@@ -62,8 +62,8 @@ class MetadataJsonSerializerTest {
 
         AIEntityConfig config = AIEntityConfig.builder()
             .metadataFields(List.of(
-                AIMetadataField.builder().name("rank").type("number").includeInSearch(true).build(),
-                AIMetadataField.builder().name("tenant").type("string").includeInSearch(true).build()
+                AIMetadataField.builder().name("rank").build(),
+                AIMetadataField.builder().name("tenant").build()
             ))
             .build();
 

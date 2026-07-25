@@ -5,7 +5,7 @@
 | Core generation | `ai-fabric-core`, `ai-fabric-provider-spring-ai` | `AICoreService`, `AIProviderManager`, `ai.providers.*` |
 | Embeddings | `ai-fabric-core`, provider module | `AIEmbeddingService`, `EmbeddingProvider` |
 | Semantic search | `ai-fabric-core`, vector provider | `VectorDatabaseService`, `AISearchRequest` |
-| Indexing | `ai-fabric-indexing` | `IndexingCoordinator`, `ai-entity-config.yml` |
+| Indexing | `ai-fabric-indexing` | `@AIProcess`, `AIEntityIndexingGateway`, durable projected work queue |
 | RAG retrieval | `ai-fabric-rag` | `RAGService`, `RAGRequest`, retrieved evidence |
 | Advanced RAG | `ai-fabric-rag`, `ai-fabric-web` | `AdvancedRAGService`, `/api/ai/advanced-rag/search` |
 | Actions | `ai-fabric-core`, action modules | `@AIAction`, `AIActionRegistry`, `ActionAccessMode` |
@@ -26,4 +26,3 @@
 
 Use `examples/real-apps/REAL_APP_CAPABILITIES.md` and each real app README as code-backed evidence.
 If a capability has no real app or test evidence, mark it as planned or experimental.
-

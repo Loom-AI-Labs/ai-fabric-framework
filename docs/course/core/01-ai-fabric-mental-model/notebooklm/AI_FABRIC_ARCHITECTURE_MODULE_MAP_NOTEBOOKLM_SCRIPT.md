@@ -132,7 +132,13 @@ structured context.
 ```java
 @AICapable(entityType = "knowledge-article")
 class KnowledgeArticle {
-    @AIContext(dataType = "id")
+    @AIIdentity
+    @AIContext(
+        key = "entityId",
+        dataType = AIContextDataType.ID,
+        priority = 100,
+        required = true
+    )
     private String id;
 
     @AISearchable
@@ -150,17 +156,17 @@ class KnowledgeArticle {
 
 AI Fabric does not need every field in your domain model.
 
-`AICapable` identifies the application entity and its AI Fabric entity type. `AISearchable` marks
-approved text whose meaning should contribute to an embedding and retrieval. `AIContext` marks
-structured context that can travel as metadata, support filtering, or appear in an approved model
-context without being treated as searchable prose.
+`AICapable` identifies the application entity and its stable AI Fabric entity type. `AIIdentity`
+identifies the source record. `AISearchable` marks approved text whose meaning should contribute to
+an embedding and retrieval. `AIContext` marks structured context with typed, destination-specific
+handling so metadata, model context, and response views do not have to expose the same values.
 
 The application owns this projection. Passwords, internal notes, privileged flags, and unrelated
 fields do not become model-visible merely because the entity exists.
 
-An `ai-entity-config.yml` file can provide or refine entity configuration. Where YAML and generated
-annotation metadata conflict, YAML remains authoritative. Annotations are a developer-friendly
-declaration, while configuration can express application policy without changing the domain class.
+An annotation-backed entity needs no `ai-entity-config.yml` entry. Typed YAML can apply documented
+operational or field overrides, but it cannot replace the entity identity or widen approved security
+destinations. YAML-only push entities must explicitly enable indexing and declare their projection.
 
 These declarations describe what should happen. They do not prove that records were indexed,
 updated, deleted, or protected correctly. Lifecycle tests provide that proof.

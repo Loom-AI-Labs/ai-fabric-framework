@@ -80,15 +80,15 @@ class VectorProviderReadinessEvaluatorTest {
     }
 
     @Test
-    void marksQdrantPayloadIndexDriftNotReadyAndFallbacksWarn() {
+    void marksQdrantPayloadIndexDriftNotReadyAndRepairAttemptsWarn() {
         VectorProviderReadiness readiness = VectorProviderReadinessEvaluator.evaluate(baseDiagnostics(Map.of(
             "provider", "qdrant",
-            "searchFilterMode", "qdrant-payload-filter-with-client-side-fallback",
-            "scanFilterMode", "qdrant-payload-filter",
+            "searchFilterMode", "qdrant-payload-filter-with-index-repair",
+            "scanFilterMode", "qdrant-payload-filter-with-index-repair",
             "failOnMissingPayloadIndex", false,
             "payloadIndexesSeenMissing", List.of("document:entity_id"),
             "payloadIndexCreateFailures", Map.of("document", "permission denied"),
-            "metadataFilterFallbacks", Map.of("document", 2)
+            "payloadIndexRepairAttempts", Map.of("document", 2)
         )));
 
         assertThat(readiness.status()).isEqualTo(VectorProviderReadiness.Status.NOT_READY);
@@ -96,16 +96,15 @@ class VectorProviderReadinessEvaluatorTest {
             .anySatisfy(reason -> assertThat(reason).contains("payload indexes have been observed missing"))
             .anySatisfy(reason -> assertThat(reason).contains("payload-index creation failures"));
         assertThat(readiness.warnings())
-            .anySatisfy(warning -> assertThat(warning).contains("strict mode is disabled"))
-            .anySatisfy(warning -> assertThat(warning).contains("compatibility fallback has been used"));
+            .anySatisfy(warning -> assertThat(warning).contains("payload-index auto-repair has been used"));
     }
 
     @Test
     void warnsForWeaviateAggregateCountFallback() {
         VectorProviderReadiness readiness = VectorProviderReadinessEvaluator.evaluate(baseDiagnostics(Map.of(
             "provider", "weaviate",
-            "searchFilterMode", "weaviate-where-filter-text-backed",
-            "scanFilterMode", "weaviate-where-filter-text-backed",
+            "searchFilterMode", "weaviate-field-tokenized-where-with-exact-paging",
+            "scanFilterMode", "weaviate-field-tokenized-where-with-exact-paging",
             "aggregateCountFallbacks", Map.of("Document", 1),
             "aggregateCountFallbackReasons", Map.of("Document", "aggregate unsupported")
         )));

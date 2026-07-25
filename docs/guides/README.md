@@ -30,7 +30,7 @@ If you are building training material for external users, start from
 ## At a glance
 
 - **Coordinates:** group `io.github.loom-ai-labs`, BOM `ai-fabric-bom`, modules `ai-fabric-*`.
-- **Latest version:** `0.3.3`.
+- **Latest version:** `0.4.0`.
 - **Java packages:** `ai.fabric.*`.
 - **Requirements:** Java 21, Maven 3.9+, Spring Boot 4.1.x.
 - **Entry point:** annotate a Spring Boot app with `@EnableAIInfrastructure` and add the starter.

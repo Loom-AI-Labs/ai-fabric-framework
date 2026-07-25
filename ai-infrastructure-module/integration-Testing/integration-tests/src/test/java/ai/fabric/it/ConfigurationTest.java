@@ -31,7 +31,7 @@ public class ConfigurationTest {
 
         System.out.println("Metadata fields count: " + testProductConfig.getMetadataFields().size());
         testProductConfig.getMetadataFields().forEach(field ->
-            System.out.println("Field: " + field.getName() + " Type: " + field.getType())
+            System.out.println("Field: " + field.getName() + " Type: " + field.getDataType())
         );
     }
 }

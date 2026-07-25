@@ -2,6 +2,7 @@ package com.ai.fabric.realapps.cloudvector.domain;
 
 import ai.fabric.annotation.AICapable;
 import ai.fabric.annotation.AIContext;
+import ai.fabric.annotation.AIIdentity;
 import ai.fabric.annotation.AISearchable;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -22,15 +23,16 @@ import java.time.Instant;
 public class KnowledgeBaseArticle {
 
     @Id
+    @AIIdentity
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
     @Column(nullable = false)
-    @AISearchable(weight = 2.0)
+    @AISearchable(priority = 100, required = true)
     private String title;
 
     @Column(columnDefinition = "TEXT", nullable = false)
-    @AISearchable(weight = 1.8)
+    @AISearchable(priority = 90, required = true, maxLength = 10000)
     private String content;
 
     @AIContext(description = "Knowledge base category (e.g., auth, billing, troubleshooting)")

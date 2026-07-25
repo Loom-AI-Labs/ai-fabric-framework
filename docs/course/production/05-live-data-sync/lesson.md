@@ -66,12 +66,16 @@ existing rows -> migration -> queue       authenticated create/update/delete
                                                         DataSyncService
                                                                |
                                                                v
+                                                     projected durable queue
+                                                               |
+                                                               v
                                                             vectors
 ```
 
 Migration has jobs, scanning progress, filters, pause/resume, and an indexing queue. Data Sync is a
 trusted runtime write boundary with per-operation traces, stable IDs, normalization limits, access
-control, and direct vector upsert/delete results.
+control, canonical projection, and durable indexing outcomes. It does not write vectors around the
+queue or serialize the source entity.
 
 ## What You Will Prove
 
@@ -82,7 +86,9 @@ control, and direct vector upsert/delete results.
 - update preserves the logical ID and replaces stale text;
 - delete removes both source state and derived evidence;
 - unauthorized and low-level raw requests produce no side effects;
-- invalid projection rolls back the source transaction;
+- invalid projection or failed durable handoff rolls back the source transaction when the application
+  converts the failed result into an exception;
+- provider failure after source commit remains visible as retryable queue work;
 - batch limit and partial reconciliation failures remain visible;
 - traces distinguish correlation ID, source version, and idempotency key.
 
@@ -170,9 +176,10 @@ Expected: both operations report logical ID `article-live-sync`; the update repo
 `1`; the vector count rises only once; search returns the new hardware-key text and not the original
 passkey sentence.
 
-If normalization, embedding, policy, or vector storage fails, throw a runtime exception so the
-source transaction rolls back. This narrows inconsistency but does not create a distributed
-transaction with an external vector store. Production systems still need reconciliation.
+If authorization, projection, or durable queue submission fails before commit, throw a runtime
+exception so the source transaction rolls back. Embedding and vector work begins only after source
+commit. A provider failure therefore cannot and should not roll back committed business data; it
+leaves retryable work and eventually a visible dead letter if retries are exhausted.
 
 ## Step 5: Delete Stale Evidence
 
@@ -181,8 +188,10 @@ curl -s -X DELETE http://localhost:8080/api/knowledge/articles/article-live-sync
   -H "Authorization: Bearer $COURSE_TOKEN"
 ```
 
-The service verifies tenant ownership, removes the vector using the same logical ID, then removes
-the source row. The test asserts both are absent and search cannot return the deleted evidence.
+The service verifies tenant ownership, deletes the source row, and submits an identity-only delete in
+the same transaction. After commit, the worker performs an idempotent vector delete. The test asserts
+the source row is absent, waits for indexing completion, and then proves search cannot return stale
+evidence.
 
 ## Step 6: Reconcile In Bounded Batches
 
@@ -191,7 +200,7 @@ persisted rows in the authenticated tenant. It is a repair path, not a second so
 
 Three IDs exceed `max-batch-size=2` and return HTTP `400` with `BATCH_TOO_LARGE`, zero successes, and
 zero vector side effects. A two-row test deliberately uses one oversized source projection. The
-valid operation succeeds, the invalid one returns `INVALID_REQUEST`, and source rows remain
+valid operation succeeds, the invalid one returns `PROJECTION_REJECTED`, and source rows remain
 unchanged. Partial failure is a result to inspect and repair, never a hidden success.
 
 ## Intentional Failures
@@ -199,9 +208,11 @@ unchanged. Partial failure is a result to inspect and repair, never a hidden suc
 1. Call create with Riley's token. Expect `403`; no row or vector is created.
 2. Call `/api/internal/ai-data-sync/upsert` directly. Expect an inaccessible route (`401`, `403`, or
    `404`, depending on the active security entry point), never `2xx`.
-3. Submit more than 1,000 normalized characters. Expect `400/INVALID_REQUEST`; the source insert is
+3. Submit more than 1,000 normalized characters. Expect `400/PROJECTION_REJECTED`; the source insert is
    rolled back.
 4. Reconcile three IDs. Expect `400/BATCH_TOO_LARGE` and no operation execution.
+5. Make the embedding provider fail after commit. Expect `503/INDEXING_RETRYABLE`, a committed source
+   row, durable pending work, and no fabricated vector success.
 
 ## Verification
 
@@ -218,10 +229,10 @@ Expected checkpoint: `course-0.3.3-p05-live-data-sync`; capability `liveDataSync
 
 - the raw Data Sync route cannot be used as a public identity boundary;
 - the public API derives tenant, auth context, vector space, and metadata server-side;
-- create/update/delete preserve source and evidence lifecycle rules;
+- create/update/delete preserve source transaction and durable evidence lifecycle rules;
 - update keeps one stable logical vector ID and removes stale text;
 - delete leaves no source row or retrievable vector;
-- rollback, authorization, batch limit, and partial failure tests pass;
+- rollback, after-commit retry, authorization, batch limit, and partial failure tests pass;
 - 58 tests and the packaged ONNX/Lucene lifecycle pass.
 
 ## Reset

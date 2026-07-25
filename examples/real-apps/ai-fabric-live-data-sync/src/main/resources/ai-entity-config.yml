@@ -1,64 +1,15 @@
 ai-entities:
   sync-product:
-    entity-type: "sync-product"
-    features: ["embedding", "search", "rag"]
-    auto-process: true
-    enable-search: true
-    auto-embedding: true
-    indexable: true
-    # Field extraction is intentionally annotation-driven.
-    crud-operations:
-      create:
-        generate-embedding: false
-        index-for-search: true
-        enable-analysis: false
-      update:
-        generate-embedding: false
-        index-for-search: true
-        enable-analysis: false
-      delete:
-        index-for-search: false
-        remove-from-search: true
-        cleanup-embeddings: false
+    indexing:
+      enabled: true
+      max-characters: 8000
 
   sync-policy:
-    entity-type: "sync-policy"
-    features: ["embedding", "search", "rag"]
-    auto-process: true
-    enable-search: true
-    auto-embedding: true
-    indexable: true
-    crud-operations:
-      create:
-        generate-embedding: false
-        index-for-search: true
-        enable-analysis: false
-      update:
-        generate-embedding: false
-        index-for-search: true
-        enable-analysis: false
-      delete:
-        index-for-search: false
-        remove-from-search: true
-        cleanup-embeddings: false
+    indexing:
+      enabled: true
+      max-characters: 8000
 
   sync-guide:
-    entity-type: "sync-guide"
-    features: ["embedding", "search", "rag"]
-    auto-process: true
-    enable-search: true
-    auto-embedding: true
-    indexable: true
-    crud-operations:
-      create:
-        generate-embedding: false
-        index-for-search: true
-        enable-analysis: false
-      update:
-        generate-embedding: false
-        index-for-search: true
-        enable-analysis: false
-      delete:
-        index-for-search: false
-        remove-from-search: true
-        cleanup-embeddings: false
+    indexing:
+      enabled: true
+      max-characters: 8000

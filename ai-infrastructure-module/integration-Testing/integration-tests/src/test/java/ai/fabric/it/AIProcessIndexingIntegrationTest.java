@@ -37,7 +37,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @ActiveProfiles("test")
 @TestPropertySource(properties = {
     "test.searchable-vector-db.enabled=false", // Disable wrapper to test core behavior
-    "ai.config.default-file=ai-entity-config-indexing-strategy.yml",
     "ai.indexing.enabled=true",
     "ai.indexing.async-worker.enabled=false",
     "ai.indexing.batch-worker.enabled=false",
@@ -59,7 +58,7 @@ class AIProcessIndexingIntegrationTest {
     @BeforeEach
     void setUp() {
         try {
-            vectorManagementService.clearVectorsByEntityType("product");
+            vectorManagementService.clearVectorsByEntityType("test-product");
         } catch (Exception ignored) {
             // Ignore if index doesn't exist
         }
@@ -88,10 +87,13 @@ class AIProcessIndexingIntegrationTest {
             .pollInterval(Duration.ofMillis(500))
             .until(() -> {
                 indexingQueueTestSupport.drainQueue();
-                return vectorManagementService.vectorExists("product", entityId);
+                return vectorManagementService.vectorExists("test-product", entityId);
             });
 
-        assertTrue(vectorManagementService.vectorExists("product", entityId), "Vector should exist after creation");
+        assertTrue(
+            vectorManagementService.vectorExists("test-product", entityId),
+            "Vector should exist after creation"
+        );
 
         // 2. UPDATE
         productService.updateProduct(created.getId(), "Updated Lifecycle Product", "Updated description", null);
@@ -101,11 +103,13 @@ class AIProcessIndexingIntegrationTest {
             .pollInterval(Duration.ofMillis(500))
             .until(() -> {
                 indexingQueueTestSupport.drainQueue();
-                var vector = vectorManagementService.getVector("product", entityId);
+                var vector = vectorManagementService.getVector("test-product", entityId);
                 return vector.isPresent() && vector.get().getContent().contains("Updated description");
             });
 
-        var updatedVector = vectorManagementService.getVector("product", entityId).orElseThrow();
+        var updatedVector = vectorManagementService
+            .getVector("test-product", entityId)
+            .orElseThrow();
         assertTrue(updatedVector.getContent().contains("Updated description"), "Vector content should be updated");
 
         // 3. DELETE
@@ -116,10 +120,13 @@ class AIProcessIndexingIntegrationTest {
             .pollInterval(Duration.ofMillis(500))
             .until(() -> {
                 indexingQueueTestSupport.drainQueue();
-                return !vectorManagementService.vectorExists("product", entityId);
+                return !vectorManagementService.vectorExists("test-product", entityId);
             });
 
-        assertFalse(vectorManagementService.vectorExists("product", entityId), "Vector should be removed after deletion");
+        assertFalse(
+            vectorManagementService.vectorExists("test-product", entityId),
+            "Vector should be removed after deletion"
+        );
     }
 
     @TestConfiguration

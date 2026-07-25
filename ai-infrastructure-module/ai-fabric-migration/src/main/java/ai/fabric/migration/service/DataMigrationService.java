@@ -1,13 +1,13 @@
 package ai.fabric.migration.service;
 
 import ai.fabric.config.AIEntityConfigurationLoader;
-import ai.fabric.config.AIIndexingProperties;
 import ai.fabric.dto.AIEntityConfig;
-import ai.fabric.indexing.IndexingActionPlan;
-import ai.fabric.indexing.IndexingOperation;
-import ai.fabric.indexing.IndexingRequest;
+import ai.fabric.indexing.api.AIEntityIndexingGateway;
+import ai.fabric.indexing.api.AIProcessOperation;
 import ai.fabric.indexing.api.IndexingStrategy;
-import ai.fabric.indexing.queue.IndexingQueueService;
+import ai.fabric.indexing.descriptor.AIEntityDescriptorRegistry;
+import ai.fabric.indexing.model.AIEntityDescriptor;
+import ai.fabric.indexing.projection.AIProjectionValidationException;
 import ai.fabric.migration.config.MigrationProperties;
 import ai.fabric.migration.config.MigrationFieldConfig;
 import ai.fabric.migration.domain.MigrationFilters;
@@ -17,8 +17,6 @@ import ai.fabric.migration.domain.MigrationRequest;
 import ai.fabric.migration.domain.MigrationStatus;
 import ai.fabric.migration.repository.MigrationJobRepository;
 import ai.fabric.rag.VectorDatabaseService;
-import ai.fabric.service.AICapabilityService;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.validation.Valid;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -38,46 +36,40 @@ import java.util.concurrent.ExecutorService;
 @Slf4j
 public class DataMigrationService {
 
-    private final IndexingQueueService queueService;
     private final AIEntityConfigurationLoader configLoader;
+    private final AIEntityDescriptorRegistry descriptorRegistry;
+    private final AIEntityIndexingGateway indexingGateway;
     private final EntityRepositoryRegistry repositoryRegistry;
     private final MigrationJobRepository jobRepository;
     private final VectorDatabaseService vectorDatabaseService;
     private final MigrationProgressTracker progressTracker;
     private final MigrationProperties migrationProperties;
-    private final AIIndexingProperties indexingProperties;
-    private final ObjectMapper objectMapper;
     private final ExecutorService executorService;
-    private final AICapabilityService capabilityService;
     private final Clock clock;
     private final List<MigrationFilterPolicy> filterPolicies;
 
     public DataMigrationService(
-        IndexingQueueService queueService,
         AIEntityConfigurationLoader configLoader,
+        AIEntityDescriptorRegistry descriptorRegistry,
+        AIEntityIndexingGateway indexingGateway,
         EntityRepositoryRegistry repositoryRegistry,
         MigrationJobRepository jobRepository,
         VectorDatabaseService vectorDatabaseService,
         MigrationProgressTracker progressTracker,
         MigrationProperties migrationProperties,
-        AIIndexingProperties indexingProperties,
-        ObjectMapper objectMapper,
         ExecutorService executorService,
-        AICapabilityService capabilityService,
         Clock clock,
         List<MigrationFilterPolicy> filterPolicies
     ) {
-        this.queueService = queueService;
         this.configLoader = configLoader;
+        this.descriptorRegistry = descriptorRegistry;
+        this.indexingGateway = indexingGateway;
         this.repositoryRegistry = repositoryRegistry;
         this.jobRepository = jobRepository;
         this.vectorDatabaseService = vectorDatabaseService;
         this.progressTracker = progressTracker;
         this.migrationProperties = migrationProperties;
-        this.indexingProperties = indexingProperties;
-        this.objectMapper = objectMapper;
         this.executorService = executorService;
-        this.capabilityService = capabilityService;
         this.clock = clock;
         this.filterPolicies = filterPolicies != null ? filterPolicies : List.of();
     }
@@ -100,21 +92,34 @@ public class DataMigrationService {
      */
     public MigrationJob startMigration(@Valid MigrationRequest request) {
         String entityType = requireEntityType(request);
-        AIEntityConfig config = configLoader.getEntityConfig(entityType);
-        if (config == null) {
-            throw new IllegalArgumentException("No ai-entity-config entry found for entity type: " + entityType);
-        }
-
         EntityRegistration registration = repositoryRegistry.getRegistration(entityType);
+        AIEntityDescriptor descriptor = descriptorRegistry.resolve(
+            registration.entityClass()
+        );
+        if (!descriptor.entityType().equals(entityType)) {
+            throw new IllegalStateException(
+                "Migration registration entity type does not match descriptor"
+            );
+        }
+        if (!descriptor.indexingEnabled()) {
+            throw new IllegalStateException(
+                "Indexing is disabled for migration entity type: " + entityType
+            );
+        }
         JpaRepository<?, ?> repository = registration.repository();
 
-        enforceFilterSupport(entityType);
+        enforceFilterSupport(entityType, request.getFilters());
 
         long total = repository.count();
         MigrationJob job = createJob(request, entityType, total);
         jobRepository.save(job);
 
-        executorService.submit(() -> processJob(job.getId(), request, registration, config));
+        executorService.submit(() -> processJob(
+            job.getId(),
+            request,
+            registration,
+            descriptor
+        ));
         return job;
     }
 
@@ -134,10 +139,9 @@ public class DataMigrationService {
         MigrationJob job = findJob(jobId);
         validateTransition(job, MigrationStatus.RUNNING, MigrationStatus.PAUSED);
         EntityRegistration registration = repositoryRegistry.getRegistration(job.getEntityType());
-        AIEntityConfig config = configLoader.getEntityConfig(job.getEntityType());
-        if (config == null) {
-            throw new IllegalArgumentException("No ai-entity-config entry found for entity type: " + job.getEntityType());
-        }
+        AIEntityDescriptor descriptor = descriptorRegistry.resolve(
+            registration.entityClass()
+        );
         MigrationRequest resumeRequest = MigrationRequest.builder()
             .entityType(job.getEntityType())
             .batchSize(job.getBatchSize())
@@ -149,7 +153,12 @@ public class DataMigrationService {
         job.setStatus(MigrationStatus.RUNNING);
         job.setLastUpdatedAt(LocalDateTime.now(clock));
         jobRepository.save(job);
-        executorService.submit(() -> processJob(job.getId(), resumeRequest, registration, config));
+        executorService.submit(() -> processJob(
+            job.getId(),
+            resumeRequest,
+            registration,
+            descriptor
+        ));
     }
 
     @Transactional
@@ -178,6 +187,8 @@ public class DataMigrationService {
             .totalEntities(totalCount)
             .processedEntities(0L)
             .failedEntities(0L)
+            .projectionFailures(0L)
+            .enqueueFailures(0L)
             .currentPage(0)
             .batchSize(defaultBatchSize(request))
             .rateLimit(request.getRateLimit())
@@ -196,7 +207,12 @@ public class DataMigrationService {
         return migrationProperties.getDefaultBatchSize();
     }
 
-    private void processJob(String jobId, MigrationRequest request, EntityRegistration registration, AIEntityConfig config) {
+    private void processJob(
+        String jobId,
+        MigrationRequest request,
+        EntityRegistration registration,
+        AIEntityDescriptor descriptor
+    ) {
         try {
             while (true) {
                 MigrationJob job = jobRepository.findById(jobId)
@@ -219,10 +235,14 @@ public class DataMigrationService {
                 }
 
                 int processed = 0;
-                int failures = 0;
+                int projectionFailures = 0;
+                int enqueueFailures = 0;
 
                 MigrationFieldConfig fieldConfig = migrationProperties.getEntityFields().get(job.getEntityType());
                 MigrationFilterPolicy policy = resolvePolicy(job.getEntityType());
+                AIEntityConfig config = configLoader.getEntityConfig(
+                    job.getEntityType()
+                );
 
                 for (Object entity : page.getContent()) {
                     processed++;
@@ -231,26 +251,51 @@ public class DataMigrationService {
                             continue;
                         }
 
-                        String entityId = capabilityService.resolveEntityId(entity);
+                        String entityId = resolveEntityId(descriptor, entity);
                         if (entityId == null || entityId.isBlank()) {
                             log.debug("Skipping entity without resolvable id: {}", entity.getClass().getSimpleName());
                             continue;
                         }
 
                         if (!Boolean.TRUE.equals(request.getReindexExisting())
-                            && alreadyIndexed(config.getEntityType(), entityId)) {
+                            && alreadyIndexed(descriptor.entityType(), entityId)) {
                             continue;
                         }
 
-                        enqueueForIndexing(entity, config);
+                        indexingGateway.upsert(
+                            entity,
+                            AIProcessOperation.CREATE,
+                            IndexingStrategy.ASYNC
+                        );
+                    } catch (AIProjectionValidationException ex) {
+                        log.warn(
+                            "Projection rejected migration entity type={} code={}",
+                            job.getEntityType(),
+                            ex.getErrorCode()
+                        );
+                        projectionFailures++;
                     } catch (Exception ex) {
-                        log.warn("Failed to enqueue entity for migration", ex);
-                        failures++;
+                        log.warn(
+                            "Failed to enqueue migration entity type={} cause={}",
+                            job.getEntityType(),
+                            ex.getClass().getSimpleName()
+                        );
+                        enqueueFailures++;
                     }
                 }
 
                 job.setProcessedEntities(job.getProcessedEntities() + processed);
-                job.setFailedEntities(job.getFailedEntities() + failures);
+                job.setProjectionFailures(
+                    count(job.getProjectionFailures()) + projectionFailures
+                );
+                job.setEnqueueFailures(
+                    count(job.getEnqueueFailures()) + enqueueFailures
+                );
+                job.setFailedEntities(
+                    count(job.getFailedEntities())
+                        + projectionFailures
+                        + enqueueFailures
+                );
                 job.setCurrentPage(job.getCurrentPage() + 1);
                 job.setLastUpdatedAt(LocalDateTime.now(clock));
                 jobRepository.save(job);
@@ -292,7 +337,8 @@ public class DataMigrationService {
 
         requireFieldConfig(request.getEntityType(), fieldConfig);
 
-        String entityId = capabilityService.resolveEntityId(entity);
+        AIEntityDescriptor descriptor = descriptorRegistry.resolve(entity);
+        String entityId = resolveEntityId(descriptor, entity);
         if (!filters.safeEntityIds().isEmpty() && !filters.safeEntityIds().contains(entityId)) {
             return false;
         }
@@ -339,7 +385,13 @@ public class DataMigrationService {
         }
     }
 
-    private void enforceFilterSupport(String entityType) {
+    private void enforceFilterSupport(
+        String entityType,
+        MigrationFilters filters
+    ) {
+        if (filters == null || filters.isEmpty()) {
+            return;
+        }
         boolean hasPolicy = resolvePolicy(entityType) != null;
         boolean hasConfig = migrationProperties.getEntityFields().containsKey(entityType);
         if (!hasPolicy && !hasConfig) {
@@ -367,23 +419,19 @@ public class DataMigrationService {
         return vectorDatabaseService.vectorExists(entityType, entityId);
     }
 
-    private void enqueueForIndexing(Object entity, AIEntityConfig config) throws Exception {
-        String entityId = capabilityService.resolveEntityId(entity);
-        String payload = objectMapper.writeValueAsString(entity);
+    private String resolveEntityId(
+        AIEntityDescriptor descriptor,
+        Object entity
+    ) {
+        Object identity = descriptor.identityResolver().resolveIdentity(entity);
+        if (identity == null || identity.toString().isBlank()) {
+            return null;
+        }
+        return identity.toString().trim();
+    }
 
-        IndexingRequest request = IndexingRequest.builder()
-            .entityType(config.getEntityType())
-            .entityId(entityId)
-            .entityClassName(entity.getClass().getName())
-            .operation(IndexingOperation.CREATE)
-            .strategy(IndexingStrategy.ASYNC)
-            .actionPlan(new IndexingActionPlan(true, true, false, false, false))
-            .payload(payload)
-            .scheduledFor(LocalDateTime.now(clock))
-            .maxRetries(indexingProperties.getQueue().getMaxRetries())
-            .build();
-
-        queueService.enqueue(request);
+    private long count(Long value) {
+        return value == null ? 0L : value;
     }
 
     private void applyRateLimit(MigrationJob job) {

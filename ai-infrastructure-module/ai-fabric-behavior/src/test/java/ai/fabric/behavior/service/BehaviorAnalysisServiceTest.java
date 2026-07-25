@@ -14,6 +14,8 @@ import ai.fabric.llm.structured.StructuredJsonExtractor;
 import ai.fabric.prompt.ClasspathPromptTemplateStore;
 import ai.fabric.prompt.PromptRenderer;
 import ai.fabric.prompt.PromptTemplateResolver;
+import ai.fabric.indexing.api.AIEntityIndexingGateway;
+import ai.fabric.indexing.descriptor.AIEntityDescriptorRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -22,6 +24,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.core.io.DefaultResourceLoader;
+import org.springframework.beans.factory.support.StaticListableBeanFactory;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -57,6 +60,13 @@ class BehaviorAnalysisServiceTest {
             new ClasspathPromptTemplateStore(new DefaultResourceLoader()),
             new PromptBundleProperties()
         );
+        StaticListableBeanFactory indexingBeans = new StaticListableBeanFactory();
+        BehaviorInsightPersistenceService persistenceService =
+            new BehaviorInsightPersistenceService(
+                storageAdapter,
+                indexingBeans.getBeanProvider(AIEntityIndexingGateway.class),
+                mock(AIEntityDescriptorRegistry.class)
+            );
         service = new BehaviorAnalysisService(
             eventProvider,
             storageAdapter,
@@ -64,7 +74,8 @@ class BehaviorAnalysisServiceTest {
             objectMapper,
             new DefaultStructuredJsonCallExecutor(new StructuredJsonExtractor(), objectMapper),
             promptTemplateResolver,
-            promptRenderer
+            promptRenderer,
+            persistenceService
         );
     }
 

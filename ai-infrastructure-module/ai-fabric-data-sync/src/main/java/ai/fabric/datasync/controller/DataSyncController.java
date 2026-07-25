@@ -90,7 +90,12 @@ public class DataSyncController {
         return switch (errorCode) {
             case "ACCESS_DENIED" -> HttpStatus.FORBIDDEN;
             case "VECTOR_SPACE_NOT_FOUND" -> HttpStatus.NOT_FOUND;
-            case "INVALID_REQUEST", "BATCH_TOO_LARGE", "VECTOR_SPACE_NOT_INDEXABLE" -> HttpStatus.BAD_REQUEST;
+            case "INVALID_REQUEST",
+                 "BATCH_TOO_LARGE",
+                 "VECTOR_SPACE_NOT_INDEXABLE",
+                 "PROJECTION_REJECTED" -> HttpStatus.BAD_REQUEST;
+            case "INDEXING_RETRYABLE" -> HttpStatus.SERVICE_UNAVAILABLE;
+            case "INDEXING_PERMANENT" -> HttpStatus.INTERNAL_SERVER_ERROR;
             default -> HttpStatus.INTERNAL_SERVER_ERROR;
         };
     }

@@ -1,6 +1,5 @@
 package ai.fabric.behavior.service;
 
-import ai.fabric.annotation.AIProcess;
 import ai.fabric.behavior.entity.BehaviorInsights;
 import ai.fabric.behavior.model.BehaviorTrend;
 import ai.fabric.behavior.model.ExternalEvent;
@@ -61,6 +60,7 @@ public class BehaviorAnalysisService {
     private final StructuredJsonCallExecutor structuredJsonCallExecutor;
     private final PromptTemplateResolver promptTemplateResolver;
     private final PromptRenderer promptRenderer;
+    private final BehaviorInsightPersistenceService persistenceService;
     
     /**
      * CASE 1: Analyze a specific user (Targeted)
@@ -445,11 +445,7 @@ public class BehaviorAnalysisService {
         }
     }
 
-    @AIProcess(
-        entityType = "behavior-insight",
-        processType = "create"
-    )
     private BehaviorInsights saveAndIndex(BehaviorInsights insight) {
-        return storageAdapter.save(insight);
+        return persistenceService.save(insight);
     }
 }

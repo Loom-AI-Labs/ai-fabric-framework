@@ -4,7 +4,9 @@ import ai.fabric.config.ResponseSanitizationProperties;
 import ai.fabric.dto.VectorRecord;
 import ai.fabric.entity.IntentHistory;
 import ai.fabric.repository.IntentHistoryRepository;
-import ai.fabric.service.AICapabilityService;
+import ai.fabric.indexing.api.AIEntityIndexingGateway;
+import ai.fabric.indexing.api.AIProcessOperation;
+import ai.fabric.indexing.api.IndexingStrategy;
 import ai.fabric.service.VectorManagementService;
 import ai.fabric.exception.AIServiceException;
 import ai.fabric.intent.orchestration.OrchestrationResult;
@@ -61,7 +63,7 @@ public class RealAPIIntegrationTest {
     }
 
     @Autowired
-    private AICapabilityService capabilityService;
+    private AIEntityIndexingGateway indexingGateway;
 
     @Autowired
     private TestProductRepository productRepository;
@@ -104,7 +106,7 @@ public class RealAPIIntegrationTest {
 
         // When - Save and process with real AI
         product = productRepository.save(product);
-        capabilityService.processEntityForAI(product, "test-product");
+        indexingGateway.upsert(product, AIProcessOperation.CREATE, IndexingStrategy.SYNC);
 
         // Then - Verify real AI processing
         String entityId = product.getId().toString();
@@ -171,7 +173,7 @@ public class RealAPIIntegrationTest {
         // When - Process all products with real AI
         products = productRepository.saveAll(products);
         for (TestProduct product : products) {
-            capabilityService.processEntityForAI(product, "test-product");
+            indexingGateway.upsert(product, AIProcessOperation.CREATE, IndexingStrategy.SYNC);
         }
 
         // Then - Verify AI can distinguish between AI and non-AI content
@@ -248,7 +250,7 @@ public class RealAPIIntegrationTest {
         // When - Process all products
         products = productRepository.saveAll(products);
         for (TestProduct product : products) {
-            capabilityService.processEntityForAI(product, "test-product");
+            indexingGateway.upsert(product, AIProcessOperation.CREATE, IndexingStrategy.SYNC);
         }
 
         // Then - Test semantic search capabilities
@@ -317,7 +319,7 @@ public class RealAPIIntegrationTest {
         // When - Process entire catalog
         catalog = productRepository.saveAll(catalog);
         for (TestProduct product : catalog) {
-            capabilityService.processEntityForAI(product, "test-product");
+            indexingGateway.upsert(product, AIProcessOperation.CREATE, IndexingStrategy.SYNC);
         }
 
         // Then - Verify comprehensive AI processing
@@ -374,7 +376,7 @@ public class RealAPIIntegrationTest {
             .build();
 
         product = productRepository.save(product);
-        capabilityService.processEntityForAI(product, "test-product");
+        indexingGateway.upsert(product, AIProcessOperation.CREATE, IndexingStrategy.SYNC);
 
         // Create FAQ documents for the knowledge base
         TestProduct faqRefundPolicy = TestProduct.builder()
@@ -412,8 +414,8 @@ public class RealAPIIntegrationTest {
 
         // Save FAQ documents
         productRepository.saveAll(List.of(faqRefundPolicy, faqSecurePayment));
-        capabilityService.processEntityForAI(faqRefundPolicy, "test-product");
-        capabilityService.processEntityForAI(faqSecurePayment, "test-product");
+        indexingGateway.upsert(faqRefundPolicy, AIProcessOperation.CREATE, IndexingStrategy.SYNC);
+        indexingGateway.upsert(faqSecurePayment, AIProcessOperation.CREATE, IndexingStrategy.SYNC);
 
         String userId = "real-api-user";
         String query = """

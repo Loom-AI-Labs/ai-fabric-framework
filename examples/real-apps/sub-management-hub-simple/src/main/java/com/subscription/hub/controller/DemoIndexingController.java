@@ -1,6 +1,7 @@
 package com.subscription.hub.controller;
 
-import ai.fabric.service.AICapabilityService;
+import ai.fabric.indexing.api.AIEntityIndexingGateway;
+import ai.fabric.indexing.api.AIProcessOperation;
 import com.subscription.hub.entity.SubscriptionPlan;
 import com.subscription.hub.repository.SubscriptionPlanRepository;
 import lombok.RequiredArgsConstructor;
@@ -23,15 +24,15 @@ import java.util.Map;
 public class DemoIndexingController {
 
     private final SubscriptionPlanRepository planRepository;
-    private final ObjectProvider<AICapabilityService> capabilityServiceProvider;
+    private final ObjectProvider<AIEntityIndexingGateway> indexingGatewayProvider;
 
     @PostMapping("/reindex/plans")
     public ResponseEntity<Map<String, Object>> reindexPlans() {
-        AICapabilityService capabilityService = capabilityServiceProvider.getIfAvailable();
-        if (capabilityService == null) {
+        AIEntityIndexingGateway indexingGateway = indexingGatewayProvider.getIfAvailable();
+        if (indexingGateway == null) {
             return ResponseEntity.ok(Map.of(
                 "enabled", false,
-                "reason", "AICapabilityService bean not available"
+                "reason", "AIEntityIndexingGateway bean not available"
             ));
         }
 
@@ -44,7 +45,7 @@ public class DemoIndexingController {
                 continue;
             }
             try {
-                capabilityService.processEntityForAI(plan, "subscription-plan");
+                indexingGateway.upsert(plan, AIProcessOperation.UPDATE);
                 processed++;
             } catch (Exception ex) {
                 log.warn("Failed to process plan {} for AI indexing", plan.getId(), ex);

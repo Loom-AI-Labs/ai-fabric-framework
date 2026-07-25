@@ -3,10 +3,10 @@ package ai.fabric.indexing.document.springai;
 import ai.fabric.config.AIEntityConfigurationLoader;
 import ai.fabric.dto.AIEntityConfig;
 import ai.fabric.entity.IndexingQueueEntry;
-import ai.fabric.indexing.IndexingRequest;
+import ai.fabric.indexing.api.AIIndexWorkType;
+import ai.fabric.indexing.api.AIProcessOperation;
+import ai.fabric.indexing.model.AIIndexDocument;
 import ai.fabric.indexing.queue.IndexingQueueService;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.document.DocumentReader;
 import org.springframework.ai.document.DocumentTransformer;
@@ -45,14 +45,11 @@ public class SpringAiDocumentIndexingAdapter {
         "completion"
     );
 
-    private final ObjectMapper objectMapper;
     private final IndexingQueueService queueService;
     private final AIEntityConfigurationLoader configurationLoader;
 
-    public SpringAiDocumentIndexingAdapter(ObjectMapper objectMapper,
-                                           IndexingQueueService queueService,
+    public SpringAiDocumentIndexingAdapter(IndexingQueueService queueService,
                                            AIEntityConfigurationLoader configurationLoader) {
-        this.objectMapper = Objects.requireNonNull(objectMapper, "objectMapper is required");
         this.queueService = Objects.requireNonNull(queueService, "queueService is required");
         this.configurationLoader = Objects.requireNonNull(configurationLoader, "configurationLoader is required");
     }
@@ -62,19 +59,29 @@ public class SpringAiDocumentIndexingAdapter {
     }
 
     public List<IndexingQueueEntry> enqueue(List<Document> documents, SpringAiDocumentIndexingOptions options) {
-        List<IndexingRequest> requests = toIndexingRequests(documents, options);
-        List<IndexingQueueEntry> entries = new ArrayList<>(requests.size());
-        for (IndexingRequest request : requests) {
-            entries.add(queueService.enqueue(request));
+        List<AIIndexDocument> indexDocuments = toIndexDocuments(documents, options);
+        List<IndexingQueueEntry> entries = new ArrayList<>(indexDocuments.size());
+        for (AIIndexDocument document : indexDocuments) {
+            entries.add(queueService.enqueue(
+                document,
+                options.strategy(),
+                options.scheduledFor()
+            ));
         }
         return List.copyOf(entries);
     }
 
-    public List<IndexingRequest> toIndexingRequests(DocumentReader reader, SpringAiDocumentIndexingOptions options) {
-        return toIndexingRequests(readDocuments(reader), options);
+    public List<AIIndexDocument> toIndexDocuments(
+        DocumentReader reader,
+        SpringAiDocumentIndexingOptions options
+    ) {
+        return toIndexDocuments(readDocuments(reader), options);
     }
 
-    public List<IndexingRequest> toIndexingRequests(List<Document> documents, SpringAiDocumentIndexingOptions options) {
+    public List<AIIndexDocument> toIndexDocuments(
+        List<Document> documents,
+        SpringAiDocumentIndexingOptions options
+    ) {
         SpringAiDocumentIndexingOptions resolved = Objects.requireNonNull(options, "options is required");
         validateEntityType(resolved.entityType());
 
@@ -90,12 +97,39 @@ public class SpringAiDocumentIndexingAdapter {
                 + textDocuments.size() + " chunks; maxChunks=" + resolved.maxChunks());
         }
 
-        List<IndexingRequest> requests = new ArrayList<>(textDocuments.size());
+        List<AIIndexDocument> requests = new ArrayList<>(textDocuments.size());
         int chunkCount = textDocuments.size();
         for (int i = 0; i < chunkCount; i++) {
-            requests.add(toIndexingRequest(textDocuments.get(i), resolved, i, chunkCount));
+            requests.add(toIndexDocument(textDocuments.get(i), resolved, i, chunkCount));
         }
         return List.copyOf(requests);
+    }
+
+    public AIIndexDocument toDeleteDocument(
+        String entityType,
+        String entityId,
+        java.time.Instant occurredAt
+    ) {
+        validateEntityType(entityType);
+        if (!StringUtils.hasText(entityId)) {
+            throw new IllegalArgumentException("entityId is required");
+        }
+        return new AIIndexDocument(
+            AIIndexDocument.CURRENT_SCHEMA_VERSION,
+            documentProjectionHash(),
+            entityType.trim(),
+            entityId.trim(),
+            AIIndexWorkType.DELETE,
+            AIProcessOperation.DELETE,
+            null,
+            null,
+            Map.of(),
+            Map.of(),
+            Map.of(),
+            null,
+            "",
+            occurredAt == null ? java.time.Instant.now() : occurredAt
+        );
     }
 
     private List<Document> readDocuments(DocumentReader reader) {
@@ -109,7 +143,8 @@ public class SpringAiDocumentIndexingAdapter {
         if (config == null) {
             throw new IllegalArgumentException("Unknown AI Fabric entityType/vector space: " + entityType);
         }
-        if (!config.isIndexable()) {
+        if (config.getIndexing() == null
+            || !Boolean.TRUE.equals(config.getIndexing().getEnabled())) {
             throw new IllegalArgumentException("AI Fabric entityType is not indexable: " + entityType);
         }
     }
@@ -134,10 +169,12 @@ public class SpringAiDocumentIndexingAdapter {
         return transformed == null ? List.of() : transformed;
     }
 
-    private IndexingRequest toIndexingRequest(Document document,
-                                              SpringAiDocumentIndexingOptions options,
-                                              int chunkIndex,
-                                              int chunkCount) {
+    private AIIndexDocument toIndexDocument(
+        Document document,
+        SpringAiDocumentIndexingOptions options,
+        int chunkIndex,
+        int chunkCount
+    ) {
         String content = document.getText().trim();
         if (content.length() > options.maxContentLength()) {
             throw new IllegalArgumentException("Spring AI document chunk exceeds maxContentLength="
@@ -147,38 +184,50 @@ public class SpringAiDocumentIndexingAdapter {
         MetadataSanitization sanitizedMetadata = sanitizeMetadata(document.getMetadata(), options);
         String documentId = StringUtils.hasText(document.getId()) ? document.getId().trim() : "document-" + chunkIndex;
         String entityId = stableEntityId(options.sourceId(), documentId, chunkIndex);
-        SpringAiIndexingDocument payload = new SpringAiIndexingDocument(
-            entityId,
-            content,
-            options.sourceId(),
-            options.sourceName(),
-            documentId,
-            chunkIndex,
-            chunkCount,
-            sha256(content),
-            sanitizedMetadata.droppedCount(),
-            sanitizedMetadata.metadata()
-        );
+        Map<String, Object> metadata = new LinkedHashMap<>(sanitizedMetadata.metadata());
+        metadata.put("_springAiSourceId", options.sourceId());
+        metadata.put("_springAiSourceName", options.sourceName());
+        metadata.put("_springAiDocumentId", documentId);
+        metadata.put("_springAiChunkIndex", chunkIndex);
+        metadata.put("_springAiChunkCount", chunkCount);
+        metadata.put("_springAiContentFingerprint", sha256(content));
+        metadata.put("_springAiMetadataDroppedCount", sanitizedMetadata.droppedCount());
 
-        return IndexingRequest.builder()
-            .entityType(options.entityType())
-            .entityId(entityId)
-            .entityClassName(SpringAiIndexingDocument.class.getName())
-            .operation(options.operation())
-            .strategy(options.strategy())
-            .actionPlan(options.actionPlan())
-            .payload(writePayload(payload))
-            .scheduledFor(options.scheduledFor())
-            .maxRetries(options.maxRetries())
-            .build();
+        return new AIIndexDocument(
+            AIIndexDocument.CURRENT_SCHEMA_VERSION,
+            documentProjectionHash(),
+            options.entityType(),
+            entityId,
+            AIIndexWorkType.UPSERT,
+            options.operation(),
+            content,
+            content,
+            metadata,
+            Map.of(),
+            Map.of(),
+            sourceVersion(metadata),
+            "",
+            options.occurredAt()
+        );
     }
 
-    private String writePayload(SpringAiIndexingDocument payload) {
-        try {
-            return objectMapper.writeValueAsString(payload);
-        } catch (JsonProcessingException ex) {
-            throw new IllegalStateException("Failed to serialize Spring AI indexing document", ex);
+    private String documentProjectionHash() {
+        return sha256("spring-ai-document-projection-v1");
+    }
+
+    private Long sourceVersion(Map<String, Object> metadata) {
+        Object value = metadata.get("sourceVersion");
+        if (value instanceof Number number) {
+            return number.longValue();
         }
+        if (value instanceof CharSequence sequence) {
+            try {
+                return Long.parseLong(sequence.toString());
+            } catch (NumberFormatException ignored) {
+                return null;
+            }
+        }
+        return null;
     }
 
     private MetadataSanitization sanitizeMetadata(Map<String, Object> documentMetadata,

@@ -3,6 +3,7 @@ package com.ai.fabric.realapps.chat.policies.service;
 import com.ai.fabric.realapps.chat.policies.domain.Policy;
 import com.ai.fabric.realapps.chat.policies.repo.PolicyRepository;
 import ai.fabric.annotation.AIProcess;
+import ai.fabric.indexing.api.AIProcessOperation;
 import ai.fabric.core.AICoreService;
 import ai.fabric.dto.AISearchRequest;
 import ai.fabric.dto.AISearchResponse;
@@ -35,7 +36,7 @@ public class PolicyService {
     }
 
     @Transactional
-    @AIProcess(entityType = "policy", processType = "create", generateEmbedding = true, indexForSearch = true)
+    @AIProcess(entityType = "policy", operation = AIProcessOperation.CREATE)
     public Policy createPolicy(String title, String text, String classification) {
         if (!StringUtils.hasText(title)) {
             throw new IllegalArgumentException("title is required");
@@ -55,7 +56,7 @@ public class PolicyService {
     }
 
     @Transactional
-    @AIProcess(entityType = "policy", processType = "update", generateEmbedding = true, indexForSearch = true)
+    @AIProcess(entityType = "policy", operation = AIProcessOperation.UPDATE)
     public Policy updatePolicy(long id, String title, String text, String classification) {
         Policy policy = get(id);
 
@@ -77,7 +78,7 @@ public class PolicyService {
     }
 
     @Transactional
-    @AIProcess(entityType = "policy", processType = "delete", generateEmbedding = false, indexForSearch = false)
+    @AIProcess(entityType = "policy", operation = AIProcessOperation.DELETE)
     public Policy deletePolicy(long id) {
         Policy policy = get(id);
         policyRepository.delete(policy);

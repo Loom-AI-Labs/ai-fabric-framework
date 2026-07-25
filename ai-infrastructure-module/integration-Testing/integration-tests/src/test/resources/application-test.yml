@@ -1,4 +1,6 @@
 spring:
+  config:
+    import: classpath:ai-entity-config-test.yml
   autoconfigure:
     exclude:
       - org.springframework.ai.model.google.genai.autoconfigure.chat.GoogleGenAiChatAutoConfiguration

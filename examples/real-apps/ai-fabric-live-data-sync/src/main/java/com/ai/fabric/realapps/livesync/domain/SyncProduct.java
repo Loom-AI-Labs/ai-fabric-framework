@@ -2,7 +2,10 @@ package com.ai.fabric.realapps.livesync.domain;
 
 import ai.fabric.annotation.AICapable;
 import ai.fabric.annotation.AIContext;
+import ai.fabric.annotation.AIIdentity;
 import ai.fabric.annotation.AISearchable;
+import ai.fabric.indexing.api.AIContextDataType;
+import ai.fabric.indexing.api.AISearchPreprocessing;
 import ai.fabric.indexing.api.IndexingStrategy;
 import com.ai.fabric.realapps.livesync.repository.SyncProductRepository;
 import jakarta.persistence.Column;
@@ -26,7 +29,6 @@ import lombok.Setter;
 )
 @AICapable(
     entityType = SyncProduct.ENTITY_TYPE,
-    features = {"embedding", "search", "rag"},
     indexingStrategy = IndexingStrategy.SYNC,
     onCreateStrategy = IndexingStrategy.AUTO,
     onUpdateStrategy = IndexingStrategy.SYNC,
@@ -39,47 +41,48 @@ public class SyncProduct {
 
     @Id
     @Column(nullable = false, length = 160)
-    @AIContext(contextKey = "entityId", dataType = "id", priority = 10, required = true)
+    @AIIdentity
+    @AIContext(key = "entityId", dataType = AIContextDataType.ID, priority = 100, required = true)
     private String id;
 
     @Column(name = "workspace_id", nullable = false, length = 80)
-    @AIContext(contextKey = "workspaceId", dataType = "id", priority = 10, required = true)
+    @AIContext(key = "workspaceId", dataType = AIContextDataType.ID, priority = 100, required = true)
     private String workspaceId;
 
     @Column(name = "record_key", nullable = false, length = 80)
-    @AIContext(contextKey = "recordKey", dataType = "id", priority = 9, required = true)
+    @AIContext(key = "recordKey", dataType = AIContextDataType.ID, priority = 90, required = true)
     private String recordKey;
 
     @Column(nullable = false, length = 160)
-    @AISearchable(weight = 2.4, preprocessing = "normalize", required = true, tags = {"primary", "catalog"})
-    @AIContext(contextKey = "title", description = "Public product name", priority = 9)
+    @AISearchable(priority = 100, preprocessing = AISearchPreprocessing.NORMALIZE, required = true)
+    @AIContext(key = "title", description = "Public product name", priority = 90)
     private String title;
 
     @Column(nullable = false, length = 600)
-    @AISearchable(weight = 1.8, preprocessing = "clean", maxLength = 600, required = true, tags = {"summary"})
+    @AISearchable(priority = 80, preprocessing = AISearchPreprocessing.CLEAN, maxLength = 600, required = true)
     private String summary;
 
     @Column(nullable = false, length = 1200)
-    @AISearchable(weight = 1.5, preprocessing = "normalize", maxLength = 1200, tags = {"specification"})
+    @AISearchable(priority = 70, preprocessing = AISearchPreprocessing.NORMALIZE, maxLength = 1200)
     private String specification;
 
     @Column(nullable = false, length = 80)
-    @AIContext(contextKey = "category", dataType = "string", description = "Product category", priority = 7)
+    @AIContext(key = "category", dataType = AIContextDataType.STRING, description = "Product category", priority = 70)
     private String category;
 
     @Column(nullable = false, precision = 12, scale = 2)
-    @AIContext(contextKey = "price", dataType = "number", format = "0.00", priority = 7)
+    @AIContext(key = "price", dataType = AIContextDataType.NUMBER, format = "0.00", priority = 70)
     private BigDecimal price;
 
     @Column(nullable = false, length = 32)
-    @AIContext(contextKey = "status", dataType = "enum", description = "Catalog publication status", priority = 8)
+    @AIContext(key = "status", dataType = AIContextDataType.STRING, description = "Catalog publication status", priority = 80)
     private String status;
 
     @Column(nullable = false)
-    @AIContext(contextKey = "revision", dataType = "number", priority = 10, required = true)
+    @AIContext(key = "revision", dataType = AIContextDataType.NUMBER, priority = 100, required = true)
     private Integer revision;
 
     @Column(nullable = false)
-    @AIContext(contextKey = "updatedAt", dataType = "date", format = "yyyy-MM-dd'T'HH:mm:ss", priority = 5)
+    @AIContext(key = "updatedAt", dataType = AIContextDataType.DATE, format = "yyyy-MM-dd'T'HH:mm:ss", priority = 50)
     private LocalDateTime updatedAt;
 }

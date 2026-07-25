@@ -8,7 +8,8 @@ import ai.fabric.dto.AISearchResponse;
 import ai.fabric.dto.PIIDetection;
 import ai.fabric.dto.PIIDetectionResult;
 import ai.fabric.privacy.pii.PIIDetectionService;
-import ai.fabric.service.AICapabilityService;
+import ai.fabric.indexing.api.AIEntityIndexingGateway;
+import ai.fabric.indexing.api.AIProcessOperation;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.ObjectProvider;
@@ -31,7 +32,7 @@ public class SupportMessageService {
 
     private final SupportMessageRepository repository;
     private final PIIDetectionService piiDetectionService;
-    private final ObjectProvider<AICapabilityService> capabilityServiceProvider;
+    private final ObjectProvider<AIEntityIndexingGateway> indexingGatewayProvider;
     private final ObjectProvider<AICoreService> aiCoreServiceProvider;
 
     @Transactional
@@ -83,6 +84,12 @@ public class SupportMessageService {
 
     @Transactional
     public long deleteByCustomerIdPrefix(String customerIdPrefix) {
+        AIEntityIndexingGateway gateway = indexingGatewayProvider.getIfAvailable();
+        if (gateway != null) {
+            repository.findByCustomerIdStartingWithOrderByCreatedAtDesc(
+                customerIdPrefix
+            ).forEach(gateway::delete);
+        }
         return repository.deleteByCustomerIdStartingWith(customerIdPrefix);
     }
 
@@ -125,12 +132,12 @@ public class SupportMessageService {
     }
 
     private void indexSafeRecord(SupportMessage record) {
-        AICapabilityService capabilityService = capabilityServiceProvider.getIfAvailable();
-        if (capabilityService == null) {
-            log.debug("AICapabilityService unavailable; skipping support-message indexing");
+        AIEntityIndexingGateway indexingGateway = indexingGatewayProvider.getIfAvailable();
+        if (indexingGateway == null) {
+            log.debug("AIEntityIndexingGateway unavailable; skipping support-message indexing");
             return;
         }
-        capabilityService.processEntityForAI(record, ENTITY_TYPE);
+        indexingGateway.upsert(record, AIProcessOperation.CREATE);
     }
 
     private String safeProcessedText(String original, PIIDetectionResult result) {

@@ -42,9 +42,9 @@ import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
-import static org.mockito.Mockito.atLeast;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -105,14 +105,15 @@ class QdrantVectorDatabaseServiceTest {
             .containsEntry("supportsEfficientEntityTypeCount", true)
             .containsEntry("metadataFilteredSearch", true)
             .containsEntry("metadataFilteredScan", true)
-            .containsEntry("searchFilterMode", "qdrant-payload-filter-with-client-side-fallback")
-            .containsEntry("scanFilterMode", "qdrant-payload-filter")
+            .containsEntry("searchFilterMode", "qdrant-payload-filter-with-index-repair")
+            .containsEntry("scanFilterMode", "qdrant-payload-filter-with-index-repair")
             .containsEntry("requiredPayloadIndexFields", List.of("knowledgeSourceHandleRef"))
             .containsEntry("payloadIndexReadinessSource", "lazy-cache")
             .containsEntry("verifiedPayloadIndexes", List.of())
             .containsEntry("payloadIndexesSeenMissing", List.of())
             .containsEntry("payloadIndexCreateAttempts", Map.of())
             .containsEntry("payloadIndexCreateFailures", Map.of())
+            .containsEntry("payloadIndexRepairAttempts", Map.of())
             .containsEntry("metadataFilterFallbacks", Map.of());
     }
 
@@ -491,9 +492,8 @@ class QdrantVectorDatabaseServiceTest {
     }
 
     @Test
-    void searchFallsBackToUnfilteredQueryWhenPayloadIndexIsStillMissing() {
+    void searchRepairsTypedPayloadIndexAndRetriesTheSameFilteredQuery() {
         UUID vectorId = UUID.fromString("16d5a5d3-8c90-41d1-8c7f-17d4bd84615f");
-        UUID filteredOutVectorId = UUID.fromString("26d5a5d3-8c90-41d1-8c7f-17d4bd84615f");
         AIProviderConfig config = baseConfig();
         QdrantClient client = mock(QdrantClient.class);
         when(client.listCollectionsAsync()).thenReturn(Futures.immediateFuture(List.of("customer_a__tenant_b__faq-article")));
@@ -508,10 +508,19 @@ class QdrantVectorDatabaseServiceTest {
             isNull(),
             isNull()
         )).thenReturn(Futures.immediateFuture(Points.UpdateResult.getDefaultInstance()));
+        when(client.createPayloadIndexAsync(
+            eq("customer_a__tenant_b__faq-article"),
+            eq("rank"),
+            eq(Collections.PayloadSchemaType.Integer),
+            isNull(),
+            eq(true),
+            isNull(),
+            isNull()
+        )).thenReturn(Futures.immediateFuture(Points.UpdateResult.getDefaultInstance()));
         when(client.searchAsync(any()))
             .thenReturn(
                 Futures.immediateFailedFuture(new RuntimeException(
-                    "INVALID_ARGUMENT: Bad request: Index required but not found for \"knowledgeSourceHandleRef\""
+                    "INVALID_ARGUMENT: Bad request: Index required but not found for \"rank\""
                 )),
                 Futures.immediateFuture(List.of(Points.ScoredPoint.newBuilder()
                     .setId(PointIdFactory.id(vectorId))
@@ -519,16 +528,8 @@ class QdrantVectorDatabaseServiceTest {
                     .putPayload("entityType", ValueFactory.value("faq-article"))
                     .putPayload("entityId", ValueFactory.value("kb://reset"))
                     .putPayload("content", ValueFactory.value("Reset instructions"))
-                    .putPayload("knowledgeSourceHandleRef", ValueFactory.value("plugin/mkp-data-help-center"))
-                    .build(),
-                    Points.ScoredPoint.newBuilder()
-                        .setId(PointIdFactory.id(filteredOutVectorId))
-                        .setScore(0.91f)
-                        .putPayload("entityType", ValueFactory.value("faq-article"))
-                        .putPayload("entityId", ValueFactory.value("kb://other"))
-                        .putPayload("content", ValueFactory.value("Other instructions"))
-                        .putPayload("knowledgeSourceHandleRef", ValueFactory.value("plugin/other-source"))
-                        .build()))
+                    .putPayload("rank", ValueFactory.value(7L))
+                    .build()))
             );
 
         QdrantVectorDatabaseService service = new QdrantVectorDatabaseService(config, null, client);
@@ -540,27 +541,34 @@ class QdrantVectorDatabaseServiceTest {
                 .query("reset password")
                 .entityType("faq-article")
                 .limit(5)
-                .metadata(java.util.Map.of("knowledgeSourceHandleRef", "plugin/mkp-data-help-center"))
+                .metadata(java.util.Map.of("rank", 7))
                 .build());
 
             assertThat(response.getResults()).hasSize(1);
             Map<String, Object> row = response.getResults().getFirst();
             assertThat(row).containsEntry("entityId", "kb://reset");
-            assertThat(row).containsEntry("metadataFilterFallback", true);
-            assertThat(row.get("metadata")).isInstanceOfSatisfying(Map.class,
-                metadata -> assertThat(metadata)
-                    .containsEntry("knowledgeSourceHandleRef", "plugin/mkp-data-help-center")
-                    .containsEntry("metadataFilterFallback", true));
             assertThat(service.adminDiagnostics())
-                .containsEntry("metadataFilterFallbacks",
+                .containsEntry("payloadIndexRepairAttempts",
                     Map.of("customer_a__tenant_b__faq-article", 1));
             assertThat(registry.counter(
-                VectorProviderMetrics.FALLBACK_COUNTER,
+                VectorProviderMetrics.RETRY_COUNTER,
                 "provider", "qdrant",
                 "operation", "search",
-                "reason", "missing_payload_index"
+                "reason", "payload_index_repair"
             ).count()).isEqualTo(1.0d);
-            verify(client, atLeast(2)).searchAsync(any());
+            ArgumentCaptor<Points.SearchPoints> searchCaptor = ArgumentCaptor.forClass(Points.SearchPoints.class);
+            verify(client, times(2)).searchAsync(searchCaptor.capture());
+            assertThat(searchCaptor.getAllValues())
+                .allSatisfy(search -> assertThat(search.hasFilter()).isTrue());
+            verify(client).createPayloadIndexAsync(
+                eq("customer_a__tenant_b__faq-article"),
+                eq("rank"),
+                eq(Collections.PayloadSchemaType.Integer),
+                isNull(),
+                eq(true),
+                isNull(),
+                isNull()
+            );
         } finally {
             Metrics.removeRegistry(registry);
             registry.close();
@@ -568,8 +576,73 @@ class QdrantVectorDatabaseServiceTest {
     }
 
     @Test
-    void restSearchMarksResultsWhenPayloadIndexFallbackIsUsed() throws Exception {
+    void scanRepairsTypedPayloadIndexAndRetriesTheSameFilteredRequest() {
+        UUID vectorId = UUID.fromString("16d5a5d3-8c90-41d1-8c7f-17d4bd84615f");
+        String collection = "customer_a__tenant_b__faq-article";
+        AIProviderConfig config = baseConfig();
+        QdrantClient client = mock(QdrantClient.class);
+        when(client.listCollectionsAsync()).thenReturn(Futures.immediateFuture(List.of(collection)));
+        when(client.getCollectionInfoAsync(collection))
+            .thenReturn(Futures.immediateFuture(Collections.CollectionInfo.newBuilder().build()));
+        when(client.createPayloadIndexAsync(
+            eq(collection),
+            eq("rank"),
+            eq(Collections.PayloadSchemaType.Integer),
+            isNull(),
+            eq(true),
+            isNull(),
+            isNull()
+        )).thenReturn(Futures.immediateFuture(Points.UpdateResult.getDefaultInstance()));
+        when(client.scrollAsync(any()))
+            .thenReturn(
+                Futures.immediateFailedFuture(new RuntimeException(
+                    "INVALID_ARGUMENT: Bad request: Index required but not found for \"rank\""
+                )),
+                Futures.immediateFuture(Points.ScrollResponse.newBuilder()
+                    .addResult(Points.RetrievedPoint.newBuilder()
+                        .setId(PointIdFactory.id(vectorId))
+                        .putPayload("entityType", ValueFactory.value("faq-article"))
+                        .putPayload("entityId", ValueFactory.value("kb://reset"))
+                        .putPayload("content", ValueFactory.value("Reset instructions"))
+                        .putPayload("rank", ValueFactory.value(7L))
+                        .build())
+                    .build())
+            );
+
+        QdrantVectorDatabaseService service = new QdrantVectorDatabaseService(config, null, client);
+        SimpleMeterRegistry registry = new SimpleMeterRegistry();
+        Metrics.addRegistry(registry);
+
+        try {
+            VectorScanPage page = service.scan(VectorScanRequest.builder()
+                .entityType("faq-article")
+                .metadataEquals(Map.of("rank", 7))
+                .limit(1)
+                .build());
+
+            assertThat(page.getVectors())
+                .extracting(VectorRecord::getVectorId)
+                .containsExactly(vectorId.toString());
+            ArgumentCaptor<Points.ScrollPoints> scanCaptor = ArgumentCaptor.forClass(Points.ScrollPoints.class);
+            verify(client, times(2)).scrollAsync(scanCaptor.capture());
+            assertThat(scanCaptor.getAllValues())
+                .allSatisfy(scan -> assertThat(scan.hasFilter()).isTrue());
+            assertThat(registry.counter(
+                VectorProviderMetrics.RETRY_COUNTER,
+                "provider", "qdrant",
+                "operation", "scan",
+                "reason", "payload_index_repair"
+            ).count()).isEqualTo(1.0d);
+        } finally {
+            Metrics.removeRegistry(registry);
+            registry.close();
+        }
+    }
+
+    @Test
+    void restSearchRepairsTypedPayloadIndexAndRetriesTheSameFilteredQuery() throws Exception {
         List<String> searchBodies = new CopyOnWriteArrayList<>();
+        List<String> indexBodies = new CopyOnWriteArrayList<>();
         AtomicInteger searchCount = new AtomicInteger();
 
         HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
@@ -588,6 +661,7 @@ class QdrantVectorDatabaseServiceTest {
                 return;
             }
             if ("PUT".equals(method) && "/collections/customer_a__tenant_b__faq-article/index".equals(path)) {
+                indexBodies.add(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
                 writeJson(exchange, 200, "{\"result\":{},\"status\":\"ok\"}");
                 return;
             }
@@ -596,18 +670,13 @@ class QdrantVectorDatabaseServiceTest {
                 searchBodies.add(body);
                 if (searchCount.incrementAndGet() == 1) {
                     writeJson(exchange, 400,
-                        "{\"status\":{\"error\":\"Index required but not found for \\\"knowledgeSourceHandleRef\\\"\"}}");
+                        "{\"status\":{\"error\":\"Index required but not found for \\\"rank\\\"\"}}");
                     return;
                 }
                 writeJson(exchange, 200, """
                     {"result":[{"id":"16d5a5d3-8c90-41d1-8c7f-17d4bd84615f","score":0.92,
                     "payload":{"entityType":"faq-article","entityId":"kb://reset","content":"Reset instructions",
-                    "knowledgeSourceHandleRef":"plugin/mkp-data-help-center"},
-                    "vector":[0.1,0.2]},
-                    {"id":"26d5a5d3-8c90-41d1-8c7f-17d4bd84615f","score":0.91,
-                    "payload":{"entityType":"faq-article","entityId":"kb://other","content":"Other instructions",
-                    "knowledgeSourceHandleRef":"plugin/other-source"},
-                    "vector":[0.2,0.1]}],"status":"ok"}""");
+                    "rank":7},"vector":[0.1,0.2]}],"status":"ok"}""");
                 return;
             }
             writeJson(exchange, 404, "{\"status\":\"error\",\"result\":null}");
@@ -629,28 +698,116 @@ class QdrantVectorDatabaseServiceTest {
                     .query("reset password")
                     .entityType("faq-article")
                     .limit(5)
-                    .metadata(java.util.Map.of("knowledgeSourceHandleRef", "plugin/mkp-data-help-center"))
+                    .metadata(java.util.Map.of("rank", 7))
                     .build());
 
                 assertThat(searchBodies).hasSize(2);
                 assertThat(OBJECT_MAPPER.readTree(searchBodies.getFirst()).has("filter")).isTrue();
-                assertThat(OBJECT_MAPPER.readTree(searchBodies.get(1)).has("filter")).isFalse();
+                assertThat(OBJECT_MAPPER.readTree(searchBodies.get(1)).has("filter")).isTrue();
+                assertThat(indexBodies)
+                    .anySatisfy(body -> assertThat(body)
+                        .contains("\"field_name\":\"rank\"")
+                        .contains("\"field_schema\":\"integer\""));
                 assertThat(response.getResults()).hasSize(1);
                 Map<String, Object> row = response.getResults().getFirst();
                 assertThat(row).containsEntry("entityId", "kb://reset");
-                assertThat(row).containsEntry("metadataFilterFallback", true);
-                assertThat(row.get("metadata")).isInstanceOfSatisfying(Map.class,
-                    metadata -> assertThat(metadata)
-                        .containsEntry("knowledgeSourceHandleRef", "plugin/mkp-data-help-center")
-                        .containsEntry("metadataFilterFallback", true));
                 assertThat(service.adminDiagnostics())
-                    .containsEntry("metadataFilterFallbacks",
+                    .containsEntry("payloadIndexRepairAttempts",
                         Map.of("customer_a__tenant_b__faq-article", 1));
                 assertThat(registry.counter(
-                    VectorProviderMetrics.FALLBACK_COUNTER,
+                    VectorProviderMetrics.RETRY_COUNTER,
                     "provider", "qdrant",
                     "operation", "search",
-                    "reason", "missing_payload_index"
+                    "reason", "payload_index_repair"
+                ).count()).isEqualTo(1.0d);
+            } finally {
+                Metrics.removeRegistry(registry);
+                registry.close();
+            }
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
+    void restScanRepairsTypedPayloadIndexAndRetriesTheSameFilteredRequest() throws Exception {
+        List<String> scanBodies = new CopyOnWriteArrayList<>();
+        List<String> indexBodies = new CopyOnWriteArrayList<>();
+        AtomicInteger scanCount = new AtomicInteger();
+
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/", exchange -> {
+            String method = exchange.getRequestMethod();
+            String path = exchange.getRequestURI().getPath();
+
+            if ("GET".equals(method) && "/collections".equals(path)) {
+                writeJson(exchange, 200,
+                    "{\"result\":{\"collections\":[{\"name\":\"customer_a__tenant_b__faq-article\"}]},\"status\":\"ok\"}");
+                return;
+            }
+            if ("GET".equals(method) && "/collections/customer_a__tenant_b__faq-article".equals(path)) {
+                writeJson(exchange, 200,
+                    "{\"result\":{\"payload_schema\":{}},\"status\":\"ok\"}");
+                return;
+            }
+            if ("PUT".equals(method) && "/collections/customer_a__tenant_b__faq-article/index".equals(path)) {
+                indexBodies.add(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+                writeJson(exchange, 200, "{\"result\":{},\"status\":\"ok\"}");
+                return;
+            }
+            if ("POST".equals(method) && "/collections/customer_a__tenant_b__faq-article/points/scroll".equals(path)) {
+                String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+                scanBodies.add(body);
+                if (scanCount.incrementAndGet() == 1) {
+                    writeJson(exchange, 400,
+                        "{\"status\":{\"error\":\"Index required but not found for \\\"rank\\\"\"}}");
+                    return;
+                }
+                writeJson(exchange, 200, """
+                    {"result":{"points":[{"id":"16d5a5d3-8c90-41d1-8c7f-17d4bd84615f",
+                    "payload":{"entityType":"faq-article","entityId":"kb://reset","content":"Reset instructions",
+                    "rank":7},"vector":[0.1,0.2]}],"next_page_offset":null},"status":"ok"}""");
+                return;
+            }
+            writeJson(exchange, 404, "{\"status\":\"error\",\"result\":null}");
+        });
+        server.start();
+
+        try {
+            AIProviderConfig config = baseConfig();
+            AIProviderConfig.QdrantConfig qdrant = config.getQdrant();
+            qdrant.setHost("http://127.0.0.1:" + server.getAddress().getPort());
+            qdrant.setPreferGrpc(false);
+
+            QdrantVectorDatabaseService service = new QdrantVectorDatabaseService(config);
+            SimpleMeterRegistry registry = new SimpleMeterRegistry();
+            Metrics.addRegistry(registry);
+
+            try {
+                VectorScanPage page = service.scan(VectorScanRequest.builder()
+                    .entityType("faq-article")
+                    .metadataEquals(Map.of("rank", 7))
+                    .limit(1)
+                    .build());
+
+                assertThat(scanBodies).hasSize(2);
+                assertThat(OBJECT_MAPPER.readTree(scanBodies.getFirst()).has("filter")).isTrue();
+                assertThat(OBJECT_MAPPER.readTree(scanBodies.get(1)).has("filter")).isTrue();
+                assertThat(indexBodies)
+                    .anySatisfy(body -> assertThat(body)
+                        .contains("\"field_name\":\"rank\"")
+                        .contains("\"field_schema\":\"integer\""));
+                assertThat(page.getVectors())
+                    .extracting(VectorRecord::getEntityId)
+                    .containsExactly("kb://reset");
+                assertThat(service.adminDiagnostics())
+                    .containsEntry("payloadIndexRepairAttempts",
+                        Map.of("customer_a__tenant_b__faq-article", 1));
+                assertThat(registry.counter(
+                    VectorProviderMetrics.RETRY_COUNTER,
+                    "provider", "qdrant",
+                    "operation", "scan",
+                    "reason", "payload_index_repair"
                 ).count()).isEqualTo(1.0d);
             } finally {
                 Metrics.removeRegistry(registry);

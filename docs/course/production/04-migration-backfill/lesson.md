@@ -19,6 +19,8 @@ sourcePaths:
   - docs/course/production/04-migration-backfill/notebooklm/AI_FABRIC_STATE_STORAGE_MAP_NOTEBOOKLM_SCRIPT.md
   - ai-infrastructure-module/ai-fabric-migration/src/main/java/ai/fabric/migration/service/DataMigrationService.java
   - ai-infrastructure-module/ai-fabric-migration/src/main/java/ai/fabric/migration/domain/MigrationJob.java
+  - ai-infrastructure-module/ai-fabric-core/src/main/java/ai/fabric/indexing/api/AIEntityIndexingGateway.java
+  - ai-infrastructure-module/ai-fabric-core/src/main/java/ai/fabric/indexing/descriptor/AIEntityDescriptorRegistry.java
   - ai-infrastructure-module/ai-fabric-indexing/src/main/java/ai/fabric/indexing/queue/IndexingQueueService.java
   - ai-infrastructure-module/ai-fabric-core/src/main/java/ai/fabric/annotation/AICapable.java
 theoryVideoIds:
@@ -98,7 +100,7 @@ git switch -c lesson/prod-04-migration-backfill
 
 ## Step 1: Add The Migration Module
 
-Add `io.github.loom-ai-labs:ai-fabric-migration-core` at the same `${ai-fabric.version}` used by
+Add `io.github.loom-ai-labs:ai-fabric-migration` at the same `${ai-fabric.version}` used by
 the other framework modules. Do not add a framework source checkout or an unpublished example
 module.
 
@@ -118,7 +120,7 @@ The standalone application must scan the persistence types it actually uses:
 })
 ```
 
-For AI Fabric `0.3.3`, this explicit registration keeps the learner app's entities, chat-session
+For AI Fabric `0.4.0`, this explicit registration keeps the learner app's entities, chat-session
 entities, indexing queue, and migration jobs in one intentional persistence unit.
 
 ## Step 2: Bind The Source Repository
@@ -133,8 +135,10 @@ Update the article annotation:
 ```
 
 Add a stable `createdAt` field so date filters have a real source field. Keep `id` stable across
-runs. Mark `internalNotes` with `@JsonIgnore`: migration serializes the entity into a durable queue
-payload, so fields that must never become AI evidence need an explicit serialization boundary.
+runs. Mark identity with `@AIIdentity`, title/body with `@AISearchable`, and only approved structured
+fields with `@AIContext`. Leave `internalNotes` unannotated. Migration uses the canonical projection
+and stores a class-free `AIIndexDocument`, not a serialized entity. `@JsonIgnore` may still protect
+application JSON, but it is not the indexing security boundary.
 
 ## Step 3: Configure Bounded Work
 
@@ -142,14 +146,14 @@ payload, so fields that must never become AI evidence need an explicit serializa
 ai:
   indexing:
     enabled: true
-    async:
+    async-worker:
       enabled: true
-      fixed-delay: PT0.1S
+      fixed-delay: 100ms
       batch-size: 25
   migration:
     enabled: true
-    batch-size: 25
-    rate-limit: 0
+    default-batch-size: 25
+    default-rate-limit: 0
     max-concurrent-jobs: 1
     entity-fields:
       knowledge-article:
@@ -221,7 +225,8 @@ Expected first evidence ID: `policy-account-lockout-01`. A Tenant Red principal 
 VPN article but cannot see Tenant Blue evidence or administer migration.
 
 Run the same full migration again with `reindexExisting=false`. Expect nine vectors and the same
-completed queue-entry count. AI Fabric `0.3.3` reports scanned and failed rows but does not expose an
+completed queue-entry count. AI Fabric `0.4.0` reports scanned, projection-failed, enqueue-failed,
+and total failed rows but does not expose an
 exact per-job skipped count. Do not derive `skipped = processed - queued`; filtered scans and
 existing-vector decisions make that number misleading.
 
@@ -275,10 +280,10 @@ include `ai.fabric.chat.domain` as well as the application and indexing packages
 **Job is complete but search is empty:** inspect pending, processing, failed, and dead-letter queue
 counts. Wait for `indexingCaughtUp=true`; do not rerun blindly.
 
-**Private text appears in a queue payload:** fix the source serialization/projection boundary before
-continuing. Deleting it only from the final response is too late.
+**Private text appears in a queue payload:** fix the typed field destinations or registered custom
+projector before continuing. Queue payloads must contain only the approved projection.
 
-**Filtered migration reports nine processed rows:** in `0.3.3`, processed is scanned source rows. Use
+**Filtered migration reports nine processed rows:** in `0.4.0`, processed is scanned source rows. Use
 vector IDs/counts to prove selected output and do not publish a fictional skipped count.
 
 ## Next Lesson

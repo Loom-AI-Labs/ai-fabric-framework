@@ -38,6 +38,8 @@ class VectorDatabaseServiceContractTest {
                 withService(spec, CONTRACT::assertMetadataScanAndProjection)),
             dynamicTest("does not coerce decimal metadata into integral filters", () ->
                 withService(spec, CONTRACT::assertIntegralMetadataFilterDoesNotMatchDecimalMetadata)),
+            dynamicTest("applies exact metadata filters before search and scan limits", () ->
+                withService(spec, CONTRACT::assertExactMetadataFilteringPrecedesResultLimits)),
             dynamicTest("preserves empty string metadata filters as exact values", () ->
                 withService(spec, CONTRACT::assertEmptyStringMetadataFilterIsExact)),
             dynamicTest("rejects invalid direct write inputs and no-ops invalid identity lookups", () ->

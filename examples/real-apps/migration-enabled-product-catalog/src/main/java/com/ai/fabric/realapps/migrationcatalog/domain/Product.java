@@ -1,6 +1,9 @@
 package com.ai.fabric.realapps.migrationcatalog.domain;
 
 import ai.fabric.annotation.AICapable;
+import ai.fabric.annotation.AIContext;
+import ai.fabric.annotation.AIIdentity;
+import ai.fabric.annotation.AISearchable;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
@@ -21,20 +24,27 @@ import java.time.LocalDateTime;
 public class Product {
 
     @Id
+    @AIIdentity
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @AIContext
     @Column(nullable = false, unique = true)
     private String sku;
 
+    @AISearchable(priority = 100, required = true)
     @Column(nullable = false)
     private String name;
 
+    @AISearchable(priority = 90)
     @Column(columnDefinition = "TEXT", nullable = false)
     private String description;
 
+    @AISearchable(priority = 60)
+    @AIContext
     private String category;
 
+    @AIContext
     @Column(precision = 12, scale = 2)
     private BigDecimal price;
 

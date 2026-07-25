@@ -14,7 +14,9 @@ public enum IndexingStrategy {
     AUTO,
 
     /**
-     * Run indexing synchronously in the same transaction as the caller.
+     * Attempt provider work synchronously after the source transaction commits,
+     * or immediately when no source transaction is active. Failed work remains
+     * durable for retry.
      */
     SYNC,
 
@@ -28,4 +30,3 @@ public enum IndexingStrategy {
      */
     BATCH
 }
-

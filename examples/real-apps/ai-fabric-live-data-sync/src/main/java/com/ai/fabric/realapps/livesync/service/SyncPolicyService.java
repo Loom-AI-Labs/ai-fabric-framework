@@ -1,6 +1,7 @@
 package com.ai.fabric.realapps.livesync.service;
 
 import ai.fabric.annotation.AIProcess;
+import ai.fabric.indexing.api.AIProcessOperation;
 import ai.fabric.indexing.api.IndexingStrategy;
 import com.ai.fabric.realapps.livesync.domain.SyncPolicy;
 import com.ai.fabric.realapps.livesync.repository.SyncPolicyRepository;
@@ -21,9 +22,7 @@ public class SyncPolicyService {
     @Transactional
     @AIProcess(
         entityType = SyncPolicy.ENTITY_TYPE,
-        processType = "create",
-        generateEmbedding = true,
-        indexForSearch = true,
+        operation = AIProcessOperation.CREATE,
         indexingStrategy = IndexingStrategy.SYNC
     )
     public SyncPolicy createPolicy(
@@ -48,9 +47,7 @@ public class SyncPolicyService {
     @Transactional
     @AIProcess(
         entityType = SyncPolicy.ENTITY_TYPE,
-        processType = "update",
-        generateEmbedding = true,
-        indexForSearch = true,
+        operation = AIProcessOperation.UPDATE,
         indexingStrategy = IndexingStrategy.AUTO
     )
     public SyncPolicy updatePolicy(
@@ -72,9 +69,7 @@ public class SyncPolicyService {
     @Transactional
     @AIProcess(
         entityType = SyncPolicy.ENTITY_TYPE,
-        processType = "delete",
-        generateEmbedding = false,
-        indexForSearch = false,
+        operation = AIProcessOperation.DELETE,
         indexingStrategy = IndexingStrategy.SYNC
     )
     public SyncPolicy deletePolicy(String workspaceId, String recordKey) {

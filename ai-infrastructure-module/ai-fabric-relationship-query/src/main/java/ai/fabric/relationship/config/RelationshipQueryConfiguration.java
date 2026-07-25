@@ -3,7 +3,7 @@ package ai.fabric.relationship.config;
 import ai.fabric.config.AIEntityConfigurationLoader;
 import ai.fabric.core.AICoreService;
 import ai.fabric.core.AIEmbeddingService;
-import ai.fabric.processor.AnnotationFieldScanner;
+import ai.fabric.indexing.projection.AIEntityProjectionService;
 import ai.fabric.relationship.cache.QueryCache;
 import ai.fabric.relationship.metrics.QueryMetrics;
 import ai.fabric.relationship.action.RelationshipQueryActionHandler;
@@ -129,9 +129,14 @@ class RelationshipQueryConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
-    RelationshipQueryDocumentMapper relationshipQueryDocumentMapper(@Nullable AnnotationFieldScanner annotationFieldScanner,
-                                                                    @Nullable AIEntityConfigurationLoader configurationLoader) {
-        return new DefaultRelationshipQueryDocumentMapper(annotationFieldScanner, configurationLoader);
+    RelationshipQueryDocumentMapper relationshipQueryDocumentMapper(
+        @Nullable AIEntityProjectionService projectionService,
+        @Nullable AIEntityConfigurationLoader configurationLoader
+    ) {
+        return new DefaultRelationshipQueryDocumentMapper(
+            projectionService,
+            configurationLoader
+        );
     }
 
     @Bean

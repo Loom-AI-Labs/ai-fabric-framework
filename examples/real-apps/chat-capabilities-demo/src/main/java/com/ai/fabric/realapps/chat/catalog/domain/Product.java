@@ -2,7 +2,9 @@ package com.ai.fabric.realapps.chat.catalog.domain;
 
 import ai.fabric.annotation.AICapable;
 import ai.fabric.annotation.AIContext;
+import ai.fabric.annotation.AIIdentity;
 import ai.fabric.annotation.AISearchable;
+import ai.fabric.indexing.api.AIContextDataType;
 import ai.fabric.indexing.api.IndexingStrategy;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -31,36 +33,37 @@ import lombok.Setter;
 public class Product {
 
     @Id
+    @AIIdentity
     @AIContext(
-        contextKey = "id",
-        dataType = "id",
+        key = "id",
+        dataType = AIContextDataType.ID,
         description = "Internal product identifier"
     )
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @AISearchable(weight = 1.6)
+    @AISearchable(priority = 80)
     @AIContext(
-        contextKey = "sku",
-        dataType = "id",
+        key = "sku",
+        dataType = AIContextDataType.ID,
         description = "Product SKU"
     )
     @Column(nullable = false, unique = true)
     private String sku;
 
-    @AISearchable(weight = 2.0)
+    @AISearchable(priority = 100)
     @Column(nullable = false)
     private String name;
 
-    @AISearchable(weight = 1.7, maxLength = 20000)
+    @AISearchable(priority = 90, maxLength = 20000)
     @Column(columnDefinition = "TEXT", nullable = false)
     private String description;
 
-    @AISearchable(weight = 1.2)
+    @AISearchable(priority = 70)
     @AIContext(description = "Product category (e.g., Laptops, Headphones)")
     private String category;
 
-    @AISearchable(weight = 1.1)
+    @AISearchable(priority = 60)
     @AIContext(description = "Comma-separated tags")
     @Column(columnDefinition = "TEXT")
     private String tags;
@@ -69,15 +72,15 @@ public class Product {
     @Column(columnDefinition = "TEXT")
     private String imageUrl;
 
-    @AISearchable(weight = 1.0)
+    @AISearchable(priority = 60)
     @Column(precision = 12, scale = 2)
     private BigDecimal price;
 
-    @AISearchable(weight = 0.6)
+    @AISearchable(priority = 40)
     @Column(nullable = false)
     private String currency = "USD";
 
-    @AISearchable(weight = 0.5)
+    @AISearchable(priority = 30)
     @Column(nullable = false)
     private Integer inStockQty = 100;
 

@@ -1,6 +1,11 @@
 package ai.fabric.it.entity;
 
 import ai.fabric.annotation.AICapable;
+import ai.fabric.annotation.AIContext;
+import ai.fabric.annotation.AIIdentity;
+import ai.fabric.annotation.AISearchable;
+import ai.fabric.indexing.api.AIContextDataType;
+import ai.fabric.indexing.api.AIContextDestination;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -25,29 +30,56 @@ import java.time.LocalDateTime;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@AICapable
+@AICapable(entityType = "test-user")
 public class TestUser {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @AIIdentity
     private Long id;
 
     @Column(nullable = false, length = 100)
+    @AISearchable(name = "firstName", priority = 100, required = true)
     private String firstName;
 
     @Column(nullable = false, length = 100)
+    @AISearchable(name = "lastName", priority = 100, required = true)
     private String lastName;
 
     @Column(unique = true, nullable = false, length = 255)
+    @AISearchable(name = "email", priority = 60)
+    @AIContext(
+        key = "email",
+        destinations = {
+            AIContextDestination.VECTOR_METADATA,
+            AIContextDestination.API_RESPONSE
+        }
+    )
     private String email;
 
     @Column(columnDefinition = "TEXT")
+    @AISearchable(name = "bio", priority = 70)
     private String bio;
 
     @Column
+    @AIContext(
+        key = "age",
+        dataType = AIContextDataType.NUMBER,
+        destinations = {
+            AIContextDestination.VECTOR_METADATA,
+            AIContextDestination.API_RESPONSE
+        }
+    )
     private Integer age;
 
     @Column(length = 100)
+    @AIContext(
+        key = "location",
+        destinations = {
+            AIContextDestination.VECTOR_METADATA,
+            AIContextDestination.API_RESPONSE
+        }
+    )
     private String location;
 
     @Column(length = 20)
@@ -81,6 +113,7 @@ public class TestUser {
         return firstName + " " + lastName;
     }
 
+    @AISearchable(name = "displayName", priority = 90)
     public String getDisplayName() {
         return getFullName() + " (" + email + ")";
     }

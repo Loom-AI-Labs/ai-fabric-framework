@@ -1,69 +1,15 @@
 ai-entities:
   product:
-    features: ["embedding", "search"]
-    auto-process: true
-    enable-search: true
-    auto-embedding: true
-    indexable: true
-
-    # Field schema is annotation-driven (@AISearchable + @AIContext).
-
-    crud-operations:
-      create:
-        generate-embedding: false
-        index-for-search: true
-        enable-analysis: false
-      update:
-        generate-embedding: false
-        index-for-search: true
-        enable-analysis: false
-      delete:
-        index-for-search: false
-        remove-from-search: true
-        cleanup-embeddings: false
+    indexing:
+      enabled: true
+      max-characters: 8000
 
   policy:
-    features: ["embedding", "search"]
-    auto-process: true
-    enable-search: true
-    auto-embedding: true
-    indexable: true
-
-    # Field schema is annotation-driven (@AISearchable + @AIContext).
-
-    crud-operations:
-      create:
-        generate-embedding: false
-        index-for-search: true
-        enable-analysis: false
-      update:
-        generate-embedding: false
-        index-for-search: true
-        enable-analysis: false
-      delete:
-        index-for-search: false
-        remove-from-search: true
-        cleanup-embeddings: false
+    indexing:
+      enabled: true
+      max-characters: 8000
 
   review:
-    features: ["embedding", "search"]
-    auto-process: true
-    enable-search: true
-    auto-embedding: true
-    indexable: true
-
-    # Field schema is annotation-driven (@AISearchable + @AIContext).
-
-    crud-operations:
-      create:
-        generate-embedding: true
-        index-for-search: true
-        enable-analysis: false
-      update:
-        generate-embedding: true
-        index-for-search: true
-        enable-analysis: false
-      delete:
-        index-for-search: false
-        remove-from-search: true
-        cleanup-embeddings: false
+    indexing:
+      enabled: true
+      max-characters: 8000

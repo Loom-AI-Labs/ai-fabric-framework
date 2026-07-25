@@ -1,12 +1,13 @@
 package ai.fabric.indexing.document.springai;
 
-import ai.fabric.indexing.IndexingActionPlan;
-import ai.fabric.indexing.IndexingOperation;
+import ai.fabric.indexing.api.AIProcessOperation;
 import ai.fabric.indexing.api.IndexingStrategy;
 import org.springframework.ai.document.DocumentTransformer;
 
 import java.time.Clock;
+import java.time.Instant;
 import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -15,15 +16,14 @@ import java.util.Map;
 import java.util.Objects;
 
 /**
- * Options for converting trusted Spring AI documents into AI Fabric indexing work.
+ * Options for converting trusted Spring AI documents into approved index documents.
  */
 public record SpringAiDocumentIndexingOptions(
     String entityType,
     String sourceId,
     String sourceName,
-    IndexingOperation operation,
+    AIProcessOperation operation,
     IndexingStrategy strategy,
-    IndexingActionPlan actionPlan,
     List<DocumentTransformer> transformers,
     boolean splitWithTokenTextSplitter,
     int tokenChunkSize,
@@ -33,7 +33,7 @@ public record SpringAiDocumentIndexingOptions(
     int maxMetadataValueLength,
     Map<String, Object> metadata,
     LocalDateTime scheduledFor,
-    int maxRetries
+    Instant occurredAt
 ) {
 
     private static final int DEFAULT_TOKEN_CHUNK_SIZE = 800;
@@ -46,22 +46,32 @@ public record SpringAiDocumentIndexingOptions(
         entityType = requiredText(entityType, "entityType");
         sourceId = requiredText(sourceId, "sourceId");
         sourceName = hasText(sourceName) ? sourceName.trim() : sourceId;
-        operation = operation != null ? operation : IndexingOperation.CREATE;
-        strategy = strategy != null && strategy != IndexingStrategy.AUTO ? strategy : IndexingStrategy.ASYNC;
-        actionPlan = actionPlan != null ? actionPlan : new IndexingActionPlan(true, true, false, false, false);
+        operation = operation == null ? AIProcessOperation.CREATE : operation;
+        if (operation == AIProcessOperation.DELETE) {
+            throw new IllegalArgumentException("Document ingestion cannot use DELETE");
+        }
+        strategy = strategy != null && strategy != IndexingStrategy.AUTO
+            ? strategy
+            : IndexingStrategy.ASYNC;
         transformers = transformers == null ? List.of() : List.copyOf(transformers);
         tokenChunkSize = tokenChunkSize > 0 ? tokenChunkSize : DEFAULT_TOKEN_CHUNK_SIZE;
         maxChunks = maxChunks > 0 ? maxChunks : DEFAULT_MAX_CHUNKS;
-        maxContentLength = maxContentLength > 0 ? maxContentLength : DEFAULT_MAX_CONTENT_LENGTH;
-        maxMetadataEntries = maxMetadataEntries > 0 ? maxMetadataEntries : DEFAULT_MAX_METADATA_ENTRIES;
+        maxContentLength = maxContentLength > 0
+            ? maxContentLength
+            : DEFAULT_MAX_CONTENT_LENGTH;
+        maxMetadataEntries = maxMetadataEntries > 0
+            ? maxMetadataEntries
+            : DEFAULT_MAX_METADATA_ENTRIES;
         maxMetadataValueLength = maxMetadataValueLength > 0
             ? maxMetadataValueLength
             : DEFAULT_MAX_METADATA_VALUE_LENGTH;
         metadata = metadata == null
             ? Map.of()
             : Collections.unmodifiableMap(new LinkedHashMap<>(metadata));
-        scheduledFor = scheduledFor != null ? scheduledFor : LocalDateTime.now(Clock.systemUTC());
-        maxRetries = maxRetries > 0 ? maxRetries : 5;
+        scheduledFor = scheduledFor == null
+            ? LocalDateTime.now(Clock.systemUTC())
+            : scheduledFor;
+        occurredAt = occurredAt == null ? Instant.now() : occurredAt;
     }
 
     public static Builder builder() {
@@ -83,9 +93,8 @@ public record SpringAiDocumentIndexingOptions(
         private String entityType;
         private String sourceId;
         private String sourceName;
-        private IndexingOperation operation = IndexingOperation.CREATE;
+        private AIProcessOperation operation = AIProcessOperation.CREATE;
         private IndexingStrategy strategy = IndexingStrategy.ASYNC;
-        private IndexingActionPlan actionPlan = new IndexingActionPlan(true, true, false, false, false);
         private final List<DocumentTransformer> transformers = new ArrayList<>();
         private boolean splitWithTokenTextSplitter = true;
         private int tokenChunkSize = DEFAULT_TOKEN_CHUNK_SIZE;
@@ -95,110 +104,103 @@ public record SpringAiDocumentIndexingOptions(
         private int maxMetadataValueLength = DEFAULT_MAX_METADATA_VALUE_LENGTH;
         private final Map<String, Object> metadata = new LinkedHashMap<>();
         private LocalDateTime scheduledFor;
-        private int maxRetries = 5;
+        private Instant occurredAt;
 
         private Builder() {
         }
 
-        public Builder entityType(String entityType) {
-            this.entityType = entityType;
+        public Builder entityType(String value) {
+            entityType = value;
             return this;
         }
 
-        public Builder sourceId(String sourceId) {
-            this.sourceId = sourceId;
+        public Builder sourceId(String value) {
+            sourceId = value;
             return this;
         }
 
-        public Builder sourceName(String sourceName) {
-            this.sourceName = sourceName;
+        public Builder sourceName(String value) {
+            sourceName = value;
             return this;
         }
 
-        public Builder operation(IndexingOperation operation) {
-            this.operation = operation;
+        public Builder operation(AIProcessOperation value) {
+            operation = value;
             return this;
         }
 
-        public Builder strategy(IndexingStrategy strategy) {
-            this.strategy = strategy;
+        public Builder strategy(IndexingStrategy value) {
+            strategy = value;
             return this;
         }
 
-        public Builder actionPlan(IndexingActionPlan actionPlan) {
-            this.actionPlan = actionPlan;
-            return this;
-        }
-
-        public Builder addTransformer(DocumentTransformer transformer) {
-            if (transformer != null) {
-                this.transformers.add(transformer);
+        public Builder addTransformer(DocumentTransformer value) {
+            if (value != null) {
+                transformers.add(value);
             }
             return this;
         }
 
-        public Builder transformers(List<DocumentTransformer> transformers) {
-            this.transformers.clear();
-            if (transformers != null) {
-                transformers.stream()
-                    .filter(Objects::nonNull)
-                    .forEach(this.transformers::add);
+        public Builder transformers(List<DocumentTransformer> values) {
+            transformers.clear();
+            if (values != null) {
+                values.stream().filter(Objects::nonNull).forEach(transformers::add);
             }
             return this;
         }
 
-        public Builder splitWithTokenTextSplitter(boolean splitWithTokenTextSplitter) {
-            this.splitWithTokenTextSplitter = splitWithTokenTextSplitter;
+        public Builder splitWithTokenTextSplitter(boolean value) {
+            splitWithTokenTextSplitter = value;
             return this;
         }
 
-        public Builder tokenChunkSize(int tokenChunkSize) {
-            this.tokenChunkSize = tokenChunkSize;
+        public Builder tokenChunkSize(int value) {
+            tokenChunkSize = value;
             return this;
         }
 
-        public Builder maxChunks(int maxChunks) {
-            this.maxChunks = maxChunks;
+        public Builder maxChunks(int value) {
+            maxChunks = value;
             return this;
         }
 
-        public Builder maxContentLength(int maxContentLength) {
-            this.maxContentLength = maxContentLength;
+        public Builder maxContentLength(int value) {
+            maxContentLength = value;
             return this;
         }
 
-        public Builder maxMetadataEntries(int maxMetadataEntries) {
-            this.maxMetadataEntries = maxMetadataEntries;
+        public Builder maxMetadataEntries(int value) {
+            maxMetadataEntries = value;
             return this;
         }
 
-        public Builder maxMetadataValueLength(int maxMetadataValueLength) {
-            this.maxMetadataValueLength = maxMetadataValueLength;
+        public Builder maxMetadataValueLength(int value) {
+            maxMetadataValueLength = value;
             return this;
         }
 
-        public Builder metadata(Map<String, Object> metadata) {
-            this.metadata.clear();
-            if (metadata != null) {
-                this.metadata.putAll(metadata);
+        public Builder metadata(Map<String, Object> values) {
+            metadata.clear();
+            if (values != null) {
+                metadata.putAll(values);
             }
             return this;
         }
 
         public Builder metadata(String key, Object value) {
             if (key != null) {
-                this.metadata.put(key, value);
+                metadata.put(key, value);
             }
             return this;
         }
 
-        public Builder scheduledFor(LocalDateTime scheduledFor) {
-            this.scheduledFor = scheduledFor;
+        public Builder scheduledFor(LocalDateTime value) {
+            scheduledFor = value;
             return this;
         }
 
-        public Builder maxRetries(int maxRetries) {
-            this.maxRetries = maxRetries;
+        public Builder occurredAt(Instant value) {
+            occurredAt = value;
             return this;
         }
 
@@ -209,7 +211,6 @@ public record SpringAiDocumentIndexingOptions(
                 sourceName,
                 operation,
                 strategy,
-                actionPlan,
                 transformers,
                 splitWithTokenTextSplitter,
                 tokenChunkSize,
@@ -219,7 +220,7 @@ public record SpringAiDocumentIndexingOptions(
                 maxMetadataValueLength,
                 metadata,
                 scheduledFor,
-                maxRetries
+                occurredAt
             );
         }
     }

@@ -287,6 +287,34 @@ class WeaviateVectorDatabaseServiceTest {
         return rows;
     }
 
+    private static List<Map<String, Object>> decimalRankSearchRows(int count) {
+        List<Map<String, Object>> rows = new ArrayList<>(count);
+        for (int index = 0; index < count; index++) {
+            rows.add(Map.of(
+                "entityType", "product",
+                "entityId", "decimal-" + index,
+                "content", "Broad decimal match " + index,
+                "raw", "{\"rank\":7.9}",
+                "_additional", Map.of("id", "doc-decimal-" + index, "certainty", 0.99d)
+            ));
+        }
+        return rows;
+    }
+
+    private static List<Map<String, Object>> decimalRankScanRows(int count) {
+        List<Map<String, Object>> rows = new ArrayList<>(count);
+        for (int index = 0; index < count; index++) {
+            rows.add(Map.of(
+                "entityType", "product",
+                "entityId", "decimal-" + index,
+                "content", "Broad decimal match " + index,
+                "raw", "{\"rank\":7.9}",
+                "_additional", Map.of("id", "doc-decimal-" + index)
+            ));
+        }
+        return rows;
+    }
+
     @Test
     void storeVectorCreatesClassTenantMetadataPropertyAndUpsertsObject() {
         AIProviderConfig config = new AIProviderConfig();
@@ -379,7 +407,10 @@ class WeaviateVectorDatabaseServiceTest {
             .anySatisfy(property -> assertThat(property.getName()).startsWith("meta_category_"))
             .anySatisfy(property -> assertThat(property.getName()).startsWith("meta_indexedcreatedat_"))
             .anySatisfy(property -> assertThat(property.getName()).startsWith("meta_indexedupdatedat_"))
-            .allSatisfy(property -> assertThat(property.getDataType()).containsExactly("text"));
+            .allSatisfy(property -> {
+                assertThat(property.getDataType()).containsExactly("text");
+                assertThat(property.getTokenization()).isEqualTo("field");
+            });
 
         @SuppressWarnings("unchecked")
         ArgumentCaptor<Map<String, Object>> propertiesCaptor = ArgumentCaptor.forClass(Map.class);
@@ -436,8 +467,8 @@ class WeaviateVectorDatabaseServiceTest {
             .containsEntry("supportsEfficientEntityTypeCount", true)
             .containsEntry("metadataFilteredSearch", true)
             .containsEntry("metadataFilteredScan", true)
-            .containsEntry("searchFilterMode", "weaviate-where-filter-text-backed")
-            .containsEntry("scanFilterMode", "weaviate-where-filter-text-backed")
+            .containsEntry("searchFilterMode", "weaviate-field-tokenized-where-with-exact-paging")
+            .containsEntry("scanFilterMode", "weaviate-field-tokenized-where-with-exact-paging")
             .containsEntry("countMode", "native-aggregate-with-safe-fallback")
             .containsEntry("clearMode", "weaviate-delete-class-or-tenant-objects")
             .containsEntry("aggregateCountFallbacks", Map.of())
@@ -653,6 +684,110 @@ class WeaviateVectorDatabaseServiceTest {
         assertThat(response.getResults())
             .extracting(row -> row.get("vectorId"))
             .containsExactly("doc-integral-rank");
+    }
+
+    @Test
+    void searchPagesPastBroadTextMatchesBeforeApplyingTheRequestedLimit() {
+        AIProviderConfig config = baseConfig();
+        WeaviateClient client = mock(WeaviateClient.class);
+        String className = WeaviateVectorDatabaseService.scopedClassName("product", "");
+        mockExistingClass(client, className);
+
+        GraphQL graphQL = mock(GraphQL.class);
+        Get firstPage = mock(Get.class, Answers.RETURNS_SELF);
+        Get secondPage = mock(Get.class, Answers.RETURNS_SELF);
+        when(client.graphQL()).thenReturn(graphQL);
+        when(graphQL.get()).thenReturn(firstPage, secondPage);
+        when(firstPage.run()).thenReturn(new Result<>(
+            200,
+            GraphQLResponse.builder()
+                .data(Map.of("Get", Map.of(className, decimalRankSearchRows(100))))
+                .build(),
+            null
+        ));
+        when(secondPage.run()).thenReturn(new Result<>(
+            200,
+            GraphQLResponse.builder()
+                .data(Map.of("Get", Map.of(className, List.of(Map.of(
+                    "entityType", "product",
+                    "entityId", "integral-target",
+                    "content", "Exact integral target",
+                    "raw", "{\"rank\":7}",
+                    "_additional", Map.of("id", "doc-integral-target", "certainty", 0.80d)
+                )))))
+                .build(),
+            null
+        ));
+
+        WeaviateVectorDatabaseService service = new WeaviateVectorDatabaseService(config, null, client);
+
+        AISearchResponse response = service.search(List.of(1.0d, 0.0d), AISearchRequest.builder()
+            .query("ranked")
+            .entityType("product")
+            .metadata(Map.of("rank", 7))
+            .limit(1)
+            .build());
+
+        assertThat(response.getResults())
+            .extracting(row -> row.get("vectorId"))
+            .containsExactly("doc-integral-target");
+        verify(firstPage).withLimit(100);
+        verify(firstPage).withOffset(0);
+        verify(secondPage).withOffset(100);
+        verify(firstPage).withWhere(any(WhereFilter.class));
+        verify(secondPage).withWhere(any(WhereFilter.class));
+    }
+
+    @Test
+    void scanPagesPastBroadTextMatchesBeforeApplyingTheRequestedLimit() {
+        AIProviderConfig config = baseConfig();
+        WeaviateClient client = mock(WeaviateClient.class);
+        String className = WeaviateVectorDatabaseService.scopedClassName("product", "");
+        mockExistingClass(client, className);
+
+        GraphQL graphQL = mock(GraphQL.class);
+        Get firstPage = mock(Get.class, Answers.RETURNS_SELF);
+        Get secondPage = mock(Get.class, Answers.RETURNS_SELF);
+        when(client.graphQL()).thenReturn(graphQL);
+        when(graphQL.get()).thenReturn(firstPage, secondPage);
+        when(firstPage.run()).thenReturn(new Result<>(
+            200,
+            GraphQLResponse.builder()
+                .data(Map.of("Get", Map.of(className, decimalRankScanRows(100))))
+                .build(),
+            null
+        ));
+        when(secondPage.run()).thenReturn(new Result<>(
+            200,
+            GraphQLResponse.builder()
+                .data(Map.of("Get", Map.of(className, List.of(Map.of(
+                    "entityType", "product",
+                    "entityId", "integral-target",
+                    "content", "Exact integral target",
+                    "raw", "{\"rank\":7}",
+                    "_additional", Map.of("id", "doc-integral-target")
+                )))))
+                .build(),
+            null
+        ));
+
+        WeaviateVectorDatabaseService service = new WeaviateVectorDatabaseService(config, null, client);
+
+        VectorScanPage page = service.scan(VectorScanRequest.builder()
+            .entityType("product")
+            .metadataEquals(Map.of("rank", 7))
+            .limit(1)
+            .build());
+
+        assertThat(page.getVectors())
+            .extracting(VectorRecord::getVectorId)
+            .containsExactly("doc-integral-target");
+        assertThat(page.isHasMore()).isFalse();
+        verify(firstPage).withLimit(100);
+        verify(firstPage).withOffset(0);
+        verify(secondPage).withOffset(100);
+        verify(firstPage).withWhere(any(WhereFilter.class));
+        verify(secondPage).withWhere(any(WhereFilter.class));
     }
 
     @Test

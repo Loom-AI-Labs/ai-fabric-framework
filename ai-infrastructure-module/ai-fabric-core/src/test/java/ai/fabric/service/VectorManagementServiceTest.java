@@ -147,8 +147,8 @@ class VectorManagementServiceTest {
             Map.entry("supportsClearByEntityType", true),
             Map.entry("supportsEfficientEntityTypeCount", true),
             Map.entry("failOnMissingPayloadIndex", true),
-            Map.entry("searchFilterMode", "qdrant-payload-filter-with-client-side-fallback"),
-            Map.entry("scanFilterMode", "qdrant-payload-filter"),
+            Map.entry("searchFilterMode", "qdrant-payload-filter-with-index-repair"),
+            Map.entry("scanFilterMode", "qdrant-payload-filter-with-index-repair"),
             Map.entry("countMode", "qdrant-scroll-count"),
             Map.entry("clearMode", "qdrant-filtered-delete")
         ));
@@ -161,7 +161,7 @@ class VectorManagementServiceTest {
             .containsEntry("providerClass", "ai.fabric.vector.qdrant.QdrantVectorDatabaseService")
             .containsEntry("supportsSearchMetadataFiltering", true)
             .containsEntry("supportsScanMetadataFiltering", true)
-            .containsEntry("searchFilterMode", "qdrant-payload-filter-with-client-side-fallback")
+            .containsEntry("searchFilterMode", "qdrant-payload-filter-with-index-repair")
             .containsKey("readiness");
         assertThat(diagnostics.get("readiness"))
             .isInstanceOfSatisfying(Map.class, readiness -> assertThat(readiness)

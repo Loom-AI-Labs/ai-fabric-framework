@@ -1,276 +1,90 @@
-# Subscription Management Hub - Implementation Summary
+# Subscription Management Hub Simple - Implementation Summary
 
-## ✅ Implementation Status: Phase 1 Complete
+## Status
 
-### 🎯 **Recommendation: Core implementation is ready for testing**
+This application is a small subscription-management example built with Java 21, Spring Boot 4.1,
+and AI Fabric 0.4.0.
 
-The foundational structure of the Subscription Management Hub has been implemented with full AI Fabric Framework integration.
+It demonstrates:
 
----
+- subscription-plan semantic retrieval;
+- governed subscription actions with confirmation;
+- natural-language orchestration;
+- explicit plan reindexing through the AI Fabric indexing gateway;
+- H2 development storage and optional PostgreSQL runtime storage.
 
-## What Has Been Implemented
+It does not claim that every JPA entity write is synchronized automatically.
 
-### ✅ 1. Project Structure
-- Maven-based Spring Boot 4.1.0 project
-- Java 21
-- AI Fabric Framework dependencies configured
-- Application configuration files
+## AI Entity Contract
 
-### ✅ 2. Entity Models with @AICapable Annotations
+`SubscriptionPlan` is the only AI-indexed entity in this application:
 
-#### SubscriptionPlan Entity
-- ✅ `@AICapable` with `autoEmbedding = true`, `indexable = true`
-- ✅ `@AISearchable` on `name` and `description` fields
-- ✅ `@AIContext` for metadata (price, tier, features, etc.)
-- ✅ Automatic vector indexing enabled
+- `@AICapable(entityType = "subscription-plan", indexingStrategy = ASYNC)` defines the entity and
+  default lifecycle strategy;
+- `@AIIdentity` marks the stable vector identity;
+- `@AISearchable` selects the plan name and description as embedding text;
+- `@AIContext` selects approved price, tier, feature, user-limit, and storage metadata.
 
-#### Subscription Entity
-- ✅ `@AICapable` with `indexable = true`
-- ✅ `@AIContext` for status, dates, billing cycle, churn risk
-- ✅ Relationships to Plan and Address entities
+`Subscription` and `Address` remain application-domain records. They are not annotated as searchable
+entities and are not silently indexed by repository writes.
 
-#### Address Entity
-- ✅ `@AISearchable` on street address
-- ✅ `@AIContext` for address type and validation status
-- ✅ PII protection ready
+## Indexing Boundary
 
-### ✅ 3. Repository Interfaces
-- ✅ `SubscriptionPlanRepository` - JPA repository with custom queries
-- ✅ `SubscriptionRepository` - JPA repository with user/status queries
+AI Fabric 0.4.0 keeps persistence and AI indexing as explicit application boundaries:
 
-### ✅ 4. Service Layer with @AIProcess
+- startup seeding and demo reindex endpoints submit plans through `AIEntityIndexingGateway`;
+- the gateway projects only approved fields into a durable `AIIndexDocument`;
+- provider work follows the configured queue, retry, ordering, and dead-letter semantics;
+- `@AICapable` alone is not a JPA entity listener.
 
-#### SubscriptionService
-- ✅ `subscribe()` - @AIProcess for vector sync
-- ✅ `unsubscribe()` - @AIProcess for vector sync
-- ✅ `upgrade()` - @AIProcess for vector sync
-- ✅ `downgrade()` - @AIProcess for vector sync
-- ✅ `updateAddress()` - @AIProcess for vector sync
-- ✅ `searchPlans()` - Semantic search integration
-- ✅ Business logic validation (upgrade/downgrade paths)
+The service methods in `SubscriptionService` are ordinary transactional domain methods. They do not
+carry `@AIProcess`, because subscriptions and addresses are not indexed by this example.
 
-### ✅ 5. Action Handlers (Intent Action Handling)
+## Governed Actions
 
-#### Implemented Handlers:
-1. ✅ **CancelSubscriptionActionHandler**
-   - Validates user has active subscription
-   - Provides confirmation message
-   - Executes cancellation
-   - Error handling
+The application registers five framework actions:
 
-2. ✅ **SubscribeActionHandler**
-   - Validates user doesn't have active subscription
-   - Provides confirmation message
-   - Executes subscription creation
-   - Error handling
+1. subscribe;
+2. cancel a subscription;
+3. upgrade a subscription;
+4. downgrade a subscription;
+5. update an address.
 
-3. ✅ **UpgradeSubscriptionActionHandler**
-   - Validates user has active subscription
-   - Provides confirmation message
-   - Executes upgrade with tier validation
-   - Error handling
+The action handlers own validation, application context, confirmation text, and execution. AI Fabric
+performs intent/action orchestration, but the application remains responsible for business rules and
+authorized domain writes.
 
-4. ✅ **DowngradeSubscriptionActionHandler**
-   - Validates user has active subscription
-   - Provides confirmation message with feature loss warning
-   - Executes downgrade with tier validation
-   - Error handling
+## Main HTTP Surfaces
 
-5. ✅ **UpdateAddressActionHandler**
-   - Validates user has active subscription
-   - Integrates with PIIDetectionService
-   - Validates address format
-   - Executes address update
-   - Error handling
+- `POST /api/subscriptions/query` - natural-language orchestration;
+- `POST /api/subscriptions/query/actions/execute` - governed action execution;
+- `GET /api/subscriptions/plans` - list plans;
+- `GET /api/subscriptions/plans/{id}` - read a plan;
+- `POST /api/subscriptions/plans/search` - plan search;
+- `POST /api/demo/indexing/reindex/plans` - explicit plan reindex;
+- `GET /api/ai/debug/indexing/queue` - queue diagnostics;
+- `POST /api/ai/debug/indexing/queue/run-once` - manually process queued demo work.
 
-### ✅ 6. Action Provider
-- ✅ `SubscriptionActionProvider` implements `AIActionProvider`
-- ✅ Registers all 5 action handlers
-- ✅ Makes actions available to intent extraction
+## Running And Testing
 
-### ✅ 7. REST Controllers
+From the real-app reactor:
 
-#### SubscriptionController
-- ✅ `POST /api/subscriptions/subscribe`
-- ✅ `POST /api/subscriptions/{id}/unsubscribe`
-- ✅ `POST /api/subscriptions/{id}/upgrade`
-- ✅ `POST /api/subscriptions/{id}/downgrade`
-- ✅ `GET /api/subscriptions/{id}`
-- ✅ `GET /api/subscriptions/user/{userId}/active`
-
-#### PlanController
-- ✅ `GET /api/subscriptions/plans`
-- ✅ `GET /api/subscriptions/plans/{id}`
-- ✅ `POST /api/subscriptions/plans/search` - Semantic search
-
-#### NaturalLanguageController
-- ✅ `POST /api/subscriptions/query` - Natural language interface
-- ✅ `POST /api/subscriptions/query/actions/execute` - Action execution
-- ✅ Integrates with RAGOrchestrator
-
-### ✅ 8. Configuration Files
-
-#### application.yml
-- ✅ Spring Boot configuration
-- ✅ H2 database setup (development)
-- ✅ AI Fabric Framework configuration
-- ✅ OpenAI provider configuration
-- ✅ Behavior analytics configuration
-- ✅ PII detection configuration
-
-#### ai-entity-config.yml
-- ✅ Entity configuration for `subscription-plan`
-- ✅ Entity configuration for `subscription`
-- ✅ Searchable fields configuration
-- ✅ Metadata fields configuration
-
-### ✅ 9. Data Initialization
-- ✅ `DataInitializer` - Creates sample plans on startup
-- ✅ Basic Plan ($9.99/month)
-- ✅ Pro Plan ($49.99/month)
-- ✅ Enterprise Plan ($199.99/month)
-
----
-
-## Framework Integration Points
-
-### ✅ Intent Action Handling
-- All 5 action handlers registered via `SubscriptionActionProvider`
-- Handlers implement `ActionHandler` interface
-- Framework routes ACTION intents to appropriate handlers
-- Confirmation flow integrated
-
-### ✅ Semantic Search
-- `SubscriptionService.searchPlans()` uses `AICoreService.performSearch()`
-- Plans indexed automatically via `@AICapable`
-- Natural language queries supported
-
-### ✅ Vector Indexing
-- Automatic via `@AICapable` annotation
-- Real-time sync via `@AIProcess` annotation
-- No manual vector management needed
-
-### ✅ PII Detection
-- `UpdateAddressActionHandler` uses `PIIDetectionService`
-- Address validation integrated
-- Secure handling of sensitive data
-
----
-
-## What's Pending (Phase 2)
-
-### ⏳ Behavior Analytics Integration
-- [ ] Integrate `BehaviorAnalysisService` for event tracking
-- [ ] Implement churn risk calculation
-- [ ] Add recommendations endpoint
-- [ ] Track subscription events (SUBSCRIBE, CANCEL, UPGRADE, etc.)
-
-### ⏳ RAG Integration
-- [ ] Configure `RAGProvider` for Q&A
-- [ ] Index subscription data for RAG context
-- [ ] Implement Q&A endpoints
-
-### ⏳ Additional Features
-- [ ] Churn risk endpoint
-- [ ] Recommendations endpoint
-- [ ] At-risk subscribers endpoint
-- [ ] Usage analytics
-
----
-
-## Testing the Implementation
-
-### 1. Start the Application
 ```bash
-cd subscription-management-hub
-mvn spring-boot:run
+mvn -pl sub-management-hub-simple -am clean verify
 ```
 
-### 2. Test Natural Language Query
+Run the application with its offline smoke providers:
+
 ```bash
-curl -X POST http://localhost:8080/api/subscriptions/query \
-  -H "Content-Type: application/json" \
-  -d '{
-    "query": "Cancel my subscription",
-    "userId": "user-123"
-  }'
+mvn -pl sub-management-hub-simple -am spring-boot:run \
+  -Dspring-boot.run.profiles=smoke
 ```
 
-### 3. Test Semantic Search
-```bash
-curl -X POST "http://localhost:8080/api/subscriptions/plans/search?query=plans%20under%20%2450"
-```
+For an unreleased local AI Fabric version, first run the infrastructure reactor's normal
+`clean install`; do not bypass its tests.
 
-### 4. Test Action Execution
-```bash
-curl -X POST http://localhost:8080/api/subscriptions/query/actions/execute \
-  -H "Content-Type: application/json" \
-  -d '{
-    "action": "cancel_subscription",
-    "params": {
-      "subscriptionId": "sub-123"
-    },
-    "userId": "user-123",
-    "confirmed": true
-  }'
-```
+## Current Scope
 
----
-
-## Project Structure
-
-```
-subscription-management-hub/
-├── pom.xml
-├── README.md
-├── src/
-│   ├── main/
-│   │   ├── java/com/subscription/hub/
-│   │   │   ├── SubscriptionManagementHubApplication.java
-│   │   │   ├── entity/
-│   │   │   │   ├── SubscriptionPlan.java
-│   │   │   │   ├── Subscription.java
-│   │   │   │   └── Address.java
-│   │   │   ├── repository/
-│   │   │   │   ├── SubscriptionPlanRepository.java
-│   │   │   │   └── SubscriptionRepository.java
-│   │   │   ├── service/
-│   │   │   │   ├── SubscriptionService.java
-│   │   │   │   └── BehaviorEventService.java
-│   │   │   ├── action/
-│   │   │   │   ├── SubscriptionActionProvider.java
-│   │   │   │   └── handler/
-│   │   │   │       ├── CancelSubscriptionActionHandler.java
-│   │   │   │       ├── SubscribeActionHandler.java
-│   │   │   │       ├── UpgradeSubscriptionActionHandler.java
-│   │   │   │       ├── DowngradeSubscriptionActionHandler.java
-│   │   │   │       └── UpdateAddressActionHandler.java
-│   │   │   ├── controller/
-│   │   │   │   ├── SubscriptionController.java
-│   │   │   │   ├── PlanController.java
-│   │   │   │   └── NaturalLanguageController.java
-│   │   │   └── config/
-│   │   │       └── DataInitializer.java
-│   │   └── resources/
-│   │       ├── application.yml
-│   │       └── ai-entity-config.yml
-│   └── test/
-└── IMPLEMENTATION_SUMMARY.md
-```
-
----
-
-## Next Steps
-
-1. **Test the implementation** - Run the application and test all endpoints
-2. **Integrate Behavior Analytics** - Complete Phase 2 integration
-3. **Add RAG capabilities** - Implement Q&A features
-4. **Create UI** - Build frontend based on BRD UI requirements
-5. **Add tests** - Unit and integration tests
-
----
-
-**Status:** ✅ Phase 1 Complete - Ready for Testing
-**Framework Integration:** ✅ Complete
-**Action Handlers:** ✅ All 5 Implemented
-**API Endpoints:** ✅ All Core Endpoints Ready
+The application is intentionally smaller than the deployed Account Resolver demo. Behavior
+analytics, account-readiness analysis, refund policy, and richer resolver workflows live in
+`examples/real-apps/ai-fabric-account-resolver`.

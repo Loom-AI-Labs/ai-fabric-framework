@@ -30,30 +30,44 @@ final class IndexingWorkerRunner {
 
         for (IndexingQueueEntry entry : entries) {
             try {
-                workProcessor.process(entry);
+                IndexingWorkProcessor.WorkResult result = workProcessor.process(entry);
+                if (result.status() == ai.fabric.indexing.api.IndexingDispatchStatus.SKIPPED_STALE) {
+                    queueService.markSuperseded(entry.getId());
+                } else {
+                    queueService.markCompleted(entry.getId(), result.resultPayload());
+                }
             } catch (Exception ex) {
-                log.error("{} indexing failed for entry {}", workerName, entry.getId(), ex);
+                log.error(
+                    "{} indexing failed for entry {} with code {}",
+                    workerName,
+                    entry.getId(),
+                    safeCode(ex)
+                );
                 markFailure(entry, ex, workerName);
-                continue;
-            }
-
-            try {
-                queueService.markCompleted(entry);
-            } catch (Exception ex) {
-                log.error("{} indexing completed but acknowledgement failed for entry {}", workerName, entry.getId(), ex);
             }
         }
     }
 
     private void markFailure(IndexingQueueEntry entry, Exception cause, String workerName) {
         try {
-            queueService.markFailure(entry, safeMessage(cause));
+            queueService.markFailure(entry.getId(), safeCode(cause));
         } catch (Exception ex) {
-            log.error("{} indexing failed and failure acknowledgement also failed for entry {}", workerName, entry.getId(), ex);
+            log.error(
+                "{} indexing failed and failure acknowledgement also failed for entry {} with code {}",
+                workerName,
+                entry.getId(),
+                safeCode(ex)
+            );
         }
     }
 
-    private static String safeMessage(Exception ex) {
-        return ex.getMessage() != null ? ex.getMessage() : ex.getClass().getSimpleName();
+    static String safeCode(Exception exception) {
+        if (exception instanceof IndexingExecutionException executionException) {
+            return executionException.getErrorCode();
+        }
+        if (exception instanceof ai.fabric.indexing.queue.IndexingPayloadException payloadException) {
+            return payloadException.getErrorCode();
+        }
+        return "INDEXING_" + exception.getClass().getSimpleName().toUpperCase(java.util.Locale.ROOT);
     }
 }

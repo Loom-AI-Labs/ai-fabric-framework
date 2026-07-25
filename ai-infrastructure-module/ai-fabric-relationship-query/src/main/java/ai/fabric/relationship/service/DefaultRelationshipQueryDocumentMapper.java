@@ -1,11 +1,17 @@
 package ai.fabric.relationship.service;
 
+import ai.fabric.annotation.AICapable;
 import ai.fabric.config.AIEntityConfigurationLoader;
 import ai.fabric.dto.AIEntityConfig;
 import ai.fabric.dto.AIMetadataField;
 import ai.fabric.dto.AISearchableField;
 import ai.fabric.dto.RAGResponse;
-import ai.fabric.processor.AnnotationFieldScanner;
+import ai.fabric.indexing.api.AIContextDestination;
+import ai.fabric.indexing.api.AIProcessOperation;
+import ai.fabric.indexing.api.AISearchDestination;
+import ai.fabric.indexing.model.AIIndexDocument;
+import ai.fabric.indexing.projection.AIEntityProjectionService;
+import org.springframework.core.annotation.AnnotatedElementUtils;
 import org.springframework.lang.Nullable;
 import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
@@ -17,194 +23,204 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Optional;
 
 /**
- * Default mapper that supports both v2 annotations (@AISearchable/@AIContext) and
- * YAML entity config (ai-entity-config.yml).
- *
- * <p>Strict behavior: when neither annotations nor YAML produce any content/metadata,
- * this mapper returns {@link Optional#empty()} and callers can fall back to ID-only responses.</p>
+ * Maps relationship-query results through the approved RAG and response views.
  */
-public class DefaultRelationshipQueryDocumentMapper implements RelationshipQueryDocumentMapper {
+public class DefaultRelationshipQueryDocumentMapper
+    implements RelationshipQueryDocumentMapper {
 
     @Nullable
-    private final AnnotationFieldScanner annotationFieldScanner;
+    private final AIEntityProjectionService projectionService;
 
     @Nullable
     private final AIEntityConfigurationLoader configurationLoader;
 
-    public DefaultRelationshipQueryDocumentMapper(@Nullable AnnotationFieldScanner annotationFieldScanner,
-                                                  @Nullable AIEntityConfigurationLoader configurationLoader) {
-        this.annotationFieldScanner = annotationFieldScanner;
+    public DefaultRelationshipQueryDocumentMapper(
+        @Nullable AIEntityProjectionService projectionService,
+        @Nullable AIEntityConfigurationLoader configurationLoader
+    ) {
+        this.projectionService = projectionService;
         this.configurationLoader = configurationLoader;
     }
 
     @Override
-    public Optional<RAGResponse.RAGDocument> map(String entityType, Object entity, String entityId) {
+    public Optional<RAGResponse.RAGDocument> map(
+        String entityType,
+        Object entity,
+        String entityId
+    ) {
         if (entity == null || !StringUtils.hasText(entityId)) {
             return Optional.empty();
         }
 
-        String content = "";
-        Map<String, Object> metadata = new LinkedHashMap<>();
-
-        if (annotationFieldScanner != null) {
-            try {
-                content = annotationFieldScanner.extractSearchableContent(entity);
-            } catch (RuntimeException ignored) {
+        if (AnnotatedElementUtils.findMergedAnnotation(
+            entity.getClass(),
+            AICapable.class
+        ) != null) {
+            if (projectionService == null) {
+                throw new IllegalStateException(
+                    "AIEntityProjectionService is required for @AICapable results"
+                );
             }
-            metadata.putAll(extractContextMetadataForResponse(entity));
+            AIIndexDocument projection = projectionService.project(
+                entity,
+                AIProcessOperation.UPDATE,
+                ""
+            );
+            return document(
+                entityId,
+                projection.ragContextText(),
+                projection.responseMetadata()
+            );
         }
 
-        Optional<AIEntityConfig> config = resolveConfig(entityType);
-        if (config.isPresent()) {
-            AIEntityConfig entityConfig = config.get();
-            if (!StringUtils.hasText(content)) {
-                content = extractSearchableContentFromConfig(entity, entityConfig);
-            }
-            metadata.putAll(extractMetadataFromConfig(entity, entityConfig));
-        }
-
-        if (!StringUtils.hasText(content) && metadata.isEmpty()) {
+        AIEntityConfig config = resolveConfig(entityType).orElse(null);
+        if (config == null) {
             return Optional.empty();
         }
+        return document(
+            entityId,
+            extractRagContent(entity, config),
+            extractResponseMetadata(entity, config)
+        );
+    }
 
+    private Optional<RAGResponse.RAGDocument> document(
+        String entityId,
+        String content,
+        Map<String, Object> metadata
+    ) {
+        if (!StringUtils.hasText(content)
+            && (metadata == null || metadata.isEmpty())) {
+            return Optional.empty();
+        }
         return Optional.of(RAGResponse.RAGDocument.builder()
             .id(entityId)
             .content(StringUtils.hasText(content) ? content : null)
-            .metadata(!metadata.isEmpty() ? metadata : null)
+            .metadata(metadata == null || metadata.isEmpty() ? null : metadata)
             .build());
-    }
-
-    private Map<String, Object> extractContextMetadataForResponse(Object entity) {
-        if (annotationFieldScanner == null) {
-            return Map.of();
-        }
-
-        List<AnnotationFieldScanner.ContextFieldMetadata> contextFields =
-            annotationFieldScanner.getContextFields(entity.getClass());
-        if (contextFields.isEmpty()) {
-            return Map.of();
-        }
-
-        Map<String, Object> metadata = new LinkedHashMap<>();
-        for (AnnotationFieldScanner.ContextFieldMetadata field : contextFields) {
-            if (field == null || !field.isIncludeInResponse()) {
-                continue;
-            }
-            try {
-                Object raw = field.getField().get(entity);
-                if (raw != null) {
-                    metadata.put(field.getContextKey(), raw);
-                }
-            } catch (Exception ignored) {
-            }
-        }
-
-        return metadata;
     }
 
     private Optional<AIEntityConfig> resolveConfig(String entityType) {
         if (configurationLoader == null || !StringUtils.hasText(entityType)) {
             return Optional.empty();
         }
-        try {
-            return Optional.ofNullable(configurationLoader.getEntityConfig(entityType));
-        } catch (RuntimeException ex) {
-            return Optional.empty();
-        }
+        return Optional.ofNullable(
+            configurationLoader.getEntityConfig(entityType.trim())
+        );
     }
 
-    private String extractSearchableContentFromConfig(Object entity, AIEntityConfig config) {
-        if (config == null || CollectionUtils.isEmpty(config.getSearchableFields())) {
+    private String extractRagContent(Object entity, AIEntityConfig config) {
+        if (CollectionUtils.isEmpty(config.getSearchableFields())) {
             return "";
         }
-
         List<String> parts = new ArrayList<>();
-        for (AISearchableField field : config.getSearchableFields()) {
-            if (field == null || !field.isIncludeInRAG() || !StringUtils.hasText(field.getName())) {
-                continue;
-            }
-            Optional<Object> value = readPropertyPath(entity, field.getName());
-            if (value.isEmpty()) {
-                continue;
-            }
-            String rendered = renderValue(value.get());
-            if (StringUtils.hasText(rendered)) {
-                parts.add(rendered);
-            }
-        }
-        return String.join(" ", parts).trim();
+        config.getSearchableFields().stream()
+            .filter(java.util.Objects::nonNull)
+            .filter(field -> field.getDestinations() != null)
+            .filter(field -> field.getDestinations().contains(
+                AISearchDestination.RAG_CONTEXT
+            ))
+            .sorted(java.util.Comparator.comparing(
+                AISearchableField::getPriority,
+                java.util.Comparator.nullsLast(
+                    java.util.Comparator.reverseOrder()
+                )
+            ))
+            .forEach(field -> appendValue(parts, entity, field));
+        return String.join("\n", parts).trim();
     }
 
-    private Map<String, Object> extractMetadataFromConfig(Object entity, AIEntityConfig config) {
-        if (config == null || CollectionUtils.isEmpty(config.getMetadataFields())) {
+    private void appendValue(
+        List<String> parts,
+        Object entity,
+        AISearchableField field
+    ) {
+        if (!StringUtils.hasText(field.getName())) {
+            return;
+        }
+        Optional<Object> value = readPropertyPath(entity, field.getName());
+        if (value.isEmpty()) {
+            if (Boolean.TRUE.equals(field.getRequired())) {
+                throw new IllegalStateException(
+                    "Required RAG field is missing: " + field.getName()
+                );
+            }
+            return;
+        }
+        String rendered = String.valueOf(value.get()).trim();
+        if (StringUtils.hasText(rendered)) {
+            parts.add(field.getName().trim() + ": " + rendered);
+        }
+    }
+
+    private Map<String, Object> extractResponseMetadata(
+        Object entity,
+        AIEntityConfig config
+    ) {
+        if (CollectionUtils.isEmpty(config.getMetadataFields())) {
             return Map.of();
         }
-
         Map<String, Object> metadata = new LinkedHashMap<>();
-        for (AIMetadataField field : config.getMetadataFields()) {
-            if (field == null || !StringUtils.hasText(field.getName())) {
-                continue;
-            }
-            Optional<Object> value = readPropertyPath(entity, field.getName());
-            if (value.isEmpty()) {
-                continue;
-            }
-            metadata.put(metadataKey(field.getName()), simplifyMetadataValue(value.get()));
-        }
+        config.getMetadataFields().stream()
+            .filter(java.util.Objects::nonNull)
+            .filter(field -> field.getDestinations() != null)
+            .filter(field -> field.getDestinations().contains(
+                AIContextDestination.API_RESPONSE
+            ))
+            .sorted(java.util.Comparator.comparing(
+                AIMetadataField::getPriority,
+                java.util.Comparator.nullsLast(
+                    java.util.Comparator.reverseOrder()
+                )
+            ))
+            .forEach(field -> appendMetadata(metadata, entity, field));
         return metadata;
+    }
+
+    private void appendMetadata(
+        Map<String, Object> metadata,
+        Object entity,
+        AIMetadataField field
+    ) {
+        if (!StringUtils.hasText(field.getName())) {
+            return;
+        }
+        Optional<Object> value = readPropertyPath(entity, field.getName());
+        if (value.isEmpty()) {
+            if (Boolean.TRUE.equals(field.getRequired())) {
+                throw new IllegalStateException(
+                    "Required response field is missing: " + field.getName()
+                );
+            }
+            return;
+        }
+        Object raw = value.get();
+        metadata.put(
+            metadataKey(field.getName()),
+            raw instanceof String || raw instanceof Number || raw instanceof Boolean
+                ? raw
+                : raw.toString()
+        );
     }
 
     private String metadataKey(String configuredName) {
         int dot = configuredName.lastIndexOf('.');
-        if (dot <= 0) {
-            return configuredName;
-        }
-        return configuredName.substring(0, dot);
-    }
-
-    private Object simplifyMetadataValue(Object value) {
-        if (isJsonFriendlyScalar(value)) {
-            return value;
-        }
-        return value.toString();
-    }
-
-    private boolean isJsonFriendlyScalar(Object value) {
-        return value instanceof String
-            || value instanceof Number
-            || value instanceof Boolean;
-    }
-
-    private String renderValue(Object value) {
-        if (value == null) {
-            return "";
-        }
-        if (value instanceof String str) {
-            return str;
-        }
-        return value.toString();
+        return dot <= 0 ? configuredName : configuredName.substring(0, dot);
     }
 
     private Optional<Object> readPropertyPath(Object root, String path) {
         if (root == null || !StringUtils.hasText(path)) {
             return Optional.empty();
         }
-
         Object current = root;
-        String[] segments = path.split("\\.");
-        for (String segment : segments) {
-            if (current == null) {
+        for (String segment : path.split("\\.")) {
+            if (current == null || !StringUtils.hasText(segment)) {
                 return Optional.empty();
             }
-            String name = segment.trim();
-            if (!StringUtils.hasText(name)) {
-                return Optional.empty();
-            }
-            Optional<Object> next = readProperty(current, name);
+            Optional<Object> next = readProperty(current, segment.trim());
             if (next.isEmpty()) {
                 return Optional.empty();
             }
@@ -215,40 +231,28 @@ public class DefaultRelationshipQueryDocumentMapper implements RelationshipQuery
 
     private Optional<Object> readProperty(Object target, String property) {
         Class<?> type = target.getClass();
-        String getterSuffix = property.substring(0, 1).toUpperCase(Locale.ROOT) + property.substring(1);
-        List<String> candidateGetters = List.of("get" + getterSuffix, "is" + getterSuffix, property);
-
-        for (String methodName : candidateGetters) {
+        String suffix = property.substring(0, 1).toUpperCase(Locale.ROOT)
+            + property.substring(1);
+        for (String getter : List.of("get" + suffix, "is" + suffix, property)) {
             try {
-                Method method = type.getMethod(methodName);
-                if (method.getParameterCount() == 0) {
-                    return Optional.ofNullable(method.invoke(target));
-                }
-            } catch (Exception ignored) {
+                Method method = type.getMethod(getter);
+                return Optional.ofNullable(method.invoke(target));
+            } catch (ReflectiveOperationException ignored) {
+                // Try the next supported accessor form.
             }
         }
-
-        Optional<Field> field = findField(type, property);
-        if (field.isPresent()) {
-            try {
-                Field resolved = field.get();
-                resolved.setAccessible(true);
-                return Optional.ofNullable(resolved.get(target));
-            } catch (Exception ignored) {
-                return Optional.empty();
-            }
-        }
-
-        return Optional.empty();
-    }
-
-    private Optional<Field> findField(Class<?> type, String name) {
         Class<?> current = type;
         while (current != null && current != Object.class) {
             try {
-                return Optional.of(current.getDeclaredField(name));
+                Field field = current.getDeclaredField(property);
+                if (!field.trySetAccessible()) {
+                    return Optional.empty();
+                }
+                return Optional.ofNullable(field.get(target));
             } catch (NoSuchFieldException ignored) {
                 current = current.getSuperclass();
+            } catch (ReflectiveOperationException exception) {
+                return Optional.empty();
             }
         }
         return Optional.empty();

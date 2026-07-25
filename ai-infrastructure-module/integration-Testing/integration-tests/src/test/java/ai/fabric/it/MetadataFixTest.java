@@ -10,7 +10,10 @@ import ai.fabric.dto.VectorRecord;
 import ai.fabric.embedding.EmbeddingProvider;
 import ai.fabric.it.entity.TestProduct;
 import ai.fabric.it.repository.TestProductRepository;
-import ai.fabric.service.AICapabilityService;
+import ai.fabric.indexing.api.AIContextDataType;
+import ai.fabric.indexing.api.AIEntityIndexingGateway;
+import ai.fabric.indexing.api.AIProcessOperation;
+import ai.fabric.indexing.api.IndexingStrategy;
 import ai.fabric.service.VectorManagementService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -37,6 +40,7 @@ import static org.junit.jupiter.api.Assertions.*;
 })
 @ActiveProfiles("test")
 @TestPropertySource(properties = {
+    "ai.indexing.enabled=true",
     "ai.vector-db.lucene.index-path=./data/test-lucene-index/metadata-fix",
     "ai.vector-db.lucene.similarity-threshold=0.0",
     "ai.providers.embedding-provider=onnx",
@@ -48,7 +52,7 @@ class MetadataFixTest {
     private static final List<Double> QUERY_VECTOR = List.of(1.0, 0.0, 0.0, 0.0);
 
     @Autowired
-    private AICapabilityService capabilityService;
+    private AIEntityIndexingGateway indexingGateway;
 
     @Autowired
     private AIEntityConfigurationLoader configurationLoader;
@@ -72,7 +76,8 @@ class MetadataFixTest {
         assertNotNull(config.getMetadataFields(), "Metadata fields should not be null");
         assertFalse(config.getMetadataFields().isEmpty(), "Metadata fields should not be empty");
         assertTrue(config.getMetadataFields().stream()
-            .anyMatch(field -> "price".equals(field.getName()) && "DOUBLE".equalsIgnoreCase(field.getType())),
+            .anyMatch(field -> "price".equals(field.getName())
+                && AIContextDataType.NUMBER == field.getDataType()),
             "Price metadata should retain its configured numeric type");
     }
 
@@ -87,7 +92,11 @@ class MetadataFixTest {
             .active(true)
             .build());
 
-        capabilityService.processEntityForAI(savedProduct, ENTITY_TYPE);
+        indexingGateway.upsert(
+            savedProduct,
+            AIProcessOperation.CREATE,
+            IndexingStrategy.SYNC
+        );
 
         String entityId = savedProduct.getId().toString();
         Optional<VectorRecord> stored = vectorManagementService.getVector(ENTITY_TYPE, entityId);

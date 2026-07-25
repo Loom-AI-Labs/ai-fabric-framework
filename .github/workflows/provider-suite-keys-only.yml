@@ -289,12 +289,14 @@ jobs:
       - name: Build AI Fabric Framework with unit tests
         run: |
           cd ai-infrastructure-module
-          mvn install -B -V
+          mvn install -B -V -DskipITs
 
       - name: Prepare ONNX model assets
         if: matrix.embedding == 'onnx'
         run: |
           bash ai-infrastructure-module/scripts/download-onnx-model.sh all-MiniLM-L6-v2 ai-infrastructure-module/models/embeddings
+          echo "ONNX_MODEL_PATH=${GITHUB_WORKSPACE}/ai-infrastructure-module/models/embeddings/all-MiniLM-L6-v2.onnx" >> "$GITHUB_ENV"
+          echo "ONNX_TOKENIZER_PATH=${GITHUB_WORKSPACE}/ai-infrastructure-module/models/embeddings/tokenizer.json" >> "$GITHUB_ENV"
 
       - name: Run Pinecone provider-live suite
         if: matrix.vector_db == 'pinecone'

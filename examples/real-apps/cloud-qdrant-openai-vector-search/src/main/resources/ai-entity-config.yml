@@ -1,11 +1,5 @@
 ai-entities:
   kb-article:
-    entity-type: "kb-article"
-    auto-embedding: true
-    indexable: true
-    enable-search: true
-    metadata-fields:
-      - name: "category"
-        type: "string"
-      - name: "tags"
-        type: "string"
+    indexing:
+      enabled: true
+      max-characters: 8000

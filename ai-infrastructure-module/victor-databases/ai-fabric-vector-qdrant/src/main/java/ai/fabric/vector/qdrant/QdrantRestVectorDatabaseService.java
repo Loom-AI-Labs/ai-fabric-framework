@@ -54,7 +54,6 @@ final class QdrantRestVectorDatabaseService implements VectorDatabaseService, Au
 
     private static final String EMBEDDING_PAYLOAD_FIELD = "embedding";
     private static final String KNOWLEDGE_SOURCE_HANDLE_REF_FIELD = "knowledgeSourceHandleRef";
-    private static final String METADATA_FILTER_FALLBACK_FIELD = "metadataFilterFallback";
     private static final Set<String> RESERVED_PAYLOAD_FIELDS = Set.of("entityType", "entityId", "content", EMBEDDING_PAYLOAD_FIELD);
     private static final List<String> REQUIRED_KEYWORD_PAYLOAD_INDEX_FIELDS = List.of(KNOWLEDGE_SOURCE_HANDLE_REF_FIELD);
 
@@ -70,7 +69,7 @@ final class QdrantRestVectorDatabaseService implements VectorDatabaseService, Au
     private final ConcurrentMap<String, Boolean> payloadIndexCache = new ConcurrentHashMap<>();
     private final ConcurrentMap<String, Integer> payloadIndexCreateAttempts = new ConcurrentHashMap<>();
     private final ConcurrentMap<String, String> payloadIndexCreateFailures = new ConcurrentHashMap<>();
-    private final ConcurrentMap<String, Integer> metadataFilterFallbacks = new ConcurrentHashMap<>();
+    private final ConcurrentMap<String, Integer> payloadIndexRepairAttempts = new ConcurrentHashMap<>();
     private final Set<String> payloadIndexesSeenMissing = ConcurrentHashMap.newKeySet();
 
     QdrantRestVectorDatabaseService(AIProviderConfig providerConfig, VectorDatabaseConfig vectorDatabaseConfig) {
@@ -133,12 +132,12 @@ final class QdrantRestVectorDatabaseService implements VectorDatabaseService, Au
 
     @Override
     public String vectorSearchFilterMode() {
-        return "qdrant-payload-filter-with-client-side-fallback";
+        return "qdrant-payload-filter-with-index-repair";
     }
 
     @Override
     public String vectorScanFilterMode() {
-        return "qdrant-payload-filter";
+        return "qdrant-payload-filter-with-index-repair";
     }
 
     @Override
@@ -178,8 +177,8 @@ final class QdrantRestVectorDatabaseService implements VectorDatabaseService, Au
         diagnostics.put("transport", "rest");
         diagnostics.put("metadataFilteredSearch", supportsSearchMetadataFiltering());
         diagnostics.put("metadataFilteredScan", supportsScanMetadataFiltering());
-        diagnostics.put("searchFilterMode", "qdrant-payload-filter-with-client-side-fallback");
-        diagnostics.put("scanFilterMode", "qdrant-payload-filter");
+        diagnostics.put("searchFilterMode", "qdrant-payload-filter-with-index-repair");
+        diagnostics.put("scanFilterMode", "qdrant-payload-filter-with-index-repair");
         diagnostics.put("failOnMissingPayloadIndex", failOnMissingPayloadIndex());
         diagnostics.put("requiredPayloadIndexFields", REQUIRED_KEYWORD_PAYLOAD_INDEX_FIELDS);
         diagnostics.put("payloadIndexReadinessSource", "lazy-cache");
@@ -187,7 +186,8 @@ final class QdrantRestVectorDatabaseService implements VectorDatabaseService, Au
         diagnostics.put("payloadIndexesSeenMissing", sortedValues(payloadIndexesSeenMissing));
         diagnostics.put("payloadIndexCreateAttempts", sortedMap(payloadIndexCreateAttempts));
         diagnostics.put("payloadIndexCreateFailures", sortedMap(payloadIndexCreateFailures));
-        diagnostics.put("metadataFilterFallbacks", sortedMap(metadataFilterFallbacks));
+        diagnostics.put("payloadIndexRepairAttempts", sortedMap(payloadIndexRepairAttempts));
+        diagnostics.put("metadataFilterFallbacks", Map.of());
         return diagnostics;
     }
 
@@ -310,7 +310,6 @@ final class QdrantRestVectorDatabaseService implements VectorDatabaseService, Au
             filter.ifPresent(value -> body.set("filter", value));
 
             JsonNode result;
-            boolean metadataFilterFallback = false;
             try {
                 result = request("POST", "/collections/" + pathSegment(collection) + "/points/search", body, "search points");
             } catch (AIServiceException ex) {
@@ -321,22 +320,32 @@ final class QdrantRestVectorDatabaseService implements VectorDatabaseService, Au
                     throw new AIServiceException(
                         "Qdrant REST metadata-filtered search requires a payload index for the requested metadata fields. "
                             + "Create the payload index or set ai.vector-db.operations.fail-on-missing-payload-index=false "
-                            + "to allow compatibility fallback.",
+                            + "to allow AI Fabric to repair portable typed indexes and retry the filtered query.",
                         ex
                     );
                 }
+                payloadIndexRepairAttempts.merge(collection, 1, Integer::sum);
+                repairMetadataPayloadIndexes(collection, request.getMetadata());
+                VectorProviderMetrics.recordRetry("qdrant", "search", "payload_index_repair");
                 log.warn(
-                    "Qdrant REST filtered search for collection '{}' failed because a required payload index is missing. "
-                        + "Retrying without server-side metadata filtering and re-applying the portable metadata "
-                        + "predicate client-side.",
+                    "Qdrant REST filtered search for collection '{}' reported a missing payload index. "
+                        + "The requested typed indexes were repaired and the same filtered query will be retried.",
                     collection
                 );
-                body.remove("filter");
-                result = request("POST", "/collections/" + pathSegment(collection) + "/points/search", body,
-                    "search points without metadata filter");
-                metadataFilterFallback = true;
-                metadataFilterFallbacks.merge(collection, 1, Integer::sum);
-                VectorProviderMetrics.recordFallback("qdrant", "search", "missing_payload_index");
+                try {
+                    result = request(
+                        "POST",
+                        "/collections/" + pathSegment(collection) + "/points/search",
+                        body,
+                        "retry metadata-filtered search points"
+                    );
+                } catch (AIServiceException retryFailure) {
+                    throw new AIServiceException(
+                        "Qdrant REST metadata-filtered search still requires a payload index after safe index repair. "
+                            + "Verify the metadata field types and Qdrant payload schema.",
+                        retryFailure
+                    );
+                }
             }
 
             JsonNode points = result.path("result");
@@ -348,11 +357,7 @@ final class QdrantRestVectorDatabaseService implements VectorDatabaseService, Au
                 if (score < threshold) {
                     continue;
                 }
-                VectorRecord record = toVectorRecord(collection, point, score);
-                if (metadataFilterFallback && !matchesMetadata(record, request.getMetadata())) {
-                    continue;
-                }
-                allResults.add(metadataFilterFallback ? withMetadataFilterFallback(record) : record);
+                allResults.add(toVectorRecord(collection, point, score));
             }
         }
 
@@ -503,7 +508,49 @@ final class QdrantRestVectorDatabaseService implements VectorDatabaseService, Au
         body.set("with_vector", BooleanNode.valueOf(request.isIncludeEmbedding()));
         body.set("with_payload", buildPayloadSelector(request));
 
-        JsonNode result = request("POST", "/collections/" + pathSegment(collection) + "/points/scroll", body, "scroll points (scan)");
+        JsonNode result;
+        try {
+            result = request(
+                "POST",
+                "/collections/" + pathSegment(collection) + "/points/scroll",
+                body,
+                "scroll points (scan)"
+            );
+        } catch (AIServiceException ex) {
+            if (filter.isEmpty() || !isMissingPayloadIndexFailure(ex)) {
+                throw ex;
+            }
+            if (failOnMissingPayloadIndex()) {
+                throw new AIServiceException(
+                    "Qdrant REST metadata-filtered scan requires a payload index for the requested metadata fields. "
+                        + "Create the payload index or set ai.vector-db.operations.fail-on-missing-payload-index=false "
+                        + "to allow AI Fabric to repair portable typed indexes and retry the filtered scan.",
+                    ex
+                );
+            }
+            payloadIndexRepairAttempts.merge(collection, 1, Integer::sum);
+            repairMetadataPayloadIndexes(collection, request.getMetadataEquals());
+            VectorProviderMetrics.recordRetry("qdrant", "scan", "payload_index_repair");
+            log.warn(
+                "Qdrant REST filtered scan for collection '{}' reported a missing payload index. "
+                    + "The requested typed indexes were repaired and the same filtered scan will be retried.",
+                collection
+            );
+            try {
+                result = request(
+                    "POST",
+                    "/collections/" + pathSegment(collection) + "/points/scroll",
+                    body,
+                    "retry metadata-filtered scan"
+                );
+            } catch (AIServiceException retryFailure) {
+                throw new AIServiceException(
+                    "Qdrant REST metadata-filtered scan still requires a payload index after safe index repair. "
+                        + "Verify the metadata field types and Qdrant payload schema.",
+                    retryFailure
+                );
+            }
+        }
         JsonNode pointsNode = result.path("result").path("points");
         if (!pointsNode.isArray() || pointsNode.isEmpty()) {
             return VectorScanPage.builder()
@@ -685,21 +732,52 @@ final class QdrantRestVectorDatabaseService implements VectorDatabaseService, Au
     }
 
     private void ensureKeywordPayloadIndex(String collection, String fieldName) {
+        ensurePayloadIndex(collection, fieldName, "keyword", false);
+    }
+
+    private void repairMetadataPayloadIndexes(String collection, Map<String, Object> metadata) {
+        VectorMetadataFilterSupport.ValidationResult validation =
+            VectorMetadataFilterSupport.validatePortableEquals(metadata);
+        if (validation.hasRejectedFilters()) {
+            return;
+        }
+        validation.terms().forEach(term -> {
+            String schemaType = switch (term.kind()) {
+                case STRING -> "keyword";
+                case BOOLEAN -> "bool";
+                case INTEGRAL_NUMBER -> "integer";
+                case DECIMAL_NUMBER -> throw new IllegalArgumentException(
+                    "Decimal metadata filters are outside the portable exact-match subset"
+                );
+            };
+            ensurePayloadIndex(collection, term.key(), schemaType, true);
+        });
+    }
+
+    private void ensurePayloadIndex(
+        String collection,
+        String fieldName,
+        String schemaType,
+        boolean forceSchemaRefresh
+    ) {
         String cacheKey = collection + "::" + fieldName;
-        if (payloadIndexCache.containsKey(cacheKey)) {
+        if (!forceSchemaRefresh && payloadIndexCache.containsKey(cacheKey)) {
             return;
         }
 
         synchronized (payloadIndexCache) {
-            if (payloadIndexCache.containsKey(cacheKey)) {
+            if (!forceSchemaRefresh && payloadIndexCache.containsKey(cacheKey)) {
                 return;
+            }
+            if (forceSchemaRefresh) {
+                payloadIndexCache.remove(cacheKey);
             }
             if (!payloadSchemaExists(collection, fieldName)) {
                 payloadIndexesSeenMissing.add(cacheKey);
                 payloadIndexCreateAttempts.merge(cacheKey, 1, Integer::sum);
                 ObjectNode body = objectMapper.createObjectNode();
                 body.put("field_name", fieldName);
-                body.put("field_schema", "keyword");
+                body.put("field_schema", schemaType);
                 try {
                     request("PUT", "/collections/" + pathSegment(collection) + "/index?wait=true", body,
                         "create payload index '" + fieldName + "' for collection " + collection);
@@ -1049,45 +1127,9 @@ final class QdrantRestVectorDatabaseService implements VectorDatabaseService, Au
         row.put("vectorSpace", record.getEntityType());
         row.put("content", record.getContent());
         row.put("metadata", record.getMetadata());
-        if (isMetadataFilterFallback(record)) {
-            row.put(METADATA_FILTER_FALLBACK_FIELD, true);
-        }
         row.put("score", record.getSimilarityScore());
         row.put("similarity", record.getSimilarityScore());
         return row;
-    }
-
-    private VectorRecord withMetadataFilterFallback(VectorRecord record) {
-        Map<String, Object> metadata = new LinkedHashMap<>();
-        if (record.getMetadata() != null) {
-            metadata.putAll(record.getMetadata());
-        }
-        metadata.put(METADATA_FILTER_FALLBACK_FIELD, true);
-        return VectorRecord.builder()
-            .vectorId(record.getVectorId())
-            .entityType(record.getEntityType())
-            .entityId(record.getEntityId())
-            .content(record.getContent())
-            .embedding(record.getEmbedding())
-            .metadata(metadata)
-            .aiAnalysis(record.getAiAnalysis())
-            .createdAt(record.getCreatedAt())
-            .updatedAt(record.getUpdatedAt())
-            .vectorMetadata(record.getVectorMetadata())
-            .similarityScore(record.getSimilarityScore())
-            .active(record.getActive())
-            .version(record.getVersion())
-            .build();
-    }
-
-    private boolean matchesMetadata(VectorRecord record, Map<String, Object> metadataEquals) {
-        return record != null && VectorMetadataFilterSupport.matchesPortableEquals(record.getMetadata(), metadataEquals);
-    }
-
-    private boolean isMetadataFilterFallback(VectorRecord record) {
-        return record != null
-            && record.getMetadata() != null
-            && Boolean.TRUE.equals(record.getMetadata().get(METADATA_FILTER_FALLBACK_FIELD));
     }
 
     private AISearchResponse emptySearchResponse(AISearchRequest request) {

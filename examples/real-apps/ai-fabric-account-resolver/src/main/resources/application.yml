@@ -1,6 +1,8 @@
 spring:
   application:
     name: ai-fabric-account-resolver
+  config:
+    import: optional:classpath:ai-entity-config.yml
   datasource:
     url: jdbc:h2:file:./data/subscriptiondb
     driver-class-name: org.h2.Driver
@@ -24,9 +26,6 @@ server:
   port: ${PORT:8081}
 
 ai:
-  config:
-    default-file: ai-entity-config.yml
-
   chat:
     enabled: true
     auto-create-sessions: true

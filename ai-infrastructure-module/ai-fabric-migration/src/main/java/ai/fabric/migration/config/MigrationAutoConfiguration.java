@@ -2,8 +2,9 @@ package ai.fabric.migration.config;
 
 import ai.fabric.config.AIInfrastructureAutoConfiguration;
 import ai.fabric.config.AIEntityConfigurationLoader;
-import ai.fabric.config.AIIndexingProperties;
 import ai.fabric.indexing.config.AIIndexingAutoConfiguration;
+import ai.fabric.indexing.api.AIEntityIndexingGateway;
+import ai.fabric.indexing.descriptor.AIEntityDescriptorRegistry;
 import ai.fabric.indexing.queue.IndexingQueueService;
 import ai.fabric.migration.repository.MigrationJobRepository;
 import ai.fabric.migration.service.DataMigrationService;
@@ -11,8 +12,6 @@ import ai.fabric.migration.service.EntityRepositoryRegistry;
 import ai.fabric.migration.service.MigrationFilterPolicy;
 import ai.fabric.migration.service.MigrationProgressTracker;
 import ai.fabric.rag.VectorDatabaseService;
-import ai.fabric.service.AICapabilityService;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.AutoConfigurationPackage;
 import org.springframework.boot.autoconfigure.AutoConfigureAfter;
@@ -37,7 +36,7 @@ import java.util.List;
 @AutoConfigureAfter({AIInfrastructureAutoConfiguration.class, AIIndexingAutoConfiguration.class})
 @ConditionalOnProperty(prefix = "ai.migration", name = "enabled", havingValue = "true")
 @ConditionalOnBean(IndexingQueueService.class)
-@EnableConfigurationProperties({MigrationProperties.class, AIIndexingProperties.class})
+@EnableConfigurationProperties(MigrationProperties.class)
 @Import({EntityRepositoryRegistry.class, MigrationProgressTracker.class})
 public class MigrationAutoConfiguration {
 
@@ -72,32 +71,28 @@ public class MigrationAutoConfiguration {
     @Bean
     @ConditionalOnMissingBean
     public DataMigrationService dataMigrationService(
-        IndexingQueueService queueService,
         AIEntityConfigurationLoader configLoader,
+        AIEntityDescriptorRegistry descriptorRegistry,
+        AIEntityIndexingGateway indexingGateway,
         EntityRepositoryRegistry repositoryRegistry,
         MigrationJobRepository jobRepository,
         VectorDatabaseService vectorDatabaseService,
         MigrationProgressTracker progressTracker,
         MigrationProperties migrationProperties,
-        AIIndexingProperties indexingProperties,
-        ObjectMapper objectMapper,
         ExecutorService migrationExecutorService,
-        AICapabilityService capabilityService,
         Clock migrationClock,
         List<MigrationFilterPolicy> migrationFilterPolicies
     ) {
         return new DataMigrationService(
-            queueService,
             configLoader,
+            descriptorRegistry,
+            indexingGateway,
             repositoryRegistry,
             jobRepository,
             vectorDatabaseService,
             progressTracker,
             migrationProperties,
-            indexingProperties,
-            objectMapper,
             migrationExecutorService,
-            capabilityService,
             migrationClock,
             migrationFilterPolicies
         );

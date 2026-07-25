@@ -1,19 +1,16 @@
 package com.subscription.hub.controller;
 
-import ai.fabric.config.AIEntityConfigurationLoader;
 import ai.fabric.core.AICoreService;
-import ai.fabric.dto.AIEntityConfig;
 import ai.fabric.dto.AISearchRequest;
 import ai.fabric.dto.AISearchResponse;
-import ai.fabric.indexing.IndexingActionPlan;
-import ai.fabric.indexing.IndexingCoordinator;
-import ai.fabric.indexing.IndexingOperation;
 import ai.fabric.indexing.IndexingStatus;
+import ai.fabric.indexing.api.AIEntityIndexingGateway;
+import ai.fabric.indexing.api.AIProcessOperation;
+import ai.fabric.indexing.api.IndexingStrategy;
 import ai.fabric.indexing.queue.IndexingQueueService;
 import ai.fabric.indexing.worker.AsyncIndexingWorker;
 import ai.fabric.indexing.worker.BatchIndexingWorker;
 import ai.fabric.repository.IndexingQueueRepository;
-import ai.fabric.service.AICapabilityService;
 import com.subscription.hub.entity.SubscriptionPlan;
 import com.subscription.hub.repository.SubscriptionPlanRepository;
 import lombok.RequiredArgsConstructor;
@@ -42,9 +39,7 @@ public class AIDebugIndexingController {
     private final Environment environment;
 
     private final ObjectProvider<AICoreService> aiCoreServiceProvider;
-    private final ObjectProvider<AICapabilityService> capabilityServiceProvider;
-    private final ObjectProvider<AIEntityConfigurationLoader> configurationLoaderProvider;
-    private final ObjectProvider<IndexingCoordinator> indexingCoordinatorProvider;
+    private final ObjectProvider<AIEntityIndexingGateway> indexingGatewayProvider;
     private final ObjectProvider<IndexingQueueRepository> indexingQueueRepositoryProvider;
     private final ObjectProvider<AsyncIndexingWorker> asyncIndexingWorkerProvider;
     private final ObjectProvider<BatchIndexingWorker> batchIndexingWorkerProvider;
@@ -173,9 +168,7 @@ public class AIDebugIndexingController {
 
         Map<String, Object> beans = new LinkedHashMap<>();
         beans.put("AICoreService", beanAvailable(AICoreService.class));
-        beans.put("AICapabilityService", beanAvailable(AICapabilityService.class));
-        beans.put("AIEntityConfigurationLoader", beanAvailable(AIEntityConfigurationLoader.class));
-        beans.put("IndexingCoordinator", beanAvailable(IndexingCoordinator.class));
+        beans.put("AIEntityIndexingGateway", beanAvailable(AIEntityIndexingGateway.class));
         beans.put("IndexingQueueRepository", beanAvailable(IndexingQueueRepository.class));
         beans.put("IndexingQueueService", beanAvailable(IndexingQueueService.class));
         beans.put("AsyncIndexingWorker", beanAvailable(AsyncIndexingWorker.class));
@@ -228,14 +221,8 @@ public class AIDebugIndexingController {
     }
 
     private int syncIndexPlans(List<SubscriptionPlan> plans) {
-        AICapabilityService capabilityService = capabilityServiceProvider.getIfAvailable();
-        AIEntityConfigurationLoader loader = configurationLoaderProvider.getIfAvailable();
-        if (capabilityService == null || loader == null) {
-            return 0;
-        }
-
-        AIEntityConfig config = loader.getEntityConfig("subscription-plan");
-        if (config == null) {
+        AIEntityIndexingGateway indexingGateway = indexingGatewayProvider.getIfAvailable();
+        if (indexingGateway == null) {
             return 0;
         }
 
@@ -244,16 +231,19 @@ public class AIDebugIndexingController {
             if (plan == null) {
                 continue;
             }
-            capabilityService.generateEmbeddings(plan, config);
-            capabilityService.indexForSearch(plan, config);
+            indexingGateway.upsert(
+                plan,
+                AIProcessOperation.UPDATE,
+                IndexingStrategy.SYNC
+            );
             processed++;
         }
         return processed;
     }
 
     private int asyncEnqueuePlans(List<SubscriptionPlan> plans) {
-        IndexingCoordinator coordinator = indexingCoordinatorProvider.getIfAvailable();
-        if (coordinator == null) {
+        AIEntityIndexingGateway indexingGateway = indexingGatewayProvider.getIfAvailable();
+        if (indexingGateway == null) {
             return 0;
         }
 
@@ -262,12 +252,10 @@ public class AIDebugIndexingController {
             if (plan == null) {
                 continue;
             }
-            coordinator.handle(
+            indexingGateway.upsert(
                 plan,
-                "subscription-plan",
-                IndexingOperation.UPDATE,
-                new IndexingActionPlan(true, true, false, false, false),
-                null
+                AIProcessOperation.UPDATE,
+                IndexingStrategy.ASYNC
             );
             enqueued++;
         }

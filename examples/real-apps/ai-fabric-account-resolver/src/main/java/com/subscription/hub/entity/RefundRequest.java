@@ -1,6 +1,5 @@
 package com.subscription.hub.entity;
 
-import ai.fabric.annotation.AIContext;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -37,21 +36,17 @@ public class RefundRequest {
     @Column(nullable = false)
     private UUID userId;
 
-    @AIContext(contextKey = "resolutionType")
     @Column(nullable = false)
     @Enumerated(EnumType.STRING)
     private ResolutionType resolutionType;
 
-    @AIContext(contextKey = "status")
     @Column(nullable = false)
     @Enumerated(EnumType.STRING)
     private RefundStatus status;
 
-    @AIContext(contextKey = "amount")
     @Column(nullable = false, precision = 12, scale = 2)
     private BigDecimal amount;
 
-    @AIContext(contextKey = "reason")
     @Column(nullable = false, columnDefinition = "TEXT")
     private String reason;
 

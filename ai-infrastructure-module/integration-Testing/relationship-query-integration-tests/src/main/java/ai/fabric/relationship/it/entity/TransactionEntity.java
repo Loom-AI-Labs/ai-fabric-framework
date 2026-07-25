@@ -1,6 +1,9 @@
 package ai.fabric.relationship.it.entity;
 
 import ai.fabric.annotation.AICapable;
+import ai.fabric.annotation.AIContext;
+import ai.fabric.annotation.AIIdentity;
+import ai.fabric.annotation.AISearchable;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
@@ -24,23 +27,30 @@ import java.util.UUID;
 public class TransactionEntity {
 
     @Id
+    @AIIdentity
     private String id;
 
+    @AISearchable(required = true)
     @Column(nullable = false)
     private String title;
 
+    @AIContext
     @Column(nullable = false)
     private BigDecimal amount;
 
+    @AIContext
     @Column(nullable = false)
     private String currency;
 
+    @AIContext
     @Column(nullable = false)
     private String channel;
 
+    @AIContext
     @Column(nullable = false)
     private LocalDateTime occurredAt;
 
+    @AIContext
     @Column(nullable = false)
     private String status;
 

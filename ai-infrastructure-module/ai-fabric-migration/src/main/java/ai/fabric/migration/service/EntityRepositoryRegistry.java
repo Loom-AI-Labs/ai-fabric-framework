@@ -2,11 +2,13 @@ package ai.fabric.migration.service;
 
 import ai.fabric.annotation.AICapable;
 import ai.fabric.annotation.NoMigrationRepository;
-import ai.fabric.config.AIEntityConfigurationLoader;
+import ai.fabric.indexing.descriptor.AIEntityDescriptorRegistry;
+import ai.fabric.indexing.model.AIEntityDescriptor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationContext;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.repository.support.Repositories;
+import org.springframework.core.annotation.AnnotatedElementUtils;
 
 import jakarta.annotation.PostConstruct;
 import java.util.Map;
@@ -21,16 +23,16 @@ public class EntityRepositoryRegistry {
 
     private final Map<String, EntityRegistration> registry = new ConcurrentHashMap<>();
     private final Repositories repositories;
-    private final AIEntityConfigurationLoader configLoader;
+    private final AIEntityDescriptorRegistry descriptorRegistry;
     private final ApplicationContext applicationContext;
 
     public EntityRepositoryRegistry(
         Repositories repositories,
-        AIEntityConfigurationLoader configLoader,
+        AIEntityDescriptorRegistry descriptorRegistry,
         ApplicationContext applicationContext
     ) {
         this.repositories = repositories;
-        this.configLoader = configLoader;
+        this.descriptorRegistry = descriptorRegistry;
         this.applicationContext = applicationContext;
     }
 
@@ -43,20 +45,34 @@ public class EntityRepositoryRegistry {
             }
             Object repository = repositoryOptional.get();
 
-            AICapable annotation = domainType.getAnnotation(AICapable.class);
+            AICapable annotation = AnnotatedElementUtils.findMergedAnnotation(
+                domainType,
+                AICapable.class
+            );
             if (annotation == null) {
                 continue;
             }
 
-            String entityType = annotation.entityType();
-            if (!configLoader.hasEntityConfig(entityType)) {
-                log.debug("Skipping entity {} because no ai-entity-config entry found", entityType);
-                continue;
-            }
+            AIEntityDescriptor descriptor = descriptorRegistry.resolve(domainType);
+            String entityType = descriptor.entityType();
 
-            Class<? extends JpaRepository<?, ?>> repoClass = resolveRepositoryClass(annotation, repository);
+            Class<? extends JpaRepository<?, ?>> repoClass =
+                resolveRepositoryClass(descriptor, repository);
             JpaRepository<?, ?> repoBean = resolveRepositoryBean(repoClass, repository);
-            registry.put(entityType, new EntityRegistration(entityType, domainType, repoBean));
+            EntityRegistration previous = registry.putIfAbsent(
+                entityType,
+                new EntityRegistration(entityType, domainType, repoBean)
+            );
+            if (previous != null && !previous.entityClass().equals(domainType)) {
+                throw new IllegalStateException(
+                    "Duplicate migration entityType '%s' for %s and %s"
+                        .formatted(
+                            entityType,
+                            previous.entityClass().getName(),
+                            domainType.getName()
+                        )
+                );
+            }
             log.info("Registered migration repository {} for entity type {}", repoClass.getSimpleName(), entityType);
         }
 
@@ -70,8 +86,12 @@ public class EntityRepositoryRegistry {
             .orElseThrow(() -> new IllegalArgumentException("No repository registration for entity type: " + entityType));
     }
 
-    private Class<? extends JpaRepository<?, ?>> resolveRepositoryClass(AICapable annotation, Object discoveredRepository) {
-        Class<? extends JpaRepository<?, ?>> candidate = annotation.migrationRepository();
+    private Class<? extends JpaRepository<?, ?>> resolveRepositoryClass(
+        AIEntityDescriptor descriptor,
+        Object discoveredRepository
+    ) {
+        Class<? extends JpaRepository<?, ?>> candidate =
+            descriptor.migrationRepository();
         if (candidate != null
             && !JpaRepository.class.equals(candidate)
             && !NoMigrationRepository.class.equals(candidate)) {

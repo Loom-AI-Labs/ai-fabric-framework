@@ -70,6 +70,7 @@ public class WeaviateVectorDatabaseService implements VectorDatabaseService {
     private static final String PROPERTY_META_PREFIX = "meta_";
     private static final String EMPTY_STRING_METADATA_SENTINEL = "__ai_fabric_empty_string__";
     private static final int COUNT_FALLBACK_SCAN_PAGE_SIZE = 500;
+    private static final int EXACT_FILTER_PAGE_SIZE = 100;
 
     private final AIProviderConfig.WeaviateConfig config;
     private final VectorDatabaseConfig vectorDatabaseConfig;
@@ -154,12 +155,12 @@ public class WeaviateVectorDatabaseService implements VectorDatabaseService {
 
     @Override
     public String vectorSearchFilterMode() {
-        return "weaviate-where-filter-text-backed";
+        return "weaviate-field-tokenized-where-with-exact-paging";
     }
 
     @Override
     public String vectorScanFilterMode() {
-        return "weaviate-where-filter-text-backed";
+        return "weaviate-field-tokenized-where-with-exact-paging";
     }
 
     @Override
@@ -195,8 +196,8 @@ public class WeaviateVectorDatabaseService implements VectorDatabaseService {
         diagnostics.put("nativeMultiTenancyEnabled", nativeMultiTenancyEnabled);
         diagnostics.put("metadataFilteredSearch", supportsSearchMetadataFiltering());
         diagnostics.put("metadataFilteredScan", supportsScanMetadataFiltering());
-        diagnostics.put("searchFilterMode", "weaviate-where-filter-text-backed");
-        diagnostics.put("scanFilterMode", "weaviate-where-filter-text-backed");
+        diagnostics.put("searchFilterMode", "weaviate-field-tokenized-where-with-exact-paging");
+        diagnostics.put("scanFilterMode", "weaviate-field-tokenized-where-with-exact-paging");
         diagnostics.put("countMode", "native-aggregate-with-safe-fallback");
         diagnostics.put("aggregateCountFallbacks", sortedMap(aggregateCountFallbacks));
         diagnostics.put("aggregateCountFallbackReasons", sortedMap(aggregateCountFallbackReasons));
@@ -571,6 +572,9 @@ public class WeaviateVectorDatabaseService implements VectorDatabaseService {
 
         int offset = decodeOffsetCursor(request.getCursor()).orElse(0);
         Optional<WhereFilter> where = buildWhereFilter(request.getMetadataEquals());
+        VectorMetadataFilterSupport.ValidationResult metadataValidation =
+            VectorMetadataFilterSupport.validatePortableEquals(request.getMetadataEquals());
+        boolean exactFilterPaging = !metadataValidation.hasRejectedFilters() && !metadataValidation.terms().isEmpty();
 
         List<Field> fields = new ArrayList<>();
         fields.add(Field.builder().name(PROPERTY_ENTITY_TYPE).build());
@@ -588,36 +592,55 @@ public class WeaviateVectorDatabaseService implements VectorDatabaseService {
         }
         fields.add(Field.builder().name("_additional").fields(additional.toArray(Field[]::new)).build());
 
-        var query = client.graphQL()
-            .get()
-            .withClassName(className)
-            .withLimit(limit + 1)
-            .withOffset(offset)
-            .withFields(fields.toArray(Field[]::new));
-
-        if (where.isPresent()) {
-            query = query.withWhere(where.get());
-        }
-
-        query = applyTenant(query);
-
-        Result<GraphQLResponse> result = query.run();
-        if (result.hasErrors()) {
-            throw new AIServiceException("Weaviate scan failed for class " + className + ": " + errorMessages(result.getError()));
-        }
-
-        List<VectorRecord> nativeRecords = parseGraphQLScanRecords(className, result.getResult(), request);
-        boolean hasMore = nativeRecords.size() > limit;
-        if (hasMore) {
-            nativeRecords = nativeRecords.subList(0, limit);
-        }
-        List<VectorRecord> records = applyPortableMetadataFilter(nativeRecords, request.getMetadataEquals()).stream()
-            .map(record -> VectorRecordProjection.projectForScan(record, request))
-            .toList();
-
+        List<VectorRecord> records = new ArrayList<>(limit);
+        int providerOffset = offset;
+        boolean hasMore = false;
         String nextCursor = null;
-        if (hasMore) {
-            nextCursor = encodeOffsetCursor(offset + nativeRecords.size()).orElse(null);
+
+        scanPages:
+        while (records.size() <= limit) {
+            int remaining = (limit + 1) - records.size();
+            int pageSize = exactFilterPaging ? Math.max(EXACT_FILTER_PAGE_SIZE, remaining) : remaining;
+            var query = client.graphQL()
+                .get()
+                .withClassName(className)
+                .withLimit(pageSize)
+                .withOffset(providerOffset)
+                .withFields(fields.toArray(Field[]::new));
+
+            if (where.isPresent()) {
+                query = query.withWhere(where.get());
+            }
+
+            Result<GraphQLResponse> result = applyTenant(query).run();
+            if (result.hasErrors()) {
+                throw new AIServiceException(
+                    "Weaviate scan failed for class " + className + ": " + errorMessages(result.getError())
+                );
+            }
+
+            List<?> rows = graphQLRows(className, result.getResult());
+            for (int index = 0; index < rows.size(); index++) {
+                Optional<VectorRecord> candidate = parseGraphQLScanRow(rows.get(index));
+                if (candidate.isEmpty()
+                    || !VectorMetadataFilterSupport.matchesPortableEquals(
+                        candidate.get().getMetadata(),
+                        request.getMetadataEquals()
+                    )) {
+                    continue;
+                }
+                if (records.size() == limit) {
+                    hasMore = true;
+                    nextCursor = encodeOffsetCursor(providerOffset + index).orElse(null);
+                    break scanPages;
+                }
+                records.add(VectorRecordProjection.projectForScan(candidate.get(), request));
+            }
+
+            providerOffset += rows.size();
+            if (rows.isEmpty() || rows.size() < pageSize) {
+                break;
+            }
         }
 
         return VectorScanPage.builder()
@@ -1010,6 +1033,7 @@ public class WeaviateVectorDatabaseService implements VectorDatabaseService {
             Property property = Property.builder()
                 .name(propertyName.get())
                 .dataType(List.of(DataType.TEXT))
+                .tokenization("field")
                 .description("Metadata field '" + key + "'")
                 .build();
 
@@ -1088,61 +1112,39 @@ public class WeaviateVectorDatabaseService implements VectorDatabaseService {
             .build();
     }
 
-    private List<VectorRecord> parseGraphQLScanRecords(String className, GraphQLResponse response, VectorScanRequest request) {
-        if (response == null || response.getData() == null) {
-            return List.of();
+    private Optional<VectorRecord> parseGraphQLScanRow(Object entry) {
+        if (!(entry instanceof Map<?, ?> row)) {
+            return Optional.empty();
         }
 
-        if (!(response.getData() instanceof Map<?, ?> dataMap)) {
-            return List.of();
-        }
-        Object getObject = dataMap.get("Get");
-        if (!(getObject instanceof Map<?, ?> getMap)) {
-            return List.of();
-        }
-        Object classResults = getMap.get(className);
-        if (!(classResults instanceof List<?> results)) {
-            return List.of();
+        Object additionalObject = row.get("_additional");
+        if (!(additionalObject instanceof Map<?, ?> additional)) {
+            return Optional.empty();
         }
 
-        List<VectorRecord> records = new ArrayList<>(results.size());
-        for (Object entry : results) {
-            if (!(entry instanceof Map<?, ?> row)) {
-                continue;
-            }
+        String vectorId = String.valueOf(additional.get("id"));
+        Object vectorObject = additional.get("vector");
+        List<Double> embedding = vectorObject != null ? toDoubleList(extractVector(vectorObject)) : null;
 
-            Object additionalObject = row.get("_additional");
-            if (!(additionalObject instanceof Map<?, ?> additional)) {
-                continue;
-            }
+        String entityId = row.get(PROPERTY_ENTITY_ID) != null ? String.valueOf(row.get(PROPERTY_ENTITY_ID)) : null;
+        String entityType = row.get(PROPERTY_ENTITY_TYPE) != null ? String.valueOf(row.get(PROPERTY_ENTITY_TYPE)) : null;
+        String content = row.get(PROPERTY_CONTENT) != null ? String.valueOf(row.get(PROPERTY_CONTENT)) : null;
+        String raw = row.get(PROPERTY_RAW) != null ? String.valueOf(row.get(PROPERTY_RAW)) : "{}";
 
-            String vectorId = String.valueOf(additional.get("id"));
-            Object vectorObject = additional.get("vector");
-            List<Double> embedding = vectorObject != null ? toDoubleList(extractVector(vectorObject)) : null;
+        Map<String, Object> parsedMetadata = parseRawMetadata(raw);
+        LocalDateTime createdAt = VectorRecordLifecycleMetadata.readCreatedAt(parsedMetadata).orElse(null);
+        LocalDateTime updatedAt = VectorRecordLifecycleMetadata.readUpdatedAt(parsedMetadata).orElse(null);
 
-            String entityId = row.get(PROPERTY_ENTITY_ID) != null ? String.valueOf(row.get(PROPERTY_ENTITY_ID)) : null;
-            String entityType = row.get(PROPERTY_ENTITY_TYPE) != null ? String.valueOf(row.get(PROPERTY_ENTITY_TYPE)) : null;
-            String content = row.get(PROPERTY_CONTENT) != null ? String.valueOf(row.get(PROPERTY_CONTENT)) : null;
-            String raw = row.get(PROPERTY_RAW) != null ? String.valueOf(row.get(PROPERTY_RAW)) : "{}";
-
-            Map<String, Object> parsedMetadata = parseRawMetadata(raw);
-            LocalDateTime createdAt = VectorRecordLifecycleMetadata.readCreatedAt(parsedMetadata).orElse(null);
-            LocalDateTime updatedAt = VectorRecordLifecycleMetadata.readUpdatedAt(parsedMetadata).orElse(null);
-
-            VectorRecord record = VectorRecord.builder()
-                .vectorId(vectorId)
-                .entityType(entityType)
-                .entityId(entityId)
-                .content(content)
-                .embedding(embedding)
-                .metadata(parsedMetadata)
-                .createdAt(createdAt)
-                .updatedAt(updatedAt)
-                .build();
-            records.add(record);
-        }
-
-        return records;
+        return Optional.of(VectorRecord.builder()
+            .vectorId(vectorId)
+            .entityType(entityType)
+            .entityId(entityId)
+            .content(content)
+            .embedding(embedding)
+            .metadata(parsedMetadata)
+            .createdAt(createdAt)
+            .updatedAt(updatedAt)
+            .build());
     }
 
     private static Optional<String> encodeOffsetCursor(int offset) {
@@ -1470,26 +1472,53 @@ public class WeaviateVectorDatabaseService implements VectorDatabaseService {
             ).build()
         };
 
-        var query = applyTenant(client.graphQL()
-            .get()
-            .withClassName(className)
-            .withNearVector(nearVector)
-            .withLimit(limit)
-            .withFields(fields));
-        if (where.isPresent()) {
-            query = query.withWhere(where.get());
+        VectorMetadataFilterSupport.ValidationResult metadataValidation =
+            VectorMetadataFilterSupport.validatePortableEquals(metadataEquals);
+        boolean exactFilterPaging = !metadataValidation.hasRejectedFilters() && !metadataValidation.terms().isEmpty();
+        int pageSize = exactFilterPaging ? Math.max(EXACT_FILTER_PAGE_SIZE, limit) : limit;
+        int offset = 0;
+        List<VectorRecord> records = new ArrayList<>(limit);
+
+        while (records.size() < limit) {
+            var query = client.graphQL()
+                .get()
+                .withClassName(className)
+                .withNearVector(nearVector)
+                .withLimit(pageSize)
+                .withOffset(offset)
+                .withFields(fields);
+            if (where.isPresent()) {
+                query = query.withWhere(where.get());
+            }
+
+            Result<GraphQLResponse> result = applyTenant(query).run();
+            if (result.hasErrors()) {
+                throw new AIServiceException(
+                    "Weaviate search failed for class " + className + ": " + errorMessages(result.getError())
+                );
+            }
+
+            GraphQLResponse response = result.getResult();
+            List<?> rows = graphQLRows(className, response);
+            List<VectorRecord> exactPage = applyPortableMetadataFilter(
+                parseGraphQLRecords(className, response, threshold),
+                metadataEquals
+            );
+            exactPage.stream()
+                .limit(limit - records.size())
+                .forEach(records::add);
+
+            if (!exactFilterPaging
+                || records.size() >= limit
+                || rows.isEmpty()
+                || rows.size() < pageSize
+                || graphQLPageReachedScoreFloor(rows, threshold)) {
+                break;
+            }
+            offset += rows.size();
         }
 
-        Result<GraphQLResponse> result = query.run();
-
-        if (result.hasErrors()) {
-            throw new AIServiceException("Weaviate search failed for class " + className + ": " + errorMessages(result.getError()));
-        }
-
-        return applyPortableMetadataFilter(
-            parseGraphQLRecords(className, result.getResult(), threshold),
-            metadataEquals
-        );
+        return List.copyOf(records);
     }
 
     private List<VectorRecord> applyPortableMetadataFilter(List<VectorRecord> records,
@@ -1503,11 +1532,10 @@ public class WeaviateVectorDatabaseService implements VectorDatabaseService {
             .toList();
     }
 
-    private List<VectorRecord> parseGraphQLRecords(String className, GraphQLResponse response, double threshold) {
+    private List<?> graphQLRows(String className, GraphQLResponse response) {
         if (response == null || response.getData() == null) {
             return List.of();
         }
-
         if (!(response.getData() instanceof Map<?, ?> dataMap)) {
             return List.of();
         }
@@ -1519,7 +1547,32 @@ public class WeaviateVectorDatabaseService implements VectorDatabaseService {
         if (!(classResults instanceof List<?> results)) {
             return List.of();
         }
+        return results;
+    }
 
+    private boolean graphQLPageReachedScoreFloor(List<?> rows, double threshold) {
+        if (threshold <= 0.0d) {
+            return false;
+        }
+        for (Object entry : rows) {
+            if (!(entry instanceof Map<?, ?> row)
+                || !(row.get("_additional") instanceof Map<?, ?> additional)) {
+                continue;
+            }
+            Optional<Double> certainty = toDouble(additional.get("certainty"));
+            Optional<Double> distance = toDouble(additional.get("distance"));
+            Optional<Double> score = certainty.isPresent()
+                ? certainty
+                : distance.map(value -> Math.max(0.0d, 1.0d - value));
+            if (score.isPresent() && score.get() < threshold) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private List<VectorRecord> parseGraphQLRecords(String className, GraphQLResponse response, double threshold) {
+        List<?> results = graphQLRows(className, response);
         List<VectorRecord> records = new ArrayList<>(results.size());
         for (Object entry : results) {
             if (!(entry instanceof Map<?, ?> row)) {

@@ -44,9 +44,11 @@ application verifies user, tenant, source ownership, allowed dataset
        |
 application transaction changes source row
        |
-Data Sync normalizes allowed fields, checks access, embeds, upserts/deletes stable ID
+Data Sync checks access and builds an approved AIIndexDocument
        |
-safe result and correlation trace
+source row + projected queue work commit together
+       |
+after commit: embed and upsert/delete stable ID, with retry/dead-letter evidence
 ```
 
 The browser supplies article content and intent to create, update, or delete. It does not supply a
@@ -74,14 +76,18 @@ route. Its policy permits only `vectorSpace:knowledge-article` and exact upsert/
 
 The application projects approved article fields. Internal notes never enter Data Sync. The
 normalizer uses configured searchable and metadata fields, bounds content and field lengths, and
-fails closed on invalid or oversized input. Embedding and vector failures remain explicit.
+fails closed on invalid or oversized input. The durable queue stores the approved class-free
+projection, not the source entity. Embedding and vector failures remain explicit.
 
 ## Consistency And Recovery
 
-Throwing on an upsert failure can roll back the local database transaction, but a relational
-database and external vector provider do not share one atomic transaction. A response may be lost
-after a vector write, or a source commit may fail afterward. Stable IDs, correlation traces,
-idempotent retries, and reconciliation remain necessary.
+Authorization, projection, and durable handoff happen before source commit. When the application
+turns one of those failures into an exception, the source transaction and queue row roll back
+together.
+
+Embedding and vector mutation happen only after commit. A provider failure cannot undo committed
+business data; it leaves durable retryable work and can move to a visible dead letter. Stable IDs,
+correlation traces, idempotent retries, ordering state, and reconciliation remain necessary.
 
 A reconciliation endpoint reloads source rows, builds bounded operations, and reports every result.
 One failed operation does not become a generic success. An oversized batch is rejected before side
@@ -96,7 +102,7 @@ forgery; the second leaves stale versions retrievable and makes delete unreliabl
 ## Visible Failure
 
 When one row exceeds normalization limits, the batch reports one success and one
-`INVALID_REQUEST`. Source rows remain unchanged. Operators can identify the failed stable ID,
+`PROJECTION_REJECTED`. Source rows remain unchanged. Operators can identify the failed stable ID,
 correct it, and retry it. No fallback invents evidence and no success card hides the failure.
 
 ## Lab Bridge

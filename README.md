@@ -11,7 +11,8 @@ This repository contains the framework only. It does not include private managed
 
 **New to AI Fabric?** Start with the [Getting Started guide](docs/getting-started/README.md), or
 use the [LLM context pack](docs/llm-context/README.md) when working with a coding assistant. Latest
-release: **0.3.3** — see the [release notes](docs/release-notes/0.3.3.md).
+release: **0.4.0** — see the [release notes](docs/release-notes/0.4.0.md) and
+[migration guide](docs/Framework-Dev-Guides/retrieval-vectorization/ANNOTATION_LIFECYCLE_0_4_MIGRATION_GUIDE.md).
 
 ## What Is Included
 
@@ -48,7 +49,7 @@ extra repository configuration is needed. The BOM artifact is:
     <dependency>
       <groupId>io.github.loom-ai-labs</groupId>
       <artifactId>ai-fabric-bom</artifactId>
-      <version>0.3.3</version>
+      <version>0.4.0</version>
       <type>pom</type>
       <scope>import</scope>
     </dependency>
@@ -180,7 +181,7 @@ This is an early release line (`0.x`). APIs may still change before a stable `1.
 The current release is:
 
 ```text
-0.3.3
+0.4.0
 ```
 
 > Note: `0.2.0` renames coordinates and Java packages (`com.ai.infrastructure.*` → `ai.fabric.*`,

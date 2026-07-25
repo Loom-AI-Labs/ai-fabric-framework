@@ -335,7 +335,6 @@ public class RealAPIProviderMatrixIntegrationTest extends AbstractProviderMatrix
         String indexPath = "data/test-lucene-index/realapi-" + System.nanoTime();
         return Map.of(
             "spring.liquibase.enabled", "false",
-            "ai.config.default-file", "ai-entity-config-realapi.yml",
             "ai.vector-db.lucene.index-path", indexPath
         );
     }

@@ -1,6 +1,8 @@
 package ai.fabric.relationship.integration.entity;
 
 import ai.fabric.annotation.AICapable;
+import ai.fabric.annotation.AIIdentity;
+import ai.fabric.annotation.AISearchable;
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -23,8 +25,10 @@ import java.util.UUID;
 public class BrandEntity {
 
     @Id
+    @AIIdentity
     private String id;
 
+    @AISearchable(required = true)
     @Column(nullable = false, unique = true)
     private String name;
 

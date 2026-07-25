@@ -1,26 +1,34 @@
 ai-config:
   default-embedding-model: text-embedding-3-small
   default-search-limit: 10
-
 ai-entities:
   document:
-    features:
-      - embedding
-      - search
+    indexing:
+      enabled: true
     searchable-fields:
-      - name: title
-        include-in-rag: true
+    - name: title
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
   product:
-    features:
-      - embedding
-      - search
+    indexing:
+      enabled: true
     searchable-fields:
-      - name: name
-        include-in-rag: true
+    - name: name
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
   transaction:
-    features:
-      - embedding
-      - search
+    indexing:
+      enabled: true
     searchable-fields:
-      - name: title
-        include-in-rag: true
+    - name: title
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50

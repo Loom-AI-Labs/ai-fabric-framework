@@ -5,6 +5,8 @@
 - **Decision owner:** AI Fabric framework
 - **Context version:** AI Fabric `0.2.1`, Java `21`, Spring Boot `4.1.0`, Spring AI `2.0.0`
 - **Depends on:** ADR 0002 Spring AI LLM and embedding execution
+- **Indexing note:** Lifecycle details were superseded by ADR 0016 and the 0.4 typed
+  `AIEntityIndexingGateway` contract.
 
 ## Context
 
@@ -295,7 +297,7 @@ Spring AI ETL can help with file/document parsing and chunking before the data e
 
 **Keep in AI Fabric:**
 
-- `IndexingCoordinator`.
+- `AIEntityIndexingGateway` and the canonical projected queue contract.
 - `IndexingWorkProcessor`.
 - `DataSyncService`.
 - Entity metadata, tenant/user metadata, and access policy metadata.
@@ -304,7 +306,8 @@ Spring AI ETL can help with file/document parsing and chunking before the data e
 
 **Code evidence:**
 
-- `ai-infrastructure-module/ai-fabric-indexing/src/main/java/ai/fabric/indexing/IndexingCoordinator.java`
+- `ai-infrastructure-module/ai-fabric-core/src/main/java/ai/fabric/indexing/api/AIEntityIndexingGateway.java`
+- `ai-infrastructure-module/ai-fabric-indexing/src/main/java/ai/fabric/indexing/DefaultAIEntityIndexingGateway.java`
 - `ai-infrastructure-module/ai-fabric-indexing/src/main/java/ai/fabric/indexing/worker/IndexingWorkProcessor.java`
 - `ai-infrastructure-module/ai-fabric-indexing/src/main/java/ai/fabric/indexing/document/springai/SpringAiDocumentIndexingAdapter.java`
 - `ai-infrastructure-module/ai-fabric-indexing/src/main/java/ai/fabric/indexing/document/springai/SpringAiDocumentReaderFactory.java`

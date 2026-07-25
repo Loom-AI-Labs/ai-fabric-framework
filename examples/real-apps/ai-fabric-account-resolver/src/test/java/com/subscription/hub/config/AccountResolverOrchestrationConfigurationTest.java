@@ -123,9 +123,13 @@ class AccountResolverOrchestrationConfigurationTest {
 
     @ParameterizedTest
     @ValueSource(strings = {"account-resolution-policy", "subscription-plan"})
-    void resolverRagVectorSpacesAreKnownEntityTypes(String entityType) {
-        AIEntityConfigurationLoader loader = new AIEntityConfigurationLoader(new DefaultResourceLoader());
-        loader.loadConfigurationFromFile("ai-entity-config.yml");
+    void resolverRagVectorSpacesAreKnownEntityTypes(String entityType)
+        throws IOException {
+        AIEntityConfigurationLoader loader =
+            new AIEntityConfigurationLoader(
+                loadEnvironment("ai-entity-config.yml")
+            );
+        loader.loadConfiguration();
 
         assertThat(loader.getSupportedEntityTypes()).contains(entityType);
     }

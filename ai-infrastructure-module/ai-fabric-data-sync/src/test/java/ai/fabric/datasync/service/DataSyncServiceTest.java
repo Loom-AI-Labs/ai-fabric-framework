@@ -2,14 +2,11 @@ package ai.fabric.datasync.service;
 
 import ai.fabric.access.AIAccessControlService;
 import ai.fabric.config.AIEntityConfigurationLoader;
-import ai.fabric.core.AIEmbeddingService;
 import ai.fabric.datasync.AIDataSyncProperties;
 import ai.fabric.datasync.dto.DataSyncBatchRequest;
-import ai.fabric.datasync.dto.DataSyncBatchResponse;
 import ai.fabric.datasync.dto.DataSyncDeleteRequest;
 import ai.fabric.datasync.dto.DataSyncIdentity;
 import ai.fabric.datasync.dto.DataSyncOperation;
-import ai.fabric.datasync.dto.DataSyncOperationResponse;
 import ai.fabric.datasync.dto.DataSyncOperationType;
 import ai.fabric.datasync.dto.DataSyncTrace;
 import ai.fabric.datasync.dto.DataSyncUpsertRequest;
@@ -17,180 +14,131 @@ import ai.fabric.datasync.dto.DataSyncVerifiedAuthContext;
 import ai.fabric.datasync.normalize.DataSyncEntityNormalizer;
 import ai.fabric.dto.AIAccessControlRequest;
 import ai.fabric.dto.AIAccessControlResponse;
-import ai.fabric.dto.AIEmbeddingResponse;
 import ai.fabric.dto.AIEntityConfig;
-import ai.fabric.service.VectorManagementService;
+import ai.fabric.dto.AIEntityIndexingPolicy;
+import ai.fabric.dto.AISearchableField;
+import ai.fabric.indexing.api.AIEntityIndexingGateway;
+import ai.fabric.indexing.api.AIIndexWorkType;
+import ai.fabric.indexing.api.IndexingDispatchStatus;
+import ai.fabric.indexing.api.IndexingOutcome;
+import ai.fabric.indexing.api.IndexingStrategy;
+import ai.fabric.indexing.api.AISearchDestination;
+import ai.fabric.indexing.api.AISearchPreprocessing;
+import ai.fabric.indexing.model.AIIndexDocument;
+import ai.fabric.indexing.projection.AIConfiguredEntityProjectionService;
+import ai.fabric.privacy.pii.PIIDetectionService;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.support.StaticListableBeanFactory;
 
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.InstanceOfAssertFactories.LIST;
 import static org.assertj.core.api.InstanceOfAssertFactories.MAP;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.atLeastOnce;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
-
-import org.mockito.ArgumentCaptor;
 
 class DataSyncServiceTest {
 
+    private static final Clock CLOCK = Clock.fixed(
+        Instant.parse("2026-07-24T12:00:00Z"),
+        ZoneOffset.UTC
+    );
+
     @Test
-    void upsert_shouldStoreVector_whenAccessGranted() {
-        AIDataSyncProperties props = new AIDataSyncProperties();
-        AIEntityConfigurationLoader loader = mock(AIEntityConfigurationLoader.class);
-        AIEmbeddingService embeddingService = mock(AIEmbeddingService.class);
-        VectorManagementService vectorManagementService = mock(VectorManagementService.class);
-        AIAccessControlService accessControlService = mock(AIAccessControlService.class);
+    void upsertSubmitsOneCanonicalDocumentWhenAccessGranted() {
+        Fixture fixture = fixture();
 
-        AIEntityConfig config = AIEntityConfig.builder()
-            .entityType("product")
-            .indexable(true)
-            .build();
-        when(loader.getEntityConfig("product")).thenReturn(config);
-
-        when(accessControlService.checkAccess(any())).thenReturn(AIAccessControlResponse.builder()
-            .accessGranted(true)
-            .build());
-
-        when(embeddingService.generateEmbedding(any())).thenReturn(AIEmbeddingResponse.builder()
-            .embedding(List.of(0.1, 0.2))
-            .build());
-
-        when(vectorManagementService.storeVector(anyString(), anyString(), anyString(), any(), any()))
-            .thenReturn("vec_1");
-
-        DataSyncEntityNormalizer normalizer = new DataSyncEntityNormalizer(props, null);
-        Clock clock = Clock.fixed(Instant.parse("2026-02-12T00:00:00Z"), ZoneOffset.UTC);
-
-        DataSyncService service = new DataSyncService(
-            props,
-            loader,
-            embeddingService,
-            vectorManagementService,
-            accessControlService,
-            normalizer,
-            clock
+        var response = fixture.service().upsert(
+            upsert("product", "p1", "hello", verifiedTrace("system", null, "req1"))
         );
 
-        DataSyncTrace trace = verifiedTrace("system", null, "req1");
-
-        DataSyncUpsertRequest request = new DataSyncUpsertRequest();
-        request.setVectorSpace("product");
-        request.setId("p1");
-        request.setContent("hello");
-        request.setTrace(trace);
-
-        DataSyncOperationResponse response = service.upsert(request);
-
         assertThat(response.getSuccess()).isTrue();
-        assertThat(response.getVectorId()).isEqualTo("vec_1");
-        verify(vectorManagementService).storeVector(anyString(), anyString(), anyString(), any(), any());
+        assertThat(response.getVectorId()).isEqualTo("p1");
+        assertThat(response.getMetadata())
+            .containsEntry("indexingWorkId", "work-p1")
+            .containsEntry("indexingStatus", "COMPLETED")
+            .containsEntry("indexingStrategy", "SYNC");
+
+        ArgumentCaptor<AIIndexDocument> document =
+            ArgumentCaptor.forClass(AIIndexDocument.class);
+        verify(fixture.gateway()).submit(document.capture(), eq(IndexingStrategy.SYNC));
+        assertThat(document.getValue().entityType()).isEqualTo("product");
+        assertThat(document.getValue().entityId()).isEqualTo("p1");
+        assertThat(document.getValue().semanticSearchText())
+            .isEqualTo("content: hello");
+        assertThat(document.getValue().correlationId()).isEqualTo("req1");
     }
 
     @Test
-    void upsert_shouldFailClosed_whenAccessDenied() {
-        AIDataSyncProperties props = new AIDataSyncProperties();
-        AIEntityConfigurationLoader loader = mock(AIEntityConfigurationLoader.class);
-        AIEmbeddingService embeddingService = mock(AIEmbeddingService.class);
-        VectorManagementService vectorManagementService = mock(VectorManagementService.class);
-        AIAccessControlService accessControlService = mock(AIAccessControlService.class);
-
-        when(loader.getEntityConfig("product")).thenReturn(AIEntityConfig.builder()
-            .entityType("product")
-            .indexable(true)
-            .build());
-
-        when(accessControlService.checkAccess(any())).thenReturn(AIAccessControlResponse.builder()
-            .accessGranted(false)
-            .build());
-
-        DataSyncEntityNormalizer normalizer = new DataSyncEntityNormalizer(props, null);
-        Clock clock = Clock.fixed(Instant.parse("2026-02-12T00:00:00Z"), ZoneOffset.UTC);
-
-        DataSyncService service = new DataSyncService(
-            props,
-            loader,
-            embeddingService,
-            vectorManagementService,
-            accessControlService,
-            normalizer,
-            clock
+    void upsertFailsClosedAndDoesNotSubmitWhenAccessDenied() {
+        Fixture fixture = fixture();
+        when(fixture.accessControl().checkAccess(any())).thenReturn(
+            AIAccessControlResponse.builder().accessGranted(false).build()
         );
 
-        DataSyncTrace trace = verifiedTrace("system", null, "req1");
-
-        DataSyncUpsertRequest request = new DataSyncUpsertRequest();
-        request.setVectorSpace("product");
-        request.setId("p1");
-        request.setContent("hello");
-        request.setTrace(trace);
-
-        DataSyncOperationResponse response = service.upsert(request);
+        var response = fixture.service().upsert(
+            upsert("product", "p1", "hello", verifiedTrace("system", null, "req1"))
+        );
 
         assertThat(response.getSuccess()).isFalse();
         assertThat(response.getErrorCode()).isEqualTo("ACCESS_DENIED");
+        verifyNoInteractions(fixture.gateway());
     }
 
     @Test
-    void upsert_shouldUseDeterministicChunkIdentityAndMetadata() {
-        AIDataSyncProperties props = new AIDataSyncProperties();
-        AIEntityConfigurationLoader loader = mock(AIEntityConfigurationLoader.class);
-        AIEmbeddingService embeddingService = mock(AIEmbeddingService.class);
-        VectorManagementService vectorManagementService = mock(VectorManagementService.class);
-        AIAccessControlService accessControlService = mock(AIAccessControlService.class);
+    void upsertFailsClosedAndReportsSafeMetadataWhenAccessEvaluationThrows() {
+        Fixture fixture = fixture();
+        when(fixture.accessControl().checkAccess(any()))
+            .thenThrow(new IllegalStateException("policy unavailable"));
 
-        when(loader.getEntityConfig("product")).thenReturn(AIEntityConfig.builder()
-            .entityType("product")
-            .indexable(true)
-            .build());
-        when(accessControlService.checkAccess(any())).thenReturn(AIAccessControlResponse.builder()
-            .accessGranted(true)
-            .build());
-        when(embeddingService.generateEmbedding(any())).thenReturn(AIEmbeddingResponse.builder()
-            .embedding(List.of(0.1, 0.2))
-            .build());
-        when(vectorManagementService.storeVector(eq("product"), eq("p1::chunk:segment-0001"), anyString(), any(), any()))
-            .thenReturn("vec_2");
-
-        DataSyncEntityNormalizer normalizer = new DataSyncEntityNormalizer(props, null);
-        DataSyncService service = new DataSyncService(
-            props,
-            loader,
-            embeddingService,
-            vectorManagementService,
-            accessControlService,
-            normalizer,
-            Clock.fixed(Instant.parse("2026-02-12T00:00:00Z"), ZoneOffset.UTC)
+        var response = fixture.service().upsert(
+            upsert("product", "p1", "hello", verifiedTrace("system", null, "req1"))
         );
 
-        DataSyncTrace trace = verifiedTrace("vectorization-runner", null, "req2");
+        assertThat(response.getSuccess()).isFalse();
+        assertThat(response.getErrorCode()).isEqualTo("ACCESS_DENIED");
+        assertThat(response.getMetadata())
+            .containsEntry("accessEvaluationStatus", "failedClosed")
+            .containsEntry("accessDecisionSource", "accessControlService");
+        verifyNoInteractions(fixture.gateway());
+    }
 
-        DataSyncIdentity identity = new DataSyncIdentity();
-        identity.setSourceRecordId("source-product-1");
-        identity.setSourceRecordVersion("42");
-        identity.setChunkId("Segment 0001");
-        identity.setChunkCount(3);
-        identity.setContentFingerprint("sha256:abc");
-
-        DataSyncUpsertRequest request = new DataSyncUpsertRequest();
-        request.setVectorSpace("product");
-        request.setId("p1");
-        request.setContent("hello");
+    @Test
+    void upsertUsesDeterministicChunkIdentityAndApprovedMetadata() {
+        Fixture fixture = fixture();
+        DataSyncIdentity identity = new DataSyncIdentity(
+            "source-product-1",
+            "42",
+            "Segment 0001",
+            3,
+            "sha256:abc"
+        );
+        DataSyncUpsertRequest request = upsert(
+            "product",
+            "p1",
+            "hello",
+            verifiedTrace("vectorization-runner", null, "req2")
+        );
         request.setIdentity(identity);
-        request.setTrace(trace);
 
-        DataSyncOperationResponse response = service.upsert(request);
+        var response = fixture.service().upsert(request);
 
         assertThat(response.getSuccess()).isTrue();
         assertThat(response.getId()).isEqualTo("p1::chunk:segment-0001");
@@ -201,845 +149,445 @@ class DataSyncServiceTest {
             .containsEntry("_dataSyncChunkCount", 3)
             .containsEntry("_dataSyncContentFingerprint", "sha256:abc")
             .containsEntry("_dataSyncTargetId", "p1::chunk:segment-0001");
+
+        ArgumentCaptor<AIIndexDocument> document =
+            ArgumentCaptor.forClass(AIIndexDocument.class);
+        verify(fixture.gateway()).submit(document.capture(), eq(IndexingStrategy.SYNC));
+        assertThat(document.getValue().entityId())
+            .isEqualTo("p1::chunk:segment-0001");
+        assertThat(document.getValue().sourceVersion()).isEqualTo(42L);
+        assertThat(document.getValue().vectorMetadata())
+            .containsEntry("_dataSyncTargetId", "p1::chunk:segment-0001")
+            .containsKey("_dataSyncIdempotencyKey");
     }
 
     @Test
-    void upsert_shouldPreferVerifiedAuthContextForAccessControl() {
-        AIDataSyncProperties props = new AIDataSyncProperties();
-        AIEntityConfigurationLoader loader = mock(AIEntityConfigurationLoader.class);
-        AIEmbeddingService embeddingService = mock(AIEmbeddingService.class);
-        VectorManagementService vectorManagementService = mock(VectorManagementService.class);
-        AIAccessControlService accessControlService = mock(AIAccessControlService.class);
-
-        when(loader.getEntityConfig("product")).thenReturn(AIEntityConfig.builder()
-            .entityType("product")
-            .indexable(true)
-            .build());
-        when(accessControlService.checkAccess(any())).thenReturn(AIAccessControlResponse.builder()
-            .accessGranted(true)
-            .build());
-        when(embeddingService.generateEmbedding(any())).thenReturn(AIEmbeddingResponse.builder()
-            .embedding(List.of(0.1, 0.2))
-            .build());
-        when(vectorManagementService.storeVector(anyString(), anyString(), anyString(), any(), any()))
-            .thenReturn("vec_3");
-
-        DataSyncService service = new DataSyncService(
-            props,
-            loader,
-            embeddingService,
-            vectorManagementService,
-            accessControlService,
-            new DataSyncEntityNormalizer(props, null),
-            Clock.fixed(Instant.parse("2026-02-12T00:00:00Z"), ZoneOffset.UTC)
+    void verifiedAuthContextIsPropagatedToAccessControl() {
+        Fixture fixture = fixture();
+        DataSyncTrace trace = verifiedTrace(
+            "verified-system",
+            "verified-session",
+            "req-auth"
         );
-
-        DataSyncTrace trace = verifiedTrace("verified-system", "verified-session", "req-auth");
         trace.getAuthContext().setDeploymentId("dep-123");
         trace.getAuthContext().setCustomerId("cus-123");
         trace.getAuthContext().setTenantId("ten-123");
         trace.getAuthContext().setIssuer("runtime-test");
-        trace.getAuthContext().setGrantedScopes(List.of("data-sync:upsert"));
 
-        DataSyncUpsertRequest request = new DataSyncUpsertRequest();
-        request.setVectorSpace("product");
-        request.setId("p-auth");
-        request.setContent("hello");
-        request.setTrace(trace);
+        assertThat(fixture.service().upsert(
+            upsert("product", "p-auth", "hello", trace)
+        ).getSuccess()).isTrue();
 
-        DataSyncOperationResponse response = service.upsert(request);
-
-        assertThat(response.getSuccess()).isTrue();
-
-        ArgumentCaptor<AIAccessControlRequest> captor = ArgumentCaptor.forClass(AIAccessControlRequest.class);
-        verify(accessControlService, atLeastOnce()).checkAccess(captor.capture());
-        AIAccessControlRequest accessRequest = captor.getValue();
-        assertThat(accessRequest.getAuthContext()).isNotNull();
-        assertThat(accessRequest.getAuthContext().getSubjectId()).isEqualTo("verified-system");
-        assertThat(accessRequest.getAuthContext().getSessionId()).isEqualTo("verified-session");
-        assertThat(accessRequest.getMetadata()).containsEntry("identitySource", "verifiedAuthContext");
-        assertThat(accessRequest.getMetadata())
+        ArgumentCaptor<AIAccessControlRequest> request =
+            ArgumentCaptor.forClass(AIAccessControlRequest.class);
+        verify(fixture.accessControl(), atLeastOnce()).checkAccess(request.capture());
+        assertThat(request.getValue().getAuthContext().getSubjectId())
+            .isEqualTo("verified-system");
+        assertThat(request.getValue().getAuthContext().getSessionId())
+            .isEqualTo("verified-session");
+        assertThat(request.getValue().getMetadata())
+            .containsEntry("identitySource", "verifiedAuthContext")
             .extractingByKey("authContext")
             .asInstanceOf(MAP)
-            .containsEntry("subjectId", "verified-system")
-            .containsEntry("authMode", "PRIVATE_RUNTIME_BACKEND_MEDIATED")
-            .containsEntry("deploymentId", "dep-123");
+            .containsEntry("deploymentId", "dep-123")
+            .containsEntry("tenantId", "ten-123");
     }
 
     @Test
-    void batch_shouldReturnProviderRequestIdFromTrace() {
-        AIDataSyncProperties props = new AIDataSyncProperties();
-        AIEntityConfigurationLoader loader = mock(AIEntityConfigurationLoader.class);
-        AIEmbeddingService embeddingService = mock(AIEmbeddingService.class);
-        VectorManagementService vectorManagementService = mock(VectorManagementService.class);
-        AIAccessControlService accessControlService = mock(AIAccessControlService.class);
-
-        when(loader.getEntityConfig("product")).thenReturn(AIEntityConfig.builder()
-            .entityType("product")
-            .indexable(true)
-            .build());
-        when(accessControlService.checkAccess(any())).thenReturn(AIAccessControlResponse.builder()
-            .accessGranted(true)
-            .build());
-        when(embeddingService.generateEmbedding(any())).thenReturn(AIEmbeddingResponse.builder()
-            .embedding(List.of(0.1, 0.2))
-            .build());
-        when(vectorManagementService.storeVector(anyString(), anyString(), anyString(), any(), any()))
-            .thenReturn("vec_batch");
-
-        DataSyncService service = new DataSyncService(
-            props,
-            loader,
-            embeddingService,
-            vectorManagementService,
-            accessControlService,
-            new DataSyncEntityNormalizer(props, null),
-            Clock.fixed(Instant.parse("2026-02-12T00:00:00Z"), ZoneOffset.UTC)
-        );
-
-        DataSyncTrace trace = verifiedTrace("system", null, "example-safe-knowledge-sync-req-1");
-        DataSyncOperation operation = new DataSyncOperation(
-            DataSyncOperationType.UPSERT,
-            "product",
-            "p-batch",
-            "hello",
+    void trustedInternalBypassRequiresExplicitFlagExactShapeAndScope() {
+        Fixture fixture = fixture();
+        fixture.properties().setAllowTrustedPlatformInternalSyncBypass(true);
+        DataSyncTrace trace = verifiedTrace(
+            "system:platform-vectorizer",
             null,
-            Map.of("source", "test"),
-            null
+            "req-internal"
         );
+        trace.getAuthContext().setIssuer("platform-runtime");
+        trace.getAuthContext().setDeploymentId("dep-1");
+        trace.getAuthContext().setGrantedScopes(List.of("data-sync:upsert"));
 
-        DataSyncBatchResponse response = service.batch(new DataSyncBatchRequest(trace, List.of(operation)));
+        var response = fixture.service().upsert(
+            upsert("product", "p1", "hello", trace)
+        );
 
         assertThat(response.getSuccess()).isTrue();
-        assertThat(response.getProviderRequestId()).isEqualTo("example-safe-knowledge-sync-req-1");
-        assertThat(response.getTotalOperations()).isEqualTo(1);
-        assertThat(response.getSucceededOperations()).isEqualTo(1);
-        assertThat(response.getFailedOperations()).isZero();
+        assertThat(response.getMetadata())
+            .containsEntry("accessDecisionSource", "trustedPlatformInternalSync");
+        verifyNoInteractions(fixture.accessControl());
+
+        DataSyncTrace missingScope = verifiedTrace(
+            "system:platform-vectorizer",
+            null,
+            "req-no-scope"
+        );
+        missingScope.getAuthContext().setIssuer("platform-runtime");
+        missingScope.getAuthContext().setDeploymentId("dep-1");
+        missingScope.getAuthContext().setGrantedScopes(List.of());
+        fixture.service().upsert(
+            upsert("product", "p2", "hello", missingScope)
+        );
+        verify(fixture.accessControl()).checkAccess(any());
     }
 
     @Test
-    void batch_shouldReusePreflightAccessDecisions_duringExecution() {
-        AIDataSyncProperties props = new AIDataSyncProperties();
-        AIEntityConfigurationLoader loader = mock(AIEntityConfigurationLoader.class);
-        AIEmbeddingService embeddingService = mock(AIEmbeddingService.class);
-        VectorManagementService vectorManagementService = mock(VectorManagementService.class);
-        AIAccessControlService accessControlService = mock(AIAccessControlService.class);
+    void missingVerifiedSubjectFailsBeforeAccessOrIndexing() {
+        Fixture fixture = fixture();
+        DataSyncTrace trace = verifiedTrace("system", null, "req1");
+        trace.getAuthContext().setSubjectId(" ");
 
-        when(loader.getEntityConfig("product")).thenReturn(AIEntityConfig.builder()
-            .entityType("product")
-            .indexable(true)
-            .build());
-        when(accessControlService.checkAccess(any())).thenReturn(AIAccessControlResponse.builder()
-            .accessGranted(true)
-            .build());
-        when(embeddingService.generateEmbedding(any())).thenReturn(AIEmbeddingResponse.builder()
-            .embedding(List.of(0.1, 0.2))
-            .build());
-        when(vectorManagementService.storeVector(eq("product"), eq("sku-1"), anyString(), any(), any()))
-            .thenReturn("vec-sku-1");
-        when(vectorManagementService.removeVector("product", "sku-2")).thenReturn(true);
-
-        DataSyncService service = new DataSyncService(
-            props,
-            loader,
-            embeddingService,
-            vectorManagementService,
-            accessControlService,
-            new DataSyncEntityNormalizer(props, null),
-            Clock.fixed(Instant.parse("2026-02-12T00:00:00Z"), ZoneOffset.UTC)
+        var response = fixture.service().upsert(
+            upsert("product", "p1", "hello", trace)
         );
 
-        DataSyncOperation upsert = new DataSyncOperation(
-            DataSyncOperationType.UPSERT,
-            "product",
-            "sku-1",
-            "gaming laptop",
-            null,
-            null,
-            null
-        );
-        DataSyncOperation delete = new DataSyncOperation(
-            DataSyncOperationType.DELETE,
-            "product",
-            "sku-2",
-            null,
-            null,
-            null,
-            null
-        );
+        assertThat(response.getSuccess()).isFalse();
+        assertThat(response.getErrorCode()).isEqualTo("ACCESS_DENIED");
+        assertThat(response.getMetadata())
+            .containsEntry("identitySource", "missingVerifiedAuthContext")
+            .containsEntry("accessEvaluationStatus", "missingSubject");
+        verifyNoInteractions(fixture.accessControl(), fixture.gateway());
+    }
 
-        DataSyncBatchResponse response = service.batch(new DataSyncBatchRequest(
-            verifiedTrace("system", null, "req-batch-preflight-only"),
-            List.of(upsert, delete)
+    @Test
+    void deleteSubmitsCanonicalDeleteDocumentAndRequiresDeleteScopeForBypass() {
+        Fixture fixture = fixture();
+        fixture.properties().setAllowTrustedPlatformInternalSyncBypass(true);
+        DataSyncTrace trace = verifiedTrace(
+            "system:platform-vectorizer",
+            null,
+            "req-delete"
+        );
+        trace.getAuthContext().setIssuer("platform-runtime");
+        trace.getAuthContext().setDeploymentId("dep-1");
+        trace.getAuthContext().setGrantedScopes(List.of("data-sync:delete"));
+        DataSyncDeleteRequest request = new DataSyncDeleteRequest();
+        request.setVectorSpace("product");
+        request.setId("p1");
+        request.setTrace(trace);
+
+        var response = fixture.service().delete(request);
+
+        assertThat(response.getSuccess()).isTrue();
+        ArgumentCaptor<AIIndexDocument> document =
+            ArgumentCaptor.forClass(AIIndexDocument.class);
+        verify(fixture.gateway()).submit(document.capture(), eq(IndexingStrategy.SYNC));
+        assertThat(document.getValue().workType()).isEqualTo(AIIndexWorkType.DELETE);
+        assertThat(document.getValue().semanticSearchText()).isNull();
+        verifyNoInteractions(fixture.accessControl());
+    }
+
+    @Test
+    void batchPreflightsEveryOperationAndSkipsAllWritesWhenOneIsDenied() {
+        Fixture fixture = fixture();
+        when(fixture.accessControl().checkAccess(any()))
+            .thenReturn(AIAccessControlResponse.builder().accessGranted(true).build())
+            .thenReturn(AIAccessControlResponse.builder().accessGranted(false).build());
+
+        var response = fixture.service().batch(new DataSyncBatchRequest(
+            verifiedTrace("system", null, "req-batch"),
+            List.of(
+                operation(DataSyncOperationType.UPSERT, "sku-1", "laptop"),
+                operation(DataSyncOperationType.DELETE, "sku-2", null)
+            )
+        ));
+
+        assertThat(response.getSuccess()).isFalse();
+        assertThat(response.getErrorCode()).isEqualTo("ACCESS_DENIED");
+        assertThat(response.getTotalOperations()).isEqualTo(2);
+        assertThat(response.getSucceededOperations()).isZero();
+        assertThat(response.getFailedOperations()).isEqualTo(2);
+        assertThat(response.getResults().getFirst().getMetadata())
+            .extractingByKey("deniedOperationDetails")
+            .asInstanceOf(LIST)
+            .hasSize(1);
+        verify(fixture.accessControl(), times(2)).checkAccess(any());
+        verifyNoInteractions(fixture.gateway());
+    }
+
+    @Test
+    void batchReusesAccessDecisionsAndReturnsProviderRequestId() {
+        Fixture fixture = fixture();
+
+        var response = fixture.service().batch(new DataSyncBatchRequest(
+            verifiedTrace("system", null, "provider-request-1"),
+            List.of(
+                operation(DataSyncOperationType.UPSERT, "sku-1", "laptop"),
+                operation(DataSyncOperationType.DELETE, "sku-2", null)
+            )
         ));
 
         assertThat(response.getSuccess()).isTrue();
+        assertThat(response.getProviderRequestId()).isEqualTo("provider-request-1");
         assertThat(response.getTotalOperations()).isEqualTo(2);
         assertThat(response.getSucceededOperations()).isEqualTo(2);
         assertThat(response.getFailedOperations()).isZero();
-        verify(accessControlService, times(2)).checkAccess(any());
+        verify(fixture.accessControl(), times(2)).checkAccess(any());
+        verify(fixture.gateway(), times(2)).submit(any(), eq(IndexingStrategy.SYNC));
     }
 
     @Test
-    void batch_shouldExposeStructuredDeniedDetails_whenAccessEvaluationFailsClosed() {
-        AIDataSyncProperties props = new AIDataSyncProperties();
-        AIEntityConfigurationLoader loader = mock(AIEntityConfigurationLoader.class);
-        AIEmbeddingService embeddingService = mock(AIEmbeddingService.class);
-        VectorManagementService vectorManagementService = mock(VectorManagementService.class);
-        AIAccessControlService accessControlService = mock(AIAccessControlService.class);
+    void retryableGatewayOutcomeIsVisibleAndNotReportedAsSuccess() {
+        Fixture fixture = fixture();
+        when(fixture.gateway().submit(any(), eq(IndexingStrategy.SYNC)))
+            .thenAnswer(invocation -> {
+                AIIndexDocument document = invocation.getArgument(0);
+                return outcome(document, IndexingDispatchStatus.FAILED_RETRYABLE);
+            });
 
-        when(loader.getEntityConfig("product")).thenReturn(AIEntityConfig.builder()
-            .entityType("product")
-            .indexable(true)
-            .build());
-        when(accessControlService.checkAccess(any())).thenThrow(new IllegalStateException("policy backend offline"));
-
-        DataSyncService service = new DataSyncService(
-            props,
-            loader,
-            embeddingService,
-            vectorManagementService,
-            accessControlService,
-            new DataSyncEntityNormalizer(props, null),
-            Clock.fixed(Instant.parse("2026-02-12T00:00:00Z"), ZoneOffset.UTC)
+        var response = fixture.service().upsert(
+            upsert("product", "p1", "hello", verifiedTrace("system", null, "req1"))
         );
-
-        DataSyncOperation operation = new DataSyncOperation(
-            DataSyncOperationType.UPSERT,
-            "product",
-            "sku-denied",
-            "gaming laptop",
-            null,
-            null,
-            null
-        );
-
-        DataSyncBatchResponse response = service.batch(new DataSyncBatchRequest(
-            verifiedTrace("system", null, "req-batch-auth-failure"),
-            List.of(operation)
-        ));
 
         assertThat(response.getSuccess()).isFalse();
-        assertThat(response.getErrorCode()).isEqualTo("ACCESS_DENIED");
-        assertThat(response.getTotalOperations()).isEqualTo(1);
-        assertThat(response.getFailedOperations()).isEqualTo(1);
-        assertThat(response.getResults()).hasSize(1);
-        assertThat(response.getResults().get(0).getMetadata())
-            .containsKey("deniedOperations")
-            .containsKey("deniedOperationDetails");
-
-        Object details = response.getResults().get(0).getMetadata().get("deniedOperationDetails");
-        assertThat(details).asList().hasSize(1);
-        assertThat(((List<?>) details).get(0))
-            .asInstanceOf(MAP)
-            .containsEntry("index", 0)
-            .containsEntry("vectorSpace", "product")
-            .containsEntry("id", "sku-denied")
-            .containsEntry("operationType", "WRITE")
-            .containsEntry("accessDecisionSource", "accessControlService")
-            .containsEntry("accessEvaluationStatus", "failedClosed")
-            .containsEntry("accessEvaluationFailure", "policy backend offline");
-        verifyNoInteractions(embeddingService, vectorManagementService);
-    }
-
-    @Test
-    void upsert_shouldBypassAccessControl_forTrustedPlatformInternalSync() {
-        AIDataSyncProperties props = new AIDataSyncProperties();
-        props.setAllowTrustedPlatformInternalSyncBypass(true);
-        AIEntityConfigurationLoader loader = mock(AIEntityConfigurationLoader.class);
-        AIEmbeddingService embeddingService = mock(AIEmbeddingService.class);
-        VectorManagementService vectorManagementService = mock(VectorManagementService.class);
-        AIAccessControlService accessControlService = mock(AIAccessControlService.class);
-
-        when(loader.getEntityConfig("product")).thenReturn(AIEntityConfig.builder()
-            .entityType("product")
-            .indexable(true)
-            .build());
-        when(embeddingService.generateEmbedding(any())).thenReturn(AIEmbeddingResponse.builder()
-            .embedding(List.of(0.1, 0.2))
-            .build());
-        when(vectorManagementService.storeVector(anyString(), anyString(), anyString(), any(), any()))
-            .thenReturn("vec-platform");
-
-        DataSyncService service = new DataSyncService(
-            props,
-            loader,
-            embeddingService,
-            vectorManagementService,
-            accessControlService,
-            new DataSyncEntityNormalizer(props, null),
-            Clock.fixed(Instant.parse("2026-02-12T00:00:00Z"), ZoneOffset.UTC)
-        );
-
-        DataSyncTrace trace = verifiedTrace("system:platform-marketplace-dataset-sync", "verified-session", "req-platform-auth");
-        trace.getAuthContext().setDeploymentId("dep-123");
-        trace.getAuthContext().setIssuer("platform-marketplace-dataset-sync");
-        trace.getAuthContext().setGrantedScopes(List.of("data-sync:upsert", "vectorization:verification"));
-
-        DataSyncUpsertRequest request = new DataSyncUpsertRequest();
-        request.setVectorSpace("product");
-        request.setId("p-platform-auth");
-        request.setContent("hello");
-        request.setTrace(trace);
-
-        DataSyncOperationResponse response = service.upsert(request);
-
-        assertThat(response.getSuccess()).isTrue();
-        assertThat(response.getMetadata()).containsEntry("accessDecisionSource", "trustedPlatformInternalSync");
-        verifyNoInteractions(accessControlService);
-    }
-
-    @Test
-    void upsert_shouldNotBypassAccessControlByDefault_forPlatformShapedAuthContext() {
-        AIDataSyncProperties props = new AIDataSyncProperties();
-        AIEntityConfigurationLoader loader = mock(AIEntityConfigurationLoader.class);
-        AIEmbeddingService embeddingService = mock(AIEmbeddingService.class);
-        VectorManagementService vectorManagementService = mock(VectorManagementService.class);
-        AIAccessControlService accessControlService = mock(AIAccessControlService.class);
-
-        when(loader.getEntityConfig("product")).thenReturn(AIEntityConfig.builder()
-            .entityType("product")
-            .indexable(true)
-            .build());
-        when(accessControlService.checkAccess(any())).thenReturn(AIAccessControlResponse.builder()
-            .accessGranted(false)
-            .build());
-
-        DataSyncService service = new DataSyncService(
-            props,
-            loader,
-            embeddingService,
-            vectorManagementService,
-            accessControlService,
-            new DataSyncEntityNormalizer(props, null),
-            Clock.fixed(Instant.parse("2026-02-12T00:00:00Z"), ZoneOffset.UTC)
-        );
-
-        DataSyncTrace trace = verifiedTrace("system:platform-marketplace-dataset-sync", "verified-session", "req-platform-default-policy");
-        trace.getAuthContext().setDeploymentId("dep-123");
-        trace.getAuthContext().setIssuer("platform-marketplace-dataset-sync");
-        trace.getAuthContext().setGrantedScopes(List.of("data-sync:upsert", "vectorization:verification"));
-
-        DataSyncUpsertRequest request = new DataSyncUpsertRequest();
-        request.setVectorSpace("product");
-        request.setId("p-platform-default-policy");
-        request.setContent("hello");
-        request.setTrace(trace);
-
-        DataSyncOperationResponse response = service.upsert(request);
-
-        assertThat(response.getSuccess()).isFalse();
-        assertThat(response.getErrorCode()).isEqualTo("ACCESS_DENIED");
-        assertThat(response.getMetadata()).containsEntry("accessDecisionSource", "accessControlService");
-        verify(accessControlService).checkAccess(any());
-        verifyNoInteractions(embeddingService, vectorManagementService);
-    }
-
-    @Test
-    void upsert_shouldNotBypassAccessControl_whenTrustedPlatformSyncScopeMissing() {
-        AIDataSyncProperties props = new AIDataSyncProperties();
-        props.setAllowTrustedPlatformInternalSyncBypass(true);
-        AIEntityConfigurationLoader loader = mock(AIEntityConfigurationLoader.class);
-        AIEmbeddingService embeddingService = mock(AIEmbeddingService.class);
-        VectorManagementService vectorManagementService = mock(VectorManagementService.class);
-        AIAccessControlService accessControlService = mock(AIAccessControlService.class);
-
-        when(loader.getEntityConfig("product")).thenReturn(AIEntityConfig.builder()
-            .entityType("product")
-            .indexable(true)
-            .build());
-        when(accessControlService.checkAccess(any())).thenReturn(AIAccessControlResponse.builder()
-            .accessGranted(false)
-            .build());
-
-        DataSyncService service = new DataSyncService(
-            props,
-            loader,
-            embeddingService,
-            vectorManagementService,
-            accessControlService,
-            new DataSyncEntityNormalizer(props, null),
-            Clock.fixed(Instant.parse("2026-02-12T00:00:00Z"), ZoneOffset.UTC)
-        );
-
-        DataSyncTrace trace = verifiedTrace("system:platform-marketplace-dataset-sync", "verified-session", "req-platform-auth-missing-scope");
-        trace.getAuthContext().setDeploymentId("dep-123");
-        trace.getAuthContext().setIssuer("platform-marketplace-dataset-sync");
-        trace.getAuthContext().setGrantedScopes(List.of("vectorization:verification"));
-
-        DataSyncUpsertRequest request = new DataSyncUpsertRequest();
-        request.setVectorSpace("product");
-        request.setId("p-platform-auth-missing-scope");
-        request.setContent("hello");
-        request.setTrace(trace);
-
-        DataSyncOperationResponse response = service.upsert(request);
-
-        assertThat(response.getSuccess()).isFalse();
-        assertThat(response.getErrorCode()).isEqualTo("ACCESS_DENIED");
-        verify(accessControlService).checkAccess(any());
-        verify(vectorManagementService, never()).storeVector(anyString(), anyString(), anyString(), any(), any());
-    }
-
-    @Test
-    void delete_shouldBypassAccessControl_forTrustedPlatformInternalSyncWithDeleteScope() {
-        AIDataSyncProperties props = new AIDataSyncProperties();
-        props.setAllowTrustedPlatformInternalSyncBypass(true);
-        AIEntityConfigurationLoader loader = mock(AIEntityConfigurationLoader.class);
-        AIEmbeddingService embeddingService = mock(AIEmbeddingService.class);
-        VectorManagementService vectorManagementService = mock(VectorManagementService.class);
-        AIAccessControlService accessControlService = mock(AIAccessControlService.class);
-
-        when(loader.getEntityConfig("product")).thenReturn(AIEntityConfig.builder()
-            .entityType("product")
-            .indexable(true)
-            .build());
-        when(vectorManagementService.removeVector("product", "p-platform-delete")).thenReturn(true);
-
-        DataSyncService service = new DataSyncService(
-            props,
-            loader,
-            embeddingService,
-            vectorManagementService,
-            accessControlService,
-            new DataSyncEntityNormalizer(props, null),
-            Clock.fixed(Instant.parse("2026-02-12T00:00:00Z"), ZoneOffset.UTC)
-        );
-
-        DataSyncTrace trace = verifiedTrace("system:platform-marketplace-dataset-sync", "verified-session", "req-platform-delete");
-        trace.getAuthContext().setDeploymentId("dep-123");
-        trace.getAuthContext().setIssuer("platform-marketplace-dataset-sync");
-        trace.getAuthContext().setGrantedScopes(List.of("data-sync:delete", "vectorization:verification"));
-
-        var request = new ai.fabric.datasync.dto.DataSyncDeleteRequest();
-        request.setVectorSpace("product");
-        request.setId("p-platform-delete");
-        request.setTrace(trace);
-
-        DataSyncOperationResponse response = service.delete(request);
-
-        assertThat(response.getSuccess()).isTrue();
-        assertThat(response.getMetadata()).containsEntry("accessDecisionSource", "trustedPlatformInternalSync");
-        verifyNoInteractions(accessControlService);
-    }
-
-    @Test
-    void upsert_shouldFailClosed_whenVerifiedAuthContextSubjectMissing() {
-        AIDataSyncProperties props = new AIDataSyncProperties();
-        AIEntityConfigurationLoader loader = mock(AIEntityConfigurationLoader.class);
-        AIEmbeddingService embeddingService = mock(AIEmbeddingService.class);
-        VectorManagementService vectorManagementService = mock(VectorManagementService.class);
-        AIAccessControlService accessControlService = mock(AIAccessControlService.class);
-
-        when(loader.getEntityConfig("product")).thenReturn(AIEntityConfig.builder()
-            .entityType("product")
-            .indexable(true)
-            .build());
-
-        DataSyncService service = new DataSyncService(
-            props,
-            loader,
-            embeddingService,
-            vectorManagementService,
-            accessControlService,
-            new DataSyncEntityNormalizer(props, null),
-            Clock.fixed(Instant.parse("2026-02-12T00:00:00Z"), ZoneOffset.UTC)
-        );
-
-        DataSyncTrace trace = new DataSyncTrace();
-        trace.setRequestId("req-missing-auth");
-
-        DataSyncUpsertRequest request = new DataSyncUpsertRequest();
-        request.setVectorSpace("product");
-        request.setId("p-auth-missing");
-        request.setContent("hello");
-        request.setTrace(trace);
-
-        DataSyncOperationResponse response = service.upsert(request);
-
-        assertThat(response.getSuccess()).isFalse();
-        assertThat(response.getErrorCode()).isEqualTo("ACCESS_DENIED");
-    }
-
-    @Test
-    void batch_shouldFailClosedAndSkipSideEffects_whenVerifiedAuthContextSubjectMissing() {
-        AIDataSyncProperties props = new AIDataSyncProperties();
-        AIEntityConfigurationLoader loader = mock(AIEntityConfigurationLoader.class);
-        AIEmbeddingService embeddingService = mock(AIEmbeddingService.class);
-        VectorManagementService vectorManagementService = mock(VectorManagementService.class);
-        AIAccessControlService accessControlService = mock(AIAccessControlService.class);
-
-        when(loader.getEntityConfig("product")).thenReturn(AIEntityConfig.builder()
-            .entityType("product")
-            .indexable(true)
-            .build());
-
-        DataSyncService service = new DataSyncService(
-            props,
-            loader,
-            embeddingService,
-            vectorManagementService,
-            accessControlService,
-            new DataSyncEntityNormalizer(props, null),
-            Clock.fixed(Instant.parse("2026-02-12T00:00:00Z"), ZoneOffset.UTC)
-        );
-
-        DataSyncTrace trace = new DataSyncTrace();
-        trace.setRequestId("req-batch-missing-auth");
-
-        DataSyncOperation upsert = new DataSyncOperation(
-            DataSyncOperationType.UPSERT,
-            "product",
-            "sku-missing-auth",
-            "gaming laptop",
-            null,
-            null,
-            null
-        );
-        DataSyncOperation delete = new DataSyncOperation(
-            DataSyncOperationType.DELETE,
-            "product",
-            "sku-delete-missing-auth",
-            null,
-            null,
-            null,
-            null
-        );
-
-        DataSyncBatchResponse response = service.batch(new DataSyncBatchRequest(trace, List.of(upsert, delete)));
-
-        assertThat(response.getSuccess()).isFalse();
-        assertThat(response.getErrorCode()).isEqualTo("ACCESS_DENIED");
-        assertThat(response.getTotalOperations()).isEqualTo(2);
-        assertThat(response.getSucceededOperations()).isZero();
-        assertThat(response.getFailedOperations()).isEqualTo(2);
-        assertThat(response.getResults()).hasSize(1);
-        assertThat(response.getResults().get(0).getMetadata())
-            .containsKey("deniedOperationDetails");
-
-        Object details = response.getResults().get(0).getMetadata().get("deniedOperationDetails");
-        assertThat(details).asList().hasSize(2);
-        assertThat(((List<?>) details).get(0))
-            .asInstanceOf(MAP)
-            .containsEntry("index", 0)
-            .containsEntry("identitySource", "missingVerifiedAuthContext")
-            .containsEntry("accessDecisionSource", "dataSyncVerifiedAuthContext")
-            .containsEntry("accessEvaluationStatus", "missingSubject");
-        assertThat(((List<?>) details).get(1))
-            .asInstanceOf(MAP)
-            .containsEntry("index", 1)
-            .containsEntry("operationType", "DELETE")
-            .containsEntry("identitySource", "missingVerifiedAuthContext")
-            .containsEntry("accessDecisionSource", "dataSyncVerifiedAuthContext")
-            .containsEntry("accessEvaluationStatus", "missingSubject");
-        verifyNoInteractions(accessControlService, embeddingService, vectorManagementService);
-    }
-
-    @Test
-    void upsert_shouldExposeVectorStoreCauseInFailureMetadata() {
-        AIDataSyncProperties props = new AIDataSyncProperties();
-        AIEntityConfigurationLoader loader = mock(AIEntityConfigurationLoader.class);
-        AIEmbeddingService embeddingService = mock(AIEmbeddingService.class);
-        VectorManagementService vectorManagementService = mock(VectorManagementService.class);
-        AIAccessControlService accessControlService = mock(AIAccessControlService.class);
-
-        when(loader.getEntityConfig("product")).thenReturn(AIEntityConfig.builder()
-            .entityType("product")
-            .indexable(true)
-            .build());
-        when(accessControlService.checkAccess(any())).thenReturn(AIAccessControlResponse.builder()
-            .accessGranted(true)
-            .build());
-        when(embeddingService.generateEmbedding(any())).thenReturn(AIEmbeddingResponse.builder()
-            .embedding(List.of(0.1, 0.2))
-            .build());
-        when(vectorManagementService.storeVector(anyString(), anyString(), anyString(), any(), any()))
-            .thenThrow(new IllegalStateException("Field [vector] vector's dimensions must be <= [1024]; got 1536"));
-
-        DataSyncService service = new DataSyncService(
-            props,
-            loader,
-            embeddingService,
-            vectorManagementService,
-            accessControlService,
-            new DataSyncEntityNormalizer(props, null),
-            Clock.fixed(Instant.parse("2026-02-12T00:00:00Z"), ZoneOffset.UTC)
-        );
-
-        DataSyncUpsertRequest request = new DataSyncUpsertRequest();
-        request.setVectorSpace("product");
-        request.setId("sku-1");
-        request.setContent("gaming laptop");
-        request.setTrace(verifiedTrace("system", null, "req-store-failure"));
-
-        DataSyncOperationResponse response = service.upsert(request);
-
-        assertThat(response.getSuccess()).isFalse();
-        assertThat(response.getErrorCode()).isEqualTo("VECTOR_STORE_FAILED");
-        assertThat(response.getMessage()).isEqualTo("Vector store failed.");
+        assertThat(response.getErrorCode()).isEqualTo("INDEXING_RETRYABLE");
         assertThat(response.getMetadata())
-            .isEqualTo(Map.of("cause", "Field [vector] vector's dimensions must be <= [1024]; got 1536"));
+            .containsEntry("indexingStatus", "FAILED_RETRYABLE");
     }
 
     @Test
-    void delete_shouldExposeVectorStoreCauseInFailureMetadata() {
-        AIDataSyncProperties props = new AIDataSyncProperties();
-        AIEntityConfigurationLoader loader = mock(AIEntityConfigurationLoader.class);
-        AIEmbeddingService embeddingService = mock(AIEmbeddingService.class);
-        VectorManagementService vectorManagementService = mock(VectorManagementService.class);
-        AIAccessControlService accessControlService = mock(AIAccessControlService.class);
+    void permanentGatewayOutcomeIsVisibleAndNotReportedAsSuccess() {
+        Fixture fixture = fixture();
+        when(fixture.gateway().submit(any(), eq(IndexingStrategy.SYNC)))
+            .thenAnswer(invocation -> {
+                AIIndexDocument document = invocation.getArgument(0);
+                return outcome(document, IndexingDispatchStatus.FAILED_PERMANENT);
+            });
 
-        when(loader.getEntityConfig("product")).thenReturn(AIEntityConfig.builder()
-            .entityType("product")
-            .indexable(true)
-            .build());
-        when(accessControlService.checkAccess(any())).thenReturn(AIAccessControlResponse.builder()
-            .accessGranted(true)
-            .build());
-        when(vectorManagementService.removeVector("product", "sku-1"))
-            .thenThrow(new IllegalStateException("delete timeout"));
-
-        DataSyncService service = new DataSyncService(
-            props,
-            loader,
-            embeddingService,
-            vectorManagementService,
-            accessControlService,
-            new DataSyncEntityNormalizer(props, null),
-            Clock.fixed(Instant.parse("2026-02-12T00:00:00Z"), ZoneOffset.UTC)
+        var response = fixture.service().upsert(
+            upsert("product", "p1", "hello", verifiedTrace("system", null, "req1"))
         );
-
-        DataSyncDeleteRequest request = new DataSyncDeleteRequest();
-        request.setVectorSpace("product");
-        request.setId("sku-1");
-        request.setTrace(verifiedTrace("system", null, "req-delete-failure"));
-
-        DataSyncOperationResponse response = service.delete(request);
 
         assertThat(response.getSuccess()).isFalse();
-        assertThat(response.getErrorCode()).isEqualTo("VECTOR_STORE_FAILED");
-        assertThat(response.getMessage()).isEqualTo("Vector delete failed.");
-        assertThat(response.getMetadata()).isEqualTo(Map.of("cause", "delete timeout"));
+        assertThat(response.getErrorCode()).isEqualTo("INDEXING_PERMANENT");
+        assertThat(response.getMessage()).contains("operator review");
+        assertThat(response.getMetadata())
+            .containsEntry("indexingStatus", "FAILED_PERMANENT");
     }
 
     @Test
-    void upsert_shouldReturnInvalidRequest_whenChunkIdentityHasNoSafeCharacters() {
-        AIDataSyncProperties props = new AIDataSyncProperties();
-        AIEntityConfigurationLoader loader = mock(AIEntityConfigurationLoader.class);
-        AIEmbeddingService embeddingService = mock(AIEmbeddingService.class);
-        VectorManagementService vectorManagementService = mock(VectorManagementService.class);
-        AIAccessControlService accessControlService = mock(AIAccessControlService.class);
+    void permanentDeleteFailureIsNotReportedAsDeleted() {
+        Fixture fixture = fixture();
+        when(fixture.gateway().submit(any(), eq(IndexingStrategy.SYNC)))
+            .thenAnswer(invocation -> {
+                AIIndexDocument document = invocation.getArgument(0);
+                return outcome(document, IndexingDispatchStatus.FAILED_PERMANENT);
+            });
+        DataSyncDeleteRequest request = new DataSyncDeleteRequest();
+        request.setVectorSpace("product");
+        request.setId("p1");
+        request.setTrace(verifiedTrace("system", null, "req-delete"));
 
-        DataSyncService service = new DataSyncService(
-            props,
-            loader,
-            embeddingService,
-            vectorManagementService,
-            accessControlService,
-            new DataSyncEntityNormalizer(props, null),
-            Clock.fixed(Instant.parse("2026-02-12T00:00:00Z"), ZoneOffset.UTC)
+        var response = fixture.service().delete(request);
+
+        assertThat(response.getSuccess()).isFalse();
+        assertThat(response.getErrorCode()).isEqualTo("INDEXING_PERMANENT");
+        assertThat(response.getMessage()).contains("operator review");
+    }
+
+    @Test
+    void gatewayExceptionReturnsSanitizedSubmissionFailure() {
+        Fixture fixture = fixture();
+        doThrow(new IllegalStateException("secret provider response"))
+            .when(fixture.gateway())
+            .submit(any(), eq(IndexingStrategy.SYNC));
+
+        var response = fixture.service().upsert(
+            upsert("product", "p1", "hello", verifiedTrace("system", null, "req1"))
         );
 
-        DataSyncIdentity identity = new DataSyncIdentity();
-        identity.setChunkId("!!!");
+        assertThat(response.getSuccess()).isFalse();
+        assertThat(response.getErrorCode())
+            .isEqualTo("INDEXING_SUBMISSION_FAILED");
+        assertThat(response.getMessage())
+            .isEqualTo("Indexing submission failed.")
+            .doesNotContain("secret");
+    }
+
+    @Test
+    void projectionFailureIsVisibleAndDoesNotReachGateway() {
+        Fixture fixture = fixture();
+        fixture.config().getSearchableFields().getFirst().setRequired(true);
 
         DataSyncUpsertRequest request = new DataSyncUpsertRequest();
         request.setVectorSpace("product");
-        request.setId("sku-1");
-        request.setContent("gaming laptop");
-        request.setIdentity(identity);
-        request.setTrace(verifiedTrace("system", null, "req-invalid-chunk"));
+        request.setId("p1");
+        request.setEntity(Map.of("other", "not allowlisted"));
+        request.setTrace(verifiedTrace("system", null, "req1"));
 
-        DataSyncOperationResponse response = service.upsert(request);
+        var response = fixture.service().upsert(request);
 
         assertThat(response.getSuccess()).isFalse();
-        assertThat(response.getErrorCode()).isEqualTo("INVALID_REQUEST");
-        assertThat(response.getMessage()).contains("identity.chunkId");
-        assertThat(response.getId()).isEqualTo("sku-1");
-        verifyNoInteractions(loader, embeddingService, vectorManagementService, accessControlService);
+        assertThat(response.getErrorCode()).isEqualTo("PROJECTION_REJECTED");
+        assertThat(response.getMessage()).contains("REQUIRED_FIELD_MISSING");
+        verifyNoInteractions(fixture.gateway());
     }
 
     @Test
-    void delete_shouldReturnInvalidRequest_whenChunkIdentityHasNoSafeCharacters() {
-        AIDataSyncProperties props = new AIDataSyncProperties();
-        AIEntityConfigurationLoader loader = mock(AIEntityConfigurationLoader.class);
-        AIEmbeddingService embeddingService = mock(AIEmbeddingService.class);
-        VectorManagementService vectorManagementService = mock(VectorManagementService.class);
-        AIAccessControlService accessControlService = mock(AIAccessControlService.class);
-
-        DataSyncService service = new DataSyncService(
-            props,
-            loader,
-            embeddingService,
-            vectorManagementService,
-            accessControlService,
-            new DataSyncEntityNormalizer(props, null),
-            Clock.fixed(Instant.parse("2026-02-12T00:00:00Z"), ZoneOffset.UTC)
-        );
-
-        DataSyncIdentity identity = new DataSyncIdentity();
-        identity.setChunkId("!!!");
-
-        DataSyncDeleteRequest request = new DataSyncDeleteRequest();
-        request.setVectorSpace("product");
-        request.setId("sku-1");
-        request.setIdentity(identity);
-        request.setTrace(verifiedTrace("system", null, "req-invalid-delete-chunk"));
-
-        DataSyncOperationResponse response = service.delete(request);
-
-        assertThat(response.getSuccess()).isFalse();
-        assertThat(response.getErrorCode()).isEqualTo("INVALID_REQUEST");
-        assertThat(response.getMessage()).contains("identity.chunkId");
-        assertThat(response.getId()).isEqualTo("sku-1");
-        verifyNoInteractions(loader, embeddingService, vectorManagementService, accessControlService);
-    }
-
-    @Test
-    void batch_shouldReportOperationCounts_whenPreflightValidationFails() {
-        AIDataSyncProperties props = new AIDataSyncProperties();
-        props.setMaxBatchSize(1);
-        AIEntityConfigurationLoader loader = mock(AIEntityConfigurationLoader.class);
-        AIEmbeddingService embeddingService = mock(AIEmbeddingService.class);
-        VectorManagementService vectorManagementService = mock(VectorManagementService.class);
-        AIAccessControlService accessControlService = mock(AIAccessControlService.class);
-
-        DataSyncService service = new DataSyncService(
-            props,
-            loader,
-            embeddingService,
-            vectorManagementService,
-            accessControlService,
-            new DataSyncEntityNormalizer(props, null),
-            Clock.fixed(Instant.parse("2026-02-12T00:00:00Z"), ZoneOffset.UTC)
-        );
-
-        DataSyncOperation first = new DataSyncOperation(
-            DataSyncOperationType.UPSERT,
+    void invalidChunkIdentityAndMissingTraceHaveNoSideEffects() {
+        Fixture fixture = fixture();
+        DataSyncUpsertRequest invalidChunk = upsert(
             "product",
-            "sku-1",
-            "gaming laptop",
+            "p1",
+            "hello",
+            verifiedTrace("system", null, "req1")
+        );
+        invalidChunk.setIdentity(new DataSyncIdentity(
             null,
+            null,
+            "!!!",
             null,
             null
-        );
-        DataSyncOperation second = new DataSyncOperation(
-            DataSyncOperationType.DELETE,
-            "product",
-            "sku-2",
-            null,
-            null,
-            null,
-            null
-        );
-
-        DataSyncBatchResponse response = service.batch(new DataSyncBatchRequest(
-            verifiedTrace("system", null, "req-too-large"),
-            List.of(first, second)
         ));
 
-        assertThat(response.getSuccess()).isFalse();
-        assertThat(response.getErrorCode()).isEqualTo("BATCH_TOO_LARGE");
-        assertThat(response.getTotalOperations()).isEqualTo(2);
-        assertThat(response.getSucceededOperations()).isZero();
-        assertThat(response.getFailedOperations()).isEqualTo(2);
-        assertThat(response.getResults()).hasSize(1);
-        verifyNoInteractions(loader, embeddingService, vectorManagementService, accessControlService);
-    }
-
-    @Test
-    void batch_shouldReturnInvalidRequest_whenOperationChunkIdentityIsInvalid() {
-        AIDataSyncProperties props = new AIDataSyncProperties();
-        AIEntityConfigurationLoader loader = mock(AIEntityConfigurationLoader.class);
-        AIEmbeddingService embeddingService = mock(AIEmbeddingService.class);
-        VectorManagementService vectorManagementService = mock(VectorManagementService.class);
-        AIAccessControlService accessControlService = mock(AIAccessControlService.class);
-
-        DataSyncService service = new DataSyncService(
-            props,
-            loader,
-            embeddingService,
-            vectorManagementService,
-            accessControlService,
-            new DataSyncEntityNormalizer(props, null),
-            Clock.fixed(Instant.parse("2026-02-12T00:00:00Z"), ZoneOffset.UTC)
-        );
-
-        DataSyncIdentity identity = new DataSyncIdentity();
-        identity.setChunkId("!!!");
-        DataSyncOperation invalid = new DataSyncOperation(
-            DataSyncOperationType.UPSERT,
-            "product",
-            "sku-1",
-            "gaming laptop",
+        var chunkResponse = fixture.service().upsert(invalidChunk);
+        var traceResponse = fixture.service().batch(new DataSyncBatchRequest(
             null,
-            null,
-            identity
-        );
-        DataSyncOperation valid = new DataSyncOperation(
-            DataSyncOperationType.DELETE,
-            "product",
-            "sku-2",
-            null,
-            null,
-            null,
-            null
-        );
-
-        DataSyncBatchResponse response = service.batch(new DataSyncBatchRequest(
-            verifiedTrace("system", null, "req-invalid-batch-chunk"),
-            List.of(invalid, valid)
+            List.of(operation(DataSyncOperationType.UPSERT, "p1", "hello"))
         ));
 
-        assertThat(response.getSuccess()).isFalse();
-        assertThat(response.getErrorCode()).isEqualTo("INVALID_REQUEST");
-        assertThat(response.getMessage()).contains("Operation at index 0").contains("identity.chunkId");
-        assertThat(response.getTotalOperations()).isEqualTo(2);
-        assertThat(response.getSucceededOperations()).isZero();
-        assertThat(response.getFailedOperations()).isEqualTo(2);
-        verifyNoInteractions(loader, embeddingService, vectorManagementService, accessControlService);
+        assertThat(chunkResponse.getErrorCode()).isEqualTo("INVALID_REQUEST");
+        assertThat(traceResponse.getErrorCode()).isEqualTo("INVALID_REQUEST");
+        assertThat(traceResponse.getTotalOperations()).isEqualTo(1);
+        verifyNoInteractions(fixture.accessControl(), fixture.gateway());
     }
 
     @Test
-    void batch_shouldReportOperationCount_whenTraceIsMissing() {
-        AIDataSyncProperties props = new AIDataSyncProperties();
-        AIEntityConfigurationLoader loader = mock(AIEntityConfigurationLoader.class);
-        AIEmbeddingService embeddingService = mock(AIEmbeddingService.class);
-        VectorManagementService vectorManagementService = mock(VectorManagementService.class);
-        AIAccessControlService accessControlService = mock(AIAccessControlService.class);
+    void listVectorSpacesOnlyExposesExplicitlyEnabledEntityTypes() {
+        Fixture fixture = fixture();
+        AIEntityConfig disabled = configuredEntity("internal", false);
+        when(fixture.loader().getSupportedEntityTypes())
+            .thenReturn(Set.of("product", "internal"));
+        when(fixture.loader().getEntityConfig("internal")).thenReturn(disabled);
 
-        DataSyncService service = new DataSyncService(
-            props,
-            loader,
-            embeddingService,
-            vectorManagementService,
-            accessControlService,
-            new DataSyncEntityNormalizer(props, null),
-            Clock.fixed(Instant.parse("2026-02-12T00:00:00Z"), ZoneOffset.UTC)
+        var response = fixture.service().listVectorSpaces();
+
+        assertThat(response.getSuccess()).isTrue();
+        assertThat(response.getVectorSpaces()).containsExactly("product");
+    }
+
+    private Fixture fixture() {
+        AIDataSyncProperties properties = new AIDataSyncProperties();
+        AIEntityConfigurationLoader loader =
+            mock(AIEntityConfigurationLoader.class);
+        AIEntityIndexingGateway gateway =
+            mock(AIEntityIndexingGateway.class);
+        AIAccessControlService accessControl =
+            mock(AIAccessControlService.class);
+        AIEntityConfig config = configuredEntity("product", true);
+        when(loader.getEntityConfig("product")).thenReturn(config);
+        when(accessControl.checkAccess(any())).thenReturn(
+            AIAccessControlResponse.builder().accessGranted(true).build()
         );
+        when(gateway.submit(any(), eq(IndexingStrategy.SYNC)))
+            .thenAnswer(invocation -> outcome(
+                invocation.getArgument(0),
+                IndexingDispatchStatus.COMPLETED
+            ));
 
-        DataSyncOperation operation = new DataSyncOperation(
-            DataSyncOperationType.UPSERT,
+        StaticListableBeanFactory beanFactory = new StaticListableBeanFactory();
+        ObjectProvider<PIIDetectionService> piiProvider =
+            beanFactory.getBeanProvider(PIIDetectionService.class);
+        AIConfiguredEntityProjectionService projectionService =
+            new AIConfiguredEntityProjectionService(
+                piiProvider,
+                new ObjectMapper(),
+                CLOCK
+            );
+        DataSyncEntityNormalizer normalizer =
+            new DataSyncEntityNormalizer(properties, projectionService);
+        DataSyncService service = new DataSyncService(
+            properties,
+            loader,
+            gateway,
+            accessControl,
+            normalizer,
+            CLOCK
+        );
+        return new Fixture(
+            properties,
+            loader,
+            gateway,
+            accessControl,
+            config,
+            service
+        );
+    }
+
+    private AIEntityConfig configuredEntity(
+        String entityType,
+        boolean enabled
+    ) {
+        return AIEntityConfig.builder()
+            .entityType(entityType)
+            .indexing(AIEntityIndexingPolicy.builder()
+                .enabled(enabled)
+                .maxCharacters(8_000)
+                .build())
+            .searchableFields(List.of(AISearchableField.builder()
+                .name("content")
+                .destinations(Set.of(
+                    AISearchDestination.SEMANTIC_SEARCH,
+                    AISearchDestination.RAG_CONTEXT
+                ))
+                .preprocessing(AISearchPreprocessing.NORMALIZE)
+                .maxLength(-1)
+                .priority(50)
+                .required(true)
+                .build()))
+            .metadataFields(List.of())
+            .build();
+    }
+
+    private DataSyncUpsertRequest upsert(
+        String vectorSpace,
+        String id,
+        String content,
+        DataSyncTrace trace
+    ) {
+        DataSyncUpsertRequest request = new DataSyncUpsertRequest();
+        request.setVectorSpace(vectorSpace);
+        request.setId(id);
+        request.setContent(content);
+        request.setTrace(trace);
+        return request;
+    }
+
+    private DataSyncOperation operation(
+        DataSyncOperationType type,
+        String id,
+        String content
+    ) {
+        return new DataSyncOperation(
+            type,
             "product",
-            "sku-1",
-            "gaming laptop",
+            id,
+            content,
             null,
             null,
             null
         );
-
-        DataSyncBatchResponse response = service.batch(new DataSyncBatchRequest(null, List.of(operation)));
-
-        assertThat(response.getSuccess()).isFalse();
-        assertThat(response.getErrorCode()).isEqualTo("INVALID_REQUEST");
-        assertThat(response.getTotalOperations()).isEqualTo(1);
-        assertThat(response.getSucceededOperations()).isZero();
-        assertThat(response.getFailedOperations()).isEqualTo(1);
-        verifyNoInteractions(loader, embeddingService, vectorManagementService, accessControlService);
     }
 
-    private DataSyncTrace verifiedTrace(String subjectId, String sessionId, String requestId) {
-        DataSyncVerifiedAuthContext authContext = new DataSyncVerifiedAuthContext();
+    private IndexingOutcome outcome(
+        AIIndexDocument document,
+        IndexingDispatchStatus status
+    ) {
+        return new IndexingOutcome(
+            "work-" + document.entityId(),
+            document.entityType(),
+            document.entityId(),
+            document.workType(),
+            IndexingStrategy.SYNC,
+            status
+        );
+    }
+
+    private DataSyncTrace verifiedTrace(
+        String subjectId,
+        String sessionId,
+        String requestId
+    ) {
+        DataSyncVerifiedAuthContext authContext =
+            new DataSyncVerifiedAuthContext();
         authContext.setSubjectId(subjectId);
         authContext.setSubjectType("SYSTEM_PROCESS");
         authContext.setAuthMode("PRIVATE_RUNTIME_BACKEND_MEDIATED");
@@ -1052,5 +600,15 @@ class DataSyncServiceTest {
         trace.setRequestId(requestId);
         trace.setAuthContext(authContext);
         return trace;
+    }
+
+    private record Fixture(
+        AIDataSyncProperties properties,
+        AIEntityConfigurationLoader loader,
+        AIEntityIndexingGateway gateway,
+        AIAccessControlService accessControl,
+        AIEntityConfig config,
+        DataSyncService service
+    ) {
     }
 }

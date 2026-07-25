@@ -40,18 +40,22 @@ answer when the live provider fails.
 | Annotation | Demo use |
 | --- | --- |
 | `@EnableAIInfrastructure` | Activates AI Fabric in `LiveDataSyncApplication`. |
-| `@AICapable` | Declares the three entity types, synchronous lifecycle policy, enabled AI features, and migration repository. |
-| `@AISearchable` | Selects weighted, preprocessed text embedded into each vector. |
+| `@AICapable` | Declares each stable entity type, its default and per-operation indexing strategy, and its migration repository. |
+| `@AIIdentity` | Marks the stable entity identity used for vector upsert and idempotent delete. |
+| `@AISearchable` | Selects priority-ordered, preprocessed text embedded into each vector. |
 | `@AIContext` | Adds identifiers, workspace scope, status, dates, prices, and revision metadata without embedding those fields. |
 | `@AIProcess` | Observes create, update, and delete service results and routes them through AI Fabric indexing. |
 
-These are all annotations in the current framework that participate in annotation-driven entity
-sync. `@AISmartValidation` is a separate validation feature and action annotations are intentionally
+Runtime `ai-entity-config.yml` policy enables indexing and sets the projection budget; configuration
+can tighten the destinations declared by annotations but cannot widen them. These are the complete
+entity lifecycle annotations used by the current annotation-driven sync contract.
+`@AISmartValidation` is a separate validation feature and action annotations are intentionally
 outside this demo.
 
-The service method must return the created, updated, or deleted entity. In particular, delete
-methods return the entity after deleting it so the AI Fabric aspect retains the identity needed to
-remove its vector.
+This demo uses the default target convention, so each service method returns the created, updated,
+or deleted entity. In particular, delete methods return the deleted snapshot so the aspect retains
+the identity needed to remove its vector. Applications with wrapper or void results can instead
+declare an `AIProcessTargetResolver`.
 
 ## Data And Request Flow
 
@@ -67,7 +71,7 @@ JPA domain service + H2 source row
         |
         | returned entity observed by @AIProcess
         v
-AICapableAspect -> IndexingCoordinator
+AIProcessAspect -> AIEntityIndexingGateway
         |
         | @AISearchable content + @AIContext metadata
         v
@@ -189,9 +193,30 @@ Build context must be `examples/real-apps`:
 ```bash
 docker build \
   -f ai-fabric-live-data-sync/Dockerfile \
-  --build-arg AI_FABRIC_VERSION=0.3.3 \
-  -t ai-fabric-live-data-sync:0.3.3 .
+  --build-arg AI_FABRIC_VERSION=0.4.0 \
+  -t ai-fabric-live-data-sync:0.4.0 .
 ```
+
+Framework contributors can also build the tested local JAR and exercise the same runtime image
+directly, without changing the default Maven Central consumer build:
+
+```bash
+mvn -B --no-transfer-progress \
+  -pl ai-fabric-live-data-sync -am clean verify
+
+docker build \
+  --target release-candidate \
+  --build-context \
+    release-candidate-artifact=./ai-fabric-live-data-sync/target \
+  -f ai-fabric-live-data-sync/Dockerfile \
+  --build-arg AI_FABRIC_VERSION=0.4.0 \
+  --build-arg SOURCE_COMMIT="$(git rev-parse HEAD)" \
+  --build-arg SOURCE_BRANCH="$(git branch --show-current)" \
+  -t ai-fabric-live-data-sync:0.4.0-rc .
+```
+
+The `release-candidate` target is retained as a source-artifact verification path. The default
+`runtime` target performs a clean Maven build against the published Maven Central artifacts.
 
 Deployment settings:
 

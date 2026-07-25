@@ -3,13 +3,14 @@ package ai.fabric.datasync.config;
 import ai.fabric.access.AIAccessControlService;
 import ai.fabric.config.AIEntityConfigurationLoader;
 import ai.fabric.config.AIInfrastructureAutoConfiguration;
+import ai.fabric.indexing.config.AIIndexingAutoConfiguration;
 import ai.fabric.config.condition.VectorDbConfiguredCondition;
-import ai.fabric.core.AIEmbeddingService;
 import ai.fabric.datasync.AIDataSyncProperties;
 import ai.fabric.datasync.controller.DataSyncController;
 import ai.fabric.datasync.normalize.DataSyncEntityNormalizer;
 import ai.fabric.datasync.service.DataSyncService;
-import ai.fabric.service.VectorManagementService;
+import ai.fabric.indexing.api.AIEntityIndexingGateway;
+import ai.fabric.indexing.projection.AIConfiguredEntityProjectionService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
@@ -27,7 +28,10 @@ import java.time.Clock;
  * Auto-configuration for the push-based data sync (ingestion) API.
  */
 @AutoConfiguration
-@AutoConfigureAfter(AIInfrastructureAutoConfiguration.class)
+@AutoConfigureAfter({
+    AIInfrastructureAutoConfiguration.class,
+    AIIndexingAutoConfiguration.class
+})
 @EnableConfigurationProperties(AIDataSyncProperties.class)
 @ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
 @ConditionalOnExpression("${ai.data-sync.enabled:false} && ${ai.service.features.enable-embeddings:true}")
@@ -37,16 +41,15 @@ public class AIDataSyncAutoConfiguration {
     @Bean
     @ConditionalOnMissingBean
     public DataSyncEntityNormalizer dataSyncEntityNormalizer(AIDataSyncProperties properties,
-                                                             ObjectProvider<ObjectMapper> objectMapperProvider) {
-        return new DataSyncEntityNormalizer(properties, objectMapperProvider);
+                                                             AIConfiguredEntityProjectionService projectionService) {
+        return new DataSyncEntityNormalizer(properties, projectionService);
     }
 
     @Bean
     @ConditionalOnMissingBean
     public DataSyncService dataSyncService(AIDataSyncProperties properties,
                                            AIEntityConfigurationLoader entityConfigurationLoader,
-                                           AIEmbeddingService embeddingService,
-                                           VectorManagementService vectorManagementService,
+                                           AIEntityIndexingGateway indexingGateway,
                                            AIAccessControlService accessControlService,
                                            DataSyncEntityNormalizer normalizer,
                                            ObjectProvider<Clock> clockProvider) {
@@ -54,8 +57,7 @@ public class AIDataSyncAutoConfiguration {
         return new DataSyncService(
             properties,
             entityConfigurationLoader,
-            embeddingService,
-            vectorManagementService,
+            indexingGateway,
             accessControlService,
             normalizer,
             clock

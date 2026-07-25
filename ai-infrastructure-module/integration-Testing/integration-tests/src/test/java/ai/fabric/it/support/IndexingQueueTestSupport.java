@@ -70,11 +70,20 @@ public class IndexingQueueTestSupport {
             idleCycles = 0;
             for (IndexingQueueEntry entry : entries) {
                 try {
-                    workProcessor.process(entry);
-                    queueService.markCompleted(entry);
+                    IndexingWorkProcessor.WorkResult result = workProcessor.process(entry);
+                    if (result.status()
+                        == ai.fabric.indexing.api.IndexingDispatchStatus.SKIPPED_STALE) {
+                        queueService.markSuperseded(entry.getId());
+                    } else {
+                        queueService.markCompleted(entry.getId(), result.resultPayload());
+                    }
                 } catch (Exception ex) {
                     log.error("Failed to process indexing entry {} via test drain", entry.getId(), ex);
-                    queueService.markFailure(entry, ex.getMessage() != null ? ex.getMessage() : ex.getClass().getSimpleName());
+                    queueService.markFailure(
+                        entry.getId(),
+                        "INDEXING_" + ex.getClass().getSimpleName()
+                            .toUpperCase(java.util.Locale.ROOT)
+                    );
                 }
             }
         }

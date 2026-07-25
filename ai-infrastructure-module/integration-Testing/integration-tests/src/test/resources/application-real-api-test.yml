@@ -2,6 +2,8 @@
 # This configuration enables real OpenAI API calls for comprehensive testing
 
 spring:
+  config:
+    import: classpath:ai-entity-config-realapi.yml
   datasource:
     url: jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
     username: sa
@@ -55,8 +57,6 @@ ai:
     result-normalization:
       enabled: true
       debug-snapshot-enabled: true
-  config:
-    default-file: ai-entity-config-realapi.yml
   indexing:
     enabled: true
   pii-detection:

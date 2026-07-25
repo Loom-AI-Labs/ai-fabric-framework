@@ -1,26 +1,40 @@
 package com.ai.fabric.realapps.faq.service;
 
 import ai.fabric.config.AIEntityConfigurationLoader;
-import ai.fabric.dto.AIEntityConfig;
+import ai.fabric.indexing.descriptor.AIEntityDescriptorRegistry;
+import ai.fabric.privacy.pii.PIIDetectionService;
+import com.ai.fabric.realapps.faq.domain.FaqArticle;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
-import org.springframework.core.io.DefaultResourceLoader;
+import org.springframework.beans.factory.support.StaticListableBeanFactory;
+import org.springframework.mock.env.MockEnvironment;
+
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 class SmartFaqAiEntityConfigTest {
 
     @Test
-    void faqArticleConfigDefinesSearchableAndEmbeddableFields() {
-        AIEntityConfigurationLoader loader = new AIEntityConfigurationLoader(new DefaultResourceLoader());
+    void faqArticleAnnotationsCompileTheApprovedProjection() {
+        AIEntityConfigurationLoader loader =
+            new AIEntityConfigurationLoader(new MockEnvironment());
+        loader.loadConfiguration();
+        var piiProvider = new StaticListableBeanFactory()
+            .getBeanProvider(PIIDetectionService.class);
+        AIEntityDescriptorRegistry registry = new AIEntityDescriptorRegistry(
+            loader,
+            List.of(),
+            List.of(),
+            piiProvider,
+            new ObjectMapper()
+        );
 
-        loader.loadConfigurationFromFile("classpath:ai-entity-config.yml");
+        var descriptor = registry.resolve(FaqArticle.class);
 
-        AIEntityConfig config = loader.getEntityConfig("faq-article");
-        assertThat(config).isNotNull();
-        assertThat(config.getSearchableFields())
-            .extracting("name")
-            .containsExactly("title", "content", "category", "tags");
-        assertThat(config.getEmbeddableFields())
+        assertThat(descriptor.entityType()).isEqualTo("faq-article");
+        assertThat(descriptor.indexingEnabled()).isTrue();
+        assertThat(descriptor.searchableFields())
             .extracting("name")
             .containsExactly("title", "content", "category", "tags");
     }

@@ -1,6 +1,11 @@
 package ai.fabric.it.migration;
 
 import ai.fabric.annotation.AICapable;
+import ai.fabric.annotation.AIContext;
+import ai.fabric.annotation.AIIdentity;
+import ai.fabric.annotation.AISearchable;
+import ai.fabric.indexing.api.AIContextDataType;
+import ai.fabric.indexing.api.AIContextDestination;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
@@ -14,9 +19,16 @@ import java.time.LocalDateTime;
 public class TestMigrationEntity {
 
     @Id
+    @AIIdentity
+    @AISearchable(name = "entityId", required = true)
     private String id;
 
     @Column(name = "created_at")
+    @AIContext(
+        key = "createdAt",
+        dataType = AIContextDataType.DATE,
+        destinations = AIContextDestination.VECTOR_METADATA
+    )
     private LocalDateTime createdAt;
 
     public TestMigrationEntity() {

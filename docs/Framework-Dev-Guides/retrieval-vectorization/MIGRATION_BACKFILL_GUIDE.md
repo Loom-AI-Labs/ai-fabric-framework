@@ -13,14 +13,31 @@ propagation after the initial corpus has been indexed.
 | Job orchestration | `DataMigrationService` |
 | Job persistence | `MigrationJobRepository` and `MigrationJob` |
 | Progress view | `MigrationProgressTracker` |
-| Source repositories | `EntityRepositoryRegistry` over Spring Data repositories |
+| Source repositories | `EntityRepositoryRegistry` using `@AICapable.migrationRepository` |
+| Entity projection | `AIEntityDescriptorRegistry` and `AIEntityProjectionService` |
 | Filtering | `MigrationFilterPolicy` or `ai.migration.entity-fields.*` |
-| Indexing handoff | `IndexingQueueService` with `IndexingStrategy.ASYNC` |
+| Indexing handoff | `AIEntityIndexingGateway` with `IndexingStrategy.ASYNC` |
 | Existing-vector skip check | `VectorDatabaseService.vectorExists(entityType, entityId)` |
 
-The module does not embed or write vectors directly. It serializes each accepted source entity into an
-`IndexingRequest`, and the indexing worker owns extraction, embedding, vector upsert, retry, and dead-letter
-behavior.
+The module does not embed or write vectors directly. It resolves the same descriptor and approved
+projection used by annotation lifecycle indexing, then submits a class-free `AIIndexDocument`.
+The indexing worker owns embedding, vector upsert, ordering, retry, and dead-letter behavior.
+
+Declare backfill ownership on the entity:
+
+```java
+@Entity
+@AICapable(
+    entityType = "knowledge-article",
+    migrationRepository = KnowledgeArticleRepository.class
+)
+public class KnowledgeArticle {
+    // approved identity, searchable fields, and context
+}
+```
+
+Startup fails on duplicate entity registrations, descriptor/entity-type disagreement, or an
+incompatible repository binding.
 
 ## Job Lifecycle
 
@@ -47,8 +64,14 @@ are skipped because:
 - `reindexExisting=false` and the vector already exists;
 - an entity id cannot be resolved.
 
-The migration module does not expose a separate "queued" counter in V1; queue handoff is verified by
-indexing logs/metrics and `IndexingQueueService` behavior.
+The migration module separates failure evidence:
+
+- `projectionFailures`: records rejected before durable handoff;
+- `enqueueFailures`: records whose gateway submission failed;
+- `failedEntities`: the sum of those record failures.
+
+The module does not expose a separate queued counter. Queue handoff is verified through indexing
+metrics and the `aifabricEntities` actuator endpoint.
 
 `failedEntities` counts source records that could not be filtered, serialized, checked, or enqueued.
 
@@ -70,11 +93,14 @@ instead of being treated as absent filters, because dropping filters during resu
 
 ## Failure Semantics
 
-- Missing `entityType`, unknown AI entity config, or missing migration filter support fails before job start.
+- Missing `entityType`, unknown descriptor/repository registration, disabled indexing, or missing
+  migration filter support fails before job start.
 - Source-record failures are counted and the job continues to the next record.
 - Unhandled repository/job failures mark the job `FAILED` and store a nonblank error summary.
-- Queue failures count as record failures; indexing retry/dead-letter behavior belongs to `ai-fabric-indexing`.
+- Projection and enqueue failures are counted separately; provider retry/dead-letter behavior belongs
+  to `ai-fabric-indexing`.
 - Worker interruption preserves the Java interrupt flag during rate limiting.
+- Durable payloads contain approved projected fields, not serialized domain entities or Java classes.
 
 ## Verification
 
@@ -90,4 +116,22 @@ The test suite should cover:
 - filter matching and fail-closed malformed filter JSON;
 - skipped existing vectors when `reindexExisting=false`;
 - queue enqueue payloads and queue failure counts;
+- descriptor and migration-repository validation;
+- projection versus enqueue failure counters;
+- class-free, approved queue payloads;
 - progress reporting for skipped, failed, and completed rows.
+
+## Production Cutover
+
+For the 0.4 greenfield queue contract:
+
+1. stop old indexing and migration workers;
+2. retain the authoritative source database;
+3. discard old queue rows, leases, and generated vectors for affected entity types;
+4. create the current `ai_indexing_queue` and `ai_indexing_entity_state` schema;
+5. start the application and verify descriptor readiness;
+6. run backfill from source records;
+7. compare processed/projection/enqueue counts with queue completion and dead-letter metrics;
+8. query representative records and prove required metadata and deletion behavior.
+
+Do not deserialize or adapt a 0.3 queue payload. Rebuild generated vector state from source records.

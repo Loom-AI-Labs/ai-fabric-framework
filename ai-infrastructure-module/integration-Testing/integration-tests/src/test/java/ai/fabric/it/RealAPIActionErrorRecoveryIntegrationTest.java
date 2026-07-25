@@ -12,7 +12,9 @@ import ai.fabric.it.repository.TestProductRepository;
 import ai.fabric.it.support.RealAPITestSupport;
 import ai.fabric.rag.VectorDatabaseService;
 import ai.fabric.repository.IntentHistoryRepository;
-import ai.fabric.service.AICapabilityService;
+import ai.fabric.indexing.api.AIEntityIndexingGateway;
+import ai.fabric.indexing.api.AIProcessOperation;
+import ai.fabric.indexing.api.IndexingStrategy;
 import ai.fabric.service.VectorManagementService;
 import org.assertj.core.api.Assertions;
 import org.junit.jupiter.api.Assumptions;
@@ -68,7 +70,7 @@ public class RealAPIActionErrorRecoveryIntegrationTest {
     }
 
     @Autowired
-    private AICapabilityService capabilityService;
+    private AIEntityIndexingGateway indexingGateway;
 
     @Autowired
     private VectorManagementService vectorManagementService;
@@ -329,7 +331,7 @@ public class RealAPIActionErrorRecoveryIntegrationTest {
             .active(true)
             .build();
         product = productRepository.save(product);
-        capabilityService.processEntityForAI(product, "test-product");
+        indexingGateway.upsert(product, AIProcessOperation.CREATE, IndexingStrategy.SYNC);
         return product;
     }
 

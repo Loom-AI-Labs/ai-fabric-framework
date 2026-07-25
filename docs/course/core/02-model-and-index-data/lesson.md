@@ -21,7 +21,9 @@ sourcePaths:
   - ai-infrastructure-module/ai-fabric-core/src/main/java/ai/fabric/annotation/AICapable.java
   - ai-infrastructure-module/ai-fabric-core/src/main/java/ai/fabric/annotation/AISearchable.java
   - ai-infrastructure-module/ai-fabric-core/src/main/java/ai/fabric/annotation/AIContext.java
-  - ai-infrastructure-module/ai-fabric-core/src/main/java/ai/fabric/service/AICapabilityService.java
+  - ai-infrastructure-module/ai-fabric-core/src/main/java/ai/fabric/indexing/api/AIEntityIndexingGateway.java
+  - ai-infrastructure-module/ai-fabric-core/src/main/java/ai/fabric/indexing/descriptor/AIEntityDescriptorRegistry.java
+  - ai-infrastructure-module/ai-fabric-core/src/main/java/ai/fabric/indexing/projection/AIEntityProjectionService.java
   - examples/real-apps/smart-faq-assistant/src/main/resources/ai-entity-config.yml
   - examples/real-apps/smart-faq-assistant/src/main/java/com/ai/fabric/realapps/faq/service/FaqArticleService.java
   - examples/real-apps/smart-faq-assistant/src/test/java/com/ai/fabric/realapps/faq/service/FaqArticleServiceTest.java
@@ -65,7 +67,8 @@ The solution checkpoint adds this vertical slice:
 KnowledgeArticleController
   -> KnowledgeArticleService -> KnowledgeArticleRepository
                             \
-                             -> AICapabilityService -> embedding provider -> Lucene
+                             -> @AIProcess -> approved projection + durable queue
+                                            -> embedding provider -> Lucene
 
 KnowledgeSearchController
   -> AICoreService.performSearch -> embedding provider -> Lucene -> evidence result
@@ -106,18 +109,33 @@ The published solution uses the current annotation contract:
 @AICapable(entityType = "knowledge-article")
 public class KnowledgeArticle {
     @Id
+    @AIIdentity
+    @AIContext(
+        key = "entityId",
+        dataType = AIContextDataType.ID,
+        priority = 100,
+        required = true
+    )
     private String id;
 
-    @AISearchable(weight = 2.0, required = true)
+    @AISearchable(priority = 100, required = true)
     private String title;
 
-    @AISearchable(maxLength = 8_000, required = true)
+    @AISearchable(maxLength = 8_000, priority = 80, required = true)
     private String body;
 
-    @AIContext(description = "Support taxonomy used for filtering")
+    @AIContext(
+        description = "Support taxonomy used for filtering",
+        priority = 70
+    )
     private String category;
 
-    @AIContext(description = "Application-owned tenant identifier")
+    @AIContext(
+        dataType = AIContextDataType.ID,
+        description = "Application-owned tenant identifier",
+        priority = 100,
+        required = true
+    )
     private String tenantId;
 
     @AIContext(description = "Publication state")
@@ -139,66 +157,77 @@ Select approved fields first.
 
 ## Step 3: Resolve Annotation And YAML Configuration
 
-Add an explicit entity entry so the enabled capabilities are reviewable:
+Annotation-backed entities need no YAML entry. Add one only when deployment policy needs an explicit
+operational override:
 
 ```yaml
 ai-entities:
   knowledge-article:
-    entity-type: knowledge-article
-    features: [embedding, search]
-    auto-embedding: true
-    indexable: true
-    enable-search: true
-    metadata-fields:
-      - name: category
-        type: string
-      - name: tenantId
-        type: string
-      - name: status
-        type: string
+    indexing:
+      enabled: true
+      max-characters: 8000
+    analysis:
+      enabled: false
 ```
 
-AI Fabric can discover searchable and context fields from annotations. YAML can explicitly configure
-entity behavior and fields, and explicit YAML wins when it conflicts with annotation defaults.
+`@AICapable.entityType` is canonical for typed entities. Field annotations define the approved
+projection. YAML may apply supported operational and field overrides, but it cannot change typed
+identity or widen a field's security destinations. YAML-only push entities must explicitly enable
+indexing and declare their fields.
 
 Add a focused configuration test with these assertions:
 
 ```text
 resolved entity type = knowledge-article
-features include embedding and search
-indexable = true
-metadata fields include category, tenantId, status
+indexing = enabled
+searchable fields include title and body
+context fields include entityId, category, tenantId, status
 internalNotes is absent from searchable, embeddable, and metadata fields
+projection hash is stable
 ```
 
 The test protects intent. It still does not prove that a vector exists.
 
 ## Step 4: Make The Lifecycle Explicit
 
-Keep repository persistence and vector lifecycle visible in the application service:
+Declare lifecycle intent on public Spring service methods:
 
-```text
-create:
-  save domain record -> process saved record for AI -> prove retrievable evidence
+```java
+@Transactional
+@AIProcess(operation = AIProcessOperation.CREATE)
+public KnowledgeArticle create(KnowledgeArticle article) {
+    return repository.saveAndFlush(article);
+}
 
-update:
-  load and authorize record -> save changed record -> reindex same entity identity
+@Transactional
+@AIProcess(operation = AIProcessOperation.UPDATE)
+public KnowledgeArticle update(String id, UpdateArticle request) {
+    KnowledgeArticle article = requireAuthorizedArticle(id);
+    article.apply(request);
+    return repository.saveAndFlush(article);
+}
 
-delete:
-  load and authorize record -> delete source record -> remove vector by entity type and ID
-
-backfill:
-  page existing records -> index each approved record -> record success/failure totals
+@Transactional
+@AIProcess(operation = AIProcessOperation.DELETE)
+public KnowledgeArticle delete(String id) {
+    KnowledgeArticle article = requireAuthorizedArticle(id);
+    repository.delete(article);
+    repository.flush();
+    return article;
+}
 ```
 
-For the learning checkpoint, use synchronous verification around local providers so each test can
-observe the final vector state. A production application may enqueue asynchronous work, but then its
-proof must include queue acceptance, worker completion, retry/dead-letter state, and final vector
-readiness.
+The aspect resolves the returned entity, builds an allowlisted `AIIndexDocument`, and inserts durable
+work in the source transaction. Provider work starts only after commit. A rollback leaves no committed
+queue row and causes no vector mutation.
 
-One important implementation detail is visible in the current capability service: processing and
-storage paths can log and return after missing content, missing identity, or provider failure. A
-successful domain save is therefore not enough. Assert the resulting evidence.
+For the learning checkpoint, configure `IndexingStrategy.SYNC`. It attempts provider work after commit
+so the test can observe final vector state immediately. If the provider fails, work remains retryable
+instead of making the committed source record disappear. `ASYNC` and `BATCH` require proof of queue
+acceptance, worker completion, retry/dead-letter state, and final vector readiness.
+
+For a boundary that cannot use Spring AOP, call `AIEntityIndexingGateway.upsert(...)` or
+`delete(...)`. Do not pair raw embedding and vector calls to emulate an entity lifecycle.
 
 ## Step 5: Prove Search Before And After Indexing
 
@@ -245,8 +274,8 @@ relative retrieval behavior instead of inventing a universal percentage.
 
 Add one integration test that performs all of these operations in order:
 
-1. save an article without indexing and prove the query returns no matching evidence;
-2. index it and prove a paraphrased query returns the stable entity ID;
+1. save an article through an unannotated fixture path and prove the query returns no matching evidence;
+2. submit it through `AIEntityIndexingGateway` and prove a paraphrased query returns the stable entity ID;
 3. prove `category`, `tenantId`, and `status` are present in evidence metadata;
 4. update the title and body, reindex the same ID, and prove stale text is no longer returned;
 5. delete the article and remove its vector;
@@ -326,6 +355,8 @@ Open `requests/01-semantic-search.http` in the solution checkpoint for complete 
 | Metadata is missing | `@AIContext`, YAML metadata fields, and the stored vector record |
 | Updates return old wording | Stable identity and the update/reindex path |
 | Deleted records still appear | Application delete event and `removeVector(entityType, entityId)` proof |
+| Source committed but vector is delayed | Queue status, worker enablement, retry count, and dead-letter state |
+| Source rolled back but queue exists | Source and indexing repositories are not sharing the expected transaction manager |
 | Search fails after a model change | Embedding dimensions and index compatibility |
 
 ## Done When

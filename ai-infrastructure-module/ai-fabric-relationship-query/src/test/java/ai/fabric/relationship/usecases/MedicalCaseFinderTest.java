@@ -26,6 +26,7 @@ import ai.fabric.relationship.service.DynamicJPAQueryBuilder;
 import ai.fabric.relationship.service.LLMDrivenJPAQueryService;
 import ai.fabric.relationship.service.RelationshipQueryPlanner;
 import ai.fabric.relationship.service.RelationshipQueryDocumentMapper;
+import ai.fabric.relationship.support.RelationshipProjectionTestSupport;
 import ai.fabric.relationship.validation.RelationshipQueryValidator;
 import ai.fabric.relationship.service.EntityRelationshipMapper;
 import ai.fabric.rag.VectorDatabaseService;
@@ -141,7 +142,13 @@ class MedicalCaseFinderTest {
         schemaProvider.refreshSchema();
 
         var jpaTraversalService = new ai.fabric.relationship.service.JpaRelationshipTraversalService(entityManager);
-        RelationshipQueryDocumentMapper documentMapper = new DefaultRelationshipQueryDocumentMapper(null, configurationLoader);
+        RelationshipQueryDocumentMapper documentMapper =
+            new DefaultRelationshipQueryDocumentMapper(
+                RelationshipProjectionTestSupport.projectionService(
+                    configurationLoader
+                ),
+                configurationLoader
+            );
 
         llmDrivenJPAQueryService = new LLMDrivenJPAQueryService(
             planner,

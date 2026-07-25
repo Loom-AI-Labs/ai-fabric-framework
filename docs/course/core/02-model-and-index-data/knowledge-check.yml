@@ -18,7 +18,7 @@ questions:
     correctOptionIds: [c]
     explanation: Configuration describes intent; retrieved vector evidence proves that projection, embedding, and storage completed.
     sourcePaths:
-      - ai-infrastructure-module/ai-fabric-core/src/main/java/ai/fabric/service/AICapabilityService.java
+      - ai-infrastructure-module/ai-fabric-core/src/main/java/ai/fabric/indexing/api/AIEntityIndexingGateway.java
 
   - id: core-02-q2
     type: multiple-choice
@@ -42,20 +42,20 @@ questions:
   - id: core-02-q3
     type: single-choice
     competency: configuration-precedence
-    prompt: What happens when explicit YAML entity configuration conflicts with annotation defaults?
+    prompt: Which statement describes annotation and YAML ownership for a typed AI entity?
     options:
       - id: a
-        text: Annotation defaults always win
+        text: YAML can replace the entity type declared by @AICapable
       - id: b
-        text: Explicit YAML remains authoritative
+        text: Field annotations define the approved projection, while YAML may apply documented operational overrides without widening security destinations
       - id: c
-        text: Both values are ignored
+        text: YAML is mandatory for every annotation-backed entity
       - id: d
         text: The vector provider chooses
     correctOptionIds: [b]
-    explanation: AI Fabric's annotation contract documents YAML configuration above annotation defaults and framework defaults.
+    explanation: Precedence is concern-specific. Typed identity and approved destinations remain code contracts; YAML provides supported deployment/runtime overrides.
     sourcePaths:
-      - ai-infrastructure-module/ai-fabric-core/src/main/java/ai/fabric/annotation/AISearchable.java
+      - ai-infrastructure-module/ai-fabric-core/src/main/java/ai/fabric/indexing/descriptor/AIEntityDescriptorRegistry.java
 
   - id: core-02-q4
     type: single-choice

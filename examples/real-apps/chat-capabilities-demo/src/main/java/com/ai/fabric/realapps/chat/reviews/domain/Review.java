@@ -2,6 +2,7 @@ package com.ai.fabric.realapps.chat.reviews.domain;
 
 import ai.fabric.annotation.AICapable;
 import ai.fabric.annotation.AIContext;
+import ai.fabric.annotation.AIIdentity;
 import ai.fabric.annotation.AISearchable;
 import ai.fabric.indexing.api.IndexingStrategy;
 import jakarta.persistence.Column;
@@ -30,6 +31,7 @@ import lombok.Setter;
 public class Review {
 
     @Id
+    @AIIdentity
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
@@ -46,7 +48,7 @@ public class Review {
     @Column(nullable = false)
     private Integer rating;
 
-    @AISearchable(weight = 2.0, maxLength = 20000)
+    @AISearchable(priority = 100, maxLength = 20000)
     @Column(columnDefinition = "TEXT", nullable = false)
     private String text;
 

@@ -3,6 +3,7 @@ package com.ai.fabric.realapps.chat.catalog.service;
 import com.ai.fabric.realapps.chat.catalog.domain.Product;
 import com.ai.fabric.realapps.chat.catalog.repo.ProductRepository;
 import ai.fabric.annotation.AIProcess;
+import ai.fabric.indexing.api.AIProcessOperation;
 import ai.fabric.core.AICoreService;
 import ai.fabric.dto.AISearchRequest;
 import ai.fabric.dto.AISearchResponse;
@@ -63,7 +64,7 @@ public class ProductService {
     }
 
     @Transactional
-    @AIProcess(entityType = "product", processType = "create", generateEmbedding = true, indexForSearch = true)
+    @AIProcess(entityType = "product", operation = AIProcessOperation.CREATE)
     public Product createProduct(String sku,
                                  String name,
                                  String description,
@@ -106,7 +107,7 @@ public class ProductService {
     }
 
     @Transactional
-    @AIProcess(entityType = "product", processType = "update", generateEmbedding = true, indexForSearch = true)
+    @AIProcess(entityType = "product", operation = AIProcessOperation.UPDATE)
     public Product updateProduct(long id,
                                  String sku,
                                  String name,
@@ -158,7 +159,7 @@ public class ProductService {
     }
 
     @Transactional
-    @AIProcess(entityType = "product", processType = "update", generateEmbedding = true, indexForSearch = true)
+    @AIProcess(entityType = "product", operation = AIProcessOperation.UPDATE)
     public Product updateProductStock(String sku, int newInStockQty) {
         String normalizedSku = SkuNormalizer.normalizeForLookup(sku);
         if (!StringUtils.hasText(normalizedSku)) {
@@ -171,7 +172,7 @@ public class ProductService {
     }
 
     @Transactional
-    @AIProcess(entityType = "product", processType = "delete", generateEmbedding = false, indexForSearch = false)
+    @AIProcess(entityType = "product", operation = AIProcessOperation.DELETE)
     public Product deleteProduct(long id) {
         Product product = get(id);
         productRepository.delete(product);

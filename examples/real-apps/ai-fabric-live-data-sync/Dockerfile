@@ -2,10 +2,10 @@
 #
 # Build context: examples/real-apps
 # docker build -f ai-fabric-live-data-sync/Dockerfile \
-#   --build-arg AI_FABRIC_VERSION=0.3.3 \
-#   -t ai-fabric-live-data-sync:0.3.3 .
+#   --build-arg AI_FABRIC_VERSION=0.4.0 \
+#   -t ai-fabric-live-data-sync:0.4.0 .
 
-ARG AI_FABRIC_VERSION=0.3.3
+ARG AI_FABRIC_VERSION=0.4.0
 ARG APP_VERSION=1.0.0-SNAPSHOT
 ARG SOURCE_COMMIT=
 ARG SOURCE_BRANCH=
@@ -21,7 +21,7 @@ RUN mvn -B -V --no-transfer-progress \
     -Dai-fabric.version="${AI_FABRIC_VERSION}" \
     -pl ai-fabric-live-data-sync -am package
 
-FROM eclipse-temurin:21-jre-alpine
+FROM eclipse-temurin:21-jre-alpine AS runtime-base
 WORKDIR /app
 
 ARG AI_FABRIC_VERSION
@@ -50,10 +50,18 @@ RUN actual_build_time="${BUILD_TIME:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}" \
     && chown app:app /app/build-info.properties
 
 USER app:app
-COPY --from=build --chown=app:app /workspace/ai-fabric-live-data-sync/target/ai-fabric-live-data-sync-*.jar /app/app.jar
 
 EXPOSE 8104
 HEALTHCHECK --interval=30s --timeout=5s --start-period=45s --retries=3 \
   CMD wget -qO- "http://127.0.0.1:${PORT}/actuator/health" >/dev/null 2>&1 || exit 1
 
 ENTRYPOINT ["sh", "-c", "java ${JAVA_OPTS} -jar /app/app.jar"]
+
+# Source-artifact verification target. Supply the tested JAR directory as the
+# release-candidate-artifact build context and select this target explicitly.
+FROM runtime-base AS release-candidate
+COPY --from=release-candidate-artifact --chown=app:app /ai-fabric-live-data-sync-*.jar /app/app.jar
+
+# The default production target remains a clean Maven Central consumer.
+FROM runtime-base AS runtime
+COPY --from=build --chown=app:app /workspace/ai-fabric-live-data-sync/target/ai-fabric-live-data-sync-*.jar /app/app.jar

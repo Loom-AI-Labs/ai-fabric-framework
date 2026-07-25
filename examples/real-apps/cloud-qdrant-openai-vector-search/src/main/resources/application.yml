@@ -4,6 +4,8 @@ server:
 spring:
   application:
     name: cloud-qdrant-openai-vector-search
+  config:
+    import: optional:classpath:ai-entity-config.yml
   datasource:
     url: ${DB_URL:jdbc:postgresql://localhost:5435/cloud_vector_search}
     username: ${DB_USER:postgres}
@@ -15,8 +17,6 @@ spring:
 
 ai:
   enabled: true
-  config:
-    default-file: ai-entity-config.yml
   service:
     features:
       enable-embeddings: true

@@ -2,12 +2,12 @@ package ai.fabric.datasync.config;
 
 import ai.fabric.access.AIAccessControlService;
 import ai.fabric.config.AIEntityConfigurationLoader;
-import ai.fabric.core.AIEmbeddingService;
 import ai.fabric.datasync.AIDataSyncProperties;
 import ai.fabric.datasync.controller.DataSyncController;
 import ai.fabric.datasync.normalize.DataSyncEntityNormalizer;
 import ai.fabric.datasync.service.DataSyncService;
-import ai.fabric.service.VectorManagementService;
+import ai.fabric.indexing.api.AIEntityIndexingGateway;
+import ai.fabric.indexing.projection.AIConfiguredEntityProjectionService;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.test.context.runner.WebApplicationContextRunner;
@@ -22,8 +22,9 @@ class AIDataSyncAutoConfigurationTest {
     private final WebApplicationContextRunner contextRunner = new WebApplicationContextRunner()
         .withConfiguration(AutoConfigurations.of(AIDataSyncAutoConfiguration.class))
         .withBean(AIEntityConfigurationLoader.class, () -> mock(AIEntityConfigurationLoader.class))
-        .withBean(AIEmbeddingService.class, () -> mock(AIEmbeddingService.class))
-        .withBean(VectorManagementService.class, () -> mock(VectorManagementService.class))
+        .withBean(AIEntityIndexingGateway.class, () -> mock(AIEntityIndexingGateway.class))
+        .withBean(AIConfiguredEntityProjectionService.class,
+            () -> mock(AIConfiguredEntityProjectionService.class))
         .withBean(AIAccessControlService.class, () -> mock(AIAccessControlService.class));
 
     @Test

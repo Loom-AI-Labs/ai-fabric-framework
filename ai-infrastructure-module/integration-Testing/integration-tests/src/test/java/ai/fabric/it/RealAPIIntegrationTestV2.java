@@ -4,14 +4,15 @@ import ai.fabric.dto.VectorRecord;
 import ai.fabric.it.entity.V2AnnotatedProduct;
 import ai.fabric.it.repository.V2AnnotatedProductRepository;
 import ai.fabric.it.support.RealAPITestSupport;
-import ai.fabric.service.AICapabilityService;
+import ai.fabric.indexing.api.AIEntityIndexingGateway;
+import ai.fabric.indexing.api.AIProcessOperation;
+import ai.fabric.indexing.api.IndexingStrategy;
 import ai.fabric.service.VectorManagementService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 
@@ -31,7 +32,6 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 @SpringBootTest(classes = TestApplication.class)
 @ActiveProfiles("real-api-test")
-@Transactional
 public class RealAPIIntegrationTestV2 {
 
     static {
@@ -45,7 +45,7 @@ public class RealAPIIntegrationTestV2 {
     }
 
     @Autowired
-    private AICapabilityService capabilityService;
+    private AIEntityIndexingGateway indexingGateway;
 
     @Autowired
     private VectorManagementService vectorManagementService;
@@ -73,17 +73,23 @@ public class RealAPIIntegrationTestV2 {
 
         product = v2ProductRepository.save(product);
 
-        // When: index using the existing pipeline entrypoint (uses entityType "test-product" config)
-        capabilityService.processEntityForAI(product, "test-product");
+        indexingGateway.upsert(
+            product,
+            AIProcessOperation.CREATE,
+            IndexingStrategy.SYNC
+        );
 
         // Then
-        List<VectorRecord> entities = vectorManagementService.getVectorsByEntityType("test-product");
+        List<VectorRecord> entities = vectorManagementService.getVectorsByEntityType(
+            "v2-annotated-product"
+        );
         assertThat(entities).hasSize(1);
 
         VectorRecord stored = entities.getFirst();
 
         // v2 requirement: the embedded/indexed searchable content is driven by @AISearchable, not YAML fields.
-        assertThat(stored.getContent()).isEqualTo(v2SearchableOnly);
+        assertThat(stored.getContent())
+            .isEqualTo("internalNotes: " + v2SearchableOnly);
 
         // v2 requirement: @AIContext contributes metadata (without being embedded).
         assertThat(stored.getMetadata()).containsEntry("owner", v2ContextOwner);

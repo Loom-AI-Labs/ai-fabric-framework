@@ -8,7 +8,9 @@ import ai.fabric.it.entity.TestProduct;
 import ai.fabric.it.repository.TestProductRepository;
 import ai.fabric.it.support.RealAPITestSupport;
 import ai.fabric.repository.IntentHistoryRepository;
-import ai.fabric.service.AICapabilityService;
+import ai.fabric.indexing.api.AIEntityIndexingGateway;
+import ai.fabric.indexing.api.AIProcessOperation;
+import ai.fabric.indexing.api.IndexingStrategy;
 import ai.fabric.service.VectorManagementService;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeEach;
@@ -43,7 +45,7 @@ public class RealAPIHybridRetrievalToggleIntegrationTest {
     }
 
     @Autowired
-    private AICapabilityService capabilityService;
+    private AIEntityIndexingGateway indexingGateway;
 
     @Autowired
     private VectorManagementService vectorManagementService;
@@ -310,7 +312,7 @@ public class RealAPIHybridRetrievalToggleIntegrationTest {
             .active(true)
             .build();
         product = productRepository.save(product);
-        capabilityService.processEntityForAI(product, "test-product");
+        indexingGateway.upsert(product, AIProcessOperation.CREATE, IndexingStrategy.SYNC);
         return product;
     }
 }

@@ -1,74 +1,146 @@
 ai-config:
   default-embedding-model: text-embedding-3-small
   default-search-limit: 10
-
 ai-entities:
   product:
-    features: ["embedding", "search", "analysis"]
-    enable-search: true
-    auto-embedding: true
-    indexable: true
+    indexing:
+      enabled: true
     searchable-fields:
-      - name: name
-      - name: description
+    - name: name
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    - name: description
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
   test-product:
-    features: ["embedding", "search"]
-    enable-search: true
-    auto-embedding: true
-    indexable: true
+    indexing:
+      enabled: true
     searchable-fields:
-      - name: name
-      - name: description
-      - name: category
-      - name: brand
-    embeddable-fields:
-      - name: description
-      - name: category
-      - name: brand
+    - name: name
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    - name: description
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    - name: category
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    - name: brand
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
     metadata-fields:
-      - name: category
-        type: STRING
-      - name: brand
-        type: STRING
-      - name: price
-        type: DOUBLE
+    - name: category
+      data-type: STRING
+      destinations:
+      - VECTOR_METADATA
+      - API_RESPONSE
+    - name: brand
+      data-type: STRING
+      destinations:
+      - VECTOR_METADATA
+      - API_RESPONSE
+    - name: price
+      data-type: NUMBER
+      destinations:
+      - VECTOR_METADATA
+      - API_RESPONSE
   test-article:
-    features: ["embedding", "search"]
-    enable-search: true
-    auto-embedding: true
-    indexable: true
+    indexing:
+      enabled: true
     searchable-fields:
-      - name: title
-      - name: body
-    embeddable-fields:
-      - name: body
-      - name: title
+    - name: title
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    - name: content
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
     metadata-fields:
-      - name: author
-        type: STRING
-      - name: publishDate
-        type: DATE
-      - name: published
-        type: BOOLEAN
+    - name: author
+      data-type: STRING
+      destinations:
+      - VECTOR_METADATA
+      - API_RESPONSE
+    - name: publishDate
+      data-type: DATE
+      destinations:
+      - VECTOR_METADATA
+      - API_RESPONSE
+    - name: published
+      data-type: BOOLEAN
+      destinations:
+      - VECTOR_METADATA
+      - API_RESPONSE
   test-user:
-    features: ["embedding", "search"]
-    enable-search: true
-    auto-embedding: true
-    indexable: true
+    indexing:
+      enabled: true
     searchable-fields:
-      - name: displayName
-      - name: bio
-      - name: firstName
-      - name: lastName
-      - name: email
-    embeddable-fields:
-      - name: bio
-      - name: firstName
-      - name: lastName
+    - name: displayName
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    - name: bio
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    - name: firstName
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    - name: lastName
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    - name: email
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
     metadata-fields:
-      - name: email
-        type: STRING
-      - name: age
-        type: INTEGER
-      - name: location
-        type: STRING
+    - name: email
+      data-type: STRING
+      destinations:
+      - VECTOR_METADATA
+      - API_RESPONSE
+    - name: age
+      data-type: NUMBER
+      destinations:
+      - VECTOR_METADATA
+      - API_RESPONSE
+    - name: location
+      data-type: STRING
+      destinations:
+      - VECTOR_METADATA
+      - API_RESPONSE

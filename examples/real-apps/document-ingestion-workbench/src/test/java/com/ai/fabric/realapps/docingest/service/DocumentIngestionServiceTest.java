@@ -2,11 +2,14 @@ package com.ai.fabric.realapps.docingest.service;
 
 import ai.fabric.config.AIEntityConfigurationLoader;
 import ai.fabric.dto.AIEntityConfig;
+import ai.fabric.dto.AIEntityIndexingPolicy;
 import ai.fabric.entity.IndexingQueueEntry;
-import ai.fabric.indexing.IndexingOperation;
-import ai.fabric.indexing.IndexingRequest;
+import ai.fabric.indexing.api.AIIndexWorkType;
+import ai.fabric.indexing.api.AIProcessOperation;
+import ai.fabric.indexing.api.IndexingStrategy;
 import ai.fabric.indexing.document.springai.SpringAiDocumentIndexingAdapter;
 import ai.fabric.indexing.document.springai.SpringAiDocumentReaderFactory;
+import ai.fabric.indexing.model.AIIndexDocument;
 import ai.fabric.indexing.queue.IndexingQueueService;
 import com.ai.fabric.realapps.docingest.domain.DocumentChunkManifest;
 import com.ai.fabric.realapps.docingest.domain.DocumentSource;
@@ -43,7 +46,7 @@ class DocumentIngestionServiceTest {
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final IndexingQueueService queueService = mock(IndexingQueueService.class);
     private final AIEntityConfigurationLoader configurationLoader = mock(AIEntityConfigurationLoader.class);
-    private final List<IndexingRequest> queuedRequests = new ArrayList<>();
+    private final List<AIIndexDocument> queuedDocuments = new ArrayList<>();
 
     @jakarta.annotation.Resource
     private DocumentSourceRepository sourceRepository;
@@ -57,10 +60,13 @@ class DocumentIngestionServiceTest {
     void setUp() {
         when(configurationLoader.getEntityConfig("kb")).thenReturn(AIEntityConfig.builder()
             .entityType("kb")
-            .indexable(true)
+            .indexing(AIEntityIndexingPolicy.builder().enabled(true).build())
             .build());
-        when(queueService.enqueue(any(IndexingRequest.class))).thenAnswer(invocation -> {
-            queuedRequests.add(invocation.getArgument(0));
+        when(queueService.enqueue(
+            any(AIIndexDocument.class),
+            any(IndexingStrategy.class)
+        )).thenAnswer(invocation -> {
+            queuedDocuments.add(invocation.getArgument(0));
             return new IndexingQueueEntry();
         });
 
@@ -68,7 +74,7 @@ class DocumentIngestionServiceTest {
             sourceRepository,
             chunkManifestRepository,
             new SpringAiDocumentReaderFactory(),
-            new SpringAiDocumentIndexingAdapter(objectMapper, queueService, configurationLoader),
+            new SpringAiDocumentIndexingAdapter(queueService, configurationLoader),
             queueService,
             objectMapper,
             trustedRoot.toString(),
@@ -103,9 +109,13 @@ class DocumentIngestionServiceTest {
         assertThat(result.replacedChunks()).isZero();
         assertThat(result.source().status()).isEqualTo(DocumentSource.Status.INDEXED);
         assertThat(chunkManifestRepository.countBySourceId(source.id())).isEqualTo(result.indexedChunks());
-        assertThat(queuedRequests)
+        assertThat(queuedDocuments)
             .hasSize(result.indexedChunks())
-            .allSatisfy(request -> assertThat(request.operation()).isEqualTo(IndexingOperation.UPDATE));
+            .allSatisfy(document -> {
+                assertThat(document.workType()).isEqualTo(AIIndexWorkType.UPSERT);
+                assertThat(document.sourceOperation())
+                    .isEqualTo(AIProcessOperation.UPDATE);
+            });
     }
 
     @Test
@@ -114,7 +124,7 @@ class DocumentIngestionServiceTest {
             "Reset credentials and notify the account owner."));
         DocumentIngestionService.IndexResult firstIndex = service.index(source.id());
         List<String> firstChunkIds = firstIndex.indexedEntityIds();
-        queuedRequests.clear();
+        queuedDocuments.clear();
 
         service.replaceSource(source.id(), textCommand("Runbook v2", "runbook.txt",
             "Reset credentials, notify the account owner, and create a follow-up audit task."));
@@ -122,12 +132,12 @@ class DocumentIngestionServiceTest {
 
         assertThat(secondIndex.replacedChunks()).isEqualTo(firstChunkIds.size());
         assertThat(secondIndex.source().sourceVersion()).isEqualTo(2);
-        assertThat(queuedRequests.stream().map(IndexingRequest::operation))
-            .startsWith(IndexingOperation.DELETE)
-            .contains(IndexingOperation.UPDATE);
-        assertThat(queuedRequests.stream()
-            .filter(request -> request.operation() == IndexingOperation.DELETE)
-            .map(IndexingRequest::entityId))
+        assertThat(queuedDocuments.stream().map(AIIndexDocument::workType))
+            .startsWith(AIIndexWorkType.DELETE)
+            .contains(AIIndexWorkType.UPSERT);
+        assertThat(queuedDocuments.stream()
+            .filter(document -> document.workType() == AIIndexWorkType.DELETE)
+            .map(AIIndexDocument::entityId))
             .containsExactlyElementsOf(firstChunkIds);
         assertThat(chunkManifestRepository.findBySourceIdOrderByChunkIndexAsc(source.id()))
             .extracting(DocumentChunkManifest::getSourceVersion)
@@ -139,16 +149,20 @@ class DocumentIngestionServiceTest {
         DocumentIngestionService.SourceSummary source = service.createSource(textCommand("Runbook", "runbook.txt",
             "Reset credentials and notify the account owner."));
         DocumentIngestionService.IndexResult indexed = service.index(source.id());
-        queuedRequests.clear();
+        queuedDocuments.clear();
 
         DocumentIngestionService.DeleteResult deleted = service.delete(source.id());
 
         assertThat(deleted.deletedChunks()).isEqualTo(indexed.indexedChunks());
         assertThat(deleted.source().status()).isEqualTo(DocumentSource.Status.DELETED);
         assertThat(chunkManifestRepository.countBySourceId(source.id())).isZero();
-        assertThat(queuedRequests)
+        assertThat(queuedDocuments)
             .hasSize(indexed.indexedChunks())
-            .allSatisfy(request -> assertThat(request.operation()).isEqualTo(IndexingOperation.DELETE));
+            .allSatisfy(document -> {
+                assertThat(document.workType()).isEqualTo(AIIndexWorkType.DELETE);
+                assertThat(document.sourceOperation())
+                    .isEqualTo(AIProcessOperation.DELETE);
+            });
     }
 
     @Test

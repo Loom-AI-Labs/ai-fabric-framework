@@ -1,8 +1,5 @@
 package com.subscription.hub.entity;
 
-import ai.fabric.annotation.AICapable;
-import ai.fabric.annotation.AIContext;
-import ai.fabric.indexing.api.IndexingStrategy;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -14,12 +11,6 @@ import java.util.UUID;
 
 @Entity
 @Table(name = "subscriptions")
-@AICapable(
-    entityType = "subscription",
-    autoEmbedding = false,
-    indexable = true,
-    indexingStrategy = IndexingStrategy.ASYNC
-)
 @Data
 @Builder
 @NoArgsConstructor
@@ -36,28 +27,22 @@ public class Subscription {
     @Column(name = "plan_id", nullable = false)
     private UUID planId;
 
-    @AIContext(contextKey = "status")
     @Column(nullable = false)
     @Enumerated(EnumType.STRING)
     @Builder.Default
     private SubscriptionStatus status = SubscriptionStatus.ACTIVE;
 
-    @AIContext(contextKey = "startDate")
     @Column(nullable = false)
     private LocalDateTime startDate;
 
-    @AIContext(contextKey = "endDate")
     private LocalDateTime endDate;
 
-    @AIContext(contextKey = "billingCycle")
     @Column(nullable = false)
     @Enumerated(EnumType.STRING)
     private BillingCycle billingCycle;  // MONTHLY, ANNUAL
 
-    @AIContext(contextKey = "churnRiskScore")
     private Double churnRiskScore;  // 0.0-1.0 from Behavior Analysis
 
-    @AIContext(contextKey = "lastActivityDate")
     private LocalDateTime lastActivityDate;
 
     @OneToOne(cascade = CascadeType.ALL, fetch = FetchType.LAZY)

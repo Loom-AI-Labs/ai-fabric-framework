@@ -1,41 +1,68 @@
 ai-entities:
   kb:
-    entity-type: "kb"
-    auto-embedding: true
-    indexable: true
-    enable-search: true
+    indexing:
+      enabled: true
     searchable-fields:
-      - name: "content"
-        weight: 2.0
-      - name: "sourceName"
-        weight: 1.0
-    embeddable-fields:
-      - name: "content"
-        model: "document-workbench"
-        auto-generate: true
-        include-in-similarity: true
-      - name: "sourceName"
-        model: "document-workbench"
-        auto-generate: true
-        include-in-similarity: true
+    - name: content
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 90
+    - name: sourceName
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 70
     metadata-fields:
-      - name: "sourceId"
-        type: "string"
-      - name: "sourceName"
-        type: "string"
-      - name: "sourceVersion"
-        type: "integer"
-      - name: "tenantId"
-        type: "string"
-      - name: "visibility"
-        type: "string"
-      - name: "originalFilename"
-        type: "string"
-      - name: "documentId"
-        type: "string"
-      - name: "chunkIndex"
-        type: "integer"
-      - name: "chunkCount"
-        type: "integer"
-      - name: "contentFingerprint"
-        type: "string"
+    - name: sourceId
+      data-type: STRING
+      destinations:
+      - VECTOR_METADATA
+      - API_RESPONSE
+    - name: sourceName
+      data-type: STRING
+      destinations:
+      - VECTOR_METADATA
+      - API_RESPONSE
+    - name: sourceVersion
+      data-type: NUMBER
+      destinations:
+      - VECTOR_METADATA
+      - API_RESPONSE
+    - name: tenantId
+      data-type: STRING
+      destinations:
+      - VECTOR_METADATA
+      - API_RESPONSE
+    - name: visibility
+      data-type: STRING
+      destinations:
+      - VECTOR_METADATA
+      - API_RESPONSE
+    - name: originalFilename
+      data-type: STRING
+      destinations:
+      - VECTOR_METADATA
+      - API_RESPONSE
+    - name: documentId
+      data-type: STRING
+      destinations:
+      - VECTOR_METADATA
+      - API_RESPONSE
+    - name: chunkIndex
+      data-type: NUMBER
+      destinations:
+      - VECTOR_METADATA
+      - API_RESPONSE
+    - name: chunkCount
+      data-type: NUMBER
+      destinations:
+      - VECTOR_METADATA
+      - API_RESPONSE
+    - name: contentFingerprint
+      data-type: STRING
+      destinations:
+      - VECTOR_METADATA
+      - API_RESPONSE

@@ -1,6 +1,7 @@
 package ai.fabric.it.service;
 
 import ai.fabric.annotation.AIProcess;
+import ai.fabric.indexing.api.AIProcessOperation;
 import ai.fabric.indexing.api.IndexingStrategy;
 import ai.fabric.it.entity.TestProduct;
 import ai.fabric.it.repository.TestProductRepository;
@@ -21,19 +22,19 @@ public class TestProductService {
 
     private final TestProductRepository productRepository;
 
-    @AIProcess(entityType = "product", processType = "create")
+    @AIProcess(entityType = "test-product", operation = AIProcessOperation.CREATE)
     @Transactional
     public TestProduct createProduct(TestProduct product) {
         return productRepository.save(product);
     }
 
-    @AIProcess(processType = "create")
+    @AIProcess(operation = AIProcessOperation.CREATE)
     @Transactional
     public TestProduct createProductImplicit(TestProduct product) {
         return productRepository.save(product);
     }
 
-    @AIProcess(entityType = "product", processType = "update")
+    @AIProcess(entityType = "test-product", operation = AIProcessOperation.UPDATE)
     @Transactional
     public TestProduct updateProduct(Long id, String name, String description, BigDecimal price) {
         TestProduct existing = productRepository.findById(id)
@@ -52,7 +53,7 @@ public class TestProductService {
         return productRepository.save(existing);
     }
 
-    @AIProcess(entityType = "product", processType = "delete", generateEmbedding = false, indexForSearch = false)
+    @AIProcess(entityType = "test-product", operation = AIProcessOperation.DELETE)
     @Transactional
     public TestProduct deleteProduct(Long id) {
         TestProduct existing = productRepository.findById(id)
@@ -61,37 +62,36 @@ public class TestProductService {
         return existing;
     }
 
-    @AIProcess(entityType = "product", processType = "create", generateEmbedding = false, indexForSearch = false)
     @Transactional
     public TestProduct createProductWithoutEmbedding(TestProduct product) {
         return productRepository.save(product);
     }
 
-    @AIProcess(entityType = "product", processType = "create", indexingStrategy = IndexingStrategy.BATCH)
+    @AIProcess(
+        entityType = "test-product",
+        operation = AIProcessOperation.CREATE,
+        indexingStrategy = IndexingStrategy.BATCH
+    )
     @Transactional
     public List<TestProduct> bulkImportProducts(List<TestProduct> products) {
         return productRepository.saveAll(products);
     }
 
-    @AIProcess(entityType = "product", processType = "create", indexForSearch = false)
     @Transactional
     public TestProduct createProductWithoutIndexing(TestProduct product) {
         return productRepository.save(product);
     }
 
-    @AIProcess(entityType = "product", processType = "create", enableAnalysis = true)
+    @AIProcess(entityType = "test-product", operation = AIProcessOperation.CREATE)
     @Transactional
     public TestProduct createProductWithAnalysis(TestProduct product) {
         return productRepository.save(product);
     }
 
-    @AIProcess(entityType = "product", processType = "search", generateEmbedding = false, indexForSearch = false)
     public List<TestProduct> searchProducts(String query) {
         return productRepository.findByNameContainingIgnoreCase(query);
     }
 
-    @AIProcess(entityType = "product", processType = "analyze", enableAnalysis = true)
-    @Transactional
     public TestProduct analyzeProduct(Long id) {
         return productRepository.findById(id)
             .orElseThrow(() -> new IllegalArgumentException("Product not found: " + id));

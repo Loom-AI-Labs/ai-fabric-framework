@@ -1,20 +1,5 @@
 ai-entities:
   product:
-    entity-type: "product"
-    auto-embedding: true
-    indexable: true
-    enable-search: true
-    searchable-fields:
-      - name: "name"
-        weight: 2.0
-      - name: "description"
-        weight: 1.7
-      - name: "category"
-        weight: 1.1
-    metadata-fields:
-      - name: "category"
-        type: "string"
-      - name: "price"
-        type: "decimal"
-      - name: "sku"
-        type: "string"
+    indexing:
+      enabled: true
+      max-characters: 8000

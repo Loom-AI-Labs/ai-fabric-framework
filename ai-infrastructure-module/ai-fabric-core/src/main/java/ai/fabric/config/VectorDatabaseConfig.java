@@ -58,7 +58,8 @@ public class VectorDatabaseConfig {
 
         /**
          * When true, Qdrant metadata-filtered operations fail closed if a required payload index is
-         * missing instead of retrying without the provider-side metadata filter.
+         * missing. When false, AI Fabric repairs portable typed payload indexes and retries the same
+         * provider-filtered operation once; it never retries without the metadata filter.
          */
         private Boolean failOnMissingPayloadIndex = false;
     }

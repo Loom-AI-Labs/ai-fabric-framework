@@ -1,15 +1,15 @@
 package ai.fabric.migration.service;
 
 import ai.fabric.config.AIEntityConfigurationLoader;
-import ai.fabric.config.AIIndexingProperties;
-import ai.fabric.dto.AIEmbeddableField;
 import ai.fabric.dto.AIEntityConfig;
-import ai.fabric.dto.AIMetadataField;
-import ai.fabric.dto.AISearchableField;
-import ai.fabric.indexing.IndexingOperation;
-import ai.fabric.indexing.IndexingRequest;
+import ai.fabric.dto.AIEntityIndexingPolicy;
+import ai.fabric.indexing.api.AIEntityIndexingGateway;
+import ai.fabric.indexing.api.AIProcessOperation;
 import ai.fabric.indexing.api.IndexingStrategy;
-import ai.fabric.indexing.queue.IndexingQueueService;
+import ai.fabric.indexing.descriptor.AIEntityDescriptorRegistry;
+import ai.fabric.indexing.model.AIAnalysisPolicy;
+import ai.fabric.indexing.model.AIEntityDescriptor;
+import ai.fabric.indexing.projection.AIProjectionValidationException;
 import ai.fabric.migration.config.MigrationFieldConfig;
 import ai.fabric.migration.config.MigrationProperties;
 import ai.fabric.migration.domain.MigrationJob;
@@ -17,7 +17,6 @@ import ai.fabric.migration.domain.MigrationRequest;
 import ai.fabric.migration.domain.MigrationStatus;
 import ai.fabric.migration.repository.MigrationJobRepository;
 import ai.fabric.rag.VectorDatabaseService;
-import ai.fabric.service.AICapabilityService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -32,7 +31,9 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.atomic.AtomicReference;
@@ -47,21 +48,20 @@ import static org.mockito.Mockito.when;
 
 class DataMigrationServiceTest {
 
-    @Mock private IndexingQueueService queueService;
     @Mock private AIEntityConfigurationLoader configLoader;
+    @Mock private AIEntityDescriptorRegistry descriptorRegistry;
+    @Mock private AIEntityIndexingGateway indexingGateway;
     @Mock private EntityRepositoryRegistry repositoryRegistry;
     @Mock private MigrationJobRepository jobRepository;
     @Mock private VectorDatabaseService vectorDatabaseService;
     @Mock private MigrationProgressTracker progressTracker;
-    @Mock private AICapabilityService capabilityService;
     @Mock private ExecutorService executorService;
     @Mock private MigrationFilterPolicy filterPolicy;
 
     @Captor private ArgumentCaptor<Runnable> runnableCaptor;
-    @Captor private ArgumentCaptor<IndexingRequest> requestCaptor;
+    @Captor private ArgumentCaptor<Object> entityCaptor;
 
     private MigrationProperties migrationProperties;
-    private AIIndexingProperties indexingProperties;
     private Clock clock;
     private AtomicReference<MigrationJob> persistedJob;
 
@@ -73,18 +73,13 @@ class DataMigrationServiceTest {
         fieldConfig.setCreatedAtField("createdAt");
         migrationProperties.getEntityFields().put("demo", fieldConfig);
 
-        indexingProperties = new AIIndexingProperties();
         clock = Clock.fixed(Instant.parse("2024-01-01T00:00:00Z"), ZoneId.of("UTC"));
 
         persistedJob = new AtomicReference<>();
         when(filterPolicy.supports(any())).thenReturn(false);
-        when(capabilityService.resolveEntityId(any())).thenAnswer(inv -> {
-            Object arg = inv.getArgument(0);
-            if (arg instanceof DemoEntity de) {
-                return de.getId();
-            }
-            return "id";
-        });
+        AIEntityDescriptor descriptor = descriptor();
+        when(descriptorRegistry.resolve(any(Class.class))).thenReturn(descriptor);
+        when(descriptorRegistry.resolve(any(Object.class))).thenReturn(descriptor);
         when(jobRepository.save(any())).thenAnswer(inv -> {
             MigrationJob j = inv.getArgument(0);
             persistedJob.set(j);
@@ -113,7 +108,7 @@ class DataMigrationServiceTest {
         runnableCaptor.getValue().run();
 
         assertThat(persistedJob.get().getProcessedEntities()).isZero();
-        verify(queueService, never()).enqueue(any());
+        verify(indexingGateway, never()).upsert(any(), any(), any());
     }
 
     @Test
@@ -140,7 +135,7 @@ class DataMigrationServiceTest {
         verify(executorService).submit(runnableCaptor.capture());
         runnableCaptor.getValue().run();
 
-        verify(queueService, never()).enqueue(any());
+        verify(indexingGateway, never()).upsert(any(), any(), any());
         assertThat(persistedJob.get().getStatus()).isEqualTo(MigrationStatus.CANCELLED);
         assertThat(persistedJob.get().getProcessedEntities()).isZero();
     }
@@ -259,7 +254,8 @@ class DataMigrationServiceTest {
         JpaRepository<DemoEntity, String> repo = mockRepoWithEntities(entity);
         when(repositoryRegistry.getRegistration("demo")).thenReturn(new EntityRegistration("demo", DemoEntity.class, repo));
         when(configLoader.getEntityConfig("demo")).thenReturn(aiConfig());
-        when(capabilityService.resolveEntityId(entity)).thenReturn("  "); // blank id
+        when(descriptorRegistry.resolve(DemoEntity.class))
+            .thenReturn(descriptorWithIdentity("  "));
 
         DataMigrationService service = service();
         service.startMigration(MigrationRequest.builder().entityType("demo").batchSize(5).build());
@@ -267,7 +263,7 @@ class DataMigrationServiceTest {
         verify(executorService).submit(runnableCaptor.capture());
         runnableCaptor.getValue().run();
 
-        verify(queueService, never()).enqueue(any());
+        verify(indexingGateway, never()).upsert(any(), any(), any());
         assertThat(persistedJob.get().getProcessedEntities()).isEqualTo(1);
     }
 
@@ -318,8 +314,6 @@ class DataMigrationServiceTest {
         when(repositoryRegistry.getRegistration("demo"))
             .thenReturn(new EntityRegistration("demo", BadCreatedAtEntity.class, repo));
         when(configLoader.getEntityConfig("demo")).thenReturn(aiConfig());
-        when(capabilityService.resolveEntityId(bad)).thenReturn(bad.getId());
-
         DataMigrationService service = service();
         service.startMigration(MigrationRequest.builder()
             .entityType("demo")
@@ -343,7 +337,6 @@ class DataMigrationServiceTest {
         JpaRepository<DemoEntity, String> repo = mockRepoWithEntities(entity);
         when(repositoryRegistry.getRegistration("demo")).thenReturn(new EntityRegistration("demo", DemoEntity.class, repo));
         when(configLoader.getEntityConfig("demo")).thenReturn(aiConfig());
-        when(capabilityService.resolveEntityId(entity)).thenReturn(entity.id);
         when(vectorDatabaseService.vectorExists("demo", entity.id)).thenReturn(true);
 
         DataMigrationService service = service();
@@ -352,7 +345,7 @@ class DataMigrationServiceTest {
         verify(executorService).submit(runnableCaptor.capture());
         runnableCaptor.getValue().run();
 
-        verify(queueService, never()).enqueue(any());
+        verify(indexingGateway, never()).upsert(any(), any(), any());
         assertThat(persistedJob.get().getProcessedEntities()).isEqualTo(1);
     }
 
@@ -362,7 +355,6 @@ class DataMigrationServiceTest {
         JpaRepository<DemoEntity, String> repo = mockRepoWithEntities(entity);
         when(repositoryRegistry.getRegistration("demo")).thenReturn(new EntityRegistration("demo", DemoEntity.class, repo));
         when(configLoader.getEntityConfig("demo")).thenReturn(aiConfig());
-        when(capabilityService.resolveEntityId(entity)).thenReturn(entity.id);
         when(vectorDatabaseService.vectorExists("demo", entity.id)).thenReturn(false);
 
         DataMigrationService service = service();
@@ -371,17 +363,12 @@ class DataMigrationServiceTest {
         verify(executorService).submit(runnableCaptor.capture());
         runnableCaptor.getValue().run();
 
-        verify(queueService).enqueue(requestCaptor.capture());
-        IndexingRequest req = requestCaptor.getValue();
-        assertThat(req.entityType()).isEqualTo("demo");
-        assertThat(req.entityId()).isEqualTo("e-1");
-        assertThat(req.strategy()).isEqualTo(IndexingStrategy.ASYNC);
-        assertThat(req.operation()).isEqualTo(IndexingOperation.CREATE);
-        assertThat(req.actionPlan().generateEmbedding()).isTrue();
-        assertThat(req.actionPlan().indexForSearch()).isTrue();
-        assertThat(req.scheduledFor()).isEqualTo(clock.instant().atZone(clock.getZone()).toLocalDateTime());
-        assertThat(req.maxRetries()).isEqualTo(indexingProperties.getQueue().getMaxRetries());
-        assertThat(req.payload()).contains("e-1");
+        verify(indexingGateway).upsert(
+            entityCaptor.capture(),
+            org.mockito.ArgumentMatchers.eq(AIProcessOperation.CREATE),
+            org.mockito.ArgumentMatchers.eq(IndexingStrategy.ASYNC)
+        );
+        assertThat(entityCaptor.getValue()).isSameAs(entity);
     }
 
     @Test
@@ -390,7 +377,6 @@ class DataMigrationServiceTest {
         JpaRepository<DemoEntity, String> repo = mockRepoWithEntities(entity);
         when(repositoryRegistry.getRegistration("demo")).thenReturn(new EntityRegistration("demo", DemoEntity.class, repo));
         when(configLoader.getEntityConfig("demo")).thenReturn(aiConfig());
-        when(capabilityService.resolveEntityId(entity)).thenReturn(entity.id);
         when(vectorDatabaseService.vectorExists("demo", entity.id)).thenReturn(true);
 
         DataMigrationService service = service();
@@ -399,7 +385,11 @@ class DataMigrationServiceTest {
         verify(executorService).submit(runnableCaptor.capture());
         runnableCaptor.getValue().run();
 
-        verify(queueService).enqueue(any(IndexingRequest.class));
+        verify(indexingGateway).upsert(
+            any(),
+            org.mockito.ArgumentMatchers.eq(AIProcessOperation.CREATE),
+            org.mockito.ArgumentMatchers.eq(IndexingStrategy.ASYNC)
+        );
         assertThat(persistedJob.get().getProcessedEntities()).isEqualTo(1);
     }
 
@@ -409,9 +399,12 @@ class DataMigrationServiceTest {
         JpaRepository<DemoEntity, String> repo = mockRepoWithEntities(entity);
         when(repositoryRegistry.getRegistration("demo")).thenReturn(new EntityRegistration("demo", DemoEntity.class, repo));
         when(configLoader.getEntityConfig("demo")).thenReturn(aiConfig());
-        when(capabilityService.resolveEntityId(entity)).thenReturn(entity.id);
         when(vectorDatabaseService.vectorExists("demo", entity.id)).thenReturn(false);
-        when(queueService.enqueue(any(IndexingRequest.class))).thenThrow(new RuntimeException("queue down"));
+        when(indexingGateway.upsert(
+            any(),
+            org.mockito.ArgumentMatchers.eq(AIProcessOperation.CREATE),
+            org.mockito.ArgumentMatchers.eq(IndexingStrategy.ASYNC)
+        )).thenThrow(new RuntimeException("queue down"));
 
         DataMigrationService service = service();
         service.startMigration(MigrationRequest.builder().entityType("demo").batchSize(10).build());
@@ -420,24 +413,57 @@ class DataMigrationServiceTest {
         runnableCaptor.getValue().run();
 
         assertThat(persistedJob.get().getFailedEntities()).isEqualTo(1);
+        assertThat(persistedJob.get().getEnqueueFailures()).isEqualTo(1);
+        assertThat(persistedJob.get().getProjectionFailures()).isZero();
         assertThat(persistedJob.get().getProcessedEntities()).isEqualTo(1);
+    }
+
+    @Test
+    void projectionFailureIsCountedSeparatelyFromEnqueueFailure() {
+        DemoEntity entity = new DemoEntity("e-projection");
+        JpaRepository<DemoEntity, String> repo = mockRepoWithEntities(entity);
+        when(repositoryRegistry.getRegistration("demo"))
+            .thenReturn(new EntityRegistration("demo", DemoEntity.class, repo));
+        when(configLoader.getEntityConfig("demo")).thenReturn(aiConfig());
+        when(vectorDatabaseService.vectorExists("demo", entity.id)).thenReturn(false);
+        when(indexingGateway.upsert(
+            any(),
+            org.mockito.ArgumentMatchers.eq(AIProcessOperation.CREATE),
+            org.mockito.ArgumentMatchers.eq(IndexingStrategy.ASYNC)
+        )).thenThrow(new AIProjectionValidationException(
+            "demo",
+            "e-projection",
+            "title",
+            "SEMANTIC_SEARCH",
+            "REQUIRED_FIELD_MISSING"
+        ));
+
+        DataMigrationService service = service();
+        service.startMigration(MigrationRequest.builder()
+            .entityType("demo")
+            .batchSize(10)
+            .build());
+        verify(executorService).submit(runnableCaptor.capture());
+        runnableCaptor.getValue().run();
+
+        assertThat(persistedJob.get().getFailedEntities()).isEqualTo(1);
+        assertThat(persistedJob.get().getProjectionFailures()).isEqualTo(1);
+        assertThat(persistedJob.get().getEnqueueFailures()).isZero();
     }
 
     @Test
     void missingFieldConfigWithoutPolicyThrows() {
         migrationProperties.getEntityFields().clear();
         DataMigrationService service = new DataMigrationService(
-            queueService,
             configLoader,
+            descriptorRegistry,
+            indexingGateway,
             repositoryRegistry,
             jobRepository,
             vectorDatabaseService,
             progressTracker,
             migrationProperties,
-            indexingProperties,
-            new com.fasterxml.jackson.databind.ObjectMapper(),
             executorService,
-            capabilityService,
             clock,
             List.of()
         );
@@ -448,7 +474,13 @@ class DataMigrationServiceTest {
         when(repositoryRegistry.getRegistration("demo"))
             .thenReturn(new EntityRegistration("demo", DemoEntity.class, emptyRepo));
 
-        assertThatThrownBy(() -> service.startMigration(MigrationRequest.builder().entityType("demo").batchSize(10).build()))
+        assertThatThrownBy(() -> service.startMigration(MigrationRequest.builder()
+            .entityType("demo")
+            .batchSize(10)
+            .filters(ai.fabric.migration.domain.MigrationFilters.builder()
+                .entityIds(List.of("id-1"))
+                .build())
+            .build()))
             .isInstanceOf(IllegalStateException.class);
     }
 
@@ -520,7 +552,7 @@ class DataMigrationServiceTest {
         verify(executorService).submit(runnableCaptor.capture());
         runnableCaptor.getValue().run();
 
-        verify(queueService, never()).enqueue(any(IndexingRequest.class));
+        verify(indexingGateway, never()).upsert(any(), any(), any());
         assertThat(persistedJob.get().getProcessedEntities()).isEqualTo(1);
     }
 
@@ -586,18 +618,15 @@ class DataMigrationServiceTest {
 
     private DataMigrationService service() {
         return new DataMigrationService(
-            queueService,
             configLoader,
+            descriptorRegistry,
+            indexingGateway,
             repositoryRegistry,
             jobRepository,
             vectorDatabaseService,
             progressTracker,
             migrationProperties,
-            indexingProperties,
-            new com.fasterxml.jackson.databind.ObjectMapper()
-                .registerModule(new com.fasterxml.jackson.datatype.jsr310.JavaTimeModule()),
             executorService,
-            capabilityService,
             clock,
             List.of(filterPolicy)
         );
@@ -623,13 +652,60 @@ class DataMigrationServiceTest {
     private AIEntityConfig aiConfig() {
         return AIEntityConfig.builder()
             .entityType("demo")
-            .autoEmbedding(true)
-            .indexable(true)
-            .enableSearch(true)
-            .searchableFields(List.of(AISearchableField.builder().name("id").build()))
-            .embeddableFields(List.of(AIEmbeddableField.builder().name("id").build()))
-            .metadataFields(List.of(AIMetadataField.builder().name("createdAt").type("DATE").build()))
+            .indexing(AIEntityIndexingPolicy.builder().enabled(true).build())
             .build();
+    }
+
+    private AIEntityDescriptor descriptor() {
+        return descriptorWithIdentity(null);
+    }
+
+    private AIEntityDescriptor descriptorWithIdentity(String fixedIdentity) {
+        ai.fabric.indexing.api.EntityIdentityResolver identityResolver =
+            new ai.fabric.indexing.api.EntityIdentityResolver() {
+                @Override
+                public boolean supports(Class<?> entityClass) {
+                    return true;
+                }
+
+                @Override
+                public Object resolveIdentity(Object entity) {
+                    if (fixedIdentity != null) {
+                        return fixedIdentity;
+                    }
+                    if (entity instanceof DemoEntity demoEntity) {
+                        return demoEntity.getId();
+                    }
+                    if (entity instanceof BadCreatedAtEntity badEntity) {
+                        return badEntity.getId();
+                    }
+                    return null;
+                }
+
+                @Override
+                public String source() {
+                    return "test";
+                }
+            };
+        return new AIEntityDescriptor(
+            DemoEntity.class,
+            "demo",
+            identityResolver,
+            "test",
+            List.of(),
+            List.of(),
+            true,
+            8_000,
+            AIAnalysisPolicy.disabled(),
+            IndexingStrategy.ASYNC,
+            IndexingStrategy.AUTO,
+            IndexingStrategy.AUTO,
+            IndexingStrategy.AUTO,
+            ai.fabric.annotation.NoMigrationRepository.class,
+            "test-hash",
+            Set.of(ai.fabric.indexing.model.AIEntityCapability.INDEXING),
+            Map.of()
+        );
     }
 
     @SafeVarargs

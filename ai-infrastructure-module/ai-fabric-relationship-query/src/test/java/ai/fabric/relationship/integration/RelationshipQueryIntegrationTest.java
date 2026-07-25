@@ -42,6 +42,7 @@ import ai.fabric.relationship.service.LLMDrivenJPAQueryService;
 import ai.fabric.relationship.service.RelationshipQueryPlanner;
 import ai.fabric.relationship.service.DefaultRelationshipQueryDocumentMapper;
 import ai.fabric.relationship.service.RelationshipQueryDocumentMapper;
+import ai.fabric.relationship.support.RelationshipProjectionTestSupport;
 import ai.fabric.rag.VectorDatabaseService;
 import ai.fabric.relationship.validation.RelationshipQueryValidator;
 import org.junit.jupiter.api.BeforeEach;
@@ -173,7 +174,13 @@ public class RelationshipQueryIntegrationTest {
 
         ai.fabric.relationship.service.RelationshipTraversalService jpaTraversalService =
             new ai.fabric.relationship.service.JpaRelationshipTraversalService(entityManager);
-        RelationshipQueryDocumentMapper documentMapper = new DefaultRelationshipQueryDocumentMapper(null, configurationLoader);
+        RelationshipQueryDocumentMapper documentMapper =
+            new DefaultRelationshipQueryDocumentMapper(
+                RelationshipProjectionTestSupport.projectionService(
+                    configurationLoader
+                ),
+                configurationLoader
+            );
 
         llmDrivenJPAQueryService = new LLMDrivenJPAQueryService(
             planner,
@@ -207,7 +214,8 @@ public class RelationshipQueryIntegrationTest {
         assertThat(response.getDocuments()).extracting(RAGResponse.RAGDocument::getId)
             .containsExactly(activeDocumentId);
         assertThat(response.getEntityType()).isEqualTo("document");
-        assertThat(response.getDocuments().get(0).getContent()).isEqualTo("LLM Guardrails Playbook");
+        assertThat(response.getDocuments().get(0).getContent())
+            .isEqualTo("title: LLM Guardrails Playbook");
     }
 
     private RelationshipQueryPlan buildPlan() {

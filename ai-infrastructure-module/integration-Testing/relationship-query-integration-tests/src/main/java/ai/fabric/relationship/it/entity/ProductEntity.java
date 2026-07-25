@@ -1,6 +1,9 @@
 package ai.fabric.relationship.it.entity;
 
 import ai.fabric.annotation.AICapable;
+import ai.fabric.annotation.AIContext;
+import ai.fabric.annotation.AIIdentity;
+import ai.fabric.annotation.AISearchable;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
@@ -23,17 +26,22 @@ import java.util.UUID;
 public class ProductEntity {
 
     @Id
+    @AIIdentity
     private String id;
 
+    @AISearchable(priority = 100, required = true)
     @Column(nullable = false)
     private String name;
 
+    @AISearchable(priority = 80)
     @Column(nullable = false)
     private String color;
 
+    @AISearchable(priority = 70)
     @Column(nullable = false)
     private BigDecimal price;
 
+    @AIContext
     @Column(nullable = false)
     private String status;
 

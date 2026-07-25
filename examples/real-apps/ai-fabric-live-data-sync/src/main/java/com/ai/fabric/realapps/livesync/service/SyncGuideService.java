@@ -1,6 +1,7 @@
 package com.ai.fabric.realapps.livesync.service;
 
 import ai.fabric.annotation.AIProcess;
+import ai.fabric.indexing.api.AIProcessOperation;
 import ai.fabric.indexing.api.IndexingStrategy;
 import com.ai.fabric.realapps.livesync.domain.SyncGuide;
 import com.ai.fabric.realapps.livesync.repository.SyncGuideRepository;
@@ -20,9 +21,7 @@ public class SyncGuideService {
     @Transactional
     @AIProcess(
         entityType = SyncGuide.ENTITY_TYPE,
-        processType = "create",
-        generateEmbedding = true,
-        indexForSearch = true,
+        operation = AIProcessOperation.CREATE,
         indexingStrategy = IndexingStrategy.SYNC
     )
     public SyncGuide createGuide(
@@ -47,9 +46,7 @@ public class SyncGuideService {
     @Transactional
     @AIProcess(
         entityType = SyncGuide.ENTITY_TYPE,
-        processType = "update",
-        generateEmbedding = true,
-        indexForSearch = true,
+        operation = AIProcessOperation.UPDATE,
         indexingStrategy = IndexingStrategy.SYNC
     )
     public SyncGuide updateGuide(
@@ -71,9 +68,7 @@ public class SyncGuideService {
     @Transactional
     @AIProcess(
         entityType = SyncGuide.ENTITY_TYPE,
-        processType = "delete",
-        generateEmbedding = false,
-        indexForSearch = false,
+        operation = AIProcessOperation.DELETE,
         indexingStrategy = IndexingStrategy.AUTO
     )
     public SyncGuide deleteGuide(String workspaceId, String recordKey) {

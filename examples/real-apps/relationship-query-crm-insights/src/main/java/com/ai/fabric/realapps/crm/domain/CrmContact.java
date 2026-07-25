@@ -1,6 +1,9 @@
 package com.ai.fabric.realapps.crm.domain;
 
 import ai.fabric.annotation.AICapable;
+import ai.fabric.annotation.AIContext;
+import ai.fabric.annotation.AIIdentity;
+import ai.fabric.annotation.AISearchable;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
@@ -21,18 +24,23 @@ import lombok.Setter;
 public class CrmContact {
 
     @Id
+    @AIIdentity
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @AISearchable(priority = 100, required = true)
     @Column(nullable = false)
     private String firstName;
 
+    @AISearchable(priority = 100, required = true)
     @Column(nullable = false)
     private String lastName;
 
+    @AIContext
     @Column(nullable = false)
     private String email;
 
+    @AISearchable(priority = 60)
     private String title;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)

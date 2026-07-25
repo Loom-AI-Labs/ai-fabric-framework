@@ -1,0 +1,825 @@
+ai-entities:
+  mig-test:
+    indexing:
+      enabled: true
+  product:
+    indexing:
+      enabled: true
+    searchable-fields:
+    - name: name
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    - name: description
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+  test-product:
+    indexing:
+      enabled: true
+    searchable-fields:
+    - name: name
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    - name: description
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    metadata-fields:
+    - name: category
+      data-type: STRING
+      destinations:
+      - VECTOR_METADATA
+      - API_RESPONSE
+    - name: brand
+      data-type: STRING
+      destinations:
+      - VECTOR_METADATA
+      - API_RESPONSE
+    - name: price
+      data-type: NUMBER
+      destinations:
+      - VECTOR_METADATA
+      - API_RESPONSE
+  test-article:
+    indexing:
+      enabled: true
+    searchable-fields:
+    - name: title
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    - name: content
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    - name: summary
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+  test-user:
+    indexing:
+      enabled: true
+    searchable-fields:
+    - name: firstName
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    - name: lastName
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    - name: email
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    - name: bio
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+  search-concurrency-product:
+    indexing:
+      enabled: true
+    searchable-fields:
+    - name: name
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    - name: description
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+  searchpaginationproduct:
+    indexing:
+      enabled: true
+    searchable-fields:
+    - name: name
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    - name: description
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+  plan-batch:
+    indexing:
+      enabled: true
+    searchable-fields:
+    - name: name
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    - name: description
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+  plan-clear:
+    indexing:
+      enabled: true
+    searchable-fields:
+    - name: name
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    - name: description
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+  custom-type:
+    indexing:
+      enabled: true
+    searchable-fields:
+    - name: name
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    - name: description
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+  demo-type:
+    indexing:
+      enabled: true
+    searchable-fields:
+    - name: name
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    - name: description
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+  search-cache-product:
+    indexing:
+      enabled: true
+    searchable-fields:
+    - name: name
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    - name: description
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+  searchsemanticproduct:
+    indexing:
+      enabled: true
+    searchable-fields:
+    - name: name
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    - name: description
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+  searchthreshold_product:
+    indexing:
+      enabled: true
+    searchable-fields:
+    - name: name
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    - name: description
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+  searchfilterproduct:
+    indexing:
+      enabled: true
+    searchable-fields:
+    - name: name
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    - name: description
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+  ragproducthybrid:
+    indexing:
+      enabled: true
+    searchable-fields:
+    - name: name
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    - name: description
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+  ragproduct-metadata:
+    indexing:
+      enabled: true
+    searchable-fields:
+    - name: name
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    - name: description
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+  ragproduct-expansion-coverage:
+    indexing:
+      enabled: true
+    searchable-fields:
+    - name: name
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    - name: description
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+  persistvector:
+    indexing:
+      enabled: true
+    searchable-fields:
+    - name: name
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    - name: description
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+  ragproduct-multicontext:
+    indexing:
+      enabled: true
+    searchable-fields:
+    - name: name
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    - name: description
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+  testproduct:
+    indexing:
+      enabled: true
+    searchable-fields:
+    - name: name
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    - name: description
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+  testvector:
+    indexing:
+      enabled: true
+    searchable-fields:
+    - name: name
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    - name: description
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+  ragproduct:
+    indexing:
+      enabled: true
+    searchable-fields:
+    - name: name
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    - name: description
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+  ragproduct-contextual:
+    indexing:
+      enabled: true
+    searchable-fields:
+    - name: name
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    - name: description
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+  ragproduct-reranking:
+    indexing:
+      enabled: true
+    searchable-fields:
+    - name: name
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    - name: description
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+  ragconversation:
+    indexing:
+      enabled: true
+    searchable-fields:
+    - name: name
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    - name: description
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+  ragproduct-confidence:
+    indexing:
+      enabled: true
+    searchable-fields:
+    - name: name
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    - name: description
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+  ragproduct-expansion:
+    indexing:
+      enabled: true
+    searchable-fields:
+    - name: name
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    - name: description
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+  searchmulti_product:
+    indexing:
+      enabled: true
+    searchable-fields:
+    - name: name
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    - name: description
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+  searchmulti_user:
+    indexing:
+      enabled: true
+    searchable-fields:
+    - name: name
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    - name: email
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+  searchmulti_article:
+    indexing:
+      enabled: true
+    searchable-fields:
+    - name: title
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    - name: body
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+  plan-product:
+    indexing:
+      enabled: true
+    searchable-fields:
+    - name: name
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    - name: description
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+  plan-product-link:
+    indexing:
+      enabled: true
+    searchable-fields:
+    - name: name
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    - name: description
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+  plan-product-update:
+    indexing:
+      enabled: true
+    searchable-fields:
+    - name: name
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    - name: description
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+  plan-product-remove:
+    indexing:
+      enabled: true
+    searchable-fields:
+    - name: name
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    - name: description
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+  plan-other:
+    indexing:
+      enabled: true
+    searchable-fields:
+    - name: name
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    - name: description
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+  rag-article:
+    indexing:
+      enabled: true
+    searchable-fields:
+    - name: title
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    - name: body
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+  plan-product-metadata:
+    indexing:
+      enabled: true
+    searchable-fields:
+    - name: name
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    - name: description
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+  plan-query:
+    indexing:
+      enabled: true
+    searchable-fields:
+    - name: query
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    - name: description
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+  plan-concurrent:
+    indexing:
+      enabled: true
+    searchable-fields:
+    - name: name
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    - name: description
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+  plan-transaction:
+    indexing:
+      enabled: true
+    searchable-fields:
+    - name: name
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    - name: description
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+  vector-update:
+    indexing:
+      enabled: true
+    searchable-fields:
+    - name: content
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    metadata-fields:
+    - name: version
+      data-type: STRING
+      destinations:
+      - VECTOR_METADATA
+      - API_RESPONSE
+    - name: origin
+      data-type: STRING
+      destinations:
+      - VECTOR_METADATA
+      - API_RESPONSE
+  ragcrossentityproduct:
+    indexing:
+      enabled: true
+    searchable-fields:
+    - name: name
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    - name: description
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    metadata-fields:
+    - name: recordType
+      data-type: STRING
+      destinations:
+      - VECTOR_METADATA
+      - API_RESPONSE
+    - name: category
+      data-type: STRING
+      destinations:
+      - VECTOR_METADATA
+      - API_RESPONSE
+    - name: priceTier
+      data-type: STRING
+      destinations:
+      - VECTOR_METADATA
+      - API_RESPONSE
+    - name: customerTier
+      data-type: STRING
+      destinations:
+      - VECTOR_METADATA
+      - API_RESPONSE
+    - name: relationshipSummary
+      data-type: STRING
+      destinations:
+      - VECTOR_METADATA
+      - API_RESPONSE
+  ragcrossentitycustomer:
+    indexing:
+      enabled: true
+    searchable-fields:
+    - name: name
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    - name: description
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    metadata-fields:
+    - name: recordType
+      data-type: STRING
+      destinations:
+      - VECTOR_METADATA
+      - API_RESPONSE
+    - name: customerTier
+      data-type: STRING
+      destinations:
+      - VECTOR_METADATA
+      - API_RESPONSE
+    - name: segment
+      data-type: STRING
+      destinations:
+      - VECTOR_METADATA
+      - API_RESPONSE
+    - name: month
+      data-type: STRING
+      destinations:
+      - VECTOR_METADATA
+      - API_RESPONSE
+    - name: relationshipSummary
+      data-type: STRING
+      destinations:
+      - VECTOR_METADATA
+      - API_RESPONSE
+  ragcrossentityorder:
+    indexing:
+      enabled: true
+    searchable-fields:
+    - name: name
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    - name: description
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    metadata-fields:
+    - name: recordType
+      data-type: STRING
+      destinations:
+      - VECTOR_METADATA
+      - API_RESPONSE
+    - name: customerId
+      data-type: STRING
+      destinations:
+      - VECTOR_METADATA
+      - API_RESPONSE
+    - name: customerTier
+      data-type: STRING
+      destinations:
+      - VECTOR_METADATA
+      - API_RESPONSE
+    - name: month
+      data-type: STRING
+      destinations:
+      - VECTOR_METADATA
+      - API_RESPONSE
+    - name: relationshipSummary
+      data-type: STRING
+      destinations:
+      - VECTOR_METADATA
+      - API_RESPONSE

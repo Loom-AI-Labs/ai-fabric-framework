@@ -2,6 +2,8 @@
 # This configuration uses mocked AI services for testing without requiring API keys
 
 spring:
+  config:
+    import: classpath:ai-entity-config-test.yml
   autoconfigure:
     exclude:
       - org.springframework.ai.model.google.genai.autoconfigure.chat.GoogleGenAiChatAutoConfiguration
@@ -92,7 +94,7 @@ ai:
   # Infrastructure Configuration
   infrastructure:
     config:
-      file: ai-entity-config.yml
+      file: ai-entity-config-test.yml
     embedding:
       model: text-embedding-3-small
       dimensions: 1536

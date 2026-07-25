@@ -4,54 +4,16 @@ ai-config:
 
 ai-entities:
   document:
-    features:
-      - embedding
-      - search
-    searchable-fields:
-      - name: title
-        include-in-rag: true
-    metadata-fields:
-      - name: status
-        type: string
-        include-in-search: true
-      - name: author.fullName
-        type: string
-        include-in-search: true
+    indexing:
+      enabled: true
+      max-characters: 8000
+
   product:
-    features:
-      - embedding
-      - search
-    searchable-fields:
-      - name: name
-        include-in-rag: true
-      - name: color
-        include-in-rag: true
-      - name: price
-        include-in-rag: true
-    metadata-fields:
-      - name: brand.name
-        type: string
-        include-in-search: true
-      - name: status
-        type: string
-        include-in-search: true
+    indexing:
+      enabled: true
+      max-characters: 8000
+
   transaction:
-    features:
-      - embedding
-      - search
-    searchable-fields:
-      - name: title
-        include-in-rag: true
-    metadata-fields:
-      - name: channel
-        type: string
-        include-in-search: true
-      - name: status
-        type: string
-        include-in-search: true
-      - name: sourceAccount.region
-        type: string
-        include-in-search: true
-      - name: destinationAccount.region
-        type: string
-        include-in-search: true
+    indexing:
+      enabled: true
+      max-characters: 8000

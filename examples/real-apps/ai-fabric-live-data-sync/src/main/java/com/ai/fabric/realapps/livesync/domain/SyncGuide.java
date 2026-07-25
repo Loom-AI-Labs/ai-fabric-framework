@@ -2,7 +2,10 @@ package com.ai.fabric.realapps.livesync.domain;
 
 import ai.fabric.annotation.AICapable;
 import ai.fabric.annotation.AIContext;
+import ai.fabric.annotation.AIIdentity;
 import ai.fabric.annotation.AISearchable;
+import ai.fabric.indexing.api.AIContextDataType;
+import ai.fabric.indexing.api.AISearchPreprocessing;
 import ai.fabric.indexing.api.IndexingStrategy;
 import com.ai.fabric.realapps.livesync.repository.SyncGuideRepository;
 import jakarta.persistence.Column;
@@ -25,7 +28,6 @@ import lombok.Setter;
 )
 @AICapable(
     entityType = SyncGuide.ENTITY_TYPE,
-    features = {"embedding", "search", "rag"},
     indexingStrategy = IndexingStrategy.SYNC,
     onCreateStrategy = IndexingStrategy.SYNC,
     onUpdateStrategy = IndexingStrategy.SYNC,
@@ -38,43 +40,44 @@ public class SyncGuide {
 
     @Id
     @Column(nullable = false, length = 160)
-    @AIContext(contextKey = "entityId", dataType = "id", priority = 10, required = true)
+    @AIIdentity
+    @AIContext(key = "entityId", dataType = AIContextDataType.ID, priority = 100, required = true)
     private String id;
 
     @Column(name = "workspace_id", nullable = false, length = 80)
-    @AIContext(contextKey = "workspaceId", dataType = "id", priority = 10, required = true)
+    @AIContext(key = "workspaceId", dataType = AIContextDataType.ID, priority = 100, required = true)
     private String workspaceId;
 
     @Column(name = "record_key", nullable = false, length = 80)
-    @AIContext(contextKey = "recordKey", dataType = "id", priority = 9, required = true)
+    @AIContext(key = "recordKey", dataType = AIContextDataType.ID, priority = 90, required = true)
     private String recordKey;
 
     @Column(nullable = false, length = 180)
-    @AISearchable(weight = 2.3, preprocessing = "normalize", required = true, tags = {"primary", "guide"})
-    @AIContext(contextKey = "title", description = "Troubleshooting guide title", priority = 9)
+    @AISearchable(priority = 100, preprocessing = AISearchPreprocessing.NORMALIZE, required = true)
+    @AIContext(key = "title", description = "Troubleshooting guide title", priority = 90)
     private String title;
 
     @Column(nullable = false, length = 800)
-    @AISearchable(weight = 1.6, preprocessing = "clean", maxLength = 800, tags = {"symptoms"})
+    @AISearchable(priority = 70, preprocessing = AISearchPreprocessing.CLEAN, maxLength = 800)
     private String symptoms;
 
     @Column(nullable = false, length = 1600)
-    @AISearchable(weight = 2.0, preprocessing = "clean", maxLength = 1600, required = true, tags = {"resolution"})
+    @AISearchable(priority = 90, preprocessing = AISearchPreprocessing.CLEAN, maxLength = 1600, required = true)
     private String resolution;
 
     @Column(nullable = false, length = 100)
-    @AIContext(contextKey = "productArea", dataType = "string", description = "Product area covered by the guide", priority = 7)
+    @AIContext(key = "productArea", dataType = AIContextDataType.STRING, description = "Product area covered by the guide", priority = 70)
     private String productArea;
 
     @Column(nullable = false, length = 32)
-    @AIContext(contextKey = "severity", dataType = "enum", description = "Expected incident severity", priority = 6)
+    @AIContext(key = "severity", dataType = AIContextDataType.STRING, description = "Expected incident severity", priority = 60)
     private String severity;
 
     @Column(nullable = false)
-    @AIContext(contextKey = "revision", dataType = "number", priority = 10, required = true)
+    @AIContext(key = "revision", dataType = AIContextDataType.NUMBER, priority = 100, required = true)
     private Integer revision;
 
     @Column(nullable = false)
-    @AIContext(contextKey = "updatedAt", dataType = "date", format = "yyyy-MM-dd'T'HH:mm:ss", priority = 5)
+    @AIContext(key = "updatedAt", dataType = AIContextDataType.DATE, format = "yyyy-MM-dd'T'HH:mm:ss", priority = 50)
     private LocalDateTime updatedAt;
 }

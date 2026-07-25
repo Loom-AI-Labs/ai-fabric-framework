@@ -23,6 +23,7 @@ import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -110,7 +111,7 @@ class RAGHybridSearchIntegrationTest {
     }
 
     @Test
-    @DisplayName("Hybrid search flag toggles without degrading retrieval results")
+    @DisplayName("Unsupported hybrid search is reported as vector fallback without degrading results")
     void hybridSearchYieldsConsistentResults() {
         RAGRequest vectorOnly = RAGRequest.builder()
             .query(TARGET_QUERY)
@@ -146,7 +147,12 @@ class RAGHybridSearchIntegrationTest {
         assertFalse(hybridDocs.isEmpty(), "Hybrid response should return documents");
 
         assertTrue(Boolean.FALSE.equals(vectorResponse.getHybridSearchUsed()), "Vector-only response should flag hybrid as false");
-        assertTrue(Boolean.TRUE.equals(hybridResponse.getHybridSearchUsed()), "Hybrid response should flag hybrid as true");
+        assertTrue(Boolean.FALSE.equals(hybridResponse.getHybridSearchUsed()),
+            "Lucene must not report that native hybrid search was used");
+        assertEquals(true, hybridResponse.getMetadata().get("hybridSearchRequested"));
+        assertEquals(false, hybridResponse.getMetadata().get("hybridSearchUsed"));
+        assertEquals("fallback_vector", hybridResponse.getMetadata().get("hybridSearchMode"));
+        assertEquals(false, hybridResponse.getMetadata().get("vectorProviderSupportsHybridSearch"));
 
         Set<String> vectorDocIds = vectorDocs.stream()
             .map(RAGResponse.RAGDocument::getId)

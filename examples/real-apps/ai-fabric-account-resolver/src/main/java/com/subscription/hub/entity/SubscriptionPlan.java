@@ -2,6 +2,7 @@ package com.subscription.hub.entity;
 
 import ai.fabric.annotation.AICapable;
 import ai.fabric.annotation.AIContext;
+import ai.fabric.annotation.AIIdentity;
 import ai.fabric.annotation.AISearchable;
 import ai.fabric.indexing.api.IndexingStrategy;
 import jakarta.persistence.*;
@@ -18,9 +19,6 @@ import java.util.UUID;
 @Table(name = "subscription_plans")
 @AICapable(
     entityType = "subscription-plan",
-    autoEmbedding = true,
-    indexable = true,
-    enableRecommendations = true,
     indexingStrategy = IndexingStrategy.ASYNC
 )
 @Data
@@ -30,14 +28,15 @@ import java.util.UUID;
 public class SubscriptionPlan {
 
     @Id
+    @AIIdentity
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
-    @AISearchable(weight = 2.0)
+    @AISearchable(priority = 100, required = true)
     @Column(nullable = false, unique = true)
     private String name;  // "Pro Plan", "Enterprise Plan"
 
-    @AISearchable(weight = 1.5)
+    @AISearchable(priority = 80)
     @Column(columnDefinition = "TEXT")
     private String description;  // Full plan description
 

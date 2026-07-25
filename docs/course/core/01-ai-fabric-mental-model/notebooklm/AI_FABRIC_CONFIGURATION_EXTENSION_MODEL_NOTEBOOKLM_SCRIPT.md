@@ -157,10 +157,10 @@ application.yml / environment
   -> infrastructure, modes, providers, feature switches
 
 ai-entity-config.yml
-  -> entity behavior, fields, CRUD indexing policy
+  -> optional typed indexing/analysis policy and YAML-only projections
 
 Java annotations
-  -> entity field projection, indexing strategy, actions
+  -> typed entity identity, approved destinations, lifecycle strategy, actions
 
 classpath prompt resources and curated packs
   -> prompt versions and coherent mode defaults
@@ -178,8 +178,9 @@ application beans
 Spring properties under `ai.*` configure infrastructure. They choose enabled capabilities, modes,
 provider names, models, vector type, retrieval budgets, chat behavior, and related runtime policy.
 
-`ai-entity-config.yml` is a separate entity catalog. It describes entity types, searchable or
-embeddable fields, metadata fields, feature gates, and CRUD indexing behavior.
+`ai-entity-config.yml` is optional for annotation-backed entities. It supplies typed operational
+indexing and analysis policy or a complete projection for YAML-only push entities. Modular files use
+normal Spring Boot Config Data imports.
 
 Annotations describe code-local facts: which class maps to an entity type, which fields contain
 searchable text or context metadata, how indexing strategies resolve, and which Spring beans expose
@@ -228,20 +229,33 @@ deployed application configuration remains authoritative over pack defaults.
 ```java
 @AICapable(entityType = "support-article")
 class SupportArticle {
-    @AISearchable private String title;
-    @AISearchable private String body;
-    @AIContext private String tenantId;
+    @AIIdentity
+    @AIContext(dataType = AIContextDataType.ID, required = true)
+    private String id;
+
+    @AISearchable(priority = 100, required = true)
+    private String title;
+
+    @AISearchable(priority = 80, required = true)
+    private String body;
+
+    @AIContext(
+        dataType = AIContextDataType.ID,
+        priority = 100,
+        required = true
+    )
+    private String tenantId;
 }
 ```
 
 ```yaml
 ai-entities:
   support-article:
-    features: [embedding, search]
-    auto-process: true
-    metadata-fields:
-      - name: tenantId
-        type: string
+    indexing:
+      enabled: true
+      max-characters: 8000
+    analysis:
+      enabled: false
 ```
 
 Display this rule prominently:
@@ -252,21 +266,19 @@ No global YAML-versus-annotation winner
 
 **Narration:**
 
-`@AICapable(entityType=...)` links a Java type to the entity key loaded from
-`ai-entity-config.yml`. The default file can be changed with `ai.config.default-file`.
+`@AICapable.entityType` is canonical for a typed entity. `AISearchable` and `AIContext` declare the
+approved fields, typed destinations, preprocessing, required values, and projection priority. The
+descriptor registry validates this contract at startup.
 
-For searchable content extraction, `AICapabilityService` prefers `@AISearchable` fields when the
-class declares any. If none exist, it falls back to searchable or embeddable fields from the entity
-YAML. This is an extraction rule, not a universal configuration hierarchy.
+YAML may explicitly disable indexing, set a projection budget, enable optional analysis, or apply a
+supported field override. It cannot replace typed entity identity or widen an annotation's approved
+security destinations. Annotation-backed entities need no YAML entry.
 
-For annotation-derived `@AIContext` metadata registration, another rule applies. When JPA metadata
-discovery is available and enabled, AI Fabric can merge annotation-derived metadata fields into an
-existing YAML entity config. Existing YAML field definitions are preserved, missing annotation
-fields are appended, and an annotation can fill a missing type without replacing a configured one.
+YAML-only push entities are different: they have no Java type contract, so the map key is canonical
+and YAML must explicitly enable indexing and declare searchable and metadata fields.
 
-Creating an entirely missing entity config from annotations is disabled by default through
-`ai.config.annotation-metadata.create-missing-entity-config=false`. YAML remains the deliberate
-entity catalog unless you opt into generated minimal configs.
+Priority orders projection and controls retention under a bounded character budget. It does not
+modify vector similarity scores.
 
 ## Scene 7: Indexing Strategy Has Its Own Annotation Order
 
@@ -282,25 +294,25 @@ entity catalog unless you opt into generated minimal configs.
 Beside it, show YAML as a capability gate rather than another item in that strategy chain.
 
 ```text
-entity YAML:
-auto-process + features + CRUD operation flags
+typed entity policy:
+indexing.enabled + analysis.enabled/after
 ```
 
 **Narration:**
 
 Indexing strategy demonstrates why precedence must be discussed per subsystem.
 
-`IndexingStrategyResolver` first uses an explicit method-level `@AIProcess` strategy. When that is
+The resolved descriptor first uses an explicit method-level `@AIProcess` strategy. When that is
 `AUTO`, it checks the operation-specific `@AICapable` strategy for create, update, or delete. When
-that is also `AUTO`, it uses the entity's default annotation strategy, with asynchronous indexing as
-the final fallback.
+that is also `AUTO`, it uses the entity's default annotation strategy.
 
-Entity YAML still controls whether the configured AI features and CRUD work are enabled. The
-strategy decides how approved work is scheduled; it does not override an entity capability gate.
+Typed entity policy can disable indexing for a deployment. The strategy decides when approved work
+is processed; it does not override a disabled entity policy. `SYNC` means provider work is attempted
+after source commit, while `ASYNC` and `BATCH` leave it to workers.
 
 This separation lets code express lifecycle mechanics close to the method while deployment and
-entity configuration decide whether the capability is active. Tests should prove both the resolved
-strategy and the resulting indexing action plan.
+entity configuration decide whether indexing is active. Tests should prove the resolved descriptor,
+durable queue acceptance, and final provider state.
 
 ## Scene 8: Provider Registration And Provider Selection Are Different
 

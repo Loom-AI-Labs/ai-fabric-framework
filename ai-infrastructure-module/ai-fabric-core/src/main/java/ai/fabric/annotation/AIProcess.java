@@ -1,6 +1,9 @@
 package ai.fabric.annotation;
 
+import ai.fabric.indexing.api.AIProcessOperation;
+import ai.fabric.indexing.api.AIProcessTargetResolver;
 import ai.fabric.indexing.api.IndexingStrategy;
+import ai.fabric.indexing.api.NoAIProcessTargetResolver;
 
 import java.lang.annotation.Documented;
 import java.lang.annotation.ElementType;
@@ -9,52 +12,32 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
 /**
- * AIProcess Annotation
- * 
- * Method-level annotation for automatic AI processing.
- * Contains both entity type and processing configuration.
- * 
- * @author AI Infrastructure Team
- * @version 1.0.0
+ * Marks a public Spring service method as an entity lifecycle boundary.
+ *
+ * <p>The operation is explicit and never inferred from the Java method name.</p>
  */
 @Target(ElementType.METHOD)
 @Retention(RetentionPolicy.RUNTIME)
 @Documented
 public @interface AIProcess {
-    
-    /**
-     * Entity type for AI processing
-     * Used to lookup configuration in ai-entity-config.yml
-     */
-    String entityType() default "";
-    
-    /**
-     * AI processing type
-     * Options: create, update, delete, search, analyze
-     */
-    String processType() default "create";
-    
-    /**
-     * Enable embedding generation
-     * Default: true
-     */
-    boolean generateEmbedding() default true;
-    
-    /**
-     * Enable search indexing
-     * Default: true
-     */
-    boolean indexForSearch() default true;
-    
-    /**
-     * Enable AI analysis
-     * Default: false
-     */
-    boolean enableAnalysis() default false;
 
     /**
-     * Optional indexing strategy override for this method.
-     * Defaults to AUTO which inherits the resolved entity operation strategy.
+     * Lifecycle operation performed by the annotated method.
+     */
+    AIProcessOperation operation();
+
+    /**
+     * Optional entity-type assertion. When present it must match the resolved target.
+     */
+    String entityType() default "";
+
+    /**
+     * Optional application target resolver for wrappers, argument-owned targets, or void deletes.
+     */
+    Class<? extends AIProcessTargetResolver> targetResolver() default NoAIProcessTargetResolver.class;
+
+    /**
+     * Optional strategy override. {@link IndexingStrategy#AUTO} inherits from the entity.
      */
     IndexingStrategy indexingStrategy() default IndexingStrategy.AUTO;
 }

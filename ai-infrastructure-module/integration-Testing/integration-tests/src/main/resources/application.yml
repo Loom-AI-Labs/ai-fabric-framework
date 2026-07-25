@@ -4,6 +4,8 @@
 spring:
   application:
     name: ai-fabric-integration-tests
+  config:
+    import: optional:classpath:ai-entity-config.yml
 
   # Database Configuration (H2 in-memory for testing)
   datasource:
@@ -70,16 +72,6 @@ ai:
       temperature: ${OPENAI_TEMPERATURE:0.3}
       timeout: ${OPENAI_TIMEOUT:60}
       priority: 100
-
-  # Infrastructure Configuration
-  config:
-    default-file: ai-entity-config.yml
-    embedding:
-      model: text-embedding-ada-002
-      dimensions: 1536
-    search:
-      max-results: 100
-      similarity-threshold: 0.7
 
   # Vector Database Configuration (can be overridden by profile)
   vector-db:

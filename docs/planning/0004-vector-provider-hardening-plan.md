@@ -109,14 +109,11 @@ Implemented in the current working branch:
 - Qdrant gRPC and REST admin diagnostics now expose the required payload-index fields plus lazy
   readiness evidence: verified indexes, indexes seen missing during first-use checks, create attempts,
   and last create failures;
-- Qdrant gRPC and REST fallback results now expose `metadataFilterFallback=true` in each affected
-  search row and its metadata map when the provider retries without server-side metadata filtering;
-- Qdrant gRPC and REST compatibility fallback now re-applies the original portable metadata
-  predicate client-side before returning rows, so missing-index retry cannot broaden a
-  metadata-filtered search;
-- Qdrant gRPC and REST admin diagnostics now expose `metadataFilterFallbacks`, a per-collection
-  fallback counter, so operators can see compatibility fallback events after the response has been
-  consumed;
+- Qdrant gRPC and REST no longer retry without provider-side metadata filtering. When strict mode is
+  disabled and Qdrant reports a missing payload index, AI Fabric repairs portable typed indexes
+  (`keyword`, `bool`, or `integer`) and retries the identical filtered search or scan once;
+- Qdrant gRPC and REST admin diagnostics expose `payloadIndexRepairAttempts`, while the legacy
+  `metadataFilterFallbacks` key remains an empty compatibility field;
 - Qdrant gRPC and REST now short-circuit unsupported metadata filter shapes before provider calls, so
   the missing-index fallback cannot widen rejected filters into unfiltered search or scan results;
 - Qdrant gRPC and REST mocked tests now prove portable empty-string exact filters are preserved in
@@ -131,6 +128,9 @@ Implemented in the current working branch:
 - Weaviate update/delete lifecycle paths now preserve not-found idempotence but propagate
   existence-check, delete-before-upsert, create, and delete failures as `AIServiceException`, with
   mocked regression coverage so backend failures cannot be reported as failed/no-op lifecycle calls;
+- Weaviate creates metadata text properties with `field` tokenization for exact matching. Existing
+  schemas are protected by paged native retrieval followed by the shared exact-scalar predicate, so
+  broad token matches cannot consume the requested result limit;
 - Lucene indexes portable scalar metadata fields and additionally supports Lucene-local decimal
   equality filters for search and scan, documented as a provider-specific extension rather than a
   portable cross-provider guarantee;
@@ -276,7 +276,7 @@ clear production-hardening backlog around proof, observability, and operational 
      enabled and `management.health.ai-fabric.vector.enabled` is not disabled.
    - Readiness verdict: `vectorDatabase.readiness.status`, `operational`, `productionReady`,
      `reasons`, and `warnings`.
-   - Include fallback counters such as Qdrant `metadataFilterFallbacks` and Weaviate
+   - Include repair/fallback counters such as Qdrant `payloadIndexRepairAttempts` and Weaviate
      `aggregateCountFallbacks`.
    - Keep provider-specific scope evidence such as namespace, collection, tenant, class, index, and
      filter mode.
@@ -287,10 +287,11 @@ clear production-hardening backlog around proof, observability, and operational 
    - Guard against claiming arbitrary nested JSON metadata filtering across all providers.
    - Guard against documenting the memory provider as production durable.
 
-3. Add a production profile recommendation for Qdrant strict payload-index mode.
+3. Document both Qdrant payload-index policies.
    - Property: `ai.vector-db.operations.fail-on-missing-payload-index`.
-   - Release recommendation: keep compatibility fallback available, but prefer strict mode in
-     production deployments that depend on metadata filtering for isolation or authorization.
+   - `false`: repair portable typed indexes and retry the same filtered operation once.
+   - `true`: require pre-provisioned indexes and fail immediately when one is missing.
+   - Neither policy permits an unfiltered retry.
 
 4. Add lightweight operational runbooks per native provider.
    - Pinecone: eventual consistency, deterministic clear, namespace/index configuration, sparse index
@@ -321,8 +322,8 @@ clear production-hardening backlog around proof, observability, and operational 
    - Release readiness warns on positive count fallback counters.
 
 4. Keep metrics for provider fallback and retry events wired into release observability.
-   - Qdrant metadata-filter fallback count. Done through
-     `ai.fabric.vector.provider.fallbacks{provider=qdrant,operation=search,reason=missing_payload_index}`.
+   - Qdrant safe payload-index repair retries. Done through
+     `ai.fabric.vector.provider.retries{provider=qdrant,operation=<search|scan>,reason=payload_index_repair}`.
    - Weaviate aggregate-count fallback count. Done through
      `ai.fabric.vector.provider.fallbacks{provider=weaviate,operation=count,reason=aggregate_unsupported}`.
    - Milvus exact count is intentionally visible-row scan based; do not add a stats-fallback count
@@ -352,7 +353,7 @@ clear production-hardening backlog around proof, observability, and operational 
 | Raw metadata JSON serialization | `ai-infrastructure-module/ai-fabric-core/src/main/java/ai/fabric/util/MetadataJsonSerializer.java` |
 | Pinecone native provider | `ai-infrastructure-module/victor-databases/ai-fabric-vector-pinecone/src/main/java/ai/fabric/vector/pinecone/PineconeVectorDatabaseService.java` |
 | Qdrant native provider | `ai-infrastructure-module/victor-databases/ai-fabric-vector-qdrant/src/main/java/ai/fabric/vector/qdrant/QdrantVectorDatabaseService.java` |
-| Qdrant REST fallback | `ai-infrastructure-module/victor-databases/ai-fabric-vector-qdrant/src/main/java/ai/fabric/vector/qdrant/QdrantRestVectorDatabaseService.java` |
+| Qdrant REST transport | `ai-infrastructure-module/victor-databases/ai-fabric-vector-qdrant/src/main/java/ai/fabric/vector/qdrant/QdrantRestVectorDatabaseService.java` |
 | Weaviate native provider | `ai-infrastructure-module/victor-databases/ai-fabric-vector-weaviate/src/main/java/ai/fabric/vector/weaviate/WeaviateVectorDatabaseService.java` |
 | Milvus native provider | `ai-infrastructure-module/victor-databases/ai-fabric-vector-milvus/src/main/java/ai/fabric/vector/milvus/MilvusVectorDatabaseService.java` |
 | Lucene local provider | `ai-infrastructure-module/victor-databases/ai-fabric-vector-lucene/src/main/java/ai/fabric/vector/lucene/LuceneVectorDatabaseService.java` |
@@ -500,10 +501,11 @@ Qdrant uses the official Java client for gRPC deployments and a REST implementat
 preferred. It creates collections, upserts points, retrieves points, searches, scrolls, counts, and
 creates payload indexes for required fields.
 
-**Known caveat:**
+**Resolved caveat:**
 
-If a required payload index is missing, filtered search can fail and then retry without server-side
-filtering. This protects availability, but it can hide an index-management problem.
+The former missing-index compatibility path retried search without Qdrant's metadata filter. Even
+with client-side post-filtering, applying the provider limit before the exact predicate could hide a
+valid lower-ranked result. That weaker retry has been removed.
 
 **Plan:**
 
@@ -518,30 +520,27 @@ filtering. This protects availability, but it can hide an index-management probl
   name and field name.
 - Add a configuration switch:
   - `ai.vector-db.operations.fail-on-missing-payload-index`
-  - default `false` for compatibility;
-  - recommended `true` for production.
-- Keep fallback search for compatibility, but mark the result metadata with
-  `metadataFilterFallback=true` when used and increment the provider diagnostic
-  `metadataFilterFallbacks` counter for the affected collection.
-- Re-apply the original portable metadata predicate client-side before returning fallback rows so a
-  missing payload index never broadens a metadata-filtered result set.
+  - default `false` enables one safe typed-index repair and filtered retry;
+  - `true` fails immediately for operators who require pre-provisioned indexes.
+- Preserve the original provider-side filter for every retry. Never retry search or scan without it.
+- Expose `payloadIndexRepairAttempts` in diagnostics and emit
+  `ai.fabric.vector.provider.retries{provider=qdrant,reason=payload_index_repair}`.
 - Do not use fallback for unsupported metadata filter shapes. These are AI Fabric contract rejections,
   not Qdrant index-management failures, so both gRPC and REST return empty results before provider
   search/scroll calls.
 - Covered tests for:
   - required payload index is created;
-  - missing-index error retries only when fallback is allowed;
+  - missing-index errors create the requested typed index and retry the same filtered request;
   - fail-closed mode throws a clear AI Fabric exception;
-  - REST and gRPC fallback paths filter out nonmatching rows, then mark returned rows and metadata
-    with `metadataFilterFallback=true`.
+  - REST and gRPC retry paths retain the provider filter;
   - unsupported metadata filters short-circuit before provider/network calls on both transports.
   - successful and failed payload-index creation attempts are visible through `adminDiagnostics()`.
-  - fallback use is visible through `adminDiagnostics().metadataFilterFallbacks`.
+  - repair use is visible through `adminDiagnostics().payloadIndexRepairAttempts`.
 
 **Acceptance criteria:**
 
 - Missing Qdrant payload indexes are visible in diagnostics.
-- Production users can fail closed instead of silently weakening filtering.
+- Production users can fail immediately or safely auto-repair without weakening filtering.
 - REST and gRPC behavior stay aligned.
 
 ### 5. Lucene metadata filtering
@@ -767,8 +766,10 @@ suites.
 8. Add Testcontainers contract implementations for Qdrant REST/gRPC, Weaviate, and Milvus. Done;
    local Docker execution passes through the `container-contract-tests` profile and the suite is wired
    into the manual provider-matrix workflow.
-9. Add Qdrant fallback visibility in search metadata and rows. Done.
-10. Prevent Qdrant fallback from widening unsupported metadata filters. Done.
+9. Add Qdrant missing-index compatibility visibility. Superseded by the safe typed-index repair
+   diagnostics in item 25.
+10. Prevent Qdrant compatibility handling from widening unsupported metadata filters. Done; no
+    Qdrant search or scan retry removes the provider-side filter.
 11. Add deeper Pinecone consistency and sparse/metadata-filter mocked tests. Done.
 12. Add focused Milvus native lifecycle mocked coverage. Done.
 13. Add focused Weaviate schema/tenant/upsert mocked coverage. Done.
@@ -793,6 +794,11 @@ suites.
     exact count unsupported because native `row_count` can include stale deleted/upserted rows. Done.
 24. Add Weaviate internal sentinel handling for empty-string metadata properties and post-parse
     portable metadata equality filtering for integral-vs-decimal exactness. Done.
+25. Replace Qdrant's unfiltered missing-index fallback in both REST and gRPC transports with typed
+    payload-index repair and one retry of the identical filtered search or scan. Done.
+26. Add a shared provider contract proving exact metadata filtering happens before caller limits,
+    then make Weaviate search and scan page through provider candidates so legacy text-tokenized
+    classes cannot hide lower-ranked exact matches. Done.
 
 ## Non-goals
 

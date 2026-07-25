@@ -1,44 +1,5 @@
 ai-entities:
   subscription-plan:
-    entity-type: "subscription-plan"
-    auto-embedding: true
-    indexable: true
-    enable-search: true
-    enable-recommendations: true
-    searchable-fields:
-      - name: "name"
-        weight: 2.0
-      - name: "description"
-        weight: 1.5
-    metadata-fields:
-      - name: "monthlyPrice"
-        type: "decimal"
-      - name: "annualPrice"
-        type: "decimal"
-      - name: "tier"
-        type: "string"
-      - name: "features"
-        type: "string"
-      - name: "maxUsers"
-        type: "integer"
-      - name: "storageGB"
-        type: "integer"
-
-  subscription:
-    entity-type: "subscription"
-    auto-embedding: false
-    indexable: true
-    enable-search: false
-    metadata-fields:
-      - name: "status"
-        type: "string"
-      - name: "startDate"
-        type: "datetime"
-      - name: "endDate"
-        type: "datetime"
-      - name: "billingCycle"
-        type: "string"
-      - name: "churnRiskScore"
-        type: "decimal"
-      - name: "lastActivityDate"
-        type: "datetime"
+    indexing:
+      enabled: true
+      max-characters: 8000

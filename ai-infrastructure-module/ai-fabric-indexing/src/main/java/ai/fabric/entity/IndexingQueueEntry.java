@@ -1,9 +1,8 @@
 package ai.fabric.entity;
 
-import ai.fabric.indexing.IndexingActionPlan;
-import ai.fabric.indexing.IndexingOperation;
-import ai.fabric.indexing.IndexingPriority;
 import ai.fabric.indexing.IndexingStatus;
+import ai.fabric.indexing.api.AIIndexWorkType;
+import ai.fabric.indexing.api.AIProcessOperation;
 import ai.fabric.indexing.api.IndexingStrategy;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -16,44 +15,40 @@ import jakarta.persistence.Index;
 import jakarta.persistence.Lob;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
-import lombok.Getter;
-import lombok.Setter;
 
 import java.time.LocalDateTime;
-import java.util.UUID;
 
 /**
- * Durable queue entry for AI indexing tasks.
+ * Durable, class-free indexing work item.
  */
-@Getter
-@Setter
 @Entity
 @Table(
     name = "ai_indexing_queue",
     indexes = {
-        @Index(name = "idx_ai_queue_status_strategy", columnList = "status,strategy"),
-        @Index(name = "idx_ai_queue_scheduled", columnList = "scheduled_for"),
-        @Index(name = "idx_ai_queue_entity", columnList = "entity_type,entity_id")
+        @Index(name = "idx_ai_queue_status_strategy", columnList = "status,strategy,scheduled_for"),
+        @Index(name = "idx_ai_queue_entity_order", columnList = "entity_type,entity_id,id"),
+        @Index(name = "idx_ai_queue_dependency", columnList = "depends_on_work_id")
     }
 )
 public class IndexingQueueEntry {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.UUID)
-    private String id;
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
 
     @Column(name = "entity_type", nullable = false, length = 128)
     private String entityType;
 
-    @Column(name = "entity_id", length = 128)
+    @Column(name = "entity_id", nullable = false, length = 512)
     private String entityId;
 
-    @Column(name = "entity_class", nullable = false, length = 256)
-    private String entityClass;
+    @Enumerated(EnumType.STRING)
+    @Column(name = "work_type", nullable = false, length = 32)
+    private AIIndexWorkType workType;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "operation", nullable = false, length = 32)
-    private IndexingOperation operation;
+    @Column(name = "source_operation", nullable = false, length = 32)
+    private AIProcessOperation sourceOperation;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "strategy", nullable = false, length = 32)
@@ -63,45 +58,39 @@ public class IndexingQueueEntry {
     @Column(name = "status", nullable = false, length = 32)
     private IndexingStatus status = IndexingStatus.PENDING;
 
-    @Enumerated(EnumType.STRING)
-    @Column(name = "priority", nullable = false, length = 32)
-    private IndexingPriority priority;
+    @Column(name = "payload_schema_version", nullable = false)
+    private int payloadSchemaVersion;
 
-    @Column(name = "priority_weight", nullable = false)
-    private int priorityWeight;
+    @Column(name = "descriptor_hash", nullable = false, length = 64)
+    private String descriptorHash;
 
-    @Column(name = "generate_embedding", nullable = false)
-    private boolean generateEmbedding;
+    @Column(name = "correlation_id", length = 128)
+    private String correlationId;
 
-    @Column(name = "index_for_search", nullable = false)
-    private boolean indexForSearch;
-
-    @Column(name = "enable_analysis", nullable = false)
-    private boolean enableAnalysis;
-
-    @Column(name = "remove_from_search", nullable = false)
-    private boolean removeFromSearch;
-
-    @Column(name = "cleanup_embeddings", nullable = false)
-    private boolean cleanupEmbeddings;
+    @Column(name = "depends_on_work_id")
+    private Long dependsOnWorkId;
 
     @Lob
     @Column(name = "payload", nullable = false, columnDefinition = "TEXT")
     private String payload;
 
+    @Lob
+    @Column(name = "result_payload", columnDefinition = "TEXT")
+    private String resultPayload;
+
     @Column(name = "max_retries", nullable = false)
-    private int maxRetries = 5;
+    private int maxRetries;
 
     @Column(name = "retry_count", nullable = false)
     private int retryCount;
 
-    @Column(name = "error_message", columnDefinition = "TEXT")
-    private String errorMessage;
+    @Column(name = "error_code", length = 128)
+    private String errorCode;
 
-    @Column(name = "dead_letter_reason", columnDefinition = "TEXT")
+    @Column(name = "dead_letter_reason", length = 256)
     private String deadLetterReason;
 
-    @Column(name = "processing_node", length = 64)
+    @Column(name = "processing_node", length = 128)
     private String processingNode;
 
     @Column(name = "requested_at", nullable = false)
@@ -131,40 +120,211 @@ public class IndexingQueueEntry {
     @Version
     private long version;
 
-    public void applyActionPlan(IndexingActionPlan plan) {
-        this.generateEmbedding = plan.generateEmbedding();
-        this.indexForSearch = plan.indexForSearch();
-        this.enableAnalysis = plan.enableAnalysis();
-        this.removeFromSearch = plan.removeFromSearch();
-        this.cleanupEmbeddings = plan.cleanupEmbeddings();
+    public Long getId() {
+        return id;
     }
 
-    public IndexingActionPlan toActionPlan() {
-        return new IndexingActionPlan(
-            generateEmbedding,
-            indexForSearch,
-            enableAnalysis,
-            removeFromSearch,
-            cleanupEmbeddings
-        );
+    public String getEntityType() {
+        return entityType;
     }
 
-    public void initialize(IndexingStrategy strategy, IndexingPriority priority, LocalDateTime now) {
+    public void setEntityType(String entityType) {
+        this.entityType = entityType;
+    }
+
+    public String getEntityId() {
+        return entityId;
+    }
+
+    public void setEntityId(String entityId) {
+        this.entityId = entityId;
+    }
+
+    public AIIndexWorkType getWorkType() {
+        return workType;
+    }
+
+    public void setWorkType(AIIndexWorkType workType) {
+        this.workType = workType;
+    }
+
+    public AIProcessOperation getSourceOperation() {
+        return sourceOperation;
+    }
+
+    public void setSourceOperation(AIProcessOperation sourceOperation) {
+        this.sourceOperation = sourceOperation;
+    }
+
+    public IndexingStrategy getStrategy() {
+        return strategy;
+    }
+
+    public void setStrategy(IndexingStrategy strategy) {
         this.strategy = strategy;
-        this.priority = priority;
-        this.priorityWeight = priority.getWeight();
-        this.status = IndexingStatus.PENDING;
-        this.requestedAt = now;
-        if (this.scheduledFor == null) {
-            this.scheduledFor = now;
-        }
-        this.createdAt = now;
-        this.updatedAt = now;
     }
 
-    public String assignProcessingNode() {
-        String node = UUID.randomUUID().toString();
-        this.processingNode = node;
-        return node;
+    public IndexingStatus getStatus() {
+        return status;
+    }
+
+    public void setStatus(IndexingStatus status) {
+        this.status = status;
+    }
+
+    public int getPayloadSchemaVersion() {
+        return payloadSchemaVersion;
+    }
+
+    public void setPayloadSchemaVersion(int payloadSchemaVersion) {
+        this.payloadSchemaVersion = payloadSchemaVersion;
+    }
+
+    public String getDescriptorHash() {
+        return descriptorHash;
+    }
+
+    public void setDescriptorHash(String descriptorHash) {
+        this.descriptorHash = descriptorHash;
+    }
+
+    public String getCorrelationId() {
+        return correlationId;
+    }
+
+    public void setCorrelationId(String correlationId) {
+        this.correlationId = correlationId;
+    }
+
+    public String getPayload() {
+        return payload;
+    }
+
+    public Long getDependsOnWorkId() {
+        return dependsOnWorkId;
+    }
+
+    public void setDependsOnWorkId(Long dependsOnWorkId) {
+        this.dependsOnWorkId = dependsOnWorkId;
+    }
+
+    public void setPayload(String payload) {
+        this.payload = payload;
+    }
+
+    public String getResultPayload() {
+        return resultPayload;
+    }
+
+    public void setResultPayload(String resultPayload) {
+        this.resultPayload = resultPayload;
+    }
+
+    public int getMaxRetries() {
+        return maxRetries;
+    }
+
+    public void setMaxRetries(int maxRetries) {
+        this.maxRetries = maxRetries;
+    }
+
+    public int getRetryCount() {
+        return retryCount;
+    }
+
+    public void setRetryCount(int retryCount) {
+        this.retryCount = retryCount;
+    }
+
+    public String getErrorCode() {
+        return errorCode;
+    }
+
+    public void setErrorCode(String errorCode) {
+        this.errorCode = errorCode;
+    }
+
+    public String getDeadLetterReason() {
+        return deadLetterReason;
+    }
+
+    public void setDeadLetterReason(String deadLetterReason) {
+        this.deadLetterReason = deadLetterReason;
+    }
+
+    public String getProcessingNode() {
+        return processingNode;
+    }
+
+    public void setProcessingNode(String processingNode) {
+        this.processingNode = processingNode;
+    }
+
+    public LocalDateTime getRequestedAt() {
+        return requestedAt;
+    }
+
+    public void setRequestedAt(LocalDateTime requestedAt) {
+        this.requestedAt = requestedAt;
+    }
+
+    public LocalDateTime getScheduledFor() {
+        return scheduledFor;
+    }
+
+    public void setScheduledFor(LocalDateTime scheduledFor) {
+        this.scheduledFor = scheduledFor;
+    }
+
+    public LocalDateTime getStartedAt() {
+        return startedAt;
+    }
+
+    public void setStartedAt(LocalDateTime startedAt) {
+        this.startedAt = startedAt;
+    }
+
+    public LocalDateTime getCompletedAt() {
+        return completedAt;
+    }
+
+    public void setCompletedAt(LocalDateTime completedAt) {
+        this.completedAt = completedAt;
+    }
+
+    public LocalDateTime getVisibilityTimeoutUntil() {
+        return visibilityTimeoutUntil;
+    }
+
+    public void setVisibilityTimeoutUntil(LocalDateTime visibilityTimeoutUntil) {
+        this.visibilityTimeoutUntil = visibilityTimeoutUntil;
+    }
+
+    public LocalDateTime getLastErrorAt() {
+        return lastErrorAt;
+    }
+
+    public void setLastErrorAt(LocalDateTime lastErrorAt) {
+        this.lastErrorAt = lastErrorAt;
+    }
+
+    public LocalDateTime getCreatedAt() {
+        return createdAt;
+    }
+
+    public void setCreatedAt(LocalDateTime createdAt) {
+        this.createdAt = createdAt;
+    }
+
+    public LocalDateTime getUpdatedAt() {
+        return updatedAt;
+    }
+
+    public void setUpdatedAt(LocalDateTime updatedAt) {
+        this.updatedAt = updatedAt;
+    }
+
+    public long getVersion() {
+        return version;
     }
 }

@@ -5,6 +5,8 @@ server:
 spring:
   application:
     name: chat-capabilities-demo
+  config:
+    import: optional:classpath:ai-entity-config.yml
   datasource:
     url: jdbc:h2:file:./data/chat-capabilities.db
     driver-class-name: org.h2.Driver
@@ -21,9 +23,6 @@ ai:
     examples:
       demo-health:
         enabled: false
-  config:
-    default-file: ai-entity-config.yml
-
   curated:
     pack: commerce
 

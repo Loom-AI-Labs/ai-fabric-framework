@@ -1,327 +1,169 @@
-# AI Entity Configuration for Integration Tests
-# This file defines test entities and their AI processing configurations
-
-ai-entities:
-  # Test Product Entity
-  test-product:
-    entity-type: "test-product"
-    features: ["embedding", "search", "rag", "recommendation"]
-    auto-process: true
-    enable-search: true
-    enable-recommendations: true
-    auto-embedding: true
-    indexable: true
-
-    # Searchable Fields Configuration
-    searchable-fields:
-      - name: "name"
-        include-in-rag: true
-        enable-semantic-search: true
-        weight: 1.0
-      - name: "description"
-        include-in-rag: true
-        enable-semantic-search: true
-        weight: 0.8
-      - name: "category"
-        include-in-rag: true
-        enable-semantic-search: true
-        weight: 0.6
-      - name: "price"
-        include-in-rag: false
-        enable-semantic-search: false
-        weight: 0.4
-
-    # Embeddable Fields Configuration
-    embeddable-fields:
-      - name: "name"
-        model: "text-embedding-3-small"
-        auto-generate: true
-        include-in-similarity: true
-      - name: "description"
-        model: "text-embedding-3-small"
-        auto-generate: true
-        include-in-similarity: true
-
-    # Metadata Fields Configuration
-    metadata-fields:
-      - name: "category"
-        type: "TEXT"
-        include-in-search: true
-      - name: "price"
-        type: "NUMERIC"
-        include-in-search: false
-      - name: "brand"
-        type: "TEXT"
-        include-in-search: true
-
-    # CRUD Operations Configuration
-    crud-operations:
-      CREATE:
-        enabled: true
-        ai-processing: true
-        auto-embedding: true
-        auto-indexing: true
-      UPDATE:
-        enabled: true
-        ai-processing: true
-        auto-embedding: true
-        auto-indexing: true
-      DELETE:
-        enabled: true
-        ai-processing: false
-        auto-embedding: false
-        auto-indexing: false
-      SEARCH:
-        generate-embedding: false
-        index-for-search: false
-        enable-analysis: false
-        remove-from-search: false
-        cleanup-embeddings: false
-      ANALYZE:
-        generate-embedding: false
-        index-for-search: false
-        enable-analysis: true
-        remove-from-search: false
-        cleanup-embeddings: false
-
-  # Product Entity (alias for @AIProcess methods)
-  product:
-    entity-type: "product"
-    features: ["embedding", "search", "rag", "recommendation"]
-    auto-process: true
-    enable-search: true
-    enable-recommendations: true
-    auto-embedding: true
-    indexable: true
-    searchable-fields:
-      - name: "name"
-        include-in-rag: true
-        enable-semantic-search: true
-        weight: 1.0
-      - name: "description"
-        include-in-rag: true
-        enable-semantic-search: true
-        weight: 0.8
-      - name: "category"
-        include-in-rag: true
-        enable-semantic-search: true
-        weight: 0.6
-      - name: "price"
-        include-in-rag: false
-        enable-semantic-search: false
-        weight: 0.4
-    embeddable-fields:
-      - name: "name"
-        model: "text-embedding-3-small"
-        auto-generate: true
-        include-in-similarity: true
-      - name: "description"
-        model: "text-embedding-3-small"
-        auto-generate: true
-        include-in-similarity: true
-    metadata-fields:
-      - name: "category"
-        type: "TEXT"
-        include-in-search: true
-      - name: "price"
-        type: "NUMERIC"
-        include-in-search: false
-      - name: "brand"
-        type: "TEXT"
-        include-in-search: true
-    crud-operations:
-      CREATE:
-        enabled: true
-        ai-processing: true
-        auto-embedding: true
-        auto-indexing: true
-      UPDATE:
-        enabled: true
-        ai-processing: true
-        auto-embedding: true
-        auto-indexing: true
-      DELETE:
-        enabled: true
-        ai-processing: false
-        auto-embedding: false
-        auto-indexing: false
-      SEARCH:
-        generate-embedding: false
-        index-for-search: false
-        enable-analysis: false
-        remove-from-search: false
-        cleanup-embeddings: false
-      ANALYZE:
-        generate-embedding: false
-        index-for-search: false
-        enable-analysis: true
-        remove-from-search: false
-        cleanup-embeddings: false
-
-  # Test User Entity
-  test-user:
-    entity-type: "test-user"
-    features: ["embedding", "search", "rag", "behavioral"]
-    auto-process: true
-    enable-search: true
-    enable-recommendations: false
-    auto-embedding: true
-    indexable: true
-
-    # Searchable Fields Configuration
-    searchable-fields:
-      - name: "firstName"
-        include-in-rag: true
-        enable-semantic-search: true
-        weight: 0.8
-      - name: "lastName"
-        include-in-rag: true
-        enable-semantic-search: true
-        weight: 0.8
-      - name: "email"
-        include-in-rag: true
-        enable-semantic-search: true
-        weight: 0.6
-      - name: "bio"
-        include-in-rag: true
-        enable-semantic-search: true
-        weight: 1.0
-
-    # Embeddable Fields Configuration
-    embeddable-fields:
-      - name: "firstName"
-        model: "text-embedding-3-small"
-        auto-generate: true
-        include-in-similarity: true
-      - name: "lastName"
-        model: "text-embedding-3-small"
-        auto-generate: true
-        include-in-similarity: true
-      - name: "bio"
-        model: "text-embedding-3-small"
-        auto-generate: true
-        include-in-similarity: true
-
-    # Metadata Fields Configuration
-    metadata-fields:
-      - name: "email"
-        type: "TEXT"
-        include-in-search: true
-      - name: "age"
-        type: "NUMERIC"
-        include-in-search: false
-      - name: "location"
-        type: "TEXT"
-        include-in-search: true
-
-    # CRUD Operations Configuration
-    crud-operations:
-      CREATE:
-        enabled: true
-        ai-processing: true
-        auto-embedding: true
-        auto-indexing: true
-      UPDATE:
-        enabled: true
-        ai-processing: true
-        auto-embedding: true
-        auto-indexing: true
-      DELETE:
-        enabled: true
-        ai-processing: false
-        auto-embedding: false
-        auto-indexing: false
-
-  # Test Article Entity
-  test-article:
-    entity-type: "test-article"
-    features: ["embedding", "search", "rag", "analysis"]
-    auto-process: true
-    enable-search: true
-    enable-recommendations: false
-    auto-embedding: true
-    indexable: true
-
-    # Searchable Fields Configuration
-    searchable-fields:
-      - name: "title"
-        include-in-rag: true
-        enable-semantic-search: true
-        weight: 1.0
-      - name: "content"
-        include-in-rag: true
-        enable-semantic-search: true
-        weight: 0.9
-      - name: "summary"
-        include-in-rag: true
-        enable-semantic-search: true
-        weight: 0.7
-      - name: "tags"
-        include-in-rag: true
-        enable-semantic-search: true
-        weight: 0.5
-
-    # Embeddable Fields Configuration
-    embeddable-fields:
-      - name: "title"
-        model: "text-embedding-3-small"
-        auto-generate: true
-        include-in-similarity: true
-      - name: "content"
-        model: "text-embedding-3-small"
-        auto-generate: true
-        include-in-similarity: true
-      - name: "summary"
-        model: "text-embedding-3-small"
-        auto-generate: true
-        include-in-similarity: true
-
-    # Metadata Fields Configuration
-    metadata-fields:
-      - name: "tags"
-        type: "TEXT"
-        include-in-search: true
-      - name: "author"
-        type: "TEXT"
-        include-in-search: true
-      - name: "publishDate"
-        type: "DATE"
-        include-in-search: false
-      - name: "readTime"
-        type: "NUMERIC"
-        include-in-search: false
-
-    # CRUD Operations Configuration
-    crud-operations:
-      CREATE:
-        enabled: true
-        ai-processing: true
-        auto-embedding: true
-        auto-indexing: true
-      UPDATE:
-        enabled: true
-        ai-processing: true
-        auto-embedding: true
-        auto-indexing: true
-      DELETE:
-        enabled: true
-        ai-processing: false
-        auto-embedding: false
-        auto-indexing: false
-
-# Global AI Processing Configuration
 ai-config:
-  enable-embedding-generation: true
-  enable-ai-analysis: true
-  enable-validation: true
-  enable-recommendations: true
-  enable-cleanup: true
-
-  # Batch Processing
-  batch-size: 10
-  max-concurrent-requests: 5
-
-  # Performance Settings
-  timeout-seconds: 30
-  retry-attempts: 3
-  retry-delay-ms: 1000
+  default-embedding-model: text-embedding-3-small
+  default-search-limit: 10
+  default-similarity-threshold: 0.7
+ai-entities:
+  test-product:
+    indexing:
+      enabled: true
+    searchable-fields:
+    - name: name
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 70
+    - name: description
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 66
+    - name: category
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 62
+    metadata-fields:
+    - name: category
+      data-type: STRING
+      destinations:
+      - VECTOR_METADATA
+      - API_RESPONSE
+    - name: price
+      data-type: NUMBER
+      destinations:
+      - API_RESPONSE
+    - name: brand
+      data-type: STRING
+      destinations:
+      - VECTOR_METADATA
+      - API_RESPONSE
+  product:
+    indexing:
+      enabled: true
+    searchable-fields:
+    - name: name
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 70
+    - name: description
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 66
+    - name: category
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 62
+    metadata-fields:
+    - name: category
+      data-type: STRING
+      destinations:
+      - VECTOR_METADATA
+      - API_RESPONSE
+    - name: price
+      data-type: NUMBER
+      destinations:
+      - API_RESPONSE
+    - name: brand
+      data-type: STRING
+      destinations:
+      - VECTOR_METADATA
+      - API_RESPONSE
+  test-user:
+    indexing:
+      enabled: true
+    searchable-fields:
+    - name: firstName
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 66
+    - name: lastName
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 66
+    - name: email
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 62
+    - name: bio
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 70
+    metadata-fields:
+    - name: email
+      data-type: STRING
+      destinations:
+      - VECTOR_METADATA
+      - API_RESPONSE
+    - name: age
+      data-type: NUMBER
+      destinations:
+      - API_RESPONSE
+    - name: location
+      data-type: STRING
+      destinations:
+      - VECTOR_METADATA
+      - API_RESPONSE
+  test-article:
+    indexing:
+      enabled: true
+    searchable-fields:
+    - name: title
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 70
+    - name: content
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 68
+    - name: summary
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 64
+    - name: tags
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 60
+    metadata-fields:
+    - name: tags
+      data-type: STRING
+      destinations:
+      - VECTOR_METADATA
+      - API_RESPONSE
+    - name: author
+      data-type: STRING
+      destinations:
+      - VECTOR_METADATA
+      - API_RESPONSE
+    - name: publishDate
+      data-type: DATE
+      destinations:
+      - API_RESPONSE
+    - name: readTime
+      data-type: NUMBER
+      destinations:
+      - API_RESPONSE

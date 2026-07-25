@@ -1,37 +1,5 @@
 ai-entities:
   faq-article:
-    entity-type: "faq-article"
-    auto-embedding: true
-    indexable: true
-    enable-search: true
-    searchable-fields:
-      - name: "title"
-        weight: 2.0
-      - name: "content"
-        weight: 1.8
-      - name: "category"
-        weight: 1.0
-      - name: "tags"
-        weight: 1.0
-    embeddable-fields:
-      - name: "title"
-        model: "simple-hash"
-        auto-generate: true
-        include-in-similarity: true
-      - name: "content"
-        model: "simple-hash"
-        auto-generate: true
-        include-in-similarity: true
-      - name: "category"
-        model: "simple-hash"
-        auto-generate: true
-        include-in-similarity: true
-      - name: "tags"
-        model: "simple-hash"
-        auto-generate: true
-        include-in-similarity: true
-    metadata-fields:
-      - name: "category"
-        type: "string"
-      - name: "tags"
-        type: "string"
+    indexing:
+      enabled: true
+      max-characters: 8000

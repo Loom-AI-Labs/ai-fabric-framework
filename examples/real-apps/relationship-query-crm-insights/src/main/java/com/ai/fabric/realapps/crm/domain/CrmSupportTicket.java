@@ -1,6 +1,9 @@
 package com.ai.fabric.realapps.crm.domain;
 
 import ai.fabric.annotation.AICapable;
+import ai.fabric.annotation.AIContext;
+import ai.fabric.annotation.AIIdentity;
+import ai.fabric.annotation.AISearchable;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -25,21 +28,27 @@ import java.time.LocalDateTime;
 public class CrmSupportTicket {
 
     @Id
+    @AIIdentity
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @AIContext
     @Column(nullable = false, unique = true)
     private String ticketNumber;
 
+    @AIContext
     @Enumerated(EnumType.STRING)
     private TicketStatus status = TicketStatus.OPEN;
 
+    @AIContext
     @Enumerated(EnumType.STRING)
     private TicketPriority priority = TicketPriority.MEDIUM;
 
+    @AISearchable(priority = 100, required = true)
     @Column(columnDefinition = "TEXT")
     private String summary;
 
+    @AISearchable(priority = 60)
     private String assignedTo;
 
     private LocalDateTime createdAt = LocalDateTime.now();

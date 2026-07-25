@@ -1,6 +1,7 @@
 package com.subscription.hub.config;
 
-import ai.fabric.service.AICapabilityService;
+import ai.fabric.indexing.api.AIEntityIndexingGateway;
+import ai.fabric.indexing.api.AIProcessOperation;
 import com.subscription.hub.entity.*;
 import com.subscription.hub.repository.*;
 import lombok.RequiredArgsConstructor;
@@ -32,7 +33,7 @@ public class DataInitializer implements CommandLineRunner {
     private final SubscriptionPlanRepository planRepository;
     private final UserRepository userRepository;
     private final SubscriptionRepository subscriptionRepository;
-    private final ObjectProvider<AICapabilityService> aiCapabilityServiceProvider;
+    private final ObjectProvider<AIEntityIndexingGateway> indexingGatewayProvider;
     private final Random random = new Random();
 
     // Seed data arrays
@@ -171,9 +172,9 @@ public class DataInitializer implements CommandLineRunner {
     }
 
     private void indexPlansForAi(List<SubscriptionPlan> plans) {
-        AICapabilityService aiCapabilityService = aiCapabilityServiceProvider.getIfAvailable();
-        if (aiCapabilityService == null) {
-            log.debug("AICapabilityService not available; skipping plan indexing");
+        AIEntityIndexingGateway indexingGateway = indexingGatewayProvider.getIfAvailable();
+        if (indexingGateway == null) {
+            log.debug("AIEntityIndexingGateway not available; skipping plan indexing");
             return;
         }
 
@@ -184,7 +185,7 @@ public class DataInitializer implements CommandLineRunner {
         int indexed = 0;
         for (SubscriptionPlan plan : plans) {
             try {
-                aiCapabilityService.processEntityForAI(plan, "subscription-plan");
+                indexingGateway.upsert(plan, AIProcessOperation.UPDATE);
                 indexed++;
             } catch (Exception ex) {
                 log.warn("Failed to index subscription plan {} for AI search", plan != null ? plan.getId() : null, ex);

@@ -86,14 +86,15 @@ public final class VectorProviderReadinessEvaluator {
     private static void evaluateQdrant(Map<String, Object> diagnostics,
                                        List<String> reasons,
                                        List<String> warnings) {
-        if (!asBoolean(diagnostics.get("failOnMissingPayloadIndex"), false)) {
-            warnings.add("Qdrant missing-payload-index strict mode is disabled; set ai.vector-db.operations.fail-on-missing-payload-index=true for strict production verification.");
-        }
         if (hasEntries(diagnostics.get("payloadIndexesSeenMissing"))) {
             reasons.add("Qdrant payload indexes have been observed missing: " + diagnostics.get("payloadIndexesSeenMissing"));
         }
         if (hasEntries(diagnostics.get("payloadIndexCreateFailures"))) {
             reasons.add("Qdrant payload-index creation failures are present: " + diagnostics.get("payloadIndexCreateFailures"));
+        }
+        if (hasEntries(diagnostics.get("payloadIndexRepairAttempts"))) {
+            warnings.add("Qdrant payload-index auto-repair has been used: "
+                + diagnostics.get("payloadIndexRepairAttempts"));
         }
     }
 

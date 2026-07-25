@@ -15,7 +15,8 @@ configuration, then app writes call AI Fabric indexing/search APIs.
 - Postgres-backed domain storage.
 - Annotation-assisted indexing using `@AICapable`, `@AISearchable`, and `@AIContext`.
 - Config-driven indexing/search through `ai-entity-config.yml`.
-- Index-on-write behavior through `AICapabilityService.processEntityForAI`.
+- Transaction-aware index-on-write behavior through `@AIProcess` and
+  `AIEntityIndexingGateway`.
 - Semantic search through `AICoreService.performSearch`.
 
 ## Framework Surfaces

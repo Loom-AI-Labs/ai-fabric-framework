@@ -74,11 +74,12 @@ questions:
   - id: prod-05-q6
     type: implementation-defense
     competency: transactional-boundary
-    prompt: Defend throwing when an article upsert fails while still requiring reconciliation.
-    modelAnswer: Throwing rolls back the local source transaction when normalization, authorization, embedding, or vector write reports failure. However, the source database and external vector provider do not share one transaction, so commit-time or network ambiguity can still create divergence. Stable IDs, traces, visible errors, and a bounded reconciliation endpoint are still required.
+    prompt: Explain which failures can roll back an article update and which failures become durable retry work.
+    modelAnswer: Authorization, projection, and queue handoff occur before source commit, so the application can throw and roll back both source change and projected work. Embedding and vector execution occur after commit; those failures cannot undo business data and must remain visible as retry or dead-letter state. Stable IDs, ordering, traces, and bounded reconciliation are still required.
     reviewCriteria:
-      - Explains local rollback
-      - Rejects claims of a distributed transaction
+      - Separates pre-commit projection/handoff from post-commit provider work
+      - Explains source and queue rollback
+      - Explains retry and dead-letter evidence
       - Keeps source data authoritative
       - Requires stable-ID reconciliation
     sourcePaths:

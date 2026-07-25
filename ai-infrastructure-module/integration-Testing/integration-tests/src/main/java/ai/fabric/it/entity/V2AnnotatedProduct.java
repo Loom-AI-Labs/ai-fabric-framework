@@ -2,7 +2,11 @@ package ai.fabric.it.entity;
 
 import ai.fabric.annotation.AICapable;
 import ai.fabric.annotation.AIContext;
+import ai.fabric.annotation.AIIdentity;
 import ai.fabric.annotation.AISearchable;
+import ai.fabric.indexing.api.AIContextDestination;
+import ai.fabric.indexing.api.AISearchDestination;
+import ai.fabric.indexing.api.AISearchPreprocessing;
 import ai.fabric.indexing.api.IndexingStrategy;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -23,8 +27,8 @@ import java.time.LocalDateTime;
  *
  * <p>This entity intentionally includes fields that are NOT present in the YAML-driven
  * {@code ai-entity-config-realapi.yml} for {@code test-product}. The end-to-end test verifies
- * that annotation-based extraction (via {@link ai.fabric.processor.AnnotationFieldScanner})
- * is used to build the content that gets embedded/indexed.</p>
+ * that the canonical descriptor and projection pipeline uses annotation-declared fields to build
+ * the content that gets embedded and indexed.</p>
  */
 @Entity
 @Table(name = "test_products_v2_annotated")
@@ -33,7 +37,7 @@ import java.time.LocalDateTime;
 @NoArgsConstructor
 @AllArgsConstructor
 @AICapable(
-    entityType = "product",
+    entityType = "v2-annotated-product",
     indexingStrategy = IndexingStrategy.ASYNC,
     onDeleteStrategy = IndexingStrategy.SYNC
 )
@@ -41,6 +45,7 @@ public class V2AnnotatedProduct {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @AIIdentity
     private Long id;
 
     // Exists only to satisfy non-null requirements and to demonstrate we can override YAML field selection.
@@ -50,14 +55,29 @@ public class V2AnnotatedProduct {
     /**
      * v2-only searchable field (NOT present in YAML config). This should be the only content that gets embedded.
      */
-    @AISearchable(preprocessing = "none")
+    @AISearchable(
+        name = "internalNotes",
+        preprocessing = AISearchPreprocessing.NONE,
+        destinations = {
+            AISearchDestination.SEMANTIC_SEARCH,
+            AISearchDestination.RAG_CONTEXT
+        },
+        required = true
+    )
     @Column(columnDefinition = "TEXT")
     private String internalNotes;
 
     /**
      * v2-only context field (NOT present in YAML metadata config). Should be stored as metadata, not embedded.
      */
-    @AIContext(contextKey = "owner", priority = 100)
+    @AIContext(
+        key = "owner",
+        destinations = {
+            AIContextDestination.VECTOR_METADATA,
+            AIContextDestination.API_RESPONSE
+        },
+        priority = 100
+    )
     @Column(length = 100)
     private String contextOwner;
 

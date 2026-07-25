@@ -1,7 +1,5 @@
 package com.subscription.hub.service;
 
-import ai.fabric.annotation.AIProcess;
-import ai.fabric.indexing.api.IndexingStrategy;
 import ai.fabric.core.AICoreService;
 import ai.fabric.dto.AISearchRequest;
 import ai.fabric.dto.AISearchResponse;
@@ -39,13 +37,8 @@ public class SubscriptionService {
 
     /**
      * Subscribe to a plan
-     * @AIProcess ensures plan is indexed for search
+     * The subscription remains application-owned state and is not vector indexed.
      */
-    @AIProcess(
-        entityType = "subscription",
-        processType = "create",
-        indexingStrategy = IndexingStrategy.SYNC
-    )
     @Transactional
     public Subscription subscribe(UUID userId, UUID planId, Subscription.BillingCycle billingCycle) {
         SubscriptionPlan plan = planRepository.findById(planId)
@@ -67,7 +60,6 @@ public class SubscriptionService {
             .lastActivityDate(LocalDateTime.now())
             .build();
 
-        // @AIProcess ensures subscription is indexed
         Subscription saved = subscriptionRepository.save(subscription);
 
         // Track event for behavior analysis
@@ -83,13 +75,8 @@ public class SubscriptionService {
 
     /**
      * Unsubscribe (cancel subscription)
-     * @AIProcess ensures subscription status is updated in index
+     * Subscription state is read through governed account actions.
      */
-    @AIProcess(
-        entityType = "subscription",
-        processType = "update",
-        indexingStrategy = IndexingStrategy.SYNC
-    )
     @Transactional
     public Subscription unsubscribe(UUID subscriptionId, String reason) {
         Subscription subscription = subscriptionRepository.findById(subscriptionId)
@@ -99,7 +86,6 @@ public class SubscriptionService {
         subscription.setEndDate(LocalDateTime.now());
         subscription.setLastActivityDate(LocalDateTime.now());
 
-        // @AIProcess ensures status update is synced
         Subscription saved = subscriptionRepository.save(subscription);
 
         // Track event for behavior analysis
@@ -114,13 +100,8 @@ public class SubscriptionService {
 
     /**
      * Upgrade to higher tier plan
-     * @AIProcess ensures subscription is updated in index
+     * Plan knowledge remains indexed separately from current account state.
      */
-    @AIProcess(
-        entityType = "subscription",
-        processType = "update",
-        indexingStrategy = IndexingStrategy.SYNC
-    )
     @Transactional
     public Subscription upgrade(UUID subscriptionId, UUID newPlanId) {
         Subscription subscription = subscriptionRepository.findById(subscriptionId)
@@ -139,7 +120,6 @@ public class SubscriptionService {
         subscription.setPlanId(newPlanId);
         subscription.setLastActivityDate(LocalDateTime.now());
 
-        // @AIProcess ensures upgrade is synced
         Subscription saved = subscriptionRepository.save(subscription);
 
         // Track event for behavior analysis
@@ -157,11 +137,6 @@ public class SubscriptionService {
     /**
      * Downgrade to lower tier plan
      */
-    @AIProcess(
-        entityType = "subscription",
-        processType = "update",
-        indexingStrategy = IndexingStrategy.SYNC
-    )
     @Transactional
     public Subscription downgrade(UUID subscriptionId, UUID newPlanId) {
         Subscription subscription = subscriptionRepository.findById(subscriptionId)
@@ -194,13 +169,8 @@ public class SubscriptionService {
 
     /**
      * Update billing or shipping address
-     * @AIProcess ensures address update is synced
+     * Address state remains in the account system of record.
      */
-    @AIProcess(
-        entityType = "subscription",
-        processType = "update",
-        indexingStrategy = IndexingStrategy.SYNC
-    )
     @Transactional
     public Subscription updateAddress(UUID subscriptionId, Address.AddressType addressType, Address address) {
         Subscription subscription = subscriptionRepository.findById(subscriptionId)
@@ -214,7 +184,6 @@ public class SubscriptionService {
 
         subscription.setLastActivityDate(LocalDateTime.now());
 
-        // @AIProcess ensures address update is synced
         Subscription saved = subscriptionRepository.save(subscription);
 
         // Track event for behavior analysis

@@ -1,19 +1,20 @@
 ai-config:
   default-embedding-model: text-embedding-3-small
   default-search-limit: 10
-
 ai-entities:
   ragconversation:
-    features: ["embedding", "search", "rag"]
-    auto-process: true
-    enable-search: true
-    auto-embedding: true
-    indexable: true
+    indexing:
+      enabled: true
     searchable-fields:
-      - name: name
-        include-in-rag: true
-      - name: description
-        include-in-rag: true
-    embeddable-fields:
-      - name: description
-        auto-generate: true
+    - name: name
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    - name: description
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50

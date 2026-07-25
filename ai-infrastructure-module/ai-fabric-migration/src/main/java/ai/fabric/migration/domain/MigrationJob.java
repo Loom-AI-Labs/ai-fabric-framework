@@ -50,6 +50,12 @@ public class MigrationJob {
     @Column(name = "failed_entities", nullable = false)
     private Long failedEntities;
 
+    @Column(name = "projection_failures", nullable = false)
+    private Long projectionFailures;
+
+    @Column(name = "enqueue_failures", nullable = false)
+    private Long enqueueFailures;
+
     @Column(name = "current_page", nullable = false)
     private Integer currentPage;
 

@@ -3,6 +3,7 @@ package com.ai.fabric.realapps.chat.reviews.service;
 import com.ai.fabric.realapps.chat.reviews.domain.Review;
 import com.ai.fabric.realapps.chat.reviews.repo.ReviewRepository;
 import ai.fabric.annotation.AIProcess;
+import ai.fabric.indexing.api.AIProcessOperation;
 import ai.fabric.core.AICoreService;
 import ai.fabric.dto.AISearchRequest;
 import ai.fabric.dto.AISearchResponse;
@@ -50,7 +51,7 @@ public class ReviewService {
     }
 
     @Transactional
-    @AIProcess(entityType = "review", processType = "create", generateEmbedding = true, indexForSearch = true)
+    @AIProcess(entityType = "review", operation = AIProcessOperation.CREATE)
     public Review create(String userId, Long productId, String sku, int rating, String text) {
         if (!StringUtils.hasText(userId)) {
             throw new IllegalArgumentException("userId is required");
@@ -72,7 +73,7 @@ public class ReviewService {
     }
 
     @Transactional
-    @AIProcess(entityType = "review", processType = "update", generateEmbedding = true, indexForSearch = true)
+    @AIProcess(entityType = "review", operation = AIProcessOperation.UPDATE)
     public Review update(long id, Integer rating, String text) {
         Review review = get(id);
 
@@ -90,7 +91,7 @@ public class ReviewService {
     }
 
     @Transactional
-    @AIProcess(entityType = "review", processType = "delete", generateEmbedding = false, indexForSearch = false)
+    @AIProcess(entityType = "review", operation = AIProcessOperation.DELETE)
     public Review delete(long id) {
         Review review = get(id);
         reviewRepository.delete(review);

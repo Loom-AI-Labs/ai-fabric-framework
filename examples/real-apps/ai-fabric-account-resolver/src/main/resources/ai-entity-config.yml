@@ -1,65 +1,30 @@
 ai-entities:
   account-resolution-policy:
-    entity-type: "account-resolution-policy"
-    auto-embedding: true
-    indexable: true
-    enable-search: true
-    enable-recommendations: false
+    indexing:
+      enabled: true
+      max-characters: 8000
     searchable-fields:
       - name: "title"
-        weight: 2.0
+        priority: 100
+        destinations: [SEMANTIC_SEARCH, RAG_CONTEXT]
       - name: "description"
-        weight: 1.5
+        priority: 90
+        destinations: [SEMANTIC_SEARCH, RAG_CONTEXT]
       - name: "actionName"
-        weight: 1.0
+        priority: 60
+        destinations: [SEMANTIC_SEARCH, RAG_CONTEXT]
     metadata-fields:
       - name: "code"
-        type: "string"
+        data-type: STRING
+        destinations: [VECTOR_METADATA, LLM_CONTEXT, API_RESPONSE]
       - name: "actionName"
-        type: "string"
+        data-type: STRING
+        destinations: [VECTOR_METADATA, LLM_CONTEXT, API_RESPONSE]
       - name: "confirmationRequired"
-        type: "boolean"
+        data-type: BOOLEAN
+        destinations: [VECTOR_METADATA, LLM_CONTEXT, API_RESPONSE]
 
   subscription-plan:
-    entity-type: "subscription-plan"
-    auto-embedding: true
-    indexable: true
-    enable-search: true
-    enable-recommendations: true
-    searchable-fields:
-      - name: "name"
-        weight: 2.0
-      - name: "description"
-        weight: 1.5
-    metadata-fields:
-      - name: "monthlyPrice"
-        type: "decimal"
-      - name: "annualPrice"
-        type: "decimal"
-      - name: "tier"
-        type: "string"
-      - name: "features"
-        type: "string"
-      - name: "maxUsers"
-        type: "integer"
-      - name: "storageGB"
-        type: "integer"
-
-  subscription:
-    entity-type: "subscription"
-    auto-embedding: false
-    indexable: true
-    enable-search: false
-    metadata-fields:
-      - name: "status"
-        type: "string"
-      - name: "startDate"
-        type: "datetime"
-      - name: "endDate"
-        type: "datetime"
-      - name: "billingCycle"
-        type: "string"
-      - name: "churnRiskScore"
-        type: "decimal"
-      - name: "lastActivityDate"
-        type: "datetime"
+    indexing:
+      enabled: true
+      max-characters: 8000

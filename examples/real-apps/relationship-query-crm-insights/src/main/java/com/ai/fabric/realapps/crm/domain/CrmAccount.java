@@ -1,6 +1,9 @@
 package com.ai.fabric.realapps.crm.domain;
 
 import ai.fabric.annotation.AICapable;
+import ai.fabric.annotation.AIContext;
+import ai.fabric.annotation.AIIdentity;
+import ai.fabric.annotation.AISearchable;
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -27,18 +30,24 @@ import java.util.List;
 public class CrmAccount {
 
     @Id
+    @AIIdentity
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @AISearchable(priority = 100, required = true)
     @Column(nullable = false, unique = true)
     private String name;
 
+    @AISearchable(priority = 70)
     private String industry;
+    @AIContext
     private String region;
 
+    @AIContext
     @Enumerated(EnumType.STRING)
     private AccountStatus status = AccountStatus.ACTIVE;
 
+    @AIContext
     private BigDecimal annualRevenue;
 
     private LocalDateTime createdAt = LocalDateTime.now();

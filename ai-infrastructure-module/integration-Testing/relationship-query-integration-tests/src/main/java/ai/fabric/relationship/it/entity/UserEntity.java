@@ -1,6 +1,9 @@
 package ai.fabric.relationship.it.entity;
 
 import ai.fabric.annotation.AICapable;
+import ai.fabric.annotation.AIContext;
+import ai.fabric.annotation.AIIdentity;
+import ai.fabric.annotation.AISearchable;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
@@ -22,11 +25,14 @@ import java.util.UUID;
 public class UserEntity {
 
     @Id
+    @AIIdentity
     private String id;
 
+    @AISearchable(required = true)
     @Column(nullable = false)
     private String fullName;
 
+    @AIContext
     @Column(nullable = false)
     private String email;
 

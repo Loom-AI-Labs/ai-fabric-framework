@@ -14,7 +14,9 @@ import ai.fabric.it.entity.TestProduct;
 import ai.fabric.it.repository.TestArticleRepository;
 import ai.fabric.it.repository.TestProductRepository;
 import ai.fabric.it.support.RealAPITestSupport;
-import ai.fabric.service.AICapabilityService;
+import ai.fabric.indexing.api.AIEntityIndexingGateway;
+import ai.fabric.indexing.api.AIProcessOperation;
+import ai.fabric.indexing.api.IndexingStrategy;
 import ai.fabric.service.VectorManagementService;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
@@ -67,7 +69,7 @@ public class RealAPIVectorSpaceClarificationPolicyIntegrationTest {
     private RAGOrchestrator orchestrator;
 
     @Autowired
-    private AICapabilityService capabilityService;
+    private AIEntityIndexingGateway indexingGateway;
 
     @Autowired
     private VectorManagementService vectorManagementService;
@@ -140,7 +142,7 @@ public class RealAPIVectorSpaceClarificationPolicyIntegrationTest {
             .stockQuantity(10)
             .active(true)
             .build());
-        capabilityService.processEntityForAI(product, "test-product");
+        indexingGateway.upsert(product, AIProcessOperation.CREATE, IndexingStrategy.SYNC);
         RealAPITestSupport.awaitVectorExists(vectorManagementService, "test-product", product.getId().toString(), Duration.ofSeconds(60));
 
         TestArticle article = articleRepository.save(TestArticle.builder()
@@ -154,7 +156,7 @@ public class RealAPIVectorSpaceClarificationPolicyIntegrationTest {
             .readTime(5)
             .viewCount(120)
             .build());
-        capabilityService.processEntityForAI(article, "test-article");
+        indexingGateway.upsert(article, AIProcessOperation.CREATE, IndexingStrategy.SYNC);
         RealAPITestSupport.awaitVectorExists(vectorManagementService, "test-article", article.getId().toString(), Duration.ofSeconds(60));
     }
 

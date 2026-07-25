@@ -5,12 +5,15 @@ import ai.fabric.dto.AIEntityConfig;
 import ai.fabric.dto.AIMetadataField;
 import ai.fabric.dto.AISearchableField;
 import ai.fabric.dto.RAGResponse;
+import ai.fabric.indexing.api.AIContextDestination;
+import ai.fabric.indexing.api.AISearchDestination;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -21,13 +24,28 @@ class DefaultRelationshipQueryDocumentMapperTest {
         AIEntityConfigurationLoader configurationLoader = mock(AIEntityConfigurationLoader.class);
         when(configurationLoader.getEntityConfig("product")).thenReturn(AIEntityConfig.builder()
             .searchableFields(List.of(
-                AISearchableField.builder().name("name").includeInRAG(true).build(),
-                AISearchableField.builder().name("brand.name").includeInRAG(true).build(),
-                AISearchableField.builder().name("emptyValue").includeInRAG(true).build()
+                AISearchableField.builder()
+                    .name("name")
+                    .destinations(java.util.Set.of(AISearchDestination.RAG_CONTEXT))
+                    .build(),
+                AISearchableField.builder()
+                    .name("brand.name")
+                    .destinations(java.util.Set.of(AISearchDestination.RAG_CONTEXT))
+                    .build(),
+                AISearchableField.builder()
+                    .name("emptyValue")
+                    .destinations(java.util.Set.of(AISearchDestination.RAG_CONTEXT))
+                    .build()
             ))
             .metadataFields(List.of(
-                AIMetadataField.builder().name("brand.name").build(),
-                AIMetadataField.builder().name("price").build()
+                AIMetadataField.builder()
+                    .name("brand.name")
+                    .destinations(java.util.Set.of(AIContextDestination.API_RESPONSE))
+                    .build(),
+                AIMetadataField.builder()
+                    .name("price")
+                    .destinations(java.util.Set.of(AIContextDestination.API_RESPONSE))
+                    .build()
             ))
             .build());
 
@@ -41,27 +59,28 @@ class DefaultRelationshipQueryDocumentMapperTest {
         );
 
         assertThat(mapped).isPresent();
-        assertThat(mapped.get().getContent()).isEqualTo("Blue Runner Nike");
+        assertThat(mapped.get().getContent())
+            .isEqualTo("name: Blue Runner\nbrand.name: Nike");
         assertThat(mapped.get().getMetadata())
             .containsEntry("brand", "Nike")
             .containsEntry("price", 85);
     }
 
     @Test
-    void shouldReturnEmptyWhenConfigCannotResolveAnyFields() {
+    void shouldExposeConfigurationFailureInsteadOfReturningEmptyEvidence() {
         AIEntityConfigurationLoader configurationLoader = mock(AIEntityConfigurationLoader.class);
         when(configurationLoader.getEntityConfig("product")).thenThrow(new IllegalStateException("loader down"));
 
         DefaultRelationshipQueryDocumentMapper mapper =
             new DefaultRelationshipQueryDocumentMapper(null, configurationLoader);
 
-        Optional<RAGResponse.RAGDocument> mapped = mapper.map(
+        assertThatThrownBy(() -> mapper.map(
             "product",
             new Product("Blue Runner", new Brand("Nike"), 85),
             "product-1"
-        );
-
-        assertThat(mapped).isEmpty();
+        ))
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessage("loader down");
     }
 
     private record Product(String name, Brand brand, int price) {

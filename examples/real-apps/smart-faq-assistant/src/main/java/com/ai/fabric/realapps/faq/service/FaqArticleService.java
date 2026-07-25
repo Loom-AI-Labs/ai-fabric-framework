@@ -5,7 +5,8 @@ import com.ai.fabric.realapps.faq.repo.FaqArticleRepository;
 import ai.fabric.core.AICoreService;
 import ai.fabric.dto.AISearchRequest;
 import ai.fabric.dto.AISearchResponse;
-import ai.fabric.service.AICapabilityService;
+import ai.fabric.indexing.api.AIEntityIndexingGateway;
+import ai.fabric.indexing.api.AIProcessOperation;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.ObjectProvider;
@@ -28,7 +29,7 @@ public class FaqArticleService {
     private static final String ENTITY_TYPE = "faq-article";
 
     private final FaqArticleRepository repository;
-    private final ObjectProvider<AICapabilityService> capabilityServiceProvider;
+    private final ObjectProvider<AIEntityIndexingGateway> indexingGatewayProvider;
     private final ObjectProvider<AICoreService> aiCoreServiceProvider;
 
     @Value("${ai.service.features.enable-generation:false}")
@@ -45,7 +46,7 @@ public class FaqArticleService {
         article.setUpdatedAt(Instant.now());
 
         FaqArticle saved = repository.save(article);
-        index(saved);
+        index(saved, AIProcessOperation.CREATE);
         return saved;
     }
 
@@ -66,7 +67,7 @@ public class FaqArticleService {
         }
         article.setUpdatedAt(Instant.now());
         FaqArticle saved = repository.save(article);
-        index(saved);
+        index(saved, AIProcessOperation.UPDATE);
         return saved;
     }
 
@@ -89,7 +90,7 @@ public class FaqArticleService {
     public int reindexAll() {
         List<FaqArticle> articles = repository.findAll();
         for (FaqArticle article : articles) {
-            index(article);
+            index(article, AIProcessOperation.UPDATE);
         }
         return articles.size();
     }
@@ -161,13 +162,13 @@ public class FaqArticleService {
         }
     }
 
-    private void index(FaqArticle article) {
-        AICapabilityService capabilityService = capabilityServiceProvider.getIfAvailable();
-        if (capabilityService == null) {
-            log.debug("AICapabilityService not available; skipping indexing");
+    private void index(FaqArticle article, AIProcessOperation operation) {
+        AIEntityIndexingGateway indexingGateway = indexingGatewayProvider.getIfAvailable();
+        if (indexingGateway == null) {
+            log.debug("AIEntityIndexingGateway not available; skipping indexing");
             return;
         }
-        capabilityService.processEntityForAI(article, ENTITY_TYPE);
+        indexingGateway.upsert(article, operation);
     }
 
     private FaqArticle upsertSeedArticle(FaqDemoCatalog.SeedArticle seedArticle) {
@@ -181,8 +182,12 @@ public class FaqArticleService {
         article.setCategory(seedArticle.category());
         article.setTags(seedArticle.tags() == null ? null : String.join(",", seedArticle.tags()));
         article.setUpdatedAt(Instant.now());
+        boolean created = article.getId() == null;
         FaqArticle saved = repository.save(article);
-        index(saved);
+        index(
+            saved,
+            created ? AIProcessOperation.CREATE : AIProcessOperation.UPDATE
+        );
         return saved;
     }
 

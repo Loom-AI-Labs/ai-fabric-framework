@@ -1,32 +1,43 @@
-ai:
-  entities:
-    - name: "ai_profile"
-      features: ["embedding", "search", "analysis", "behavioral"]
-      enableSearch: true
-      enableRecommendations: false
-      autoEmbedding: true
-      indexable: true
-    - name: "behavior"
-      features: ["embedding", "search", "analysis", "behavioral"]
-      enableSearch: true
-      enableRecommendations: false
-      autoEmbedding: true
-      indexable: true
-    - name: "product"
-      features: ["embedding", "search", "analysis", "recommendations"]
-      enableSearch: true
-      enableRecommendations: true
-      autoEmbedding: true
-      indexable: true
-    - name: "order"
-      features: ["embedding", "search", "analysis", "behavioral"]
-      enableSearch: true
-      enableRecommendations: false
-      autoEmbedding: true
-      indexable: true
-    - name: "user"
-      features: ["embedding", "search", "analysis", "behavioral"]
-      enableSearch: true
-      enableRecommendations: false
-      autoEmbedding: true
-      indexable: true
+ai-config:
+  default-embedding-model: text-embedding-3-small
+  default-search-limit: 10
+  default-similarity-threshold: 0.7
+
+# Annotation-backed entities need no entry unless an operational policy is
+# overridden. YAML-only push entities must explicitly enable indexing and
+# declare their approved projection.
+ai-entities:
+  product:
+    indexing:
+      enabled: true
+      max-characters: 4000
+    analysis:
+      enabled: false
+      after: []
+    searchable-fields:
+      - name: name
+        destinations:
+          - SEMANTIC_SEARCH
+          - RAG_CONTEXT
+        preprocessing: NORMALIZE
+        priority: 90
+        required: true
+      - name: description
+        destinations:
+          - SEMANTIC_SEARCH
+          - RAG_CONTEXT
+        preprocessing: CLEAN
+        max-length: 2000
+        priority: 70
+    metadata-fields:
+      - name: tenantId
+        data-type: ID
+        destinations:
+          - VECTOR_METADATA
+        priority: 100
+        required: true
+      - name: price
+        data-type: NUMBER
+        destinations:
+          - API_RESPONSE
+        priority: 70

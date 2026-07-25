@@ -1,68 +1,105 @@
 package ai.fabric.indexing.worker;
 
-import ai.fabric.config.AIEntityConfigurationLoader;
-import ai.fabric.dto.AIEntityConfig;
+import ai.fabric.entity.IndexingEntityState;
 import ai.fabric.entity.IndexingQueueEntry;
-import ai.fabric.indexing.IndexingActionPlan;
-import ai.fabric.service.AICapabilityService;
-import com.fasterxml.jackson.databind.DeserializationFeature;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import lombok.extern.slf4j.Slf4j;
+import ai.fabric.indexing.api.AIProcessOperation;
+import ai.fabric.indexing.api.IndexingDispatchStatus;
+import ai.fabric.indexing.model.AIIndexDocument;
+import ai.fabric.indexing.queue.IndexingQueueService;
+import ai.fabric.repository.IndexingEntityStateRepository;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.time.Clock;
+import java.time.LocalDateTime;
+import java.util.HexFormat;
+import java.util.Objects;
 
 /**
- * Executes the actual indexing work for a leased queue entry.
+ * Serializes work per entity and prevents stale queued writes from winning.
  */
-@Slf4j
 public class IndexingWorkProcessor {
 
-    private final ObjectMapper objectMapper;
-    private final AIEntityConfigurationLoader configurationLoader;
-    private final AICapabilityService capabilityService;
+    private final IndexingQueueService queueService;
+    private final IndexingEntityStateRepository stateRepository;
+    private final IndexingOperationExecutor operationExecutor;
+    private final Clock clock;
 
     public IndexingWorkProcessor(
-        ObjectMapper objectMapper,
-        AIEntityConfigurationLoader configurationLoader,
-        AICapabilityService capabilityService
+        IndexingQueueService queueService,
+        IndexingEntityStateRepository stateRepository,
+        IndexingOperationExecutor operationExecutor,
+        Clock clock
     ) {
-        this.objectMapper = objectMapper;
-        this.configurationLoader = configurationLoader;
-        this.capabilityService = capabilityService;
+        this.queueService = Objects.requireNonNull(queueService);
+        this.stateRepository = Objects.requireNonNull(stateRepository);
+        this.operationExecutor = Objects.requireNonNull(operationExecutor);
+        this.clock = Objects.requireNonNull(clock);
     }
 
-    public void process(IndexingQueueEntry entry) throws Exception {
-        AIEntityConfig config = configurationLoader.getEntityConfig(entry.getEntityType());
-        if (config == null) {
-            throw new IllegalStateException("No AIEntityConfig registered for " + entry.getEntityType());
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public WorkResult process(IndexingQueueEntry entry) {
+        Objects.requireNonNull(entry, "entry is required");
+        if (entry.getId() == null) {
+            throw new IllegalArgumentException("Persisted work id is required");
         }
 
-        Object entity = deserialize(entry);
-        IndexingActionPlan plan = entry.toActionPlan();
+        AIIndexDocument document = queueService.readDocument(entry);
+        if (!queueService.isDependencyCompleted(entry)) {
+            return new WorkResult(IndexingDispatchStatus.SKIPPED_STALE, null);
+        }
+        LocalDateTime now = LocalDateTime.now(clock);
+        String stateKey = stateKey(document.entityType(), document.entityId());
+        IndexingEntityState state = stateRepository.findForUpdate(stateKey)
+            .orElseGet(() -> stateRepository.saveAndFlush(
+                new IndexingEntityState(
+                    stateKey,
+                    document.entityType(),
+                    document.entityId(),
+                    now
+                )
+            ));
 
-        if (plan.generateEmbedding()) {
-            capabilityService.generateEmbeddings(entity, config);
+        if (isStale(entry.getId(), document, state)) {
+            return new WorkResult(IndexingDispatchStatus.SKIPPED_STALE, null);
         }
 
-        if (plan.indexForSearch()) {
-            capabilityService.indexForSearch(entity, config);
-        }
+        String resultPayload = operationExecutor.execute(document, entry.getId());
+        state.markApplied(entry.getId(), document.sourceVersion(), now);
+        stateRepository.save(state);
+        return new WorkResult(IndexingDispatchStatus.COMPLETED, resultPayload);
+    }
 
-        if (plan.enableAnalysis()) {
-            capabilityService.analyzeEntity(entity, config);
-        }
-
-        if (plan.removeFromSearch()) {
-            capabilityService.removeFromSearch(entity, config);
-        }
-
-        if (plan.cleanupEmbeddings()) {
-            capabilityService.cleanupEmbeddings(entity, config);
+    public static String stateKey(String entityType, String entityId) {
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256").digest(
+                (entityType + '\u0000' + entityId).getBytes(StandardCharsets.UTF_8)
+            );
+            return HexFormat.of().formatHex(digest);
+        } catch (Exception exception) {
+            throw new IllegalStateException("Unable to create indexing state key", exception);
         }
     }
 
-    private Object deserialize(IndexingQueueEntry entry) throws Exception {
-        Class<?> entityClass = Class.forName(entry.getEntityClass());
-        return objectMapper.readerFor(entityClass)
-            .without(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
-            .readValue(entry.getPayload());
+    private boolean isStale(
+        long workId,
+        AIIndexDocument document,
+        IndexingEntityState state
+    ) {
+        if (workId <= state.getLastAppliedWorkId()) {
+            return true;
+        }
+        return document.sourceOperation() == AIProcessOperation.UPDATE
+            && document.sourceVersion() != null
+            && state.getLastSourceVersion() != null
+            && document.sourceVersion() < state.getLastSourceVersion();
+    }
+
+    public record WorkResult(
+        IndexingDispatchStatus status,
+        String resultPayload
+    ) {
     }
 }

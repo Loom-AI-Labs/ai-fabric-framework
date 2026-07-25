@@ -2,6 +2,8 @@ package ai.fabric.behavior.config;
 
 import ai.fabric.config.AIInfrastructureAutoConfiguration;
 import ai.fabric.config.AIEntityConfigurationLoader;
+import ai.fabric.dto.AIEntityConfig;
+import ai.fabric.dto.AIEntityIndexingPolicy;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -37,12 +39,28 @@ public class BehaviorAIAutoConfiguration {
     
     @PostConstruct
     public void registerBehaviorConfig() {
-        String presetFile = "classpath:behavior-presets/behavior-ai-" + mode.toLowerCase() + ".yml";
-        
-        log.info("Registering Behavior Module preset configuration (mode: {})", mode);
-        
-        frameworkConfigLoader.loadConfigurationFromFile(presetFile, false);
-        
-        log.info("Behavior AI Addon ready (mode: {})", mode);
+        if (frameworkConfigLoader.hasEntityConfig("behavior-insight")) {
+            log.info(
+                "Behavior entity policy supplied by application Config Data (mode: {})",
+                mode
+            );
+            return;
+        }
+        boolean indexingEnabled = "FULL".equalsIgnoreCase(mode);
+        AIEntityConfig config = new AIEntityConfig();
+        AIEntityIndexingPolicy indexing = new AIEntityIndexingPolicy();
+        indexing.setEnabled(indexingEnabled);
+        indexing.setMaxCharacters(8000);
+        config.setIndexing(indexing);
+        frameworkConfigLoader.registerEntityConfig(
+            "behavior-insight",
+            config,
+            false
+        );
+        log.info(
+            "Behavior AI Addon ready (mode: {}, indexingEnabled: {})",
+            mode,
+            indexingEnabled
+        );
     }
 }

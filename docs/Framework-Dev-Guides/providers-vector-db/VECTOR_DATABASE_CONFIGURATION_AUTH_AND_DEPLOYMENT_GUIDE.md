@@ -187,11 +187,11 @@ release check can distinguish native provider predicates, local indexed predicat
 predicates, and adapter-side list/fetch predicates.
 For Qdrant, `adminDiagnostics()` also exposes `requiredPayloadIndexFields`,
 `verifiedPayloadIndexes`, `payloadIndexesSeenMissing`, `payloadIndexCreateAttempts`, and
-`payloadIndexCreateFailures` from the provider's lazy first-use checks. It also exposes
-`metadataFilterFallbacks`, a per-collection counter for metadata-filtered searches that had to retry
-without server-side metadata filtering because Qdrant reported a missing payload index.
-The retry path re-applies AI Fabric's portable metadata predicate before returning rows, so
-compatibility fallback remains source/tenant scoped even when the native payload index is missing.
+`payloadIndexCreateFailures` from the provider's lazy first-use checks. If Qdrant reports that a
+filtered search or scan needs an index and strict mode is disabled, AI Fabric creates the portable
+typed indexes and retries the identical provider-filtered operation once. Diagnostics expose these
+events through `payloadIndexRepairAttempts`; the legacy `metadataFilterFallbacks` key remains empty.
+AI Fabric never removes the metadata filter during this retry.
 The shared vector provider contract also stores the same `entityType` and `entityId` under two
 independent provider scopes and proves exact fetch, entity fetch, search, scan, count, remove, and
 clear operations do not cross that modeled scope.
@@ -201,7 +201,9 @@ explicit in readiness output.
 For Weaviate, diagnostics include `countMode`, `aggregateCountFallbacks`, and
 `aggregateCountFallbackReasons`, so aggregate-count compatibility fallback is visible per provider
 class instead of being hidden behind the efficient-count capability flag. The fallback counts via
-paged scan rather than a capped one-page object listing.
+paged scan rather than a capped one-page object listing. New metadata properties use `field`
+tokenization for exact matching. Search and scan also page through native results and apply the shared
+exact-scalar predicate, which preserves correctness for classes created with older tokenization.
 For Milvus, diagnostics include `countMode=milvus-collection-statistics-with-scan-fallback`,
 `clearMode=milvus-drop-collection`, and standardized `countFallbacks` / `countFallbackReasons`.
 These fields make the native statistics path visible during normal operation and make any row-count
@@ -216,14 +218,14 @@ Vector providers also emit low-cardinality Micrometer counters for fallback and 
 
 - `ai.fabric.vector.provider.fallbacks`
   - tags: `provider`, `operation`, `reason`
-  - Qdrant missing payload-index compatibility fallback:
-    `provider=qdrant`, `operation=search`, `reason=missing_payload_index`
   - Weaviate aggregate-count compatibility fallback:
     `provider=weaviate`, `operation=count`, `reason=aggregate_unsupported`
   - Milvus statistics response without `row_count`:
     `provider=milvus`, `operation=count`, `reason=missing_row_count`
 - `ai.fabric.vector.provider.retries`
   - tags: `provider`, `operation`, `reason`
+  - Qdrant typed payload-index repair:
+    `provider=qdrant`, `operation=search|scan`, `reason=payload_index_repair`
   - Pinecone transient retry examples:
     `provider=pinecone`, `operation=describeindexstats`, `reason=unavailable`
 
@@ -271,14 +273,15 @@ By default this fails on `WARN` because `productionReady=false` is a release rev
 runtime state is acceptable. Compatibility fallback evidence is handled separately: nonzero
 `metadataFilterFallbacks`, `aggregateCountFallbacks`, `countFallbacks`, or populated fallback-reason
 maps fail the verifier unless `VECTOR_READINESS_ALLOW_FALLBACKS=true` is set for an explicitly
-accepted release exception.
+accepted release exception. Qdrant auto-repair is not a weaker fallback; nonzero
+`payloadIndexRepairAttempts` produces readiness warning evidence for operator review.
 
 The same object includes a `readiness` verdict:
 
 - `status=READY`: required lifecycle/admin capabilities are present and no provider warnings are active
 - `status=WARN`: the provider is operational, but release checks should review warning evidence such
   as non-durable memory storage, compatibility fallback use from any provider, Pinecone clear
-  consistency mode, or Qdrant payload-index strictness
+  consistency mode, or Qdrant payload-index auto-repair activity
 - `status=NOT_READY`: diagnostics are unavailable or required lifecycle/admin capabilities are missing,
   or provider drift such as missing/failed Qdrant payload-index creation is visible
 

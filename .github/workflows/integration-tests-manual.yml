@@ -238,7 +238,16 @@ jobs:
       - name: Build AI Fabric Framework
         run: |
           cd ai-infrastructure-module
-          mvn clean install -B -V
+          mvn clean install -B -V -DskipITs
+
+      - name: Prepare ONNX model assets
+        if: github.event.inputs.embedding_provider == 'onnx' || github.event.inputs.embedding_provider == 'spring-ai-onnx'
+        run: |
+          bash ai-infrastructure-module/scripts/download-onnx-model.sh \
+            all-MiniLM-L6-v2 \
+            ai-infrastructure-module/models/embeddings
+          echo "ONNX_MODEL_PATH=${GITHUB_WORKSPACE}/ai-infrastructure-module/models/embeddings/all-MiniLM-L6-v2.onnx" >> "$GITHUB_ENV"
+          echo "ONNX_TOKENIZER_PATH=${GITHUB_WORKSPACE}/ai-infrastructure-module/models/embeddings/tokenizer.json" >> "$GITHUB_ENV"
 
       - name: Validate Provider Availability
         uses: ./.github/actions/configure-providers
@@ -669,7 +678,7 @@ jobs:
   # ==============================================================================
   # Job 2: Behavior Analytics Integration Tests
   # ==============================================================================
-  # Removed: the behavior analytics integration test module was deleted.
+  # The behavior suite is defined below after the relationship-query and chat-session jobs.
 
   # ==============================================================================
   # Job 3: Relationship Query Integration Tests
@@ -738,7 +747,16 @@ jobs:
       - name: Build AI Fabric Framework
         run: |
           cd ai-infrastructure-module
-          mvn clean install -B -V
+          mvn clean install -B -V -DskipITs
+
+      - name: Prepare ONNX model assets
+        if: github.event.inputs.embedding_provider == 'onnx' || github.event.inputs.embedding_provider == 'spring-ai-onnx'
+        run: |
+          bash ai-infrastructure-module/scripts/download-onnx-model.sh \
+            all-MiniLM-L6-v2 \
+            ai-infrastructure-module/models/embeddings
+          echo "ONNX_MODEL_PATH=${GITHUB_WORKSPACE}/ai-infrastructure-module/models/embeddings/all-MiniLM-L6-v2.onnx" >> "$GITHUB_ENV"
+          echo "ONNX_TOKENIZER_PATH=${GITHUB_WORKSPACE}/ai-infrastructure-module/models/embeddings/tokenizer.json" >> "$GITHUB_ENV"
 
       - name: Validate Provider Availability
         uses: ./.github/actions/configure-providers
@@ -1073,7 +1091,16 @@ jobs:
       - name: Build AI Fabric Framework
         run: |
           cd ai-infrastructure-module
-          mvn clean install -B -V
+          mvn clean install -B -V -DskipITs
+
+      - name: Prepare ONNX model assets
+        if: github.event.inputs.embedding_provider == 'onnx' || github.event.inputs.embedding_provider == 'spring-ai-onnx'
+        run: |
+          bash ai-infrastructure-module/scripts/download-onnx-model.sh \
+            all-MiniLM-L6-v2 \
+            ai-infrastructure-module/models/embeddings
+          echo "ONNX_MODEL_PATH=${GITHUB_WORKSPACE}/ai-infrastructure-module/models/embeddings/all-MiniLM-L6-v2.onnx" >> "$GITHUB_ENV"
+          echo "ONNX_TOKENIZER_PATH=${GITHUB_WORKSPACE}/ai-infrastructure-module/models/embeddings/tokenizer.json" >> "$GITHUB_ENV"
 
       - name: Validate Provider Availability
         uses: ./.github/actions/configure-providers
@@ -1219,7 +1246,16 @@ jobs:
       - name: Build AI Fabric Framework
         run: |
           cd ai-infrastructure-module
-          mvn clean install -B -V
+          mvn clean install -B -V -DskipITs
+
+      - name: Prepare ONNX model assets
+        if: github.event.inputs.embedding_provider == 'onnx' || github.event.inputs.embedding_provider == 'spring-ai-onnx'
+        run: |
+          bash ai-infrastructure-module/scripts/download-onnx-model.sh \
+            all-MiniLM-L6-v2 \
+            ai-infrastructure-module/models/embeddings
+          echo "ONNX_MODEL_PATH=${GITHUB_WORKSPACE}/ai-infrastructure-module/models/embeddings/all-MiniLM-L6-v2.onnx" >> "$GITHUB_ENV"
+          echo "ONNX_TOKENIZER_PATH=${GITHUB_WORKSPACE}/ai-infrastructure-module/models/embeddings/tokenizer.json" >> "$GITHUB_ENV"
 
       - name: Validate Provider Availability
         uses: ./.github/actions/configure-providers

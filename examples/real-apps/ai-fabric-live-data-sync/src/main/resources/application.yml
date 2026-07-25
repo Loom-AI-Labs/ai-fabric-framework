@@ -5,6 +5,8 @@ server:
 spring:
   application:
     name: ai-fabric-live-data-sync
+  config:
+    import: optional:classpath:ai-entity-config.yml
   datasource:
     url: jdbc:h2:file:./data/live-data-sync.db
     driver-class-name: org.h2.Driver
@@ -17,8 +19,6 @@ spring:
 
 ai:
   enabled: true
-  config:
-    default-file: ai-entity-config.yml
   providers:
     llm-provider: openai
     embedding-provider: openai

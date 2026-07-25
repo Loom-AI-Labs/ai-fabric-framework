@@ -4,6 +4,8 @@ server:
 spring:
   application:
     name: document-ingestion-workbench
+  config:
+    import: classpath:ai-entity-config.yml
   datasource:
     url: jdbc:h2:mem:documentingest;DB_CLOSE_DELAY=-1;MODE=PostgreSQL
     driver-class-name: org.h2.Driver
@@ -24,8 +26,6 @@ document-workbench:
 
 ai:
   enabled: true
-  config:
-    default-file: ai-entity-config.yml
   providers:
     embedding-provider: ${AI_EMBEDDING_PROVIDER:openai}
   indexing:

@@ -12,7 +12,7 @@ The map must explain three things at a glance:
 3. AI Fabric coordinates optional capabilities through separate LLM, embedding, and vector-provider
    boundaries.
 
-This blueprint reflects the current module reactor and the course baseline for AI Fabric `0.3.3`.
+This blueprint reflects the current module reactor for AI Fabric `0.4.0`.
 Update it when module boundaries or the ordered orchestration pipeline change.
 
 ## One-Sentence Architecture
@@ -615,4 +615,3 @@ The finished mind map is ready when a Java developer can answer these questions 
 4. Where does each form of state live, and which state is authoritative?
 5. Where do identity, tenant policy, PII handling, and confirmation run?
 6. What proves the workflow is real rather than a UI simulation or hidden fallback?
-

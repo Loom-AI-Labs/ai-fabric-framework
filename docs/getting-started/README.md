@@ -8,7 +8,7 @@ It is written for two readers:
 
 Current assumptions:
 
-- AI Fabric version: `0.3.3`
+- AI Fabric version: `0.4.0`
 - Java: `21`
 - Spring Boot: `4.1.x`
 - Maven group: `io.github.loom-ai-labs`
@@ -26,6 +26,8 @@ Current assumptions:
 
 For the public learner curriculum, use
 [Build Production-Oriented AI Workflows with Java and Spring Boot](../course/AI_FABRIC_EXTERNAL_USER_COURSE.md).
+
+The 0.4 guides describe the published `0.4.0` contract and the corresponding source on `main`.
 
 ## Docs In This Section
 

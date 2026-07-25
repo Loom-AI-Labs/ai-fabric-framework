@@ -1,6 +1,8 @@
 spring:
   application:
     name: subscription-management-hub
+  config:
+    import: optional:classpath:ai-entity-config.yml
 
   datasource:
     url: jdbc:h2:file:./data/subscriptiondb
@@ -23,9 +25,6 @@ spring:
 
 ai:
   enabled: true
-  config:
-    default-file: ai-entity-config.yml
-
   providers:
     llm-provider: openai
     embedding-provider: simple

@@ -28,6 +28,7 @@ final class VectorDatabaseServiceContractAssertions {
         assertStoreSearchUpdateAndRemove(service);
         assertMetadataScanAndProjection(service);
         assertIntegralMetadataFilterDoesNotMatchDecimalMetadata(service);
+        assertExactMetadataFilteringPrecedesResultLimits(service);
         assertEmptyStringMetadataFilterIsExact(service);
         assertInvalidDirectInputContract(service);
         assertBatchAndClearContract(service);
@@ -318,6 +319,51 @@ final class VectorDatabaseServiceContractAssertions {
             .map(VectorRecord::getEntityId)
             .contains("doc-integral-rank")
             .doesNotContain("doc-decimal-rank");
+    }
+
+    void assertExactMetadataFilteringPrecedesResultLimits(VectorDatabaseService service) {
+        try {
+            for (int index = 0; index < 8; index++) {
+                service.storeVector(
+                    "filter-order",
+                    "decimal-" + index,
+                    "More similar decimal metadata candidate " + index,
+                    vector(1.0, 0.0, 0.0),
+                    Map.of("rank", 7.9d)
+                );
+            }
+            service.storeVector(
+                "filter-order",
+                "integral-target",
+                "Lower similarity exact metadata target",
+                vector(0.8, 0.6, 0.0),
+                Map.of("rank", 7)
+            );
+
+            AISearchResponse search = service.search(vector(1.0, 0.0, 0.0), AISearchRequest.builder()
+                .query("exact metadata target")
+                .entityType("filter-order")
+                .metadata(Map.of("rank", 7))
+                .limit(1)
+                .threshold(0.0d)
+                .build());
+
+            assertThat(search.getResults())
+                .map(VectorDatabaseServiceContractAssertions::resultEntityId)
+                .containsExactly("integral-target");
+
+            VectorScanPage scan = service.scan(VectorScanRequest.builder()
+                .entityType("filter-order")
+                .metadataEquals(Map.of("rank", 7))
+                .limit(1)
+                .build());
+
+            assertThat(scan.getVectors())
+                .map(VectorRecord::getEntityId)
+                .containsExactly("integral-target");
+        } finally {
+            service.clearVectorsByEntityType("filter-order");
+        }
     }
 
     void assertEmptyStringMetadataFilterIsExact(VectorDatabaseService service) {

@@ -1,33 +1,31 @@
 package ai.fabric.dto;
 
+import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
+import lombok.NoArgsConstructor;
+
 import java.util.List;
-import java.util.Map;
 
 /**
- * AI Entity Configuration
- * 
- * Represents the configuration for an AI-capable entity.
- * Contains all AI processing settings and field configurations.
- * 
- * @author AI Infrastructure Team
- * @version 1.0.0
+ * Presence-aware runtime policy for an AI entity.
+ *
+ * <p>Annotation-backed entities do not require an entry. YAML-only entities must
+ * explicitly enable indexing and declare a projection.</p>
  */
 @Data
 @Builder
+@NoArgsConstructor
+@AllArgsConstructor
 public class AIEntityConfig {
-    
+
     private String entityType;
-    private List<String> features;
-    private boolean autoProcess;
-    private boolean enableSearch;
-    private boolean enableRecommendations;
-    private boolean autoEmbedding;
-    private boolean indexable;
-    
+
+    private AIEntityIndexingPolicy indexing;
+
+    private AIEntityAnalysisPolicy analysis;
+
     private List<AISearchableField> searchableFields;
-    private List<AIEmbeddableField> embeddableFields;
+
     private List<AIMetadataField> metadataFields;
-    private Map<String, AICrudOperation> crudOperations;
 }

@@ -12,10 +12,12 @@ sources:
   - path: ai-infrastructure-module/ai-fabric-core/src/main/java/ai/fabric/annotation/AICapable.java
   - path: ai-infrastructure-module/ai-fabric-core/src/main/java/ai/fabric/annotation/AISearchable.java
   - path: ai-infrastructure-module/ai-fabric-core/src/main/java/ai/fabric/annotation/AIContext.java
-  - path: ai-infrastructure-module/ai-fabric-core/src/main/java/ai/fabric/service/AICapabilityService.java
+  - path: ai-infrastructure-module/ai-fabric-core/src/main/java/ai/fabric/indexing/api/AIEntityIndexingGateway.java
+  - path: ai-infrastructure-module/ai-fabric-core/src/main/java/ai/fabric/indexing/descriptor/AIEntityDescriptorRegistry.java
+  - path: ai-infrastructure-module/ai-fabric-core/src/main/java/ai/fabric/indexing/projection/AIEntityProjectionService.java
   - path: ai-infrastructure-module/ai-fabric-core/src/main/java/ai/fabric/core/AICoreService.java
   - path: ai-infrastructure-module/ai-fabric-core/src/main/java/ai/fabric/dto/AISearchRequest.java
-  - path: ai-infrastructure-module/ai-fabric-indexing/src/main/java/ai/fabric/indexing/IndexingCoordinator.java
+  - path: ai-infrastructure-module/ai-fabric-indexing/src/main/java/ai/fabric/indexing/DefaultAIEntityIndexingGateway.java
   - path: ai-infrastructure-module/ai-fabric-indexing/src/main/java/ai/fabric/indexing/worker/IndexingWorkProcessor.java
   - path: docs/getting-started/02-installation.md
   - path: docs/getting-started/03-first-semantic-search.md

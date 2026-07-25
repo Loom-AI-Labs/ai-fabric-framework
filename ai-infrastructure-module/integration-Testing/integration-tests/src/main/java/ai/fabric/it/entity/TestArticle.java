@@ -1,6 +1,11 @@
 package ai.fabric.it.entity;
 
 import ai.fabric.annotation.AICapable;
+import ai.fabric.annotation.AIContext;
+import ai.fabric.annotation.AIIdentity;
+import ai.fabric.annotation.AISearchable;
+import ai.fabric.indexing.api.AIContextDataType;
+import ai.fabric.indexing.api.AIContextDestination;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -25,35 +30,62 @@ import java.util.List;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@AICapable
+@AICapable(entityType = "test-article")
 public class TestArticle {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @AIIdentity
     private Long id;
 
     @Column(nullable = false, length = 500)
+    @AISearchable(name = "title", priority = 100, required = true)
     private String title;
 
     @Column(columnDefinition = "TEXT")
+    @AISearchable(name = "content", priority = 90)
     private String content;
 
     @Column(columnDefinition = "TEXT")
+    @AISearchable(name = "summary", priority = 80)
     private String summary;
 
     @Column(length = 100)
+    @AIContext(
+        key = "author",
+        destinations = {
+            AIContextDestination.VECTOR_METADATA,
+            AIContextDestination.API_RESPONSE
+        }
+    )
     private String author;
 
     @Column
     private String tags; // Comma-separated tags
 
     @Column
+    @AIContext(
+        key = "publishDate",
+        dataType = AIContextDataType.DATE,
+        destinations = {
+            AIContextDestination.VECTOR_METADATA,
+            AIContextDestination.API_RESPONSE
+        }
+    )
     private LocalDateTime publishDate;
 
     @Column
     private Integer readTime; // in minutes
 
     @Column
+    @AIContext(
+        key = "published",
+        dataType = AIContextDataType.BOOLEAN,
+        destinations = {
+            AIContextDestination.VECTOR_METADATA,
+            AIContextDestination.API_RESPONSE
+        }
+    )
     private Boolean published;
 
     @Column

@@ -3,9 +3,12 @@ package ai.fabric.service;
 import ai.fabric.dto.AIProfileRequest;
 import ai.fabric.dto.AIProfileResponse;
 import ai.fabric.entity.AIInfrastructureProfile;
+import ai.fabric.indexing.api.AIEntityIndexingGateway;
+import ai.fabric.indexing.api.AIProcessOperation;
 import ai.fabric.repository.AIInfrastructureProfileRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.transaction.annotation.Transactional;
@@ -30,8 +33,7 @@ import java.util.stream.Collectors;
 public class AIInfrastructureProfileService {
     
     private final AIInfrastructureProfileRepository aiProfileRepository;
-    private final AICapabilityService aiCapabilityService;
-    
+    private final ObjectProvider<AIEntityIndexingGateway> indexingGatewayProvider;
     /**
      * Create a new AI profile
      */
@@ -50,9 +52,7 @@ public class AIInfrastructureProfileService {
                 .build();
         
         AIInfrastructureProfile savedProfile = aiProfileRepository.save(aiProfile);
-        
-        // Process with AI capabilities
-        aiCapabilityService.processEntityForAI(savedProfile, "ai_profile");
+        indexIfAvailable(savedProfile, AIProcessOperation.CREATE);
         
         return mapToResponse(savedProfile);
     }
@@ -235,9 +235,7 @@ public class AIInfrastructureProfileService {
         }
         
         AIInfrastructureProfile savedProfile = aiProfileRepository.save(aiProfile);
-        
-        // Process with AI capabilities
-        aiCapabilityService.processEntityForAI(savedProfile, "ai_profile");
+        indexIfAvailable(savedProfile, AIProcessOperation.UPDATE);
         
         return mapToResponse(savedProfile);
     }
@@ -266,9 +264,7 @@ public class AIInfrastructureProfileService {
         }
         
         AIInfrastructureProfile savedProfile = aiProfileRepository.save(aiProfile);
-        
-        // Process with AI capabilities
-        aiCapabilityService.processEntityForAI(savedProfile, "ai_profile");
+        indexIfAvailable(savedProfile, AIProcessOperation.UPDATE);
         
         return mapToResponse(savedProfile);
     }
@@ -283,6 +279,7 @@ public class AIInfrastructureProfileService {
                 .orElseThrow(() -> new RuntimeException("AI Profile not found with ID: " + id));
         
         aiProfileRepository.delete(aiProfile);
+        deleteIfAvailable(aiProfile);
     }
     
     /**
@@ -297,6 +294,7 @@ public class AIInfrastructureProfileService {
         }
         
         aiProfileRepository.delete(aiProfile);
+        deleteIfAvailable(aiProfile);
     }
     
     /**
@@ -316,5 +314,22 @@ public class AIInfrastructureProfileService {
                 .createdAt(aiProfile.getCreatedAt())
                 .updatedAt(aiProfile.getUpdatedAt())
                 .build();
+    }
+
+    private void indexIfAvailable(
+        AIInfrastructureProfile profile,
+        AIProcessOperation operation
+    ) {
+        AIEntityIndexingGateway gateway = indexingGatewayProvider.getIfAvailable();
+        if (gateway != null) {
+            gateway.upsert(profile, operation);
+        }
+    }
+
+    private void deleteIfAvailable(AIInfrastructureProfile profile) {
+        AIEntityIndexingGateway gateway = indexingGatewayProvider.getIfAvailable();
+        if (gateway != null) {
+            gateway.delete(profile);
+        }
     }
 }

@@ -4,8 +4,9 @@ import ai.fabric.migration.domain.MigrationJob;
 import ai.fabric.migration.domain.MigrationRequest;
 import ai.fabric.migration.service.DataMigrationService;
 import ai.fabric.migration.repository.MigrationJobRepository;
-import ai.fabric.indexing.queue.IndexingQueueService;
-import ai.fabric.indexing.IndexingRequest;
+import ai.fabric.indexing.api.AIEntityIndexingGateway;
+import ai.fabric.indexing.api.AIProcessOperation;
+import ai.fabric.indexing.api.IndexingStrategy;
 import ai.fabric.rag.VectorDatabaseService;
 import java.time.Duration;
 import java.time.LocalDateTime;
@@ -46,7 +47,7 @@ class MigrationIntegrationTest {
     private MigrationJobRepository jobRepository;
 
     @MockitoBean
-    private IndexingQueueService queueService;
+    private AIEntityIndexingGateway indexingGateway;
 
     @MockitoBean
     private VectorDatabaseService vectorDatabaseService;
@@ -54,22 +55,17 @@ class MigrationIntegrationTest {
     @BeforeEach
     void cleanState() {
         repository.deleteAll();
-        Mockito.reset(queueService, vectorDatabaseService);
-    }
-
-    private void stubQueueLeaseNoop() {
-        Mockito.lenient().when(queueService.lease(Mockito.any(), Mockito.anyInt())).thenReturn(java.util.List.of());
+        Mockito.reset(indexingGateway, vectorDatabaseService);
     }
 
     @Test
     void migration_enqueues_entities_and_completes() throws Exception {
         repository.save(new TestMigrationEntity("id-1", LocalDateTime.now().minusDays(1)));
         repository.save(new TestMigrationEntity("id-2", LocalDateTime.now().minusDays(2)));
+        Mockito.clearInvocations(indexingGateway);
 
         when(vectorDatabaseService.vectorExists("mig-test", "id-1")).thenReturn(false);
         when(vectorDatabaseService.vectorExists("mig-test", "id-2")).thenReturn(false);
-        stubQueueLeaseNoop();
-
         MigrationRequest request = MigrationRequest.builder()
             .entityType("mig-test")
             .batchSize(10)
@@ -84,10 +80,15 @@ class MigrationIntegrationTest {
             assertThat(refreshed.getStatus()).isEqualTo(ai.fabric.migration.domain.MigrationStatus.COMPLETED);
         });
 
-        ArgumentCaptor<IndexingRequest> captor = ArgumentCaptor.forClass(IndexingRequest.class);
-        verify(queueService, atLeast(2)).enqueue(captor.capture());
+        ArgumentCaptor<Object> captor = ArgumentCaptor.forClass(Object.class);
+        verify(indexingGateway, atLeast(2)).upsert(
+            captor.capture(),
+            Mockito.eq(AIProcessOperation.CREATE),
+            Mockito.eq(IndexingStrategy.ASYNC)
+        );
         assertThat(captor.getAllValues())
-            .extracting(IndexingRequest::entityId)
+            .map(TestMigrationEntity.class::cast)
+            .extracting(TestMigrationEntity::getId)
             .contains("id-1", "id-2");
 
     }
@@ -96,6 +97,7 @@ class MigrationIntegrationTest {
     void reindexExistingSkipsThenEnqueuesWhenAllowed() {
         repository.deleteAll();
         repository.save(new TestMigrationEntity("id-3", LocalDateTime.now().minusHours(3)));
+        Mockito.clearInvocations(indexingGateway);
 
         // already indexed
         when(vectorDatabaseService.vectorExists("mig-test", "id-3")).thenReturn(true);
@@ -109,13 +111,16 @@ class MigrationIntegrationTest {
         MigrationJob jobSkip = migrationService.startMigration(skip);
         await().atMost(Duration.ofSeconds(2)).untilAsserted(() -> {
             MigrationJob refreshed = jobRepository.findById(jobSkip.getId()).orElseThrow();
-            assertThat(refreshed.getProcessedEntities()).isZero();
+            assertThat(refreshed.getProcessedEntities()).isEqualTo(1);
         });
-        verify(queueService, times(0)).enqueue(Mockito.any());
+        verify(indexingGateway, times(0)).upsert(
+            Mockito.any(),
+            Mockito.any(),
+            Mockito.any()
+        );
 
         // allow reindex
-        Mockito.reset(queueService);
-        stubQueueLeaseNoop();
+        Mockito.reset(indexingGateway);
         MigrationRequest allow = MigrationRequest.builder()
             .entityType("mig-test")
             .batchSize(10)
@@ -126,7 +131,11 @@ class MigrationIntegrationTest {
             MigrationJob refreshed = jobRepository.findById(jobAllow.getId()).orElseThrow();
             assertThat(refreshed.getProcessedEntities()).isEqualTo(1);
         });
-        verify(queueService, times(1)).enqueue(Mockito.any(IndexingRequest.class));
+        verify(indexingGateway, times(1)).upsert(
+            Mockito.any(TestMigrationEntity.class),
+            Mockito.eq(AIProcessOperation.CREATE),
+            Mockito.eq(IndexingStrategy.ASYNC)
+        );
     }
 
     @Test
@@ -138,6 +147,7 @@ class MigrationIntegrationTest {
         TestMigrationEntity newEntity = new TestMigrationEntity("new-1", newTime);
         repository.save(oldEntity);
         repository.save(newEntity);
+        Mockito.clearInvocations(indexingGateway);
 
         when(vectorDatabaseService.vectorExists("mig-test", "old-1")).thenReturn(false);
         when(vectorDatabaseService.vectorExists("mig-test", "new-1")).thenReturn(false);
@@ -158,13 +168,18 @@ class MigrationIntegrationTest {
         await().atMost(Duration.ofSeconds(5)).untilAsserted(() -> {
             MigrationJob refreshed = jobRepository.findById(job.getId()).orElseThrow();
             assertThat(refreshed.getStatus()).isEqualTo(ai.fabric.migration.domain.MigrationStatus.COMPLETED);
-            assertThat(refreshed.getProcessedEntities()).isEqualTo(1);
+            assertThat(refreshed.getProcessedEntities()).isEqualTo(2);
         });
 
-        ArgumentCaptor<IndexingRequest> captor = ArgumentCaptor.forClass(IndexingRequest.class);
-        verify(queueService, timeout(5000).atLeast(1)).enqueue(captor.capture());
+        ArgumentCaptor<Object> captor = ArgumentCaptor.forClass(Object.class);
+        verify(indexingGateway, timeout(5000).atLeast(1)).upsert(
+            captor.capture(),
+            Mockito.eq(AIProcessOperation.CREATE),
+            Mockito.eq(IndexingStrategy.ASYNC)
+        );
         assertThat(captor.getAllValues())
-            .extracting(IndexingRequest::entityId)
+            .map(TestMigrationEntity.class::cast)
+            .extracting(TestMigrationEntity::getId)
             .doesNotContain("old-1")
             .contains("new-1");
     }
@@ -173,17 +188,20 @@ class MigrationIntegrationTest {
     void cancelMidRunStopsEnqueue() throws Exception {
         repository.save(new TestMigrationEntity("c1", LocalDateTime.now().minusDays(1)));
         repository.save(new TestMigrationEntity("c2", LocalDateTime.now().minusDays(1)));
+        Mockito.clearInvocations(indexingGateway);
         when(vectorDatabaseService.vectorExists(Mockito.eq("mig-test"), Mockito.anyString()))
             .thenReturn(false);
-        stubQueueLeaseNoop();
-
         CountDownLatch firstEnqueue = new CountDownLatch(1);
         CountDownLatch release = new CountDownLatch(1);
         Mockito.doAnswer(invocation -> {
             firstEnqueue.countDown();
             release.await(2, TimeUnit.SECONDS);
             return null;
-        }).when(queueService).enqueue(Mockito.any(IndexingRequest.class));
+        }).when(indexingGateway).upsert(
+            Mockito.any(),
+            Mockito.eq(AIProcessOperation.CREATE),
+            Mockito.eq(IndexingStrategy.ASYNC)
+        );
 
         MigrationRequest req = MigrationRequest.builder()
             .entityType("mig-test")
@@ -202,18 +220,25 @@ class MigrationIntegrationTest {
             MigrationJob refreshed = jobRepository.findById(job.getId()).orElseThrow();
             assertThat(refreshed.getProcessedEntities()).isLessThanOrEqualTo(1);
         });
-        verify(queueService, atMost(1)).enqueue(Mockito.any(IndexingRequest.class));
+        verify(indexingGateway, atMost(1)).upsert(
+            Mockito.any(),
+            Mockito.eq(AIProcessOperation.CREATE),
+            Mockito.eq(IndexingStrategy.ASYNC)
+        );
     }
 
     @Test
     void failurePathMovesJobToFailed() {
         repository.save(new TestMigrationEntity("f1", LocalDateTime.now().minusDays(1)));
+        Mockito.clearInvocations(indexingGateway);
         when(vectorDatabaseService.vectorExists(Mockito.eq("mig-test"), Mockito.anyString()))
             .thenReturn(false);
-        stubQueueLeaseNoop();
-
         Mockito.doThrow(new IllegalStateException("enqueue-fail"))
-            .when(queueService).enqueue(Mockito.any(IndexingRequest.class));
+            .when(indexingGateway).upsert(
+                Mockito.any(),
+                Mockito.eq(AIProcessOperation.CREATE),
+                Mockito.eq(IndexingStrategy.ASYNC)
+            );
 
         MigrationRequest req = MigrationRequest.builder()
             .entityType("mig-test")
@@ -227,7 +252,11 @@ class MigrationIntegrationTest {
             assertThat(refreshed.getStatus()).isEqualTo(ai.fabric.migration.domain.MigrationStatus.COMPLETED);
             assertThat(refreshed.getFailedEntities()).isGreaterThanOrEqualTo(1);
         });
-        verify(queueService, atMost(1)).enqueue(Mockito.any(IndexingRequest.class));
+        verify(indexingGateway, atMost(1)).upsert(
+            Mockito.any(),
+            Mockito.eq(AIProcessOperation.CREATE),
+            Mockito.eq(IndexingStrategy.ASYNC)
+        );
     }
 
     @Test
@@ -245,10 +274,9 @@ class MigrationIntegrationTest {
     void pauseAndResumeProcessesRemaining() {
         repository.save(new TestMigrationEntity("p1", LocalDateTime.now().minusDays(1)));
         repository.save(new TestMigrationEntity("p2", LocalDateTime.now().minusDays(1)));
+        Mockito.clearInvocations(indexingGateway);
         when(vectorDatabaseService.vectorExists(Mockito.eq("mig-test"), Mockito.anyString()))
             .thenReturn(false);
-        stubQueueLeaseNoop();
-
         MigrationRequest req = MigrationRequest.builder()
             .entityType("mig-test")
             .batchSize(1)
@@ -279,6 +307,10 @@ class MigrationIntegrationTest {
             assertThat(refreshed.getProcessedEntities()).isEqualTo(2);
         });
 
-        verify(queueService, atLeast(2)).enqueue(Mockito.any(IndexingRequest.class));
+        verify(indexingGateway, atLeast(2)).upsert(
+            Mockito.any(),
+            Mockito.eq(AIProcessOperation.CREATE),
+            Mockito.eq(IndexingStrategy.ASYNC)
+        );
     }
 }

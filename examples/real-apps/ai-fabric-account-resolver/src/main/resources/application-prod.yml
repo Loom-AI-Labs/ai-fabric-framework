@@ -22,9 +22,6 @@ spring:
         dialect: org.hibernate.dialect.PostgreSQLDialect
 
 ai:
-  config:
-    default-file: ai-entity-config.yml
-
   chat:
     enabled: true
     auto-create-sessions: true

@@ -4,7 +4,7 @@ Use this file as the first context block for any coding assistant session that t
 
 ## Current Baseline
 
-- AI Fabric release: `0.3.3`
+- AI Fabric contract: `0.4.0`
 - Java: `21`
 - Spring Boot: `4.1.x`
 - Maven group: `io.github.loom-ai-labs`
@@ -48,8 +48,10 @@ Read only the smallest set of files needed:
 - Reuse patterns from `examples/real-apps` before inventing a new integration style.
 - Use `ai-fabric-chat-session` for follow-up turns instead of asking the UI to resend history.
 - Use `@AIAction` for domain actions and require confirmation for side effects.
-- Use `@AICapable`, `@AISearchable`, and `@AIContext` or `ai-entity-config.yml` to define
-  searchable data.
+- Use typed `@AICapable`, `@AIIdentity`, `@AISearchable`, and `@AIContext` declarations for Java
+  entities. Use typed `ai-entity-config.yml` projections for YAML-only push entities.
+- Use `@AIProcess(operation = ...)` or `AIEntityIndexingGateway` for entity lifecycle indexing.
+- Never serialize the complete entity into durable indexing work.
 - Use metadata filters and access policies for tenant/user boundaries.
 - Keep raw app events raw. Let behavior analysis infer meaning.
 - Keep action results domain-shaped for UI display.
@@ -76,4 +78,3 @@ OPENAI_ENABLED=true OPENAI_API_KEY=... mvn -f ai-infrastructure-module/pom.xml -
 ```
 
 If a test cannot be run, document why and what remains unverified.
-

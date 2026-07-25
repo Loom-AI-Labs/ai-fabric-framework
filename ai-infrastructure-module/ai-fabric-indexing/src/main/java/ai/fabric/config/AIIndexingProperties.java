@@ -14,17 +14,20 @@ public class AIIndexingProperties {
 
     private boolean enabled = true;
     private QueueProperties queue = new QueueProperties();
+    private WorkerProperties syncRetryWorker = WorkerProperties.builder()
+        .enabled(true)
+        .fixedDelay(Duration.ofSeconds(2))
+        .batchSize(25)
+        .build();
     private WorkerProperties asyncWorker = WorkerProperties.builder()
         .enabled(true)
         .fixedDelay(Duration.ofMillis(1000))
         .batchSize(50)
-        .strategy("ASYNC")
         .build();
     private WorkerProperties batchWorker = WorkerProperties.builder()
         .enabled(true)
         .fixedDelay(Duration.ofSeconds(15))
         .batchSize(500)
-        .strategy("BATCH")
         .build();
     private CleanupProperties cleanup = new CleanupProperties();
 
@@ -32,6 +35,7 @@ public class AIIndexingProperties {
     public static class QueueProperties {
         private int maxRetries = 5;
         private Duration visibilityTimeout = Duration.ofMinutes(2);
+        private Duration syncCommitRecoveryTimeout = Duration.ofMinutes(10);
     }
 
     @Data
@@ -48,7 +52,6 @@ public class AIIndexingProperties {
         private boolean enabled = true;
         private Duration fixedDelay = Duration.ofSeconds(1);
         private int batchSize = 50;
-        private String strategy = "ASYNC";
 
         public static Builder builder() {
             return new Builder();
@@ -69,11 +72,6 @@ public class AIIndexingProperties {
 
             public Builder batchSize(int size) {
                 target.setBatchSize(size);
-                return this;
-            }
-
-            public Builder strategy(String strategy) {
-                target.setStrategy(strategy);
                 return this;
             }
 

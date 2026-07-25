@@ -1,15 +1,13 @@
 package com.ai.fabric.realapps.docingest.service;
 
 import ai.fabric.entity.IndexingQueueEntry;
-import ai.fabric.indexing.IndexingActionPlan;
-import ai.fabric.indexing.IndexingOperation;
-import ai.fabric.indexing.IndexingRequest;
+import ai.fabric.indexing.api.AIProcessOperation;
 import ai.fabric.indexing.api.IndexingStrategy;
 import ai.fabric.indexing.document.springai.SpringAiDocumentIndexingAdapter;
 import ai.fabric.indexing.document.springai.SpringAiDocumentIndexingOptions;
 import ai.fabric.indexing.document.springai.SpringAiDocumentReaderFactory;
-import ai.fabric.indexing.document.springai.SpringAiIndexingDocument;
 import ai.fabric.indexing.document.springai.SpringAiTrustedResourcePolicy;
+import ai.fabric.indexing.model.AIIndexDocument;
 import ai.fabric.indexing.queue.IndexingQueueService;
 import com.ai.fabric.realapps.docingest.domain.DocumentChunkManifest;
 import com.ai.fabric.realapps.docingest.domain.DocumentSource;
@@ -43,9 +41,6 @@ public class DocumentIngestionService {
 
     private static final long MAX_BYTES = 1_000_000L;
     private static final List<String> SUPPORTED_EXTENSIONS = List.of(".txt", ".json");
-    private static final IndexingActionPlan DOCUMENT_ACTION_PLAN =
-        new IndexingActionPlan(true, true, false, false, false);
-
     private final DocumentSourceRepository sourceRepository;
     private final DocumentChunkManifestRepository chunkManifestRepository;
     private final SpringAiDocumentReaderFactory readerFactory;
@@ -121,9 +116,10 @@ public class DocumentIngestionService {
             toSummary(source),
             chunks.size(),
             chunks.stream().limit(5).map(PlannedChunk::preview).toList(),
-            chunks.stream().mapToInt(chunk -> chunk.document().getMetadataDroppedCount() == null
-                ? 0
-                : chunk.document().getMetadataDroppedCount()).sum()
+            chunks.stream()
+                .map(PlannedChunk::preview)
+                .mapToInt(ChunkPreview::metadataDroppedCount)
+                .sum()
         );
     }
 
@@ -134,14 +130,20 @@ public class DocumentIngestionService {
         List<DocumentChunkManifest> oldChunks = chunkManifestRepository.findBySourceIdOrderByChunkIndexAsc(sourceId);
 
         for (DocumentChunkManifest oldChunk : oldChunks) {
-            queueService.enqueue(deleteRequest(oldChunk));
+            queueService.enqueue(
+                deleteDocument(oldChunk),
+                IndexingStrategy.ASYNC
+            );
         }
         chunkManifestRepository.deleteBySourceId(sourceId);
 
         List<String> indexedEntityIds = new ArrayList<>();
         for (PlannedChunk chunk : chunks) {
-            IndexingQueueEntry ignored = queueService.enqueue(chunk.request());
-            indexedEntityIds.add(chunk.request().entityId());
+            IndexingQueueEntry ignored = queueService.enqueue(
+                chunk.document(),
+                IndexingStrategy.ASYNC
+            );
+            indexedEntityIds.add(chunk.document().entityId());
             chunkManifestRepository.save(toManifest(source, chunk));
         }
 
@@ -164,7 +166,10 @@ public class DocumentIngestionService {
         List<String> deletedEntityIds = new ArrayList<>();
 
         for (DocumentChunkManifest chunk : chunks) {
-            queueService.enqueue(deleteRequest(chunk));
+            queueService.enqueue(
+                deleteDocument(chunk),
+                IndexingStrategy.ASYNC
+            );
             deletedEntityIds.add(chunk.getEntityId());
         }
         chunkManifestRepository.deleteBySourceId(sourceId);
@@ -224,9 +229,8 @@ public class DocumentIngestionService {
             .entityType(entityType)
             .sourceId(source.getId())
             .sourceName(source.getTitle())
-            .operation(IndexingOperation.UPDATE)
+            .operation(AIProcessOperation.UPDATE)
             .strategy(IndexingStrategy.ASYNC)
-            .actionPlan(DOCUMENT_ACTION_PLAN)
             .metadata("sourceId", source.getId())
             .metadata("sourceName", source.getTitle())
             .metadata("sourceVersion", source.getSourceVersion())
@@ -234,8 +238,8 @@ public class DocumentIngestionService {
             .metadata("visibility", source.getVisibility())
             .metadata("originalFilename", source.getOriginalFilename())
             .build();
-        return indexingAdapter.toIndexingRequests(reader, options).stream()
-            .map(request -> new PlannedChunk(request, readPayload(request), toPreview(request)))
+        return indexingAdapter.toIndexDocuments(reader, options).stream()
+            .map(document -> new PlannedChunk(document, toPreview(document)))
             .toList();
     }
 
@@ -248,25 +252,17 @@ public class DocumentIngestionService {
         return readerFactory.textReader(resource, policy);
     }
 
-    private SpringAiIndexingDocument readPayload(IndexingRequest request) {
-        try {
-            return objectMapper.readValue(request.payload(), SpringAiIndexingDocument.class);
-        } catch (JsonProcessingException ex) {
-            throw new IllegalStateException("Failed to read planned chunk payload", ex);
-        }
-    }
-
-    private ChunkPreview toPreview(IndexingRequest request) {
-        SpringAiIndexingDocument document = readPayload(request);
+    private ChunkPreview toPreview(AIIndexDocument document) {
+        Map<String, Object> metadata = document.vectorMetadata();
         return new ChunkPreview(
-            request.entityId(),
-            document.getDocumentId(),
-            document.getChunkIndex() == null ? 0 : document.getChunkIndex(),
-            document.getChunkCount() == null ? 0 : document.getChunkCount(),
-            document.getContent(),
-            document.getContentFingerprint(),
-            document.getMetadata(),
-            document.getMetadataDroppedCount() == null ? 0 : document.getMetadataDroppedCount()
+            document.entityId(),
+            textValue(metadata.get("_springAiDocumentId")),
+            intValue(metadata.get("_springAiChunkIndex")),
+            intValue(metadata.get("_springAiChunkCount")),
+            document.semanticSearchText(),
+            textValue(metadata.get("_springAiContentFingerprint")),
+            metadata,
+            intValue(metadata.get("_springAiMetadataDroppedCount"))
         );
     }
 
@@ -274,26 +270,40 @@ public class DocumentIngestionService {
         DocumentChunkManifest manifest = new DocumentChunkManifest();
         manifest.setSourceId(source.getId());
         manifest.setSourceVersion(source.getSourceVersion());
-        manifest.setEntityType(chunk.request().entityType());
-        manifest.setEntityId(chunk.request().entityId());
-        manifest.setChunkIndex(chunk.document().getChunkIndex() == null ? 0 : chunk.document().getChunkIndex());
-        manifest.setChunkCount(chunk.document().getChunkCount() == null ? 0 : chunk.document().getChunkCount());
-        manifest.setContentFingerprint(chunk.document().getContentFingerprint());
-        manifest.setMetadataJson(writeMetadata(chunk.document().getMetadata()));
+        manifest.setEntityType(chunk.document().entityType());
+        manifest.setEntityId(chunk.document().entityId());
+        manifest.setChunkIndex(chunk.preview().chunkIndex());
+        manifest.setChunkCount(chunk.preview().chunkCount());
+        manifest.setContentFingerprint(chunk.preview().contentFingerprint());
+        manifest.setMetadataJson(writeMetadata(chunk.document().vectorMetadata()));
         manifest.setCreatedAt(Instant.now());
         return manifest;
     }
 
-    private IndexingRequest deleteRequest(DocumentChunkManifest chunk) {
-        return IndexingRequest.builder()
-            .entityType(chunk.getEntityType())
-            .entityId(chunk.getEntityId())
-            .entityClassName(SpringAiIndexingDocument.class.getName())
-            .operation(IndexingOperation.DELETE)
-            .strategy(IndexingStrategy.ASYNC)
-            .actionPlan(DOCUMENT_ACTION_PLAN)
-            .payload("{}")
-            .build();
+    private AIIndexDocument deleteDocument(DocumentChunkManifest chunk) {
+        return indexingAdapter.toDeleteDocument(
+            chunk.getEntityType(),
+            chunk.getEntityId(),
+            Instant.now()
+        );
+    }
+
+    private int intValue(Object value) {
+        if (value instanceof Number number) {
+            return number.intValue();
+        }
+        if (value instanceof CharSequence sequence) {
+            try {
+                return Integer.parseInt(sequence.toString());
+            } catch (NumberFormatException ignored) {
+                return 0;
+            }
+        }
+        return 0;
+    }
+
+    private String textValue(Object value) {
+        return value == null ? "" : value.toString();
     }
 
     private String writeMetadata(Map<String, Object> metadata) {
@@ -426,8 +436,7 @@ public class DocumentIngestionService {
     ) {}
 
     private record PlannedChunk(
-        IndexingRequest request,
-        SpringAiIndexingDocument document,
+        AIIndexDocument document,
         ChunkPreview preview
     ) {}
 }

@@ -18,11 +18,13 @@ import ai.fabric.datasync.normalize.DataSyncEntityNormalizer;
 import ai.fabric.dto.AIAccessControlRequest;
 import ai.fabric.dto.AIAccessControlResponse;
 import ai.fabric.dto.AIAccessSubjectContext;
-import ai.fabric.dto.AIEmbeddingRequest;
-import ai.fabric.dto.AIEmbeddingResponse;
 import ai.fabric.dto.AIEntityConfig;
-import ai.fabric.service.VectorManagementService;
-import ai.fabric.core.AIEmbeddingService;
+import ai.fabric.indexing.api.AIEntityIndexingGateway;
+import ai.fabric.indexing.api.IndexingDispatchStatus;
+import ai.fabric.indexing.api.IndexingOutcome;
+import ai.fabric.indexing.api.IndexingStrategy;
+import ai.fabric.indexing.model.AIIndexDocument;
+import ai.fabric.indexing.projection.AIProjectionValidationException;
 import ai.fabric.util.UlidGenerator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -53,8 +55,10 @@ public class DataSyncService {
     private static final String ERROR_VECTOR_SPACE_NOT_FOUND = "VECTOR_SPACE_NOT_FOUND";
     private static final String ERROR_VECTOR_SPACE_NOT_INDEXABLE = "VECTOR_SPACE_NOT_INDEXABLE";
     private static final String ERROR_BATCH_TOO_LARGE = "BATCH_TOO_LARGE";
-    private static final String ERROR_EMBEDDING_FAILED = "EMBEDDING_FAILED";
-    private static final String ERROR_VECTOR_STORE_FAILED = "VECTOR_STORE_FAILED";
+    private static final String ERROR_PROJECTION_REJECTED = "PROJECTION_REJECTED";
+    private static final String ERROR_INDEXING_SUBMISSION_FAILED = "INDEXING_SUBMISSION_FAILED";
+    private static final String ERROR_INDEXING_RETRYABLE = "INDEXING_RETRYABLE";
+    private static final String ERROR_INDEXING_PERMANENT = "INDEXING_PERMANENT";
 
     private static final String OPERATION_WRITE = "WRITE";
     private static final String OPERATION_DELETE = "DELETE";
@@ -78,8 +82,7 @@ public class DataSyncService {
 
     private final AIDataSyncProperties properties;
     private final AIEntityConfigurationLoader entityConfigurationLoader;
-    private final AIEmbeddingService embeddingService;
-    private final VectorManagementService vectorManagementService;
+    private final AIEntityIndexingGateway indexingGateway;
     private final AIAccessControlService accessControlService;
     private final DataSyncEntityNormalizer normalizer;
     private final UlidGenerator ulidGenerator;
@@ -87,15 +90,13 @@ public class DataSyncService {
 
     public DataSyncService(AIDataSyncProperties properties,
                            AIEntityConfigurationLoader entityConfigurationLoader,
-                           AIEmbeddingService embeddingService,
-                           VectorManagementService vectorManagementService,
+                           AIEntityIndexingGateway indexingGateway,
                            AIAccessControlService accessControlService,
                            DataSyncEntityNormalizer normalizer,
                            Clock clock) {
         this.properties = Objects.requireNonNull(properties, "properties is required");
         this.entityConfigurationLoader = Objects.requireNonNull(entityConfigurationLoader, "entityConfigurationLoader is required");
-        this.embeddingService = Objects.requireNonNull(embeddingService, "embeddingService is required");
-        this.vectorManagementService = Objects.requireNonNull(vectorManagementService, "vectorManagementService is required");
+        this.indexingGateway = Objects.requireNonNull(indexingGateway, "indexingGateway is required");
         this.accessControlService = Objects.requireNonNull(accessControlService, "accessControlService is required");
         this.normalizer = Objects.requireNonNull(normalizer, "normalizer is required");
         this.clock = clock != null ? clock : Clock.systemUTC();
@@ -108,6 +109,7 @@ public class DataSyncService {
             ? List.of()
             : supported.stream()
                 .filter(StringUtils::hasText)
+                .filter(entityType -> isIndexingEnabled(entityConfigurationLoader.getEntityConfig(entityType)))
                 .map(s -> s.trim().toLowerCase(Locale.ROOT))
                 .distinct()
                 .sorted()
@@ -143,7 +145,7 @@ public class DataSyncService {
         if (entityConfig == null) {
             return failure(DataSyncOperationType.UPSERT, ERROR_VECTOR_SPACE_NOT_FOUND, "Unknown vectorSpace: " + vectorSpace, vectorSpace, id, null, startedAt);
         }
-        if (!entityConfig.isIndexable()) {
+        if (!isIndexingEnabled(entityConfig)) {
             return failure(DataSyncOperationType.UPSERT, ERROR_VECTOR_SPACE_NOT_INDEXABLE, "Vector space is not indexable: " + vectorSpace, vectorSpace, id, null, startedAt);
         }
 
@@ -163,50 +165,63 @@ public class DataSyncService {
                                                         AccessDecision access,
                                                         long startedAt) {
 
-        DataSyncEntityNormalizer.NormalizedEntity normalized;
+        Map<String, Object> identityMetadata = identityMetadata(
+            vectorSpace,
+            logicalId,
+            id,
+            request.getIdentity()
+        );
+        AIIndexDocument document;
         try {
-            normalized = normalizer.normalize(entityConfig, vectorSpace, id, request.getContent(), request.getEntity(), request.getMetadata());
-        } catch (Exception ex) {
-            return failure(DataSyncOperationType.UPSERT, ERROR_INVALID_REQUEST, ex.getMessage(), vectorSpace, id, null, startedAt);
-        }
-        Map<String, Object> identityMetadata = enrichIdentityMetadata(vectorSpace, logicalId, id, request.getIdentity(), normalized.metadata());
-
-        AIEmbeddingResponse embedding;
-        try {
-            embedding = embeddingService.generateEmbedding(AIEmbeddingRequest.builder()
-                .text(normalized.content())
-                .entityType(vectorSpace)
-                .entityId(id)
-                .metadata(identityMetadata.toString())
-                .build());
-        } catch (Exception ex) {
-            log.warn("Embedding generation failed for {}:{}: {}", vectorSpace, id, ex.getMessage());
-            return failure(DataSyncOperationType.UPSERT, ERROR_EMBEDDING_FAILED, "Embedding generation failed.", vectorSpace, id, null, startedAt);
-        }
-        if (embedding == null || embedding.getEmbedding() == null || embedding.getEmbedding().isEmpty()) {
-            return failure(DataSyncOperationType.UPSERT, ERROR_EMBEDDING_FAILED, "Embedding generation returned no embedding.", vectorSpace, id, null, startedAt);
-        }
-
-        String vectorId;
-        try {
-            vectorId = vectorManagementService.storeVector(
+            document = normalizer.projectUpsert(
+                entityConfig,
                 vectorSpace,
                 id,
-                normalized.content(),
-                embedding.getEmbedding(),
-                identityMetadata
+                request.getContent(),
+                request.getEntity(),
+                request.getMetadata(),
+                identityMetadata,
+                sourceVersion(request.getIdentity()),
+                providerRequestId(request.getTrace())
             );
         } catch (Exception ex) {
-            log.warn("Vector store failed for {}:{}: {}", vectorSpace, id, ex.getMessage());
             return failure(
                 DataSyncOperationType.UPSERT,
-                ERROR_VECTOR_STORE_FAILED,
-                "Vector store failed.",
+                ERROR_PROJECTION_REJECTED,
+                safeProjectionMessage(ex),
                 vectorSpace,
                 id,
-                failureMetadata("cause", exceptionSummary(ex)),
+                null,
                 startedAt
             );
+        }
+
+        IndexingOutcome outcome;
+        try {
+            outcome = indexingGateway.submit(document, IndexingStrategy.SYNC);
+        } catch (Exception ex) {
+            log.warn("Indexing submission failed for entityType={} error={}",
+                vectorSpace, ex.getClass().getSimpleName());
+            return failure(
+                DataSyncOperationType.UPSERT,
+                ERROR_INDEXING_SUBMISSION_FAILED,
+                "Indexing submission failed.",
+                vectorSpace,
+                id,
+                null,
+                startedAt
+            );
+        }
+        DataSyncOperationResponse dispatchFailure = dispatchFailure(
+            DataSyncOperationType.UPSERT,
+            outcome,
+            vectorSpace,
+            id,
+            access,
+            startedAt
+        );
+        if (dispatchFailure != null) {
+            return dispatchFailure;
         }
 
         long processingMs = nanosToMillis(System.nanoTime() - startedAt);
@@ -216,9 +231,12 @@ public class DataSyncService {
         response.setType(DataSyncOperationType.UPSERT);
         response.setVectorSpace(vectorSpace);
         response.setId(id);
-        response.setVectorId(vectorId);
+        response.setVectorId(id);
         response.setProcessingTimeMs(processingMs);
-        response.setMetadata(mergeMetadata(access.metadata(), identityMetadata));
+        response.setMetadata(mergeMetadata(
+            access.metadata(),
+            mergeMetadata(identityMetadata, outcomeMetadata(outcome))
+        ));
         return response;
     }
 
@@ -260,32 +278,108 @@ public class DataSyncService {
                                                         String id,
                                                         AccessDecision access,
                                                         long startedAt) {
-        boolean removed;
+        AIEntityConfig entityConfig = entityConfigurationLoader.getEntityConfig(vectorSpace);
+        AIIndexDocument document;
         try {
-            removed = vectorManagementService.removeVector(vectorSpace, id);
-        } catch (Exception ex) {
-            log.warn("Vector delete failed for {}:{}: {}", vectorSpace, id, ex.getMessage());
-            return failure(
-                DataSyncOperationType.DELETE,
-                ERROR_VECTOR_STORE_FAILED,
-                "Vector delete failed.",
+            document = normalizer.projectDelete(
+                entityConfig,
                 vectorSpace,
                 id,
-                failureMetadata("cause", exceptionSummary(ex)),
+                providerRequestId(request.getTrace())
+            );
+        } catch (Exception ex) {
+            return failure(
+                DataSyncOperationType.DELETE,
+                ERROR_PROJECTION_REJECTED,
+                safeProjectionMessage(ex),
+                vectorSpace,
+                id,
+                null,
                 startedAt
             );
+        }
+
+        IndexingOutcome outcome;
+        try {
+            outcome = indexingGateway.submit(document, IndexingStrategy.SYNC);
+        } catch (Exception ex) {
+            log.warn("Indexing submission failed for entityType={} error={}",
+                vectorSpace, ex.getClass().getSimpleName());
+            return failure(
+                DataSyncOperationType.DELETE,
+                ERROR_INDEXING_SUBMISSION_FAILED,
+                "Indexing submission failed.",
+                vectorSpace,
+                id,
+                null,
+                startedAt
+            );
+        }
+        DataSyncOperationResponse dispatchFailure = dispatchFailure(
+            DataSyncOperationType.DELETE,
+            outcome,
+            vectorSpace,
+            id,
+            access,
+            startedAt
+        );
+        if (dispatchFailure != null) {
+            return dispatchFailure;
         }
 
         long processingMs = nanosToMillis(System.nanoTime() - startedAt);
         DataSyncOperationResponse response = new DataSyncOperationResponse();
         response.setSuccess(true);
-        response.setMessage(removed ? "Deleted" : "Not found");
+        response.setMessage("Deleted");
         response.setType(DataSyncOperationType.DELETE);
         response.setVectorSpace(vectorSpace);
         response.setId(id);
         response.setProcessingTimeMs(processingMs);
-        response.setMetadata(mergeMetadata(access.metadata(), identityMetadata(vectorSpace, logicalId, id, request.getIdentity())));
+        response.setMetadata(mergeMetadata(
+            access.metadata(),
+            mergeMetadata(
+                identityMetadata(vectorSpace, logicalId, id, request.getIdentity()),
+                outcomeMetadata(outcome)
+            )
+        ));
         return response;
+    }
+
+    private DataSyncOperationResponse dispatchFailure(
+        DataSyncOperationType operation,
+        IndexingOutcome outcome,
+        String vectorSpace,
+        String id,
+        AccessDecision access,
+        long startedAt
+    ) {
+        if (outcome.status() == IndexingDispatchStatus.FAILED_RETRYABLE) {
+            return failure(
+                operation,
+                ERROR_INDEXING_RETRYABLE,
+                operation == DataSyncOperationType.DELETE
+                    ? "Deletion was accepted for retry but is not yet complete."
+                    : "Indexing was accepted for retry but is not yet complete.",
+                vectorSpace,
+                id,
+                mergeMetadata(access.metadata(), outcomeMetadata(outcome)),
+                startedAt
+            );
+        }
+        if (outcome.status() == IndexingDispatchStatus.FAILED_PERMANENT) {
+            return failure(
+                operation,
+                ERROR_INDEXING_PERMANENT,
+                operation == DataSyncOperationType.DELETE
+                    ? "Deletion could not be indexed and requires operator review."
+                    : "Indexing failed permanently and requires operator review.",
+                vectorSpace,
+                id,
+                mergeMetadata(access.metadata(), outcomeMetadata(outcome)),
+                startedAt
+            );
+        }
+        return null;
     }
 
     public DataSyncBatchResponse batch(DataSyncBatchRequest request) {
@@ -332,7 +426,8 @@ public class DataSyncService {
             if (config == null) {
                 return batchFailure(ERROR_VECTOR_SPACE_NOT_FOUND, "Unknown vectorSpace: " + vectorSpace, providerRequestId, startedAt, ops.size());
             }
-            if (op.getType() == DataSyncOperationType.UPSERT && !config.isIndexable()) {
+            if (op.getType() == DataSyncOperationType.UPSERT
+                && !isIndexingEnabled(config)) {
                 return batchFailure(ERROR_VECTOR_SPACE_NOT_INDEXABLE, "Vector space is not indexable: " + vectorSpace, providerRequestId, startedAt, ops.size());
             }
             if (op.getType() == DataSyncOperationType.UPSERT
@@ -595,15 +690,6 @@ public class DataSyncService {
         return values == null ? List.of() : List.copyOf(values);
     }
 
-    private Map<String, Object> failureMetadata(String key, String value) {
-        if (!StringUtils.hasText(key) || !StringUtils.hasText(value)) {
-            return null;
-        }
-        Map<String, Object> metadata = new LinkedHashMap<>();
-        metadata.put(key.trim(), value.trim());
-        return Collections.unmodifiableMap(metadata);
-    }
-
     private Map<String, Object> deniedOperationDetail(int index,
                                                       String vectorSpace,
                                                       String id,
@@ -694,6 +780,12 @@ public class DataSyncService {
         return StringUtils.hasText(value) ? value.trim() : null;
     }
 
+    private boolean isIndexingEnabled(AIEntityConfig config) {
+        return config != null
+            && config.getIndexing() != null
+            && Boolean.TRUE.equals(config.getIndexing().getEnabled());
+    }
+
     private String resolveEffectiveId(String logicalId, DataSyncIdentity identity) {
         String baseId = safeText(logicalId);
         if (!StringUtils.hasText(baseId)) {
@@ -708,16 +800,6 @@ public class DataSyncService {
         }
         String suffix = "::chunk:" + normalizedChunkId;
         return baseId.endsWith(suffix) ? baseId : baseId + suffix;
-    }
-
-    private Map<String, Object> enrichIdentityMetadata(String vectorSpace,
-                                                       String logicalId,
-                                                       String effectiveId,
-                                                       DataSyncIdentity identity,
-                                                       Map<String, Object> existingMetadata) {
-        Map<String, Object> metadata = new LinkedHashMap<>(existingMetadata == null ? Map.of() : existingMetadata);
-        metadata.putAll(identityMetadata(vectorSpace, logicalId, effectiveId, identity));
-        return metadata;
     }
 
     private Map<String, Object> identityMetadata(String vectorSpace,
@@ -759,6 +841,39 @@ public class DataSyncService {
             merged.putAll(right);
         }
         return Collections.unmodifiableMap(merged);
+    }
+
+    private Long sourceVersion(DataSyncIdentity identity) {
+        if (identity == null || !StringUtils.hasText(identity.getSourceRecordVersion())) {
+            return null;
+        }
+        try {
+            return Long.valueOf(identity.getSourceRecordVersion().trim());
+        } catch (NumberFormatException ignored) {
+            return null;
+        }
+    }
+
+    private Map<String, Object> outcomeMetadata(IndexingOutcome outcome) {
+        if (outcome == null) {
+            return Map.of();
+        }
+        Map<String, Object> metadata = new LinkedHashMap<>();
+        metadata.put("indexingWorkId", outcome.workId());
+        metadata.put("indexingStatus", outcome.status().name());
+        metadata.put("indexingStrategy", outcome.strategy().name());
+        return Collections.unmodifiableMap(metadata);
+    }
+
+    private String safeProjectionMessage(Exception exception) {
+        if (exception instanceof AIProjectionValidationException validationException) {
+            return "Projection rejected: " + validationException.getErrorCode();
+        }
+        if (exception instanceof IllegalArgumentException
+            && StringUtils.hasText(exception.getMessage())) {
+            return exception.getMessage();
+        }
+        return "Projection rejected by the configured entity contract.";
     }
 
     private String normalizeChunkId(String chunkId) {

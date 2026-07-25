@@ -3,6 +3,9 @@
 This guide defines the release-facing lifecycle for `ai-fabric-rag` and the supporting indexing,
 data-sync, migration, embedding, and vector-store modules.
 
+Applications upgrading from 0.3 must also follow
+`ANNOTATION_LIFECYCLE_0_4_MIGRATION_GUIDE.md`.
+
 `ai-fabric-rag` is intentionally retrieval-focused. It indexes content, retrieves relevant documents,
 and builds context for downstream generation. It does not own PII redaction, action execution, or final
 LLM answer generation; those are handled by the orchestration and provider layers.
@@ -11,8 +14,8 @@ LLM answer generation; those are handled by the orchestration and provider layer
 
 | Concern | Owner |
 |---|---|
-| Entity annotations and searchable field declarations | `ai-fabric-core` |
-| Content extraction from entities/events | `ai-fabric-indexing`, application code |
+| Typed entity contract, descriptors, identity, and projection | `ai-fabric-core` |
+| Transaction-aware lifecycle, durable work, ordering, retry/dead letter | `ai-fabric-indexing` |
 | Embedding generation | active `EmbeddingProvider` via `AIEmbeddingService` |
 | Vector persistence/search | active `VectorDatabaseService` |
 | Retrieval response/context assembly | `ai-fabric-rag` |
@@ -53,22 +56,50 @@ prevents DTO construction defaults from silently changing production retrieval b
 
 ### 1. Annotate
 
-Applications describe searchable entities with framework annotations and/or `ai-entity-config.yml`.
-The key release rule is that the entity model remains the source of truth:
+Applications describe typed entities with `@AICapable`, `@AIIdentity`, `@AISearchable`, and
+`@AIContext`. Annotation-backed entities need no YAML entry. Optional typed YAML can apply
+operational policy; YAML-only push entities must declare their complete projection.
+
+The key release rule is that the source entity remains application-owned and the AI projection is an
+allowlist:
 
 - Use stable `entityType` values, for example `product`, `faq`, or `ticket`.
-- Mark only fields that are safe and useful for retrieval.
-- Keep tenant, source, and authorization metadata explicit.
-- Do not rely on the RAG module to sanitize sensitive fields; sanitize before indexing.
+- Mark stable identity explicitly with `@AIIdentity` or a supported JPA identity.
+- Mark only fields that are safe and useful for each typed destination.
+- Keep tenant, source, and authorization metadata explicit and required where policy depends on it.
+- Use `priority` for projection ordering and bounded retention, not similarity weighting.
+- When `sanitizePII=true`, projection fails closed if sanitization cannot complete.
+
+Declare source lifecycle operations on a public Spring service boundary:
+
+```java
+@Transactional
+@AIProcess(operation = AIProcessOperation.UPDATE)
+public FaqArticle update(FaqArticle article) {
+    return repository.saveAndFlush(article);
+}
+```
+
+Method names do not determine the operation. Result wrappers, argument-owned targets, and void
+deletes require an explicit `AIProcessTargetResolver`. Private or self-invoked annotated methods fail
+startup validation instead of silently doing nothing.
 
 ### 2. Extract
 
-The indexing layer builds an indexable payload from application data:
+`AIEntityDescriptorRegistry` resolves one immutable contract and `AIEntityProjectionService` builds a
+versioned `AIIndexDocument`:
 
 - `entityType`: the vector-space/entity bucket.
 - `entityId`: the source entity identifier.
-- `content`: the text sent to the embedding provider and later used in context.
-- `metadata`: source, tenant, category, timestamps, attribution label, and filterable fields.
+- `semanticSearchText`: approved text sent to the embedding provider.
+- `ragContextText`: approved evidence text returned to RAG.
+- `vectorMetadata`: bounded filterable provider metadata.
+- `llmContext`: bounded structured context approved for model use.
+- `responseMetadata`: values approved for API presentation.
+- source operation/version, descriptor hash, schema version, timestamp, and correlation ID.
+
+The durable queue stores this class-free projection, never the complete Java entity, class name,
+credentials, raw PII, or unrestricted application metadata.
 
 Recommended metadata keys:
 
@@ -85,8 +116,8 @@ Recommended metadata keys:
 
 `ai-fabric-indexing` includes an optional Spring AI document bridge for trusted ingestion jobs. It
 uses Spring AI `DocumentReader` and `DocumentTransformer` APIs for parsing and chunking, then turns
-the resulting text chunks into normal AI Fabric `IndexingRequest` rows. AI Fabric still owns vector
-space validation, queueing, retry/dead-letter handling, embedding generation, and vector writes.
+the resulting text chunks into approved AI Fabric index documents. AI Fabric still owns vector-space
+validation, queueing, retry/dead-letter handling, embedding generation, and vector writes.
 
 ```java
 SpringAiTrustedResourcePolicy policy = SpringAiTrustedResourcePolicy.trustedRoot(Path.of("/srv/kb"));
@@ -108,7 +139,25 @@ Release rules for this bridge:
 - Chunk IDs are deterministic from source id, document id, and chunk index, so repeated ingestion
   updates the same logical chunks.
 
-### 3. Embed
+### 3. Dispatch And Commit
+
+Every entity lifecycle operation first persists projected work:
+
+1. Resolve and validate the descriptor.
+2. Resolve stable identity.
+3. Build the approved projection.
+4. Insert the queue row in the source transaction when one is active.
+5. On rollback, retain neither queue work nor provider mutation.
+6. On commit, dispatch according to strategy.
+
+`SYNC` attempts provider work after source commit, or immediately when no source transaction exists.
+A provider failure leaves durable retryable work. `ASYNC` and `BATCH` are leased by their workers.
+All strategies use the same queue payload and execution path.
+
+Applications outside Spring AOP use `AIEntityIndexingGateway.upsert(...)`,
+`delete(...)`, or `submit(...)` for an already trusted projection.
+
+### 4. Embed
 
 `RAGService.indexContent(...)` delegates to `AIEmbeddingService`, which calls the configured
 `EmbeddingProvider`.
@@ -122,12 +171,17 @@ Release expectations:
 - Provider failures should fail the indexing operation visibly; do not store content without a matching
   embedding.
 
-### 4. Upsert
+### 5. Upsert
 
-After embedding, the vector store persists the content and metadata:
+For annotation lifecycle, migration, data sync, and document ingestion,
+`IndexingOperationExecutor` performs exactly one embedding call and one vector upsert:
 
 ```java
-ragProvider.indexContent("faq", "faq-123", content, metadata);
+aiEntityIndexingGateway.upsert(
+    article,
+    AIProcessOperation.UPDATE,
+    IndexingStrategy.SYNC
+);
 ```
 
 The vector provider must keep these fields together:
@@ -143,13 +197,14 @@ The memory vector store is suitable for tests and demos. Lucene is suitable for 
 development. Qdrant, Pinecone, Weaviate, and Milvus are production-path stores depending on deployment
 requirements.
 
-`RAGService.indexContent(...)` is entity-idempotent. Re-indexing the same `entityType` and `entityId`
+`RAGService.indexContent(...)` remains a direct trusted RAG API and is entity-idempotent.
+Re-indexing the same `entityType` and `entityId`
 first looks up the existing vector, updates it by vector id when possible, and only stores a new vector
 when no existing record is present. If a provider reports an existing entity without a usable vector
 id, RAG removes the entity record before storing the replacement so release paths do not knowingly
 create duplicate retrieval rows for one source entity.
 
-### 5. Retrieve
+### 6. Retrieve
 
 `performRag(...)` runs the retrieval-focused path:
 
@@ -177,7 +232,7 @@ downstream generation. Hybrid search is provider-dependent:
 When a provider does not advertise `supportsHybridSearch()`, AI Fabric preserves safe retrieval by
 falling back to vector search and reports `hybridSearchMode=fallback_vector`.
 
-### 5.1 Evaluate
+### 6.1 Evaluate
 
 RAG quality checks are opt-in test/release gates, not part of the default retrieval hot path. When
 `spring-ai-client-chat` and a Spring AI `ChatClient.Builder` are available, enable the helper with:
@@ -201,28 +256,31 @@ Use it in tests to check:
 - whether a generated answer is supported by the retrieved context
 - whether regressions lowered evaluator score below an application-defined release threshold
 
-### 6. Update
+### 7. Update
 
-Updates should preserve the same `entityType` and `entityId`:
+Updates must preserve the same `entityType` and `entityId`:
 
-- Re-extract content from the latest source record.
-- Re-embed the new text.
-- Update the existing vector when supported, or remove the old entity record before storing a
-  replacement.
-- Refresh `_indexedUpdatedAt` or equivalent metadata through the indexing/data-sync layer.
+- Project the latest source record after the application update succeeds.
+- Insert projected work atomically with the source change.
+- Re-embed once and upsert the same stable identity.
+- Use source version and per-entity work ordering to supersede stale work.
 
-### 7. Delete
+### 8. Delete
 
-Deletes should remove vectors by entity identity:
+Deletes project identity-only work and remove vectors idempotently:
 
 ```java
-ragProvider.removeContent("faq", "faq-123");
+aiEntityIndexingGateway.delete(
+    FaqArticle.class,
+    "faq-123",
+    IndexingStrategy.SYNC
+);
 ```
 
 The expected result is no document returned for that entity in future retrieval. The vector provider
 should return a clear false/not-found outcome rather than silently pretending a delete happened.
 
-### 8. Backfill
+### 9. Backfill
 
 Backfill belongs to `ai-fabric-migration` or application-owned migration jobs:
 
@@ -239,20 +297,38 @@ the production vector provider.
 For detailed job lifecycle, pause/resume/cancel, filtering, and progress semantics, see
 `MIGRATION_BACKFILL_GUIDE.md`.
 
-### 9. Queue Worker Semantics
+### 10. Queue Worker Semantics
 
-`ai-fabric-indexing` workers lease queue rows, execute the requested action plan, and then acknowledge
-the row as completed or failed.
+`ai-fabric-indexing` workers lease projected queue rows, establish per-entity ordering state, execute
+one typed work operation, and acknowledge the row as completed, superseded, retryable, or dead letter.
 
 Release expectations:
 
 - Processing failures are recorded through `IndexingQueueService.markFailure(...)`, which handles retry
   scheduling and dead-letter transition.
 - Completion acknowledgement failures are not reclassified as processing failures; the entry remains
-  recoverable through visibility-timeout reset rather than being marked as a failed indexing attempt.
+  recoverable through the stuck-work sweep rather than being marked as a failed indexing attempt.
 - Failure acknowledgement failures are logged per entry and do not stop the rest of the leased batch.
-- The cleanup scheduler resets expired `PROCESSING` entries so transient database or worker crashes do not
-  strand work permanently.
+- The cleanup scheduler reclaims a bounded batch of locked `PROCESSING` entries only when both the
+  visibility timeout has expired and `cleanup.stuck-threshold` has elapsed. Reclaimed work follows the
+  normal retry/backoff/dead-letter policy, so repeated worker crashes remain visible instead of being
+  reset forever.
+- Per-entity state is worker-owned, so concurrent first submissions cannot make source transactions
+  compete to create ordering rows.
+- State tombstones survive deletes so older updates cannot recreate deleted evidence.
+- Optional analysis is separate dependent work and cannot run before its indexing dependency completes.
+
+Expose `management.endpoints.web.exposure.include=aifabricEntities,...` to inspect sanitized descriptor,
+process-method, and queue readiness. Monitor bounded-cardinality metrics:
+
+- `aifabric.indexing.accepted`
+- `aifabric.indexing.completed`
+- `aifabric.indexing.failed`
+- `aifabric.indexing.retried`
+- `aifabric.indexing.dead_lettered`
+- `aifabric.indexing.superseded`
+- `aifabric.indexing.projection_failures`
+- `aifabric.indexing.duration`
 
 ## Verification
 
@@ -265,6 +341,10 @@ mvn -f ai-infrastructure-module/pom.xml -pl ai-fabric-rag -am test
 The RAG module test suite should prove:
 
 - indexing and retrieval through an in-memory vector store
+- source commit/rollback behavior with a real transaction manager
+- exactly one upsert or idempotent delete per lifecycle operation
+- wrapper, collection, optional, void-delete, and custom identity resolution
+- stale work, delete/recreate ordering, retry, and dead-letter transitions
 - re-indexing the same entity updates one vector instead of appending duplicates
 - Spring AI document ingestion converts trusted text/JSON resources into bounded indexing requests
   and rejects untrusted URL/outside-root resources

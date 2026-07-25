@@ -3,7 +3,7 @@ package com.ai.fabric.realapps.faq.service;
 import ai.fabric.core.AICoreService;
 import ai.fabric.dto.AISearchRequest;
 import ai.fabric.dto.AISearchResponse;
-import ai.fabric.service.AICapabilityService;
+import ai.fabric.indexing.api.AIEntityIndexingGateway;
 import com.ai.fabric.realapps.faq.domain.FaqArticle;
 import com.ai.fabric.realapps.faq.repo.FaqArticleRepository;
 import org.junit.jupiter.api.Test;
@@ -23,9 +23,14 @@ class FaqArticleServiceTest {
 
     private final FaqArticleRepository repository = mock(FaqArticleRepository.class);
     private final AICoreService aiCoreService = mock(AICoreService.class);
-    private final ObjectProvider<AICapabilityService> capabilityProvider = unavailableProvider();
+    private final ObjectProvider<AIEntityIndexingGateway> indexingProvider =
+        unavailableProvider();
     private final ObjectProvider<AICoreService> aiCoreProvider = availableProvider(aiCoreService);
-    private final FaqArticleService service = new FaqArticleService(repository, capabilityProvider, aiCoreProvider);
+    private final FaqArticleService service = new FaqArticleService(
+        repository,
+        indexingProvider,
+        aiCoreProvider
+    );
 
     @Test
     void semanticSearchResolvesValidResultIdsAndSkipsMalformedRows() {

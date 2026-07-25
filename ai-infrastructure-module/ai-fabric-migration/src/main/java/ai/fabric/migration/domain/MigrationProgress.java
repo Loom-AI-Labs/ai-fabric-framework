@@ -13,6 +13,8 @@ public class MigrationProgress {
     long total;
     long processed;
     long failed;
+    long projectionFailures;
+    long enqueueFailures;
     double percentComplete;
     Duration estimatedTimeRemaining;
 }

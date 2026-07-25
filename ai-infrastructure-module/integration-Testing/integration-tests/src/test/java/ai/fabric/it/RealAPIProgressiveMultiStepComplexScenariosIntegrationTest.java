@@ -11,7 +11,9 @@ import ai.fabric.it.repository.TestArticleRepository;
 import ai.fabric.it.repository.TestProductRepository;
 import ai.fabric.it.repository.TestUserRepository;
 import ai.fabric.it.support.RealAPITestSupport;
-import ai.fabric.service.AICapabilityService;
+import ai.fabric.indexing.api.AIEntityIndexingGateway;
+import ai.fabric.indexing.api.AIProcessOperation;
+import ai.fabric.indexing.api.IndexingStrategy;
 import ai.fabric.service.VectorManagementService;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.DynamicTest;
@@ -107,7 +109,7 @@ public class RealAPIProgressiveMultiStepComplexScenariosIntegrationTest {
     private RAGOrchestrator orchestrator;
 
     @Autowired
-    private AICapabilityService capabilityService;
+    private AIEntityIndexingGateway indexingGateway;
 
     @Autowired
     private VectorManagementService vectorManagementService;
@@ -214,7 +216,7 @@ public class RealAPIProgressiveMultiStepComplexScenariosIntegrationTest {
             .stockQuantity(100)
             .active(true)
             .build());
-        capabilityService.processEntityForAI(cyberShield, "test-product");
+        indexingGateway.upsert(cyberShield, AIProcessOperation.CREATE, IndexingStrategy.SYNC);
 
         TestProduct privacyGuard = productRepository.save(TestProduct.builder()
             .name("Data Privacy Compliance Tool")
@@ -230,7 +232,7 @@ public class RealAPIProgressiveMultiStepComplexScenariosIntegrationTest {
             .stockQuantity(100)
             .active(true)
             .build());
-        capabilityService.processEntityForAI(privacyGuard, "test-product");
+        indexingGateway.upsert(privacyGuard, AIProcessOperation.CREATE, IndexingStrategy.SYNC);
 
         TestArticle article = articleRepository.save(TestArticle.builder()
             .title("GDPR Audit Readiness: Evidence, Logs, and Incident Response")
@@ -247,7 +249,7 @@ public class RealAPIProgressiveMultiStepComplexScenariosIntegrationTest {
             .readTime(7)
             .viewCount(420)
             .build());
-        capabilityService.processEntityForAI(article, "test-article");
+        indexingGateway.upsert(article, AIProcessOperation.CREATE, IndexingStrategy.SYNC);
 
         TestUser user = userRepository.save(TestUser.builder()
             .firstName("Amina")
@@ -263,6 +265,6 @@ public class RealAPIProgressiveMultiStepComplexScenariosIntegrationTest {
             .dateOfBirth(LocalDate.of(1993, 2, 18))
             .active(true)
             .build());
-        capabilityService.processEntityForAI(user, "test-user");
+        indexingGateway.upsert(user, AIProcessOperation.CREATE, IndexingStrategy.SYNC);
     }
 }

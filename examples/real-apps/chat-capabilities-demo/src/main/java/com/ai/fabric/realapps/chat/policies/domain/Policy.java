@@ -2,6 +2,7 @@ package com.ai.fabric.realapps.chat.policies.domain;
 
 import ai.fabric.annotation.AICapable;
 import ai.fabric.annotation.AIContext;
+import ai.fabric.annotation.AIIdentity;
 import ai.fabric.annotation.AISearchable;
 import ai.fabric.indexing.api.IndexingStrategy;
 import jakarta.persistence.Column;
@@ -30,18 +31,19 @@ import lombok.Setter;
 public class Policy {
 
     @Id
+    @AIIdentity
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @AISearchable(weight = 2.0)
+    @AISearchable(priority = 100)
     @Column(nullable = false)
     private String title;
 
-    @AISearchable(weight = 1.7, maxLength = 20000)
+    @AISearchable(priority = 90, maxLength = 20000)
     @Column(columnDefinition = "TEXT", nullable = false)
     private String text;
 
-    @AISearchable(weight = 1.2)
+    @AISearchable(priority = 70)
     @AIContext(description = "Policy classification (e.g., returns, shipping, privacy)")
     @Column(nullable = false)
     private String classification;

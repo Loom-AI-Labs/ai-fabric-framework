@@ -87,6 +87,57 @@ class DataSyncControllerTest {
     }
 
     @Test
+    void upsertMapsProjectionRejectionToBadRequest() {
+        DataSyncService service = mock(DataSyncService.class);
+        DataSyncOperationResponse serviceResponse = operationFailure(
+            "PROJECTION_REJECTED"
+        );
+        DataSyncUpsertRequest request = new DataSyncUpsertRequest();
+        when(service.upsert(request)).thenReturn(serviceResponse);
+        DataSyncController controller = new DataSyncController(service);
+
+        ResponseEntity<DataSyncOperationResponse> response = controller.upsert(request);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(response.getBody()).isSameAs(serviceResponse);
+    }
+
+    @Test
+    void upsertMapsRetryableIndexingFailureToServiceUnavailable() {
+        DataSyncService service = mock(DataSyncService.class);
+        DataSyncOperationResponse serviceResponse = operationFailure(
+            "INDEXING_RETRYABLE"
+        );
+        DataSyncUpsertRequest request = new DataSyncUpsertRequest();
+        when(service.upsert(request)).thenReturn(serviceResponse);
+        DataSyncController controller = new DataSyncController(service);
+
+        ResponseEntity<DataSyncOperationResponse> response = controller.upsert(request);
+
+        assertThat(response.getStatusCode()).isEqualTo(
+            HttpStatus.SERVICE_UNAVAILABLE
+        );
+        assertThat(response.getBody()).isSameAs(serviceResponse);
+    }
+
+    @Test
+    void upsertMapsPermanentIndexingFailureToInternalServerError() {
+        DataSyncService service = mock(DataSyncService.class);
+        DataSyncOperationResponse serviceResponse = operationFailure(
+            "INDEXING_PERMANENT"
+        );
+        DataSyncUpsertRequest request = new DataSyncUpsertRequest();
+        when(service.upsert(request)).thenReturn(serviceResponse);
+        DataSyncController controller = new DataSyncController(service);
+
+        ResponseEntity<DataSyncOperationResponse> response = controller.upsert(request);
+
+        assertThat(response.getStatusCode())
+            .isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
+        assertThat(response.getBody()).isSameAs(serviceResponse);
+    }
+
+    @Test
     void mapsUnexpectedNullServiceResponseToInternalServerError() {
         DataSyncService service = mock(DataSyncService.class);
         DataSyncUpsertRequest request = new DataSyncUpsertRequest();

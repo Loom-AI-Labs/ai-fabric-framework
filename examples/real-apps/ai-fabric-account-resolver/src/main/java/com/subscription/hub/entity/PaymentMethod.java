@@ -1,6 +1,5 @@
 package com.subscription.hub.entity;
 
-import ai.fabric.annotation.AIContext;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -31,20 +30,16 @@ public class PaymentMethod {
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
-    @AIContext(contextKey = "paymentType")
     @Column(nullable = false)
     @Enumerated(EnumType.STRING)
     private PaymentType type;
 
-    @AIContext(contextKey = "last4")
     @Column(nullable = false, length = 4)
     private String last4;
 
-    @AIContext(contextKey = "provider")
     @Column(nullable = false)
     private String provider;
 
-    @AIContext(contextKey = "verified")
     @Column(nullable = false)
     @Builder.Default
     private Boolean verified = true;

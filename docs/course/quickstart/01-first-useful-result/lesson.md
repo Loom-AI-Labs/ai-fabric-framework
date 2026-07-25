@@ -81,7 +81,13 @@ The entity will use AI Fabric's real annotation model:
 ```java
 @AICapable(entityType = "knowledge-article")
 class KnowledgeArticle {
-    @AIContext(dataType = "id")
+    @AIIdentity
+    @AIContext(
+        key = "entityId",
+        dataType = AIContextDataType.ID,
+        priority = 100,
+        required = true
+    )
     private String id;
 
     @AISearchable

@@ -57,7 +57,6 @@ public class QdrantVectorDatabaseService implements VectorDatabaseService, AutoC
 
     private static final String EMBEDDING_PAYLOAD_FIELD = "embedding";
     private static final String KNOWLEDGE_SOURCE_HANDLE_REF_FIELD = "knowledgeSourceHandleRef";
-    private static final String METADATA_FILTER_FALLBACK_FIELD = "metadataFilterFallback";
     private static final Set<String> RESERVED_PAYLOAD_FIELDS = Set.of("entityType", "entityId", "content", EMBEDDING_PAYLOAD_FIELD);
     private static final List<String> REQUIRED_KEYWORD_PAYLOAD_INDEX_FIELDS = List.of(KNOWLEDGE_SOURCE_HANDLE_REF_FIELD);
     private static final int DEFAULT_SEARCH_LIMIT = 10;
@@ -72,7 +71,7 @@ public class QdrantVectorDatabaseService implements VectorDatabaseService, AutoC
     private final ConcurrentMap<String, Boolean> payloadIndexCache = new ConcurrentHashMap<>();
     private final ConcurrentMap<String, Integer> payloadIndexCreateAttempts = new ConcurrentHashMap<>();
     private final ConcurrentMap<String, String> payloadIndexCreateFailures = new ConcurrentHashMap<>();
-    private final ConcurrentMap<String, Integer> metadataFilterFallbacks = new ConcurrentHashMap<>();
+    private final ConcurrentMap<String, Integer> payloadIndexRepairAttempts = new ConcurrentHashMap<>();
     private final Set<String> payloadIndexesSeenMissing = ConcurrentHashMap.newKeySet();
 
     public QdrantVectorDatabaseService(AIProviderConfig providerConfig) {
@@ -142,12 +141,12 @@ public class QdrantVectorDatabaseService implements VectorDatabaseService, AutoC
 
     @Override
     public String vectorSearchFilterMode() {
-        return "qdrant-payload-filter-with-client-side-fallback";
+        return "qdrant-payload-filter-with-index-repair";
     }
 
     @Override
     public String vectorScanFilterMode() {
-        return "qdrant-payload-filter";
+        return "qdrant-payload-filter-with-index-repair";
     }
 
     @Override
@@ -189,8 +188,8 @@ public class QdrantVectorDatabaseService implements VectorDatabaseService, AutoC
         diagnostics.put("transport", "grpc");
         diagnostics.put("metadataFilteredSearch", supportsSearchMetadataFiltering());
         diagnostics.put("metadataFilteredScan", supportsScanMetadataFiltering());
-        diagnostics.put("searchFilterMode", "qdrant-payload-filter-with-client-side-fallback");
-        diagnostics.put("scanFilterMode", "qdrant-payload-filter");
+        diagnostics.put("searchFilterMode", "qdrant-payload-filter-with-index-repair");
+        diagnostics.put("scanFilterMode", "qdrant-payload-filter-with-index-repair");
         diagnostics.put("failOnMissingPayloadIndex", failOnMissingPayloadIndex());
         diagnostics.put("requiredPayloadIndexFields", REQUIRED_KEYWORD_PAYLOAD_INDEX_FIELDS);
         diagnostics.put("payloadIndexReadinessSource", "lazy-cache");
@@ -198,7 +197,8 @@ public class QdrantVectorDatabaseService implements VectorDatabaseService, AutoC
         diagnostics.put("payloadIndexesSeenMissing", sortedValues(payloadIndexesSeenMissing));
         diagnostics.put("payloadIndexCreateAttempts", sortedMap(payloadIndexCreateAttempts));
         diagnostics.put("payloadIndexCreateFailures", sortedMap(payloadIndexCreateFailures));
-        diagnostics.put("metadataFilterFallbacks", sortedMap(metadataFilterFallbacks));
+        diagnostics.put("payloadIndexRepairAttempts", sortedMap(payloadIndexRepairAttempts));
+        diagnostics.put("metadataFilterFallbacks", Map.of());
         return diagnostics;
     }
 
@@ -412,10 +412,10 @@ public class QdrantVectorDatabaseService implements VectorDatabaseService, AutoC
 
             filter.ifPresent(searchBuilder::setFilter);
 
+            Points.SearchPoints searchRequest = searchBuilder.build();
             List<Points.ScoredPoint> scored;
-            boolean metadataFilterFallback = false;
             try {
-                scored = await(qdrantClient.searchAsync(searchBuilder.build()), "search points");
+                scored = await(qdrantClient.searchAsync(searchRequest), "search points");
             } catch (AIServiceException ex) {
                 if (filter.isEmpty() || !isMissingPayloadIndexFailure(ex)) {
                     throw ex;
@@ -424,27 +424,27 @@ public class QdrantVectorDatabaseService implements VectorDatabaseService, AutoC
                     throw new AIServiceException(
                         "Qdrant metadata-filtered search requires a payload index for the requested metadata fields. "
                             + "Create the payload index or set ai.vector-db.operations.fail-on-missing-payload-index=false "
-                            + "to allow compatibility fallback.",
+                            + "to allow AI Fabric to repair portable typed indexes and retry the filtered query.",
                         ex
                     );
                 }
+                payloadIndexRepairAttempts.merge(collection, 1, Integer::sum);
+                repairMetadataPayloadIndexes(collection, request.getMetadata());
+                VectorProviderMetrics.recordRetry("qdrant", "search", "payload_index_repair");
                 log.warn(
-                    "Qdrant filtered search for collection '{}' failed because a required payload index is missing. "
-                        + "Retrying without server-side metadata filtering and re-applying the portable metadata "
-                        + "predicate client-side.",
+                    "Qdrant filtered search for collection '{}' reported a missing payload index. "
+                        + "The requested typed indexes were repaired and the same filtered query will be retried.",
                     collection
                 );
-                Points.SearchPoints fallbackSearch = Points.SearchPoints.newBuilder()
-                    .setCollectionName(collection)
-                    .addAllVector(queryVectorFloat)
-                    .setLimit(limit)
-                    .setWithPayload(WithPayloadSelectorFactory.enable(true))
-                    .setWithVectors(WithVectorsSelectorFactory.enable(true))
-                    .build();
-                scored = await(qdrantClient.searchAsync(fallbackSearch), "search points without metadata filter");
-                metadataFilterFallback = true;
-                metadataFilterFallbacks.merge(collection, 1, Integer::sum);
-                VectorProviderMetrics.recordFallback("qdrant", "search", "missing_payload_index");
+                try {
+                    scored = await(qdrantClient.searchAsync(searchRequest), "retry metadata-filtered search points");
+                } catch (AIServiceException retryFailure) {
+                    throw new AIServiceException(
+                        "Qdrant metadata-filtered search still requires a payload index after safe index repair. "
+                            + "Verify the metadata field types and Qdrant payload schema.",
+                        retryFailure
+                    );
+                }
             }
             if (CollectionUtils.isEmpty(scored)) {
                 continue;
@@ -456,10 +456,7 @@ public class QdrantVectorDatabaseService implements VectorDatabaseService, AutoC
                     continue;
                 }
                 VectorRecord record = toVectorRecord(collection, point, score);
-                if (metadataFilterFallback && !matchesMetadata(record, request.getMetadata())) {
-                    continue;
-                }
-                allResults.add(metadataFilterFallback ? withMetadataFilterFallback(record) : record);
+                allResults.add(record);
             }
         }
 
@@ -477,9 +474,6 @@ public class QdrantVectorDatabaseService implements VectorDatabaseService, AutoC
                 row.put("vectorSpace", record.getEntityType());
                 row.put("content", record.getContent());
                 row.put("metadata", record.getMetadata());
-                if (isMetadataFilterFallback(record)) {
-                    row.put(METADATA_FILTER_FALLBACK_FIELD, true);
-                }
                 row.put("score", record.getSimilarityScore());
                 row.put("similarity", record.getSimilarityScore());
                 return row;
@@ -643,7 +637,8 @@ public class QdrantVectorDatabaseService implements VectorDatabaseService, AutoC
 
         offset.ifPresent(builder::setOffset);
 
-        buildMetadataFilter(request.getMetadataEquals()).ifPresent(builder::setFilter);
+        Optional<Common.Filter> filter = buildMetadataFilter(request.getMetadataEquals());
+        filter.ifPresent(builder::setFilter);
 
         builder.setWithVectors(WithVectorsSelectorFactory.enable(request.isIncludeEmbedding()));
 
@@ -666,7 +661,40 @@ public class QdrantVectorDatabaseService implements VectorDatabaseService, AutoC
             builder.setWithPayload(WithPayloadSelectorFactory.exclude(excludedPayloadFields));
         }
 
-        Points.ScrollResponse response = await(qdrantClient.scrollAsync(builder.build()), "scroll points (scan)");
+        Points.ScrollPoints scrollRequest = builder.build();
+        Points.ScrollResponse response;
+        try {
+            response = await(qdrantClient.scrollAsync(scrollRequest), "scroll points (scan)");
+        } catch (AIServiceException ex) {
+            if (filter.isEmpty() || !isMissingPayloadIndexFailure(ex)) {
+                throw ex;
+            }
+            if (failOnMissingPayloadIndex()) {
+                throw new AIServiceException(
+                    "Qdrant metadata-filtered scan requires a payload index for the requested metadata fields. "
+                        + "Create the payload index or set ai.vector-db.operations.fail-on-missing-payload-index=false "
+                        + "to allow AI Fabric to repair portable typed indexes and retry the filtered scan.",
+                    ex
+                );
+            }
+            payloadIndexRepairAttempts.merge(collection, 1, Integer::sum);
+            repairMetadataPayloadIndexes(collection, request.getMetadataEquals());
+            VectorProviderMetrics.recordRetry("qdrant", "scan", "payload_index_repair");
+            log.warn(
+                "Qdrant filtered scan for collection '{}' reported a missing payload index. "
+                    + "The requested typed indexes were repaired and the same filtered scan will be retried.",
+                collection
+            );
+            try {
+                response = await(qdrantClient.scrollAsync(scrollRequest), "retry metadata-filtered scan");
+            } catch (AIServiceException retryFailure) {
+                throw new AIServiceException(
+                    "Qdrant metadata-filtered scan still requires a payload index after safe index repair. "
+                        + "Verify the metadata field types and Qdrant payload schema.",
+                    retryFailure
+                );
+            }
+        }
         if (response == null || response.getResultCount() == 0) {
             return VectorScanPage.builder()
                 .vectors(List.of())
@@ -953,16 +981,52 @@ public class QdrantVectorDatabaseService implements VectorDatabaseService, AutoC
     }
 
     private void ensureKeywordPayloadIndex(String collection, String fieldName) {
+        ensurePayloadIndex(
+            collection,
+            fieldName,
+            io.qdrant.client.grpc.Collections.PayloadSchemaType.Keyword,
+            false
+        );
+    }
+
+    private void repairMetadataPayloadIndexes(String collection, Map<String, Object> metadata) {
+        VectorMetadataFilterSupport.ValidationResult validation =
+            VectorMetadataFilterSupport.validatePortableEquals(metadata);
+        if (validation.hasRejectedFilters()) {
+            return;
+        }
+        validation.terms().forEach(term -> {
+            io.qdrant.client.grpc.Collections.PayloadSchemaType schemaType = switch (term.kind()) {
+                case STRING -> io.qdrant.client.grpc.Collections.PayloadSchemaType.Keyword;
+                case BOOLEAN -> io.qdrant.client.grpc.Collections.PayloadSchemaType.Bool;
+                case INTEGRAL_NUMBER -> io.qdrant.client.grpc.Collections.PayloadSchemaType.Integer;
+                case DECIMAL_NUMBER -> throw new IllegalArgumentException(
+                    "Decimal metadata filters are outside the portable exact-match subset"
+                );
+            };
+            ensurePayloadIndex(collection, term.key(), schemaType, true);
+        });
+    }
+
+    private void ensurePayloadIndex(
+        String collection,
+        String fieldName,
+        io.qdrant.client.grpc.Collections.PayloadSchemaType schemaType,
+        boolean forceSchemaRefresh
+    ) {
         String cacheKey = collection + "::" + fieldName;
-        if (payloadIndexCache.containsKey(cacheKey)) {
+        if (!forceSchemaRefresh && payloadIndexCache.containsKey(cacheKey)) {
             return;
         }
 
         synchronized (payloadIndexCache) {
-            if (payloadIndexCache.containsKey(cacheKey)) {
+            if (!forceSchemaRefresh && payloadIndexCache.containsKey(cacheKey)) {
                 return;
             }
 
+            if (forceSchemaRefresh) {
+                payloadIndexCache.remove(cacheKey);
+            }
             if (!payloadSchemaExists(collection, fieldName)) {
                 payloadIndexesSeenMissing.add(cacheKey);
                 payloadIndexCreateAttempts.merge(cacheKey, 1, Integer::sum);
@@ -971,7 +1035,7 @@ public class QdrantVectorDatabaseService implements VectorDatabaseService, AutoC
                         qdrantClient.createPayloadIndexAsync(
                             collection,
                             fieldName,
-                            io.qdrant.client.grpc.Collections.PayloadSchemaType.Keyword,
+                            schemaType,
                             null,
                             true,
                             null,
@@ -1303,39 +1367,6 @@ public class QdrantVectorDatabaseService implements VectorDatabaseService, AutoC
             .setVectors(point.getVectors())
             .build();
         return toVectorRecord(entityType, converted, score);
-    }
-
-    private VectorRecord withMetadataFilterFallback(VectorRecord record) {
-        Map<String, Object> metadata = new LinkedHashMap<>();
-        if (record.getMetadata() != null) {
-            metadata.putAll(record.getMetadata());
-        }
-        metadata.put(METADATA_FILTER_FALLBACK_FIELD, true);
-        return VectorRecord.builder()
-            .vectorId(record.getVectorId())
-            .entityType(record.getEntityType())
-            .entityId(record.getEntityId())
-            .content(record.getContent())
-            .embedding(record.getEmbedding())
-            .metadata(metadata)
-            .aiAnalysis(record.getAiAnalysis())
-            .createdAt(record.getCreatedAt())
-            .updatedAt(record.getUpdatedAt())
-            .vectorMetadata(record.getVectorMetadata())
-            .similarityScore(record.getSimilarityScore())
-            .active(record.getActive())
-            .version(record.getVersion())
-            .build();
-    }
-
-    private boolean matchesMetadata(VectorRecord record, Map<String, Object> metadataEquals) {
-        return record != null && VectorMetadataFilterSupport.matchesPortableEquals(record.getMetadata(), metadataEquals);
-    }
-
-    private boolean isMetadataFilterFallback(VectorRecord record) {
-        return record != null
-            && record.getMetadata() != null
-            && Boolean.TRUE.equals(record.getMetadata().get(METADATA_FILTER_FALLBACK_FIELD));
     }
 
     private boolean hasRejectedMetadataFilter(Map<String, Object> metadata) {

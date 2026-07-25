@@ -1,962 +1,1015 @@
-# AI Entity Configuration for Integration Tests
-# This file defines test entities and their AI processing configurations
-
-ai-entities:
-  # Test Product Entity (Legacy name)
-  product:
-    entity-type: "product"
-    features: ["embedding", "search", "rag", "recommendation"]
-    auto-process: true
-    enable-search: true
-    enable-recommendations: true
-    auto-embedding: true
-    indexable: true
-
-    # Searchable Fields Configuration
-    searchable-fields:
-      - name: "name"
-        include-in-rag: true
-        enable-semantic-search: true
-        weight: 1.0
-      - name: "description"
-        include-in-rag: true
-        enable-semantic-search: true
-        weight: 0.8
-      - name: "category"
-        include-in-rag: true
-        enable-semantic-search: true
-        weight: 0.6
-      - name: "price"
-        include-in-rag: false
-        enable-semantic-search: false
-        weight: 0.4
-
-    # Embeddable Fields Configuration
-    embeddable-fields:
-      - name: "name"
-        model: "text-embedding-3-small"
-        auto-generate: true
-        include-in-similarity: true
-      - name: "description"
-        model: "text-embedding-3-small"
-        auto-generate: true
-        include-in-similarity: true
-
-    # Metadata Fields Configuration
-    metadata-fields:
-      - name: "category"
-        type: "TEXT"
-        include-in-search: true
-      - name: "price"
-        type: "NUMERIC"
-        include-in-search: false
-      - name: "brand"
-        type: "TEXT"
-        include-in-search: true
-
-    # CRUD Operations Configuration
-    crud-operations:
-      CREATE:
-        enabled: true
-        ai-processing: true
-        auto-embedding: true
-        auto-indexing: true
-      UPDATE:
-        enabled: true
-        ai-processing: true
-        auto-embedding: true
-        auto-indexing: true
-      DELETE:
-        enabled: true
-        ai-processing: false
-        auto-embedding: false
-        auto-indexing: false
-
-  # Test Product Entity
-  test-product:
-    entity-type: "test-product"
-    features: ["embedding", "search", "rag", "recommendation"]
-    auto-process: true
-    enable-search: true
-    enable-recommendations: true
-    auto-embedding: true
-    indexable: true
-
-    # Searchable Fields Configuration
-    searchable-fields:
-      - name: "name"
-        include-in-rag: true
-        enable-semantic-search: true
-        weight: 1.0
-      - name: "description"
-        include-in-rag: true
-        enable-semantic-search: true
-        weight: 0.8
-      - name: "category"
-        include-in-rag: true
-        enable-semantic-search: true
-        weight: 0.6
-      - name: "price"
-        include-in-rag: false
-        enable-semantic-search: false
-        weight: 0.4
-
-    # Embeddable Fields Configuration
-    embeddable-fields:
-      - name: "name"
-        model: "text-embedding-3-small"
-        auto-generate: true
-        include-in-similarity: true
-      - name: "description"
-        model: "text-embedding-3-small"
-        auto-generate: true
-        include-in-similarity: true
-
-    # Metadata Fields Configuration
-    metadata-fields:
-      - name: "category"
-        type: "TEXT"
-        include-in-search: true
-      - name: "price"
-        type: "NUMERIC"
-        include-in-search: false
-      - name: "brand"
-        type: "TEXT"
-        include-in-search: true
-
-    # CRUD Operations Configuration
-    crud-operations:
-      CREATE:
-        enabled: true
-        ai-processing: true
-        auto-embedding: true
-        auto-indexing: true
-      UPDATE:
-        enabled: true
-        ai-processing: true
-        auto-embedding: true
-        auto-indexing: true
-      DELETE:
-        enabled: true
-        ai-processing: false
-        auto-embedding: false
-        auto-indexing: false
-
-  # Test User Entity
-  test-user:
-    entity-type: "test-user"
-    features: ["embedding", "search", "rag", "behavioral"]
-    auto-process: true
-    enable-search: true
-    enable-recommendations: false
-    auto-embedding: true
-    indexable: true
-
-    # Searchable Fields Configuration
-    searchable-fields:
-      - name: "firstName"
-        include-in-rag: true
-        enable-semantic-search: true
-        weight: 0.8
-      - name: "lastName"
-        include-in-rag: true
-        enable-semantic-search: true
-        weight: 0.8
-      - name: "email"
-        include-in-rag: true
-        enable-semantic-search: true
-        weight: 0.6
-      - name: "bio"
-        include-in-rag: true
-        enable-semantic-search: true
-        weight: 1.0
-
-    # Embeddable Fields Configuration
-    embeddable-fields:
-      - name: "firstName"
-        model: "text-embedding-3-small"
-        auto-generate: true
-        include-in-similarity: true
-      - name: "lastName"
-        model: "text-embedding-3-small"
-        auto-generate: true
-        include-in-similarity: true
-      - name: "bio"
-        model: "text-embedding-3-small"
-        auto-generate: true
-        include-in-similarity: true
-
-    # Metadata Fields Configuration
-    metadata-fields:
-      - name: "email"
-        type: "TEXT"
-        include-in-search: true
-      - name: "age"
-        type: "NUMERIC"
-        include-in-search: false
-      - name: "location"
-        type: "TEXT"
-        include-in-search: true
-
-    # CRUD Operations Configuration
-    crud-operations:
-      CREATE:
-        enabled: true
-        ai-processing: true
-        auto-embedding: true
-        auto-indexing: true
-      UPDATE:
-        enabled: true
-        ai-processing: true
-        auto-embedding: true
-        auto-indexing: true
-      DELETE:
-        enabled: true
-        ai-processing: false
-        auto-embedding: false
-        auto-indexing: false
-
-  # Additional test entities for per-type storage strategy
-  ragproduct:
-    entity-type: "ragproduct"
-    features: ["embedding", "search", "rag"]
-    auto-process: true
-    enable-search: true
-    auto-embedding: true
-    indexable: true
-    searchable-fields:
-      - name: "name"
-      - name: "description"
-    embeddable-fields:
-      - name: "name"
-        auto-generate: true
-    metadata-fields:
-      - name: "category"
-        type: "TEXT"
-
-  ragproducthybrid:
-    entity-type: "ragproducthybrid"
-    features: ["embedding", "search", "rag"]
-    auto-process: true
-    enable-search: true
-    auto-embedding: true
-    indexable: true
-    searchable-fields:
-      - name: "name"
-      - name: "description"
-    embeddable-fields:
-      - name: "name"
-        auto-generate: true
-    metadata-fields:
-      - name: "category"
-        type: "TEXT"
-
-  ragproduct-metadata:
-    entity-type: "ragproduct-metadata"
-    features: ["embedding", "search", "rag"]
-    auto-process: true
-    enable-search: true
-    auto-embedding: true
-    indexable: true
-    searchable-fields:
-      - name: "name"
-      - name: "description"
-    embeddable-fields:
-      - name: "name"
-        auto-generate: true
-    metadata-fields:
-      - name: "category"
-        type: "TEXT"
-      - name: "tags"
-        type: "TEXT"
-
-  ragproduct-expansion-coverage:
-    entity-type: "ragproduct-expansion-coverage"
-    features: ["embedding", "search", "rag"]
-    auto-process: true
-    enable-search: true
-    auto-embedding: true
-    indexable: true
-    searchable-fields:
-      - name: "name"
-      - name: "description"
-    embeddable-fields:
-      - name: "name"
-        auto-generate: true
-    metadata-fields:
-      - name: "category"
-        type: "TEXT"
-
-  ragproduct-confidence:
-    entity-type: "ragproduct-confidence"
-    features: ["embedding", "search", "rag"]
-    auto-process: true
-    enable-search: true
-    auto-embedding: true
-    indexable: true
-    searchable-fields:
-      - name: "name"
-      - name: "description"
-    embeddable-fields:
-      - name: "name"
-        auto-generate: true
-    metadata-fields:
-      - name: "category"
-        type: "TEXT"
-
-  ragproduct-reranking:
-    entity-type: "ragproduct-reranking"
-    features: ["embedding", "search", "rag"]
-    auto-process: true
-    enable-search: true
-    auto-embedding: true
-    indexable: true
-    searchable-fields:
-      - name: "name"
-      - name: "description"
-    embeddable-fields:
-      - name: "name"
-        auto-generate: true
-    metadata-fields:
-      - name: "category"
-        type: "TEXT"
-
-  ragproduct-multicontext:
-    entity-type: "ragproduct-multicontext"
-    features: ["embedding", "search", "rag"]
-    auto-process: true
-    enable-search: true
-    auto-embedding: true
-    indexable: true
-    searchable-fields:
-      - name: "name"
-      - name: "description"
-    embeddable-fields:
-      - name: "name"
-        auto-generate: true
-    metadata-fields:
-      - name: "category"
-        type: "TEXT"
-
-  ragproduct-expansion:
-    entity-type: "ragproduct-expansion"
-    features: ["embedding", "search", "rag"]
-    auto-process: true
-    enable-search: true
-    auto-embedding: true
-    indexable: true
-    searchable-fields:
-      - name: "name"
-      - name: "description"
-    embeddable-fields:
-      - name: "name"
-        auto-generate: true
-    metadata-fields:
-      - name: "category"
-        type: "TEXT"
-
-  ragproduct-contextual:
-    entity-type: "ragproduct-contextual"
-    features: ["embedding", "search", "rag"]
-    auto-process: true
-    enable-search: true
-    auto-embedding: true
-    indexable: true
-    searchable-fields:
-      - name: "name"
-      - name: "description"
-    embeddable-fields:
-      - name: "name"
-        auto-generate: true
-    metadata-fields:
-      - name: "category"
-        type: "TEXT"
-
-  ragconversation:
-    entity-type: "ragconversation"
-    features: ["embedding", "search", "rag"]
-    auto-process: true
-    enable-search: true
-    auto-embedding: true
-    indexable: true
-    searchable-fields:
-      - name: "name"
-      - name: "description"
-    embeddable-fields:
-      - name: "name"
-        auto-generate: true
-    metadata-fields:
-      - name: "category"
-        type: "TEXT"
-
-  search-cache-product:
-    entity-type: "search-cache-product"
-    features: ["embedding", "search"]
-    auto-process: true
-    enable-search: true
-    auto-embedding: true
-    indexable: true
-    searchable-fields:
-      - name: "name"
-      - name: "description"
-    embeddable-fields:
-      - name: "name"
-        auto-generate: true
-    metadata-fields:
-      - name: "category"
-        type: "TEXT"
-
-  searchsemanticproduct:
-    entity-type: "searchsemanticproduct"
-    features: ["embedding", "search"]
-    auto-process: true
-    enable-search: true
-    auto-embedding: true
-    indexable: true
-    searchable-fields:
-      - name: "name"
-      - name: "description"
-    embeddable-fields:
-      - name: "name"
-        auto-generate: true
-    metadata-fields:
-      - name: "category"
-        type: "TEXT"
-
-  searchfilterproduct:
-    entity-type: "searchfilterproduct"
-    features: ["embedding", "search"]
-    auto-process: true
-    enable-search: true
-    auto-embedding: true
-    indexable: true
-    searchable-fields:
-      - name: "name"
-      - name: "description"
-    embeddable-fields:
-      - name: "name"
-        auto-generate: true
-    metadata-fields:
-      - name: "category"
-        type: "TEXT"
-
-  searchthreshold_product:
-    entity-type: "searchthreshold_product"
-    features: ["embedding", "search"]
-    auto-process: true
-    enable-search: true
-    auto-embedding: true
-    indexable: true
-    searchable-fields:
-      - name: "name"
-      - name: "description"
-    embeddable-fields:
-      - name: "name"
-        auto-generate: true
-    metadata-fields:
-      - name: "category"
-        type: "TEXT"
-
-  searchpaginationproduct:
-    entity-type: "searchpaginationproduct"
-    features: ["embedding", "search"]
-    auto-process: true
-    enable-search: true
-    auto-embedding: true
-    indexable: true
-    searchable-fields:
-      - name: "name"
-      - name: "description"
-    embeddable-fields:
-      - name: "name"
-        auto-generate: true
-    metadata-fields:
-      - name: "category"
-        type: "TEXT"
-
-  search-concurrency-product:
-    entity-type: "search-concurrency-product"
-    features: ["embedding", "search"]
-    auto-process: true
-    enable-search: true
-    auto-embedding: true
-    indexable: true
-    searchable-fields:
-      - name: "name"
-      - name: "description"
-    embeddable-fields:
-      - name: "name"
-        auto-generate: true
-    metadata-fields:
-      - name: "category"
-        type: "TEXT"
-
-  testvector:
-    entity-type: "testvector"
-    features: ["embedding", "search"]
-    auto-process: true
-    enable-search: true
-    auto-embedding: true
-    indexable: true
-    searchable-fields:
-      - name: "name"
-      - name: "description"
-    embeddable-fields:
-      - name: "name"
-        auto-generate: true
-    metadata-fields:
-      - name: "category"
-        type: "TEXT"
-
-  persistvector:
-    entity-type: "persistvector"
-    features: ["embedding", "search"]
-    auto-process: true
-    enable-search: true
-    auto-embedding: true
-    indexable: true
-    searchable-fields:
-      - name: "name"
-      - name: "description"
-    embeddable-fields:
-      - name: "name"
-        auto-generate: true
-    metadata-fields:
-      - name: "category"
-        type: "TEXT"
-
-  testproduct:
-    entity-type: "testproduct"
-    features: ["embedding", "search"]
-    auto-process: true
-    enable-search: true
-    auto-embedding: true
-    indexable: true
-    searchable-fields:
-      - name: "name"
-      - name: "description"
-    embeddable-fields:
-      - name: "name"
-        auto-generate: true
-    metadata-fields:
-      - name: "category"
-        type: "TEXT"
-
-  searchmulti_product:
-    entity-type: "searchmulti_product"
-    features: ["embedding", "search", "rag"]
-    auto-process: true
-    enable-search: true
-    auto-embedding: true
-    indexable: true
-    searchable-fields:
-      - name: "name"
-      - name: "description"
-    embeddable-fields:
-      - name: "name"
-        auto-generate: true
-    metadata-fields:
-      - name: "category"
-        type: "TEXT"
-
-  searchmulti_user:
-    entity-type: "searchmulti_user"
-    features: ["embedding", "search", "rag"]
-    auto-process: true
-    enable-search: true
-    auto-embedding: true
-    indexable: true
-    searchable-fields:
-      - name: "name"
-      - name: "bio"
-    embeddable-fields:
-      - name: "name"
-        auto-generate: true
-    metadata-fields:
-      - name: "category"
-        type: "TEXT"
-
-  searchmulti_article:
-    entity-type: "searchmulti_article"
-    features: ["embedding", "search", "rag"]
-    auto-process: true
-    enable-search: true
-    auto-embedding: true
-    indexable: true
-    searchable-fields:
-      - name: "title"
-      - name: "content"
-    embeddable-fields:
-      - name: "title"
-        auto-generate: true
-    metadata-fields:
-      - name: "category"
-        type: "TEXT"
-
-  plan-product:
-    entity-type: "plan-product"
-    features: ["embedding", "search", "rag"]
-    auto-process: true
-    enable-search: true
-    auto-embedding: true
-    indexable: true
-    searchable-fields:
-      - name: "name"
-      - name: "description"
-    embeddable-fields:
-      - name: "name"
-        auto-generate: true
-    metadata-fields:
-      - name: "category"
-        type: "TEXT"
-      - name: "brand"
-        type: "TEXT"
-
-  plan-product-link:
-    entity-type: "plan-product-link"
-    features: ["embedding", "search", "rag"]
-    auto-process: true
-    enable-search: true
-    auto-embedding: true
-    indexable: true
-    searchable-fields:
-      - name: "name"
-      - name: "description"
-    embeddable-fields:
-      - name: "name"
-        auto-generate: true
-    metadata-fields:
-      - name: "category"
-        type: "TEXT"
-
-  plan-product-update:
-    entity-type: "plan-product-update"
-    features: ["embedding", "search", "rag"]
-    auto-process: true
-    enable-search: true
-    auto-embedding: true
-    indexable: true
-    searchable-fields:
-      - name: "name"
-      - name: "description"
-    embeddable-fields:
-      - name: "name"
-        auto-generate: true
-    metadata-fields:
-      - name: "category"
-        type: "TEXT"
-
-  plan-product-remove:
-    entity-type: "plan-product-remove"
-    features: ["embedding", "search", "rag"]
-    auto-process: true
-    enable-search: true
-    auto-embedding: true
-    indexable: true
-    searchable-fields:
-      - name: "name"
-      - name: "description"
-    embeddable-fields:
-      - name: "name"
-        auto-generate: true
-    metadata-fields:
-      - name: "category"
-        type: "TEXT"
-
-  plan-product-metadata:
-    entity-type: "plan-product-metadata"
-    features: ["embedding", "search", "rag"]
-    auto-process: true
-    enable-search: true
-    auto-embedding: true
-    indexable: true
-    searchable-fields:
-      - name: "name"
-      - name: "description"
-    embeddable-fields:
-      - name: "name"
-        auto-generate: true
-    metadata-fields:
-      - name: "category"
-        type: "TEXT"
-
-  plan-transaction:
-    entity-type: "plan-transaction"
-    features: ["embedding", "search", "rag"]
-    auto-process: true
-    enable-search: true
-    auto-embedding: true
-    indexable: true
-    searchable-fields:
-      - name: "name"
-      - name: "description"
-    embeddable-fields:
-      - name: "name"
-        auto-generate: true
-    metadata-fields:
-      - name: "category"
-        type: "TEXT"
-
-  rag-article:
-    entity-type: "rag-article"
-    features: ["embedding", "search", "rag"]
-    auto-process: true
-    enable-search: true
-    auto-embedding: true
-    indexable: true
-    searchable-fields:
-      - name: "title"
-      - name: "content"
-    embeddable-fields:
-      - name: "title"
-        auto-generate: true
-    metadata-fields:
-      - name: "category"
-        type: "TEXT"
-
-  plan-query:
-    entity-type: "plan-query"
-    features: ["embedding", "search", "rag"]
-    auto-process: true
-    enable-search: true
-    auto-embedding: true
-    indexable: true
-    searchable-fields:
-      - name: "name"
-      - name: "description"
-    embeddable-fields:
-      - name: "name"
-        auto-generate: true
-    metadata-fields:
-      - name: "category"
-        type: "TEXT"
-
-  plan-clear:
-    entity-type: "plan-clear"
-    features: ["embedding", "search", "rag"]
-    auto-process: true
-    enable-search: true
-    auto-embedding: true
-    indexable: true
-    searchable-fields:
-      - name: "name"
-      - name: "description"
-    embeddable-fields:
-      - name: "name"
-        auto-generate: true
-    metadata-fields:
-      - name: "category"
-        type: "TEXT"
-
-  plan-other:
-    entity-type: "plan-other"
-    features: ["embedding", "search", "rag"]
-    auto-process: true
-    enable-search: true
-    auto-embedding: true
-    indexable: true
-    searchable-fields:
-      - name: "name"
-      - name: "description"
-    embeddable-fields:
-      - name: "name"
-        auto-generate: true
-    metadata-fields:
-      - name: "category"
-        type: "TEXT"
-
-  plan-batch:
-    entity-type: "plan-batch"
-    features: ["embedding", "search", "rag"]
-    auto-process: true
-    enable-search: true
-    auto-embedding: true
-    indexable: true
-    searchable-fields:
-      - name: "name"
-      - name: "description"
-    embeddable-fields:
-      - name: "name"
-        auto-generate: true
-    metadata-fields:
-      - name: "category"
-        type: "TEXT"
-
-  plan-concurrent:
-    entity-type: "plan-concurrent"
-    features: ["embedding", "search", "rag"]
-    auto-process: true
-    enable-search: true
-    auto-embedding: true
-    indexable: true
-    searchable-fields:
-      - name: "name"
-      - name: "description"
-    embeddable-fields:
-      - name: "name"
-        auto-generate: true
-    metadata-fields:
-      - name: "category"
-        type: "TEXT"
-
-  vector-update:
-    entity-type: "vector-update"
-    features: ["embedding", "search", "rag"]
-    auto-process: true
-    enable-search: true
-    auto-embedding: true
-    indexable: true
-    searchable-fields:
-      - name: "name"
-      - name: "description"
-    embeddable-fields:
-      - name: "name"
-        auto-generate: true
-    metadata-fields:
-      - name: "category"
-        type: "TEXT"
-
-  ragcrossentityproduct:
-    entity-type: "ragcrossentityproduct"
-    features: ["embedding", "search", "rag"]
-    auto-process: true
-    enable-search: true
-    auto-embedding: true
-    indexable: true
-    searchable-fields:
-      - name: "name"
-      - name: "description"
-    embeddable-fields:
-      - name: "name"
-        auto-generate: true
-    metadata-fields:
-      - name: "category"
-        type: "TEXT"
-
-  ragcrossentitycustomer:
-    entity-type: "ragcrossentitycustomer"
-    features: ["embedding", "search", "rag"]
-    auto-process: true
-    enable-search: true
-    auto-embedding: true
-    indexable: true
-    searchable-fields:
-      - name: "name"
-      - name: "description"
-    embeddable-fields:
-      - name: "name"
-        auto-generate: true
-    metadata-fields:
-      - name: "category"
-        type: "TEXT"
-
-  ragcrossentityorder:
-    entity-type: "ragcrossentityorder"
-    features: ["embedding", "search", "rag"]
-    auto-process: true
-    enable-search: true
-    auto-embedding: true
-    indexable: true
-    searchable-fields:
-      - name: "name"
-      - name: "description"
-    embeddable-fields:
-      - name: "name"
-        auto-generate: true
-    metadata-fields:
-      - name: "category"
-        type: "TEXT"
-
-  # Test Article Entity
-  test-article:
-    entity-type: "test-article"
-    features: ["embedding", "search", "rag", "analysis"]
-    auto-process: true
-    enable-search: true
-    enable-recommendations: false
-    auto-embedding: true
-    indexable: true
-
-    # Searchable Fields Configuration
-    searchable-fields:
-      - name: "title"
-        include-in-rag: true
-        enable-semantic-search: true
-        weight: 1.0
-      - name: "content"
-        include-in-rag: true
-        enable-semantic-search: true
-        weight: 0.9
-      - name: "summary"
-        include-in-rag: true
-        enable-semantic-search: true
-        weight: 0.7
-      - name: "tags"
-        include-in-rag: true
-        enable-semantic-search: true
-        weight: 0.5
-
-    # Embeddable Fields Configuration
-    embeddable-fields:
-      - name: "title"
-        model: "text-embedding-3-small"
-        auto-generate: true
-        include-in-similarity: true
-      - name: "content"
-        model: "text-embedding-3-small"
-        auto-generate: true
-        include-in-similarity: true
-      - name: "summary"
-        model: "text-embedding-3-small"
-        auto-generate: true
-        include-in-similarity: true
-
-    # Metadata Fields Configuration
-    metadata-fields:
-      - name: "tags"
-        type: "TEXT"
-        include-in-search: true
-      - name: "author"
-        type: "TEXT"
-        include-in-search: true
-      - name: "publishDate"
-        type: "DATE"
-        include-in-search: false
-      - name: "readTime"
-        type: "NUMERIC"
-        include-in-search: false
-
-    # CRUD Operations Configuration
-    crud-operations:
-      CREATE:
-        enabled: true
-        ai-processing: true
-        auto-embedding: true
-        auto-indexing: true
-      UPDATE:
-        enabled: true
-        ai-processing: true
-        auto-embedding: true
-        auto-indexing: true
-      DELETE:
-        enabled: true
-        ai-processing: false
-        auto-embedding: false
-        auto-indexing: false
-
-# Global AI Processing Configuration
 ai-config:
-  enable-embedding-generation: true
-  enable-ai-analysis: true
-  enable-validation: true
-  enable-recommendations: true
-  enable-cleanup: true
-
-  # Batch Processing
-  batch-size: 10
-  max-concurrent-requests: 5
-
-  # Performance Settings
-  timeout-seconds: 30
-  retry-attempts: 3
-  retry-delay-ms: 1000
+  default-embedding-model: text-embedding-3-small
+  default-search-limit: 10
+  default-similarity-threshold: 0.7
+ai-entities:
+  product:
+    indexing:
+      enabled: true
+    searchable-fields:
+    - name: name
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 70
+    - name: description
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 66
+    - name: category
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 62
+    metadata-fields:
+    - name: category
+      data-type: STRING
+      destinations:
+      - VECTOR_METADATA
+      - API_RESPONSE
+    - name: price
+      data-type: NUMBER
+      destinations:
+      - API_RESPONSE
+    - name: brand
+      data-type: STRING
+      destinations:
+      - VECTOR_METADATA
+      - API_RESPONSE
+  test-product:
+    indexing:
+      enabled: true
+    searchable-fields:
+    - name: name
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 70
+    - name: description
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 66
+    - name: category
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 62
+    metadata-fields:
+    - name: category
+      data-type: STRING
+      destinations:
+      - VECTOR_METADATA
+      - API_RESPONSE
+    - name: price
+      data-type: NUMBER
+      destinations:
+      - API_RESPONSE
+    - name: brand
+      data-type: STRING
+      destinations:
+      - VECTOR_METADATA
+      - API_RESPONSE
+  test-user:
+    indexing:
+      enabled: true
+    searchable-fields:
+    - name: firstName
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 66
+    - name: lastName
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 66
+    - name: email
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 62
+    - name: bio
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 70
+    metadata-fields:
+    - name: email
+      data-type: STRING
+      destinations:
+      - VECTOR_METADATA
+      - API_RESPONSE
+    - name: age
+      data-type: NUMBER
+      destinations:
+      - API_RESPONSE
+    - name: location
+      data-type: STRING
+      destinations:
+      - VECTOR_METADATA
+      - API_RESPONSE
+  ragproduct:
+    indexing:
+      enabled: true
+    searchable-fields:
+    - name: name
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    - name: description
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    metadata-fields:
+    - name: category
+      data-type: STRING
+      destinations:
+      - VECTOR_METADATA
+      - API_RESPONSE
+  ragproducthybrid:
+    indexing:
+      enabled: true
+    searchable-fields:
+    - name: name
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    - name: description
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    metadata-fields:
+    - name: category
+      data-type: STRING
+      destinations:
+      - VECTOR_METADATA
+      - API_RESPONSE
+  ragproduct-metadata:
+    indexing:
+      enabled: true
+    searchable-fields:
+    - name: name
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    - name: description
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    metadata-fields:
+    - name: category
+      data-type: STRING
+      destinations:
+      - VECTOR_METADATA
+      - API_RESPONSE
+    - name: tags
+      data-type: STRING
+      destinations:
+      - VECTOR_METADATA
+      - API_RESPONSE
+  ragproduct-expansion-coverage:
+    indexing:
+      enabled: true
+    searchable-fields:
+    - name: name
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    - name: description
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    metadata-fields:
+    - name: category
+      data-type: STRING
+      destinations:
+      - VECTOR_METADATA
+      - API_RESPONSE
+  ragproduct-confidence:
+    indexing:
+      enabled: true
+    searchable-fields:
+    - name: name
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    - name: description
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    metadata-fields:
+    - name: category
+      data-type: STRING
+      destinations:
+      - VECTOR_METADATA
+      - API_RESPONSE
+  ragproduct-reranking:
+    indexing:
+      enabled: true
+    searchable-fields:
+    - name: name
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    - name: description
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    metadata-fields:
+    - name: category
+      data-type: STRING
+      destinations:
+      - VECTOR_METADATA
+      - API_RESPONSE
+  ragproduct-multicontext:
+    indexing:
+      enabled: true
+    searchable-fields:
+    - name: name
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    - name: description
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    metadata-fields:
+    - name: category
+      data-type: STRING
+      destinations:
+      - VECTOR_METADATA
+      - API_RESPONSE
+  ragproduct-expansion:
+    indexing:
+      enabled: true
+    searchable-fields:
+    - name: name
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    - name: description
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    metadata-fields:
+    - name: category
+      data-type: STRING
+      destinations:
+      - VECTOR_METADATA
+      - API_RESPONSE
+  ragproduct-contextual:
+    indexing:
+      enabled: true
+    searchable-fields:
+    - name: name
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    - name: description
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    metadata-fields:
+    - name: category
+      data-type: STRING
+      destinations:
+      - VECTOR_METADATA
+      - API_RESPONSE
+  ragconversation:
+    indexing:
+      enabled: true
+    searchable-fields:
+    - name: name
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    - name: description
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    metadata-fields:
+    - name: category
+      data-type: STRING
+      destinations:
+      - VECTOR_METADATA
+      - API_RESPONSE
+  search-cache-product:
+    indexing:
+      enabled: true
+    searchable-fields:
+    - name: name
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    - name: description
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    metadata-fields:
+    - name: category
+      data-type: STRING
+      destinations:
+      - VECTOR_METADATA
+      - API_RESPONSE
+  searchsemanticproduct:
+    indexing:
+      enabled: true
+    searchable-fields:
+    - name: name
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    - name: description
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    metadata-fields:
+    - name: category
+      data-type: STRING
+      destinations:
+      - VECTOR_METADATA
+      - API_RESPONSE
+  searchfilterproduct:
+    indexing:
+      enabled: true
+    searchable-fields:
+    - name: name
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    - name: description
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    metadata-fields:
+    - name: category
+      data-type: STRING
+      destinations:
+      - VECTOR_METADATA
+      - API_RESPONSE
+  searchthreshold_product:
+    indexing:
+      enabled: true
+    searchable-fields:
+    - name: name
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    - name: description
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    metadata-fields:
+    - name: category
+      data-type: STRING
+      destinations:
+      - VECTOR_METADATA
+      - API_RESPONSE
+  searchpaginationproduct:
+    indexing:
+      enabled: true
+    searchable-fields:
+    - name: name
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    - name: description
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    metadata-fields:
+    - name: category
+      data-type: STRING
+      destinations:
+      - VECTOR_METADATA
+      - API_RESPONSE
+  search-concurrency-product:
+    indexing:
+      enabled: true
+    searchable-fields:
+    - name: name
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    - name: description
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    metadata-fields:
+    - name: category
+      data-type: STRING
+      destinations:
+      - VECTOR_METADATA
+      - API_RESPONSE
+  testvector:
+    indexing:
+      enabled: true
+    searchable-fields:
+    - name: name
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    - name: description
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    metadata-fields:
+    - name: category
+      data-type: STRING
+      destinations:
+      - VECTOR_METADATA
+      - API_RESPONSE
+  persistvector:
+    indexing:
+      enabled: true
+    searchable-fields:
+    - name: name
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    - name: description
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    metadata-fields:
+    - name: category
+      data-type: STRING
+      destinations:
+      - VECTOR_METADATA
+      - API_RESPONSE
+  testproduct:
+    indexing:
+      enabled: true
+    searchable-fields:
+    - name: name
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    - name: description
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    metadata-fields:
+    - name: category
+      data-type: STRING
+      destinations:
+      - VECTOR_METADATA
+      - API_RESPONSE
+  searchmulti_product:
+    indexing:
+      enabled: true
+    searchable-fields:
+    - name: name
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    - name: description
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    metadata-fields:
+    - name: category
+      data-type: STRING
+      destinations:
+      - VECTOR_METADATA
+      - API_RESPONSE
+  searchmulti_user:
+    indexing:
+      enabled: true
+    searchable-fields:
+    - name: name
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    - name: bio
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    metadata-fields:
+    - name: category
+      data-type: STRING
+      destinations:
+      - VECTOR_METADATA
+      - API_RESPONSE
+  searchmulti_article:
+    indexing:
+      enabled: true
+    searchable-fields:
+    - name: title
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    - name: content
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    metadata-fields:
+    - name: category
+      data-type: STRING
+      destinations:
+      - VECTOR_METADATA
+      - API_RESPONSE
+  plan-product:
+    indexing:
+      enabled: true
+    searchable-fields:
+    - name: name
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    - name: description
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    metadata-fields:
+    - name: category
+      data-type: STRING
+      destinations:
+      - VECTOR_METADATA
+      - API_RESPONSE
+    - name: brand
+      data-type: STRING
+      destinations:
+      - VECTOR_METADATA
+      - API_RESPONSE
+  plan-product-link:
+    indexing:
+      enabled: true
+    searchable-fields:
+    - name: name
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    - name: description
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    metadata-fields:
+    - name: category
+      data-type: STRING
+      destinations:
+      - VECTOR_METADATA
+      - API_RESPONSE
+  plan-product-update:
+    indexing:
+      enabled: true
+    searchable-fields:
+    - name: name
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    - name: description
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    metadata-fields:
+    - name: category
+      data-type: STRING
+      destinations:
+      - VECTOR_METADATA
+      - API_RESPONSE
+  plan-product-remove:
+    indexing:
+      enabled: true
+    searchable-fields:
+    - name: name
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    - name: description
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    metadata-fields:
+    - name: category
+      data-type: STRING
+      destinations:
+      - VECTOR_METADATA
+      - API_RESPONSE
+  plan-product-metadata:
+    indexing:
+      enabled: true
+    searchable-fields:
+    - name: name
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    - name: description
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    metadata-fields:
+    - name: category
+      data-type: STRING
+      destinations:
+      - VECTOR_METADATA
+      - API_RESPONSE
+  plan-transaction:
+    indexing:
+      enabled: true
+    searchable-fields:
+    - name: name
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    - name: description
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    metadata-fields:
+    - name: category
+      data-type: STRING
+      destinations:
+      - VECTOR_METADATA
+      - API_RESPONSE
+  rag-article:
+    indexing:
+      enabled: true
+    searchable-fields:
+    - name: title
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    - name: content
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    metadata-fields:
+    - name: category
+      data-type: STRING
+      destinations:
+      - VECTOR_METADATA
+      - API_RESPONSE
+  plan-query:
+    indexing:
+      enabled: true
+    searchable-fields:
+    - name: name
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    - name: description
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    metadata-fields:
+    - name: category
+      data-type: STRING
+      destinations:
+      - VECTOR_METADATA
+      - API_RESPONSE
+  plan-clear:
+    indexing:
+      enabled: true
+    searchable-fields:
+    - name: name
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    - name: description
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    metadata-fields:
+    - name: category
+      data-type: STRING
+      destinations:
+      - VECTOR_METADATA
+      - API_RESPONSE
+  plan-other:
+    indexing:
+      enabled: true
+    searchable-fields:
+    - name: name
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    - name: description
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    metadata-fields:
+    - name: category
+      data-type: STRING
+      destinations:
+      - VECTOR_METADATA
+      - API_RESPONSE
+  plan-batch:
+    indexing:
+      enabled: true
+    searchable-fields:
+    - name: name
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    - name: description
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    metadata-fields:
+    - name: category
+      data-type: STRING
+      destinations:
+      - VECTOR_METADATA
+      - API_RESPONSE
+  plan-concurrent:
+    indexing:
+      enabled: true
+    searchable-fields:
+    - name: name
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    - name: description
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    metadata-fields:
+    - name: category
+      data-type: STRING
+      destinations:
+      - VECTOR_METADATA
+      - API_RESPONSE
+  vector-update:
+    indexing:
+      enabled: true
+    searchable-fields:
+    - name: name
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    - name: description
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    metadata-fields:
+    - name: category
+      data-type: STRING
+      destinations:
+      - VECTOR_METADATA
+      - API_RESPONSE
+  ragcrossentityproduct:
+    indexing:
+      enabled: true
+    searchable-fields:
+    - name: name
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    - name: description
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    metadata-fields:
+    - name: category
+      data-type: STRING
+      destinations:
+      - VECTOR_METADATA
+      - API_RESPONSE
+  ragcrossentitycustomer:
+    indexing:
+      enabled: true
+    searchable-fields:
+    - name: name
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    - name: description
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    metadata-fields:
+    - name: category
+      data-type: STRING
+      destinations:
+      - VECTOR_METADATA
+      - API_RESPONSE
+  ragcrossentityorder:
+    indexing:
+      enabled: true
+    searchable-fields:
+    - name: name
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    - name: description
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 50
+    metadata-fields:
+    - name: category
+      data-type: STRING
+      destinations:
+      - VECTOR_METADATA
+      - API_RESPONSE
+  test-article:
+    indexing:
+      enabled: true
+    searchable-fields:
+    - name: title
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 70
+    - name: content
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 68
+    - name: summary
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 64
+    - name: tags
+      destinations:
+      - SEMANTIC_SEARCH
+      - RAG_CONTEXT
+      preprocessing: NORMALIZE
+      priority: 60
+    metadata-fields:
+    - name: tags
+      data-type: STRING
+      destinations:
+      - VECTOR_METADATA
+      - API_RESPONSE
+    - name: author
+      data-type: STRING
+      destinations:
+      - VECTOR_METADATA
+      - API_RESPONSE
+    - name: publishDate
+      data-type: DATE
+      destinations:
+      - API_RESPONSE
+    - name: readTime
+      data-type: NUMBER
+      destinations:
+      - API_RESPONSE

@@ -359,20 +359,20 @@ Runtime hardening:
 
 - Qdrant declares both search and scan metadata filtering because the provider uses native filtered
   search/scroll operations.
-- Filtered operations depend on payload indexes. By default, AI Fabric keeps the historical tolerant
-  path and can retry without server-side metadata filtering when Qdrant reports a missing payload index.
-- Compatibility retry re-applies the original portable metadata predicate inside AI Fabric before
-  returning rows, so the retry path does not broaden metadata-filtered results.
-- When that compatibility retry is used, affected search rows include
-  `metadataFilterFallback=true` at the row level and inside the row `metadata` map.
+- Filtered operations depend on payload indexes. By default, when Qdrant reports a missing index,
+  AI Fabric creates portable typed indexes (`keyword`, `bool`, or `integer`) and retries the same
+  filtered operation once.
+- The retry never removes the native filter. If index repair or the filtered retry fails, the
+  operation fails visibly instead of returning a weaker result.
 - Qdrant `adminDiagnostics()` exposes lazy payload-index readiness evidence through
   `requiredPayloadIndexFields`, `verifiedPayloadIndexes`, `payloadIndexesSeenMissing`,
   `payloadIndexCreateAttempts`, and `payloadIndexCreateFailures`.
-- Qdrant `adminDiagnostics().metadataFilterFallbacks` exposes a per-collection count of compatibility
-  fallback searches, so an operator can see that a missing payload index affected runtime search even
-  after the individual response rows have been consumed.
+- Qdrant `adminDiagnostics().payloadIndexRepairAttempts` exposes a per-collection count of repair
+  attempts. The legacy `metadataFilterFallbacks` field remains present and empty for diagnostic
+  compatibility.
 - Set `ai.vector-db.operations.fail-on-missing-payload-index=true` for stricter production or release
-  verification. In that mode, missing payload-index drift fails closed with a clear runtime error.
+  verification. In that mode, missing payload-index drift fails immediately with a clear runtime
+  error instead of attempting repair.
 
 Operator check:
 
@@ -383,7 +383,7 @@ curl -sS "${RUNTIME_BASE_URL}/api/ai/advanced-rag/health"
 When the web module and advanced RAG controller are enabled, the response includes
 `vectorDatabase` diagnostics from the active `VectorManagementService`. Use this lightweight runtime
 check to confirm the active provider class, capability flags, filter modes, payload-index readiness,
-and fallback counters without triggering scans or count operations.
+and repair/fallback counters without triggering scans or count operations.
 The `vectorDatabase.capabilities` object is the typed release descriptor for this evidence. It
 includes the provider name, provider class, native client path, lifecycle/admin capability flags,
 search and scan filter modes, metadata filter subset, entity-type count mode, clear-by-entity-type
@@ -395,7 +395,8 @@ For count-path release review, also inspect standardized `countFallbacks` and
 path and use a compatibility count path.
 For operational alerting, AI Fabric also publishes low-cardinality Micrometer counters:
 `ai.fabric.vector.provider.fallbacks` for compatibility fallback events and
-`ai.fabric.vector.provider.retries` for transient provider retry events. Both counters use only
+`ai.fabric.vector.provider.retries` for provider retry events, including Qdrant
+`reason=payload_index_repair`. Both counters use only
 `provider`, `operation`, and `reason` tags. Scope identifiers such as tenant, namespace, collection,
 entity type, and entity id stay out of metric tags; use readiness diagnostics for those details after
 an alert fires.
@@ -466,9 +467,10 @@ Runtime hardening:
   per-class fallback evidence in `aggregateCountFallbacks` and `aggregateCountFallbackReasons`.
 - Weaviate declares search metadata filtering, scan metadata filtering, exact fetch, and clear by entity
   type.
-- Weaviate portable metadata filters use exact text-backed equality because AI Fabric stores metadata
-  properties as text in the Weaviate class schema; string, boolean, integer, and empty-string filters
-  are encoded to the same stored text representation.
+- AI Fabric stores portable metadata properties as text with Weaviate `field` tokenization, so
+  string, boolean, integer, and empty-string filters use exact native equality.
+- Classes created before `field` tokenization remain correct: search and scan page through native
+  results and apply the shared exact-scalar predicate before enforcing the caller's result limit.
 
 ### 7.4 Lucene
 

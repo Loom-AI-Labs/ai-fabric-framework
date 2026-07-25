@@ -4,6 +4,8 @@ server:
 spring:
   application:
     name: smart-faq-assistant
+  config:
+    import: optional:classpath:ai-entity-config.yml
   datasource:
     url: jdbc:h2:mem:faqdb;DB_CLOSE_DELAY=-1;MODE=PostgreSQL
     driverClassName: org.h2.Driver
@@ -16,8 +18,6 @@ spring:
 
 ai:
   enabled: true
-  config:
-    default-file: ai-entity-config.yml
   providers:
     embedding-provider: simple
   vector-db:

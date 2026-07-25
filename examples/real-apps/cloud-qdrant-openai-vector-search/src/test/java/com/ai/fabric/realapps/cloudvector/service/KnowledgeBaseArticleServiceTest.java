@@ -3,7 +3,7 @@ package com.ai.fabric.realapps.cloudvector.service;
 import ai.fabric.core.AICoreService;
 import ai.fabric.dto.AISearchRequest;
 import ai.fabric.dto.AISearchResponse;
-import ai.fabric.service.AICapabilityService;
+import ai.fabric.indexing.api.AIEntityIndexingGateway;
 import com.ai.fabric.realapps.cloudvector.domain.KnowledgeBaseArticle;
 import com.ai.fabric.realapps.cloudvector.repo.KnowledgeBaseArticleRepository;
 import org.junit.jupiter.api.Test;
@@ -22,11 +22,12 @@ class KnowledgeBaseArticleServiceTest {
 
     private final KnowledgeBaseArticleRepository repository = mock(KnowledgeBaseArticleRepository.class);
     private final AICoreService aiCoreService = mock(AICoreService.class);
-    private final ObjectProvider<AICapabilityService> capabilityProvider = unavailableProvider();
+    private final ObjectProvider<AIEntityIndexingGateway> indexingProvider =
+        unavailableProvider();
     private final ObjectProvider<AICoreService> aiCoreProvider = availableProvider(aiCoreService);
     private final KnowledgeBaseArticleService service = new KnowledgeBaseArticleService(
         repository,
-        capabilityProvider,
+        indexingProvider,
         aiCoreProvider
     );
 

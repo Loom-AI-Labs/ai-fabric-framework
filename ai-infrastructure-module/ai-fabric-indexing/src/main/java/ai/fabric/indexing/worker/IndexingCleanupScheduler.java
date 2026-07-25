@@ -30,7 +30,15 @@ public class IndexingCleanupScheduler {
         if (!properties.isEnabled() || !properties.getCleanup().isEnabled()) {
             return;
         }
-        queueService.resetStuckEntries();
+        int commitPending = queueService.releaseOrphanedSynchronousEntries();
+        int processing = queueService.resetStuckEntries();
+        if (commitPending > 0 || processing > 0) {
+            log.warn(
+                "Recovered {} orphaned sync dispatches and {} expired worker leases",
+                commitPending,
+                processing
+            );
+        }
     }
 
     @Scheduled(cron = "0 0 * * * *")

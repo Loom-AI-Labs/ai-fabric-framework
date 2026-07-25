@@ -1,7 +1,5 @@
 package com.subscription.hub.service;
 
-import ai.fabric.annotation.AIProcess;
-import ai.fabric.indexing.api.IndexingStrategy;
 import com.subscription.hub.entity.Address;
 import com.subscription.hub.entity.PaymentMethod;
 import com.subscription.hub.entity.RefundRequest;
@@ -131,11 +129,6 @@ public class AccountResolutionService {
         return buildAccountProfile(user, subscription);
     }
 
-    @AIProcess(
-        entityType = "subscription",
-        processType = "update",
-        indexingStrategy = IndexingStrategy.SYNC
-    )
     @Transactional
     public PaymentMethodResult updatePaymentMethod(UUID subscriptionId,
                                                    PaymentMethod.PaymentType type,
@@ -175,11 +168,6 @@ public class AccountResolutionService {
         );
     }
 
-    @AIProcess(
-        entityType = "subscription",
-        processType = "update",
-        indexingStrategy = IndexingStrategy.SYNC
-    )
     @Transactional
     public RefundResolutionResult requestRefund(UUID subscriptionId,
                                                 BigDecimal amount,

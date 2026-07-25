@@ -6,8 +6,9 @@ import ai.fabric.dto.AISearchResponse;
 import ai.fabric.dto.PIIDetection;
 import ai.fabric.dto.PIIDetectionResult;
 import ai.fabric.dto.PIIMode;
+import ai.fabric.indexing.api.AIEntityIndexingGateway;
+import ai.fabric.indexing.api.AIProcessOperation;
 import ai.fabric.privacy.pii.PIIDetectionService;
-import ai.fabric.service.AICapabilityService;
 import com.ai.fabric.realapps.privacyfirst.domain.SupportMessage;
 import com.ai.fabric.realapps.privacyfirst.repo.SupportMessageRepository;
 import org.junit.jupiter.api.Test;
@@ -28,12 +29,13 @@ class SupportMessageServiceTest {
 
     private final SupportMessageRepository repository = mock(SupportMessageRepository.class);
     private final PIIDetectionService piiDetectionService = mock(PIIDetectionService.class);
-    private final AICapabilityService capabilityService = mock(AICapabilityService.class);
+    private final AIEntityIndexingGateway indexingGateway =
+        mock(AIEntityIndexingGateway.class);
     private final AICoreService aiCoreService = mock(AICoreService.class);
     private final SupportMessageService service = new SupportMessageService(
         repository,
         piiDetectionService,
-        availableProvider(capabilityService),
+        availableProvider(indexingGateway),
         availableProvider(aiCoreService)
     );
 
@@ -62,7 +64,7 @@ class SupportMessageServiceTest {
         assertThat(saved.getProcessedMessage()).doesNotContain("sara@example.com");
         assertThat(saved.isPiiDetected()).isTrue();
         assertThat(saved.getDetectionsSummary()).contains("EMAIL:email");
-        verify(capabilityService).processEntityForAI(saved, "support-message");
+        verify(indexingGateway).upsert(saved, AIProcessOperation.CREATE);
     }
 
     @Test
@@ -98,7 +100,7 @@ class SupportMessageServiceTest {
         assertThat(saved.getProcessedSubject()).doesNotContain("sara@example.com");
         assertThat(saved.getProcessedMessage()).doesNotContain("+1 (555) 123-4567");
         assertThat(saved.isPiiDetected()).isTrue();
-        verify(capabilityService).processEntityForAI(saved, "support-message");
+        verify(indexingGateway).upsert(saved, AIProcessOperation.CREATE);
     }
 
     @Test

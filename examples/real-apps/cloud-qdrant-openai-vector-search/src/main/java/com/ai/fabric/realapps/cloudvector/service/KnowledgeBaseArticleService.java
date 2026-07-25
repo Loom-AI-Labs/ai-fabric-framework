@@ -5,7 +5,8 @@ import com.ai.fabric.realapps.cloudvector.repo.KnowledgeBaseArticleRepository;
 import ai.fabric.core.AICoreService;
 import ai.fabric.dto.AISearchRequest;
 import ai.fabric.dto.AISearchResponse;
-import ai.fabric.service.AICapabilityService;
+import ai.fabric.indexing.api.AIEntityIndexingGateway;
+import ai.fabric.indexing.api.AIProcessOperation;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.ObjectProvider;
@@ -26,7 +27,7 @@ public class KnowledgeBaseArticleService {
     public static final String ENTITY_TYPE = "kb-article";
 
     private final KnowledgeBaseArticleRepository repository;
-    private final ObjectProvider<AICapabilityService> capabilityServiceProvider;
+    private final ObjectProvider<AIEntityIndexingGateway> indexingGatewayProvider;
     private final ObjectProvider<AICoreService> aiCoreServiceProvider;
 
     @Transactional
@@ -40,7 +41,7 @@ public class KnowledgeBaseArticleService {
         article.setUpdatedAt(Instant.now());
 
         KnowledgeBaseArticle saved = repository.save(article);
-        index(saved);
+        index(saved, AIProcessOperation.CREATE);
         return saved;
     }
 
@@ -61,7 +62,7 @@ public class KnowledgeBaseArticleService {
         }
         article.setUpdatedAt(Instant.now());
         KnowledgeBaseArticle saved = repository.save(article);
-        index(saved);
+        index(saved, AIProcessOperation.UPDATE);
         return saved;
     }
 
@@ -77,7 +78,7 @@ public class KnowledgeBaseArticleService {
     public int reindexAll() {
         List<KnowledgeBaseArticle> articles = repository.findAll();
         for (KnowledgeBaseArticle article : articles) {
-            index(article);
+            index(article, AIProcessOperation.UPDATE);
         }
         return articles.size();
     }
@@ -105,13 +106,16 @@ public class KnowledgeBaseArticleService {
             .toList();
     }
 
-    private void index(KnowledgeBaseArticle article) {
-        AICapabilityService capabilityService = capabilityServiceProvider.getIfAvailable();
-        if (capabilityService == null) {
-            log.debug("AICapabilityService not available; skipping indexing");
+    private void index(
+        KnowledgeBaseArticle article,
+        AIProcessOperation operation
+    ) {
+        AIEntityIndexingGateway indexingGateway = indexingGatewayProvider.getIfAvailable();
+        if (indexingGateway == null) {
+            log.debug("AIEntityIndexingGateway not available; skipping indexing");
             return;
         }
-        capabilityService.processEntityForAI(article, ENTITY_TYPE);
+        indexingGateway.upsert(article, operation);
     }
 
     private Optional<SearchHit> toHit(Map<String, Object> row, Double maxScore) {

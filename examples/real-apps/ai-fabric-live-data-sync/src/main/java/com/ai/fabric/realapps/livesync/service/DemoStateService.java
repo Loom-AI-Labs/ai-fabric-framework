@@ -209,7 +209,7 @@ public class DemoStateService {
                 new AnnotationUse(
                     "@AICapable",
                     "SyncProduct, SyncPolicy, SyncGuide",
-                    "Declares each vector entity type, sync strategy, AI features, and migration repository."
+                    "Declares each stable vector entity type, lifecycle strategy, and migration repository."
                 ),
                 new AnnotationUse(
                     "@AISearchable",
@@ -227,9 +227,9 @@ public class DemoStateService {
                     "Routes committed entity results into synchronous index, update, or delete processing."
                 )
             ),
-            "AnnotationFieldScanner",
-            "AICapableAspect and IndexingCoordinator",
-            "Synchronous create/update/delete with revision proof"
+            "AIEntityDescriptorRegistry and AIEntityProjectionService",
+            "AIProcessAspect and AIEntityIndexingGateway",
+            "Transaction-aware create/update/delete with durable revision proof"
         );
     }
 }

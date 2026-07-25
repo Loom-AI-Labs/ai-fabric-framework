@@ -1,7 +1,9 @@
 package ai.fabric.it;
 
 import ai.fabric.dto.VectorRecord;
-import ai.fabric.service.AICapabilityService;
+import ai.fabric.indexing.api.AIEntityIndexingGateway;
+import ai.fabric.indexing.api.AIProcessOperation;
+import ai.fabric.indexing.api.IndexingStrategy;
 import ai.fabric.service.VectorManagementService;
 import ai.fabric.it.entity.TestProduct;
 import ai.fabric.it.entity.TestUser;
@@ -15,7 +17,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.TestPropertySource;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -39,11 +40,10 @@ import static org.junit.jupiter.api.Assertions.*;
 @TestPropertySource(properties = {
     "ai.vector-db.lucene.index-path=./data/test-lucene-index/mock"
 })
-@Transactional
 public class MockIntegrationTest {
 
     @Autowired
-    private AICapabilityService capabilityService;
+    private AIEntityIndexingGateway indexingGateway;
 
     @Autowired
     private TestProductRepository productRepository;
@@ -102,7 +102,7 @@ public class MockIntegrationTest {
 
         // When - Save and process the product
         product = productRepository.save(product);
-        capabilityService.processEntityForAI(product, "test-product");
+        indexingGateway.upsert(product, AIProcessOperation.CREATE, IndexingStrategy.SYNC);
 
         // Then - Verify AI processing
         List<VectorRecord> searchableEntities = entities("test-product");
@@ -142,7 +142,7 @@ public class MockIntegrationTest {
 
         // When - Save and process the user
         user = userRepository.save(user);
-        capabilityService.processEntityForAI(user, "test-user");
+        indexingGateway.upsert(user, AIProcessOperation.CREATE, IndexingStrategy.SYNC);
 
         // Then - Verify AI processing
         List<VectorRecord> searchableEntities = entities("test-user");
@@ -180,7 +180,7 @@ public class MockIntegrationTest {
 
         // When - Save and process the article
         article = articleRepository.save(article);
-        capabilityService.processEntityForAI(article, "test-article");
+        indexingGateway.upsert(article, AIProcessOperation.CREATE, IndexingStrategy.SYNC);
 
         // Then - Verify AI processing
         List<VectorRecord> searchableEntities = entities("test-article");
@@ -243,10 +243,10 @@ public class MockIntegrationTest {
         users = userRepository.saveAll(users);
 
         for (TestProduct product : products) {
-            capabilityService.processEntityForAI(product, "test-product");
+            indexingGateway.upsert(product, AIProcessOperation.CREATE, IndexingStrategy.SYNC);
         }
         for (TestUser user : users) {
-            capabilityService.processEntityForAI(user, "test-user");
+            indexingGateway.upsert(user, AIProcessOperation.CREATE, IndexingStrategy.SYNC);
         }
 
         // Then - Test various search scenarios
@@ -296,8 +296,8 @@ public class MockIntegrationTest {
         product = productRepository.save(product);
         user = userRepository.save(user);
 
-        capabilityService.processEntityForAI(product, "test-product");
-        capabilityService.processEntityForAI(user, "test-user");
+        indexingGateway.upsert(product, AIProcessOperation.CREATE, IndexingStrategy.SYNC);
+        indexingGateway.upsert(user, AIProcessOperation.CREATE, IndexingStrategy.SYNC);
 
         // Verify entities exist
         assertEquals(2, allEntities().size(), "Should have two entities before removal");
@@ -306,8 +306,16 @@ public class MockIntegrationTest {
         productRepository.delete(product);
         userRepository.delete(user);
 
-        capabilityService.removeEntityFromIndex(product.getId().toString(), "test-product");
-        capabilityService.removeEntityFromIndex(user.getId().toString(), "test-user");
+        indexingGateway.delete(
+            TestProduct.class,
+            product.getId().toString(),
+            IndexingStrategy.SYNC
+        );
+        indexingGateway.delete(
+            TestUser.class,
+            user.getId().toString(),
+            IndexingStrategy.SYNC
+        );
 
         // Then - Verify removal
         assertEquals(0, allEntities().size(), "Should remove all entities from index");
@@ -356,9 +364,9 @@ public class MockIntegrationTest {
         article = articleRepository.save(article);
         featuredProduct = productRepository.save(featuredProduct);
 
-        capabilityService.processEntityForAI(author, "test-user");
-        capabilityService.processEntityForAI(article, "test-article");
-        capabilityService.processEntityForAI(featuredProduct, "test-product");
+        indexingGateway.upsert(author, AIProcessOperation.CREATE, IndexingStrategy.SYNC);
+        indexingGateway.upsert(article, AIProcessOperation.CREATE, IndexingStrategy.SYNC);
+        indexingGateway.upsert(featuredProduct, AIProcessOperation.CREATE, IndexingStrategy.SYNC);
 
         // Then - Verify comprehensive search capabilities
         List<VectorRecord> allEntities = allEntities();
@@ -401,7 +409,7 @@ public class MockIntegrationTest {
 
         // When - Process the product
         product = productRepository.save(product);
-        capabilityService.processEntityForAI(product, "test-product");
+        indexingGateway.upsert(product, AIProcessOperation.CREATE, IndexingStrategy.SYNC);
 
         // Then - Verify AI analysis and metadata
         List<VectorRecord> entities = entities("test-product");
@@ -470,7 +478,7 @@ public class MockIntegrationTest {
         // When - Process all products in batch
         products = productRepository.saveAll(products);
         for (TestProduct product : products) {
-            capabilityService.processEntityForAI(product, "test-product");
+            indexingGateway.upsert(product, AIProcessOperation.CREATE, IndexingStrategy.SYNC);
         }
 
         // Then - Verify all products were processed

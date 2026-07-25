@@ -92,13 +92,19 @@ embedding provider creates the vector. The vector provider persists and retrieve
 ```java
 @AICapable(entityType = "knowledge-article")
 class KnowledgeArticle {
-    @AIContext(dataType = "id")
+    @AIIdentity
+    @AIContext(
+        key = "entityId",
+        dataType = AIContextDataType.ID,
+        priority = 100,
+        required = true
+    )
     private String id;
 
-    @AISearchable
+    @AISearchable(priority = 100, required = true)
     private String title;
 
-    @AISearchable
+    @AISearchable(priority = 80, required = true)
     private String body;
 
     @AIContext
@@ -111,8 +117,10 @@ class KnowledgeArticle {
 
 **Narration:**
 
-`AICapable` identifies the entity type used to resolve AI Fabric configuration and vector lifecycle
-operations.
+`AICapable` identifies the stable entity type and its default lifecycle strategy.
+
+`AIIdentity` explicitly marks the stable source identity. JPA identity can also resolve the same
+contract, but an explicit marker makes the projection easy to review.
 
 `AISearchable` marks approved text that is extracted and embedded for semantic search. The title and
 body describe what the article means, so they belong in the searchable projection.
@@ -125,62 +133,66 @@ also enforce that boundary.
 Do not mark every domain field. Projection is deliberate data minimization, not serialization of the
 whole entity.
 
-## Scene 4: Understand Annotation And YAML Precedence
+## Scene 4: Understand Scoped Annotation And YAML Ownership
 
 **Visual:** Show two configuration inputs flowing into one resolved `AIEntityConfig`.
 
 ```text
 Java annotations ----\
-                      -> resolved AI entity configuration
-ai-entity-config.yml -/
+                      -> immutable resolved entity descriptor
+typed YAML policy ----/
 
-Conflict rule: YAML remains authoritative
+No global YAML-versus-annotation winner
 ```
 
 **Narration:**
 
-AI Fabric supports annotation-driven field discovery and YAML entity configuration.
+AI Fabric compiles one validated entity descriptor from typed declarations.
 
-When `AISearchable` fields are present, the capability service can extract their content directly.
-`AIContext` fields contribute structured metadata. YAML can declare searchable, embeddable, and
-metadata fields and control entity features such as embedding and indexing.
+For a Java entity, `AICapable.entityType` is canonical. `AISearchable` and `AIContext` define the
+approved projection and destinations. Typed YAML can disable indexing, set a projection character
+budget, enable optional analysis, or apply supported field overrides. It cannot replace typed
+identity or widen security destinations.
 
-On conflicts, YAML remains authoritative. Annotation defaults sit below explicit YAML, followed by
-framework defaults.
+A YAML-only push entity has no Java contract, so it must explicitly enable indexing and declare its
+searchable and metadata fields.
 
-One nuance matters: in the annotation-driven path, searchable content is also the content intended
-for embedding. In YAML, searchable and embeddable field lists can be represented explicitly. Either
-way, configuration describes the intended projection. It does not prove that the index contains the
-current record.
+Priority controls projection order and which fields survive a bounded character budget. It does not
+change provider similarity scoring. True weighted retrieval is a separate capability, not an
+annotation side effect.
 
-## Scene 5: Follow The Indexing Coordinator
+## Scene 5: Follow The Transaction-Aware Indexing Gateway
 
 **Visual:** Animate this flow and split it at the indexing strategy.
 
 ```text
 application lifecycle event
-  -> IndexingCoordinator
-  -> resolved AIEntityConfig + IndexingActionPlan
-  -> SYNC: process now
-     ASYNC or BATCH: persist queue request, then worker processes it
+  -> @AIProcess with explicit CREATE, UPDATE, or DELETE
+  -> resolve entity descriptor and approved AIIndexDocument
+  -> persist projected queue work with the source transaction
+  -> source rollback: no committed work and no provider mutation
+  -> source commit:
+       SYNC: attempt provider work after commit
+       ASYNC/BATCH: worker leases durable work
 ```
 
 **Narration:**
 
-The indexing module turns application lifecycle intent into concrete work.
+The indexing module turns explicit lifecycle intent into durable, approved work.
 
-`IndexingCoordinator` receives the entity, entity type, operation, action plan, and indexing policy.
-The action plan can request embedding generation, search indexing, analysis, removal, or embedding
-cleanup.
+`AIProcess.operation` is the only operation source; Java method names have no lifecycle meaning. The
+default target resolver handles direct entities, optionals, collections, arrays, and Hibernate
+proxies. Application result wrappers and void deletes use a declared target resolver. A path that
+cannot use Spring AOP calls `AIEntityIndexingGateway` directly.
 
-With synchronous indexing, the coordinator resolves the entity configuration and invokes the
-capability service immediately. With asynchronous or batch indexing, it serializes an indexing
-request into the queue. A worker later reloads the entity configuration, reconstructs the entity,
-and executes the same action plan.
+The queue stores a versioned `AIIndexDocument`, not a serialized Java entity or class name. The
+document contains only approved search text, RAG text, destination-specific metadata, source version,
+descriptor hash, and correlation evidence.
 
-This difference affects proof. A synchronous call can be checked immediately. An asynchronous call
-first proves queue acceptance, then worker completion, retries or failure state, and finally vector
-readiness. Do not equate a successful database commit with completed asynchronous indexing.
+Both synchronous and asynchronous strategies are durable. `SYNC` means attempt provider work after
+source commit, not inside the source transaction. Failure remains visible and retryable. `ASYNC` and
+`BATCH` defer processing to workers. Ordering state prevents stale work from overwriting a newer
+update or recreating a deleted vector.
 
 ## Scene 6: Follow Projection, Embedding, And Storage
 
@@ -188,8 +200,10 @@ readiness. Do not equate a successful database commit with completed asynchronou
 
 ```text
 KnowledgeArticle
-  -> extract approved searchable content
-  -> extract approved context metadata
+  -> AIEntityDescriptorRegistry
+  -> AIEntityProjectionService
+  -> durable AIIndexDocument
+  -> IndexingOperationExecutor
   -> EmbeddingProvider
   -> numeric vector
   -> VectorManagementService
@@ -199,9 +213,14 @@ KnowledgeArticle
 
 **Narration:**
 
-During search indexing, `AICapabilityService` checks that search and indexing are enabled. It extracts
-the approved searchable content and requests an embedding through `AIEmbeddingService` and the
-configured `EmbeddingProvider`.
+During indexing, the descriptor registry validates identity, searchable fields, context destinations,
+required values, and operational policy. The projection service builds destination-specific,
+bounded content before it reaches durable storage. Requested PII sanitization fails closed.
+
+The operation executor embeds semantic-search text through `AIEmbeddingService` and the configured
+`EmbeddingProvider`. It performs exactly one vector upsert for a create or update and one idempotent
+delete for a delete. Optional analysis is separate dependent work rather than a hidden second
+embedding path.
 
 For this lesson, the ONNX provider performs local text-to-vector inference. AI Fabric then asks
 `VectorManagementService` to store the entity type, stable entity ID, approved content, vector, and

@@ -48,8 +48,10 @@ Each example includes:
 
 package com.example.app.domain;
 
-import com.ai.infrastructure.annotation.AICapable;
-import com.ai.infrastructure.annotation.AISearchable;
+import ai.fabric.annotation.AICapable;
+import ai.fabric.annotation.AIIdentity;
+import ai.fabric.annotation.AISearchable;
+import ai.fabric.indexing.api.IndexingStrategy;
 import jakarta.persistence.*;
 import lombok.*;
 
@@ -65,24 +67,23 @@ import java.util.UUID;
 @AllArgsConstructor
 @AICapable(
     entityType = "subscription",
-    autoEmbedding = true,
-    indexable = true,
-    enableSearch = true
+    indexingStrategy = IndexingStrategy.ASYNC
 )
 public class Subscription {
 
     @Id
     @GeneratedValue
+    @AIIdentity
     private UUID id;
 
     @Column(nullable = false)
     private String userId;
 
-    @AISearchable(weight = 2.0)
+    @AISearchable(priority = 100, required = true)
     @Column(nullable = false)
     private String planName;
 
-    @AISearchable(weight = 1.5)
+    @AISearchable(priority = 80)
     private String description;
 
     @Column(nullable = false)

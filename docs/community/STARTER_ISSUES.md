@@ -9,7 +9,7 @@ Labels: `good first issue`, `documentation`, `help wanted`
 Create a tiny runnable example that uses the published AI Fabric Maven Central artifacts without depending on local reactor modules.
 
 Acceptance criteria:
-- Use AI Fabric `0.3.3` from Maven Central.
+- Use AI Fabric `0.4.0` from Maven Central.
 - Show one indexed document and one semantic/RAG query.
 - Include exact commands for a clean local run.
 - Document required Java, Spring Boot, and provider configuration.

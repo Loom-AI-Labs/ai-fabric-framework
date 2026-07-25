@@ -22,7 +22,8 @@ Related:
 
 - **Implemented in code (opt-in module):** `ai-fabric-data-sync`
   - REST endpoints under `/api/ai/data-sync/*`
-  - Normalization using `ai-entity-config.yml` (searchable fields + metadata fields)
+  - Typed YAML-only projection using searchable fields + metadata fields
+  - Canonical `AIIndexDocument` handoff through `AIEntityIndexingGateway`
   - Fail-closed access control via verified `trace.authContext` → `AIAccessControlService`
   - Batch preflight authorization that reuses the approved decisions during execution
   - Trusted platform-internal policy bypass is explicit opt-in with
@@ -40,6 +41,10 @@ Prerequisites:
   `ai.data-sync.allow-trusted-platform-internal-sync-bypass=false` and grant/deny through
   `EntityAccessPolicy`. Enable the bypass only behind a trusted backend/runtime boundary that verifies
   and injects `trace.authContext`.
+
+Push data sync is a trusted YAML-only ingress. It does not reflect application entity classes and it
+does not bypass projection validation. Every accepted upsert becomes the same class-free,
+destination-specific index document used by annotation lifecycle and migration.
 
 ---
 
@@ -203,11 +208,50 @@ Response:
 ## 4) Normalization rules (deterministic + bounded)
 
 When `content` is provided:
-- it is used as-is (trimmed)
+- it is trimmed and passed through the configured trusted projection
 
 When `entity` is provided:
 - AI Fabric builds content from the configured searchable fields in `ai-entity-config.yml`
-- metadata is enriched using configured metadata fields (includeInSearch=true)
+- metadata is enriched only from configured metadata fields and trusted identity metadata
+
+Define a YAML-only vector space explicitly:
+
+```yaml
+ai-entities:
+  product:
+    indexing:
+      enabled: true
+      max-characters: 8000
+    analysis:
+      enabled: false
+    searchable-fields:
+      - name: title
+        destinations: [SEMANTIC_SEARCH, RAG_CONTEXT]
+        preprocessing: NORMALIZE
+        priority: 100
+        required: true
+      - name: description
+        destinations: [SEMANTIC_SEARCH, RAG_CONTEXT]
+        preprocessing: CLEAN
+        priority: 80
+    metadata-fields:
+      - name: tenantId
+        data-type: ID
+        destinations: [VECTOR_METADATA]
+        priority: 100
+        required: true
+      - name: locale
+        data-type: STRING
+        destinations: [VECTOR_METADATA, API_RESPONSE]
+        priority: 60
+```
+
+The map key is the canonical YAML-only entity type. Nested `entity-type`, generic `features`,
+`indexable`, `auto-process`, CRUD work booleans, and `includeInSearch` are not part of the current
+schema.
+
+Projection priority controls ordering and bounded retention only. It does not alter vector similarity.
+Required-field and PII failures reject the request before provider execution.
 
 Bounds (fail-closed):
 - `ai.data-sync.maxContentChars` (default `8000`)
@@ -266,8 +310,13 @@ fail-closed policy boundary.
 | `VECTOR_SPACE_NOT_FOUND` | `404` | `vectorSpace` is not configured in `ai-entity-config.yml`. |
 | `VECTOR_SPACE_NOT_INDEXABLE` | `400` | Upsert requested for a non-indexable vector space. |
 | `ACCESS_DENIED` | `403` | Missing verified auth context, policy denial, or fail-closed policy evaluation. |
-| `EMBEDDING_FAILED` | `500` | Embedding provider returned no vector or threw. |
-| `VECTOR_STORE_FAILED` | `500` | Vector store/delete failed; response metadata includes `cause` when available. |
+| `PROJECTION_REJECTED` | `400` | Required field, bounds, PII, destination, or projection validation failed. |
+| `INDEXING_SUBMISSION_FAILED` | `500` | Durable indexing submission could not be accepted. |
+| `INDEXING_RETRYABLE` | `503` | Work is durable but synchronous provider execution failed and is pending retry. |
+| `INDEXING_PERMANENT` | `500` | Synchronous provider work exhausted its retry policy and requires operator review. |
+
+Provider failures are not converted into success. The response includes bounded outcome metadata and
+the durable queue retains retry/dead-letter evidence.
 
 ---
 
@@ -291,6 +340,9 @@ ai.data-sync.maxMetadataKeys=75
 
 The default base path is `/api/ai/data-sync`. Spring Boot relaxed binding also accepts kebab-case
 properties such as `ai.data-sync.base-path` and `ai.data-sync.max-batch-size`.
+
+Indexing queue/worker tuning belongs under `ai.indexing.*`, including max retries, visibility
+timeout, worker delays/batch sizes, stuck-work reset, and completed/dead-letter retention.
 
 ---
 

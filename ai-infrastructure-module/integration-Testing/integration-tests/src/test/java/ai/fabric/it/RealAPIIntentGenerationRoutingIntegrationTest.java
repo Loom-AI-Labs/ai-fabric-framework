@@ -12,7 +12,9 @@ import ai.fabric.intent.orchestration.RAGOrchestrator;
 import ai.fabric.intent.orchestration.OrchestrationContext;
 import ai.fabric.it.entity.TestProduct;
 import ai.fabric.it.repository.TestProductRepository;
-import ai.fabric.service.AICapabilityService;
+import ai.fabric.indexing.api.AIEntityIndexingGateway;
+import ai.fabric.indexing.api.AIProcessOperation;
+import ai.fabric.indexing.api.IndexingStrategy;
 import ai.fabric.service.VectorManagementService;
 import ai.fabric.spi.RAGProvider;
 import ai.fabric.it.support.RealAPITestSupport;
@@ -54,7 +56,7 @@ public class RealAPIIntentGenerationRoutingIntegrationTest {
     }
 
     @Autowired
-    private AICapabilityService capabilityService;
+    private AIEntityIndexingGateway indexingGateway;
 
     @Autowired
     private VectorManagementService vectorManagementService;
@@ -90,7 +92,7 @@ public class RealAPIIntentGenerationRoutingIntegrationTest {
             "SonicWave",
             new BigDecimal("149.99")
         );
-        capabilityService.processEntityForAI(headphones, "test-product");
+        indexingGateway.upsert(headphones, AIProcessOperation.CREATE, IndexingStrategy.SYNC);
 
         Intent intent = Intent.builder()
             .type(IntentType.INFORMATION)

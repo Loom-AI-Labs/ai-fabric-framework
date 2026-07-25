@@ -27,6 +27,8 @@ public class MigrationProgressTracker {
             .total(toCount(job.getTotalEntities()))
             .processed(toCount(job.getProcessedEntities()))
             .failed(toCount(job.getFailedEntities()))
+            .projectionFailures(toCount(job.getProjectionFailures()))
+            .enqueueFailures(toCount(job.getEnqueueFailures()))
             .percentComplete(percent)
             .estimatedTimeRemaining(eta)
             .build();

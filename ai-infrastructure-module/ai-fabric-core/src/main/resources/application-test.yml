@@ -74,4 +74,4 @@ logging:
   level:
     ai.fabric.rag: DEBUG
     ai.fabric.service.VectorManagementService: DEBUG
-    ai.fabric.service.AICapabilityService: DEBUG
+    ai.fabric.indexing: DEBUG

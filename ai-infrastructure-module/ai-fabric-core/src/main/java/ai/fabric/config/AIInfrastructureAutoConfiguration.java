@@ -1,17 +1,18 @@
 package ai.fabric.config;
 
-import ai.fabric.service.AICapabilityService;
-import ai.fabric.core.AICoreService;
 import ai.fabric.core.AIEmbeddingService;
 import ai.fabric.core.AISearchService;
 import ai.fabric.intent.orchestration.pipeline.DefaultOrchestrationPipeline;
 import ai.fabric.intent.orchestration.pipeline.Pipeline;
 import ai.fabric.intent.orchestration.pipeline.PipelineStep;
-import ai.fabric.processor.AICapableProcessor;
-import ai.fabric.processor.AnnotationFieldScanner;
 import ai.fabric.processor.EmbeddingProcessor;
-import ai.fabric.prompt.PromptRenderer;
-import ai.fabric.prompt.PromptTemplateResolver;
+import ai.fabric.indexing.api.AIEntityDescriptorContributor;
+import ai.fabric.indexing.api.AIEntityIndexingGateway;
+import ai.fabric.indexing.api.EntityIdentityResolver;
+import ai.fabric.indexing.descriptor.AIEntityDescriptorInitializer;
+import ai.fabric.indexing.descriptor.AIEntityDescriptorRegistry;
+import ai.fabric.indexing.projection.AIEntityProjectionService;
+import ai.fabric.indexing.projection.AIConfiguredEntityProjectionService;
 import ai.fabric.rag.VectorDatabaseService;
 import ai.fabric.service.VectorManagementService;
 import ai.fabric.security.AISecurityService;
@@ -55,8 +56,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.ComponentScan;
 import org.springframework.context.annotation.FilterType;
 import org.springframework.context.annotation.Import;
-import org.springframework.core.io.ResourceLoader;
-import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.env.Environment;
 import org.springframework.ai.tool.ToolCallback;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import ai.fabric.config.condition.EmbeddingsFeatureEnabledCondition;
@@ -256,26 +256,65 @@ public class AIInfrastructureAutoConfiguration {
 
     @Bean(name = "AIEntityConfigurationLoader")
     @ConditionalOnMissingBean(name = "AIEntityConfigurationLoader")
-    public AIEntityConfigurationLoader aiEntityConfigurationLoader(ResourceLoader resourceLoader) {
-        return new AIEntityConfigurationLoader(resourceLoader);
+    public AIEntityConfigurationLoader aiEntityConfigurationLoader(Environment environment) {
+        return new AIEntityConfigurationLoader(environment);
     }
 
     @Bean
-    @ConditionalOnClass(EntityManagerFactory.class)
-    @ConditionalOnBean(EntityManagerFactory.class)
-    @ConditionalOnProperty(prefix = "ai.config.annotation-metadata", name = "enabled", havingValue = "true", matchIfMissing = true)
-    public AnnotationMetadataEntityConfigRegistrar annotationMetadataEntityConfigRegistrar(
-        EntityManagerFactory entityManagerFactory,
+    @ConditionalOnMissingBean
+    public AIEntityDescriptorRegistry aiEntityDescriptorRegistry(
         AIEntityConfigurationLoader entityConfigurationLoader,
-        AnnotationFieldScanner annotationFieldScanner,
-        @Value("${ai.config.annotation-metadata.create-missing-entity-config:false}") boolean createMissingEntityConfig
+        ObjectProvider<EntityIdentityResolver> identityResolvers,
+        ObjectProvider<AIEntityDescriptorContributor> contributors,
+        ObjectProvider<PIIDetectionService> piiDetectionService,
+        ObjectMapper objectMapper
     ) {
-        return new AnnotationMetadataEntityConfigRegistrar(
-            entityManagerFactory,
+        return new AIEntityDescriptorRegistry(
             entityConfigurationLoader,
-            annotationFieldScanner,
-            createMissingEntityConfig
+            identityResolvers.orderedStream().toList(),
+            contributors.orderedStream().toList(),
+            piiDetectionService,
+            objectMapper
         );
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    public AIEntityProjectionService aiEntityProjectionService(
+        AIEntityDescriptorRegistry descriptorRegistry,
+        ObjectProvider<PIIDetectionService> piiDetectionService,
+        ObjectMapper objectMapper,
+        Clock clock
+    ) {
+        return new AIEntityProjectionService(
+            descriptorRegistry,
+            piiDetectionService,
+            objectMapper,
+            clock
+        );
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    public AIConfiguredEntityProjectionService aiConfiguredEntityProjectionService(
+        ObjectProvider<PIIDetectionService> piiDetectionService,
+        ObjectMapper objectMapper,
+        Clock clock
+    ) {
+        return new AIConfiguredEntityProjectionService(
+            piiDetectionService,
+            objectMapper,
+            clock
+        );
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    public AIEntityDescriptorInitializer aiEntityDescriptorInitializer(
+        AIEntityDescriptorRegistry descriptorRegistry,
+        ObjectProvider<EntityManagerFactory> entityManagerFactory
+    ) {
+        return new AIEntityDescriptorInitializer(descriptorRegistry, entityManagerFactory);
     }
     
     @Bean
@@ -287,35 +326,6 @@ public class AIInfrastructureAutoConfiguration {
         CacheManager cacheManager = cacheManagerProvider.getIfUnique(NoOpCacheManager::new);
         return new VectorManagementService(vectorDatabaseService, entityConfigurationLoader, cacheManager);
     }
-    
-	    @Bean
-	    @ConditionalOnMissingBean
-        @Conditional({VectorDbConfiguredCondition.class, EmbeddingsFeatureEnabledCondition.class})
-	    public AICapabilityService aiCapabilityService(
-	            AIEmbeddingService embeddingService,
-            AICoreService aiCoreService,
-            AIEntityConfigurationLoader entityConfigurationLoader,
-            VectorManagementService vectorManagementService,
-            AnnotationFieldScanner annotationFieldScanner,
-            PromptTemplateResolver promptTemplateResolver,
-            PromptRenderer promptRenderer) {
-        return new AICapabilityService(
-            embeddingService,
-            aiCoreService,
-            entityConfigurationLoader,
-            vectorManagementService,
-            annotationFieldScanner,
-            promptTemplateResolver,
-            promptRenderer
-        );
-    }
-    
-    @Bean
-    @ConditionalOnMissingBean
-    public AICapableProcessor aiCapableProcessor(AnnotationFieldScanner annotationFieldScanner) {
-        return new AICapableProcessor(annotationFieldScanner);
-    }
-    
     @Bean
     public EmbeddingProcessor embeddingProcessor(AIProviderConfig config) {
         return new EmbeddingProcessor(config);
@@ -371,8 +381,13 @@ public class AIInfrastructureAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
-    @ConditionalOnBean(AICapabilityService.class)
-    public ai.fabric.service.AIInfrastructureProfileService aiInfrastructureProfileService(ai.fabric.repository.AIInfrastructureProfileRepository aiInfrastructureProfileRepository, AICapabilityService aiCapabilityService) {
-        return new ai.fabric.service.AIInfrastructureProfileService(aiInfrastructureProfileRepository, aiCapabilityService);
+    public ai.fabric.service.AIInfrastructureProfileService aiInfrastructureProfileService(
+        ai.fabric.repository.AIInfrastructureProfileRepository aiInfrastructureProfileRepository,
+        ObjectProvider<AIEntityIndexingGateway> indexingGatewayProvider
+    ) {
+        return new ai.fabric.service.AIInfrastructureProfileService(
+            aiInfrastructureProfileRepository,
+            indexingGatewayProvider
+        );
     }
 }

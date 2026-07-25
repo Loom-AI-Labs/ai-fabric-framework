@@ -38,7 +38,7 @@ questions:
   - id: prod-04-q3
     type: single-choice
     competency: privacy-boundary
-    prompt: Why is internalNotes excluded before a migration entry is serialized?
+    prompt: Why must internalNotes be absent from the migration projection?
     options:
       - id: a
         text: The durable queue payload is already part of the AI data path
@@ -53,7 +53,7 @@ questions:
   - id: prod-04-q4
     type: single-choice
     competency: metrics-honesty
-    prompt: How should the app report exact per-job skipped rows on AI Fabric 0.3.3?
+    prompt: How should the app report exact per-job skipped rows on AI Fabric 0.4.0?
     options:
       - id: a
         text: Compute processed minus queued

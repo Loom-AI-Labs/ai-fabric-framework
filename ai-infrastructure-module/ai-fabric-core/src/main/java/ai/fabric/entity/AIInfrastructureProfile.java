@@ -1,6 +1,12 @@
 package ai.fabric.entity;
 
 import ai.fabric.annotation.AICapable;
+import ai.fabric.annotation.AIContext;
+import ai.fabric.annotation.AIIdentity;
+import ai.fabric.annotation.AISearchable;
+import ai.fabric.indexing.api.AIContextDataType;
+import ai.fabric.indexing.api.AIContextDestination;
+import ai.fabric.indexing.api.AISearchDestination;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
@@ -28,30 +34,67 @@ import java.util.UUID;
 @AllArgsConstructor
 @Builder
 @AICapable(
-    entityType = "ai_profile",
-    features = {"embedding", "search", "analysis", "behavioral"},
-    enableSearch = true,
-    enableRecommendations = false,
-    autoEmbedding = true,
-    indexable = true
+    entityType = "ai_profile"
 )
 public class AIInfrastructureProfile {
     
     @Id
+    @AIIdentity
+    @AIContext(
+        key = "profileId",
+        dataType = AIContextDataType.ID,
+        destinations = {
+            AIContextDestination.VECTOR_METADATA,
+            AIContextDestination.API_RESPONSE
+        },
+        required = true,
+        priority = 100
+    )
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
     
+    @AIContext(
+        key = "userId",
+        dataType = AIContextDataType.ID,
+        destinations = {AIContextDestination.VECTOR_METADATA},
+        required = true,
+        priority = 100
+    )
     @Column(name = "user_id", nullable = false)
     private UUID userId;
     
+    @AISearchable(
+        name = "preferences",
+        destinations = {
+            AISearchDestination.SEMANTIC_SEARCH,
+            AISearchDestination.RAG_CONTEXT
+        },
+        priority = 80
+    )
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "preferences", columnDefinition = "json")
     private String preferences;
     
+    @AISearchable(
+        name = "interests",
+        destinations = {
+            AISearchDestination.SEMANTIC_SEARCH,
+            AISearchDestination.RAG_CONTEXT
+        },
+        priority = 90
+    )
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "interests", columnDefinition = "json")
     private String interests;
     
+    @AISearchable(
+        name = "behaviorPatterns",
+        destinations = {
+            AISearchDestination.SEMANTIC_SEARCH,
+            AISearchDestination.RAG_CONTEXT
+        },
+        priority = 70
+    )
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "behavior_patterns", columnDefinition = "json")
     private String behaviorPatterns;
@@ -59,13 +102,40 @@ public class AIInfrastructureProfile {
     @Column(name = "cv_file_url", length = 500)
     private String cvFileUrl;
     
+    @AIContext(
+        key = "status",
+        dataType = AIContextDataType.ENUM,
+        destinations = {
+            AIContextDestination.VECTOR_METADATA,
+            AIContextDestination.LLM_CONTEXT,
+            AIContextDestination.API_RESPONSE
+        },
+        required = true,
+        priority = 90
+    )
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 50)
     private AIProfileStatus status;
     
+    @AIContext(
+        key = "confidenceScore",
+        dataType = AIContextDataType.NUMBER,
+        destinations = {
+            AIContextDestination.VECTOR_METADATA,
+            AIContextDestination.LLM_CONTEXT,
+            AIContextDestination.API_RESPONSE
+        },
+        priority = 70
+    )
     @Column(name = "confidence_score")
     private Double confidenceScore;
     
+    @AIContext(
+        key = "version",
+        dataType = AIContextDataType.NUMBER,
+        destinations = {AIContextDestination.VECTOR_METADATA},
+        priority = 100
+    )
     @Column(name = "version")
     private Integer version;
     

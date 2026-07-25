@@ -1,9 +1,9 @@
 package ai.fabric.it;
 
 import ai.fabric.entity.IndexingQueueEntry;
-import ai.fabric.indexing.IndexingOperation;
-import ai.fabric.indexing.IndexingPriority;
 import ai.fabric.indexing.IndexingStatus;
+import ai.fabric.indexing.api.AIIndexWorkType;
+import ai.fabric.indexing.api.AIProcessOperation;
 import ai.fabric.indexing.api.IndexingStrategy;
 import ai.fabric.it.entity.TestProduct;
 import ai.fabric.it.repository.TestProductRepository;
@@ -34,7 +34,6 @@ import static org.mockito.Mockito.verify;
 @ActiveProfiles("test")
 @TestPropertySource(properties = {
     "ai.indexing.enabled=true",
-    "ai.config.default-file=ai-entity-config-indexing-strategy.yml",
     "ai.indexing.async-worker.enabled=false",
     "ai.indexing.batch-worker.enabled=false",
     "ai.indexing.cleanup.enabled=false"
@@ -77,10 +76,10 @@ public class IndexingStrategyIntegrationTest {
         assertEquals(1, entries.size(), "ASYNC create should enqueue exactly one entry");
 
         IndexingQueueEntry entry = entries.get(0);
-        assertEquals("product", entry.getEntityType());
-        assertEquals(IndexingOperation.CREATE, entry.getOperation());
+        assertEquals("test-product", entry.getEntityType());
+        assertEquals(AIIndexWorkType.UPSERT, entry.getWorkType());
+        assertEquals(AIProcessOperation.CREATE, entry.getSourceOperation());
         assertEquals(IndexingStrategy.ASYNC, entry.getStrategy());
-        assertEquals(IndexingPriority.HIGH, entry.getPriority());
         assertEquals(IndexingStatus.PENDING, entry.getStatus());
 
         verify(vectorManagementService, never()).storeVector(any(), any(), any(), any(), any());
@@ -92,10 +91,16 @@ public class IndexingStrategyIntegrationTest {
 
         productService.deleteProduct(persisted.getId());
 
-        assertEquals(0, indexingQueueRepository.count(),
-            "SYNC delete should bypass the queue and execute inline");
+        assertEquals(1, indexingQueueRepository.count(),
+            "SYNC delete should retain one durable completed queue entry");
+        IndexingQueueEntry entry = indexingQueueRepository.findAll().getFirst();
+        assertEquals(AIIndexWorkType.DELETE, entry.getWorkType());
+        assertEquals(IndexingStatus.COMPLETED, entry.getStatus());
 
-        verify(vectorManagementService, atLeastOnce()).removeVector("product", persisted.getId().toString());
+        verify(vectorManagementService, atLeastOnce()).removeVector(
+            "test-product",
+            persisted.getId().toString()
+        );
     }
 
     @Test
@@ -112,9 +117,8 @@ public class IndexingStrategyIntegrationTest {
         assertEquals(imports.size(), entries.size(), "Each imported product should enqueue a batch entry");
         assertTrue(entries.stream().allMatch(entry -> entry.getStrategy() == IndexingStrategy.BATCH),
             "Bulk import should override strategy to BATCH");
-        assertTrue(entries.stream().allMatch(entry -> entry.getPriority() == IndexingPriority.LOW),
-            "BATCH strategy should map to LOW priority");
-        assertTrue(entries.stream().allMatch(entry -> entry.getOperation() == IndexingOperation.CREATE),
+        assertTrue(entries.stream().allMatch(entry ->
+                entry.getSourceOperation() == AIProcessOperation.CREATE),
             "Bulk import should enqueue CREATE operations");
     }
 
@@ -133,7 +137,7 @@ public class IndexingStrategyIntegrationTest {
 
     private void clearProductVectors() {
         try {
-            vectorManagementService.clearVectorsByEntityType("product");
+            vectorManagementService.clearVectorsByEntityType("test-product");
         } catch (Exception ignored) {
             // The backing vector store may not be initialised for some profiles; ignore cleanup failures.
         }
