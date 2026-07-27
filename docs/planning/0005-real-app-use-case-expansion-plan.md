@@ -1,6 +1,6 @@
 # ADR 0005 - Real app use case expansion plan for AI Fabric
 
-- **Status:** Implemented; second-pass capability coverage review added
+- **Status:** Implemented; third-pass MCP and multi-store retrieval review added
 - **Date:** 2026-06-20
 - **Decision owner:** AI Fabric framework
 - **Context version:** AI Fabric `0.3.2`, Java `21`, Spring Boot `4.1.0`, Spring AI `2.0.0`
@@ -59,7 +59,7 @@ This plan focuses on two tracks:
 | `smoke-support` | Shared smoke profile for no-key/no-service boot | Deterministic local AI provider, deterministic embeddings, memory vector store, CI smoke support | `examples/real-apps/smoke-support/README.md` |
 | `customer-runtime-demo` | Customer-owned domain fixture plus runtime-style sync/search/actions | Data-sync DTO payloads, tenant-scoped retrieval, governed action confirmation, structured connector outage | `examples/real-apps/customer-runtime-demo/README.md`, `CustomerRuntimeServiceTest` |
 | `db-action-registry-lab` | DB-backed connector action registration, approval, discovery, execution, and deregistration | `ai-fabric-actions-registry`, DB action catalog, runtime `AIActionRegistry` refresh, connector action handler execution, API-key protected registry API | `examples/real-apps/db-action-registry-lab/README.md`, `DbActionRegistryLabServiceTest`, `DbActionRegistryControllerTest` |
-| `mcp-operations-assistant` | Governed MCP operations tool execution | `McpActionExecutor`, action access modes, confirmation policy, sanitized tool output | `examples/real-apps/mcp-operations-assistant/README.md`, `McpOperationsServiceTest` |
+| `mcp-operations-assistant` | Deterministic governed MCP-style operations tool execution | `McpActionExecutor`, action access modes, confirmation policy, sanitized tool output | `examples/real-apps/mcp-operations-assistant/README.md`, `McpOperationsServiceTest` |
 | `tenant-knowledge-portal` | Tenant-aware knowledge search, catalog, actions, and deletion | Tenant metadata, role checks, cross-tenant action rejection, tenant deletion evidence | `examples/real-apps/tenant-knowledge-portal/README.md`, `TenantKnowledgeServiceTest` |
 | `document-ingestion-workbench` | Trusted document upload, preview, index, reindex, delete | Spring AI document readers, AI Fabric indexing requests, chunk manifest lifecycle, metadata sanitization | `examples/real-apps/document-ingestion-workbench/README.md`, `DocumentIngestionServiceTest` |
 | `provider-failover-lab` | Provider routing/fallback diagnostics and transient input evidence | `AIProvider`, provider fallback attempts, safe diagnostics, transient URL non-persistence evidence | `examples/real-apps/provider-failover-lab/README.md`, `ProviderFailoverServiceTest` |
@@ -83,9 +83,10 @@ now either covered by the implemented app suite or intentionally left as non-exp
    publication, discovers the refreshed runtime registry, executes through the connector handler path,
    and deregisters actions from DB/runtime availability.
 
-3. **MCP action bridge.**
-   Covered by `mcp-operations-assistant`, which exposes operations tools through AI Fabric action
-   access modes, confirmation policy, failure handling, and hidden-context sanitization.
+3. **MCP action bridge governance contract.**
+   Covered deterministically by `mcp-operations-assistant`, which exposes operations tools through AI
+   Fabric action access modes, confirmation policy, failure handling, and hidden-context sanitization.
+   Live Spring AI-managed MCP client discovery and transport execution remain a separate proof target.
 
 4. **Governance, catalog, retention, and deletion as a product story.**
    Covered by `privacy-first-customer-facing-support`, `tenant-knowledge-portal`, and
@@ -177,6 +178,274 @@ Three candidates should stay deferred until ownership is clearer:
   tests currently cover the important mechanics.
 - **`admin-governance-console-lab`**: useful if `ai-fabric-web` is promoted as a user-facing starter
   experience; otherwise controller tests are enough.
+
+## MCP And Multi-Store Retrieval Review - 2026-07-26
+
+This review evaluates two proposed public demos against the current AI Fabric `0.4.0` code:
+
+1. live MCP support;
+2. multiple vector stores contributing evidence to one generated answer.
+
+The existing multi-vector-space capability is not a new demo target. `chat-capabilities-demo` already
+indexes and retrieves distinct `product`, `review`, and `policy` entity/vector spaces, and AI Fabric
+already supports bounded fan-out across vector spaces before merging evidence for generation.
+
+### Decision Summary
+
+| Proposal | Current support | Decision |
+| --- | --- | --- |
+| Live governed MCP tools | Framework bridge exists; current real app uses only a deterministic local executor | Upgrade the existing MCP app into a live deployable demo. |
+| Multiple vector spaces in one configured vector provider | Supported and already demonstrated by the shopping experience | Do not add another demo. Make the existing RAG journey and evidence routing explicit where useful. |
+| Multiple physical vector databases/providers in one RAG request | Extension contracts and result merging exist, but provider wiring and federation semantics are incomplete | Harden this as a framework capability first, then add a federated knowledge demo. |
+
+### Terminology
+
+The LLM does not connect directly to vector databases. AI Fabric must:
+
+1. resolve the eligible knowledge sources;
+2. retrieve evidence from one or more stores;
+3. enforce tenant and metadata policies at each source;
+4. rank, deduplicate, and attribute the evidence;
+5. send the resulting grounded context to one LLM.
+
+The accurate capability name is **federated multi-source RAG**, not "multiple vector stores in the
+same LLM."
+
+### Existing Multi-Vector-Space Coverage - Closed
+
+No new app is required for multiple vector spaces in one provider.
+
+Current code evidence:
+
+- `VectorSpaceRoutingProperties` defaults to bounded fan-out and controls maximum spaces, top-K per
+  space, retrieval threshold, and clarification threshold.
+- `BoundedFanOutRouter` selects eligible entity/vector spaces when intent extraction does not provide
+  one definitive space.
+- `InformationRagExecutionSupport.fanOut(...)` executes retrieval per selected space, tags each
+  document with its vector-space provenance, merges by rank, deduplicates, and builds one generation
+  context.
+- `chat-capabilities-demo` defines separate `product`, `review`, and `policy` entities with
+  `@AICapable(entityType = ...)` while using one configured Lucene provider.
+
+Future Shopping UI work may show the selected spaces and merged evidence more clearly, but it must
+not be presented as a new framework capability or a separate app.
+
+### Live MCP Demo Plan
+
+#### Current Support
+
+AI Fabric already has the runtime foundation:
+
+- `McpActionExecutor` is the governed action execution contract.
+- `SpringAiMcpActionExecutor` uses Spring AI-managed `McpSyncClient` instances, checks the declared
+  server and tool catalog, renders parameter and trusted-context templates, invokes the MCP tool, and
+  maps structured content into an `ActionResult`.
+- `AIActionConnectorAutoConfiguration` installs the Spring AI bridge when MCP client classes are
+  present and an application has not supplied a custom executor.
+- connector action catalogs support `adapterType: mcp-tool`, `serverRef`, `toolName`,
+  `argumentTemplate`, access mode, internal runtime parameters, and result-path projection.
+- normal AI Fabric authorization, confirmation, execution, and result-projection rules continue to
+  govern the MCP-backed action.
+
+The existing `mcp-operations-assistant` proves governance with a deterministic local
+`McpActionExecutor`. Its README correctly states that it does not prove live MCP server discovery or
+live Spring AI model/tool execution.
+
+#### Implementation Decision
+
+Upgrade `mcp-operations-assistant` rather than create a duplicate app. Its public demo title should be
+**AI Fabric MCP Operations Console**.
+
+Use a small, deployable companion MCP server so the scenario is reproducible and does not depend on
+an unstable public MCP endpoint. The companion server should expose:
+
+- `service.health` - read-only;
+- `runbook.search` - read-only;
+- `incident.create` - governed write requiring confirmation;
+- `deployment.rollback` - destructive write requiring confirmation.
+
+The application flow should be:
+
+```text
+natural-language request
+  -> AI Fabric intent and action selection
+  -> action authorization and access-mode policy
+  -> confirmation when required
+  -> Spring AI MCP client selects the declared server/tool
+  -> MCP transport call
+  -> structured result projection
+  -> safe post-action response and visible diagnostics
+```
+
+#### Demo UI
+
+The UI should make three boundaries visible without exposing secrets:
+
+1. the user's request and AI response;
+2. the AI Fabric governance decision, including action, access mode, and confirmation state;
+3. the MCP execution evidence, including server reference, tool name, correlation id, status, and
+   sanitized projected result.
+
+The UI must not expose hidden action context, credentials, raw prompts, or unprojected MCP payloads.
+It must show MCP and LLM failures explicitly; the live profile must not fall back to deterministic
+behavior.
+
+#### MCP Acceptance Criteria
+
+- A real Spring AI-managed MCP client discovers and calls the companion server.
+- A read-only tool executes without confirmation.
+- A write/destructive tool cannot execute before confirmation.
+- Rejection proves the MCP tool was not invoked.
+- Unknown tool, unavailable server, timeout, and MCP error produce structured visible failures.
+- Trusted user/session/tenant context is supplied by the backend and is not requested from the user.
+- Result-path projection returns only the intended domain fields.
+- Unit tests cover catalog mapping, policy, confirmation, rejection, result projection, and failure
+  normalization.
+- A packaged smoke profile remains deterministic and clearly labeled.
+- An opt-in real profile proves live LLM selection plus live MCP transport.
+- The deployed demo health endpoint reports application version, source commit, MCP readiness, and
+  model-provider readiness.
+
+#### MCP Capability Boundary
+
+This demo proves AI Fabric acting as a governed **MCP client for tools**. It must not claim that AI
+Fabric currently:
+
+- exposes AI Fabric actions as an MCP server;
+- implements MCP resources, prompts, sampling, or every MCP protocol feature;
+- allows the model to bypass AI Fabric action authorization or confirmation.
+
+### Federated Multi-Source RAG Plan
+
+#### Current Foundation
+
+AI Fabric already includes useful extension-level support:
+
+- `SearchSource` represents an eligible retrieval source.
+- `SearchSourceRegistry` resolves multiple sources for a `RAGRequest`.
+- `RAGSearchExecutor` queries resolved sources, merges and deduplicates their results, records source
+  diagnostics, and marks partial failures as degraded retrieval.
+- `RAGServiceSearchSourceRegistryTest` proves results from private and shared sources can contribute to
+  one RAG response with attribution and degraded-source evidence.
+
+This is not yet turnkey multi-vector-provider support:
+
+- vector provider auto-configuration selects one global `ai.vector-db.type` and one primary
+  `VectorDatabaseService`;
+- the framework does not supply named Lucene/Qdrant/Weaviate/Pinecone source construction and routing;
+- one query embedding is currently generated and passed to every resolved source;
+- source calls are sequential;
+- raw provider scores are sorted together even though score scales may differ;
+- partial failure currently degrades and continues without a configurable required-source policy;
+- lifecycle writes, ownership, and deletes are not routed across named stores.
+
+An application can manually implement `SearchSourceRegistry` and wrap several stores today, but that
+would demonstrate application-specific wiring rather than a complete AI Fabric feature.
+
+#### Framework Work Required Before The Demo
+
+1. **Named source configuration**
+   - Add named vector source definitions with provider type, connection reference, entity types,
+     attribution label, required/optional status, and embedding profile.
+   - Keep the existing single-provider configuration backward compatible.
+
+2. **Default registry and adapters**
+   - Supply a default `SearchSourceRegistry`.
+   - Supply a `VectorDatabaseSearchSource` adapter that delegates to a named
+     `VectorDatabaseService`.
+   - Allow applications and platform runtimes to contribute custom sources without replacing the
+     entire registry.
+
+3. **Explicit routing**
+   - Map entity/vector spaces to allowlisted source ids on the server.
+   - Never let free-form model output select an arbitrary connection or store.
+   - Apply tenant, visibility, and metadata filters before each source returns candidates.
+
+4. **Embedding compatibility**
+   - For the first release, require every source in one federated request to use the same embedding
+     provider, model, dimensions, and normalization profile.
+   - Fail startup/readiness when configured sources are incompatible.
+   - Treat per-source embedding generation as a later, separately designed capability.
+
+5. **Provider-neutral ranking**
+   - Replace direct raw-score comparison with reciprocal-rank fusion or another provider-neutral
+     rank strategy.
+   - Preserve original provider score as diagnostics, not as the sole cross-provider ordering signal.
+   - Deduplicate using source id, entity type, entity id, and canonical content identity.
+
+6. **Bounded execution**
+   - Query sources with bounded parallelism.
+   - Configure per-source timeout and maximum result count.
+   - Cancel or contain slow sources without leaking executor work.
+
+7. **Failure policy**
+   - Support `REQUIRE_ALL` and `ALLOW_PARTIAL`.
+   - Allow security-critical sources to be marked required.
+   - Return visible degraded-source metadata; never silently hide a failed required source.
+
+8. **Provenance and diagnostics**
+   - Every document must carry source id, provider, vector space, entity id, attribution label, rank,
+     and original score.
+   - Add aggregate and per-source health/readiness diagnostics.
+   - Keep credentials, endpoints, raw filters, and internal tenant handles out of user-facing output.
+
+9. **Lifecycle ownership**
+   - Route create/update/delete to one authoritative store per entity type.
+   - Do not introduce implicit dual writes.
+   - Treat replication or migration between stores as a separate explicit workflow with verification.
+
+10. **Verification**
+    - Contract tests for routing, filtering, fusion, provenance, timeout, required-source failure, and
+      lifecycle ownership.
+    - Docker-backed integration coverage for at least Lucene plus Qdrant.
+    - Real embedding and generation smoke proving one grounded answer from both stores.
+
+#### Future Demo
+
+After the framework work is complete, add **AI Fabric Federated Knowledge**:
+
+```text
+private policies in Lucene
+  + operational or product knowledge in Qdrant
+  -> allowlisted source routing
+  -> parallel retrieval
+  -> provider-neutral rank fusion
+  -> attributed merged evidence
+  -> one grounded LLM answer
+```
+
+Use two physical stores initially. More providers would increase deployment cost without proving a
+different capability.
+
+The UI should show:
+
+- the resolved retrieval plan;
+- one lane per physical source;
+- tenant/policy eligibility without exposing private filter values;
+- source timing and success/failure;
+- attributed evidence selected after rank fusion;
+- the final grounded answer;
+- an explicit degraded or failed state when a source is unavailable.
+
+#### Federated Retrieval Acceptance Criteria
+
+- One request retrieves relevant evidence from both Lucene and Qdrant.
+- One generated answer cites evidence from both sources.
+- An ineligible tenant source is never queried.
+- A required-source failure fails visibly.
+- An optional-source failure returns a visibly degraded response.
+- Raw similarity scores from different providers are not directly compared as equivalent values.
+- Duplicate documents do not appear twice after fusion.
+- Update/delete operations affect only the authoritative store.
+- No deterministic answer fallback hides embedding, retrieval, or generation failure.
+
+### Priority
+
+1. **P1 - Live MCP demo:** the bridge already exists; the missing value is real protocol, model, and
+   deployment proof.
+2. **No new priority - Multi-vector-space demo:** already covered by the Shopping experience.
+3. **P2 - Federated multi-source RAG:** implement and verify the framework capability before building
+   the public demo.
 
 ## Decision
 
