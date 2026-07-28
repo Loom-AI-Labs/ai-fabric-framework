@@ -32,10 +32,14 @@ import ai.fabric.http.DefaultAIHttpClientFactory;
 import ai.fabric.http.HttpClient;
 import ai.fabric.intent.action.InMemoryPendingActionStore;
 import ai.fabric.intent.action.AIActionRegistry;
+import ai.fabric.intent.action.invocation.DefaultGovernedActionInvocationService;
+import ai.fabric.intent.action.invocation.GovernedActionInvocationService;
 import ai.fabric.intent.action.tool.AIActionToolCallbackFactory;
 import ai.fabric.intent.action.PendingActionStore;
 import ai.fabric.intent.actiondraft.ActionDraftStore;
 import ai.fabric.intent.actiondraft.InMemoryActionDraftStore;
+import ai.fabric.intent.orchestration.capability.DefaultEffectiveCapabilitiesResolver;
+import ai.fabric.intent.orchestration.capability.EffectiveCapabilitiesResolver;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Conditional;
 import org.springframework.beans.factory.ObjectProvider;
@@ -114,6 +118,7 @@ import jakarta.persistence.EntityManagerFactory;
         pattern = {
             "ai\\.fabric\\.behavior\\..*",
             "ai\\.fabric\\.chat\\..*",
+            "ai\\.fabric\\.execution\\..*",
             "ai\\.fabric\\.rag\\..*",
             "ai\\.fabric\\.relationship\\..*",
             "ai\\.fabric\\.web\\..*",
@@ -225,6 +230,21 @@ public class AIInfrastructureAutoConfiguration {
     public AIActionToolCallbackFactory aiActionToolCallbackFactory(ObjectProvider<AIActionRegistry> actionRegistry,
                                                                   ObjectMapper objectMapper) {
         return new AIActionToolCallbackFactory(actionRegistry::getIfAvailable, objectMapper);
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    public EffectiveCapabilitiesResolver effectiveCapabilitiesResolver() {
+        return new DefaultEffectiveCapabilitiesResolver();
+    }
+
+    @Bean
+    @ConditionalOnBean(AIActionRegistry.class)
+    @ConditionalOnMissingBean
+    public GovernedActionInvocationService governedActionInvocationService(
+        AIActionRegistry actionRegistry
+    ) {
+        return new DefaultGovernedActionInvocationService(actionRegistry);
     }
 
     @Bean

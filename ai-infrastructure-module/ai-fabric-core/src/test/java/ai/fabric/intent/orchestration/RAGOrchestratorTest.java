@@ -23,7 +23,9 @@ import ai.fabric.intent.actiondraft.InMemoryActionDraftStore;
 import ai.fabric.intent.extraction.IntentExtractionInput;
 import ai.fabric.intent.history.IntentHistoryService;
 import ai.fabric.intent.action.AIActionHandler;
+import ai.fabric.intent.action.AIActionMetaData;
 import ai.fabric.intent.action.AIActionRegistry;
+import ai.fabric.intent.action.ActionAccessMode;
 import ai.fabric.intent.action.ActionResult;
 import ai.fabric.intent.orchestration.pipeline.DefaultOrchestrationPipeline;
 import ai.fabric.intent.orchestration.pipeline.Pipeline;
@@ -133,6 +135,12 @@ class RAGOrchestratorTest {
                 .success(true)
                 .build()
         );
+        lenient().when(actionHandlerRegistry.findMetadata(anyString())).thenAnswer(invocation ->
+            Optional.of(AIActionMetaData.builder()
+                .name(invocation.getArgument(0, String.class))
+                .accessMode(ActionAccessMode.READ_WRITE)
+                .build())
+        );
         
         // Create pipeline with all steps
         Pipeline pipeline = createPipeline();
@@ -218,7 +226,12 @@ class RAGOrchestratorTest {
         when(actionHandler.validateActionAllowed(any())).thenReturn(true);
         when(actionHandler.requiresConfirmation()).thenReturn(true);
         when(actionHandler.getConfirmationMessage(any(), any())).thenReturn("Confirm cancellation?");
-        when(actionHandlerRegistry.findMetadata("cancel_subscription")).thenReturn(Optional.empty());
+        when(actionHandlerRegistry.findMetadata("cancel_subscription")).thenReturn(Optional.of(
+            AIActionMetaData.builder()
+                .name("cancel_subscription")
+                .accessMode(ActionAccessMode.READ_WRITE)
+                .build()
+        ));
         when(actionHandler.executeAction(any(), any()))
             .thenReturn(ActionResult.builder().success(true).message("Cancelled").build());
 
@@ -277,7 +290,12 @@ class RAGOrchestratorTest {
         when(actionHandler.validateActionAllowed(any())).thenReturn(true);
         when(actionHandler.requiresConfirmation()).thenReturn(true);
         when(actionHandler.getConfirmationMessage(any(), any())).thenReturn("Confirm?");
-        when(actionHandlerRegistry.findMetadata("cancel_subscription")).thenReturn(Optional.empty());
+        when(actionHandlerRegistry.findMetadata("cancel_subscription")).thenReturn(Optional.of(
+            AIActionMetaData.builder()
+                .name("cancel_subscription")
+                .accessMode(ActionAccessMode.READ_WRITE)
+                .build()
+        ));
         when(actionHandler.executeAction(any(), any())).thenThrow(new IllegalStateException("boom"));
         when(actionHandler.handleError(any(), any()))
             .thenReturn(ActionResult.builder().success(false).message("boom").build());
@@ -591,7 +609,8 @@ class RAGOrchestratorTest {
         when(actionHandler.validateActionAllowed(any())).thenReturn(true);
         when(actionHandler.requiresConfirmation()).thenReturn(true);
         when(actionHandler.getConfirmationMessage(any(), any())).thenReturn("Confirm?");
-        when(actionHandlerRegistry.findMetadata("cancel_subscription")).thenReturn(Optional.empty());
+        when(actionHandlerRegistry.findMetadata("cancel_subscription"))
+            .thenReturn(Optional.of(executableMetadata("cancel_subscription")));
         when(actionHandler.executeAction(any(), any()))
             .thenReturn(ActionResult.builder().success(true).message("Cancelled").build());
         lenient().when(ragProvider.performRag(any())).thenReturn(RAGResponse.builder()
@@ -623,7 +642,8 @@ class RAGOrchestratorTest {
         when(actionHandler.validateActionAllowed(any())).thenReturn(true);
         when(actionHandler.requiresConfirmation()).thenReturn(true);
         when(actionHandler.getConfirmationMessage(any(), any())).thenReturn("Confirm?");
-        when(actionHandlerRegistry.findMetadata("update_payment_method")).thenReturn(Optional.empty());
+        when(actionHandlerRegistry.findMetadata("update_payment_method"))
+            .thenReturn(Optional.of(executableMetadata("update_payment_method")));
         when(actionHandler.executeAction(any(), any()))
             .thenReturn(ActionResult.builder().success(true).message("Updated").build());
         when(ragProvider.performRag(any(RAGRequest.class))).thenReturn(RAGResponse.builder()
@@ -664,7 +684,8 @@ class RAGOrchestratorTest {
         when(actionHandler.validateActionAllowed(any())).thenReturn(true);
         when(actionHandler.requiresConfirmation()).thenReturn(true);
         when(actionHandler.getConfirmationMessage(any(), any())).thenReturn("Confirm?");
-        when(actionHandlerRegistry.findMetadata("update_payment_method")).thenReturn(Optional.empty());
+        when(actionHandlerRegistry.findMetadata("update_payment_method"))
+            .thenReturn(Optional.of(executableMetadata("update_payment_method")));
         when(actionHandler.executeAction(any(), any()))
             .thenReturn(ActionResult.builder().success(true).message("Updated").build());
 
@@ -699,7 +720,8 @@ class RAGOrchestratorTest {
         when(actionHandler.validateActionAllowed(any())).thenReturn(true);
         when(actionHandler.requiresConfirmation()).thenReturn(true);
         when(actionHandler.getConfirmationMessage(any(), any())).thenReturn("Confirm?");
-        when(actionHandlerRegistry.findMetadata("update_payment_method")).thenReturn(Optional.empty());
+        when(actionHandlerRegistry.findMetadata("update_payment_method"))
+            .thenReturn(Optional.of(executableMetadata("update_payment_method")));
         when(actionHandler.executeAction(any(), any()))
             .thenReturn(ActionResult.builder().success(true).message("Updated").build());
 
@@ -708,5 +730,11 @@ class RAGOrchestratorTest {
         assertThat(result.getNextSteps()).containsExactly(recommendation);
         assertThat(result.getSmartSuggestion()).isEmpty();
         verify(ragProvider, never()).performRag(any(RAGRequest.class));
+    }
+    private AIActionMetaData executableMetadata(String actionName) {
+        return AIActionMetaData.builder()
+            .name(actionName)
+            .accessMode(ActionAccessMode.READ_WRITE)
+            .build();
     }
 }

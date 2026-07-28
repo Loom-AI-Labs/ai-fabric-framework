@@ -1,0 +1,2 @@
+ai.fabric.execution.config.AIExecutionAutoConfiguration
+ai.fabric.execution.config.AIExecutionChatSessionAutoConfiguration

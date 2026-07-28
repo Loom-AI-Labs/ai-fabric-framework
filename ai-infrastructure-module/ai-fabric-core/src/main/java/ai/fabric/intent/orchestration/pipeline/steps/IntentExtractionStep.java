@@ -7,6 +7,7 @@ import ai.fabric.intent.IntentQueryExtractor;
 import ai.fabric.intent.extraction.ProgressiveIntentExtractionEngine;
 import ai.fabric.intent.extraction.IntentExtractionInput;
 import ai.fabric.intent.orchestration.OrchestrationResult;
+import ai.fabric.intent.orchestration.OrchestrationAuthContextResolver;
 import ai.fabric.intent.orchestration.pipeline.PipelineContext;
 import ai.fabric.intent.orchestration.pipeline.PipelineStep;
 import lombok.RequiredArgsConstructor;
@@ -110,7 +111,15 @@ public class IntentExtractionStep implements PipelineStep {
         IntentExtractionInput input = new IntentExtractionInput(
             userQuery,
             currentUserMessage,
-            context.getHistoryMessages()
+            context.getHistoryMessages(),
+            context.getOrchestrationRequest() != null
+                    && context.getOrchestrationRequest().trustedExecutionContext() != null
+                ? OrchestrationAuthContextResolver.from(
+                    context.getOrchestrationRequest().trustedExecutionContext()
+                )
+                : OrchestrationAuthContextResolver.from(
+                    context.getOrchestrationContext()
+                )
         );
 
         ProgressiveIntentExtractionEngine engine = progressiveEngineProvider != null

@@ -58,7 +58,7 @@ public class ConfirmationResolutionStep implements PipelineStep {
         }
 
         String conversationId = context.getOrchestrationContext().getConversationId();
-        String ownerId = context.getIdentifier();
+        String ownerId = context.getConversationOwnerIdentifier();
         if (!StringUtils.hasText(conversationId) || !StringUtils.hasText(ownerId)) {
             return context;
         }
@@ -95,4 +95,3 @@ public class ConfirmationResolutionStep implements PipelineStep {
         return context;
     }
 }
-

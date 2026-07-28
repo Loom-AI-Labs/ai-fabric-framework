@@ -1,6 +1,8 @@
 package ai.fabric.intent.orchestration;
 
 import ai.fabric.dto.AIAccessSubjectContext;
+import ai.fabric.execution.context.ExecutionSubjectRef;
+import ai.fabric.execution.context.TrustedExecutionContext;
 import java.util.List;
 import java.util.Map;
 
@@ -40,6 +42,31 @@ public final class OrchestrationAuthContextResolver {
             .audiences(resolveStringList(metadata, OrchestrationContextMetadataKeys.AUTH_AUDIENCES))
             .grantedScopes(resolveStringList(metadata, OrchestrationContextMetadataKeys.GRANTED_SCOPES))
             .expiresAt(resolveString(metadata, OrchestrationContextMetadataKeys.AUTH_EXPIRES_AT, null))
+            .build();
+    }
+
+    /**
+     * Adapts server-owned execution identity to the existing access-control contract.
+     */
+    public static AIAccessSubjectContext from(TrustedExecutionContext context) {
+        if (context == null) {
+            return AIAccessSubjectContext.builder().build();
+        }
+        ExecutionSubjectRef subject = context.subject();
+        String subjectId = subject != null
+            ? subject.subjectId()
+            : context.initiator().principalId();
+        String subjectType = subject != null
+            ? subject.subjectType()
+            : context.initiator().principalType().name();
+        return AIAccessSubjectContext.builder()
+            .subjectId(subjectId)
+            .subjectType(subjectType)
+            .authMode("TRUSTED_" + context.source().name())
+            .callerType(context.initiator().principalType().name())
+            .deploymentId(context.deploymentId())
+            .tenantId(context.tenantId())
+            .grantedScopes(List.copyOf(context.grantedScopes()))
             .build();
     }
 

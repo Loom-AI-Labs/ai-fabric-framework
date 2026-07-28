@@ -2,9 +2,13 @@ package ai.fabric.intent.orchestration.pipeline;
 
 import ai.fabric.dto.MultiIntentResponse;
 import ai.fabric.dto.AIChatMessage;
+import ai.fabric.execution.context.ExecutionSubjectRef;
+import ai.fabric.execution.context.TrustedExecutionContext;
 import ai.fabric.intent.orchestration.policy.OrchestrationPolicy;
+import ai.fabric.intent.orchestration.capability.EffectiveCapabilityProfile;
 import ai.fabric.intent.orchestration.OrchestrationContext;
 import ai.fabric.intent.orchestration.OrchestrationResult;
+import ai.fabric.intent.orchestration.request.OrchestrationRequest;
 import ai.fabric.intent.orchestration.targets.ResolvedTarget;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
@@ -79,6 +83,11 @@ public class PipelineContext {
      * The orchestration context containing user/session information.
      */
     private final OrchestrationContext orchestrationContext;
+
+    /**
+     * Structured request envelope retained for source, trust, and persistence decisions.
+     */
+    private final OrchestrationRequest orchestrationRequest;
     
     /**
      * Timestamp when the request was received.
@@ -132,6 +141,11 @@ public class PipelineContext {
      * Server-resolved orchestration policy for this request.
      */
     private final OrchestrationPolicy orchestrationPolicy;
+
+    /**
+     * Server-resolved action, retrieval, and vector-space capability intersection.
+     */
+    private final EffectiveCapabilityProfile effectiveCapabilityProfile;
 
     /**
      * Set of action names that have been explicitly confirmed for this request.
@@ -201,7 +215,20 @@ public class PipelineContext {
     public static PipelineContext from(String query, OrchestrationContext context) {
         Objects.requireNonNull(query, "query must not be null");
         Objects.requireNonNull(context, "context must not be null");
-        context.validate();
+        return from(OrchestrationRequest.interactive(query, context));
+    }
+
+    /**
+     * Create an initial context from a structured request.
+     *
+     * @param request structured request with source-specific trust semantics
+     * @return initialized pipeline context
+     */
+    public static PipelineContext from(OrchestrationRequest request) {
+        Objects.requireNonNull(request, "request must not be null");
+        request.validateForExecution();
+        String query = request.modelInput();
+        OrchestrationContext context = request.orchestrationContext();
         
         String requestId = context.getOrGenerateRequestId();
         if (requestId == null || requestId.isBlank()) {
@@ -211,6 +238,9 @@ public class PipelineContext {
         return PipelineContext.builder()
             .originalQuery(query)
             .orchestrationContext(context)
+            .orchestrationRequest(request)
+            .orchestrationPolicy(context.getOrchestrationPolicy())
+            .effectiveCapabilityProfile(request.effectiveCapabilityProfile())
             .requestId(requestId)
             .requestTimestamp(LocalDateTime.now())
             .processedQuery(query) // Initially same as original
@@ -258,7 +288,29 @@ public class PipelineContext {
      * @return the user identifier (userId for authenticated, sessionId for anonymous)
      */
     public String getIdentifier() {
+        TrustedExecutionContext trustedContext = trustedExecutionContext();
+        if (trustedContext != null) {
+            ExecutionSubjectRef subject = trustedContext.subject();
+            return subject != null
+                ? subject.subjectId()
+                : trustedContext.initiator().principalId();
+        }
         return orchestrationContext != null ? orchestrationContext.getIdentifier() : null;
+    }
+
+    /**
+     * Get the owner used for conversation-scoped state.
+     *
+     * <p>Trusted execution may distinguish the caller from the domain subject being
+     * inspected or changed. Conversation history, pending confirmations, and working
+     * sets belong to the server-bound conversation owner, not to that domain subject.</p>
+     *
+     * @return the bound conversation owner, or the legacy user/session identifier
+     */
+    public String getConversationOwnerIdentifier() {
+        return orchestrationContext != null
+            ? orchestrationContext.getIdentifier()
+            : null;
     }
     
     /**
@@ -267,7 +319,17 @@ public class PipelineContext {
      * @return true if authenticated, false if anonymous
      */
     public boolean isAuthenticated() {
-        return orchestrationContext != null && orchestrationContext.isAuthenticated();
+        return trustedExecutionContext() != null
+            || (orchestrationContext != null && orchestrationContext.isAuthenticated());
+    }
+
+    /**
+     * Check whether this request has no trusted or authenticated caller.
+     *
+     * @return true only for the legacy anonymous-session path
+     */
+    public boolean isAnonymous() {
+        return !isAuthenticated();
     }
     
     /**
@@ -279,6 +341,12 @@ public class PipelineContext {
         return processedQuery != null && !processedQuery.isBlank() 
             ? processedQuery 
             : originalQuery;
+    }
+
+    private TrustedExecutionContext trustedExecutionContext() {
+        return orchestrationRequest != null
+            ? orchestrationRequest.trustedExecutionContext()
+            : null;
     }
 
     /**

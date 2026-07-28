@@ -2,6 +2,7 @@ package ai.fabric.intent.orchestration.pipeline;
 
 import ai.fabric.intent.orchestration.OrchestrationContext;
 import ai.fabric.intent.orchestration.OrchestrationResult;
+import ai.fabric.intent.orchestration.request.OrchestrationRequest;
 
 import java.util.List;
 
@@ -52,6 +53,19 @@ public interface Pipeline {
      * @throws IllegalArgumentException if query is null/blank or context is null
      */
     OrchestrationResult execute(String query, OrchestrationContext context);
+
+    /**
+     * Execute a structured request carrying trusted source and persistence semantics.
+     *
+     * <p>The default implementation preserves compatibility for custom pipeline
+     * implementations. The framework pipeline overrides it to retain the complete envelope.</p>
+     *
+     * @param request structured orchestration request
+     * @return the orchestration result
+     */
+    default OrchestrationResult execute(OrchestrationRequest request) {
+        return execute(request.modelInput(), request.orchestrationContext());
+    }
     
     /**
      * Get all registered pipeline steps in execution order.

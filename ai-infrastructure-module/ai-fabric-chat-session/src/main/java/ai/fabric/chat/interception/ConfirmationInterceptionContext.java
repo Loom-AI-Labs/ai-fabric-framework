@@ -165,6 +165,8 @@ public final class ConfirmationInterceptionContext {
     }
 
     private String ownerId() {
-        return pipelineContext != null ? pipelineContext.getIdentifier() : null;
+        return pipelineContext != null
+            ? pipelineContext.getConversationOwnerIdentifier()
+            : null;
     }
 }

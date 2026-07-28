@@ -5,6 +5,7 @@ import ai.fabric.core.LlmPurpose;
 import ai.fabric.config.PromptBundleProperties;
 import ai.fabric.dto.AIGenerationRequest;
 import ai.fabric.dto.AIGenerationResponse;
+import ai.fabric.dto.AIAccessSubjectContext;
 import ai.fabric.dto.Intent;
 import ai.fabric.dto.IntentType;
 import ai.fabric.dto.MultiIntentResponse;
@@ -20,6 +21,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
+import org.mockito.ArgumentCaptor;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.core.io.DefaultResourceLoader;
 
@@ -92,6 +94,62 @@ class IntentQueryExtractorTest {
         assertThat(intent.getIntent()).isEqualTo("cancel_subscription");
         assertThat(intent.getActionParams()).containsEntry("reason", "too expensive");
         assertThat(response.getOrchestrationStrategy()).isEqualTo("DIRECT_ACTION");
+    }
+
+    @Test
+    void acceptsResolvedMachineIdentityWithoutFakeUserOrSession() {
+        when(enrichedPromptBuilder.buildSystemPrompt(any(OrchestrationContext.class)))
+            .thenReturn("system-prompt");
+        when(aiCoreService.generateContent(
+            any(AIGenerationRequest.class),
+            any(LlmPurpose.class)
+        )).thenReturn(AIGenerationResponse.builder().content("""
+            {
+              "intents": [{
+                "type": "INFORMATION",
+                "intent": "account_readiness",
+                "confidence": 0.95,
+                "requiresRetrieval": true,
+                "requiresGeneration": true
+              }]
+            }
+            """).build());
+        IntentQueryExtractor extractor = new IntentQueryExtractor(
+            aiCoreService,
+            enrichedPromptBuilder,
+            actionHandlerRegistry,
+            objectMapper,
+            promptTemplateResolver(),
+            new PromptRenderer()
+        );
+        AIAccessSubjectContext authContext =
+            AIAccessSubjectContext.builder()
+                .subjectId("account-42")
+                .subjectType("account")
+                .callerType("SERVICE")
+                .authMode("TRUSTED_APPLICATION")
+                .build();
+
+        extractor.extract(
+            new IntentExtractionInput(
+                "Can this account continue?",
+                "Can this account continue?",
+                List.of(),
+                authContext
+            ),
+            OrchestrationContext.builder().build()
+        );
+
+        ArgumentCaptor<AIGenerationRequest> request =
+            ArgumentCaptor.forClass(AIGenerationRequest.class);
+        verify(aiCoreService).generateContent(
+            request.capture(),
+            eq(LlmPurpose.ORCHESTRATION)
+        );
+        assertThat(request.getValue().getAuthContext().getSubjectId())
+            .isEqualTo("account-42");
+        assertThat(request.getValue().getAuthContext().getCallerType())
+            .isEqualTo("SERVICE");
     }
 
     @Test

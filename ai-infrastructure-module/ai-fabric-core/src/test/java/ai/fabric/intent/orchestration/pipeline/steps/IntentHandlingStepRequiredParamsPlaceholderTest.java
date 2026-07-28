@@ -14,6 +14,7 @@ import ai.fabric.intent.KnowledgeBaseOverviewService;
 import ai.fabric.intent.action.AIActionMetaData;
 import ai.fabric.intent.action.AIActionHandler;
 import ai.fabric.intent.action.AIActionRegistry;
+import ai.fabric.intent.action.ActionAccessMode;
 import ai.fabric.intent.action.ActionResult;
 import ai.fabric.intent.action.InMemoryPendingActionStore;
 import ai.fabric.intent.actiondraft.InMemoryActionDraftStore;
@@ -55,6 +56,7 @@ class IntentHandlingStepRequiredParamsPlaceholderTest {
 
         AIActionMetaData meta = AIActionMetaData.builder()
             .name("change_delivery_address")
+            .accessMode(ActionAccessMode.READ_WRITE)
             .description("Change delivery address")
             .category("commerce")
             .parameters(Map.of(
@@ -115,6 +117,7 @@ class IntentHandlingStepRequiredParamsPlaceholderTest {
 
         AIActionMetaData meta = AIActionMetaData.builder()
             .name("change_delivery_address")
+            .accessMode(ActionAccessMode.READ_WRITE)
             .description("Change delivery address")
             .category("commerce")
             .parameters(Map.of(
@@ -174,6 +177,7 @@ class IntentHandlingStepRequiredParamsPlaceholderTest {
 
         AIActionMetaData meta = AIActionMetaData.builder()
             .name("confirmable_echo")
+            .accessMode(ActionAccessMode.READ_WRITE)
             .description("Echo a message back")
             .category("test")
             .parameters(Map.of(
@@ -237,6 +241,7 @@ class IntentHandlingStepRequiredParamsPlaceholderTest {
 
         AIActionMetaData meta = AIActionMetaData.builder()
             .name("change_delivery_address")
+            .accessMode(ActionAccessMode.READ_WRITE)
             .description("Change delivery address")
             .category("commerce")
             .parameters(Map.of(
@@ -300,6 +305,7 @@ class IntentHandlingStepRequiredParamsPlaceholderTest {
 
         AIActionMetaData meta = AIActionMetaData.builder()
             .name("create_purchase_order")
+            .accessMode(ActionAccessMode.READ_WRITE)
             .description("Create purchase order")
             .category("commerce")
             .parameters(Map.of(
@@ -369,6 +375,7 @@ class IntentHandlingStepRequiredParamsPlaceholderTest {
 
         AIActionMetaData meta = AIActionMetaData.builder()
             .name("create_purchase_order")
+            .accessMode(ActionAccessMode.READ_WRITE)
             .description("Create purchase order")
             .category("commerce")
             .parameters(Map.of(
@@ -435,6 +442,7 @@ class IntentHandlingStepRequiredParamsPlaceholderTest {
 
         AIActionMetaData meta = AIActionMetaData.builder()
             .name("commerce_update_cart")
+            .accessMode(ActionAccessMode.READ_WRITE)
             .description("Update commerce cart")
             .category("commerce")
             .anonymousAllowed(true)
@@ -496,6 +504,7 @@ class IntentHandlingStepRequiredParamsPlaceholderTest {
 
         AIActionMetaData meta = AIActionMetaData.builder()
             .name("commerce_update_cart")
+            .accessMode(ActionAccessMode.READ_WRITE)
             .description("Update commerce cart")
             .category("commerce")
             .anonymousAllowed(true)
@@ -569,6 +578,7 @@ class IntentHandlingStepRequiredParamsPlaceholderTest {
 
         AIActionMetaData meta = AIActionMetaData.builder()
             .name("commerce_update_cart")
+            .accessMode(ActionAccessMode.READ_WRITE)
             .description("Update commerce cart")
             .category("commerce")
             .anonymousAllowed(true)
@@ -633,6 +643,7 @@ class IntentHandlingStepRequiredParamsPlaceholderTest {
 
         AIActionMetaData meta = AIActionMetaData.builder()
             .name("commerce_get_product_details")
+            .accessMode(ActionAccessMode.READ)
             .description("Get commerce product details")
             .category("commerce")
             .anonymousAllowed(true)

@@ -14,6 +14,11 @@ import ai.fabric.intent.action.ActionAccessMode;
 import ai.fabric.intent.action.ActionContext;
 import ai.fabric.intent.action.ActionPayload;
 import ai.fabric.intent.action.ActionResult;
+import ai.fabric.intent.orchestration.capability.CapabilityAwareActionMetadataSupport;
+import ai.fabric.intent.action.invocation.ActionConfirmationState;
+import ai.fabric.intent.action.invocation.DefaultGovernedActionInvocationService;
+import ai.fabric.intent.action.invocation.GovernedActionInvocationOutcome;
+import ai.fabric.intent.action.invocation.GovernedActionInvocationSupport;
 import ai.fabric.intent.orchestration.OrchestrationAuthContextResolver;
 import ai.fabric.intent.orchestration.OrchestrationContext;
 import ai.fabric.intent.orchestration.pipeline.PipelineContext;
@@ -113,7 +118,11 @@ public class ReadActionResolutionService {
             return ResolutionOutcome.skipped("NON_INFORMATION_INTENT");
         }
 
-        List<EligibleReadAction> eligibleActions = resolveEligibleReadActions(orchestrationContext, readPolicy);
+        List<EligibleReadAction> eligibleActions = resolveEligibleReadActions(
+            orchestrationContext,
+            pipelineContext,
+            readPolicy
+        );
         if (eligibleActions.isEmpty()) {
             return ResolutionOutcome.skipped("NO_ELIGIBLE_READ_ACTIONS");
         }
@@ -230,9 +239,13 @@ public class ReadActionResolutionService {
         );
     }
 
-    private List<EligibleReadAction> resolveEligibleReadActions(OrchestrationContext context,
-                                                                OrchestrationPolicy.ReadActionResolutionPolicy readPolicy) {
-        List<AIActionMetaData> actions = actionRegistry.getAllMetadata();
+    private List<EligibleReadAction> resolveEligibleReadActions(
+        OrchestrationContext context,
+        PipelineContext pipelineContext,
+        OrchestrationPolicy.ReadActionResolutionPolicy readPolicy
+    ) {
+        List<AIActionMetaData> actions =
+            CapabilityAwareActionMetadataSupport.visibleActions(actionRegistry, context);
         if (actions == null || actions.isEmpty()) {
             return List.of();
         }
@@ -243,6 +256,12 @@ public class ReadActionResolutionService {
                 continue;
             }
             if (metadata.getAccessMode() != ActionAccessMode.READ) {
+                continue;
+            }
+            if (context != null
+                && context.getEffectiveCapabilityProfile() != null
+                && !context.getEffectiveCapabilityProfile()
+                    .canExecuteReadAction(metadata.getName())) {
                 continue;
             }
             if (!metadata.isReadActionResolutionEligible()) {
@@ -264,7 +283,7 @@ public class ReadActionResolutionService {
             if (handler.isEmpty()) {
                 continue;
             }
-            if (context != null && context.isAnonymous() && !metadata.isAnonymousAllowed()) {
+            if (isAnonymous(context, pipelineContext) && !metadata.isAnonymousAllowed()) {
                 continue;
             }
             eligible.put(
@@ -425,7 +444,8 @@ public class ReadActionResolutionService {
         AIActionMetaData metadata = metadataOpt.get();
         ActionContext actionContext = new ActionContext(orchestrationContext, pipelineContext, proposal.params());
 
-        if (orchestrationContext != null && orchestrationContext.isAnonymous() && !metadata.isAnonymousAllowed()) {
+        if (isAnonymous(orchestrationContext, pipelineContext)
+            && !metadata.isAnonymousAllowed()) {
             return ExecutedReadAction.failure(proposal.name(), proposal.params(), "ANONYMOUS_NOT_ALLOWED", metadata, null);
         }
         if (!handler.validateActionAllowed(actionContext)) {
@@ -433,7 +453,18 @@ public class ReadActionResolutionService {
         }
 
         try {
-            ActionResult result = handler.executeAction(proposal.params(), actionContext);
+            GovernedActionInvocationOutcome invocationOutcome =
+                new DefaultGovernedActionInvocationService(actionRegistry).invoke(
+                    GovernedActionInvocationSupport.invocation(
+                        proposal.name(),
+                        proposal.params(),
+                        actionContext,
+                        actionRegistry,
+                        ActionConfirmationState.CONFIRMED,
+                        List.of()
+                    )
+                );
+            ActionResult result = invocationOutcome.actionResult();
             EvidenceSnippet evidence = buildEvidenceSnippet(
                 handler,
                 result,
@@ -468,6 +499,15 @@ public class ReadActionResolutionService {
                 ex.getMessage()
             );
         }
+    }
+
+    private boolean isAnonymous(
+        OrchestrationContext orchestrationContext,
+        PipelineContext pipelineContext
+    ) {
+        return pipelineContext != null
+            ? pipelineContext.isAnonymous()
+            : orchestrationContext == null || orchestrationContext.isAnonymous();
     }
 
     private boolean hasRequiredParams(AIActionMetaData metadata, Map<String, Object> params) {

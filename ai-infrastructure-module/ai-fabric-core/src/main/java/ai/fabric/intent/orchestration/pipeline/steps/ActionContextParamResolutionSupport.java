@@ -7,6 +7,10 @@ import ai.fabric.intent.action.AIActionRegistry;
 import ai.fabric.intent.action.ActionAccessMode;
 import ai.fabric.intent.action.ActionContext;
 import ai.fabric.intent.action.ActionResult;
+import ai.fabric.intent.action.invocation.ActionConfirmationState;
+import ai.fabric.intent.action.invocation.DefaultGovernedActionInvocationService;
+import ai.fabric.intent.action.invocation.GovernedActionInvocationOutcome;
+import ai.fabric.intent.action.invocation.GovernedActionInvocationSupport;
 import ai.fabric.intent.orchestration.OrchestrationContext;
 import ai.fabric.intent.orchestration.attachment.NormalizedAttachment;
 import ai.fabric.intent.orchestration.pipeline.PipelineContext;
@@ -219,13 +223,18 @@ final class ActionContextParamResolutionSupport {
         if (validation != null && validation.missingRequired() != null && !validation.missingRequired().isEmpty()) {
             return null;
         }
-        ActionResult result;
-        try {
-            result = readHandler.executeAction(readParams, readContext);
-        } catch (Exception ex) {
-            log.debug("Read action {} failed while resolving action param {}: {}", actionName, parameter, ex.getMessage());
-            return null;
-        }
+        GovernedActionInvocationOutcome invocationOutcome =
+            new DefaultGovernedActionInvocationService(actionHandlerRegistry).invoke(
+                GovernedActionInvocationSupport.invocation(
+                    actionName,
+                    readParams,
+                    readContext,
+                    actionHandlerRegistry,
+                    ActionConfirmationState.CONFIRMED,
+                    List.of()
+                )
+            );
+        ActionResult result = invocationOutcome.actionResult();
         if (result == null) {
             return null;
         }

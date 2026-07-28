@@ -8,7 +8,6 @@ import ai.fabric.dto.MultiIntentResponse;
 import ai.fabric.intent.EnrichedPromptBuilder;
 import ai.fabric.intent.IntentExtractionJsonSupport;
 import ai.fabric.intent.IntentExtractionValidator;
-import ai.fabric.intent.orchestration.OrchestrationAuthContextResolver;
 import ai.fabric.intent.orchestration.OrchestrationContext;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -51,7 +50,9 @@ public class CompoundIntentExtractionStrategy implements IntentExtractionStrateg
             .prompt(userPrompt)
             .messages(input != null ? input.historyMessages() : List.of())
             .parameters(jsonSupport.jsonOnlyResponseParameters())
-            .authContext(OrchestrationAuthContextResolver.from(context != null ? context : OrchestrationContext.anonymous()))
+            .authContext(input.authContext(
+                context != null ? context : OrchestrationContext.anonymous()
+            ))
             .build();
 
         try {

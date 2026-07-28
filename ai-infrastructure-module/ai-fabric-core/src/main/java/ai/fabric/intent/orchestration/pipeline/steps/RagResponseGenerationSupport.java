@@ -203,6 +203,7 @@ final class RagResponseGenerationSupport {
                                                    Integer maxTokens,
                                                    PipelineContext pipelineContext) {
         long startNanos = System.nanoTime();
+        String effectivePrompt = appendResponseInstructions(prompt, pipelineContext);
         AIGenerationResponse response;
         List<AIGenerationInputPart> transientInputParts = transientInputParts(pipelineContext);
         if ((maxTokens != null && maxTokens > 0) || !transientInputParts.isEmpty()) {
@@ -211,7 +212,7 @@ final class RagResponseGenerationSupport {
                     .entityId("adhoc-" + UUID.randomUUID())
                     .entityType(StringUtils.hasText(entityType) ? entityType : "adhoc")
                     .generationType(StringUtils.hasText(generationType) ? generationType : "text")
-                    .prompt(prompt)
+                    .prompt(effectivePrompt)
                     .maxTokens(maxTokens)
                     .inputParts(transientInputParts)
                     .transientInputPolicy(transientInputParts.isEmpty()
@@ -224,10 +225,10 @@ final class RagResponseGenerationSupport {
                 purpose
             );
             if (response == null || !StringUtils.hasText(response.getContent())) {
-                response = aiCoreService.generateTextResponse(prompt, purpose);
+                response = aiCoreService.generateTextResponse(effectivePrompt, purpose);
             }
         } else {
-            response = aiCoreService.generateTextResponse(prompt, purpose);
+            response = aiCoreService.generateTextResponse(effectivePrompt, purpose);
         }
         long elapsedMs = java.util.concurrent.TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startNanos);
         return new ResponseGenerationTrace(
@@ -237,6 +238,22 @@ final class RagResponseGenerationSupport {
             response != null ? response.getModel() : null,
             path
         );
+    }
+
+    private String appendResponseInstructions(
+        String prompt,
+        PipelineContext pipelineContext
+    ) {
+        String instructions = pipelineContext != null
+            && pipelineContext.getOrchestrationRequest() != null
+            ? pipelineContext.getOrchestrationRequest().responseInstructions()
+            : null;
+        if (!StringUtils.hasText(instructions)) {
+            return prompt;
+        }
+        return prompt.trim()
+            + "\n\nAPPLICATION RESPONSE INSTRUCTIONS\n"
+            + instructions.trim();
     }
 
     List<AIGenerationInputPart> transientInputParts(PipelineContext pipelineContext) {

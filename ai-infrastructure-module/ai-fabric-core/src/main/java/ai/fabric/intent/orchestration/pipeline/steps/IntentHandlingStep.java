@@ -14,6 +14,11 @@ import ai.fabric.intent.action.AIActionRegistry;
 import ai.fabric.intent.action.ActionAccessMode;
 import ai.fabric.intent.action.ActionContext;
 import ai.fabric.intent.action.ActionResult;
+import ai.fabric.intent.action.invocation.ActionConfirmationState;
+import ai.fabric.intent.action.invocation.DefaultGovernedActionInvocationService;
+import ai.fabric.intent.action.invocation.GovernedActionInvocationOutcome;
+import ai.fabric.intent.action.invocation.GovernedActionInvocationStatus;
+import ai.fabric.intent.action.invocation.GovernedActionInvocationSupport;
 import ai.fabric.intent.action.PendingAction;
 import ai.fabric.intent.action.PendingActionStore;
 import ai.fabric.intent.action.policy.ActionPostPolicyEngine;
@@ -335,7 +340,10 @@ public class IntentHandlingStep implements PipelineStep {
                 .build();
         }
 
-        if (context.isAnonymous() && (meta == null || !meta.isAnonymousAllowed())) {
+        if ((pipelineContext != null
+                ? pipelineContext.isAnonymous()
+                : context.isAnonymous())
+            && (meta == null || !meta.isAnonymousAllowed())) {
             return OrchestrationResult.builder()
                 .type(OrchestrationResultType.ACTION_DENIED)
                 .success(false)
@@ -368,7 +376,7 @@ public class IntentHandlingStep implements PipelineStep {
         AIActionHandler handler = maybeHandler.get();
 
         Map<String, Object> params = intent.getActionParams();
-        String identifier = context.getIdentifier();
+        String identifier = conversationOwnerIdentifier(context, pipelineContext);
 
         Map<String, Object> effectiveParams = params != null ? new LinkedHashMap<>(params) : new LinkedHashMap<>();
         ActionContext actionContext = new ActionContext(context, pipelineContext, effectiveParams);
@@ -592,7 +600,80 @@ public class IntentHandlingStep implements PipelineStep {
             if (context.hasConversation() && actionDraftStore != null) {
                 actionDraftStore.clearDrafts(context.getConversationId(), identifier);
             }
-            ActionResult actionResult = handler.executeAction(effectiveParams, actionContext);
+            ActionConfirmationState confirmationState =
+                !requiresConfirmation || confirmedThisRequest || !context.hasConversation()
+                ? ActionConfirmationState.CONFIRMED
+                : ActionConfirmationState.NOT_CONFIRMED;
+            GovernedActionInvocationOutcome invocationOutcome =
+                new DefaultGovernedActionInvocationService(actionHandlerRegistry).invoke(
+                    GovernedActionInvocationSupport.invocation(
+                        actionName,
+                        effectiveParams,
+                        actionContext,
+                        actionHandlerRegistry,
+                        confirmationState,
+                        List.of()
+                    )
+                );
+            if (invocationOutcome.status() == GovernedActionInvocationStatus.CONFIRMATION_REQUIRED) {
+                Map<String, Object> confirmationData = new LinkedHashMap<>();
+                confirmationData.put(DATA_KEY_ACTION, actionName);
+                confirmationData.put(DATA_KEY_CONFIRMATION_MESSAGE,
+                    invocationOutcome.actionResult().getMessage());
+                confirmationData.put(DATA_KEY_CONFIRMATION_REQUIRED, true);
+                confirmationData.put(DATA_KEY_PROVIDED_PARAMETERS,
+                    publicProvidedParameters(meta, effectiveParams));
+                confirmationData.put(DATA_KEY_METADATA,
+                    publicActionMetadata(getMetadataForAction(actionName)));
+                return OrchestrationResult.builder()
+                    .type(OrchestrationResultType.CONFIRMATION_REQUIRED)
+                    .success(false)
+                    .message(invocationOutcome.actionResult().getMessage())
+                    .data(Collections.unmodifiableMap(confirmationData))
+                    .metadata(publicActionParamValidationMetadata(meta, validation))
+                    .nextSteps(extractNextSteps(intent))
+                    .build();
+            }
+            if (invocationOutcome.status() == GovernedActionInvocationStatus.DENIED) {
+                return OrchestrationResult.builder()
+                    .type(OrchestrationResultType.ACTION_DENIED)
+                    .success(false)
+                    .message(invocationOutcome.publicFailure().publicMessage())
+                    .errorCode(invocationOutcome.publicFailure().reason())
+                    .data(Map.of(DATA_KEY_ACTION, actionName))
+                    .nextSteps(extractNextSteps(intent))
+                    .build();
+            }
+            if (invocationOutcome.status() == GovernedActionInvocationStatus.INVALID) {
+                return OrchestrationResult.builder()
+                    .type(OrchestrationResultType.ERROR)
+                    .success(false)
+                    .message(invocationOutcome.publicFailure().publicMessage())
+                    .errorCode(invocationOutcome.publicFailure().reason())
+                    .data(Map.of(
+                        DATA_KEY_ACTION, actionName,
+                        DATA_KEY_ACTION_RESULT, invocationOutcome.actionResult()
+                    ))
+                    .nextSteps(extractNextSteps(intent))
+                    .build();
+            }
+            if (invocationOutcome.status() == GovernedActionInvocationStatus.FAILED) {
+                ActionResult failedResult = invocationOutcome.actionResult();
+                Map<String, Object> failureData = new LinkedHashMap<>();
+                failureData.put(DATA_KEY_ACTION, actionName);
+                if (failedResult != null) {
+                    failureData.put(DATA_KEY_ACTION_RESULT, failedResult);
+                }
+                return OrchestrationResult.builder()
+                    .type(OrchestrationResultType.ERROR)
+                    .success(false)
+                    .message(invocationOutcome.publicFailure().publicMessage())
+                    .errorCode(invocationOutcome.publicFailure().reason())
+                    .data(Collections.unmodifiableMap(failureData))
+                    .nextSteps(extractNextSteps(intent))
+                    .build();
+            }
+            ActionResult actionResult = invocationOutcome.actionResult();
             boolean success = actionResult != null && actionResult.isSuccess();
             
             Map<String, Object> data = new LinkedHashMap<>();
@@ -858,7 +939,11 @@ public class IntentHandlingStep implements PipelineStep {
             return intercepted;
         }
 
-        PendingAction pending = pendingActionStore.popPendingAction(context.getConversationId(), context.getIdentifier()).orElse(null);
+        String ownerId = conversationOwnerIdentifier(context, pipelineContext);
+        PendingAction pending = pendingActionStore.popPendingAction(
+            context.getConversationId(),
+            ownerId
+        ).orElse(null);
         if (pending == null) {
             return OrchestrationResult.builder()
                 .type(OrchestrationResultType.INFORMATION_PROVIDED)
@@ -867,7 +952,7 @@ public class IntentHandlingStep implements PipelineStep {
                 .build();
         }
         if (actionDraftStore != null) {
-            actionDraftStore.clearDrafts(context.getConversationId(), context.getIdentifier());
+            actionDraftStore.clearDrafts(context.getConversationId(), ownerId);
         }
 
         Intent synthetic = Intent.builder()
@@ -903,9 +988,10 @@ public class IntentHandlingStep implements PipelineStep {
             return intercepted;
         }
 
-        pendingActionStore.popPendingAction(context.getConversationId(), context.getIdentifier());
+        String ownerId = conversationOwnerIdentifier(context, pipelineContext);
+        pendingActionStore.popPendingAction(context.getConversationId(), ownerId);
         if (actionDraftStore != null) {
-            actionDraftStore.clearDrafts(context.getConversationId(), context.getIdentifier());
+            actionDraftStore.clearDrafts(context.getConversationId(), ownerId);
         }
         return OrchestrationResult.builder()
             .type(OrchestrationResultType.INFORMATION_PROVIDED)
@@ -931,7 +1017,7 @@ public class IntentHandlingStep implements PipelineStep {
         }
 
         String conversationId = context.getConversationId();
-        String ownerId = context.getIdentifier();
+        String ownerId = conversationOwnerIdentifier(context, pipelineContext);
         List<PendingAction> stackSnapshot = pendingActionStore.getPendingActionStack(conversationId, ownerId);
         if (stackSnapshot == null || stackSnapshot.isEmpty()) {
             return null;
@@ -1016,7 +1102,10 @@ public class IntentHandlingStep implements PipelineStep {
 
         PendingAction pending;
         try {
-            pending = pendingActionStore.peekPendingAction(context.getConversationId(), context.getIdentifier()).orElse(null);
+            pending = pendingActionStore.peekPendingAction(
+                context.getConversationId(),
+                conversationOwnerIdentifier(context, pipelineContext)
+            ).orElse(null);
         } catch (Exception ex) {
             return null;
         }
@@ -1122,7 +1211,7 @@ public class IntentHandlingStep implements PipelineStep {
 
         if (!requiresRetrieval) {
             if (!needsGeneration) {
-                if (hasPendingAction(context)) {
+                if (hasPendingAction(context, pipelineContext)) {
                     return OrchestrationResult.builder()
                         .type(OrchestrationResultType.CLARIFICATION_REQUIRED)
                         .success(false)
@@ -1327,15 +1416,34 @@ public class IntentHandlingStep implements PipelineStep {
     // Retrieval queries must always be derived from the user's actual query (PII-processed if enabled),
     // never from any carrier string that mixes history/attachments into the query.
 
-    private boolean hasPendingAction(OrchestrationContext context) {
+    private boolean hasPendingAction(
+        OrchestrationContext context,
+        PipelineContext pipelineContext
+    ) {
         if (context == null || !context.hasConversation() || pendingActionStore == null) {
             return false;
         }
         try {
-            return pendingActionStore.peekPendingAction(context.getConversationId(), context.getIdentifier()).isPresent();
+            return pendingActionStore.peekPendingAction(
+                context.getConversationId(),
+                conversationOwnerIdentifier(context, pipelineContext)
+            ).isPresent();
         } catch (Exception ex) {
             return false;
         }
+    }
+
+    private String conversationOwnerIdentifier(
+        OrchestrationContext context,
+        PipelineContext pipelineContext
+    ) {
+        if (pipelineContext != null
+            && StringUtils.hasText(
+                pipelineContext.getConversationOwnerIdentifier()
+            )) {
+            return pipelineContext.getConversationOwnerIdentifier();
+        }
+        return context != null ? context.getIdentifier() : null;
     }
 
     private OrchestrationResult handleInformationDirectAnswer(Intent intent,

@@ -15,8 +15,8 @@ import ai.fabric.intent.action.AIActionMetaData;
 import ai.fabric.intent.action.AIActionRegistry;
 import ai.fabric.intent.action.AIActionParamSchema;
 import ai.fabric.intent.action.AIActionParamType;
-import ai.fabric.intent.orchestration.OrchestrationAuthContextResolver;
 import ai.fabric.intent.orchestration.OrchestrationContext;
+import ai.fabric.intent.orchestration.capability.CapabilityAwareActionMetadataSupport;
 import ai.fabric.prompt.PromptRenderer;
 import ai.fabric.prompt.PromptTemplateResolver;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
@@ -212,7 +212,9 @@ public class MultiStepIntentExtractionStrategy implements IntentExtractionStrate
             .prompt(prompt)
             .messages(input != null ? input.historyMessages() : List.of())
             .parameters(jsonSupport.jsonOnlyResponseParameters())
-            .authContext(OrchestrationAuthContextResolver.from(context != null ? context : OrchestrationContext.anonymous()))
+            .authContext(input.authContext(
+                context != null ? context : OrchestrationContext.anonymous()
+            ))
             .build();
 
         int llmCalls = 1;
@@ -270,7 +272,10 @@ public class MultiStepIntentExtractionStrategy implements IntentExtractionStrate
             return new ActionSelectionResult(Map.of(), 0, null, null, null);
         }
 
-        List<AIActionMetaData> actions = actionHandlerRegistry != null ? actionHandlerRegistry.getAllMetadata() : List.of();
+        List<AIActionMetaData> actions = CapabilityAwareActionMetadataSupport.visibleActions(
+            actionHandlerRegistry,
+            context
+        );
         if (actions.isEmpty()) {
             return new ActionSelectionResult(Map.of(), 0, null, null, null);
         }
@@ -308,7 +313,9 @@ public class MultiStepIntentExtractionStrategy implements IntentExtractionStrate
             .prompt(prompt)
             .messages(input != null ? input.historyMessages() : List.of())
             .parameters(jsonSupport.jsonOnlyResponseParameters())
-            .authContext(OrchestrationAuthContextResolver.from(context != null ? context : OrchestrationContext.anonymous()))
+            .authContext(input.authContext(
+                context != null ? context : OrchestrationContext.anonymous()
+            ))
             .build();
 
         int llmCalls = 1;
@@ -391,7 +398,10 @@ public class MultiStepIntentExtractionStrategy implements IntentExtractionStrate
             return new ActionParamsFillResult(Map.of(), 0, null, null, null);
         }
 
-        List<AIActionMetaData> actions = actionHandlerRegistry != null ? actionHandlerRegistry.getAllMetadata() : List.of();
+        List<AIActionMetaData> actions = CapabilityAwareActionMetadataSupport.visibleActions(
+            actionHandlerRegistry,
+            context
+        );
         if (actions.isEmpty()) {
             return new ActionParamsFillResult(Map.of(), 0, null, null, null);
         }
@@ -476,7 +486,9 @@ public class MultiStepIntentExtractionStrategy implements IntentExtractionStrate
             .prompt(prompt)
             .messages(input != null ? input.historyMessages() : List.of())
             .parameters(jsonSupport.jsonOnlyResponseParameters())
-            .authContext(OrchestrationAuthContextResolver.from(context != null ? context : OrchestrationContext.anonymous()))
+            .authContext(input.authContext(
+                context != null ? context : OrchestrationContext.anonymous()
+            ))
             .build();
 
         int llmCalls = 1;

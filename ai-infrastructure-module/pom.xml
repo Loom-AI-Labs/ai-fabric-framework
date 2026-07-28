@@ -40,6 +40,7 @@
 
     <modules>
         <module>ai-fabric-core</module>
+        <module>ai-fabric-execution</module>
         <module>ai-fabric-actions-connector</module>
         <module>ai-fabric-actions-registry</module>
         <module>ai-fabric-actions-registry-liquibase</module>
@@ -148,6 +149,11 @@
 	                <artifactId>ai-fabric-core</artifactId>
 	                <version>${project.version}</version>
 	            </dependency>
+            <dependency>
+                <groupId>io.github.loom-ai-labs</groupId>
+                <artifactId>ai-fabric-execution</artifactId>
+                <version>${project.version}</version>
+            </dependency>
             <dependency>
                 <groupId>io.github.loom-ai-labs</groupId>
                 <artifactId>ai-fabric-starter</artifactId>

@@ -3,12 +3,21 @@ package ai.fabric.intent.orchestration.pipeline.steps;
 import ai.fabric.dto.Intent;
 import ai.fabric.dto.IntentType;
 import ai.fabric.dto.MultiIntentResponse;
+import ai.fabric.execution.context.ExecutionPrincipal;
+import ai.fabric.execution.context.ExecutionPrincipalType;
+import ai.fabric.execution.context.ExecutionSource;
+import ai.fabric.execution.context.ExecutionSubjectRef;
+import ai.fabric.execution.context.TrustedExecutionContext;
 import ai.fabric.intent.IntentQueryExtractor;
 import ai.fabric.intent.extraction.IntentExtractionInput;
 import ai.fabric.intent.extraction.ProgressiveIntentExtractionEngine;
 import ai.fabric.intent.orchestration.OrchestrationContext;
 import ai.fabric.intent.orchestration.pipeline.PipelineContext;
+import ai.fabric.intent.orchestration.request.ConversationPersistencePolicy;
+import ai.fabric.intent.orchestration.request.OrchestrationRequest;
+import java.time.Instant;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.ObjectProvider;
 
 import java.util.List;
@@ -92,5 +101,62 @@ class IntentExtractionStepProgressiveEngineTest {
                 ))
             ));
         verify(extractor, never()).extract(any(IntentExtractionInput.class), any(OrchestrationContext.class));
+    }
+
+    @Test
+    void suppliesServerResolvedIdentityForApplicationIntentExtraction() {
+        IntentQueryExtractor extractor = mock(IntentQueryExtractor.class);
+        ProgressiveIntentExtractionEngine engine =
+            mock(ProgressiveIntentExtractionEngine.class);
+        @SuppressWarnings("unchecked")
+        ObjectProvider<ProgressiveIntentExtractionEngine> provider =
+            mock(ObjectProvider.class);
+        when(provider.getIfAvailable()).thenReturn(engine);
+        MultiIntentResponse response = MultiIntentResponse.builder()
+            .intents(List.of(
+                Intent.builder()
+                    .type(IntentType.INFORMATION)
+                    .intent("account_readiness")
+                    .build()
+            ))
+            .build();
+        when(engine.extract(
+            any(IntentExtractionInput.class),
+            any(OrchestrationContext.class)
+        )).thenReturn(
+            new ProgressiveIntentExtractionEngine.ExtractionOutput(
+                response,
+                Map.of()
+            )
+        );
+        TrustedExecutionContext trusted = new TrustedExecutionContext(
+            new ExecutionPrincipal(
+                "account-service",
+                ExecutionPrincipalType.SERVICE
+            ),
+            new ExecutionSubjectRef("account", "account-42"),
+            ExecutionSource.APPLICATION,
+            "tenant-1",
+            "deployment-1",
+            java.util.Set.of("specialist:account-resolver@1"),
+            "correlation-1",
+            Instant.parse("2026-07-28T10:00:00Z")
+        );
+        PipelineContext context = PipelineContext.from(new OrchestrationRequest(
+            "Inspect the account",
+            OrchestrationContext.builder().build(),
+            trusted,
+            ConversationPersistencePolicy.NEVER
+        ));
+
+        new IntentExtractionStep(extractor, provider).process(context);
+
+        ArgumentCaptor<IntentExtractionInput> input =
+            ArgumentCaptor.forClass(IntentExtractionInput.class);
+        verify(engine).extract(input.capture(), any(OrchestrationContext.class));
+        assertThat(input.getValue().resolvedAuthContext().getSubjectId())
+            .isEqualTo("account-42");
+        assertThat(input.getValue().resolvedAuthContext().getCallerType())
+            .isEqualTo("SERVICE");
     }
 }

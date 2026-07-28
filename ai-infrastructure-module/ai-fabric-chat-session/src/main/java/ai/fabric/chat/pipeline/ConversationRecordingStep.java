@@ -12,6 +12,7 @@ import ai.fabric.intent.orchestration.OrchestrationResult;
 import ai.fabric.intent.orchestration.OrchestrationResultType;
 import ai.fabric.intent.orchestration.pipeline.PipelineContext;
 import ai.fabric.intent.orchestration.pipeline.PipelineStep;
+import ai.fabric.intent.orchestration.request.ConversationPersistencePolicy;
 import ai.fabric.intent.orchestration.targets.ResolvedTarget;
 import ai.fabric.privacy.pii.PIIDetectionService;
 import lombok.RequiredArgsConstructor;
@@ -111,12 +112,19 @@ public class ConversationRecordingStep implements PipelineStep {
         }
 
         String conversationId = context.getOrchestrationContext().getConversationId();
-        String ownerId = context.getIdentifier();
+        String ownerId = context.getConversationOwnerIdentifier();
         if (!StringUtils.hasText(conversationId) || !StringUtils.hasText(ownerId)) {
             return context;
         }
 
-        String userQuery = redactIfPossible(context.getOriginalQuery());
+        String conversationInput =
+            context.getOrchestrationRequest() != null
+                && StringUtils.hasText(
+                    context.getOrchestrationRequest().conversationInput()
+                )
+                ? context.getOrchestrationRequest().conversationInput()
+                : context.getOriginalQuery();
+        String userQuery = redactIfPossible(conversationInput);
         String assistantResponse = sanitizedMessage(context);
         if (!StringUtils.hasText(userQuery) || !StringUtils.hasText(assistantResponse)) {
             return context;
@@ -133,6 +141,13 @@ public class ConversationRecordingStep implements PipelineStep {
     }
 
     private boolean isConversationPersistenceDisabled(PipelineContext context) {
+        if (context != null && context.getOrchestrationRequest() != null) {
+            ConversationPersistencePolicy policy =
+                context.getOrchestrationRequest().conversationPersistencePolicy();
+            if (policy != ConversationPersistencePolicy.CONVERSATION) {
+                return true;
+            }
+        }
         Object mode = null;
         if (context != null && context.getOrchestrationContext() != null
             && context.getOrchestrationContext().getMetadata() != null) {

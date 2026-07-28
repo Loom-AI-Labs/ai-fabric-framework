@@ -117,6 +117,12 @@ public class OrchestrationContext {
     private ai.fabric.intent.orchestration.policy.OrchestrationPolicy orchestrationPolicy;
 
     /**
+     * Server-resolved capability intersection. Request bodies must not populate this field.
+     */
+    @JsonIgnore
+    private ai.fabric.intent.orchestration.capability.EffectiveCapabilityProfile effectiveCapabilityProfile;
+
+    /**
      * True if an authenticated userId was provided.
      */
     public boolean isAuthenticated() {

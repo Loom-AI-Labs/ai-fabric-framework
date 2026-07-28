@@ -150,6 +150,14 @@ class SpringAiReadOnlyActionToolExampleTest {
         );
 
         AIActionRegistry registry = mock(AIActionRegistry.class);
+        when(registry.getAllMetadata()).thenReturn(List.of(
+            getOrderDetails.getActionMetadata(),
+            listOrders.getActionMetadata()
+        ));
+        when(registry.findMetadata("get_order_details"))
+            .thenReturn(Optional.of(getOrderDetails.getActionMetadata()));
+        when(registry.findMetadata("list_orders"))
+            .thenReturn(Optional.of(listOrders.getActionMetadata()));
         when(registry.findHandler("get_order_details")).thenReturn(Optional.of(getOrderDetails));
         when(registry.findHandler("list_orders")).thenReturn(Optional.of(listOrders));
         when(registry.findHandler("cancel_purchase_order")).thenReturn(Optional.empty());

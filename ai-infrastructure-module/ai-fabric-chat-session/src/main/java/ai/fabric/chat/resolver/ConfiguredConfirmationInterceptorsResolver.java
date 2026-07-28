@@ -79,7 +79,7 @@ public class ConfiguredConfirmationInterceptorsResolver extends ConfirmationReso
         }
 
         String conversationId = context.getOrchestrationContext() != null ? context.getOrchestrationContext().getConversationId() : null;
-        String ownerId = context.getIdentifier();
+        String ownerId = context.getConversationOwnerIdentifier();
         List<PendingAction> stackSnapshot = store().getPendingActionStack(conversationId, ownerId);
         List<PendingAction> workingStack = new ArrayList<>(stackSnapshot);
 

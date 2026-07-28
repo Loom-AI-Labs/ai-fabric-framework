@@ -1,0 +1,985 @@
+package ai.fabric.execution.gateway;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
+
+import ai.fabric.config.OrchestrationProperties;
+import ai.fabric.dto.RAGResponse;
+import ai.fabric.evidence.AIEvidenceReference;
+import ai.fabric.evidence.AIEvidenceReferenceMapper;
+import ai.fabric.execution.context.ExecutionPrincipal;
+import ai.fabric.execution.context.ExecutionPrincipalType;
+import ai.fabric.execution.context.ExecutionSource;
+import ai.fabric.execution.context.ExecutionSubjectRef;
+import ai.fabric.execution.context.TrustedExecutionContext;
+import ai.fabric.execution.specialist.DefaultSpecialistRegistry;
+import ai.fabric.execution.specialist.ExecutionStrategy;
+import ai.fabric.execution.specialist.SpecialistDefinition;
+import ai.fabric.execution.specialist.SpecialistExecutionProfile;
+import ai.fabric.execution.specialist.SpecialistId;
+import ai.fabric.execution.specialist.SpecialistIdentity;
+import ai.fabric.execution.specialist.SpecialistInputAdapter;
+import ai.fabric.execution.specialist.SpecialistInstructions;
+import ai.fabric.execution.specialist.SpecialistLimits;
+import ai.fabric.execution.specialist.SpecialistOutputAdapter;
+import ai.fabric.execution.specialist.SpecialistOutputMode;
+import ai.fabric.intent.action.AIActionMetaData;
+import ai.fabric.intent.action.AIActionRegistry;
+import ai.fabric.intent.action.ActionAccessMode;
+import ai.fabric.intent.orchestration.OrchestrationContext;
+import ai.fabric.intent.orchestration.OrchestrationResult;
+import ai.fabric.intent.orchestration.OrchestrationResultType;
+import ai.fabric.intent.orchestration.capability.DefaultEffectiveCapabilitiesResolver;
+import ai.fabric.intent.orchestration.capability.RequestedCapabilityProfile;
+import ai.fabric.intent.orchestration.pipeline.DefaultOrchestrationPipeline;
+import ai.fabric.intent.orchestration.pipeline.Pipeline;
+import ai.fabric.intent.orchestration.pipeline.PipelineContext;
+import ai.fabric.intent.orchestration.pipeline.PipelineStep;
+import ai.fabric.intent.orchestration.pipeline.steps.OrchestrationPolicyResolutionStep;
+import ai.fabric.intent.orchestration.request.ConversationPersistencePolicy;
+import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
+import java.time.ZoneOffset;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.atomic.AtomicReference;
+import org.junit.jupiter.api.Test;
+import org.springframework.core.task.AsyncTaskExecutor;
+import org.springframework.core.task.support.TaskExecutorAdapter;
+
+class DefaultAIExecutionGatewayTest {
+
+    private static final SpecialistId SPECIALIST_ID =
+        SpecialistId.of("account-resolver", "1");
+    private static final Instant NOW = Instant.parse("2026-07-28T10:00:00Z");
+
+    @Test
+    void executesThroughRealPipelineWithTrustedEnvelopeAndCanonicalEvidence() {
+        AtomicReference<PipelineContext> observed = new AtomicReference<>();
+        DefaultAIExecutionGateway gateway = gateway(
+            successPipeline(observed),
+            definition(false),
+            Set.of("account-policy")
+        );
+
+        AIExecutionResult<ResolverOutput> result = gateway.execute(
+            AIExecutionRequest.synchronous(
+                SPECIALIST_ID,
+                new ResolverInput("Why is this account blocked?"),
+                applicationContext(authorizedScopes())
+            )
+        );
+
+        assertThat(result.status()).isEqualTo(AIExecutionStatus.SUCCEEDED);
+        assertThat(result.output())
+            .isEqualTo(new ResolverOutput("Payment is missing.", 1));
+        assertThat(result.evidence()).singleElement().satisfies(reference -> {
+            assertThat(reference.evidenceId()).isEqualTo("policy-payment");
+            assertThat(reference.vectorSpace()).isEqualTo("account-policy");
+            assertThat(reference.safeMetadata())
+                .containsEntry("entityId", "PAYMENT_REQUIRED")
+                .doesNotContainKey("internalNote");
+        });
+        assertThat(result.diagnostics())
+            .containsEntry("mode", "resolver")
+            .containsEntry("strategy", "SINGLE_PASS")
+            .containsEntry("evidenceCount", 1);
+
+        PipelineContext pipelineContext = observed.get();
+        assertThat(pipelineContext.getOrchestrationRequest()
+            .conversationPersistencePolicy())
+            .isEqualTo(ConversationPersistencePolicy.NEVER);
+        assertThat(pipelineContext.getOrchestrationRequest()
+            .trustedExecutionContext().subject().subjectId())
+            .isEqualTo("account-42");
+        assertThat(pipelineContext.getOriginalQuery())
+            .contains("Why is this account blocked?")
+            .doesNotContain("Return strict JSON.");
+        assertThat(pipelineContext.getOrchestrationRequest().responseInstructions())
+            .isNull();
+        assertThat(pipelineContext.getOrchestrationContext().getUserId()).isNull();
+        assertThat(pipelineContext.getOrchestrationContext().getConversationId()).isNull();
+        assertThat(pipelineContext.getEffectiveCapabilityProfile().visibleActions())
+            .containsExactly("inspect_account");
+        assertThat(pipelineContext.getEffectiveCapabilityProfile().effectiveVectorSpaces())
+            .containsExactly("account-policy");
+        assertThat(pipelineContext.getOrchestrationPolicy()
+            .ragBudgets()
+            .retrievalVectorSpacesAllowlist())
+            .containsExactly("account-policy");
+        assertThat(pipelineContext.getOrchestrationPolicy()
+            .ragBudgets()
+            .maxSpaces())
+            .isEqualTo(1);
+    }
+
+    @Test
+    void deniesAResultContainingEvidenceOutsideTheEffectiveProfile() {
+        RAGResponse.RAGDocument unauthorized = RAGResponse.RAGDocument.builder()
+            .id("plan-pro")
+            .content("Unapproved plan evidence.")
+            .score(0.94)
+            .metadata(Map.of("vectorSpace", "plans"))
+            .build();
+        OrchestrationResult orchestrationResult = OrchestrationResult.builder()
+            .type(OrchestrationResultType.INFORMATION_PROVIDED)
+            .success(true)
+            .message("Answer influenced by unapproved evidence.")
+            .data(Map.of("documents", List.of(unauthorized)))
+            .build();
+        DefaultAIExecutionGateway gateway = gateway(
+            resultPipeline(orchestrationResult, new AtomicReference<>()),
+            definition(false),
+            Set.of("account-policy", "plans")
+        );
+
+        AIExecutionResult<ResolverOutput> result = gateway.execute(
+            AIExecutionRequest.synchronous(
+                SPECIALIST_ID,
+                new ResolverInput("Inspect the account"),
+                applicationContext(authorizedScopes())
+            )
+        );
+
+        assertThat(result.status()).isEqualTo(AIExecutionStatus.DENIED);
+        assertThat(result.output()).isNull();
+        assertThat(result.evidence()).isEmpty();
+        assertThat(result.failure().reason())
+            .isEqualTo("EVIDENCE_VECTOR_SPACE_DENIED");
+    }
+
+    @Test
+    void persistsConversationOnlyWhenExplicitlyBound() {
+        AtomicReference<PipelineContext> observed = new AtomicReference<>();
+        AtomicReference<List<Object>> recorded = new AtomicReference<>();
+        DefaultAIExecutionGateway gateway = gateway(
+            successPipeline(observed),
+            definition(false),
+            Set.of("account-policy"),
+            (binding, userInput, assistantOutput, metadata) ->
+                recorded.set(List.of(binding, userInput, assistantOutput, metadata))
+        );
+        TrustedExecutionContext trusted = new TrustedExecutionContext(
+            new ExecutionPrincipal("user-42", ExecutionPrincipalType.END_USER),
+            new ExecutionSubjectRef("account", "account-42"),
+            ExecutionSource.INTERACTIVE,
+            "tenant-1",
+            "test",
+            authorizedScopes(),
+            "correlation-2",
+            NOW
+        );
+
+        AIExecutionResult<ResolverOutput> result = gateway.execute(
+            new AIExecutionRequest<>(
+                SPECIALIST_ID,
+                new ResolverInput("Why is my account blocked?"),
+                trusted,
+                new ConversationBinding("user-42", "conversation-7"),
+                null,
+                null
+            )
+        );
+
+        assertThat(result.succeeded()).isTrue();
+        assertThat(observed.get().getOrchestrationRequest()
+            .conversationPersistencePolicy())
+            .isEqualTo(ConversationPersistencePolicy.READ_ONLY);
+        assertThat(observed.get().getOrchestrationRequest().conversationInput())
+            .isEqualTo("Why is my account blocked?");
+        assertThat(observed.get().getOriginalQuery())
+            .isEqualTo("Why is my account blocked?");
+        assertThat(observed.get().getOrchestrationContext().getUserId())
+            .isEqualTo("user-42");
+        assertThat(observed.get().getOrchestrationContext().getConversationId())
+            .isEqualTo("conversation-7");
+        assertThat(recorded.get()).satisfies(values -> {
+            assertThat(values.get(0))
+                .isEqualTo(new ConversationBinding("user-42", "conversation-7"));
+            assertThat(values.get(1)).isEqualTo("Why is my account blocked?");
+            assertThat(values.get(2)).isEqualTo("Payment is missing.");
+            Map<?, ?> metadata = (Map<?, ?>) values.get(3);
+            assertThat(metadata.get("_specialist"))
+                .isEqualTo("account-resolver@1");
+            assertThat(metadata.get("_validated")).isEqualTo(true);
+        });
+    }
+
+    @Test
+    void doesNotPersistConversationWhenTypedOutputValidationFails() {
+        AIExecutionConversationRecorder recorder =
+            mock(AIExecutionConversationRecorder.class);
+        DefaultAIExecutionGateway gateway = gateway(
+            successPipeline(new AtomicReference<>()),
+            definition(true),
+            Set.of("account-policy"),
+            recorder
+        );
+
+        AIExecutionResult<ResolverOutput> result = gateway.execute(
+            new AIExecutionRequest<>(
+                SPECIALIST_ID,
+                new ResolverInput("Why is my account blocked?"),
+                interactiveContext(),
+                new ConversationBinding("user-42", "conversation-7"),
+                null,
+                null
+            )
+        );
+
+        assertThat(result.status()).isEqualTo(AIExecutionStatus.INVALID);
+        assertThat(result.failure().reason()).isEqualTo("OUTPUT_VALIDATION_FAILED");
+        verifyNoInteractions(recorder);
+    }
+
+    @Test
+    void failsVisiblyWhenConversationPersistenceIsUnavailable() {
+        DefaultAIExecutionGateway gateway = gateway(
+            successPipeline(new AtomicReference<>()),
+            definition(false),
+            Set.of("account-policy")
+        );
+
+        AIExecutionResult<ResolverOutput> result = gateway.execute(
+            new AIExecutionRequest<>(
+                SPECIALIST_ID,
+                new ResolverInput("Why is my account blocked?"),
+                interactiveContext(),
+                new ConversationBinding("user-42", "conversation-7"),
+                null,
+                null
+            )
+        );
+
+        assertThat(result.status()).isEqualTo(AIExecutionStatus.FAILED);
+        assertThat(result.failure().reason())
+            .isEqualTo("CONVERSATION_RECORDING_FAILED");
+    }
+
+    @Test
+    void deniesRequestedActionMissingFromTrustedAuthority() {
+        DefaultAIExecutionGateway gateway = gateway(
+            successPipeline(new AtomicReference<>()),
+            definition(false),
+            Set.of("account-policy")
+        );
+
+        AIExecutionResult<ResolverOutput> result = gateway.execute(
+            AIExecutionRequest.synchronous(
+                SPECIALIST_ID,
+                new ResolverInput("Inspect the account"),
+                applicationContext(Set.of(
+                    "specialist:account-resolver@1",
+                    "vector:account-policy"
+                ))
+            )
+        );
+
+        assertThat(result.status()).isEqualTo(AIExecutionStatus.DENIED);
+        assertThat(result.failure().reason())
+            .isEqualTo("ACTION_AUTHORITY_INTERSECTION_FAILED");
+    }
+
+    @Test
+    void deniesVectorSpaceMissingFromDeploymentInventory() {
+        DefaultAIExecutionGateway gateway = gateway(
+            successPipeline(new AtomicReference<>()),
+            definition(false),
+            Set.of("another-space")
+        );
+
+        AIExecutionResult<ResolverOutput> result = gateway.execute(
+            AIExecutionRequest.synchronous(
+                SPECIALIST_ID,
+                new ResolverInput("Inspect the account"),
+                applicationContext(authorizedScopes())
+            )
+        );
+
+        assertThat(result.status()).isEqualTo(AIExecutionStatus.DENIED);
+        assertThat(result.failure().reason()).isEqualTo("VECTOR_SPACE_NOT_REGISTERED");
+    }
+
+    @Test
+    void exposesProviderFailureWithoutFallback() {
+        OrchestrationResult providerFailure = OrchestrationResult.builder()
+            .type(OrchestrationResultType.ERROR)
+            .success(false)
+            .errorCode("OPENAI_PROVIDER_UNAVAILABLE")
+            .message("OpenAI provider is unavailable.")
+            .build();
+        DefaultAIExecutionGateway gateway = gateway(
+            resultPipeline(providerFailure, new AtomicReference<>()),
+            definition(false),
+            Set.of("account-policy")
+        );
+
+        AIExecutionResult<ResolverOutput> result = gateway.execute(
+            AIExecutionRequest.synchronous(
+                SPECIALIST_ID,
+                new ResolverInput("Inspect the account"),
+                applicationContext(authorizedScopes())
+            )
+        );
+
+        assertThat(result.status()).isEqualTo(AIExecutionStatus.FAILED);
+        assertThat(result.output()).isNull();
+        assertThat(result.failure().reason()).isEqualTo("OPENAI_PROVIDER_UNAVAILABLE");
+        assertThat(result.failure().publicMessage()).isEqualTo(
+            "OpenAI provider is unavailable."
+        );
+        assertThat(result.failure().retryable()).isTrue();
+    }
+
+    @Test
+    void reportsTypedOutputValidationFailure() {
+        DefaultAIExecutionGateway gateway = gateway(
+            successPipeline(new AtomicReference<>()),
+            definition(true),
+            Set.of("account-policy")
+        );
+
+        AIExecutionResult<ResolverOutput> result = gateway.execute(
+            AIExecutionRequest.synchronous(
+                SPECIALIST_ID,
+                new ResolverInput("Inspect the account"),
+                applicationContext(authorizedScopes())
+            )
+        );
+
+        assertThat(result.status()).isEqualTo(AIExecutionStatus.INVALID);
+        assertThat(result.failure().reason()).isEqualTo("OUTPUT_VALIDATION_FAILED");
+        assertThat(result.failure().publicMessage()).contains("answer is required");
+    }
+
+    @Test
+    void rejectsFinalOutputThatConflictsWithAuthoritativeSourceFacts() {
+        DefaultAIExecutionGateway gateway = gateway(
+            successPipeline(new AtomicReference<>()),
+            definition(
+                false,
+                SpecialistOutputMode.DIRECT_PROJECTION,
+                false,
+                true
+            ),
+            Set.of("account-policy")
+        );
+
+        AIExecutionResult<ResolverOutput> result = gateway.execute(
+            AIExecutionRequest.synchronous(
+                SPECIALIST_ID,
+                new ResolverInput("Inspect the account"),
+                applicationContext(authorizedScopes())
+            )
+        );
+
+        assertThat(result.status()).isEqualTo(AIExecutionStatus.INVALID);
+        assertThat(result.failure().reason()).isEqualTo(
+            "OUTPUT_VALIDATION_FAILED"
+        );
+        assertThat(result.failure().publicMessage()).contains(
+            "conflicts with authoritative source facts"
+        );
+    }
+
+    @Test
+    void rejectsIncompleteGroundingBeforeOutputProjection() {
+        DefaultAIExecutionGateway gateway = gateway(
+            successPipeline(new AtomicReference<>()),
+            definition(false, SpecialistOutputMode.DIRECT_PROJECTION, true),
+            Set.of("account-policy")
+        );
+
+        AIExecutionResult<ResolverOutput> result = gateway.execute(
+            AIExecutionRequest.synchronous(
+                SPECIALIST_ID,
+                new ResolverInput("Inspect the account"),
+                applicationContext(authorizedScopes())
+            )
+        );
+
+        assertThat(result.status()).isEqualTo(AIExecutionStatus.INVALID);
+        assertThat(result.output()).isNull();
+        assertThat(result.failure().reason())
+            .isEqualTo("GROUNDING_VALIDATION_FAILED");
+        assertThat(result.failure().publicMessage())
+            .contains("required policy evidence is missing");
+    }
+
+    @Test
+    void usesExplicitFinalizerForStructuredGenerationOutput() {
+        SpecialistOutputFinalizer finalizer =
+            mock(SpecialistOutputFinalizer.class);
+        SpecialistDefinition<ResolverInput, ResolverOutput> definition =
+            definition(false, SpecialistOutputMode.STRUCTURED_GENERATION);
+        when(finalizer.finalizeOutput(
+            any(),
+            any(),
+            any(),
+            any(),
+            any()
+        )).thenReturn(new SpecialistOutputFinalization<>(
+            new ResolverOutput("Structured result.", 1),
+            Map.of("outputFinalizationAttempts", 1)
+        ));
+        DefaultAIExecutionGateway gateway = gatewayWithFinalizer(
+            successPipeline(new AtomicReference<>()),
+            definition,
+            Set.of("account-policy"),
+            finalizer
+        );
+
+        AIExecutionResult<ResolverOutput> result = gateway.execute(
+            AIExecutionRequest.synchronous(
+                SPECIALIST_ID,
+                new ResolverInput("Inspect the account"),
+                applicationContext(authorizedScopes())
+            )
+        );
+
+        assertThat(result.status()).isEqualTo(AIExecutionStatus.SUCCEEDED);
+        assertThat(result.output().answer()).isEqualTo("Structured result.");
+        assertThat(result.diagnostics())
+            .containsEntry("outputFinalizationAttempts", 1);
+        verify(finalizer).finalizeOutput(
+            any(),
+            eq("Inspect the account"),
+            any(),
+            any(),
+            any()
+        );
+    }
+
+    @Test
+    void normalizesOnlyAfterRawOutputPassesValidation() {
+        DefaultAIExecutionGateway gateway = gateway(
+            successPipeline(new AtomicReference<>()),
+            definition(
+                false,
+                SpecialistOutputMode.DIRECT_PROJECTION,
+                false,
+                false,
+                true
+            ),
+            Set.of("account-policy")
+        );
+
+        AIExecutionResult<ResolverOutput> result = gateway.execute(
+            AIExecutionRequest.synchronous(
+                SPECIALIST_ID,
+                new ResolverInput("Inspect the account"),
+                applicationContext(authorizedScopes())
+            )
+        );
+
+        assertThat(result.status()).isEqualTo(AIExecutionStatus.SUCCEEDED);
+        assertThat(result.output().answer()).isEqualTo("Canonical result.");
+
+        DefaultAIExecutionGateway invalidGateway = gateway(
+            successPipeline(new AtomicReference<>()),
+            definition(
+                true,
+                SpecialistOutputMode.DIRECT_PROJECTION,
+                false,
+                false,
+                true
+            ),
+            Set.of("account-policy")
+        );
+        AIExecutionResult<ResolverOutput> invalid = invalidGateway.execute(
+            AIExecutionRequest.synchronous(
+                SPECIALIST_ID,
+                new ResolverInput("Inspect the account"),
+                applicationContext(authorizedScopes())
+            )
+        );
+
+        assertThat(invalid.status()).isEqualTo(AIExecutionStatus.INVALID);
+        assertThat(invalid.output()).isNull();
+        assertThat(invalid.failure().reason())
+            .isEqualTo("OUTPUT_VALIDATION_FAILED");
+    }
+
+    @Test
+    void submitsEphemeralExecutionAndRejectsDuplicateLiveIdempotencyKey() {
+        DefaultAIExecutionGateway gateway = gateway(
+            successPipeline(new AtomicReference<>()),
+            definition(false),
+            Set.of("account-policy")
+        );
+        AIExecutionRequest<ResolverInput> request = new AIExecutionRequest<>(
+            SPECIALIST_ID,
+            new ResolverInput("Inspect the account"),
+            applicationContext(authorizedScopes()),
+            null,
+            null,
+            "request-42"
+        );
+
+        ExecutionHandle completed = gateway.submit(request);
+        ExecutionHandle duplicate = gateway.submit(request);
+
+        assertThat(completed.durability()).isEqualTo(ExecutionDurability.EPHEMERAL);
+        assertThat(completed.status()).isEqualTo(ExecutionHandleStatus.SUCCEEDED);
+        assertThat(completed.deadline())
+            .isEqualTo(NOW.plus(SpecialistLimits.defaults().maxDuration()));
+        assertThat(gateway.find(completed.invocationId()))
+            .hasValueSatisfying(snapshot -> {
+                assertThat(snapshot.result()).isNotNull();
+                assertThat(snapshot.result().succeeded()).isTrue();
+            });
+        assertThat(duplicate.status()).isEqualTo(ExecutionHandleStatus.REJECTED);
+        assertThat(duplicate.failureReason())
+            .isEqualTo("DUPLICATE_IDEMPOTENCY_KEY");
+    }
+
+    @Test
+    void exposesBoundedQueueRejection() {
+        AsyncTaskExecutor rejectingExecutor = mock(AsyncTaskExecutor.class);
+        when(rejectingExecutor.submit(any(Runnable.class)))
+            .thenThrow(new RejectedExecutionException("queue full"));
+        DefaultAIExecutionGateway gateway = gateway(
+            successPipeline(new AtomicReference<>()),
+            definition(false),
+            Set.of("account-policy"),
+            rejectingExecutor
+        );
+
+        ExecutionHandle handle = gateway.submit(new AIExecutionRequest<>(
+            SPECIALIST_ID,
+            new ResolverInput("Inspect the account"),
+            applicationContext(authorizedScopes()),
+            null,
+            null,
+            "request-queue"
+        ));
+
+        assertThat(handle.status()).isEqualTo(ExecutionHandleStatus.REJECTED);
+        assertThat(handle.failureReason()).isEqualTo("QUEUE_CAPACITY_EXCEEDED");
+    }
+
+    @Test
+    void rejectsAnElapsedDeadlineBeforeInvokingThePipeline() {
+        DefaultAIExecutionGateway gateway = gateway(
+            successPipeline(new AtomicReference<>()),
+            definition(false),
+            Set.of("account-policy")
+        );
+
+        AIExecutionResult<ResolverOutput> result = gateway.execute(
+            new AIExecutionRequest<>(
+                SPECIALIST_ID,
+                new ResolverInput("Inspect the account"),
+                applicationContext(authorizedScopes()),
+                null,
+                NOW.minusSeconds(1),
+                null
+            )
+        );
+
+        assertThat(result.status()).isEqualTo(AIExecutionStatus.DEADLINE_EXCEEDED);
+        assertThat(result.failure().reason()).isEqualTo("DEADLINE_EXCEEDED");
+    }
+
+    private DefaultAIExecutionGateway gateway(
+        Pipeline pipeline,
+        SpecialistDefinition<ResolverInput, ResolverOutput> definition,
+        Set<String> vectorSpaces
+    ) {
+        return gateway(
+            pipeline,
+            definition,
+            vectorSpaces,
+            null,
+            new TaskExecutorAdapter(Runnable::run)
+        );
+    }
+
+    private DefaultAIExecutionGateway gateway(
+        Pipeline pipeline,
+        SpecialistDefinition<ResolverInput, ResolverOutput> definition,
+        Set<String> vectorSpaces,
+        AIExecutionConversationRecorder conversationRecorder
+    ) {
+        return gateway(
+            pipeline,
+            definition,
+            vectorSpaces,
+            conversationRecorder,
+            new TaskExecutorAdapter(Runnable::run)
+        );
+    }
+
+    private DefaultAIExecutionGateway gateway(
+        Pipeline pipeline,
+        SpecialistDefinition<ResolverInput, ResolverOutput> definition,
+        Set<String> vectorSpaces,
+        AsyncTaskExecutor taskExecutor
+    ) {
+        return gateway(
+            pipeline,
+            definition,
+            vectorSpaces,
+            null,
+            taskExecutor
+        );
+    }
+
+    private DefaultAIExecutionGateway gateway(
+        Pipeline pipeline,
+        SpecialistDefinition<ResolverInput, ResolverOutput> definition,
+        Set<String> vectorSpaces,
+        AIExecutionConversationRecorder conversationRecorder,
+        AsyncTaskExecutor taskExecutor
+    ) {
+        AIActionRegistry actionRegistry = actionRegistry();
+        OrchestrationProperties properties = orchestrationProperties();
+        return new DefaultAIExecutionGateway(
+            new DefaultSpecialistRegistry(
+                List.of(definition),
+                actionRegistry,
+                properties.getModes().keySet()
+            ),
+            pipeline,
+            new OrchestrationPolicyResolutionStep(properties),
+            new DefaultEffectiveCapabilitiesResolver(),
+            actionRegistry,
+            new StaticExecutionCapabilityInventory(
+                vectorSpaces,
+                Set.of("inspect_account")
+            ),
+            new DefaultSpecialistAuthorityResolver(),
+            new OrchestrationEvidenceProjector(new AIEvidenceReferenceMapper()),
+            mock(SpecialistOutputFinalizer.class),
+            conversationRecorder,
+            taskExecutor,
+            Clock.fixed(NOW, ZoneOffset.UTC),
+            Duration.ofMinutes(5)
+        );
+    }
+
+    private DefaultAIExecutionGateway gatewayWithFinalizer(
+        Pipeline pipeline,
+        SpecialistDefinition<ResolverInput, ResolverOutput> definition,
+        Set<String> vectorSpaces,
+        SpecialistOutputFinalizer finalizer
+    ) {
+        AIActionRegistry actionRegistry = actionRegistry();
+        OrchestrationProperties properties = orchestrationProperties();
+        return new DefaultAIExecutionGateway(
+            new DefaultSpecialistRegistry(
+                List.of(definition),
+                actionRegistry,
+                properties.getModes().keySet()
+            ),
+            pipeline,
+            new OrchestrationPolicyResolutionStep(properties),
+            new DefaultEffectiveCapabilitiesResolver(),
+            actionRegistry,
+            new StaticExecutionCapabilityInventory(
+                vectorSpaces,
+                Set.of("inspect_account")
+            ),
+            new DefaultSpecialistAuthorityResolver(),
+            new OrchestrationEvidenceProjector(new AIEvidenceReferenceMapper()),
+            finalizer,
+            null,
+            new TaskExecutorAdapter(Runnable::run),
+            Clock.fixed(NOW, ZoneOffset.UTC),
+            Duration.ofMinutes(5)
+        );
+    }
+
+    private Pipeline successPipeline(AtomicReference<PipelineContext> observed) {
+        RAGResponse.RAGDocument document = RAGResponse.RAGDocument.builder()
+            .id("policy-payment")
+            .content("A verified payment method is required.")
+            .score(0.98)
+            .source("account-policy-catalog")
+            .metadata(Map.of(
+                "entityType", "policy",
+                "entityId", "PAYMENT_REQUIRED",
+                "internalNote", "do not expose"
+            ))
+            .build();
+        OrchestrationResult result = OrchestrationResult.builder()
+            .type(OrchestrationResultType.INFORMATION_PROVIDED)
+            .success(true)
+            .message("Payment is missing.")
+            .data(Map.of("documents", List.of(document)))
+            .build();
+        return resultPipeline(result, observed);
+    }
+
+    private Pipeline resultPipeline(
+        OrchestrationResult result,
+        AtomicReference<PipelineContext> observed
+    ) {
+        PipelineStep step = new PipelineStep() {
+            @Override
+            public PipelineContext process(PipelineContext context) {
+                observed.set(context);
+                return context.terminate(result);
+            }
+
+            @Override
+            public String getStepName() {
+                return "TestResult";
+            }
+        };
+        return new DefaultOrchestrationPipeline(List.of(step));
+    }
+
+    private SpecialistDefinition<ResolverInput, ResolverOutput> definition(
+        boolean invalidOutput
+    ) {
+        return definition(
+            invalidOutput,
+            SpecialistOutputMode.DIRECT_PROJECTION
+        );
+    }
+
+    private SpecialistDefinition<ResolverInput, ResolverOutput> definition(
+        boolean invalidOutput,
+        SpecialistOutputMode outputMode
+    ) {
+        return definition(invalidOutput, outputMode, false);
+    }
+
+    private SpecialistDefinition<ResolverInput, ResolverOutput> definition(
+        boolean invalidOutput,
+        SpecialistOutputMode outputMode,
+        boolean rejectGrounding
+    ) {
+        return definition(
+            invalidOutput,
+            outputMode,
+            rejectGrounding,
+            false
+        );
+    }
+
+    private SpecialistDefinition<ResolverInput, ResolverOutput> definition(
+        boolean invalidOutput,
+        SpecialistOutputMode outputMode,
+        boolean rejectGrounding,
+        boolean rejectFinalOutput
+    ) {
+        return definition(
+            invalidOutput,
+            outputMode,
+            rejectGrounding,
+            rejectFinalOutput,
+            false
+        );
+    }
+
+    private SpecialistDefinition<ResolverInput, ResolverOutput> definition(
+        boolean invalidOutput,
+        SpecialistOutputMode outputMode,
+        boolean rejectGrounding,
+        boolean rejectFinalOutput,
+        boolean normalizeOutput
+    ) {
+        RequestedCapabilityProfile requested = new RequestedCapabilityProfile(
+            true,
+            Set.of("account-policy"),
+            Set.of("inspect_account"),
+            Set.of("inspect_account"),
+            Set.of()
+        );
+        return new SpecialistDefinition<>(
+            new SpecialistIdentity(
+                SPECIALIST_ID,
+                "Account Resolver",
+                "Explains current-account blockers"
+            ),
+            new SpecialistInstructions(
+                "Explain account blockers from live profile and policy evidence.",
+                "Never infer account state without evidence."
+            ),
+            new SpecialistExecutionProfile(
+                "resolver",
+                requested,
+                ExecutionStrategy.SINGLE_PASS,
+                false
+            ),
+            SpecialistLimits.defaults(),
+            new SpecialistInputAdapter<>() {
+                @Override
+                public Class<ResolverInput> inputType() {
+                    return ResolverInput.class;
+                }
+
+                @Override
+                public void validate(ResolverInput input) {
+                    if (input.question() == null || input.question().isBlank()) {
+                        throw new IllegalArgumentException("question is required");
+                    }
+                }
+
+                @Override
+                public String renderModelInput(ResolverInput input) {
+                    return input.question();
+                }
+
+                @Override
+                public String conversationInput(ResolverInput input) {
+                    return input.question();
+                }
+            },
+            new SpecialistOutputAdapter<>() {
+                @Override
+                public Class<ResolverOutput> outputType() {
+                    return ResolverOutput.class;
+                }
+
+                @Override
+                public SpecialistOutputMode outputMode() {
+                    return outputMode;
+                }
+
+                @Override
+                public String outputContractInstructions() {
+                    return "Return strict JSON.";
+                }
+
+                @Override
+                public ResolverOutput project(
+                    OrchestrationResult result,
+                    List<AIEvidenceReference> evidence
+                ) {
+                    return new ResolverOutput(
+                        invalidOutput ? "" : result.getMessage(),
+                        evidence.size()
+                    );
+                }
+
+                @Override
+                public void validateGrounding(
+                    OrchestrationResult result,
+                    List<AIEvidenceReference> evidence
+                ) {
+                    if (rejectGrounding) {
+                        throw new IllegalArgumentException(
+                            "required policy evidence is missing"
+                        );
+                    }
+                }
+
+                @Override
+                public void validate(ResolverOutput output) {
+                    if (output.answer() == null || output.answer().isBlank()) {
+                        throw new IllegalArgumentException("answer is required");
+                    }
+                }
+
+                @Override
+                public void validateFinalOutput(
+                    ResolverOutput output,
+                    OrchestrationResult sourceResult,
+                    List<AIEvidenceReference> evidence
+                ) {
+                    validate(output);
+                    if (rejectFinalOutput) {
+                        throw new IllegalArgumentException(
+                            "output conflicts with authoritative source facts"
+                        );
+                    }
+                }
+
+                @Override
+                public ResolverOutput normalizeFinalOutput(
+                    ResolverOutput output,
+                    OrchestrationResult sourceResult,
+                    List<AIEvidenceReference> evidence
+                ) {
+                    return normalizeOutput
+                        ? new ResolverOutput(
+                            "Canonical result.",
+                            output.evidenceCount()
+                        )
+                        : output;
+                }
+            }
+        );
+    }
+
+    private AIActionRegistry actionRegistry() {
+        AIActionRegistry registry = mock(AIActionRegistry.class);
+        when(registry.getAllMetadata()).thenReturn(List.of(
+            AIActionMetaData.builder()
+                .name("inspect_account")
+                .accessMode(ActionAccessMode.READ)
+                .groundingEligible(true)
+                .readActionResolutionEligible(true)
+                .build()
+        ));
+        return registry;
+    }
+
+    private OrchestrationProperties orchestrationProperties() {
+        OrchestrationProperties properties = new OrchestrationProperties();
+        properties.setDefaultMode("resolver");
+        OrchestrationProperties.ModeOverrides mode =
+            new OrchestrationProperties.ModeOverrides();
+        mode.setActionsEnabled(true);
+        mode.setRetrievalEnabled(true);
+        OrchestrationProperties.RagModeOverrides rag =
+            new OrchestrationProperties.RagModeOverrides();
+        rag.setFanoutEnabled(true);
+        rag.setMaxSpaces(2);
+        rag.setRetrievalVectorSpacesAllowlist(
+            List.of("account-policy", "plans")
+        );
+        mode.setRag(rag);
+        properties.getModes().put("resolver", mode);
+        return properties;
+    }
+
+    private TrustedExecutionContext applicationContext(Set<String> scopes) {
+        return new TrustedExecutionContext(
+            new ExecutionPrincipal("account-service", ExecutionPrincipalType.SERVICE),
+            new ExecutionSubjectRef("account", "account-42"),
+            ExecutionSource.APPLICATION,
+            "tenant-1",
+            "test",
+            scopes,
+            "correlation-1",
+            NOW
+        );
+    }
+
+    private TrustedExecutionContext interactiveContext() {
+        return new TrustedExecutionContext(
+            new ExecutionPrincipal("user-42", ExecutionPrincipalType.END_USER),
+            new ExecutionSubjectRef("account", "account-42"),
+            ExecutionSource.INTERACTIVE,
+            "tenant-1",
+            "test",
+            authorizedScopes(),
+            "correlation-chat",
+            NOW
+        );
+    }
+
+    private Set<String> authorizedScopes() {
+        return Set.of(
+            "specialist:account-resolver@1",
+            "action:inspect_account",
+            "vector:account-policy"
+        );
+    }
+
+    private record ResolverInput(String question) {}
+
+    private record ResolverOutput(String answer, int evidenceCount) {}
+}

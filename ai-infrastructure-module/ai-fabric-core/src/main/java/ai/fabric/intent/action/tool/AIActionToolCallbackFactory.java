@@ -8,7 +8,17 @@ import ai.fabric.intent.action.AIActionParamType;
 import ai.fabric.intent.action.AIActionRegistry;
 import ai.fabric.intent.action.ActionContext;
 import ai.fabric.intent.action.ActionResult;
+import ai.fabric.intent.action.invocation.ActionConfirmationState;
+import ai.fabric.intent.action.invocation.DefaultGovernedActionInvocationService;
+import ai.fabric.intent.action.invocation.GovernedActionInvocation;
+import ai.fabric.intent.action.invocation.GovernedActionInvocationOutcome;
+import ai.fabric.intent.action.invocation.GovernedActionInvocationService;
+import ai.fabric.intent.action.invocation.GovernedActionInvocationSupport;
 import ai.fabric.intent.orchestration.OrchestrationContext;
+import ai.fabric.intent.orchestration.capability.CapabilityAwareActionCatalog;
+import ai.fabric.intent.orchestration.capability.DefaultEffectiveCapabilitiesResolver;
+import ai.fabric.intent.orchestration.capability.EffectiveCapabilityProfile;
+import ai.fabric.intent.orchestration.policy.OrchestrationPolicy;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.ai.chat.model.ToolContext;
@@ -108,7 +118,16 @@ public class AIActionToolCallbackFactory {
         if (actionRegistry == null) {
             return List.of();
         }
-        List<AIActionMetaData> metadata = actionRegistry.getAllMetadata();
+        ActionContext effectiveContext = actionContext != null
+            ? actionContext
+            : new ActionContext(OrchestrationContext.anonymous(), null, Map.of());
+        EffectiveCapabilityProfile profile = GovernedActionInvocationSupport.effectiveProfile(
+            actionRegistry,
+            effectiveContext.pipelineContext(),
+            effectiveContext.orchestrationContext()
+        );
+        List<AIActionMetaData> metadata = new CapabilityAwareActionCatalog(actionRegistry)
+            .listVisibleActions(profile);
         if (metadata == null || metadata.isEmpty()) {
             return List.of();
         }
@@ -118,7 +137,12 @@ public class AIActionToolCallbackFactory {
                 continue;
             }
             actionRegistry.findHandler(meta.getName())
-                .map(handler -> createCallback(handler, actionContext))
+                .map(handler -> createCallback(
+                    handler,
+                    effectiveContext,
+                    new DefaultGovernedActionInvocationService(actionRegistry),
+                    profile
+                ))
                 .ifPresent(callbacks::add);
         }
         return List.copyOf(callbacks);
@@ -132,8 +156,24 @@ public class AIActionToolCallbackFactory {
         if (actionRegistry == null) {
             return Optional.empty();
         }
+        ActionContext effectiveContext = actionContext != null
+            ? actionContext
+            : new ActionContext(OrchestrationContext.anonymous(), null, Map.of());
+        EffectiveCapabilityProfile profile = GovernedActionInvocationSupport.effectiveProfile(
+            actionRegistry,
+            effectiveContext.pipelineContext(),
+            effectiveContext.orchestrationContext()
+        );
+        if (!profile.isActionVisible(actionName)) {
+            return Optional.empty();
+        }
         return actionRegistry.findHandler(actionName)
-            .map(handler -> createCallback(handler, actionContext));
+            .map(handler -> createCallback(
+                handler,
+                effectiveContext,
+                new DefaultGovernedActionInvocationService(actionRegistry),
+                profile
+            ));
     }
 
     private AIActionRegistry resolveActionRegistry() {
@@ -145,7 +185,29 @@ public class AIActionToolCallbackFactory {
             || !StringUtils.hasText(handler.getActionMetadata().getName())) {
             throw new IllegalArgumentException("AIActionHandler and named action metadata are required");
         }
-        return new AIActionToolCallback(handler, actionContext);
+        ActionContext effectiveContext = actionContext != null
+            ? actionContext
+            : new ActionContext(OrchestrationContext.anonymous(), null, Map.of());
+        OrchestrationPolicy policy = effectiveContext.pipelineContext() != null
+            ? effectiveContext.pipelineContext().getOrchestrationPolicy()
+            : effectiveContext.orchestrationContext().getOrchestrationPolicy();
+        EffectiveCapabilityProfile profile = new DefaultEffectiveCapabilitiesResolver()
+            .resolveLegacy(policy, List.of(handler.getActionMetadata()));
+        return createCallback(
+            handler,
+            effectiveContext,
+            new DefaultGovernedActionInvocationService(handler),
+            profile
+        );
+    }
+
+    private ToolCallback createCallback(
+        AIActionHandler handler,
+        ActionContext actionContext,
+        GovernedActionInvocationService invocationService,
+        EffectiveCapabilityProfile profile
+    ) {
+        return new AIActionToolCallback(handler, actionContext, invocationService, profile);
     }
 
     private static List<String> normalizeActionNames(Collection<?> actionNames) {
@@ -166,11 +228,20 @@ public class AIActionToolCallbackFactory {
         private final AIActionHandler handler;
         private final AIActionMetaData metadata;
         private final ActionContext baseContext;
+        private final GovernedActionInvocationService invocationService;
+        private final EffectiveCapabilityProfile effectiveCapabilityProfile;
         private final ToolDefinition toolDefinition;
 
-        private AIActionToolCallback(AIActionHandler handler, ActionContext baseContext) {
+        private AIActionToolCallback(
+            AIActionHandler handler,
+            ActionContext baseContext,
+            GovernedActionInvocationService invocationService,
+            EffectiveCapabilityProfile effectiveCapabilityProfile
+        ) {
             this.handler = handler;
             this.metadata = handler.getActionMetadata();
+            this.invocationService = invocationService;
+            this.effectiveCapabilityProfile = effectiveCapabilityProfile;
             this.baseContext = baseContext != null
                 ? baseContext
                 : new ActionContext(OrchestrationContext.anonymous(), null, Map.of());
@@ -212,39 +283,21 @@ public class AIActionToolCallbackFactory {
             if (!missing.isEmpty()) {
                 return resultJson(metadata, missingRequiredResult(metadata, missing));
             }
-            if (isAnonymous(executionContext) && !metadata.isAnonymousAllowed()) {
-                return resultJson(metadata, error("ACTION_NOT_ALLOWED", "This action requires an authenticated user."));
-            }
-            try {
-                if (!handler.validateActionAllowed(executionContext)) {
-                    return resultJson(metadata, error("ACTION_NOT_ALLOWED", "Action is not allowed for the current context."));
-                }
-            } catch (Exception ex) {
-                return resultJson(metadata, handleErrorSafely(handler, ex, executionContext));
-            }
-            if (handler.requiresConfirmation() || metadata.isConfirmationRequired()) {
-                return resultJson(metadata, confirmationRequiredResult(executableParams, executionContext));
-            }
-
-            try {
-                ActionResult result = handler.executeAction(executableParams, executionContext);
-                return resultJson(metadata, result != null ? result : error("ACTION_EMPTY_RESULT", "Action returned no result."));
-            } catch (Exception ex) {
-                return resultJson(metadata, handleErrorSafely(handler, ex, executionContext));
-            }
-        }
-
-        private ActionResult confirmationRequiredResult(Map<String, Object> params, ActionContext context) {
-            String message = handler.getConfirmationMessage(params, context);
-            return ActionResult.builder()
-                .success(false)
-                .message(StringUtils.hasText(message) ? message : "Confirmation is required before executing this action.")
-                .errorCode("CONFIRMATION_REQUIRED")
-                .data(ai.fabric.intent.action.ActionPayload.object(Map.of(
-                    "actionName", metadata.getName(),
-                    "confirmationRequired", true
-                )))
-                .build();
+            GovernedActionInvocationOutcome outcome =
+                invocationService.invoke(
+                    new GovernedActionInvocation(
+                        metadata.getName(),
+                        executableParams,
+                        executionContext,
+                        GovernedActionInvocationSupport.trustedContext(
+                            executionContext.pipelineContext()
+                        ),
+                        effectiveCapabilityProfile,
+                        ActionConfirmationState.NOT_CONFIRMED,
+                        List.of()
+                    )
+                );
+            return resultJson(metadata, outcome.actionResult());
         }
     }
 
@@ -506,7 +559,7 @@ public class AIActionToolCallbackFactory {
     }
 
     private boolean isAnonymous(ActionContext context) {
-        return context == null || context.orchestrationContext() == null || context.orchestrationContext().isAnonymous();
+        return context == null || context.isAnonymous();
     }
 
     private String toolName(AIActionMetaData meta) {

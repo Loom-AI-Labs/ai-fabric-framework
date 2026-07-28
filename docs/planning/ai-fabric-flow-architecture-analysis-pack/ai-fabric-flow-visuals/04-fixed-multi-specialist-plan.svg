@@ -1,0 +1,136 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1000" viewBox="0 0 1600 1000" role="img" aria-labelledby="title desc">
+  <title id="title">Complex work with explicit expertise and typed boundaries</title>
+  <desc id="desc">Turn a repeatable business process into a traceable sequence of focused specialists instead of one oversized prompt. A deterministic, evidence-linked business result assembled from independently validated specialist outputs.</desc>
+  <defs>
+    <linearGradient id="thread-gradient" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#04C7EE"></stop>
+      <stop offset="52%" stop-color="#146CFF"></stop>
+      <stop offset="100%" stop-color="#7B3FF2"></stop>
+    </linearGradient>
+    <radialGradient id="background-glow-a" cx="88%" cy="5%" r="34%">
+      <stop offset="0%" stop-color="#DDF8FD" stop-opacity="0.9"></stop>
+      <stop offset="100%" stop-color="#F7FAFF" stop-opacity="0"></stop>
+    </radialGradient>
+    <radialGradient id="background-glow-b" cx="7%" cy="92%" r="30%">
+      <stop offset="0%" stop-color="#EEE7FF" stop-opacity="0.75"></stop>
+      <stop offset="100%" stop-color="#F7FAFF" stop-opacity="0"></stop>
+    </radialGradient>
+    <filter id="soft-shadow" x="-20%" y="-30%" width="140%" height="170%">
+      <feDropShadow dx="0" dy="9" stdDeviation="12" flood-color="#07183F" flood-opacity="0.055"></feDropShadow>
+    </filter>
+    <filter id="node-shadow" x="-20%" y="-25%" width="140%" height="160%">
+      <feDropShadow dx="0" dy="7" stdDeviation="9" flood-color="#07183F" flood-opacity="0.045"></feDropShadow>
+    </filter>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#7FA6DE"></path>
+    </marker>
+  </defs>
+
+  <rect width="1600" height="1000" fill="#F7FAFF"></rect>
+  <rect width="1600" height="1000" fill="url(#background-glow-a)"></rect>
+  <rect width="1600" height="1000" fill="url(#background-glow-b)"></rect>
+
+  <g transform="translate(64 42)">
+    <rect width="34" height="34" rx="10" fill="url(#thread-gradient)" transform="rotate(10 17 17)"></rect>
+    <rect x="8" y="8" width="18" height="18" rx="6" fill="none" stroke="#FFFFFF" stroke-width="4" transform="rotate(10 17 17)"></rect>
+    <text x="48" y="23" fill="#0E5FD8" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="13" font-weight="700" text-anchor="start" letter-spacing="2.1"><tspan x="48" dy="0">AI FABRIC · BUSINESS FLOW</tspan></text>
+  </g>
+
+  <g>
+    <rect x="1230" y="43" width="306" height="34" rx="17" fill="#FFFFFF" stroke="#C5D2E9"></rect>
+    <text x="1383" y="65" fill="#334F78" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="11" font-weight="700" text-anchor="middle" letter-spacing="1"><tspan x="1383" dy="0">P2</tspan></text>
+  </g>
+
+  <text x="64" y="112" fill="#07183F" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="38" font-weight="700" text-anchor="start" letter-spacing="0"><tspan x="64" dy="0">Complex work with explicit expertise and typed boundaries</tspan></text>
+
+
+    <g filter="url(#soft-shadow)">
+      <rect x="64" y="142" width="480" height="132" rx="18" fill="#FFFFFF" stroke="#D8E1F1"></rect>
+    </g>
+    <text x="84" y="170" fill="#6A7C9B" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="11" font-weight="700" text-anchor="start" letter-spacing="1.2"><tspan x="84" dy="0">WHY IT EXISTS</tspan></text>
+    <text x="84" y="200" fill="#07183F" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="15" font-weight="500" text-anchor="start" letter-spacing="0"><tspan x="84" dy="0">Turn a repeatable business process into a traceable</tspan><tspan x="84" dy="21">sequence of focused specialists instead of one</tspan><tspan x="84" dy="21">oversized prompt.</tspan></text>
+
+
+    <g filter="url(#soft-shadow)">
+      <rect x="560" y="142" width="480" height="132" rx="18" fill="#FFFFFF" stroke="#D8E1F1"></rect>
+    </g>
+    <text x="580" y="170" fill="#6A7C9B" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="11" font-weight="700" text-anchor="start" letter-spacing="1.2"><tspan x="580" dy="0">BUSINESS RESULT</tspan></text>
+    <text x="580" y="200" fill="#07183F" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="15" font-weight="500" text-anchor="start" letter-spacing="0"><tspan x="580" dy="0">A deterministic, evidence-linked business result</tspan><tspan x="580" dy="21">assembled from independently validated specialist</tspan><tspan x="580" dy="21">outputs.</tspan></text>
+
+
+    <g filter="url(#soft-shadow)">
+      <rect x="1056" y="142" width="480" height="132" rx="18" fill="#FFFFFF" stroke="#D8E1F1"></rect>
+    </g>
+    <text x="1076" y="170" fill="#6A7C9B" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="11" font-weight="700" text-anchor="start" letter-spacing="1.2"><tspan x="1076" dy="0">PRODUCTS OPENED</tspan></text>
+    <text x="1076" y="200" fill="#07183F" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="15" font-weight="500" text-anchor="start" letter-spacing="0"><tspan x="1076" dy="0">Account resolution · Claims assessment · Onboarding</tspan><tspan x="1076" dy="21">· Underwriting preparation · Compliance checks</tspan></text>
+
+
+
+    <path d="M 66 295 L 1534 295" stroke="url(#thread-gradient)" stroke-width="4" stroke-linecap="round"></path>
+    <path d="M 254 595 C 288 595, 288 595, 316 595" fill="none" stroke="#7FA6DE" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow)"></path><path d="M 510 595 C 544 595, 544 595, 572 595" fill="none" stroke="#7FA6DE" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow)"></path><path d="M 766 595 C 800 595, 800 595, 828 595" fill="none" stroke="#7FA6DE" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow)"></path><path d="M 1022 595 C 1056 595, 1056 595, 1084 595" fill="none" stroke="#7FA6DE" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow)"></path><path d="M 1278 595 C 1312 595, 1312 595, 1340 595" fill="none" stroke="#7FA6DE" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow)"></path>
+    <text x="160" y="320" fill="#6A7C9B" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="11" font-weight="700" text-anchor="middle" letter-spacing="1.2"><tspan x="160" dy="0">START</tspan></text><text x="416" y="320" fill="#6A7C9B" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="11" font-weight="700" text-anchor="middle" letter-spacing="1.2"><tspan x="416" dy="0">PLAN</tspan></text><text x="672" y="320" fill="#6A7C9B" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="11" font-weight="700" text-anchor="middle" letter-spacing="1.2"><tspan x="672" dy="0">STEP 1</tspan></text><text x="928" y="320" fill="#6A7C9B" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="11" font-weight="700" text-anchor="middle" letter-spacing="1.2"><tspan x="928" dy="0">STEP 2</tspan></text><text x="1184" y="320" fill="#6A7C9B" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="11" font-weight="700" text-anchor="middle" letter-spacing="1.2"><tspan x="1184" dy="0">STEP 3</tspan></text><text x="1440" y="320" fill="#6A7C9B" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="11" font-weight="700" text-anchor="middle" letter-spacing="1.2"><tspan x="1440" dy="0">RESULT</tspan></text>
+
+    <g filter="url(#node-shadow)">
+      <rect x="66" y="535" width="188" height="120" rx="16" fill="#EAFBFE" stroke="#42C6E6" stroke-width="1.5"></rect>
+    </g>
+    <text x="80" y="557" fill="#6A7C9B" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="9" font-weight="700" text-anchor="start" letter-spacing="1"><tspan x="80" dy="0">FLOW</tspan></text>
+    <text x="80" y="577" fill="#07183F" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="15" font-weight="700" text-anchor="start" letter-spacing="0"><tspan x="80" dy="0">Resolution request</tspan></text>
+    <text x="80" y="601" fill="#334F78" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="11" font-weight="400" text-anchor="start" letter-spacing="0"><tspan x="80" dy="0">User, application or</tspan><tspan x="80" dy="15">trusted event</tspan></text>
+
+    <g filter="url(#node-shadow)">
+      <rect x="322" y="535" width="188" height="120" rx="16" fill="#EDF4FF" stroke="#6B9CF1" stroke-width="1.5"></rect>
+    </g>
+    <text x="336" y="557" fill="#6A7C9B" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="9" font-weight="700" text-anchor="start" letter-spacing="1"><tspan x="336" dy="0">FLOW</tspan></text>
+    <text x="336" y="577" fill="#07183F" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="15" font-weight="700" text-anchor="start" letter-spacing="0"><tspan x="336" dy="0">Fixed execution</tspan><tspan x="336" dy="18">plan</tspan></text>
+    <text x="336" y="619" fill="#334F78" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="11" font-weight="400" text-anchor="start" letter-spacing="0"><tspan x="336" dy="0">Pinned versions, mappings</tspan><tspan x="336" dy="15">and budgets</tspan></text>
+
+    <g filter="url(#node-shadow)">
+      <rect x="578" y="535" width="188" height="120" rx="16" fill="#F4EEFF" stroke="#9A76EF" stroke-width="1.5"></rect>
+    </g>
+    <text x="592" y="557" fill="#6A7C9B" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="9" font-weight="700" text-anchor="start" letter-spacing="1"><tspan x="592" dy="0">FLOW</tspan></text>
+    <text x="592" y="577" fill="#07183F" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="15" font-weight="700" text-anchor="start" letter-spacing="0"><tspan x="592" dy="0">Identity matcher</tspan></text>
+    <text x="592" y="601" fill="#334F78" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="11" font-weight="400" text-anchor="start" letter-spacing="0"><tspan x="592" dy="0">Returns a typed identity</tspan><tspan x="592" dy="15">result</tspan></text>
+
+    <g filter="url(#node-shadow)">
+      <rect x="834" y="535" width="188" height="120" rx="16" fill="#F4EEFF" stroke="#9A76EF" stroke-width="1.5"></rect>
+    </g>
+    <text x="848" y="557" fill="#6A7C9B" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="9" font-weight="700" text-anchor="start" letter-spacing="1"><tspan x="848" dy="0">FLOW</tspan></text>
+    <text x="848" y="577" fill="#07183F" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="15" font-weight="700" text-anchor="start" letter-spacing="0"><tspan x="848" dy="0">Evidence checker</tspan></text>
+    <text x="848" y="601" fill="#334F78" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="11" font-weight="400" text-anchor="start" letter-spacing="0"><tspan x="848" dy="0">Returns a typed evidence</tspan><tspan x="848" dy="15">result</tspan></text>
+
+    <g filter="url(#node-shadow)">
+      <rect x="1090" y="535" width="188" height="120" rx="16" fill="#F4EEFF" stroke="#9A76EF" stroke-width="1.5"></rect>
+    </g>
+    <text x="1104" y="557" fill="#6A7C9B" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="9" font-weight="700" text-anchor="start" letter-spacing="1"><tspan x="1104" dy="0">FLOW</tspan></text>
+    <text x="1104" y="577" fill="#07183F" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="15" font-weight="700" text-anchor="start" letter-spacing="0"><tspan x="1104" dy="0">Policy checker</tspan></text>
+    <text x="1104" y="601" fill="#334F78" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="11" font-weight="400" text-anchor="start" letter-spacing="0"><tspan x="1104" dy="0">Returns a typed policy</tspan><tspan x="1104" dy="15">result</tspan></text>
+
+    <g filter="url(#node-shadow)">
+      <rect x="1346" y="535" width="188" height="120" rx="16" fill="#EAF8F1" stroke="#58AB88" stroke-width="1.5"></rect>
+    </g>
+    <text x="1360" y="557" fill="#6A7C9B" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="9" font-weight="700" text-anchor="start" letter-spacing="1"><tspan x="1360" dy="0">FLOW</tspan></text>
+    <text x="1360" y="577" fill="#07183F" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="15" font-weight="700" text-anchor="start" letter-spacing="0"><tspan x="1360" dy="0">Deterministic</tspan><tspan x="1360" dy="18">aggregate</tspan></text>
+    <text x="1360" y="619" fill="#334F78" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="11" font-weight="400" text-anchor="start" letter-spacing="0"><tspan x="1360" dy="0">Return, review or</tspan><tspan x="1360" dy="15">governed proposal</tspan></text>
+
+
+
+  <text x="800" y="889" fill="#334F78" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="14" font-weight="700" text-anchor="middle" letter-spacing="0.2"><tspan x="800" dy="0">The plan orders work; it grants no authority</tspan></text>
+
+  <g transform="translate(314 916)">
+    <circle cx="0" cy="0" r="5" fill="#04BFE7"></circle>
+    <text x="13" y="4" fill="#6A7C9B" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="10" font-weight="700" text-anchor="start" letter-spacing="0.7"><tspan x="13" dy="0">SOURCE &amp; LIVE DATA</tspan></text>
+    <circle cx="211" cy="0" r="5" fill="#146CFF"></circle>
+    <text x="224" y="4" fill="#6A7C9B" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="10" font-weight="700" text-anchor="start" letter-spacing="0.7"><tspan x="224" dy="0">DETERMINISTIC CONTROL</tspan></text>
+    <circle cx="466" cy="0" r="5" fill="#7B3FF2"></circle>
+    <text x="479" y="4" fill="#6A7C9B" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="10" font-weight="700" text-anchor="start" letter-spacing="0.7"><tspan x="479" dy="0">SPECIALIST INTELLIGENCE</tspan></text>
+    <circle cx="730" cy="0" r="5" fill="#D18A18"></circle>
+    <text x="743" y="4" fill="#6A7C9B" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="10" font-weight="700" text-anchor="start" letter-spacing="0.7"><tspan x="743" dy="0">HUMAN BOUNDARY</tspan></text>
+    <circle cx="924" cy="0" r="5" fill="#16845B"></circle>
+    <text x="937" y="4" fill="#6A7C9B" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="10" font-weight="700" text-anchor="start" letter-spacing="0.7"><tspan x="937" dy="0">VALIDATED RESULT</tspan></text>
+  </g>
+
+  <path d="M 64 955 L 1536 955" stroke="#C5D2E9" stroke-width="1"></path>
+  <text x="64" y="980" fill="#6A7C9B" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="11" font-weight="700" text-anchor="start" letter-spacing="1.4"><tspan x="64" dy="0">AI FABRIC FRAMEWORK</tspan></text>
+  <text x="1536" y="980" fill="#6A7C9B" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="11" font-weight="700" text-anchor="end" letter-spacing="1.4"><tspan x="1536" dy="0">THE APPLICATION REMAINS THE AUTHORITY</tspan></text>
+</svg>

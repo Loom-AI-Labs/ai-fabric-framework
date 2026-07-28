@@ -1,0 +1,1060 @@
+<style>
+#ai-fabric-business-flows {
+  color: var(--foreground);
+  display: grid;
+  gap: 1rem;
+  width: 100%;
+}
+
+#ai-fabric-business-flows .af-selected {
+  display: grid;
+  gap: 0.35rem;
+}
+
+#ai-fabric-business-flows .af-selected p,
+#ai-fabric-business-flows .af-card-label,
+#ai-fabric-business-flows .af-card-copy,
+#ai-fabric-business-flows .af-guardrail,
+#ai-fabric-business-flows .af-legend {
+  margin: 0;
+}
+
+#ai-fabric-business-flows .af-stage {
+  color: var(--muted-foreground);
+  font-size: 0.78em;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+#ai-fabric-business-flows .af-card-label {
+  color: var(--muted-foreground);
+  font-size: 0.82em;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+#ai-fabric-business-flows .af-card-copy {
+  color: var(--card-foreground);
+}
+
+#ai-fabric-business-flows .af-diagram {
+  min-width: 0;
+}
+
+#ai-fabric-business-flows svg {
+  display: block;
+  height: auto;
+  width: 100%;
+}
+
+#ai-fabric-business-flows .af-mobile {
+  display: none;
+}
+
+#ai-fabric-business-flows .af-stage-label {
+  fill: var(--muted-foreground);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 1px;
+  text-anchor: middle;
+}
+
+#ai-fabric-business-flows .af-node-box {
+  stroke-width: 1.5;
+}
+
+#ai-fabric-business-flows .tone-input {
+  fill: color-mix(in srgb, var(--viz-series-1) 11%, transparent);
+  stroke: color-mix(in srgb, var(--viz-series-1) 62%, var(--border));
+}
+
+#ai-fabric-business-flows .tone-control {
+  fill: color-mix(in srgb, var(--viz-series-2) 11%, transparent);
+  stroke: color-mix(in srgb, var(--viz-series-2) 62%, var(--border));
+}
+
+#ai-fabric-business-flows .tone-specialist {
+  fill: color-mix(in srgb, var(--viz-series-3) 11%, transparent);
+  stroke: color-mix(in srgb, var(--viz-series-3) 62%, var(--border));
+}
+
+#ai-fabric-business-flows .tone-human {
+  fill: color-mix(in srgb, var(--viz-series-4) 13%, transparent);
+  stroke: color-mix(in srgb, var(--viz-series-4) 68%, var(--border));
+}
+
+#ai-fabric-business-flows .tone-result {
+  fill: color-mix(in srgb, var(--green) 11%, transparent);
+  stroke: color-mix(in srgb, var(--green) 68%, var(--border));
+}
+
+#ai-fabric-business-flows .tone-risk {
+  fill: color-mix(in srgb, var(--red) 10%, transparent);
+  stroke: color-mix(in srgb, var(--red) 64%, var(--border));
+}
+
+#ai-fabric-business-flows .tone-app {
+  fill: color-mix(in srgb, var(--secondary) 46%, transparent);
+  stroke: color-mix(in srgb, var(--foreground) 38%, var(--border));
+}
+
+#ai-fabric-business-flows .af-node-html {
+  box-sizing: border-box;
+  color: var(--foreground);
+  display: grid;
+  gap: 0.28rem;
+  height: 100%;
+  padding: 0.7rem;
+  width: 100%;
+}
+
+#ai-fabric-business-flows .af-node-kicker {
+  color: var(--muted-foreground);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+#ai-fabric-business-flows .af-node-title {
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.15;
+}
+
+#ai-fabric-business-flows .af-node-detail {
+  color: var(--muted-foreground);
+  font-size: 11px;
+  line-height: 1.25;
+}
+
+#ai-fabric-business-flows .af-connector {
+  fill: none;
+  stroke: color-mix(in srgb, var(--viz-series-2) 56%, var(--border));
+  stroke-width: 2;
+}
+
+#ai-fabric-business-flows .af-connector-dashed {
+  stroke-dasharray: 7 6;
+}
+
+#ai-fabric-business-flows .af-thread {
+  fill: none;
+  stroke: url("#af-thread-gradient");
+  stroke-linecap: round;
+  stroke-width: 4;
+}
+
+#ai-fabric-business-flows .af-guardrail {
+  color: var(--muted-foreground);
+  font-size: 0.9em;
+  text-align: center;
+}
+
+#ai-fabric-business-flows .af-legend {
+  color: var(--muted-foreground);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 0.82em;
+  gap: 0.6rem 1rem;
+  justify-content: center;
+}
+
+#ai-fabric-business-flows .af-dot {
+  border-radius: 50%;
+  display: inline-block;
+  height: 0.65rem;
+  margin-right: 0.3rem;
+  width: 0.65rem;
+}
+
+#ai-fabric-business-flows .af-dot-input {
+  background: var(--viz-series-1);
+}
+
+#ai-fabric-business-flows .af-dot-control {
+  background: var(--viz-series-2);
+}
+
+#ai-fabric-business-flows .af-dot-specialist {
+  background: var(--viz-series-3);
+}
+
+#ai-fabric-business-flows .af-dot-human {
+  background: var(--viz-series-4);
+}
+
+#ai-fabric-business-flows .af-dot-result {
+  background: var(--green);
+}
+
+@media (max-width: 480px) {
+  #ai-fabric-business-flows .af-desktop {
+    display: none;
+  }
+
+  #ai-fabric-business-flows .af-mobile {
+    display: block;
+  }
+
+  #ai-fabric-business-flows .af-node-title {
+    font-size: 15px;
+  }
+
+  #ai-fabric-business-flows .af-node-detail {
+    font-size: 12px;
+  }
+}
+</style>
+
+<div id="ai-fabric-business-flows">
+  <div class="viz-row" id="af-flow-selector" aria-label="Choose an AI Fabric business flow"></div>
+
+  <div class="af-selected" aria-live="polite">
+    <div class="af-stage" id="af-flow-stage"></div>
+    <h2 id="af-flow-name"></h2>
+  </div>
+
+  <div class="viz-grid">
+    <div class="card">
+      <p class="af-card-label">Why it exists</p>
+      <p class="af-card-copy" id="af-flow-purpose"></p>
+    </div>
+    <div class="card">
+      <p class="af-card-label">Business result</p>
+      <p class="af-card-copy" id="af-flow-outcome"></p>
+    </div>
+    <div class="card">
+      <p class="af-card-label">Products opened</p>
+      <p class="af-card-copy" id="af-flow-products"></p>
+    </div>
+  </div>
+
+  <div class="af-diagram">
+    <svg class="af-desktop" id="af-flow-svg" viewBox="0 0 900 460" role="img"></svg>
+    <svg class="af-mobile" id="af-flow-svg-mobile" viewBox="0 0 300 1000" role="img"></svg>
+  </div>
+
+  <p class="af-guardrail" id="af-flow-guardrail"></p>
+
+  <p class="af-legend" aria-label="Diagram colour legend">
+    <span><i class="af-dot af-dot-input"></i>Source &amp; live data</span>
+    <span><i class="af-dot af-dot-control"></i>Deterministic control</span>
+    <span><i class="af-dot af-dot-specialist"></i>Specialist intelligence</span>
+    <span><i class="af-dot af-dot-human"></i>Human boundary</span>
+    <span><i class="af-dot af-dot-result"></i>Validated result</span>
+  </p>
+</div>
+
+<script>
+(() => {
+  const root = document.getElementById("ai-fabric-business-flows");
+  const selector = root.querySelector("#af-flow-selector");
+  const desktop = root.querySelector("#af-flow-svg");
+  const mobile = root.querySelector("#af-flow-svg-mobile");
+
+  const flows = [
+    {
+      id: "landscape",
+      short: "Landscape",
+      name: "From any business signal to a governed outcome",
+      stage: "Evolution vision",
+      purpose: "Move AI Fabric beyond chat into a reusable enablement layer for interactive, embedded, proactive, batch and human-governed products.",
+      outcome: "One governed path from trusted application context to a typed answer, signal, review task, proposal or authoritative action result.",
+      products: "Embedded copilots · Smart APIs · Proactive operations · Decision workflows · Human-reviewed automation",
+      guardrail: "One enablement layer · Many entry points · The application remains the authority",
+      columns: [
+        {
+          label: "Start",
+          nodes: [
+            { title: "Human experience", detail: "Conversation or application screen", tone: "input" },
+            { title: "Application call", detail: "Service, API or embedded feature", tone: "input" },
+            { title: "Business signal", detail: "Event, schedule, file or batch", tone: "input" }
+          ]
+        },
+        {
+          label: "Ingress",
+          nodes: [
+            { title: "AIExecutionGateway", detail: "Trusted request and canonical entry", tone: "control" }
+          ]
+        },
+        {
+          label: "Intelligence",
+          nodes: [
+            { title: "Single specialist", detail: "Focused goal and bounded context", tone: "specialist" },
+            { title: "Execution plan", detail: "Typed multi-step coordination", tone: "specialist" },
+            { title: "Live evidence", detail: "RAG, READ actions and current data", tone: "input" }
+          ]
+        },
+        {
+          label: "Control",
+          nodes: [
+            { title: "Application policy", detail: "Identity, tenant and authority", tone: "app" },
+            { title: "Human boundary", detail: "Input, confirmation or review", tone: "human" },
+            { title: "Governed action", detail: "Registered application handler", tone: "control" }
+          ]
+        },
+        {
+          label: "Outcome",
+          nodes: [
+            { title: "Typed intelligence", detail: "Answer, signal or recommendation", tone: "result" },
+            { title: "Reviewable work", detail: "Task, correction or escalation", tone: "human" },
+            { title: "Business result", detail: "Receipt-backed application truth", tone: "result" }
+          ]
+        }
+      ]
+    },
+    {
+      id: "interactive",
+      short: "Interactive",
+      name: "A smarter application, not just another chatbot",
+      stage: "Current foundation → P1",
+      purpose: "Give users natural-language access to live application capabilities without giving the model control of application logic.",
+      outcome: "One evidence-grounded answer, recommendation or governed proposal returned through one dialogue owner.",
+      products: "Shopping companion · Account resolver · Support copilot · Employee assistant · Domain-aware help",
+      guardrail: "One conversation · One dialogue owner · Worker specialists never write to the conversation",
+      columns: [
+        {
+          label: "Start",
+          nodes: [
+            { title: "User asks", detail: "Message, attached object or in-app intent", tone: "input" }
+          ]
+        },
+        {
+          label: "Trusted entry",
+          nodes: [
+            { title: "Channel adapter", detail: "Creates trusted user, tenant and authority context", tone: "app" },
+            { title: "AIExecutionGateway", detail: "Resolves the approved specialist or plan", tone: "control" }
+          ]
+        },
+        {
+          label: "Dialogue",
+          nodes: [
+            { title: "Dialogue owner", detail: "Owns the external turn and freezes its snapshot", tone: "specialist" }
+          ]
+        },
+        {
+          label: "Intelligence",
+          nodes: [
+            { title: "Live evidence", detail: "Scoped retrieval and approved READ actions", tone: "input" },
+            { title: "Bounded reasoning", detail: "Existing orchestration under effective limits", tone: "specialist" }
+          ]
+        },
+        {
+          label: "Control",
+          nodes: [
+            { title: "Application policy", detail: "Validation, privacy and authorization", tone: "app" }
+          ]
+        },
+        {
+          label: "Result",
+          nodes: [
+            { title: "One response", detail: "Typed answer, recommendation or action proposal", tone: "result" }
+          ]
+        }
+      ]
+    },
+    {
+      id: "application",
+      short: "App/API",
+      name: "AI without requiring a chat",
+      stage: "P1",
+      purpose: "Let Java services call specialist intelligence as a native application capability rather than forcing every use case through a conversation.",
+      outcome: "A validated typed result that the application can use inside its normal service or API flow.",
+      products: "Classification APIs · Recommendation services · Enrichment pipelines · Risk signals · Smart forms",
+      guardrail: "No chat · No fake user · Trusted service identity and application authority",
+      columns: [
+        {
+          label: "Start",
+          nodes: [
+            { title: "Application service", detail: "API, domain service or embedded feature", tone: "app" }
+          ]
+        },
+        {
+          label: "Request",
+          nodes: [
+            { title: "ExecutionRequest", detail: "Typed input plus trusted service context", tone: "input" }
+          ]
+        },
+        {
+          label: "Ingress",
+          nodes: [
+            { title: "AIExecutionGateway", detail: "Explicit or registered deterministic target", tone: "control" }
+          ]
+        },
+        {
+          label: "Specialist",
+          nodes: [
+            { title: "Approved evidence", detail: "Scoped context, retrieval and READ actions", tone: "input" },
+            { title: "Bounded intelligence", detail: "Specialist contract and existing orchestration", tone: "specialist" }
+          ]
+        },
+        {
+          label: "Validation",
+          nodes: [
+            { title: "Typed boundary", detail: "Schema, evidence and policy validation", tone: "control" }
+          ]
+        },
+        {
+          label: "Result",
+          nodes: [
+            { title: "Application continues", detail: "Classification, recommendation or enrichment", tone: "result" }
+          ]
+        }
+      ]
+    },
+    {
+      id: "fixed-plan",
+      short: "Fixed plan",
+      name: "Complex work with explicit expertise and typed boundaries",
+      stage: "P2",
+      purpose: "Turn a repeatable business process into a traceable sequence of focused specialists instead of one oversized prompt.",
+      outcome: "A deterministic, evidence-linked business result assembled from independently validated specialist outputs.",
+      products: "Account resolution · Claims assessment · Onboarding · Underwriting preparation · Compliance checks",
+      guardrail: "The plan orders work; it grants no authority",
+      columns: [
+        {
+          label: "Start",
+          nodes: [
+            { title: "Resolution request", detail: "User, application or trusted event", tone: "input" }
+          ]
+        },
+        {
+          label: "Plan",
+          nodes: [
+            { title: "Fixed execution plan", detail: "Pinned versions, mappings and budgets", tone: "control" }
+          ]
+        },
+        {
+          label: "Step 1",
+          nodes: [
+            { title: "Identity matcher", detail: "Returns a typed identity result", tone: "specialist" }
+          ]
+        },
+        {
+          label: "Step 2",
+          nodes: [
+            { title: "Evidence checker", detail: "Returns a typed evidence result", tone: "specialist" }
+          ]
+        },
+        {
+          label: "Step 3",
+          nodes: [
+            { title: "Policy checker", detail: "Returns a typed policy result", tone: "specialist" }
+          ]
+        },
+        {
+          label: "Result",
+          nodes: [
+            { title: "Deterministic aggregate", detail: "Return, review or governed proposal", tone: "result" }
+          ]
+        }
+      ]
+    },
+    {
+      id: "parallel",
+      short: "Parallel",
+      name: "Faster independent analysis with one accountable result",
+      stage: "P5",
+      purpose: "Run independent checks together to reduce latency while keeping each specialist’s data, actions and working state isolated.",
+      outcome: "One deterministic evidence-linked result, or an explicit conflict routed to clarification or human review.",
+      products: "Risk panels · Due diligence · Incident triage · Fraud assessment · Cross-document analysis",
+      guardrail: "Same snapshot · Different approved views · Safe reads may run together · Writes remain proposals",
+      columns: [
+        {
+          label: "Start",
+          nodes: [
+            { title: "Approved case input", detail: "One frozen turn or application snapshot", tone: "input" }
+          ]
+        },
+        {
+          label: "Project",
+          nodes: [
+            { title: "Context projector", detail: "Builds a separate approved view for each branch", tone: "control" }
+          ]
+        },
+        {
+          label: "Independent fan-out",
+          nodes: [
+            { title: "Specialist A", detail: "Approved view A", tone: "specialist" },
+            { title: "Specialist B", detail: "Approved view B", tone: "specialist" },
+            { title: "Specialist C", detail: "Approved view C", tone: "specialist" }
+          ]
+        },
+        {
+          label: "Fan-in",
+          nodes: [
+            { title: "Typed results", detail: "Explicit ALL_REQUIRED policy first", tone: "control" }
+          ]
+        },
+        {
+          label: "Decision",
+          nodes: [
+            { title: "No conflict", detail: "Deterministic aggregation", tone: "result" },
+            { title: "Conflict", detail: "Clarification or human review", tone: "human" }
+          ]
+        },
+        {
+          label: "Result",
+          nodes: [
+            { title: "One accountable outcome", detail: "One response or application result", tone: "result" }
+          ]
+        }
+      ]
+    },
+    {
+      id: "proactive",
+      short: "Proactive",
+      name: "Intelligence starts when the business changes",
+      stage: "P3",
+      purpose: "Analyse important business changes when they happen instead of waiting for somebody to open a chat window.",
+      outcome: "An application-visible signal, recommendation, review task or governed action proposal.",
+      products: "Payment recovery · Churn intervention · Renewal monitoring · Policy drift · Document triage",
+      guardrail: "No conversation by default · Deterministic trigger mapping · No unsolicited model-controlled mutation",
+      columns: [
+        {
+          label: "Start",
+          nodes: [
+            { title: "Domain event", detail: "A business state changed", tone: "input" },
+            { title: "Schedule", detail: "A periodic condition is due", tone: "input" },
+            { title: "File or batch", detail: "New work entered the application", tone: "input" }
+          ]
+        },
+        {
+          label: "Trusted adapter",
+          nodes: [
+            { title: "Trigger adapter", detail: "Service identity, tenant and idempotency context", tone: "app" }
+          ]
+        },
+        {
+          label: "Ingress",
+          nodes: [
+            { title: "AIExecutionGateway", detail: "Registered deterministic target mapping", tone: "control" }
+          ]
+        },
+        {
+          label: "Intelligence",
+          nodes: [
+            { title: "Specialist or plan", detail: "Evidence, policy and bounded reasoning", tone: "specialist" }
+          ]
+        },
+        {
+          label: "Control",
+          nodes: [
+            { title: "Review if required", detail: "Human authority for sensitive work", tone: "human" },
+            { title: "Governed proposal", detail: "Application action remains controlled", tone: "control" }
+          ]
+        },
+        {
+          label: "Result",
+          nodes: [
+            { title: "Visible outcome", detail: "Signal, recommendation, task or receipt", tone: "result" }
+          ]
+        }
+      ]
+    },
+    {
+      id: "input-resume",
+      short: "Input & resume",
+      name: "Ask for the missing fact instead of guessing",
+      stage: "P2",
+      purpose: "Pause only the work that lacks information, collect a typed answer safely and continue without restarting the whole process.",
+      outcome: "The waiting specialist resumes under the same pinned authority, versions, schema and limits.",
+      products: "Guided onboarding · Claims intake · Smart forms · Support investigation · Case completion",
+      guardrail: "Input supplies a fact; it does not grant approval authority",
+      columns: [
+        {
+          label: "Need",
+          nodes: [
+            { title: "Worker needs a fact", detail: "It cannot complete safely from approved context", tone: "specialist" }
+          ]
+        },
+        {
+          label: "Typed wait",
+          nodes: [
+            { title: "NeedsUserInput", detail: "Question purpose and response contract", tone: "human" }
+          ]
+        },
+        {
+          label: "Route",
+          nodes: [
+            { title: "Pause one branch", detail: "Coordinator records the requesting invocation", tone: "control" },
+            { title: "Ask once", detail: "Dialogue owner or host input channel", tone: "human" }
+          ]
+        },
+        {
+          label: "Resume",
+          nodes: [
+            { title: "Typed answer", detail: "Returned through AIExecutionGateway.resume", tone: "input" }
+          ]
+        },
+        {
+          label: "Revalidate",
+          nodes: [
+            { title: "Current boundary", detail: "Authority, versions, expiry and schema", tone: "control" }
+          ]
+        },
+        {
+          label: "Result",
+          nodes: [
+            { title: "Continue one branch", detail: "Complete the final typed outcome", tone: "result" }
+          ]
+        }
+      ]
+    },
+    {
+      id: "human-review",
+      short: "Human review",
+      name: "Pause safely and resume with human authority",
+      stage: "Current confirmation → P3 durable review",
+      purpose: "Bring a qualified person into sensitive, ambiguous or high-impact work without hiding the decision inside another model call.",
+      outcome: "An authorized, version-safe approve, correct, reject, request-information or escalate decision.",
+      products: "Financial approvals · Fraud investigation · Compliance workbench · Exception queues · Audit sampling",
+      guardrail: "Persist before dispatch · Delivery is not approval · Reauthorize before continuation",
+      columns: [
+        {
+          label: "Start",
+          nodes: [
+            { title: "Sensitive outcome", detail: "Result, proposal or uncertain action state", tone: "specialist" }
+          ]
+        },
+        {
+          label: "Policy",
+          nodes: [
+            { title: "Human decision required", detail: "Registered review policy selects the boundary", tone: "control" }
+          ]
+        },
+        {
+          label: "Wait",
+          nodes: [
+            { title: "Persist ReviewTask", detail: "Version-bound evidence and allowed decisions", tone: "human" },
+            { title: "Dispatch safe reference", detail: "Host-selected channel; no authority granted", tone: "human" }
+          ]
+        },
+        {
+          label: "Decision",
+          nodes: [
+            { title: "Authorized reviewer", detail: "Approve, correct, reject, request or escalate", tone: "human" }
+          ]
+        },
+        {
+          label: "Return",
+          nodes: [
+            { title: "ReviewDecision Gateway", detail: "Checks reviewer, freshness, versions and authority", tone: "control" }
+          ]
+        },
+        {
+          label: "Result",
+          nodes: [
+            { title: "Resume pinned work", detail: "Typed result or governed application action", tone: "result" }
+          ]
+        }
+      ]
+    },
+    {
+      id: "conversation-manager",
+      short: "AI front door",
+      name: "One intelligent front door to many governed capabilities",
+      stage: "P4",
+      purpose: "Help users reach the right capability when the next step is genuinely ambiguous, while keeping the experience coherent.",
+      outcome: "One validated next move and one final response across separately scoped specialists.",
+      products: "Banking concierge · Unified service assistant · Enterprise AI front door · Operations assistant",
+      guardrail: "The manager proposes the next move; deterministic Java coordination validates it",
+      columns: [
+        {
+          label: "Start",
+          nodes: [
+            { title: "Ambiguous request", detail: "The user does not know which capability is needed", tone: "input" }
+          ]
+        },
+        {
+          label: "Dialogue",
+          nodes: [
+            { title: "Conversation manager", detail: "The sole dialogue owner with an approved view", tone: "specialist" }
+          ]
+        },
+        {
+          label: "Proposal",
+          nodes: [
+            { title: "Typed directive", detail: "Ask, continue, invoke, handoff, review or complete", tone: "specialist" }
+          ]
+        },
+        {
+          label: "Control",
+          nodes: [
+            { title: "Coordinator validates", detail: "Target, transition, authority, schema and budget", tone: "control" }
+          ]
+        },
+        {
+          label: "Work",
+          nodes: [
+            { title: "Isolated specialist", detail: "Receives a separate approved context projection", tone: "specialist" }
+          ]
+        },
+        {
+          label: "Result",
+          nodes: [
+            { title: "One coherent response", detail: "Typed result returns through the dialogue owner", tone: "result" }
+          ]
+        }
+      ]
+    },
+    {
+      id: "handoff",
+      short: "Delegate / handoff",
+      name: "Bring in expertise without sharing privileges",
+      stage: "P3",
+      purpose: "Distinguish temporary specialist help from a true transfer of responsibility while preserving independent authority boundaries.",
+      outcome: "A typed child result returns to its parent, or a newly authorized successor completes the case.",
+      products: "Tiered support · Expert escalation · Cross-domain cases · Exception routing · Investigations",
+      guardrail: "No privilege union · Every target is independently authorized",
+      columns: [
+        {
+          label: "Start",
+          nodes: [
+            { title: "Specialist A", detail: "Reaches a bounded need for another expertise", tone: "specialist" }
+          ]
+        },
+        {
+          label: "Request",
+          nodes: [
+            { title: "Delegate", detail: "Ask for a typed child result", tone: "specialist" },
+            { title: "Handoff", detail: "Transfer responsibility to a successor", tone: "specialist" }
+          ]
+        },
+        {
+          label: "Validate",
+          nodes: [
+            { title: "Coordinator boundary", detail: "Target, plan, authority, depth and budget", tone: "control" }
+          ]
+        },
+        {
+          label: "New scope",
+          nodes: [
+            { title: "Child specialist B", detail: "Returns a typed result to A", tone: "specialist" },
+            { title: "Successor specialist B", detail: "Receives a filtered handoff package", tone: "specialist" }
+          ]
+        },
+        {
+          label: "Ownership",
+          nodes: [
+            { title: "A continues", detail: "Delegation keeps parent responsibility", tone: "app" },
+            { title: "B continues", detail: "Handoff changes responsibility explicitly", tone: "app" }
+          ]
+        },
+        {
+          label: "Result",
+          nodes: [
+            { title: "Scoped outcome", detail: "Typed result with clear invocation lineage", tone: "result" }
+          ]
+        }
+      ]
+    },
+    {
+      id: "governed-action",
+      short: "Governed action",
+      name: "From natural-language intent to authoritative business result",
+      stage: "Current foundation → P1/P3 extension",
+      purpose: "Let AI propose useful changes while the application keeps identity, authorization, validation, transactions and final truth.",
+      outcome: "A committed, rejected, failed-before-commit or explicitly unknown result backed by application evidence.",
+      products: "Order actions · Account servicing · Claims operations · Case updates · Provisioning · Back-office copilots",
+      guardrail: "The model proposes · AI Fabric governs · The application commits",
+      columns: [
+        {
+          label: "Intent",
+          nodes: [
+            { title: "Action proposal", detail: "Specialist proposes a registered WRITE action", tone: "specialist" }
+          ]
+        },
+        {
+          label: "Validate",
+          nodes: [
+            { title: "Capability and policy", detail: "Scope, schema, identity and current authority", tone: "control" }
+          ]
+        },
+        {
+          label: "Human boundary",
+          nodes: [
+            { title: "Confirm or review", detail: "Required approval before a sensitive effect", tone: "human" }
+          ]
+        },
+        {
+          label: "Execute",
+          nodes: [
+            { title: "Registered handler", detail: "AI Fabric invokes the approved application action", tone: "control" },
+            { title: "Application service", detail: "Authorizes, validates, transacts and commits", tone: "app" }
+          ]
+        },
+        {
+          label: "Evidence",
+          nodes: [
+            { title: "ActionReceipt", detail: "Authoritative committed, rejected or failed outcome", tone: "result" },
+            { title: "OUTCOME_UNKNOWN", detail: "Reconcile or review; never retry blindly", tone: "risk" }
+          ]
+        },
+        {
+          label: "Result",
+          nodes: [
+            { title: "Finalized truth", detail: "Typed result plus existing live-sync visibility", tone: "result" }
+          ]
+        }
+      ]
+    },
+    {
+      id: "live-data",
+      short: "Live data",
+      name: "Keep AI evidence aligned with application truth",
+      stage: "Current differentiator",
+      purpose: "Make approved application changes available to retrieval without asking teams to build a second manual indexing workflow.",
+      outcome: "Grounded answers and decisions use current searchable evidence while the application database remains the source of truth.",
+      products: "Live catalog assistant · Inventory copilot · Policy assistant · Account operations · Case intelligence",
+      guardrail: "Application database = source of truth · Vector store = derived, rebuildable evidence",
+      loopBack: true,
+      columns: [
+        {
+          label: "Change",
+          nodes: [
+            { title: "Application entity", detail: "Normal JPA create, update or delete", tone: "app" }
+          ]
+        },
+        {
+          label: "Observe",
+          nodes: [
+            { title: "@AIProcess", detail: "Annotated service connects the successful change", tone: "control" }
+          ]
+        },
+        {
+          label: "Synchronize",
+          nodes: [
+            { title: "Live data sync", detail: "Updates the approved vector evidence lifecycle", tone: "input" }
+          ]
+        },
+        {
+          label: "Retrieve",
+          nodes: [
+            { title: "Current evidence", detail: "Scoped semantic search and RAG retrieval", tone: "input" }
+          ]
+        },
+        {
+          label: "Use",
+          nodes: [
+            { title: "Grounded specialist", detail: "Answer, recommendation or governed proposal", tone: "specialist" }
+          ]
+        },
+        {
+          label: "Result",
+          nodes: [
+            { title: "Application truth", detail: "Action receipt or normal service change starts the loop again", tone: "result" }
+          ]
+        }
+      ]
+    }
+  ];
+
+  function escapeHtml(value) {
+    return String(value)
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;");
+  }
+
+  function defs() {
+    return `
+      <defs>
+        <linearGradient id="af-thread-gradient" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0%" stop-color="var(--viz-series-1)"></stop>
+          <stop offset="52%" stop-color="var(--viz-series-2)"></stop>
+          <stop offset="100%" stop-color="var(--viz-series-3)"></stop>
+        </linearGradient>
+        <marker id="af-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="color-mix(in srgb, var(--viz-series-2) 62%, var(--border))"></path>
+        </marker>
+      </defs>`;
+  }
+
+  function nodeMarkup(x, y, width, height, node, kicker) {
+    const tone = "tone-" + node.tone;
+    return `
+      <g>
+        <rect class="af-node-box ${tone}" x="${x}" y="${y}" width="${width}" height="${height}" rx="15"></rect>
+        <foreignObject x="${x}" y="${y}" width="${width}" height="${height}">
+          <div xmlns="http://www.w3.org/1999/xhtml" class="af-node-html">
+            <div class="af-node-kicker">${escapeHtml(kicker)}</div>
+            <div class="af-node-title">${escapeHtml(node.title)}</div>
+            <div class="af-node-detail">${escapeHtml(node.detail)}</div>
+          </div>
+        </foreignObject>
+      </g>`;
+  }
+
+  function desktopDiagram(flow) {
+    const width = 900;
+    const height = 460;
+    const columns = flow.columns;
+    const margin = 26;
+    const nodeWidth = Math.min(134, (width - margin * 2 - (columns.length - 1) * 18) / columns.length);
+    const gap = columns.length > 1 ? (width - margin * 2 - nodeWidth * columns.length) / (columns.length - 1) : 0;
+    const nodeHeight = 92;
+    const groupTop = 78;
+    const groupHeight = 302;
+    const positions = [];
+
+    columns.forEach((column, columnIndex) => {
+      const x = margin + columnIndex * (nodeWidth + gap);
+      const count = column.nodes.length;
+      const verticalGap = count > 1 ? 12 : 0;
+      const total = count * nodeHeight + (count - 1) * verticalGap;
+      const startY = groupTop + (groupHeight - total) / 2;
+      positions.push(column.nodes.map((node, nodeIndex) => ({
+        node,
+        x,
+        y: startY + nodeIndex * (nodeHeight + verticalGap),
+        width: nodeWidth,
+        height: nodeHeight
+      })));
+    });
+
+    let connectors = "";
+    for (let index = 0; index < positions.length - 1; index += 1) {
+      const fromGroup = positions[index];
+      const toGroup = positions[index + 1];
+      fromGroup.forEach((from) => {
+        toGroup.forEach((to) => {
+          const x1 = from.x + from.width;
+          const y1 = from.y + from.height / 2;
+          const x2 = to.x;
+          const y2 = to.y + to.height / 2;
+          const middle = (x1 + x2) / 2;
+          connectors += `<path class="af-connector" marker-end="url(#af-arrow)" d="M ${x1} ${y1} C ${middle} ${y1}, ${middle} ${y2}, ${x2 - 5} ${y2}"></path>`;
+        });
+      });
+    }
+
+    if (flow.loopBack) {
+      const first = positions[0][0];
+      const last = positions[positions.length - 1][0];
+      const y = 425;
+      connectors += `<path class="af-connector af-connector-dashed" marker-end="url(#af-arrow)" d="M ${last.x + last.width / 2} ${last.y + last.height} C ${last.x + last.width / 2} ${y}, ${first.x + first.width / 2} ${y}, ${first.x + first.width / 2} ${first.y + first.height + 5}"></path>`;
+    }
+
+    let labels = "";
+    let nodes = "";
+    columns.forEach((column, index) => {
+      const group = positions[index];
+      const center = group[0].x + group[0].width / 2;
+      labels += `<text class="af-stage-label" x="${center}" y="42">${escapeHtml(column.label)}</text>`;
+      group.forEach((position, nodeIndex) => {
+        nodes += nodeMarkup(
+          position.x,
+          position.y,
+          position.width,
+          position.height,
+          position.node,
+          column.nodes.length > 1 ? String(nodeIndex + 1).padStart(2, "0") : "FLOW"
+        );
+      });
+    });
+
+    return `${defs()}<path class="af-thread" d="M 28 16 L 872 16"></path>${connectors}${labels}${nodes}`;
+  }
+
+  function mobileDiagram(flow) {
+    const width = 300;
+    const nodeWidth = 248;
+    const nodeHeight = 92;
+    const nodeGap = 12;
+    const stageGap = 42;
+    let y = 42;
+    let markup = defs();
+    let previousCenter = null;
+    const stagePositions = [];
+
+    flow.columns.forEach((column) => {
+      const labelY = y;
+      y += 18;
+      const group = [];
+      column.nodes.forEach((node, index) => {
+        if (index > 0) {
+          y += nodeGap;
+        }
+        group.push({ node, x: 26, y, width: nodeWidth, height: nodeHeight });
+        y += nodeHeight;
+      });
+      stagePositions.push({ column, labelY, group });
+      y += stageGap;
+    });
+
+    const totalHeight = Math.max(500, y - 16);
+    mobile.setAttribute("viewBox", `0 0 ${width} ${totalHeight}`);
+
+    stagePositions.forEach((stage, stageIndex) => {
+      const centerY = (stage.group[0].y + stage.group[stage.group.length - 1].y + nodeHeight) / 2;
+      markup += `<text class="af-stage-label" x="150" y="${stage.labelY}">${escapeHtml(stage.column.label)}</text>`;
+      if (previousCenter !== null) {
+        markup += `<path class="af-connector" marker-end="url(#af-arrow)" d="M 150 ${previousCenter} L 150 ${stage.group[0].y - 8}"></path>`;
+      }
+      stage.group.forEach((position, nodeIndex) => {
+        markup += nodeMarkup(
+          position.x,
+          position.y,
+          position.width,
+          position.height,
+          position.node,
+          stage.group.length > 1 ? String(nodeIndex + 1).padStart(2, "0") : "FLOW"
+        );
+      });
+      previousCenter = stage.group[stage.group.length - 1].y + nodeHeight + 7;
+      if (stageIndex === stagePositions.length - 1) {
+        previousCenter = null;
+      }
+      if (stage.group.length > 1) {
+        const x = 16;
+        markup += `<path class="af-connector af-connector-dashed" d="M ${x} ${stage.group[0].y + nodeHeight / 2} L ${x} ${stage.group[stage.group.length - 1].y + nodeHeight / 2}"></path>`;
+      }
+      if (centerY < 0) {
+        markup += "";
+      }
+    });
+
+    if (flow.loopBack) {
+      markup += `<path class="af-connector af-connector-dashed" d="M 282 ${totalHeight - 90} L 282 46"></path>`;
+    }
+
+    return markup;
+  }
+
+  function render(flowId) {
+    const flow = flows.find((item) => item.id === flowId) || flows[0];
+    root.querySelector("#af-flow-stage").textContent = flow.stage;
+    root.querySelector("#af-flow-name").textContent = flow.name;
+    root.querySelector("#af-flow-purpose").textContent = flow.purpose;
+    root.querySelector("#af-flow-outcome").textContent = flow.outcome;
+    root.querySelector("#af-flow-products").textContent = flow.products;
+    root.querySelector("#af-flow-guardrail").textContent = flow.guardrail;
+
+    selector.querySelectorAll("button").forEach((button) => {
+      button.setAttribute("aria-pressed", String(button.dataset.flow === flow.id));
+    });
+
+    desktop.setAttribute("aria-label", `${flow.name}. ${flow.purpose} ${flow.outcome}`);
+    mobile.setAttribute("aria-label", `${flow.name}. ${flow.purpose} ${flow.outcome}`);
+    desktop.innerHTML = desktopDiagram(flow);
+    mobile.innerHTML = mobileDiagram(flow);
+    root.dataset.selectedFlow = flow.id;
+  }
+
+  flows.forEach((flow) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "btn btn-sm";
+    button.dataset.flow = flow.id;
+    button.textContent = flow.short;
+    button.addEventListener("click", () => render(flow.id));
+    selector.appendChild(button);
+  });
+
+  window.selectAIFabricBusinessFlow = render;
+  render("landscape");
+})();
+</script>

@@ -7,6 +7,7 @@ import ai.fabric.intent.orchestration.OrchestrationAuthContextResolver;
 import ai.fabric.intent.orchestration.OrchestrationResult;
 import ai.fabric.intent.orchestration.pipeline.PipelineContext;
 import ai.fabric.intent.orchestration.pipeline.PipelineStep;
+import ai.fabric.execution.context.TrustedExecutionContext;
 import ai.fabric.security.AISecurityService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -96,14 +97,20 @@ public class SecurityAnalysisStep implements PipelineStep {
         log.debug("Executing security analysis for request {}", context.getRequestId());
         
         OrchestrationContext orchContext = context.getOrchestrationContext();
+        TrustedExecutionContext trustedContext =
+            context.getOrchestrationRequest() != null
+                ? context.getOrchestrationRequest().trustedExecutionContext()
+                : null;
         
         AISecurityRequest securityRequest = AISecurityRequest.builder()
             .requestId(context.getRequestId())
-            .authContext(OrchestrationAuthContextResolver.from(orchContext))
+            .authContext(trustedContext != null
+                ? OrchestrationAuthContextResolver.from(trustedContext)
+                : OrchestrationAuthContextResolver.from(orchContext))
             .content(context.getOriginalQuery())
             .operationType(OPERATION_TYPE_INTENT_QUERY)
             .timestamp(context.getRequestTimestamp())
-            .metadata(buildSecurityMetadata(orchContext))
+            .metadata(buildSecurityMetadata(orchContext, trustedContext))
             .ipAddress(orchContext.getIpAddress())
             .userAgent(orchContext.getUserAgent())
             .build();
@@ -130,10 +137,21 @@ public class SecurityAnalysisStep implements PipelineStep {
      * @param context the orchestration context
      * @return metadata map with security-relevant information
      */
-    private Map<String, Object> buildSecurityMetadata(OrchestrationContext context) {
+    private Map<String, Object> buildSecurityMetadata(
+        OrchestrationContext context,
+        TrustedExecutionContext trustedContext
+    ) {
         Map<String, Object> metadata = new LinkedHashMap<>();
-        metadata.put(METADATA_KEY_AUTHENTICATED, context.isAuthenticated());
+        metadata.put(
+            METADATA_KEY_AUTHENTICATED,
+            trustedContext != null || context.isAuthenticated()
+        );
         metadata.put(METADATA_KEY_SESSION_ID, context.getSessionId());
+        if (trustedContext != null) {
+            metadata.put("executionSource", trustedContext.source().name());
+            metadata.put("principalType", trustedContext.initiator().principalType().name());
+            metadata.put("correlationId", trustedContext.correlationId());
+        }
         
         if (context.getIpAddress() != null) {
             metadata.put(METADATA_KEY_IP_ADDRESS, context.getIpAddress());

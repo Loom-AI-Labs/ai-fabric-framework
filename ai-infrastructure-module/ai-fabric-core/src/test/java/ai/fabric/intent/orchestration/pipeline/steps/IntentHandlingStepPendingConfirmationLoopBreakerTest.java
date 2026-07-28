@@ -18,6 +18,7 @@ import ai.fabric.intent.KnowledgeBaseOverviewService;
 import ai.fabric.intent.action.AIActionHandler;
 import ai.fabric.intent.action.AIActionMetaData;
 import ai.fabric.intent.action.AIActionRegistry;
+import ai.fabric.intent.action.ActionAccessMode;
 import ai.fabric.intent.action.ActionContext;
 import ai.fabric.intent.action.ActionPayload;
 import ai.fabric.intent.action.ActionResult;
@@ -74,6 +75,7 @@ class IntentHandlingStepPendingConfirmationLoopBreakerTest {
             public AIActionMetaData getActionMetadata() {
                 return AIActionMetaData.builder()
                     .name("add_to_cart")
+                    .accessMode(ActionAccessMode.READ_WRITE)
                     .description("Add sku to cart")
                     .requiredParameters(Set.of("sku"))
                     .build();
@@ -172,6 +174,7 @@ class IntentHandlingStepPendingConfirmationLoopBreakerTest {
             public AIActionMetaData getActionMetadata() {
                 return AIActionMetaData.builder()
                     .name("add_to_cart")
+                    .accessMode(ActionAccessMode.READ_WRITE)
                     .description("Add sku to cart")
                     .requiredParameters(Set.of("sku"))
                     .build();
@@ -280,6 +283,7 @@ class IntentHandlingStepPendingConfirmationLoopBreakerTest {
             public AIActionMetaData getActionMetadata() {
                 return AIActionMetaData.builder()
                     .name("cancel_purchase_order")
+                    .accessMode(ActionAccessMode.READ_WRITE)
                     .description("Cancel purchase order")
                     .requiredParameters(Set.of("orderNumber"))
                     .build();
@@ -311,6 +315,7 @@ class IntentHandlingStepPendingConfirmationLoopBreakerTest {
             public AIActionMetaData getActionMetadata() {
                 return AIActionMetaData.builder()
                     .name("offer_order_discount")
+                    .accessMode(ActionAccessMode.READ_WRITE)
                     .description("Offer discount")
                     .requiredParameters(Set.of("orderNumber"))
                     .build();
@@ -441,6 +446,7 @@ class IntentHandlingStepPendingConfirmationLoopBreakerTest {
             public AIActionMetaData getActionMetadata() {
                 return AIActionMetaData.builder()
                     .name("cancel_purchase_order")
+                    .accessMode(ActionAccessMode.READ_WRITE)
                     .description("Cancel purchase order")
                     .requiredParameters(Set.of("orderNumber"))
                     .build();
@@ -472,6 +478,7 @@ class IntentHandlingStepPendingConfirmationLoopBreakerTest {
             public AIActionMetaData getActionMetadata() {
                 return AIActionMetaData.builder()
                     .name("offer_order_discount")
+                    .accessMode(ActionAccessMode.READ_WRITE)
                     .description("Offer discount")
                     .requiredParameters(Set.of("orderNumber"))
                     .build();

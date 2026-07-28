@@ -2,6 +2,11 @@ package ai.fabric.chat.pipeline;
 
 import ai.fabric.chat.config.ChatSessionProperties;
 import ai.fabric.chat.domain.ChatSession;
+import ai.fabric.execution.context.ExecutionPrincipal;
+import ai.fabric.execution.context.ExecutionPrincipalType;
+import ai.fabric.execution.context.ExecutionSource;
+import ai.fabric.execution.context.ExecutionSubjectRef;
+import ai.fabric.execution.context.TrustedExecutionContext;
 import ai.fabric.intent.orchestration.targets.ResolvedTargetSource;
 import ai.fabric.chat.exception.ChatSessionAccessDeniedException;
 import ai.fabric.chat.service.ChatSessionService;
@@ -11,16 +16,20 @@ import ai.fabric.intent.orchestration.OrchestrationContext;
 import ai.fabric.intent.orchestration.OrchestrationContextMetadataKeys;
 import ai.fabric.intent.orchestration.OrchestrationResultType;
 import ai.fabric.intent.orchestration.pipeline.PipelineContext;
+import ai.fabric.intent.orchestration.request.ConversationPersistencePolicy;
+import ai.fabric.intent.orchestration.request.OrchestrationRequest;
 import ai.fabric.dto.AIChatMessage;
 import org.junit.jupiter.api.Test;
 
 import java.util.Map;
 import java.util.Optional;
 import java.util.List;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
@@ -97,6 +106,132 @@ class ConversationEnrichmentStepTest {
         assertThat(updated.getHistoryMessages()).isEmpty();
         assertThat(updated.getMetadata()).doesNotContainKey("chat");
         verifyNoInteractions(service, pendingActionStore, actionDraftStore);
+    }
+
+    @Test
+    void shouldPreferTypedNeverPersistencePolicy() {
+        ChatSessionService service = mock(ChatSessionService.class);
+        PendingActionStore pendingActionStore = mock(PendingActionStore.class);
+        ActionDraftStore actionDraftStore = mock(ActionDraftStore.class);
+        ChatSessionProperties properties = new ChatSessionProperties();
+        properties.setEnabled(true);
+        ConversationEnrichmentStep step = new ConversationEnrichmentStep(
+            service,
+            properties,
+            pendingActionStore,
+            actionDraftStore
+        );
+        OrchestrationContext orchestrationContext = OrchestrationContext.builder()
+            .userId("user-1")
+            .conversationId("conversation-1")
+            .build();
+        PipelineContext context = PipelineContext.from(new OrchestrationRequest(
+            "Explain this once",
+            orchestrationContext,
+            null,
+            ConversationPersistencePolicy.NEVER
+        ));
+
+        PipelineContext updated = step.process(context);
+
+        assertThat(updated).isSameAs(context);
+        assertThat(updated.getHistoryMessages()).isEmpty();
+        verifyNoInteractions(service, pendingActionStore, actionDraftStore);
+    }
+
+    @Test
+    void shouldLoadHistoryForReadOnlyConversation() {
+        ChatSessionService service = mock(ChatSessionService.class);
+        when(service.getConversationMessages("conversation-1", "user-1"))
+            .thenReturn(List.of(
+                AIChatMessage.user("Why am I blocked?"),
+                AIChatMessage.assistant("{\"assessment\":\"BLOCKED\"}")
+            ));
+        PendingActionStore pendingActionStore = mock(PendingActionStore.class);
+        when(pendingActionStore.peekPendingAction(anyString(), anyString()))
+            .thenReturn(Optional.empty());
+        ActionDraftStore actionDraftStore = mock(ActionDraftStore.class);
+        when(actionDraftStore.peekDraft(anyString(), anyString()))
+            .thenReturn(Optional.empty());
+        ChatSessionProperties properties = new ChatSessionProperties();
+        properties.setEnabled(true);
+        ConversationEnrichmentStep step = new ConversationEnrichmentStep(
+            service,
+            properties,
+            pendingActionStore,
+            actionDraftStore
+        );
+        OrchestrationContext orchestrationContext = OrchestrationContext.builder()
+            .userId("user-1")
+            .conversationId("conversation-1")
+            .build();
+        PipelineContext context = PipelineContext.from(new OrchestrationRequest(
+            "Specialist envelope",
+            orchestrationContext,
+            null,
+            ConversationPersistencePolicy.READ_ONLY
+        ));
+
+        PipelineContext updated = step.process(context);
+
+        assertThat(updated.getHistoryMessages())
+            .extracting(AIChatMessage::getContent)
+            .containsExactly(
+                "Why am I blocked?",
+                "{\"assessment\":\"BLOCKED\"}"
+            );
+    }
+
+    @Test
+    void shouldUseBoundConversationOwnerInsteadOfTrustedDomainSubject() {
+        ChatSessionService service = mock(ChatSessionService.class);
+        when(service.getConversationMessages("conversation-1", "support-agent-7"))
+            .thenReturn(List.of());
+        PendingActionStore pendingActionStore = mock(PendingActionStore.class);
+        when(pendingActionStore.peekPendingAction(anyString(), anyString()))
+            .thenReturn(Optional.empty());
+        ActionDraftStore actionDraftStore = mock(ActionDraftStore.class);
+        when(actionDraftStore.peekDraft(anyString(), anyString()))
+            .thenReturn(Optional.empty());
+        ChatSessionProperties properties = new ChatSessionProperties();
+        properties.setEnabled(true);
+        ConversationEnrichmentStep step = new ConversationEnrichmentStep(
+            service,
+            properties,
+            pendingActionStore,
+            actionDraftStore
+        );
+        TrustedExecutionContext trustedContext = new TrustedExecutionContext(
+            new ExecutionPrincipal(
+                "service-principal",
+                ExecutionPrincipalType.SERVICE
+            ),
+            new ExecutionSubjectRef("account", "account-42"),
+            ExecutionSource.APPLICATION,
+            "tenant-1",
+            "resolver-app",
+            Set.of("specialist:account-resolver@1"),
+            "correlation-1",
+            null
+        );
+        PipelineContext context = PipelineContext.from(
+            new OrchestrationRequest(
+                "Specialist envelope",
+                OrchestrationContext.builder()
+                    .userId("support-agent-7")
+                    .conversationId("conversation-1")
+                    .build(),
+                trustedContext,
+                ConversationPersistencePolicy.READ_ONLY
+            )
+        );
+
+        step.process(context);
+
+        verify(service).getConversationMessages(
+            "conversation-1",
+            "support-agent-7"
+        );
     }
 
     @Test

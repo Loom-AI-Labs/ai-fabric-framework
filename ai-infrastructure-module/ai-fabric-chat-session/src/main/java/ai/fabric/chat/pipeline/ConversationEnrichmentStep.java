@@ -10,6 +10,7 @@ import ai.fabric.intent.orchestration.OrchestrationContextMetadataKeys;
 import ai.fabric.intent.orchestration.OrchestrationResult;
 import ai.fabric.intent.orchestration.pipeline.PipelineContext;
 import ai.fabric.intent.orchestration.pipeline.PipelineStep;
+import ai.fabric.intent.orchestration.request.ConversationPersistencePolicy;
 import ai.fabric.intent.orchestration.targets.ResolvedTarget;
 import ai.fabric.intent.orchestration.targets.ResolvedTargetSource;
 import ai.fabric.chat.domain.ChatSession;
@@ -73,7 +74,7 @@ public class ConversationEnrichmentStep implements PipelineStep {
         }
 
         String conversationId = context.getOrchestrationContext().getConversationId();
-        String ownerId = context.getIdentifier();
+        String ownerId = context.getConversationOwnerIdentifier();
         if (!StringUtils.hasText(conversationId) || !StringUtils.hasText(ownerId)) {
             return context;
         }
@@ -277,6 +278,11 @@ public class ConversationEnrichmentStep implements PipelineStep {
     }
 
     private boolean isConversationPersistenceDisabled(PipelineContext context) {
+        if (context != null && context.getOrchestrationRequest() != null
+            && context.getOrchestrationRequest().conversationPersistencePolicy()
+                == ConversationPersistencePolicy.NEVER) {
+            return true;
+        }
         Object mode = null;
         if (context != null && context.getOrchestrationContext() != null
             && context.getOrchestrationContext().getMetadata() != null) {

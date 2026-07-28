@@ -10,8 +10,8 @@ import ai.fabric.intent.IntentExtractionJsonSupport;
 import ai.fabric.intent.IntentExtractionValidator;
 import ai.fabric.intent.action.AIActionMetaData;
 import ai.fabric.intent.action.AIActionRegistry;
-import ai.fabric.intent.orchestration.OrchestrationAuthContextResolver;
 import ai.fabric.intent.orchestration.OrchestrationContext;
+import ai.fabric.intent.orchestration.capability.CapabilityAwareActionMetadataSupport;
 import ai.fabric.prompt.PromptRenderer;
 import ai.fabric.prompt.PromptTemplateResolver;
 import lombok.RequiredArgsConstructor;
@@ -82,7 +82,7 @@ public class CompletionIntentExtractionStrategy {
         }
 
         OrchestrationContext safeContext = context != null ? context : OrchestrationContext.anonymous();
-        safeContext.validate();
+        input.validateIdentity(safeContext);
 
         IntentExtractionValidator.ValidationResult priorValidation = previousAttempt.getValidationResult();
         List<IntentExtractionValidator.ValidationIssue> errorIssues = priorValidation != null && priorValidation.issues() != null
@@ -96,7 +96,7 @@ public class CompletionIntentExtractionStrategy {
             + "\n\n"
             + promptTemplateResolver.resolve(TEMPLATE_FAMILY, TEMPLATE_SYSTEM_ADDON).template();
 
-        String allowedActions = buildAllowedActionsSpec();
+        String allowedActions = buildAllowedActionsSpec(safeContext);
         String issuesPayload = formatIssues(errorIssues);
         String partialJson = toJson(previousAttempt.getResponse());
         String prompt = promptRenderer.render(
@@ -117,7 +117,7 @@ public class CompletionIntentExtractionStrategy {
             .prompt(prompt)
             .messages(input != null ? input.historyMessages() : List.of())
             .parameters(jsonSupport.jsonOnlyResponseParameters())
-            .authContext(OrchestrationAuthContextResolver.from(safeContext))
+            .authContext(input.authContext(safeContext))
             .build();
 
         int llmCalls = 1;
@@ -173,11 +173,14 @@ public class CompletionIntentExtractionStrategy {
         return "completion";
     }
 
-    private String buildAllowedActionsSpec() {
+    private String buildAllowedActionsSpec(OrchestrationContext context) {
         if (actionHandlerRegistry == null) {
             return "- <unavailable>";
         }
-        List<AIActionMetaData> actions = actionHandlerRegistry.getAllMetadata();
+        List<AIActionMetaData> actions = CapabilityAwareActionMetadataSupport.visibleActions(
+            actionHandlerRegistry,
+            context
+        );
         if (actions == null || actions.isEmpty()) {
             return "- <none>";
         }

@@ -1,0 +1,30 @@
+ai-entities:
+  account-resolution-policy:
+    indexing:
+      enabled: true
+      max-characters: 8000
+    searchable-fields:
+      - name: "title"
+        priority: 100
+        destinations: [SEMANTIC_SEARCH, RAG_CONTEXT]
+      - name: "description"
+        priority: 90
+        destinations: [SEMANTIC_SEARCH, RAG_CONTEXT]
+      - name: "actionName"
+        priority: 60
+        destinations: [SEMANTIC_SEARCH, RAG_CONTEXT]
+    metadata-fields:
+      - name: "code"
+        data-type: STRING
+        destinations: [VECTOR_METADATA, LLM_CONTEXT, API_RESPONSE]
+      - name: "actionName"
+        data-type: STRING
+        destinations: [VECTOR_METADATA, LLM_CONTEXT, API_RESPONSE]
+      - name: "confirmationRequired"
+        data-type: BOOLEAN
+        destinations: [VECTOR_METADATA, LLM_CONTEXT, API_RESPONSE]
+
+  subscription-plan:
+    indexing:
+      enabled: true
+      max-characters: 8000

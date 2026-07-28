@@ -10,7 +10,6 @@ import ai.fabric.dto.MultiIntentResponse;
 import ai.fabric.exception.AIServiceException;
 import ai.fabric.intent.extraction.IntentExtractionInput;
 import ai.fabric.intent.action.AIActionRegistry;
-import ai.fabric.intent.orchestration.OrchestrationAuthContextResolver;
 import ai.fabric.intent.orchestration.OrchestrationContext;
 import ai.fabric.prompt.PromptRenderer;
 import ai.fabric.prompt.PromptTemplateResolver;
@@ -94,7 +93,7 @@ public class IntentQueryExtractor {
         }
 
         OrchestrationContext safeContext = context != null ? context : OrchestrationContext.anonymous();
-        safeContext.validate();
+        input.validateIdentity(safeContext);
 
         String systemPrompt = enrichedPromptBuilder.buildSystemPrompt(safeContext);
 
@@ -108,7 +107,7 @@ public class IntentQueryExtractor {
             .prompt(userPrompt)
             .messages(input != null ? input.historyMessages() : List.of())
             .parameters(jsonSupport.jsonOnlyResponseParameters())
-            .authContext(OrchestrationAuthContextResolver.from(safeContext))
+            .authContext(input.authContext(safeContext))
             .build();
 
         long startNanos = System.nanoTime();

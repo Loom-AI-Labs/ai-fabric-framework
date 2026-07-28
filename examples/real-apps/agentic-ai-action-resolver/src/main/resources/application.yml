@@ -1,0 +1,151 @@
+spring:
+  application:
+    name: agentic-ai-action-resolver
+  config:
+    import: optional:classpath:ai-entity-config.yml
+  datasource:
+    url: jdbc:h2:file:./data/agenticresolverdb
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+
+  h2:
+    console:
+      enabled: true
+      path: /h2-console
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: ${JPA_SHOW_SQL:false}
+    properties:
+      hibernate:
+        format_sql: ${JPA_FORMAT_SQL:false}
+
+server:
+  port: ${PORT:8105}
+
+ai:
+  fabric:
+    examples:
+      # This app exposes richer execution/specialist health from its own controller.
+      demo-health:
+        enabled: false
+
+  execution:
+    enabled: true
+    capabilities:
+      registered-vector-spaces:
+        - account-resolution-policy
+      allowed-actions:
+        - get_account_profile
+    async:
+      core-pool-size: 2
+      max-pool-size: 4
+      queue-capacity: 24
+      result-ttl: PT15M
+
+  chat:
+    enabled: true
+    auto-create-sessions: true
+    window-size: 8
+    max-context-chars: 4000
+    pinned-target-reuse-window-turns: 3
+
+  prompts:
+    bundle:
+      overlays:
+        - v1-account-resolver
+
+  providers:
+    llm-provider: openai
+    embedding-provider: simple
+
+    openai:
+      enabled: ${OPENAI_ENABLED:false}
+      api-key: ${OPENAI_API_KEY:}
+      base-url: https://api.openai.com/v1
+      model: ${OPENAI_MODEL:gpt-4o-mini}
+
+  vector-db:
+    type: lucene
+    lucene:
+      index-path: ./data/agentic-lucene-vector-index
+
+  orchestration:
+    action-param-provenance-mode: WARN
+    default-mode: resolver
+    strict-mode-routing: true
+    modes:
+      resolver:
+        actions-enabled: true
+        actions-preferred: true
+        retrieval-enabled: true
+        retrieval-allowlist-required: true
+        vector-space-selection-required: false
+        information-mode: DETERMINISTIC_RAG_GENERATE
+        expose-read-probe-fallback-attempt: true
+        force-grounding-eligible-read-action-post-generation: true
+        rag:
+          fanout-enabled: true
+          max-spaces: 2
+          top-k-per-space: 3
+          similarity-threshold: 0.45
+          max-documents-returned-to-client: 4
+          max-documents-used-for-context: 4
+          max-context-chars: 3000
+          retrieval-vector-spaces-allowlist:
+            - account-resolution-policy
+            - subscription-plan
+        read-action-resolution:
+          enabled: true
+          planning-mode: ITERATIVE
+          require-allowlist: true
+          allowed-read-actions:
+            - get_account_profile
+          max-iterations: 2
+          max-actions-per-iteration: 1
+          max-total-actions: 2
+          max-parallel-actions: 1
+          max-planner-context-chars: 3000
+          max-action-evidence-chars-per-action: 1800
+          rag-cooperation-mode: PARALLEL_ACTIONS_AND_RAG
+          require-grounding-eligible: true
+
+  behavior:
+    enabled: false
+    mode: LIGHT
+
+  pii-detection:
+    enabled: false
+    mode: DETECT_ONLY
+
+logging:
+  level:
+    com.ai.fabric.realapps.agenticresolver: INFO
+    ai.fabric: INFO
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+app:
+  agentic-resolver:
+    sessions:
+      ttl: ${APP_AGENTIC_SESSION_TTL:PT6H}
+      max-active: ${APP_AGENTIC_MAX_SESSIONS:500}
+      cleanup-cron: ${APP_AGENTIC_SESSION_CLEANUP_CRON:0 */15 * * * *}
+  demo:
+    cleanup:
+      enabled: ${APP_DEMO_CLEANUP_ENABLED:true}
+      ttl: ${APP_DEMO_CLEANUP_TTL:PT6H}
+      cron: ${APP_DEMO_CLEANUP_CRON:0 */30 * * * *}
+  cors:
+    # Example: CORS_ALLOWED_ORIGINS=https://ai-fabric.dev
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:}
+    # Example: CORS_ALLOWED_ORIGIN_PATTERNS=https://ai-fabric.dev,https://*.lovable.app
+    allowed-origin-patterns: ${CORS_ALLOWED_ORIGIN_PATTERNS:}
+    # Example: CORS_ALLOW_CREDENTIALS=true (only if the browser sends cookies/session auth)
+    allow-credentials: ${CORS_ALLOW_CREDENTIALS:false}

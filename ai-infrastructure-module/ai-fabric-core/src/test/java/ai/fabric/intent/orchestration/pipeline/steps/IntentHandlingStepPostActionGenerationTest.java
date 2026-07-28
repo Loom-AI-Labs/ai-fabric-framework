@@ -59,6 +59,7 @@ class IntentHandlingStepPostActionGenerationTest {
         AIActionRegistry registry = mock(AIActionRegistry.class);
         AIActionHandler handler = mock(AIActionHandler.class);
         when(registry.findHandler("test_action")).thenReturn(Optional.of(handler));
+        stubActionMetadata(registry, "test_action", ActionAccessMode.READ_WRITE);
         when(handler.validateActionAllowed(any())).thenReturn(true);
         when(handler.getConfirmationMessage(any(), any())).thenReturn("Confirm?");
 
@@ -440,6 +441,7 @@ class IntentHandlingStepPostActionGenerationTest {
         AIActionRegistry registry = mock(AIActionRegistry.class);
         AIActionHandler handler = mock(AIActionHandler.class);
         when(registry.findHandler("test_action")).thenReturn(Optional.of(handler));
+        stubActionMetadata(registry, "test_action", ActionAccessMode.READ_WRITE);
         when(handler.validateActionAllowed(any())).thenReturn(true);
 
         ActionResult actionResult = ActionResult.builder()
@@ -501,6 +503,7 @@ class IntentHandlingStepPostActionGenerationTest {
         AIActionRegistry registry = mock(AIActionRegistry.class);
         AIActionHandler handler = mock(AIActionHandler.class);
         when(registry.findHandler("test_action")).thenReturn(Optional.of(handler));
+        stubActionMetadata(registry, "test_action", ActionAccessMode.READ_WRITE);
         when(handler.validateActionAllowed(any())).thenReturn(true);
 
         ActionResult actionResult = ActionResult.builder()
@@ -563,6 +566,7 @@ class IntentHandlingStepPostActionGenerationTest {
         AIActionRegistry registry = mock(AIActionRegistry.class);
         AIActionHandler handler = mock(AIActionHandler.class);
         when(registry.findHandler("test_action")).thenReturn(Optional.of(handler));
+        stubActionMetadata(registry, "test_action", ActionAccessMode.READ_WRITE);
         when(handler.validateActionAllowed(any())).thenReturn(true);
 
         ActionResult actionResult = ActionResult.builder()
@@ -626,6 +630,7 @@ class IntentHandlingStepPostActionGenerationTest {
         AIActionRegistry registry = mock(AIActionRegistry.class);
         AIActionHandler handler = mock(AIActionHandler.class);
         when(registry.findHandler("test_action")).thenReturn(Optional.of(handler));
+        stubActionMetadata(registry, "test_action", ActionAccessMode.READ_WRITE);
         when(handler.validateActionAllowed(any())).thenReturn(true);
 
         ActionResult actionResult = ActionResult.builder()
@@ -688,6 +693,19 @@ class IntentHandlingStepPostActionGenerationTest {
         ObjectProvider<T> provider = mock(ObjectProvider.class);
         when(provider.getIfAvailable()).thenReturn(value);
         return provider;
+    }
+
+    private void stubActionMetadata(
+        AIActionRegistry registry,
+        String actionName,
+        ActionAccessMode accessMode
+    ) {
+        when(registry.findMetadata(actionName)).thenReturn(Optional.of(
+            AIActionMetaData.builder()
+                .name(actionName)
+                .accessMode(accessMode)
+                .build()
+        ));
     }
 
     private PromptTemplateResolver promptTemplateResolver() {

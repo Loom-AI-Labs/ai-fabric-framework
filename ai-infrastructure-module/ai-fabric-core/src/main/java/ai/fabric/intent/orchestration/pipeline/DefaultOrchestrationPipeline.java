@@ -2,6 +2,7 @@ package ai.fabric.intent.orchestration.pipeline;
 
 import ai.fabric.intent.orchestration.OrchestrationContext;
 import ai.fabric.intent.orchestration.OrchestrationResult;
+import ai.fabric.intent.orchestration.request.OrchestrationRequest;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
@@ -104,16 +105,24 @@ public class DefaultOrchestrationPipeline implements Pipeline {
      */
     @Override
     public OrchestrationResult execute(String query, OrchestrationContext context) {
-        // Validate inputs
         Objects.requireNonNull(query, ERROR_NULL_QUERY);
         if (query.isBlank()) {
             throw new IllegalArgumentException(ERROR_BLANK_QUERY);
         }
         Objects.requireNonNull(context, ERROR_NULL_CONTEXT);
-        context.validate();
-        
+        return execute(OrchestrationRequest.interactive(query, context));
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public OrchestrationResult execute(OrchestrationRequest request) {
+        Objects.requireNonNull(request, "request must not be null");
+        request.validateForExecution();
+
         // Create initial context
-        PipelineContext pipelineContext = PipelineContext.from(query, context);
+        PipelineContext pipelineContext = PipelineContext.from(request);
         String requestId = pipelineContext.getRequestId();
         
         log.debug("{} Starting execution for request {} with {} steps", 

@@ -10,6 +10,11 @@ import ai.fabric.core.AICoreService;
 import ai.fabric.dto.Intent;
 import ai.fabric.dto.IntentType;
 import ai.fabric.dto.MultiIntentResponse;
+import ai.fabric.execution.context.ExecutionPrincipal;
+import ai.fabric.execution.context.ExecutionPrincipalType;
+import ai.fabric.execution.context.ExecutionSource;
+import ai.fabric.execution.context.ExecutionSubjectRef;
+import ai.fabric.execution.context.TrustedExecutionContext;
 import ai.fabric.intent.KnowledgeBaseOverviewService;
 import ai.fabric.intent.action.AIActionHandler;
 import ai.fabric.intent.action.AIActionMetaData;
@@ -22,6 +27,8 @@ import ai.fabric.intent.orchestration.OrchestrationContext;
 import ai.fabric.intent.orchestration.OrchestrationResult;
 import ai.fabric.intent.orchestration.OrchestrationResultType;
 import ai.fabric.intent.orchestration.pipeline.PipelineContext;
+import ai.fabric.intent.orchestration.request.ConversationPersistencePolicy;
+import ai.fabric.intent.orchestration.request.OrchestrationRequest;
 import ai.fabric.intent.vectorspace.RankBasedMerger;
 import ai.fabric.prompt.ClasspathPromptTemplateStore;
 import ai.fabric.prompt.PromptRenderer;
@@ -31,6 +38,7 @@ import ai.fabric.spi.RAGProvider;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.core.io.DefaultResourceLoader;
@@ -117,6 +125,59 @@ class IntentHandlingStepAnonymousActionPolicyTest {
         assertThat(result.isSuccess()).isFalse();
         assertThat(result.getMessage()).isEqualTo("Action not permitted for anonymous users.");
         verify(handler, never()).executeAction(anyMap(), any());
+    }
+
+    @Test
+    void shouldAllowTrustedApplicationCallerWithoutFabricatedUserId() {
+        AIActionRegistry registry = mock(AIActionRegistry.class);
+        AIActionHandler handler = mock(AIActionHandler.class);
+        AIActionMetaData metadata = AIActionMetaData.builder()
+            .name("get_account_profile")
+            .description("Read the trusted current account")
+            .category("account")
+            .accessMode(ActionAccessMode.READ)
+            .anonymousAllowed(false)
+            .build();
+        when(registry.findHandler("get_account_profile")).thenReturn(Optional.of(handler));
+        when(registry.findMetadata("get_account_profile")).thenReturn(Optional.of(metadata));
+        when(handler.validateActionAllowed(any())).thenReturn(true);
+        when(handler.requiresConfirmation()).thenReturn(false);
+        when(handler.executeAction(anyMap(), any())).thenReturn(ActionResult.builder()
+            .success(true)
+            .message("Current account profile")
+            .build());
+
+        Intent intent = Intent.builder()
+            .type(IntentType.ACTION)
+            .action("get_account_profile")
+            .build();
+        TrustedExecutionContext trustedContext = new TrustedExecutionContext(
+            new ExecutionPrincipal(
+                "account-resolution-service",
+                ExecutionPrincipalType.SERVICE
+            ),
+            new ExecutionSubjectRef("account", "account-42"),
+            ExecutionSource.APPLICATION,
+            "tenant-1",
+            "resolver-app",
+            Set.of("action:get_account_profile"),
+            "correlation-1",
+            null
+        );
+        PipelineContext context = PipelineContext.from(new OrchestrationRequest(
+            "Review the account",
+            OrchestrationContext.builder().build(),
+            trustedContext,
+            ConversationPersistencePolicy.NEVER
+        )).toBuilder()
+            .intentResponse(MultiIntentResponse.builder().intents(List.of(intent)).build())
+            .build();
+
+        OrchestrationResult result = newStep(registry).process(context).getIntentResult();
+
+        assertThat(result.getType()).isEqualTo(OrchestrationResultType.ACTION_EXECUTED);
+        assertThat(result.isSuccess()).isTrue();
+        verify(handler).executeAction(anyMap(), any());
     }
 
     private IntentHandlingStep newStep(AIActionRegistry registry) {

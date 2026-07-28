@@ -82,7 +82,7 @@ public class WorkingSetTargetSeedingStep implements PipelineStep {
         }
 
         String conversationId = orchContext.getConversationId();
-        String ownerId = context.getIdentifier();
+        String ownerId = context.getConversationOwnerIdentifier();
         if (!StringUtils.hasText(conversationId) || !StringUtils.hasText(ownerId)) {
             return context;
         }

@@ -2,6 +2,7 @@ package ai.fabric.intent.action;
 
 import ai.fabric.dto.AIAccessSubjectContext;
 import ai.fabric.intent.orchestration.OrchestrationContext;
+import ai.fabric.intent.orchestration.OrchestrationAuthContextResolver;
 import ai.fabric.intent.orchestration.OrchestrationContextMetadataKeys;
 import ai.fabric.intent.orchestration.pipeline.PipelineContext;
 import org.springframework.util.StringUtils;
@@ -39,7 +40,9 @@ public record ActionContext(OrchestrationContext orchestrationContext,
     }
 
     public String identifier() {
-        return orchestrationContext != null ? orchestrationContext.getIdentifier() : null;
+        return pipelineContext != null
+            ? pipelineContext.getIdentifier()
+            : orchestrationContext != null ? orchestrationContext.getIdentifier() : null;
     }
 
     public String conversationId() {
@@ -54,11 +57,28 @@ public record ActionContext(OrchestrationContext orchestrationContext,
         return orchestrationContext != null && orchestrationContext.hasConversation();
     }
 
+    public boolean isAuthenticated() {
+        return pipelineContext != null
+            ? pipelineContext.isAuthenticated()
+            : orchestrationContext != null && orchestrationContext.isAuthenticated();
+    }
+
+    public boolean isAnonymous() {
+        return !isAuthenticated();
+    }
+
     public Map<String, Object> metadata() {
         return orchestrationContext != null ? orchestrationContext.getMetadata() : Map.of();
     }
 
     public AIAccessSubjectContext authContext() {
+        if (pipelineContext != null
+            && pipelineContext.getOrchestrationRequest() != null
+            && pipelineContext.getOrchestrationRequest().trustedExecutionContext() != null) {
+            return OrchestrationAuthContextResolver.from(
+                pipelineContext.getOrchestrationRequest().trustedExecutionContext()
+            );
+        }
         Map<String, Object> metadata = metadata();
         String subjectId = metadataText(metadata, OrchestrationContextMetadataKeys.SUBJECT_ID);
         String sessionId = sessionId();

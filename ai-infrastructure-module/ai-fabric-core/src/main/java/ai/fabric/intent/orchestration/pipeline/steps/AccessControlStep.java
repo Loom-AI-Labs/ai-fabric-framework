@@ -4,8 +4,10 @@ import ai.fabric.access.AIAccessControlService;
 import ai.fabric.dto.AIAccessControlRequest;
 import ai.fabric.dto.AIAccessControlResponse;
 import ai.fabric.dto.AIAccessSubjectContext;
+import ai.fabric.execution.context.TrustedExecutionContext;
 import ai.fabric.intent.orchestration.OrchestrationContext;
 import ai.fabric.intent.orchestration.OrchestrationContextMetadataKeys;
+import ai.fabric.intent.orchestration.OrchestrationAuthContextResolver;
 import ai.fabric.intent.orchestration.OrchestrationResult;
 import ai.fabric.intent.orchestration.pipeline.PipelineContext;
 import ai.fabric.intent.orchestration.pipeline.PipelineStep;
@@ -118,14 +120,20 @@ public class AccessControlStep implements PipelineStep {
         log.debug("Checking access control for request {}", context.getRequestId());
         
         OrchestrationContext orchContext = context.getOrchestrationContext();
+        TrustedExecutionContext trustedContext =
+            context.getOrchestrationRequest() != null
+                ? context.getOrchestrationRequest().trustedExecutionContext()
+                : null;
         
         AIAccessControlRequest accessRequest = AIAccessControlRequest.builder()
             .requestId(context.getRequestId())
-            .authContext(buildAuthContext(orchContext))
+            .authContext(trustedContext != null
+                ? OrchestrationAuthContextResolver.from(trustedContext)
+                : buildAuthContext(orchContext))
             .resourceId(RESOURCE_ID_RAG_INTENT)
             .operationType(OPERATION_TYPE_READ)
             .context(context.getOriginalQuery())
-            .metadata(buildAccessControlMetadata(orchContext))
+            .metadata(buildAccessControlMetadata(orchContext, trustedContext))
             .ipAddress(orchContext.getIpAddress())
             .userAgent(orchContext.getUserAgent())
             .timestamp(context.getRequestTimestamp())
@@ -153,11 +161,32 @@ public class AccessControlStep implements PipelineStep {
      * @param context the orchestration context
      * @return metadata map with access control relevant information
      */
-    private Map<String, Object> buildAccessControlMetadata(OrchestrationContext context) {
+    private Map<String, Object> buildAccessControlMetadata(
+        OrchestrationContext context,
+        TrustedExecutionContext trustedContext
+    ) {
         Map<String, Object> metadata = new LinkedHashMap<>();
         metadata.put(METADATA_KEY_ENTRY_POINT, ENTRY_POINT_RAG_ORCHESTRATOR);
-        metadata.put(METADATA_KEY_AUTHENTICATED, context.isAuthenticated());
+        metadata.put(
+            METADATA_KEY_AUTHENTICATED,
+            trustedContext != null || context.isAuthenticated()
+        );
         metadata.put(METADATA_KEY_SESSION_ID, context.getSessionId());
+        if (trustedContext != null) {
+            AIAccessSubjectContext trustedAuth =
+                OrchestrationAuthContextResolver.from(trustedContext);
+            metadata.put(OrchestrationContextMetadataKeys.SUBJECT_ID, trustedAuth.getSubjectId());
+            metadata.put(OrchestrationContextMetadataKeys.SUBJECT_TYPE, trustedAuth.getSubjectType());
+            metadata.put(OrchestrationContextMetadataKeys.AUTH_MODE, trustedAuth.getAuthMode());
+            metadata.put(OrchestrationContextMetadataKeys.CALLER_TYPE, trustedAuth.getCallerType());
+            if (trustedAuth.getTenantId() != null) {
+                metadata.put(OrchestrationContextMetadataKeys.TENANT_ID, trustedAuth.getTenantId());
+            }
+            metadata.put(
+                OrchestrationContextMetadataKeys.GRANTED_SCOPES,
+                trustedAuth.getGrantedScopes()
+            );
+        }
         
         if (context.getIpAddress() != null) {
             metadata.put(METADATA_KEY_IP_ADDRESS, context.getIpAddress());

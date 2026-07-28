@@ -3,6 +3,10 @@ package ai.fabric.intent.orchestration.pipeline;
 import ai.fabric.intent.orchestration.OrchestrationContext;
 import ai.fabric.intent.orchestration.OrchestrationResult;
 import ai.fabric.intent.orchestration.OrchestrationResultType;
+import ai.fabric.execution.context.ExecutionSubjectRef;
+import ai.fabric.execution.context.TrustedExecutionContext;
+import ai.fabric.intent.orchestration.request.ConversationPersistencePolicy;
+import ai.fabric.intent.orchestration.request.OrchestrationRequest;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -12,6 +16,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -185,6 +190,45 @@ class DefaultOrchestrationPipelineTest {
             assertThatThrownBy(() -> pipeline.execute("query", null))
                 .isInstanceOf(NullPointerException.class)
                 .hasMessageContaining("context must not be null");
+        }
+
+        @Test
+        @DisplayName("Should execute trusted application request without synthetic user identity")
+        void shouldExecuteTrustedApplicationRequestWithoutSyntheticUserIdentity() {
+            PipelineStep finalStep = new PipelineStep() {
+                @Override
+                public String getStepName() { return "Final"; }
+                @Override
+                public int getOrder() { return 100; }
+                @Override
+                public PipelineContext process(PipelineContext context) {
+                    assertThat(context.getOrchestrationRequest()).isNotNull();
+                    assertThat(context.getOrchestrationContext().getIdentifier()).isNull();
+                    return context.toBuilder()
+                        .intentResult(OrchestrationResult.builder()
+                            .type(OrchestrationResultType.INFORMATION_PROVIDED)
+                            .success(true)
+                            .message("Success")
+                            .build())
+                        .build();
+                }
+            };
+            DefaultOrchestrationPipeline pipeline = new DefaultOrchestrationPipeline(List.of(finalStep));
+            OrchestrationRequest request = new OrchestrationRequest(
+                "inspect account",
+                OrchestrationContext.builder().build(),
+                TrustedExecutionContext.application(
+                    "resolver-service",
+                    new ExecutionSubjectRef("ACCOUNT", "account-1"),
+                    "tenant-1",
+                    Set.of("account:read")
+                ),
+                ConversationPersistencePolicy.NEVER
+            );
+
+            OrchestrationResult result = pipeline.execute(request);
+
+            assertThat(result.isSuccess()).isTrue();
         }
     }
     

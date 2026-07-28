@@ -1,13 +1,21 @@
 package ai.fabric.intent.orchestration.pipeline;
 
+import ai.fabric.execution.context.ExecutionPrincipal;
+import ai.fabric.execution.context.ExecutionPrincipalType;
+import ai.fabric.execution.context.ExecutionSource;
+import ai.fabric.execution.context.ExecutionSubjectRef;
+import ai.fabric.execution.context.TrustedExecutionContext;
 import ai.fabric.intent.orchestration.OrchestrationContext;
 import ai.fabric.intent.orchestration.OrchestrationResult;
+import ai.fabric.intent.orchestration.request.ConversationPersistencePolicy;
+import ai.fabric.intent.orchestration.request.OrchestrationRequest;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -200,6 +208,71 @@ class PipelineContextTest {
             );
             
             assertThat(context.isAuthenticated()).isFalse();
+            assertThat(context.isAnonymous()).isTrue();
+        }
+
+        @Test
+        @DisplayName("trusted application caller should not be treated as anonymous")
+        void trustedApplicationCallerShouldNotBeAnonymous() {
+            TrustedExecutionContext trustedContext = new TrustedExecutionContext(
+                new ExecutionPrincipal(
+                    "account-resolution-service",
+                    ExecutionPrincipalType.SERVICE
+                ),
+                new ExecutionSubjectRef("account", "account-42"),
+                ExecutionSource.APPLICATION,
+                "tenant-1",
+                "resolver-app",
+                Set.of("action:get_account_profile"),
+                "correlation-1",
+                null
+            );
+            PipelineContext context = PipelineContext.from(
+                new OrchestrationRequest(
+                    "Review the trusted account",
+                    OrchestrationContext.builder().build(),
+                    trustedContext,
+                    ConversationPersistencePolicy.NEVER
+                )
+            );
+
+            assertThat(context.getIdentifier()).isEqualTo("account-42");
+            assertThat(context.getConversationOwnerIdentifier()).isNull();
+            assertThat(context.isAuthenticated()).isTrue();
+            assertThat(context.isAnonymous()).isFalse();
+        }
+
+        @Test
+        @DisplayName("trusted subject and server-bound conversation owner stay distinct")
+        void trustedSubjectAndConversationOwnerStayDistinct() {
+            TrustedExecutionContext trustedContext = new TrustedExecutionContext(
+                new ExecutionPrincipal(
+                    "support-agent-7",
+                    ExecutionPrincipalType.END_USER
+                ),
+                new ExecutionSubjectRef("account", "account-42"),
+                ExecutionSource.INTERACTIVE,
+                "tenant-1",
+                "resolver-app",
+                Set.of("specialist:account-resolver@1"),
+                "correlation-1",
+                null
+            );
+            PipelineContext context = PipelineContext.from(
+                new OrchestrationRequest(
+                    "Review the trusted account",
+                    OrchestrationContext.builder()
+                        .userId("conversation-owner-7")
+                        .conversationId("conversation-7")
+                        .build(),
+                    trustedContext,
+                    ConversationPersistencePolicy.READ_ONLY
+                )
+            );
+
+            assertThat(context.getIdentifier()).isEqualTo("account-42");
+            assertThat(context.getConversationOwnerIdentifier())
+                .isEqualTo("conversation-owner-7");
         }
         
         @Test

@@ -59,7 +59,7 @@ public class ProgressiveIntentExtractionEngine {
         }
 
         OrchestrationContext safeContext = context != null ? context : OrchestrationContext.anonymous();
-        safeContext.validate();
+        input.validateIdentity(safeContext);
 
         List<Map<String, Object>> attemptEvents = new ArrayList<>();
         int totalLlmCalls = 0;

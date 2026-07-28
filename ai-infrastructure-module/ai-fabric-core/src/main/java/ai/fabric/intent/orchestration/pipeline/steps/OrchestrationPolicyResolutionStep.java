@@ -8,8 +8,13 @@ import ai.fabric.intent.orchestration.pipeline.PipelineContext;
 import ai.fabric.intent.orchestration.pipeline.PipelineStep;
 import ai.fabric.intent.orchestration.policy.OrchestrationPolicy;
 import ai.fabric.intent.orchestration.policy.OrchestrationProfile;
+import ai.fabric.intent.action.AIActionRegistry;
+import ai.fabric.intent.orchestration.capability.DefaultEffectiveCapabilitiesResolver;
+import ai.fabric.intent.orchestration.capability.EffectiveCapabilityPolicySupport;
+import ai.fabric.intent.orchestration.capability.EffectiveCapabilityProfile;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import java.util.Collections;
@@ -36,6 +41,9 @@ public class OrchestrationPolicyResolutionStep implements PipelineStep {
     private static final String ERROR_UNSUPPORTED_DEFAULT_MODE_PREFIX = "Unsupported default mode: ";
 
     private final OrchestrationProperties orchestrationProperties;
+
+    @Autowired(required = false)
+    private AIActionRegistry actionRegistry;
 
     @Override
     public String getStepName() {
@@ -272,6 +280,23 @@ public class OrchestrationPolicyResolutionStep implements PipelineStep {
         );
 
         OrchestrationContext updatedOrchestrationContext = orchestrationContext;
+        boolean hasPreResolvedCapabilities =
+            context.getEffectiveCapabilityProfile() != null;
+        EffectiveCapabilityProfile effectiveCapabilities =
+            context.getEffectiveCapabilityProfile();
+        if (effectiveCapabilities == null && actionRegistry != null) {
+            effectiveCapabilities = new DefaultEffectiveCapabilitiesResolver().resolveLegacy(
+                policy,
+                actionRegistry.getAllMetadata()
+            );
+        }
+        if (hasPreResolvedCapabilities) {
+            policy = EffectiveCapabilityPolicySupport.constrain(
+                policy,
+                effectiveCapabilities
+            );
+        }
+
         if (orchestrationContext != null) {
             if (advancedRagOverride != null) {
                 Map<String, Object> meta = new LinkedHashMap<>(orchestrationContext.getMetadata() != null
@@ -281,10 +306,12 @@ public class OrchestrationPolicyResolutionStep implements PipelineStep {
                 updatedOrchestrationContext = orchestrationContext.toBuilder()
                     .metadata(Collections.unmodifiableMap(meta))
                     .orchestrationPolicy(policy)
+                    .effectiveCapabilityProfile(effectiveCapabilities)
                     .build();
             } else {
                 updatedOrchestrationContext = orchestrationContext.toBuilder()
                     .orchestrationPolicy(policy)
+                    .effectiveCapabilityProfile(effectiveCapabilities)
                     .build();
             }
         }
@@ -385,6 +412,7 @@ public class OrchestrationPolicyResolutionStep implements PipelineStep {
         PipelineContext updated = context.toBuilder()
             .orchestrationContext(updatedOrchestrationContext)
             .orchestrationPolicy(policy)
+            .effectiveCapabilityProfile(effectiveCapabilities)
             .build()
             .withMetadata(METADATA_KEY_POLICY, Collections.unmodifiableMap(debug));
 

@@ -822,6 +822,8 @@ class SpringAiProviderAdapterTest {
         };
 
         AIActionRegistry registry = mock(AIActionRegistry.class);
+        when(registry.getAllMetadata()).thenReturn(List.of(metadata));
+        when(registry.findMetadata("lookup_order")).thenReturn(Optional.of(metadata));
         when(registry.findHandler("lookup_order")).thenReturn(Optional.of(handler));
         return registry;
     }

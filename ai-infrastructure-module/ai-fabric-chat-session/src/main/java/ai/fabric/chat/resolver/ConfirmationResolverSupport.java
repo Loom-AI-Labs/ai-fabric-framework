@@ -42,7 +42,9 @@ public abstract class ConfirmationResolverSupport implements IntentResolver {
         if (context == null || context.getOrchestrationContext() == null || !context.getOrchestrationContext().hasConversation()) {
             return null;
         }
-        return pendingActionStore.peekPendingAction(context.getOrchestrationContext().getConversationId(), context.getIdentifier())
+        return pendingActionStore.peekPendingAction(
+                context.getOrchestrationContext().getConversationId(),
+                context.getConversationOwnerIdentifier())
             .orElse(null);
     }
 
@@ -50,7 +52,9 @@ public abstract class ConfirmationResolverSupport implements IntentResolver {
         if (context == null || context.getOrchestrationContext() == null || !context.getOrchestrationContext().hasConversation()) {
             return null;
         }
-        return pendingActionStore.popPendingAction(context.getOrchestrationContext().getConversationId(), context.getIdentifier())
+        return pendingActionStore.popPendingAction(
+                context.getOrchestrationContext().getConversationId(),
+                context.getConversationOwnerIdentifier())
             .orElse(null);
     }
 
@@ -61,7 +65,11 @@ public abstract class ConfirmationResolverSupport implements IntentResolver {
         if (context == null || context.getOrchestrationContext() == null || !context.getOrchestrationContext().hasConversation()) {
             return;
         }
-        pendingActionStore.pushPendingAction(context.getOrchestrationContext().getConversationId(), context.getIdentifier(), pendingAction);
+        pendingActionStore.pushPendingAction(
+            context.getOrchestrationContext().getConversationId(),
+            context.getConversationOwnerIdentifier(),
+            pendingAction
+        );
     }
 
     protected boolean isExpired(PendingAction pending) {

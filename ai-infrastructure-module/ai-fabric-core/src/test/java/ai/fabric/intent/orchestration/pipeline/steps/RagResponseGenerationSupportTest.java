@@ -14,6 +14,8 @@ import ai.fabric.intent.orchestration.OrchestrationContext;
 import ai.fabric.intent.orchestration.pipeline.PipelineContext;
 import ai.fabric.intent.orchestration.policy.OrchestrationPolicy;
 import ai.fabric.intent.orchestration.policy.OrchestrationProfile;
+import ai.fabric.intent.orchestration.request.ConversationPersistencePolicy;
+import ai.fabric.intent.orchestration.request.OrchestrationRequest;
 import ai.fabric.prompt.ClasspathPromptTemplateStore;
 import ai.fabric.prompt.PromptRenderer;
 import ai.fabric.prompt.PromptTemplateResolver;
@@ -114,6 +116,47 @@ class RagResponseGenerationSupportTest {
         assertThat(trace.path()).isEqualTo("RAG_ANSWER");
         verify(aiCoreService).generateTextResponse(anyString(), eq(LlmPurpose.GENERATION));
         verify(aiCoreService, never()).generateContent(any(AIGenerationRequest.class), eq(LlmPurpose.GENERATION));
+    }
+
+    @Test
+    void shouldAppendServerOwnedResponseInstructionsOnlyToFinalGenerationPrompt() {
+        AICoreService aiCoreService = mock(AICoreService.class);
+        when(aiCoreService.generateTextResponse(anyString(), eq(LlmPurpose.GENERATION))).thenReturn(
+            AIGenerationResponse.builder().content("{\"assessment\":\"READY\"}").build()
+        );
+        RagResponseGenerationSupport support = newSupport(aiCoreService, true);
+        OrchestrationContext orchestrationContext =
+            OrchestrationContext.forUser("user");
+        PipelineContext pipelineContext = PipelineContext.from(
+            new OrchestrationRequest(
+                "Can this account continue?",
+                orchestrationContext,
+                null,
+                ConversationPersistencePolicy.CONVERSATION,
+                null,
+                "Can this account continue?",
+                "Return one JSON object with an assessment field."
+            )
+        );
+
+        support.generateRagAnswer(
+            Intent.builder().requiresGeneration(true).build(),
+            "Can this account continue?",
+            "The account has a verified payment method.",
+            pipelineContext
+        );
+
+        ArgumentCaptor<String> promptCaptor = ArgumentCaptor.forClass(String.class);
+        verify(aiCoreService).generateTextResponse(
+            promptCaptor.capture(),
+            eq(LlmPurpose.GENERATION)
+        );
+        assertThat(promptCaptor.getValue())
+            .contains("The account has a verified payment method.")
+            .contains("APPLICATION RESPONSE INSTRUCTIONS")
+            .contains("Return one JSON object with an assessment field.");
+        assertThat(pipelineContext.getEffectiveQuery())
+            .doesNotContain("Return one JSON object");
     }
 
     @Test

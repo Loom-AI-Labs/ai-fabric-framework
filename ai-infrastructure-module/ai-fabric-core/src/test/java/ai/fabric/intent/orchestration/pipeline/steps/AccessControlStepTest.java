@@ -3,9 +3,16 @@ package ai.fabric.intent.orchestration.pipeline.steps;
 import ai.fabric.access.AIAccessControlService;
 import ai.fabric.dto.AIAccessControlRequest;
 import ai.fabric.dto.AIAccessControlResponse;
+import ai.fabric.execution.context.ExecutionPrincipal;
+import ai.fabric.execution.context.ExecutionPrincipalType;
+import ai.fabric.execution.context.ExecutionSource;
+import ai.fabric.execution.context.ExecutionSubjectRef;
+import ai.fabric.execution.context.TrustedExecutionContext;
 import ai.fabric.intent.orchestration.OrchestrationContext;
 import ai.fabric.intent.orchestration.OrchestrationContextMetadataKeys;
 import ai.fabric.intent.orchestration.pipeline.PipelineContext;
+import ai.fabric.intent.orchestration.request.ConversationPersistencePolicy;
+import ai.fabric.intent.orchestration.request.OrchestrationRequest;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -17,6 +24,8 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.Map;
+import java.time.Instant;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static java.util.Map.entry;
@@ -219,6 +228,62 @@ class AccessControlStepTest {
             
             // Assert - Fail-closed: null treated as denied
             assertThat(result.isShouldTerminate()).isTrue();
+        }
+
+        @Test
+        @DisplayName("Should use trusted subject and scopes for application execution")
+        void shouldUseTrustedSubjectAndScopesForApplicationExecution() {
+            when(accessControlService.checkAccess(any()))
+                .thenReturn(AIAccessControlResponse.builder()
+                    .accessGranted(true)
+                    .build());
+            TrustedExecutionContext trusted = new TrustedExecutionContext(
+                new ExecutionPrincipal(
+                    "account-service",
+                    ExecutionPrincipalType.SERVICE
+                ),
+                new ExecutionSubjectRef("account", "account-42"),
+                ExecutionSource.APPLICATION,
+                "tenant-1",
+                "deployment-1",
+                Set.of(
+                    "specialist:account-resolver@1",
+                    "action:inspect_account"
+                ),
+                "correlation-1",
+                Instant.parse("2026-07-28T10:00:00Z")
+            );
+            PipelineContext context = PipelineContext.from(new OrchestrationRequest(
+                "Inspect the account",
+                OrchestrationContext.builder().build(),
+                trusted,
+                ConversationPersistencePolicy.NEVER
+            ));
+
+            step.process(context);
+
+            verify(accessControlService).checkAccess(requestCaptor.capture());
+            AIAccessControlRequest request = requestCaptor.getValue();
+            assertThat(request.getAuthContext().getSubjectId())
+                .isEqualTo("account-42");
+            assertThat(request.getAuthContext().getSubjectType())
+                .isEqualTo("account");
+            assertThat(request.getAuthContext().getTenantId())
+                .isEqualTo("tenant-1");
+            assertThat(request.getAuthContext().getGrantedScopes())
+                .containsExactlyInAnyOrder(
+                    "specialist:account-resolver@1",
+                    "action:inspect_account"
+                );
+            assertThat(request.getMetadata())
+                .containsEntry(
+                    OrchestrationContextMetadataKeys.AUTH_MODE,
+                    "TRUSTED_APPLICATION"
+                )
+                .containsEntry(
+                    OrchestrationContextMetadataKeys.CALLER_TYPE,
+                    "SERVICE"
+                );
         }
     }
 }

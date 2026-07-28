@@ -1,0 +1,143 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1000" viewBox="0 0 1600 1000" role="img" aria-labelledby="title desc">
+  <title id="title">Ask for the missing fact instead of guessing</title>
+  <desc id="desc">Pause only the work that lacks information, collect a typed answer safely and continue without restarting the whole process. The waiting specialist resumes under the same pinned authority, versions, schema and limits.</desc>
+  <defs>
+    <linearGradient id="thread-gradient" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#04C7EE"></stop>
+      <stop offset="52%" stop-color="#146CFF"></stop>
+      <stop offset="100%" stop-color="#7B3FF2"></stop>
+    </linearGradient>
+    <radialGradient id="background-glow-a" cx="88%" cy="5%" r="34%">
+      <stop offset="0%" stop-color="#DDF8FD" stop-opacity="0.9"></stop>
+      <stop offset="100%" stop-color="#F7FAFF" stop-opacity="0"></stop>
+    </radialGradient>
+    <radialGradient id="background-glow-b" cx="7%" cy="92%" r="30%">
+      <stop offset="0%" stop-color="#EEE7FF" stop-opacity="0.75"></stop>
+      <stop offset="100%" stop-color="#F7FAFF" stop-opacity="0"></stop>
+    </radialGradient>
+    <filter id="soft-shadow" x="-20%" y="-30%" width="140%" height="170%">
+      <feDropShadow dx="0" dy="9" stdDeviation="12" flood-color="#07183F" flood-opacity="0.055"></feDropShadow>
+    </filter>
+    <filter id="node-shadow" x="-20%" y="-25%" width="140%" height="160%">
+      <feDropShadow dx="0" dy="7" stdDeviation="9" flood-color="#07183F" flood-opacity="0.045"></feDropShadow>
+    </filter>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#7FA6DE"></path>
+    </marker>
+  </defs>
+
+  <rect width="1600" height="1000" fill="#F7FAFF"></rect>
+  <rect width="1600" height="1000" fill="url(#background-glow-a)"></rect>
+  <rect width="1600" height="1000" fill="url(#background-glow-b)"></rect>
+
+  <g transform="translate(64 42)">
+    <rect width="34" height="34" rx="10" fill="url(#thread-gradient)" transform="rotate(10 17 17)"></rect>
+    <rect x="8" y="8" width="18" height="18" rx="6" fill="none" stroke="#FFFFFF" stroke-width="4" transform="rotate(10 17 17)"></rect>
+    <text x="48" y="23" fill="#0E5FD8" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="13" font-weight="700" text-anchor="start" letter-spacing="2.1"><tspan x="48" dy="0">AI FABRIC · BUSINESS FLOW</tspan></text>
+  </g>
+
+  <g>
+    <rect x="1230" y="43" width="306" height="34" rx="17" fill="#FFFFFF" stroke="#C5D2E9"></rect>
+    <text x="1383" y="65" fill="#334F78" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="11" font-weight="700" text-anchor="middle" letter-spacing="1"><tspan x="1383" dy="0">P2</tspan></text>
+  </g>
+
+  <text x="64" y="112" fill="#07183F" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="38" font-weight="700" text-anchor="start" letter-spacing="0"><tspan x="64" dy="0">Ask for the missing fact instead of guessing</tspan></text>
+
+
+    <g filter="url(#soft-shadow)">
+      <rect x="64" y="142" width="480" height="132" rx="18" fill="#FFFFFF" stroke="#D8E1F1"></rect>
+    </g>
+    <text x="84" y="170" fill="#6A7C9B" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="11" font-weight="700" text-anchor="start" letter-spacing="1.2"><tspan x="84" dy="0">WHY IT EXISTS</tspan></text>
+    <text x="84" y="200" fill="#07183F" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="15" font-weight="500" text-anchor="start" letter-spacing="0"><tspan x="84" dy="0">Pause only the work that lacks information, collect a</tspan><tspan x="84" dy="21">typed answer safely and continue without restarting the</tspan><tspan x="84" dy="21">whole process.</tspan></text>
+
+
+    <g filter="url(#soft-shadow)">
+      <rect x="560" y="142" width="480" height="132" rx="18" fill="#FFFFFF" stroke="#D8E1F1"></rect>
+    </g>
+    <text x="580" y="170" fill="#6A7C9B" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="11" font-weight="700" text-anchor="start" letter-spacing="1.2"><tspan x="580" dy="0">BUSINESS RESULT</tspan></text>
+    <text x="580" y="200" fill="#07183F" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="15" font-weight="500" text-anchor="start" letter-spacing="0"><tspan x="580" dy="0">The waiting specialist resumes under the same pinned</tspan><tspan x="580" dy="21">authority, versions, schema and limits.</tspan></text>
+
+
+    <g filter="url(#soft-shadow)">
+      <rect x="1056" y="142" width="480" height="132" rx="18" fill="#FFFFFF" stroke="#D8E1F1"></rect>
+    </g>
+    <text x="1076" y="170" fill="#6A7C9B" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="11" font-weight="700" text-anchor="start" letter-spacing="1.2"><tspan x="1076" dy="0">PRODUCTS OPENED</tspan></text>
+    <text x="1076" y="200" fill="#07183F" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="15" font-weight="500" text-anchor="start" letter-spacing="0"><tspan x="1076" dy="0">Guided onboarding · Claims intake · Smart forms ·</tspan><tspan x="1076" dy="21">Support investigation · Case completion</tspan></text>
+
+
+
+    <path d="M 66 295 L 1534 295" stroke="url(#thread-gradient)" stroke-width="4" stroke-linecap="round"></path>
+    <path d="M 254 595 C 288 595, 288 595, 316 595" fill="none" stroke="#7FA6DE" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow)"></path><path d="M 544 528.5 L 544 661.5" fill="none" stroke="#7FA6DE" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></path><path d="M 510 595 L 544 595" fill="none" stroke="#7FA6DE" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path><path d="M 544 528.5 L 572 528.5" fill="none" stroke="#7FA6DE" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow)"></path><path d="M 544 661.5 L 572 661.5" fill="none" stroke="#7FA6DE" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow)"></path><path d="M 800 528.5 L 800 661.5" fill="none" stroke="#7FA6DE" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></path><path d="M 766 528.5 L 800 528.5" fill="none" stroke="#7FA6DE" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path><path d="M 766 661.5 L 800 661.5" fill="none" stroke="#7FA6DE" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path><path d="M 800 595 L 828 595" fill="none" stroke="#7FA6DE" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow)"></path><path d="M 1022 595 C 1056 595, 1056 595, 1084 595" fill="none" stroke="#7FA6DE" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow)"></path><path d="M 1278 595 C 1312 595, 1312 595, 1340 595" fill="none" stroke="#7FA6DE" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow)"></path>
+    <text x="160" y="320" fill="#6A7C9B" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="11" font-weight="700" text-anchor="middle" letter-spacing="1.2"><tspan x="160" dy="0">NEED</tspan></text><text x="416" y="320" fill="#6A7C9B" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="11" font-weight="700" text-anchor="middle" letter-spacing="1.2"><tspan x="416" dy="0">TYPED WAIT</tspan></text><text x="672" y="320" fill="#6A7C9B" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="11" font-weight="700" text-anchor="middle" letter-spacing="1.2"><tspan x="672" dy="0">ROUTE</tspan></text><text x="928" y="320" fill="#6A7C9B" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="11" font-weight="700" text-anchor="middle" letter-spacing="1.2"><tspan x="928" dy="0">RESUME</tspan></text><text x="1184" y="320" fill="#6A7C9B" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="11" font-weight="700" text-anchor="middle" letter-spacing="1.2"><tspan x="1184" dy="0">REVALIDATE</tspan></text><text x="1440" y="320" fill="#6A7C9B" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="11" font-weight="700" text-anchor="middle" letter-spacing="1.2"><tspan x="1440" dy="0">RESULT</tspan></text>
+
+    <g filter="url(#node-shadow)">
+      <rect x="66" y="535" width="188" height="120" rx="16" fill="#F4EEFF" stroke="#9A76EF" stroke-width="1.5"></rect>
+    </g>
+    <text x="80" y="557" fill="#6A7C9B" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="9" font-weight="700" text-anchor="start" letter-spacing="1"><tspan x="80" dy="0">FLOW</tspan></text>
+    <text x="80" y="577" fill="#07183F" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="15" font-weight="700" text-anchor="start" letter-spacing="0"><tspan x="80" dy="0">Worker needs a fact</tspan></text>
+    <text x="80" y="601" fill="#334F78" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="11" font-weight="400" text-anchor="start" letter-spacing="0"><tspan x="80" dy="0">It cannot complete safely</tspan><tspan x="80" dy="15">from approved context</tspan></text>
+
+    <g filter="url(#node-shadow)">
+      <rect x="322" y="535" width="188" height="120" rx="16" fill="#FFF6E5" stroke="#D5A14C" stroke-width="1.5"></rect>
+    </g>
+    <text x="336" y="557" fill="#6A7C9B" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="9" font-weight="700" text-anchor="start" letter-spacing="1"><tspan x="336" dy="0">FLOW</tspan></text>
+    <text x="336" y="577" fill="#07183F" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="15" font-weight="700" text-anchor="start" letter-spacing="0"><tspan x="336" dy="0">NeedsUserInput</tspan></text>
+    <text x="336" y="601" fill="#334F78" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="11" font-weight="400" text-anchor="start" letter-spacing="0"><tspan x="336" dy="0">Question purpose and</tspan><tspan x="336" dy="15">response contract</tspan></text>
+
+    <g filter="url(#node-shadow)">
+      <rect x="578" y="468.5" width="188" height="120" rx="16" fill="#EDF4FF" stroke="#6B9CF1" stroke-width="1.5"></rect>
+    </g>
+    <text x="592" y="490.5" fill="#6A7C9B" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="9" font-weight="700" text-anchor="start" letter-spacing="1"><tspan x="592" dy="0">01</tspan></text>
+    <text x="592" y="510.5" fill="#07183F" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="15" font-weight="700" text-anchor="start" letter-spacing="0"><tspan x="592" dy="0">Pause one branch</tspan></text>
+    <text x="592" y="534.5" fill="#334F78" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="11" font-weight="400" text-anchor="start" letter-spacing="0"><tspan x="592" dy="0">Coordinator records the</tspan><tspan x="592" dy="15">requesting invocation</tspan></text>
+
+    <g filter="url(#node-shadow)">
+      <rect x="578" y="601.5" width="188" height="120" rx="16" fill="#FFF6E5" stroke="#D5A14C" stroke-width="1.5"></rect>
+    </g>
+    <text x="592" y="623.5" fill="#6A7C9B" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="9" font-weight="700" text-anchor="start" letter-spacing="1"><tspan x="592" dy="0">02</tspan></text>
+    <text x="592" y="643.5" fill="#07183F" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="15" font-weight="700" text-anchor="start" letter-spacing="0"><tspan x="592" dy="0">Ask once</tspan></text>
+    <text x="592" y="667.5" fill="#334F78" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="11" font-weight="400" text-anchor="start" letter-spacing="0"><tspan x="592" dy="0">Dialogue owner or host</tspan><tspan x="592" dy="15">input channel</tspan></text>
+
+    <g filter="url(#node-shadow)">
+      <rect x="834" y="535" width="188" height="120" rx="16" fill="#EAFBFE" stroke="#42C6E6" stroke-width="1.5"></rect>
+    </g>
+    <text x="848" y="557" fill="#6A7C9B" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="9" font-weight="700" text-anchor="start" letter-spacing="1"><tspan x="848" dy="0">FLOW</tspan></text>
+    <text x="848" y="577" fill="#07183F" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="15" font-weight="700" text-anchor="start" letter-spacing="0"><tspan x="848" dy="0">Typed answer</tspan></text>
+    <text x="848" y="601" fill="#334F78" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="11" font-weight="400" text-anchor="start" letter-spacing="0"><tspan x="848" dy="0">Returned through</tspan><tspan x="848" dy="15">AIExecutionGateway.resume</tspan></text>
+
+    <g filter="url(#node-shadow)">
+      <rect x="1090" y="535" width="188" height="120" rx="16" fill="#EDF4FF" stroke="#6B9CF1" stroke-width="1.5"></rect>
+    </g>
+    <text x="1104" y="557" fill="#6A7C9B" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="9" font-weight="700" text-anchor="start" letter-spacing="1"><tspan x="1104" dy="0">FLOW</tspan></text>
+    <text x="1104" y="577" fill="#07183F" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="15" font-weight="700" text-anchor="start" letter-spacing="0"><tspan x="1104" dy="0">Current boundary</tspan></text>
+    <text x="1104" y="601" fill="#334F78" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="11" font-weight="400" text-anchor="start" letter-spacing="0"><tspan x="1104" dy="0">Authority, versions,</tspan><tspan x="1104" dy="15">expiry and schema</tspan></text>
+
+    <g filter="url(#node-shadow)">
+      <rect x="1346" y="535" width="188" height="120" rx="16" fill="#EAF8F1" stroke="#58AB88" stroke-width="1.5"></rect>
+    </g>
+    <text x="1360" y="557" fill="#6A7C9B" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="9" font-weight="700" text-anchor="start" letter-spacing="1"><tspan x="1360" dy="0">FLOW</tspan></text>
+    <text x="1360" y="577" fill="#07183F" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="15" font-weight="700" text-anchor="start" letter-spacing="0"><tspan x="1360" dy="0">Continue one branch</tspan></text>
+    <text x="1360" y="601" fill="#334F78" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="11" font-weight="400" text-anchor="start" letter-spacing="0"><tspan x="1360" dy="0">Complete the final typed</tspan><tspan x="1360" dy="15">outcome</tspan></text>
+
+
+
+  <text x="800" y="889" fill="#334F78" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="14" font-weight="700" text-anchor="middle" letter-spacing="0.2"><tspan x="800" dy="0">Input supplies a fact; it does not grant approval authority</tspan></text>
+
+  <g transform="translate(314 916)">
+    <circle cx="0" cy="0" r="5" fill="#04BFE7"></circle>
+    <text x="13" y="4" fill="#6A7C9B" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="10" font-weight="700" text-anchor="start" letter-spacing="0.7"><tspan x="13" dy="0">SOURCE &amp; LIVE DATA</tspan></text>
+    <circle cx="211" cy="0" r="5" fill="#146CFF"></circle>
+    <text x="224" y="4" fill="#6A7C9B" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="10" font-weight="700" text-anchor="start" letter-spacing="0.7"><tspan x="224" dy="0">DETERMINISTIC CONTROL</tspan></text>
+    <circle cx="466" cy="0" r="5" fill="#7B3FF2"></circle>
+    <text x="479" y="4" fill="#6A7C9B" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="10" font-weight="700" text-anchor="start" letter-spacing="0.7"><tspan x="479" dy="0">SPECIALIST INTELLIGENCE</tspan></text>
+    <circle cx="730" cy="0" r="5" fill="#D18A18"></circle>
+    <text x="743" y="4" fill="#6A7C9B" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="10" font-weight="700" text-anchor="start" letter-spacing="0.7"><tspan x="743" dy="0">HUMAN BOUNDARY</tspan></text>
+    <circle cx="924" cy="0" r="5" fill="#16845B"></circle>
+    <text x="937" y="4" fill="#6A7C9B" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="10" font-weight="700" text-anchor="start" letter-spacing="0.7"><tspan x="937" dy="0">VALIDATED RESULT</tspan></text>
+  </g>
+
+  <path d="M 64 955 L 1536 955" stroke="#C5D2E9" stroke-width="1"></path>
+  <text x="64" y="980" fill="#6A7C9B" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="11" font-weight="700" text-anchor="start" letter-spacing="1.4"><tspan x="64" dy="0">AI FABRIC FRAMEWORK</tspan></text>
+  <text x="1536" y="980" fill="#6A7C9B" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="11" font-weight="700" text-anchor="end" letter-spacing="1.4"><tspan x="1536" dy="0">THE APPLICATION REMAINS THE AUTHORITY</tspan></text>
+</svg>

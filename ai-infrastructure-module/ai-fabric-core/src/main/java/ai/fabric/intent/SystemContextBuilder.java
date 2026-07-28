@@ -62,6 +62,13 @@ public class SystemContextBuilder {
      */
     public SystemContext buildContext(OrchestrationContext orchestrationContext) {
         List<ActionInfo> actions = availableActionsRegistry.getAllAvailableActions();
+        if (orchestrationContext.getEffectiveCapabilityProfile() != null) {
+            actions = actions.stream()
+                .filter(action -> action != null
+                    && orchestrationContext.getEffectiveCapabilityProfile()
+                        .isActionVisible(action.getName()))
+                .toList();
+        }
         KnowledgeBaseOverview overview = knowledgeBaseOverviewService != null ? knowledgeBaseOverviewService.getOverview() : null;
 
         SystemContext.SystemContextBuilder builder = SystemContext.builder()

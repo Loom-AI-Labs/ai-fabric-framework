@@ -2,6 +2,7 @@ package ai.fabric.intent.orchestration.pipeline.steps;
 
 import ai.fabric.config.OrchestrationProperties;
 import ai.fabric.intent.orchestration.OrchestrationContext;
+import ai.fabric.intent.orchestration.capability.EffectiveCapabilityProfile;
 import ai.fabric.intent.orchestration.pipeline.PipelineContext;
 import ai.fabric.intent.orchestration.policy.OrchestrationPolicy;
 import ai.fabric.intent.orchestration.policy.OrchestrationProfile;
@@ -10,6 +11,8 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
 import java.util.Map;
+import java.util.List;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -308,6 +311,68 @@ class OrchestrationPolicyResolutionStepTest {
             PipelineContext output = step.process(PipelineContext.from("hello", OrchestrationContext.forUser("user-123")));
 
             assertThat(output.getOrchestrationPolicy().informationMode()).isEqualTo(OrchestrationProperties.InformationMode.LLM_DRIVEN);
+        }
+
+        @Test
+        @DisplayName("Should keep a pre-resolved execution profile narrower than its mode")
+        void shouldKeepPreResolvedExecutionProfileNarrowerThanMode() {
+            OrchestrationProperties properties = new OrchestrationProperties();
+            properties.setDefaultMode("resolver");
+            OrchestrationProperties.ModeOverrides resolver =
+                new OrchestrationProperties.ModeOverrides();
+            resolver.setRetrievalEnabled(true);
+            OrchestrationProperties.RagModeOverrides rag =
+                new OrchestrationProperties.RagModeOverrides();
+            rag.setRetrievalVectorSpacesAllowlist(
+                List.of("account-policy", "plans")
+            );
+            rag.setMaxSpaces(2);
+            resolver.setRag(rag);
+            properties.getModes().put("resolver", resolver);
+
+            EffectiveCapabilityProfile effective =
+                new EffectiveCapabilityProfile(
+                    "DEFAULT",
+                    "resolver",
+                    true,
+                    Set.of("account-policy"),
+                    Set.of(),
+                    Set.of(),
+                    Set.of(),
+                    new OrchestrationPolicy.RagBudgets(
+                        true,
+                        1,
+                        3,
+                        4,
+                        4,
+                        3_000,
+                        List.of("account-policy")
+                    ),
+                    OrchestrationPolicy.ReadActionResolutionPolicy.defaults(),
+                    "profile-hash"
+                );
+            OrchestrationContext orchestrationContext =
+                OrchestrationContext.forUser("user-123")
+                    .toBuilder()
+                    .mode("resolver")
+                    .effectiveCapabilityProfile(effective)
+                    .build();
+            PipelineContext input = PipelineContext.from(
+                "inspect the account",
+                orchestrationContext
+            ).toBuilder()
+                .effectiveCapabilityProfile(effective)
+                .build();
+
+            PipelineContext output =
+                new OrchestrationPolicyResolutionStep(properties).process(input);
+
+            assertThat(output.getOrchestrationPolicy()
+                .ragBudgets()
+                .retrievalVectorSpacesAllowlist())
+                .containsExactly("account-policy");
+            assertThat(output.getOrchestrationPolicy().ragBudgets().maxSpaces())
+                .isEqualTo(1);
         }
 
         @Test
