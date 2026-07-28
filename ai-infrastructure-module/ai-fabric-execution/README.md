@@ -219,12 +219,37 @@ Strict projection denies an execution if evidence has no resolvable vector
 space or falls outside the effective profile. Dropping the reference after
 generation would be unsafe because the answer may already have used it.
 
+## Governed Specialist Writes
+
+A specialist may optionally propose an allowlisted registered WRITE. The model
+does not authorize, confirm, or directly execute it. AI Fabric validates the
+candidate against the effective capability profile and current action schema,
+then creates an identity-bound durable receipt.
+
+The application exposes a decision endpoint containing only `receiptId` and
+`CONFIRM` or `REJECT`. Confirmation re-resolves trusted identity, subject,
+authority, specialist version, profile, and action metadata before the receipt
+can move atomically into execution through
+`GovernedActionInvocationService`.
+
+Production receipts use the conditional JDBC repository. Parameters and
+projected outcomes are protected, terminal decisions are idempotent, stale
+executions become `OUTCOME_UNKNOWN`, and unknown writes are reconciled against
+the application system of record rather than retried blindly.
+
+See
+[`GOVERNED_SPECIALIST_WRITES_AND_RECEIPTS.md`](../../docs/Framework-Dev-Guides/actions-governance/GOVERNED_SPECIALIST_WRITES_AND_RECEIPTS.md)
+for configuration, migrations, recovery, metrics, and rollback guidance.
+
 ## Current Boundary
 
-The first approved scope is one read-only specialist invocation. The following
-remain deferred:
+The implemented scope supports bounded single-specialist reads and optional
+confirmation-gated writes. General execution submitted through `submit`
+remains explicitly ephemeral; durable write receipts do not turn it into a
+durable workflow engine.
 
-- specialist write receipts and profile-pinned confirmation;
+The following remain deferred:
+
 - multi-specialist plans and delegation;
 - durable execution;
 - scheduler or event-broker adapters; and
