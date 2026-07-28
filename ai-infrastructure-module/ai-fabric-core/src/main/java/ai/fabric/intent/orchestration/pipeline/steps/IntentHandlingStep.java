@@ -15,6 +15,7 @@ import ai.fabric.intent.action.ActionAccessMode;
 import ai.fabric.intent.action.ActionContext;
 import ai.fabric.intent.action.ActionResult;
 import ai.fabric.intent.action.invocation.ActionConfirmationState;
+import ai.fabric.intent.action.invocation.ActionProposalCandidate;
 import ai.fabric.intent.action.invocation.DefaultGovernedActionInvocationService;
 import ai.fabric.intent.action.invocation.GovernedActionInvocationOutcome;
 import ai.fabric.intent.action.invocation.GovernedActionInvocationStatus;
@@ -35,6 +36,7 @@ import ai.fabric.intent.orchestration.OrchestrationResult;
 import ai.fabric.intent.orchestration.OrchestrationResultType;
 import ai.fabric.intent.orchestration.information.ReadActionResolutionService;
 import ai.fabric.intent.orchestration.pipeline.PipelineContext;
+import ai.fabric.intent.orchestration.request.OrchestrationRequestPurpose;
 import ai.fabric.intent.orchestration.pipeline.PipelineStep;
 import ai.fabric.intent.orchestration.pipeline.steps.ActionEvidenceSupport.EvidenceBundle;
 import ai.fabric.intent.orchestration.pipeline.steps.ActionExecutableValidationSupport.ActionExecutableValidation;
@@ -539,6 +541,58 @@ public class IntentHandlingStep implements PipelineStep {
             confirmationMessage = "Executing " + actionName;
         }
 
+        if (isSpecialistWriteRequest(meta, pipelineContext)) {
+            if (!canSpecialistProposeWrite(meta, pipelineContext)) {
+                return OrchestrationResult.builder()
+                    .type(OrchestrationResultType.ACTION_DENIED)
+                    .success(false)
+                    .message(
+                        "The write action is not available in the effective specialist profile."
+                    )
+                    .errorCode("ACTION_NOT_IN_EFFECTIVE_PROFILE")
+                    .data(Map.of(DATA_KEY_ACTION, actionName))
+                    .nextSteps(extractNextSteps(intent))
+                    .build();
+            }
+            if (!requiresConfirmation) {
+                return OrchestrationResult.builder()
+                    .type(OrchestrationResultType.ACTION_DENIED)
+                    .success(false)
+                    .message(
+                        "Specialist write proposals require application-owned confirmation."
+                    )
+                    .errorCode("SPECIALIST_WRITE_CONFIRMATION_REQUIRED")
+                    .data(Map.of(DATA_KEY_ACTION, actionName))
+                    .nextSteps(extractNextSteps(intent))
+                    .build();
+            }
+            Map<String, Object> data = new LinkedHashMap<>();
+            data.put(DATA_KEY_ACTION, actionName);
+            data.put(DATA_KEY_CONFIRMATION_MESSAGE, confirmationMessage);
+            data.put(DATA_KEY_CONFIRMATION_REQUIRED, true);
+            data.put(
+                DATA_KEY_METADATA,
+                publicActionMetadata(getMetadataForAction(actionName))
+            );
+            return OrchestrationResult.builder()
+                .type(OrchestrationResultType.CONFIRMATION_REQUIRED)
+                .success(false)
+                .message(
+                    StringUtils.hasText(confirmationMessage)
+                        ? confirmationMessage
+                        : "Please confirm to proceed."
+                )
+                .data(Collections.unmodifiableMap(data))
+                .metadata(publicActionParamValidationMetadata(meta, validation))
+                .nextSteps(extractNextSteps(intent))
+                .actionProposalCandidate(new ActionProposalCandidate(
+                    actionName,
+                    effectiveParams,
+                    actionContext
+                ))
+                .build();
+        }
+
         if (requiresConfirmation && !confirmedThisRequest && context.hasConversation()) {
             // Loop breaker: if the LLM keeps re-issuing the same ACTION instead of emitting
             // CONFIRMATION_POSITIVE/NEGATIVE, resolve confirmation using a dedicated LLM prompt
@@ -670,6 +724,23 @@ public class IntentHandlingStep implements PipelineStep {
                     .message(invocationOutcome.publicFailure().publicMessage())
                     .errorCode(invocationOutcome.publicFailure().reason())
                     .data(Collections.unmodifiableMap(failureData))
+                    .nextSteps(extractNextSteps(intent))
+                    .build();
+            }
+            if (invocationOutcome.status()
+                == GovernedActionInvocationStatus.OUTCOME_UNKNOWN) {
+                ActionResult unknownResult = invocationOutcome.actionResult();
+                Map<String, Object> unknownData = new LinkedHashMap<>();
+                unknownData.put(DATA_KEY_ACTION, actionName);
+                if (unknownResult != null) {
+                    unknownData.put(DATA_KEY_ACTION_RESULT, unknownResult);
+                }
+                return OrchestrationResult.builder()
+                    .type(OrchestrationResultType.ERROR)
+                    .success(false)
+                    .message(invocationOutcome.publicFailure().publicMessage())
+                    .errorCode("ACTION_OUTCOME_UNKNOWN")
+                    .data(Collections.unmodifiableMap(unknownData))
                     .nextSteps(extractNextSteps(intent))
                     .build();
             }
@@ -919,6 +990,28 @@ public class IntentHandlingStep implements PipelineStep {
             return false;
         }
         return handler.requiresConfirmation();
+    }
+
+    private boolean isSpecialistWriteRequest(
+        AIActionMetaData metadata,
+        PipelineContext pipelineContext
+    ) {
+        return metadata != null
+            && metadata.getAccessMode() != null
+            && !metadata.getAccessMode().isReadOnly()
+            && pipelineContext != null
+            && pipelineContext.getOrchestrationRequest() != null
+            && pipelineContext.getOrchestrationRequest().purpose()
+                == OrchestrationRequestPurpose.SPECIALIST;
+    }
+
+    private boolean canSpecialistProposeWrite(
+        AIActionMetaData metadata,
+        PipelineContext pipelineContext
+    ) {
+        return pipelineContext.getEffectiveCapabilityProfile() != null
+            && pipelineContext.getEffectiveCapabilityProfile()
+                .canProposeWriteAction(metadata.getName());
     }
 
     private OrchestrationResult handleConfirmationPositive(OrchestrationContext context, PipelineContext pipelineContext) {

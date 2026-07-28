@@ -60,6 +60,24 @@ class OrchestrationRequestTest {
         assertThat(request.modelInput()).isEqualTo("inspect account");
         assertThat(request.conversationInput()).isEqualTo("inspect account");
         assertThat(request.responseInstructions()).isEqualTo("return JSON only");
+        assertThat(request.purpose()).isEqualTo(OrchestrationRequestPurpose.GENERAL);
+    }
+
+    @Test
+    void preservesExplicitSpecialistPurpose() {
+        OrchestrationRequest request = new OrchestrationRequest(
+            "propose address update",
+            OrchestrationContext.forUser("user-1"),
+            null,
+            ConversationPersistencePolicy.NEVER,
+            null,
+            null,
+            null,
+            OrchestrationRequestPurpose.SPECIALIST
+        );
+
+        assertThat(request.purpose())
+            .isEqualTo(OrchestrationRequestPurpose.SPECIALIST);
     }
 
     @Test

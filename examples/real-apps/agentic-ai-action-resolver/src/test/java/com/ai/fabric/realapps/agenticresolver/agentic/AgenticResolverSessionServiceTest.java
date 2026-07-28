@@ -8,6 +8,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import ai.fabric.chat.service.ChatSessionService;
+import com.ai.fabric.realapps.agenticresolver.repository.AgenticResolverDemoSessionRepository;
 import com.ai.fabric.realapps.agenticresolver.service.AccountResolutionService;
 import java.time.Clock;
 import java.time.Duration;
@@ -131,7 +132,8 @@ class AgenticResolverSessionServiceTest {
             clock,
             Duration.ofHours(6),
             capacity,
-            provider(chatSessionService)
+            provider(chatSessionService),
+            sessionRepositoryProvider()
         );
     }
 
@@ -141,6 +143,15 @@ class AgenticResolverSessionServiceTest {
     ) {
         ObjectProvider<ChatSessionService> provider = mock(ObjectProvider.class);
         when(provider.getIfAvailable()).thenReturn(service);
+        return provider;
+    }
+
+    @SuppressWarnings("unchecked")
+    private ObjectProvider<AgenticResolverDemoSessionRepository>
+        sessionRepositoryProvider() {
+        ObjectProvider<AgenticResolverDemoSessionRepository> provider =
+            mock(ObjectProvider.class);
+        when(provider.getIfAvailable()).thenReturn(null);
         return provider;
     }
 

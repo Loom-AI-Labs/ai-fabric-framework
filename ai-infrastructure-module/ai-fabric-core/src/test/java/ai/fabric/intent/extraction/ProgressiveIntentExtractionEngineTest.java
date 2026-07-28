@@ -4,6 +4,7 @@ import ai.fabric.config.ProgressiveIntentExtractionProperties;
 import ai.fabric.dto.Intent;
 import ai.fabric.dto.IntentType;
 import ai.fabric.dto.MultiIntentResponse;
+import ai.fabric.exception.AIServiceException;
 import ai.fabric.intent.IntentExtractionPostProcessor;
 import ai.fabric.intent.IntentExtractionValidator;
 import ai.fabric.intent.orchestration.OrchestrationContext;
@@ -20,6 +21,69 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class ProgressiveIntentExtractionEngineTest {
+
+    @Test
+    void reportsProviderFailureWhenTheBoundedLadderCannotCallTheLlm() {
+        ProgressiveIntentExtractionProperties properties =
+            new ProgressiveIntentExtractionProperties();
+        properties.setForceMode("compound");
+        properties.setMaxTotalLlmCalls(1);
+
+        CompoundIntentExtractionStrategy compound =
+            mock(CompoundIntentExtractionStrategy.class);
+        RepairIntentExtractionStrategy repair =
+            mock(RepairIntentExtractionStrategy.class);
+        CompletionIntentExtractionStrategy completion =
+            mock(CompletionIntentExtractionStrategy.class);
+        MultiStepIntentExtractionStrategy multiStep =
+            mock(MultiStepIntentExtractionStrategy.class);
+        IntentExtractionPostProcessor postProcessor =
+            mock(IntentExtractionPostProcessor.class);
+        IntentExtractionValidator validator =
+            mock(IntentExtractionValidator.class);
+
+        when(compound.attemptExtract(
+            any(IntentExtractionInput.class),
+            any(OrchestrationContext.class)
+        )).thenReturn(
+            ExtractionAttempt.builder()
+                .success(false)
+                .strategyName("compound")
+                .llmCalls(1)
+                .errorMessage("provider call failed")
+                .exception(new AIServiceException("provider call failed"))
+                .build()
+        );
+
+        ProgressiveIntentExtractionEngine engine =
+            new ProgressiveIntentExtractionEngine(
+                properties,
+                compound,
+                repair,
+                completion,
+                multiStep,
+                postProcessor,
+                validator
+            );
+
+        ProgressiveIntentExtractionEngine.ExtractionOutput output =
+            engine.extract(
+                new IntentExtractionInput("q", "q", List.of()),
+                OrchestrationContext.forUser("user")
+            );
+
+        assertThat(output.response().getMetadata())
+            .containsEntry("fallback", true);
+        assertThat(output.failure()).isNotNull();
+        assertThat(output.failure().reason())
+            .isEqualTo("INTENT_PROVIDER_FAILED");
+        assertThat(output.failure().publicMessage())
+            .doesNotContain("provider call failed");
+        assertThat(output.failure().retryable()).isTrue();
+        assertThat(output.diagnostics().toString())
+            .contains("AI provider request failed")
+            .doesNotContain("provider call failed");
+    }
 
     @Test
     void shouldReturnCompoundFastPathWhenSuccessful() {

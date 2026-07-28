@@ -6,7 +6,11 @@ import ai.fabric.dto.AIEmbeddingRequest;
 import ai.fabric.dto.AIEmbeddingResponse;
 import ai.fabric.dto.AIGenerationRequest;
 import ai.fabric.dto.AIGenerationResponse;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import org.junit.jupiter.api.Test;
+import org.slf4j.LoggerFactory;
 
 import java.util.List;
 import java.util.Map;
@@ -166,6 +170,58 @@ class AIProviderManagerTest {
         assertThat(openai.calls).isZero();
     }
 
+    @Test
+    void providerFailureLogsExcludeNativeProviderDetails() {
+        String providerSecret = "sk-sensitive-provider-secret";
+        String nativeMessage = "401 Incorrect API key: " + providerSecret;
+        FailingProvider openai = new FailingProvider("openai", nativeMessage);
+        FailingProvider fallback = new FailingProvider("fallback", nativeMessage);
+        AIProviderConfig config = new AIProviderConfig();
+        config.setLlmProvider("openai");
+        config.setEmbeddingProvider("openai");
+        config.setEnableFallback(true);
+
+        Logger logger = (Logger) LoggerFactory.getLogger(AIProviderManager.class);
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        logger.addAppender(appender);
+
+        try {
+            AIProviderManager manager = new AIProviderManager(List.of(openai, fallback), config);
+            manager.initialize();
+
+            assertThatThrownBy(() -> manager.generateContent(
+                AIGenerationRequest.builder().prompt("hello").build()
+            ))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessage("All providers failed for content generation");
+            assertThatThrownBy(() -> manager.generateEmbedding(
+                AIEmbeddingRequest.builder().text("hello").build()
+            ))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessage("All providers failed for embedding generation");
+
+            String loggedText = appender.list.stream()
+                .map(ILoggingEvent::getFormattedMessage)
+                .reduce("", (left, right) -> left + "\n" + right);
+
+            assertThat(loggedText)
+                .contains("Provider openai failed for content generation")
+                .contains("Fallback provider fallback failed for content generation")
+                .contains("Provider openai failed for embedding generation")
+                .contains("Fallback provider fallback failed for embedding generation")
+                .contains("cause=IllegalStateException")
+                .doesNotContain(nativeMessage)
+                .doesNotContain(providerSecret)
+                .doesNotContain("Incorrect API key");
+            assertThat(appender.list)
+                .allSatisfy(event -> assertThat(event.getThrowableProxy()).isNull());
+        } finally {
+            logger.detachAppender(appender);
+            appender.stop();
+        }
+    }
+
     private static AIGenerationRequest requestWithConnectionOverride() {
         return AIGenerationRequest.builder()
             .prompt("hello")
@@ -243,6 +299,51 @@ class AIProviderManagerTest {
                 .available(available)
                 .healthy(available)
                 .successRate(available ? 1.0 : 0.0)
+                .build();
+        }
+
+        @Override
+        public ProviderConfig getConfig() {
+            return config(name);
+        }
+    }
+
+    private static final class FailingProvider implements AIProvider {
+        private final String name;
+        private final String nativeMessage;
+
+        private FailingProvider(String name, String nativeMessage) {
+            this.name = name;
+            this.nativeMessage = nativeMessage;
+        }
+
+        @Override
+        public String getProviderName() {
+            return name;
+        }
+
+        @Override
+        public boolean isAvailable() {
+            return true;
+        }
+
+        @Override
+        public AIGenerationResponse generateContent(AIGenerationRequest request) {
+            throw new IllegalStateException(nativeMessage);
+        }
+
+        @Override
+        public AIEmbeddingResponse generateEmbedding(AIEmbeddingRequest request) {
+            throw new IllegalStateException(nativeMessage);
+        }
+
+        @Override
+        public ProviderStatus getStatus() {
+            return ProviderStatus.builder()
+                .providerName(name)
+                .available(true)
+                .healthy(true)
+                .successRate(1.0)
                 .build();
         }
 

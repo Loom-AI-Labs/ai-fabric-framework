@@ -16,7 +16,7 @@ checklists here.
 | [0001 - Module and migration guide](./0001-agentic-enablement-module-and-migration-guide.md) | Complete | Dependency, adoption, compatibility, evidence, and rollback guidance |
 | [0001 - Security and troubleshooting](./0001-agentic-enablement-security-and-troubleshooting-guide.md) | Complete | Trust boundaries, failure semantics, diagnostics, and operational guidance |
 | [0001 - Release impact](./0001-agentic-enablement-release-impact.md) | Proposed release documentation | Additive artifact and compatibility impact for a proposed `0.5.0` |
-| [0002 - Governed specialist write and receipt](./0002-governed-specialist-write-and-receipt-implementation-plan.md) | Proposed; not approved | Durable, profile-pinned confirmation receipts and one governed specialist WRITE |
+| [0002 - Governed specialist write and receipt](./0002-governed-specialist-write-and-receipt-implementation-plan.md) | Implemented and verified; not released | Durable, profile-pinned confirmation receipts and one governed specialist WRITE |
 
 ## Plan Rules
 

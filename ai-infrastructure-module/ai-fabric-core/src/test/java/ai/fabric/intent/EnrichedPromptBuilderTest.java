@@ -92,7 +92,16 @@ class EnrichedPromptBuilderTest {
             new PromptRenderer()
         );
 
-        String prompt = promptBuilder.buildSystemPrompt(OrchestrationContext.forUser("user-123"));
+        String prompt = promptBuilder.buildSystemPrompt(
+            OrchestrationContext.builder()
+                .userId("user-123")
+                .specialistInstructions(
+                    "Objective: Assess the current account.\n"
+                        + "Specialist constraints:\n"
+                        + "Read current account facts before deciding."
+                )
+                .build()
+        );
 
         assertThat(prompt)
             .contains("AVAILABLE ACTIONS")
@@ -107,7 +116,10 @@ class EnrichedPromptBuilderTest {
             .contains("requiresGeneration")
             .contains("needsAdvancedRAG")
             .contains("optimizedQuery")
-            .contains("OUTPUT JSON SCHEMA");
+            .contains("OUTPUT JSON SCHEMA")
+            .contains("APPLICATION-OWNED SPECIALIST CONTRACT")
+            .contains("Objective: Assess the current account.")
+            .contains("Read current account facts before deciding.");
     }
 
     @Test

@@ -125,6 +125,60 @@ class DefaultGovernedActionInvocationServiceTest {
         );
     }
 
+    @Test
+    void reportsUnknownOutcomeWhenWriteHandlerThrows() {
+        when(handler.executeAction(
+            org.mockito.ArgumentMatchers.anyMap(),
+            org.mockito.ArgumentMatchers.any()
+        )).thenThrow(new IllegalStateException("connection lost after write"));
+        when(handler.handleError(
+            org.mockito.ArgumentMatchers.any(),
+            org.mockito.ArgumentMatchers.any()
+        )).thenReturn(ActionResult.builder()
+            .success(false)
+            .message("Write outcome cannot be verified.")
+            .errorCode("WRITE_OUTCOME_UNKNOWN")
+            .build());
+
+        GovernedActionInvocationOutcome outcome = service.invoke(invocation(
+            profile(Set.of(), Set.of("update_payment")),
+            ActionConfirmationState.CONFIRMED,
+            Map.of("last4", "4242")
+        ));
+
+        assertThat(outcome.status())
+            .isEqualTo(GovernedActionInvocationStatus.OUTCOME_UNKNOWN);
+        assertThat(outcome.publicFailure().reason())
+            .isEqualTo("WRITE_OUTCOME_UNKNOWN");
+        assertThat(outcome.publicFailure().retryable()).isFalse();
+    }
+
+    @Test
+    void preservesOrdinaryFailureForReadHandlerExceptions() {
+        AIActionMetaData readMetadata = AIActionMetaData.builder()
+            .name("update_payment")
+            .accessMode(ActionAccessMode.READ)
+            .confirmationRequired(false)
+            .requiredParameters(Set.of("last4"))
+            .build();
+        when(registry.findMetadata("update_payment"))
+            .thenReturn(Optional.of(readMetadata));
+        when(handler.requiresConfirmation()).thenReturn(false);
+        when(handler.executeAction(
+            org.mockito.ArgumentMatchers.anyMap(),
+            org.mockito.ArgumentMatchers.any()
+        )).thenThrow(new IllegalStateException("read unavailable"));
+
+        GovernedActionInvocationOutcome outcome = service.invoke(invocation(
+            profile(Set.of("update_payment"), Set.of()),
+            ActionConfirmationState.CONFIRMED,
+            Map.of("last4", "4242")
+        ));
+
+        assertThat(outcome.status())
+            .isEqualTo(GovernedActionInvocationStatus.FAILED);
+    }
+
     private GovernedActionInvocation invocation(
         EffectiveCapabilityProfile profile,
         ActionConfirmationState confirmationState,

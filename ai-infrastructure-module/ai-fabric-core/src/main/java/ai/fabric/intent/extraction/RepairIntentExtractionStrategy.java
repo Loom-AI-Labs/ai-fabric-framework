@@ -113,11 +113,12 @@ public class RepairIntentExtractionStrategy {
                 .model(repairResponse != null ? repairResponse.getModel() : null)
                 .build();
         } catch (Exception ex) {
-            log.warn("Repair extraction failed: {}", ex.getMessage());
+            String diagnostic = IntentExtractionFailureSanitizer.diagnosticMessage(ex);
+            log.warn("Repair extraction failed: {}", diagnostic);
             return ExtractionAttempt.builder()
                 .success(false)
                 .strategyName(getStrategyName())
-                .errorMessage(ex.getMessage())
+                .errorMessage(diagnostic)
                 .exception(ex)
                 .generationRequest(repairRequest)
                 .llmCalls(1)

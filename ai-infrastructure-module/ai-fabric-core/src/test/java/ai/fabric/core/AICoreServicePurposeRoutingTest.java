@@ -5,16 +5,23 @@ import ai.fabric.dto.AIEmbeddingRequest;
 import ai.fabric.dto.AIEmbeddingResponse;
 import ai.fabric.dto.AIGenerationRequest;
 import ai.fabric.dto.AIGenerationResponse;
+import ai.fabric.exception.AIServiceException;
 import ai.fabric.provider.AIProviderManager;
 import ai.fabric.provider.ProviderRequestOverrideSupport;
 import ai.fabric.prompt.PromptRenderer;
 import ai.fabric.prompt.PromptTemplateResolver;
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.core.read.ListAppender;
 import org.junit.jupiter.api.Test;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
 
+import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentCaptor.forClass;
@@ -23,6 +30,84 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class AICoreServicePurposeRoutingTest {
+
+    @Test
+    void providerFailureDoesNotExposePromptOrProviderDetails() {
+        AIProviderConfig providerConfig = new AIProviderConfig();
+        providerConfig.setLlmProvider("openai");
+        providerConfig.getOpenai().setModel("gpt-4o-mini");
+
+        AIProviderManager providerManager = mock(AIProviderManager.class);
+        when(providerManager.generateContent(
+            any(AIGenerationRequest.class),
+            eq("openai")
+        )).thenThrow(
+            new IllegalStateException(
+                "invalid_api_key secret-provider-detail"
+            )
+        );
+
+        @SuppressWarnings("unchecked")
+        ObjectProvider<AIEmbeddingService> embeddingProvider =
+            mock(ObjectProvider.class);
+        @SuppressWarnings("unchecked")
+        ObjectProvider<AISearchService> searchProvider =
+            mock(ObjectProvider.class);
+        AICoreService coreService = new AICoreService(
+            providerConfig,
+            providerManager,
+            embeddingProvider,
+            searchProvider,
+            mock(PromptTemplateResolver.class),
+            mock(PromptRenderer.class)
+        );
+
+        String sensitivePrompt =
+            "Update my address to secret-address-marker";
+        AIGenerationRequest request = AIGenerationRequest.builder()
+            .entityId("id")
+            .entityType("test")
+            .generationType("gen")
+            .prompt(sensitivePrompt)
+            .build();
+
+        Logger logger =
+            (Logger) LoggerFactory.getLogger(AICoreService.class);
+        Level originalLevel = logger.getLevel();
+        ListAppender<ch.qos.logback.classic.spi.ILoggingEvent> appender =
+            new ListAppender<>();
+        appender.start();
+        logger.setLevel(Level.DEBUG);
+        logger.addAppender(appender);
+        try {
+            assertThatThrownBy(
+                () -> coreService.generateContent(
+                    request,
+                    LlmPurpose.ORCHESTRATION
+                )
+            )
+                .isInstanceOf(AIServiceException.class)
+                .hasMessage("Failed to generate AI content")
+                .hasMessageNotContaining("secret-provider-detail")
+                .hasMessageNotContaining(sensitivePrompt);
+
+            List<String> messages = appender.list.stream()
+                .map(event -> event.getFormattedMessage())
+                .toList();
+            assertThat(messages)
+                .anyMatch(message ->
+                    message.contains("cause=IllegalStateException")
+                )
+                .noneMatch(message ->
+                    message.contains("secret-provider-detail")
+                        || message.contains(sensitivePrompt)
+                );
+        } finally {
+            logger.detachAppender(appender);
+            logger.setLevel(originalLevel);
+            appender.stop();
+        }
+    }
 
     @Test
     void shouldRouteOrchestrationAndGenerationToDifferentProviders() {

@@ -4,6 +4,7 @@ import ai.fabric.config.ProgressiveIntentExtractionProperties;
 import ai.fabric.dto.Intent;
 import ai.fabric.dto.IntentType;
 import ai.fabric.dto.MultiIntentResponse;
+import ai.fabric.exception.AIServiceException;
 import ai.fabric.intent.IntentExtractionPostProcessor;
 import ai.fabric.intent.IntentExtractionValidator;
 import ai.fabric.intent.orchestration.OrchestrationContext;
@@ -37,6 +38,10 @@ import java.util.concurrent.TimeUnit;
 public class ProgressiveIntentExtractionEngine {
 
     private static final String METADATA_KEY_ATTEMPTS = "attempts";
+    private static final String PROVIDER_FAILURE_REASON =
+        "INTENT_PROVIDER_FAILED";
+    private static final String EXTRACTION_FAILURE_REASON =
+        "INTENT_EXTRACTION_FAILED";
 
     private final ProgressiveIntentExtractionProperties properties;
     private final CompoundIntentExtractionStrategy compoundStrategy;
@@ -46,7 +51,44 @@ public class ProgressiveIntentExtractionEngine {
     private final IntentExtractionPostProcessor postProcessor;
     private final IntentExtractionValidator validator;
 
-    public record ExtractionOutput(MultiIntentResponse response, Map<String, Object> diagnostics) {}
+    public record ExtractionOutput(
+        MultiIntentResponse response,
+        Map<String, Object> diagnostics,
+        ExtractionFailure failure
+    ) {
+        public ExtractionOutput(
+            MultiIntentResponse response,
+            Map<String, Object> diagnostics
+        ) {
+            this(response, diagnostics, null);
+        }
+    }
+
+    /**
+     * Safe failure details for callers that must not silently accept a fallback
+     * intent after the bounded extraction ladder is exhausted.
+     */
+    public record ExtractionFailure(
+        String reason,
+        String publicMessage,
+        boolean retryable
+    ) {
+        public ExtractionFailure {
+            reason = requireText(reason, "reason");
+            publicMessage = requireText(publicMessage, "publicMessage");
+        }
+
+        private static String requireText(String value, String field) {
+            String normalized = Objects.requireNonNull(
+                value,
+                field + " is required"
+            ).trim();
+            if (normalized.isEmpty()) {
+                throw new IllegalArgumentException(field + " is required");
+            }
+            return normalized;
+        }
+    }
 
     public ExtractionOutput extract(IntentExtractionInput input, OrchestrationContext context) {
         long startNanos = System.nanoTime();
@@ -54,7 +96,8 @@ public class ProgressiveIntentExtractionEngine {
         if (!StringUtils.hasText(userQuery)) {
             return new ExtractionOutput(
                 safeDefault("Blank query"),
-                diagnostics("fallback", List.of(), 0, elapsedSince(startNanos), null, null)
+                diagnostics("fallback", List.of(), 0, elapsedSince(startNanos), null, null),
+                extractionFailure(List.of())
             );
         }
 
@@ -62,6 +105,7 @@ public class ProgressiveIntentExtractionEngine {
         input.validateIdentity(safeContext);
 
         List<Map<String, Object>> attemptEvents = new ArrayList<>();
+        List<ExtractionAttempt> attempts = new ArrayList<>();
         int totalLlmCalls = 0;
 
         String forceMode = normalizeMode(properties != null ? properties.getForceMode() : null);
@@ -73,6 +117,7 @@ public class ProgressiveIntentExtractionEngine {
             totalLlmCalls += rawAttempt.getLlmCalls();
             compoundAttempt = assessAttempt(rawAttempt, userQuery);
             attemptEvents.add(toAttemptEvent(compoundAttempt));
+            attempts.add(compoundAttempt);
 
             if (compoundAttempt.isSuccess()) {
                 MultiIntentResponse finalized = compoundAttempt.getResponse();
@@ -99,7 +144,8 @@ public class ProgressiveIntentExtractionEngine {
                     elapsedSince(startNanos),
                     sumProviderProcessingTime(listOfNonNull(compoundAttempt)),
                     summarizeModels(listOfNonNull(compoundAttempt))
-                )
+                ),
+                extractionFailure(attempts)
             );
         }
 
@@ -125,6 +171,7 @@ public class ProgressiveIntentExtractionEngine {
                 totalLlmCalls += rawRepairAttempt.getLlmCalls();
                 ExtractionAttempt repairAttempt = assessAttempt(rawRepairAttempt, userQuery);
                 attemptEvents.add(toAttemptEvent(repairAttempt));
+                attempts.add(repairAttempt);
                 latestAttempt = repairAttempt;
 
                 if (repairAttempt.isSuccess()) {
@@ -153,7 +200,8 @@ public class ProgressiveIntentExtractionEngine {
                     elapsedSince(startNanos),
                     sumProviderProcessingTime(listOfNonNull(compoundAttempt, latestAttempt)),
                     summarizeModels(listOfNonNull(compoundAttempt, latestAttempt))
-                )
+                ),
+                extractionFailure(attempts)
             );
         }
 
@@ -176,6 +224,7 @@ public class ProgressiveIntentExtractionEngine {
                 totalLlmCalls += rawCompletionAttempt.getLlmCalls();
                 ExtractionAttempt completed = assessAttempt(rawCompletionAttempt, userQuery);
                 attemptEvents.add(toAttemptEvent(completed));
+                attempts.add(completed);
 
                 if (completed.isSuccess()) {
                     MultiIntentResponse finalized = completed.getResponse();
@@ -210,7 +259,8 @@ public class ProgressiveIntentExtractionEngine {
                     elapsedSince(startNanos),
                     sumProviderProcessingTime(listOfNonNull(compoundAttempt, latestAttempt)),
                     summarizeModels(listOfNonNull(compoundAttempt, latestAttempt))
-                )
+                ),
+                extractionFailure(attempts)
             );
         }
 
@@ -222,6 +272,7 @@ public class ProgressiveIntentExtractionEngine {
             totalLlmCalls += rawMultiStepAttempt.getLlmCalls();
             ExtractionAttempt multiStepAttempt = assessAttempt(rawMultiStepAttempt, userQuery);
             attemptEvents.add(toAttemptEvent(multiStepAttempt));
+            attempts.add(multiStepAttempt);
 
             if (multiStepAttempt.isSuccess()) {
                 MultiIntentResponse finalized = multiStepAttempt.getResponse();
@@ -245,9 +296,10 @@ public class ProgressiveIntentExtractionEngine {
                 attemptEvents,
                 totalLlmCalls,
                 elapsedSince(startNanos),
-                sumProviderProcessingTime(listOfNonNull(compoundAttempt, latestAttempt)),
-                summarizeModels(listOfNonNull(compoundAttempt, latestAttempt))
-            )
+                sumProviderProcessingTime(attempts),
+                summarizeModels(attempts)
+            ),
+            extractionFailure(attempts)
         );
     }
 
@@ -345,6 +397,46 @@ public class ProgressiveIntentExtractionEngine {
             .build();
     }
 
+    private ExtractionFailure extractionFailure(
+        List<ExtractionAttempt> attempts
+    ) {
+        boolean providerFailure = attempts != null && attempts.stream()
+            .filter(Objects::nonNull)
+            .map(ExtractionAttempt::getException)
+            .filter(Objects::nonNull)
+            .anyMatch(error -> hasCause(error, AIServiceException.class));
+        if (providerFailure) {
+            return new ExtractionFailure(
+                PROVIDER_FAILURE_REASON,
+                "The configured AI provider could not complete intent analysis.",
+                true
+            );
+        }
+        return new ExtractionFailure(
+            EXTRACTION_FAILURE_REASON,
+            "AI intent analysis did not produce a valid result.",
+            false
+        );
+    }
+
+    private boolean hasCause(
+        Throwable error,
+        Class<? extends Throwable> expectedType
+    ) {
+        Throwable current = error;
+        while (current != null) {
+            if (expectedType.isInstance(current)) {
+                return true;
+            }
+            Throwable cause = current.getCause();
+            if (cause == current) {
+                break;
+            }
+            current = cause;
+        }
+        return false;
+    }
+
     private String normalizeMode(String value) {
         if (!StringUtils.hasText(value)) {
             return "";
@@ -420,7 +512,14 @@ public class ProgressiveIntentExtractionEngine {
             }
         }
         if (attempt.getErrorMessage() != null) {
-            event.put("errorMessage", attempt.getErrorMessage());
+            event.put(
+                "errorMessage",
+                IntentExtractionFailureSanitizer.isProviderFailure(
+                    attempt.getException()
+                )
+                    ? IntentExtractionFailureSanitizer.PROVIDER_FAILURE_MESSAGE
+                    : attempt.getErrorMessage()
+            );
         }
         if (attempt.getResponse() != null && attempt.getResponse().getMetadata() != null) {
             Object normalization = attempt.getResponse().getMetadata().get("normalization");

@@ -1,6 +1,8 @@
 package com.ai.fabric.realapps.agenticresolver.controller;
 
 import ai.fabric.execution.gateway.AIExecutionResult;
+import ai.fabric.execution.action.ActionProposalDecisionRequest;
+import ai.fabric.execution.action.ActionProposalDecisionResult;
 import com.ai.fabric.realapps.agenticresolver.agentic.AccountResolutionRequest;
 import com.ai.fabric.realapps.agenticresolver.agentic.AccountResolutionResult;
 import com.ai.fabric.realapps.agenticresolver.agentic.AgenticResolverExecutionService;
@@ -23,6 +25,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class AgenticResolverController {
 
     public static final String SESSION_HEADER = "X-AI-Fabric-Demo-Session";
+    public static final String IDEMPOTENCY_HEADER = "Idempotency-Key";
 
     private final AgenticResolverSessionService sessionService;
     private final AgenticResolverExecutionService executionService;
@@ -66,16 +69,32 @@ public class AgenticResolverController {
     @PostMapping("/evaluate")
     public AIExecutionResult<AccountResolutionResult> evaluate(
         @RequestHeader(SESSION_HEADER) String sessionId,
+        @RequestHeader(
+            name = IDEMPOTENCY_HEADER,
+            required = false
+        ) String idempotencyKey,
         @Valid @RequestBody AccountResolutionRequest request
     ) {
-        return executionService.evaluate(sessionId, request);
+        return executionService.evaluate(sessionId, request, idempotencyKey);
     }
 
     @PostMapping("/chat")
     public AIExecutionResult<AccountResolutionResult> chat(
         @RequestHeader(SESSION_HEADER) String sessionId,
+        @RequestHeader(
+            name = IDEMPOTENCY_HEADER,
+            required = false
+        ) String idempotencyKey,
         @Valid @RequestBody AccountResolutionRequest request
     ) {
-        return executionService.chat(sessionId, request);
+        return executionService.chat(sessionId, request, idempotencyKey);
+    }
+
+    @PostMapping("/actions/decide")
+    public ActionProposalDecisionResult decide(
+        @RequestHeader(SESSION_HEADER) String sessionId,
+        @Valid @RequestBody ActionProposalDecisionRequest request
+    ) {
+        return executionService.decide(sessionId, request);
     }
 }

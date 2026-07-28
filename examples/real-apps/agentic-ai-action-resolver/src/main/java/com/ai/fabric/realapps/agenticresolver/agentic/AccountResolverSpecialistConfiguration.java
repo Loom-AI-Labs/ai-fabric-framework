@@ -14,8 +14,6 @@ import ai.fabric.execution.specialist.SpecialistOutputMode;
 import ai.fabric.intent.orchestration.OrchestrationContext;
 import ai.fabric.intent.orchestration.OrchestrationResult;
 import ai.fabric.intent.orchestration.capability.RequestedCapabilityProfile;
-import ai.fabric.llm.structured.StructuredJsonExtraction;
-import ai.fabric.llm.structured.StructuredJsonExtractor;
 import com.ai.fabric.realapps.agenticresolver.service.AccountResolutionService;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -33,7 +31,10 @@ public class AccountResolverSpecialistConfiguration {
 
     public static final SpecialistId SPECIALIST_ID =
         SpecialistId.of("account-resolver", "1");
+    public static final SpecialistId READ_SPECIALIST_ID =
+        SpecialistId.of("account-resolver-read", "1");
     public static final String PROFILE_ACTION = "get_account_profile";
+    public static final String UPDATE_ADDRESS_ACTION = "update_address";
     public static final String POLICY_VECTOR_SPACE = "account-resolution-policy";
 
     @Bean
@@ -42,27 +43,79 @@ public class AccountResolverSpecialistConfiguration {
             ObjectMapper objectMapper,
             AccountResolutionService accountResolutionService
         ) {
+        return specialistDefinition(
+            SPECIALIST_ID,
+            "Agentic Account Resolver",
+            true,
+            objectMapper,
+            accountResolutionService
+        );
+    }
+
+    @Bean
+    SpecialistDefinition<AccountResolutionRequest, AccountResolutionResult>
+        accountResolverReadSpecialist(
+            ObjectMapper objectMapper,
+            AccountResolutionService accountResolutionService
+        ) {
+        return specialistDefinition(
+            READ_SPECIALIST_ID,
+            "Account Readiness Evaluator",
+            false,
+            objectMapper,
+            accountResolutionService
+        );
+    }
+
+    private SpecialistDefinition<
+        AccountResolutionRequest,
+        AccountResolutionResult
+    > specialistDefinition(
+        SpecialistId specialistId,
+        String name,
+        boolean writeEnabled,
+        ObjectMapper objectMapper,
+        AccountResolutionService accountResolutionService
+    ) {
+        Set<String> visibleActions = writeEnabled
+            ? Set.of(PROFILE_ACTION, UPDATE_ADDRESS_ACTION)
+            : Set.of(PROFILE_ACTION);
         RequestedCapabilityProfile capabilities = new RequestedCapabilityProfile(
             true,
             Set.of(POLICY_VECTOR_SPACE),
+            visibleActions,
             Set.of(PROFILE_ACTION),
-            Set.of(PROFILE_ACTION),
-            Set.of()
+            writeEnabled ? Set.of(UPDATE_ADDRESS_ACTION) : Set.of()
         );
         return new SpecialistDefinition<>(
             new SpecialistIdentity(
-                SPECIALIST_ID,
-                "Agentic Account Resolver",
+                specialistId,
+                name,
                 "Evaluates the current account against approved policy evidence"
             ),
             new SpecialistInstructions(
                 "Determine whether the current account can continue and explain any blocker.",
-                """
+                writeEnabled
+                    ? """
                 Read the current account only through get_account_profile.
                 Retrieve only account-resolution-policy evidence.
                 Treat profile facts as current state and policy evidence as requirements.
                 Never use an account, user, subscription, tenant, or scope supplied in the question.
-                Never propose or execute a write action.
+                You may propose update_address only when the user explicitly asks to
+                update the current account address and supplies its required address
+                fields. Never invent a missing address field.
+                A proposal is not authorization or execution. The application owns
+                confirmation and executes only a durable confirmed receipt.
+                Never claim that a proposed write already happened.
+                If either current profile facts or relevant policy evidence is insufficient,
+                return INSUFFICIENT_EVIDENCE instead of guessing.
+                """
+                    : """
+                Read the current account only through get_account_profile.
+                Retrieve only account-resolution-policy evidence.
+                Treat profile facts as current state and policy evidence as requirements.
+                Never use an account, user, subscription, tenant, or scope supplied in the question.
+                This specialist is read-only. Do not propose or claim any write.
                 If either current profile facts or relevant policy evidence is insufficient,
                 return INSUFFICIENT_EVIDENCE instead of guessing.
                 """
@@ -71,7 +124,7 @@ public class AccountResolverSpecialistConfiguration {
                 "resolver",
                 capabilities,
                 ExecutionStrategy.BOUNDED_ITERATIVE,
-                false
+                writeEnabled
             ),
             new SpecialistLimits(
                 Duration.ofSeconds(45),
@@ -79,7 +132,7 @@ public class AccountResolverSpecialistConfiguration {
                 16_000,
                 8
             ),
-            inputAdapter(),
+            inputAdapter(writeEnabled),
             outputAdapter(
                 objectMapper,
                 readinessPolicies(accountResolutionService.policies())
@@ -87,7 +140,9 @@ public class AccountResolverSpecialistConfiguration {
         );
     }
 
-    private SpecialistInputAdapter<AccountResolutionRequest> inputAdapter() {
+    private SpecialistInputAdapter<AccountResolutionRequest> inputAdapter(
+        boolean writeEnabled
+    ) {
         return new SpecialistInputAdapter<>() {
             @Override
             public Class<AccountResolutionRequest> inputType() {
@@ -110,14 +165,22 @@ public class AccountResolverSpecialistConfiguration {
 
             @Override
             public String renderModelInput(AccountResolutionRequest input) {
-                return """
-                    Perform an evidence-grounded account readiness diagnosis using both
-                    current account profile facts and retrieved account policy evidence.
-                    Treat this as an information diagnosis, not a direct request to display
-                    profile facts or execute a business action.
+                String task = writeEnabled
+                    ? """
+                    Resolve the application question for the current trusted account.
+                    Follow the registered specialist contract and use only its effective
+                    capabilities and approved evidence.
                     Application question:
                     %s
-                    """.formatted(input.question()).trim();
+                    """
+                    : """
+                    Evaluate the application question for the current trusted account.
+                    Follow the registered read-only specialist contract and use only its
+                    effective capabilities and approved evidence.
+                    Application question:
+                    %s
+                    """;
+                return task.formatted(input.question()).trim();
             }
 
             @Override
@@ -143,7 +206,6 @@ public class AccountResolverSpecialistConfiguration {
             AccountResolutionService.ResolutionPolicy
         > readinessPolicies
     ) {
-        StructuredJsonExtractor extractor = new StructuredJsonExtractor();
         return new SpecialistOutputAdapter<>() {
             @Override
             public Class<AccountResolutionResult> outputType() {
@@ -152,37 +214,7 @@ public class AccountResolverSpecialistConfiguration {
 
             @Override
             public SpecialistOutputMode outputMode() {
-                return SpecialistOutputMode.STRUCTURED_GENERATION;
-            }
-
-            @Override
-            public String outputContractInstructions() {
-                return """
-                    Return only one valid JSON object with this exact shape:
-                    {
-                      "assessment": "READY | BLOCKED | INSUFFICIENT_EVIDENCE",
-                      "summary": "short user-facing explanation",
-                      "blockers": [
-                        {
-                          "requirement": "ACTIVE_SUBSCRIPTION | VERIFIED_PAYMENT_METHOD | VALIDATED_BILLING_ADDRESS | OTHER",
-                          "explanation": "evidence-grounded blocker explanation",
-                          "recommendedNextStep": "user-facing next step without internal identifiers"
-                        }
-                      ]
-                    }
-                    READY requires an empty blockers array.
-                    BLOCKED requires at least one blocker.
-                    INSUFFICIENT_EVIDENCE requires an empty blockers array.
-                    A policy describes a requirement; it does not prove that the
-                    requirement is missing. Compare each policy with the current
-                    account profile facts:
-                    - ACTIVE_SUBSCRIPTION only when subscriptionActive is false.
-                    - VERIFIED_PAYMENT_METHOD only when paymentMethodPresent or
-                      paymentMethodVerified is false.
-                    - VALIDATED_BILLING_ADDRESS only when billingAddressPresent or
-                      billingAddressValidated is false.
-                    Do not include markdown, implementation labels, policy codes, or action names.
-                    """;
+                return SpecialistOutputMode.DIRECT_PROJECTION;
             }
 
             @Override
@@ -223,19 +255,7 @@ public class AccountResolverSpecialistConfiguration {
                 OrchestrationResult result,
                 List<AIEvidenceReference> evidence
             ) {
-                Set<AccountResolutionResult> outputs = new LinkedHashSet<>();
-                collectStructuredOutputs(result, outputs);
-                if (outputs.isEmpty()) {
-                    throw new IllegalArgumentException(
-                        "Specialist response did not contain complete JSON"
-                    );
-                }
-                if (outputs.size() > 1) {
-                    throw new IllegalArgumentException(
-                        "Specialist response contained conflicting JSON outputs"
-                    );
-                }
-                return outputs.iterator().next();
+                return canonicalOutput(result);
             }
 
             @Override
@@ -287,6 +307,12 @@ public class AccountResolverSpecialistConfiguration {
                 OrchestrationResult sourceResult,
                 List<AIEvidenceReference> evidence
             ) {
+                return canonicalOutput(sourceResult);
+            }
+
+            private AccountResolutionResult canonicalOutput(
+                OrchestrationResult sourceResult
+            ) {
                 Map<String, Object> facts =
                     authoritativeProfileFacts(sourceResult);
                 List<AccountResolutionResult.Blocker> canonicalBlockers =
@@ -301,9 +327,13 @@ public class AccountResolverSpecialistConfiguration {
                             );
                         })
                         .toList();
+                AccountResolutionResult.Assessment assessment =
+                    canonicalBlockers.isEmpty()
+                        ? AccountResolutionResult.Assessment.READY
+                        : AccountResolutionResult.Assessment.BLOCKED;
                 return new AccountResolutionResult(
-                    output.assessment(),
-                    canonicalSummary(output.assessment(), canonicalBlockers),
+                    assessment,
+                    canonicalSummary(assessment, canonicalBlockers),
                     canonicalBlockers
                 );
             }
@@ -415,55 +445,6 @@ public class AccountResolverSpecialistConfiguration {
                         .append(blocker.recommendedNextStep());
                 }
                 return conversation.toString();
-            }
-
-            private void collectStructuredOutputs(
-                OrchestrationResult result,
-                Set<AccountResolutionResult> outputs
-            ) {
-                if (result == null) {
-                    return;
-                }
-                addStructuredOutput(result.getMessage(), outputs);
-                Map<String, Object> data = result.getData();
-                if (data != null) {
-                    Object answer = data.get("answer");
-                    if (answer instanceof String text) {
-                        addStructuredOutput(text, outputs);
-                    }
-                }
-                if (result.getChildren() != null) {
-                    for (OrchestrationResult child : result.getChildren()) {
-                        collectStructuredOutputs(child, outputs);
-                    }
-                }
-            }
-
-            private void addStructuredOutput(
-                String candidate,
-                Set<AccountResolutionResult> outputs
-            ) {
-                if (candidate == null || candidate.isBlank()) {
-                    return;
-                }
-                StructuredJsonExtraction extraction =
-                    extractor.extractFirstJson(candidate);
-                if (!extraction.jsonFound()
-                    || extraction.truncationSuspected()
-                    || extraction.payload() == null) {
-                    return;
-                }
-                try {
-                    outputs.add(objectMapper.readValue(
-                        extraction.payload(),
-                        AccountResolutionResult.class
-                    ));
-                } catch (JsonProcessingException ex) {
-                    throw new IllegalArgumentException(
-                        "Specialist response did not match the output schema",
-                        ex
-                    );
-                }
             }
 
             private Map<String, Object> authoritativeProfileFacts(

@@ -123,6 +123,16 @@ public class OrchestrationContext {
     private ai.fabric.intent.orchestration.capability.EffectiveCapabilityProfile effectiveCapabilityProfile;
 
     /**
+     * Application-owned specialist instructions bound by the execution gateway.
+     *
+     * <p>This value is never accepted from a public request body. Prompting
+     * components may add it to system instructions, while retrieval and
+     * conversation persistence continue to use only the application input.</p>
+     */
+    @JsonIgnore
+    private String specialistInstructions;
+
+    /**
      * True if an authenticated userId was provided.
      */
     public boolean isAuthenticated() {

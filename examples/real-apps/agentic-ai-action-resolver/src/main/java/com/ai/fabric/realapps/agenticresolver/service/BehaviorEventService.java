@@ -38,14 +38,20 @@ public class BehaviorEventService implements ExternalEventProvider {
             throw new IllegalArgumentException("eventType is required");
         }
 
+        String normalizedEventType = eventType.trim();
+        Map<String, Object> safeEventData = copyEventData(eventData);
         TrackedBehaviorEvent event = new TrackedBehaviorEvent(
             userId.toString(),
-            eventType.trim(),
+            normalizedEventType,
             LocalDateTime.now(),
-            copyEventData(eventData)
+            safeEventData
         );
         eventsByUser.computeIfAbsent(event.userId(), ignored -> new CopyOnWriteArrayList<>()).add(event);
-        log.info("Tracking event: userId={}, eventType={}, eventData={}", userId, eventType, eventData);
+        log.debug(
+            "Tracked account behavior event: eventType={}, fieldCount={}",
+            normalizedEventType,
+            safeEventData.size()
+        );
     }
 
     @Override

@@ -2,6 +2,7 @@ package com.ai.fabric.realapps.agenticresolver.service;
 
 import com.ai.fabric.realapps.agenticresolver.entity.Subscription;
 import com.ai.fabric.realapps.agenticresolver.entity.User;
+import com.ai.fabric.realapps.agenticresolver.repository.AgenticResolverDemoSessionRepository;
 import com.ai.fabric.realapps.agenticresolver.repository.RefundRequestRepository;
 import com.ai.fabric.realapps.agenticresolver.repository.SubscriptionRepository;
 import com.ai.fabric.realapps.agenticresolver.repository.UserRepository;
@@ -16,7 +17,9 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -29,6 +32,7 @@ public class DemoSessionCleanupService {
     private final UserRepository userRepository;
     private final SubscriptionRepository subscriptionRepository;
     private final RefundRequestRepository refundRequestRepository;
+    private final AgenticResolverDemoSessionRepository sessionRepository;
     private final Clock clock;
 
     @Value("${app.demo.cleanup.enabled:true}")
@@ -36,6 +40,9 @@ public class DemoSessionCleanupService {
 
     @Value("${app.demo.cleanup.ttl:PT6H}")
     private Duration cleanupTtl;
+
+    @Value("${app.agentic-resolver.sessions.ttl:PT6H}")
+    private Duration sessionTtl;
 
     @Scheduled(cron = "${app.demo.cleanup.cron:0 */30 * * * *}")
     @Transactional
@@ -67,11 +74,15 @@ public class DemoSessionCleanupService {
 
     @Transactional
     DemoCleanupResult cleanupExpiredDemoSessionUsers(LocalDateTime cutoff) {
-        List<User> expiredUsers = userRepository.findByUserIdGreaterThanAndUsernameStartingWithAndCreatedAtBefore(
+        List<User> expiredCandidates = userRepository.findByUserIdGreaterThanAndUsernameStartingWithAndCreatedAtBefore(
             CANONICAL_DEMO_USER_MAX_ID,
             DEMO_USERNAME_PREFIX,
             cutoff
         );
+        Set<UUID> activeSubjectIds = activeSessionSubjectIds();
+        List<User> expiredUsers = expiredCandidates.stream()
+            .filter(user -> !activeSubjectIds.contains(user.getId()))
+            .toList();
         if (expiredUsers.isEmpty()) {
             return new DemoCleanupResult(0, 0, 0, cutoff);
         }
@@ -90,6 +101,21 @@ public class DemoSessionCleanupService {
             deletedRefunds,
             cutoff
         );
+    }
+
+    private Set<UUID> activeSessionSubjectIds() {
+        Duration effectiveSessionTtl =
+            sessionTtl != null
+                && !sessionTtl.isNegative()
+                && !sessionTtl.isZero()
+                ? sessionTtl
+                : Duration.ofHours(6);
+        return sessionRepository.findByLastAccessedAtGreaterThanEqual(
+                clock.instant().minus(effectiveSessionTtl)
+            ).stream()
+            .flatMap(session -> session.scenarios().values().stream())
+            .map(scenario -> scenario.subjectUserId())
+            .collect(Collectors.toUnmodifiableSet());
     }
 
     public record DemoCleanupResult(

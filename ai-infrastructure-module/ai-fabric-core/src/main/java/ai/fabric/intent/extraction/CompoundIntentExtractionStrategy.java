@@ -117,10 +117,11 @@ public class CompoundIntentExtractionStrategy implements IntentExtractionStrateg
                 .model(response != null ? response.getModel() : null)
                 .build();
         } catch (Exception ex) {
-            log.warn("Compound extraction failed: {}", ex.getMessage());
+            String diagnostic = IntentExtractionFailureSanitizer.diagnosticMessage(ex);
+            log.warn("Compound extraction failed: {}", diagnostic);
             return ExtractionAttempt.builder()
                 .success(false)
-                .errorMessage(ex.getMessage())
+                .errorMessage(diagnostic)
                 .exception(ex)
                 .strategyName(getStrategyName())
                 .generationRequest(request)

@@ -11,6 +11,8 @@
 
 ARG AI_FABRIC_VERSION=0.4.0
 ARG APP_VERSION=1.0.0-SNAPSHOT
+ARG SOURCE_COMMIT=
+ARG SOURCE_BRANCH=
 ARG BUILD_COMMIT=unknown
 ARG BUILD_BRANCH=unknown
 ARG BUILD_TIME=
@@ -20,13 +22,14 @@ ARG AI_FABRIC_VERSION
 WORKDIR /workspace
 
 COPY ai-infrastructure-module ./ai-infrastructure-module
-COPY examples/real-apps ./examples/real-apps
 
 RUN --mount=type=cache,target=/root/.m2 \
     mvn -B -V --no-transfer-progress \
     -f ai-infrastructure-module/pom.xml \
     -pl ai-fabric-starter,ai-fabric-behavior,victor-databases/ai-fabric-vector-lucene,providers/ai-fabric-provider-spring-ai,ai-fabric-rag,ai-fabric-chat-session,ai-fabric-execution,ai-fabric-relationship-query \
     -am install
+
+COPY examples/real-apps ./examples/real-apps
 
 RUN --mount=type=cache,target=/root/.m2 \
     mvn -B -V --no-transfer-progress \
@@ -39,6 +42,8 @@ WORKDIR /app
 
 ARG AI_FABRIC_VERSION
 ARG APP_VERSION
+ARG SOURCE_COMMIT
+ARG SOURCE_BRANCH
 ARG BUILD_COMMIT
 ARG BUILD_BRANCH
 ARG BUILD_TIME
@@ -47,17 +52,16 @@ ENV PORT=8105
 ENV JAVA_OPTS=""
 ENV AI_FABRIC_VERSION="${AI_FABRIC_VERSION}"
 ENV APP_VERSION="${APP_VERSION}"
-ENV APP_BUILD_COMMIT="${BUILD_COMMIT}"
-ENV APP_BUILD_BRANCH="${BUILD_BRANCH}"
-ENV APP_BUILD_TIME="${BUILD_TIME}"
 
 RUN addgroup -S app && adduser -S app -G app \
     && mkdir -p /app/data \
     && chown -R app:app /app
 
 RUN actual_build_time="${BUILD_TIME:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}" \
+    && actual_commit="${SOURCE_COMMIT:-${BUILD_COMMIT:-unknown}}" \
+    && actual_branch="${SOURCE_BRANCH:-${BUILD_BRANCH:-unknown}}" \
     && printf 'version=%s\ncommit=%s\nbranch=%s\nbuiltAt=%s\naiFabricVersion=%s\n' \
-      "${APP_VERSION}" "${BUILD_COMMIT}" "${BUILD_BRANCH}" "${actual_build_time}" "${AI_FABRIC_VERSION}" \
+      "${APP_VERSION}" "${actual_commit}" "${actual_branch}" "${actual_build_time}" "${AI_FABRIC_VERSION}" \
       > /app/build-info.properties \
     && chown app:app /app/build-info.properties
 

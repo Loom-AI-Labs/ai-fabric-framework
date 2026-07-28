@@ -16,7 +16,8 @@ public record OrchestrationRequest(
     ConversationPersistencePolicy conversationPersistencePolicy,
     EffectiveCapabilityProfile effectiveCapabilityProfile,
     String conversationInput,
-    String responseInstructions
+    String responseInstructions,
+    OrchestrationRequestPurpose purpose
 ) {
     public OrchestrationRequest {
         modelInput = Objects.requireNonNull(modelInput, "modelInput must not be null").trim();
@@ -29,6 +30,28 @@ public record OrchestrationRequest(
             : conversationPersistencePolicy;
         conversationInput = normalizeOptional(conversationInput);
         responseInstructions = normalizeOptional(responseInstructions);
+        purpose = purpose == null ? OrchestrationRequestPurpose.GENERAL : purpose;
+    }
+
+    public OrchestrationRequest(
+        String modelInput,
+        OrchestrationContext orchestrationContext,
+        TrustedExecutionContext trustedExecutionContext,
+        ConversationPersistencePolicy conversationPersistencePolicy,
+        EffectiveCapabilityProfile effectiveCapabilityProfile,
+        String conversationInput,
+        String responseInstructions
+    ) {
+        this(
+            modelInput,
+            orchestrationContext,
+            trustedExecutionContext,
+            conversationPersistencePolicy,
+            effectiveCapabilityProfile,
+            conversationInput,
+            responseInstructions,
+            OrchestrationRequestPurpose.GENERAL
+        );
     }
 
     public OrchestrationRequest(
@@ -46,7 +69,8 @@ public record OrchestrationRequest(
             conversationPersistencePolicy,
             effectiveCapabilityProfile,
             conversationInput,
-            null
+            null,
+            OrchestrationRequestPurpose.GENERAL
         );
     }
 
@@ -63,7 +87,8 @@ public record OrchestrationRequest(
             conversationPersistencePolicy,
             null,
             null,
-            null
+            null,
+            OrchestrationRequestPurpose.GENERAL
         );
     }
 
@@ -81,7 +106,8 @@ public record OrchestrationRequest(
             conversationPersistencePolicy,
             effectiveCapabilityProfile,
             null,
-            null
+            null,
+            OrchestrationRequestPurpose.GENERAL
         );
     }
 
@@ -99,7 +125,8 @@ public record OrchestrationRequest(
             ConversationPersistencePolicy.CONVERSATION,
             null,
             modelInput,
-            null
+            null,
+            OrchestrationRequestPurpose.GENERAL
         );
     }
 

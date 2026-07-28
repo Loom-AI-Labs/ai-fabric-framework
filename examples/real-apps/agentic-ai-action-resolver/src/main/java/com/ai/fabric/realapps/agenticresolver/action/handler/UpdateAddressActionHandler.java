@@ -9,12 +9,9 @@ import ai.fabric.intent.action.annotation.ActionAllowed;
 import ai.fabric.intent.action.annotation.ActionConfirmation;
 import ai.fabric.intent.action.annotation.ActionExecute;
 import ai.fabric.intent.action.annotation.Param;
-import ai.fabric.privacy.pii.PIIDetectionService;
 import com.ai.fabric.realapps.agenticresolver.entity.Address;
 import com.ai.fabric.realapps.agenticresolver.service.SubscriptionService;
 import com.ai.fabric.realapps.agenticresolver.service.UserService;
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
 
 import java.util.Map;
 import java.util.UUID;
@@ -26,13 +23,9 @@ import java.util.UUID;
     accessMode = ActionAccessMode.WRITE_ONLY,
     requiresConfirmation = true
 )
-@Slf4j
 public class UpdateAddressActionHandler extends BaseActionHandler {
 
     private final SubscriptionService subscriptionService;
-
-    @Autowired(required = false)
-    private PIIDetectionService piiDetectionService;
 
     public UpdateAddressActionHandler(SubscriptionService subscriptionService,
                                      UserService userService) {
@@ -55,7 +48,13 @@ public class UpdateAddressActionHandler extends BaseActionHandler {
     }
 
     @ActionConfirmation
-    public String confirm(@Param(value = "addressType", description = "BILLING or SHIPPING") String addressType) {
+    public String confirm(
+        @Param(
+            value = "addressType",
+            description = "BILLING or SHIPPING",
+            allowedValues = {"BILLING", "SHIPPING"}
+        ) String addressType
+    ) {
         String type = addressType != null && !addressType.isBlank() ? addressType : "BILLING";
         return String.format(
             "Are you sure you want to update your %s address?",
@@ -65,71 +64,82 @@ public class UpdateAddressActionHandler extends BaseActionHandler {
 
     @ActionExecute
     public ActionResult execute(
-        @Param(value = "addressType", description = "BILLING or SHIPPING") String addressType,
-        @Param(value = "streetAddress", required = true, description = "Street address") String streetAddress,
-        @Param(value = "city", required = true, description = "City") String city,
-        @Param(value = "state", required = true, description = "State/Province") String state,
-        @Param(value = "postalCode", required = true, description = "Postal/ZIP code") String postalCode,
-        @Param(value = "country", required = true, description = "Country") String country,
+        @Param(
+            value = "addressType",
+            description = "BILLING or SHIPPING",
+            allowedValues = {"BILLING", "SHIPPING"}
+        ) String addressType,
+        @Param(
+            value = "streetAddress",
+            required = true,
+            description = "Street address, at most 200 characters",
+            pattern = "(?s).{1,200}"
+        ) String streetAddress,
+        @Param(
+            value = "city",
+            required = true,
+            description = "City, at most 100 characters",
+            pattern = "(?s).{1,100}"
+        ) String city,
+        @Param(
+            value = "state",
+            required = true,
+            description = "State or province, at most 100 characters",
+            pattern = "(?s).{1,100}"
+        ) String state,
+        @Param(
+            value = "postalCode",
+            required = true,
+            description = "Postal or ZIP code, at most 32 characters",
+            pattern = "(?s).{1,32}"
+        ) String postalCode,
+        @Param(
+            value = "country",
+            required = true,
+            description = "Country, at most 100 characters",
+            pattern = "(?s).{1,100}"
+        ) String country,
         ActionContext context
     ) {
-        String userId = context != null ? context.userId() : null;
-        try {
-            String type = addressType != null && !addressType.isBlank() ? addressType : "BILLING";
-            Address.AddressType parsedType = Address.AddressType.valueOf(type.toUpperCase());
+        String type = addressType != null && !addressType.isBlank()
+            ? addressType
+            : "BILLING";
+        Address.AddressType parsedType = Address.AddressType.valueOf(
+            type.toUpperCase()
+        );
 
-            // Build address from parameters
-            Address address = Address.builder()
-                .streetAddress(streetAddress)
-                .city(city)
-                .state(state)
-                .postalCode(postalCode)
-                .country(country)
-                .type(parsedType)
-                .build();
+        Address address = Address.builder()
+            .streetAddress(streetAddress.trim())
+            .city(city.trim())
+            .state(state.trim())
+            .postalCode(postalCode.trim())
+            .country(country.trim())
+            .type(parsedType)
+            .build();
 
-            // Validate address using PII detection service (if available)
-            if (piiDetectionService != null) {
-                String addressString = String.format("%s, %s, %s %s, %s",
-                    address.getStreetAddress(),
-                    address.getCity(),
-                    address.getState(),
-                    address.getPostalCode(),
-                    address.getCountry()
-                );
+        // The demo's account system owns address validation. PII detection is
+        // a privacy control and must not be mistaken for postal validation.
+        address.setIsValidated(true);
+        address.setValidationScore(1.0);
 
-                var piiResult = piiDetectionService.detectAndProcess(addressString);
-                address.setIsValidated(piiResult.isPiiDetected() == false); // Valid if no PII issues
-                address.setValidationScore(piiResult.isPiiDetected() ? 0.5 : 1.0);
-            } else {
-                // Default validation if PII service not available
-                address.setIsValidated(true);
-                address.setValidationScore(1.0);
-            }
+        UUID resolvedSubscriptionId = requireActiveSubscriptionId(
+            subscriptionService,
+            context
+        );
+        subscriptionService.updateAddress(
+            resolvedSubscriptionId,
+            parsedType,
+            address
+        );
 
-            UUID resolvedSubscriptionId = requireActiveSubscriptionId(subscriptionService, context);
-            var subscription = subscriptionService.updateAddress(
-                resolvedSubscriptionId,
-                parsedType,
-                address
-            );
-
-            return ActionResult.builder()
-                .success(true)
-                .message("Your address has been updated successfully")
-                .data(ActionResultContracts.object(Map.of(
-                    "subscriptionId", resolvedSubscriptionId.toString(),
-                    "addressType", type,
-                    "isValidated", address.getIsValidated().toString()
-                )))
-                .build();
-        } catch (Exception e) {
-            log.error("Error updating address", e);
-            return ActionResult.builder()
-                .success(false)
-                .message("Failed to update address. " + e.getMessage())
-                .errorCode("UPDATE_ADDRESS_FAILED")
-                .build();
-        }
+        return ActionResult.builder()
+            .success(true)
+            .message("Your address has been updated successfully")
+            .data(ActionResultContracts.object(Map.of(
+                "subscriptionId", resolvedSubscriptionId.toString(),
+                "addressType", type,
+                "isValidated", address.getIsValidated().toString()
+            )))
+            .build();
     }
 }

@@ -1,9 +1,9 @@
 # Governed Specialist Write And Receipt Implementation Plan
 
-- **Status:** Proposed; not approved for implementation
+- **Status:** Implemented and verified locally and in the packaged runtime; not released
 - **Date:** 2026-07-28
-- **Prerequisite:** Approved P0/P1 read-only agentic enablement
-- **Earliest target:** A release after the proposed AI Fabric `0.5.0`
+- **Prerequisite:** Completed P0/P1 read-only agentic enablement
+- **Target:** Next AI Fabric release after `0.4.0`; version not assigned
 - **Reference proof:** `examples/real-apps/agentic-ai-action-resolver`
 
 ## Purpose
@@ -12,9 +12,9 @@ Add one specialist-coordinated WRITE without weakening AI Fabric's existing
 authorization, confirmation, idempotency, action, or application-ownership
 boundaries.
 
-This plan is deliberately separate from the read-only P0/P1 release. A model
-may propose a write, but it must never authorize, confirm, or directly execute
-one.
+This work remains deliberately separate from the read-only P0/P1 contract. A
+model may propose a write, but it never authorizes, confirms, or directly
+executes one.
 
 ## Required Outcome
 
@@ -89,10 +89,15 @@ to an executable state.
 
 ## Storage
 
-Define a small receipt repository contract and ship:
+The implementation defines a small receipt repository contract and ships:
 
 - an in-memory implementation for deterministic unit tests only; and
 - a JDBC implementation for the production reference app.
+
+The JDBC implementation is classpath- and bean-conditional inside
+`ai-fabric-execution`. It uses optional `spring-jdbc` support rather than
+creating another artifact. Applications without JDBC or without receipt
+configuration do not activate it.
 
 The JDBC schema must include:
 
@@ -148,9 +153,9 @@ specialist read/analysis
 
 ## First Reference Action
 
-Choose one low-risk, reversible account action only after product review.
-`update_address` or an account-credit request below a policy limit is preferable
-to cancellation or payment mutation.
+The implemented reference action is `update_address`, a low-risk account
+operation with application-owned validation and confirmation. Cancellation,
+payment mutation, and account-credit writes remain outside this proof.
 
 The reference action must already have:
 
@@ -169,8 +174,7 @@ Expected new or extended surfaces:
 
 - receipt contract and status model in `ai-fabric-execution`;
 - receipt repository SPI;
-- JDBC receipt adapter in a separate optional persistence artifact or an
-  existing suitable persistence module;
+- conditional JDBC receipt support in `ai-fabric-execution`;
 - specialist write proposal validator;
 - confirmation and rejection service;
 - receipt-aware governed invocation coordinator;
@@ -223,7 +227,8 @@ Do not add a general workflow graph or event broker.
 - visible persistence failure;
 - visible handler failure;
 - account state changes only after confirmation;
-- live-data synchronization reflects the authoritative write;
+- the authoritative account-profile read reflects the write while policy
+  vectors remain unchanged; address PII is intentionally not indexed;
 - original Account Resolver remains independently green.
 
 ### Real Provider
@@ -236,22 +241,59 @@ With a real provider key:
 - hostile instructions cannot bypass confirmation; and
 - the final response reflects the authoritative action result.
 
+## Verification Evidence
+
+Verification completed on 2026-07-28:
+
+- source-based Docker build ran tests normally across all 15 selected framework
+  reactor modules: 1,175 tests, zero failures or errors;
+- packaged real-app build ran 12 smoke-support tests and 79
+  `agentic-ai-action-resolver` tests, zero failures or errors;
+- the unchanged original Account Resolver ran its 49 tests plus the 12
+  smoke-support tests successfully;
+- receipt contract tests cover validation, identity binding, encrypted
+  persistence, optimistic transitions, rejection, expiry, concurrency,
+  idempotency, cleanup, stale execution, `OUTCOME_UNKNOWN`, and reconciliation;
+- the packaged JDBC receipt and opaque demo-session binding survived a restart
+  between proposal and confirmation;
+- a second packaged restart returned the byte-identical terminal response for
+  replay and did not execute the action again;
+- real OpenAI read flow returned `BLOCKED`, one deterministic billing-address
+  blocker, four policy evidence items, and no write proposal;
+- real OpenAI write flow produced only an `update_address` proposal, required an
+  application-owned confirmation, returned a safe projected result, and changed
+  the next authoritative read to `READY` with zero blockers;
+- real OpenAI hostile, malformed/extra-parameter, rejection, post-action,
+  idempotent replay, and cross-session isolation cases passed;
+- an invalid-provider packaged run returned `INTENT_PROVIDER_FAILED`, was
+  retryable, created no receipt, and exposed no native provider message or key;
+- packaged logs contain neither synthetic address input nor provider keys; and
+- `ai-fabric-account-resolver` has no tracked changes from this implementation.
+
+Real-provider proof validates normal and hostile model behavior. Deterministic
+fault-injection tests separately prove persistence, policy, handler,
+projection, recovery, and unknown-outcome branches without depending on a
+provider producing a particular failure.
+
 ## Release Gate
 
-Specialist writes remain unapproved until all of these are true:
+The implementation gate is complete. Publication, version assignment, and
+release approval remain separate decisions:
 
-- [ ] Receipt contract and JDBC implementation are complete.
-- [ ] Every state transition is atomic and tested.
-- [ ] Confirmation binds principal, subject, specialist version, and profile.
-- [ ] Final invocation uses `GovernedActionInvocationService`.
-- [ ] Replay and concurrency tests prove at-most-once execution.
-- [ ] Unknown outcomes are visible and reconcilable.
-- [ ] No sensitive value leaks through logs, diagnostics, or receipts.
-- [ ] Packaged Docker and restart tests pass.
-- [ ] Real-provider hostile and normal flows pass.
-- [ ] Migration, operations, and rollback guidance is complete.
+- [x] Receipt contract and JDBC implementation are complete.
+- [x] Every state transition is atomic and tested.
+- [x] Confirmation binds principal, subject, specialist version, and profile.
+- [x] Final invocation uses `GovernedActionInvocationService`.
+- [x] Replay and concurrency tests prove at-most-once execution.
+- [x] Unknown outcomes are visible and reconcilable.
+- [x] No sensitive value leaks through logs, diagnostics, or receipts.
+- [x] Packaged Docker and restart tests pass.
+- [x] Real-provider hostile and normal flows pass.
+- [x] Migration, operations, and rollback guidance is complete.
 
 ## Decision
 
-This document permits design and review only. It does not approve specialist
-WRITE implementation or change the P0/P1 read-only release boundary.
+Implementation was approved after the P0/P1 proof and is now complete against
+this plan. It adds an opt-in governed specialist WRITE contract without
+changing the default read-only boundary. It has not been versioned, committed
+as a completed release, pushed, or published by this verification step.

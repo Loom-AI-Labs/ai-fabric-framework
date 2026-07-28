@@ -15,6 +15,7 @@ import ai.fabric.intent.orchestration.OrchestrationContext;
 import ai.fabric.intent.orchestration.pipeline.PipelineContext;
 import ai.fabric.intent.orchestration.request.ConversationPersistencePolicy;
 import ai.fabric.intent.orchestration.request.OrchestrationRequest;
+import ai.fabric.intent.orchestration.request.OrchestrationRequestPurpose;
 import java.time.Instant;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -31,6 +32,133 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class IntentExtractionStepProgressiveEngineTest {
+
+    @Test
+    void specialistRequestTerminatesOnVisibleProviderFailure() {
+        IntentQueryExtractor extractor = mock(IntentQueryExtractor.class);
+        ProgressiveIntentExtractionEngine engine =
+            mock(ProgressiveIntentExtractionEngine.class);
+        @SuppressWarnings("unchecked")
+        ObjectProvider<ProgressiveIntentExtractionEngine> provider =
+            mock(ObjectProvider.class);
+        when(provider.getIfAvailable()).thenReturn(engine);
+
+        MultiIntentResponse fallback = MultiIntentResponse.builder()
+            .intents(List.of(
+                Intent.builder()
+                    .type(IntentType.OUT_OF_SCOPE)
+                    .intent("out_of_scope")
+                    .build()
+            ))
+            .metadata(Map.of("fallback", true))
+            .build();
+        when(engine.extract(
+            any(IntentExtractionInput.class),
+            any(OrchestrationContext.class)
+        )).thenReturn(
+            new ProgressiveIntentExtractionEngine.ExtractionOutput(
+                fallback,
+                Map.of("extractionPath", "fallback"),
+                new ProgressiveIntentExtractionEngine.ExtractionFailure(
+                    "INTENT_PROVIDER_FAILED",
+                    "The configured AI provider could not complete intent analysis.",
+                    true
+                )
+            )
+        );
+
+        TrustedExecutionContext trusted = new TrustedExecutionContext(
+            new ExecutionPrincipal(
+                "account-service",
+                ExecutionPrincipalType.SERVICE
+            ),
+            new ExecutionSubjectRef("account", "account-42"),
+            ExecutionSource.APPLICATION,
+            "tenant-1",
+            "deployment-1",
+            java.util.Set.of("specialist:account-resolver-read@1"),
+            "correlation-1",
+            Instant.parse("2026-07-28T10:00:00Z")
+        );
+        PipelineContext context = PipelineContext.from(
+            new OrchestrationRequest(
+                "Inspect the account",
+                OrchestrationContext.builder().build(),
+                trusted,
+                ConversationPersistencePolicy.NEVER,
+                null,
+                null,
+                null,
+                OrchestrationRequestPurpose.SPECIALIST
+            )
+        );
+
+        PipelineContext updated =
+            new IntentExtractionStep(extractor, provider).process(context);
+
+        assertThat(updated.isShouldTerminate()).isTrue();
+        assertThat(updated.getEarlyTerminationResult().getErrorCode())
+            .isEqualTo("INTENT_PROVIDER_FAILED");
+        assertThat(updated.getEarlyTerminationResult().getMessage())
+            .isEqualTo(
+                "The configured AI provider could not complete intent analysis."
+            );
+        assertThat(updated.getMetadata())
+            .containsEntry(
+                "extractionDiagnostics",
+                Map.of("extractionPath", "fallback")
+            );
+        assertThat(updated.getMetadata().toString())
+            .doesNotContain("API key", "provider call failed");
+    }
+
+    @Test
+    void generalRequestRetainsFallbackCompatibility() {
+        IntentQueryExtractor extractor = mock(IntentQueryExtractor.class);
+        ProgressiveIntentExtractionEngine engine =
+            mock(ProgressiveIntentExtractionEngine.class);
+        @SuppressWarnings("unchecked")
+        ObjectProvider<ProgressiveIntentExtractionEngine> provider =
+            mock(ObjectProvider.class);
+        when(provider.getIfAvailable()).thenReturn(engine);
+
+        MultiIntentResponse fallback = MultiIntentResponse.builder()
+            .intents(List.of(
+                Intent.builder()
+                    .type(IntentType.OUT_OF_SCOPE)
+                    .intent("out_of_scope")
+                    .build()
+            ))
+            .metadata(Map.of("fallback", true))
+            .build();
+        when(engine.extract(
+            any(IntentExtractionInput.class),
+            any(OrchestrationContext.class)
+        )).thenReturn(
+            new ProgressiveIntentExtractionEngine.ExtractionOutput(
+                fallback,
+                Map.of("extractionPath", "fallback"),
+                new ProgressiveIntentExtractionEngine.ExtractionFailure(
+                    "INTENT_PROVIDER_FAILED",
+                    "The configured AI provider could not complete intent analysis.",
+                    true
+                )
+            )
+        );
+
+        PipelineContext updated = new IntentExtractionStep(
+            extractor,
+            provider
+        ).process(
+            PipelineContext.from(
+                "q",
+                OrchestrationContext.forUser("user")
+            )
+        );
+
+        assertThat(updated.isShouldTerminate()).isFalse();
+        assertThat(updated.getIntentResponse()).isSameAs(fallback);
+    }
 
     @Test
     void shouldUseProgressiveEngineWhenAvailableAndAttachDiagnostics() {

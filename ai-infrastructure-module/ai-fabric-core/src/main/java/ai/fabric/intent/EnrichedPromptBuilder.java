@@ -119,7 +119,10 @@ public class EnrichedPromptBuilder {
         if (StringUtils.hasText(addon)) {
             prompt = prompt.trim() + "\n\n" + addon + "\n";
         }
-        return prompt;
+        return SpecialistPromptInstructionSupport.appendToSystemPrompt(
+            prompt,
+            contextInput
+        );
     }
 
     @Deprecated(forRemoval = true)

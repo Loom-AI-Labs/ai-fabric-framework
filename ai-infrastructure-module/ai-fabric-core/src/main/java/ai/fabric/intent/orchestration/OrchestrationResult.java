@@ -1,12 +1,16 @@
 package ai.fabric.intent.orchestration;
 
 import ai.fabric.dto.NextStepRecommendation;
+import ai.fabric.intent.action.invocation.ActionProposalCandidate;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
+import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
+import lombok.ToString;
 
 import java.util.Collections;
 import java.util.List;
@@ -50,6 +54,14 @@ public class OrchestrationResult {
 
     @Builder.Default
     private Map<String, Object> sanitizedPayload = Collections.emptyMap();
+
+    /**
+     * Trusted internal proposal material. Never serialize or log its parameters.
+     */
+    @JsonIgnore
+    @ToString.Exclude
+    @EqualsAndHashCode.Exclude
+    private transient ActionProposalCandidate actionProposalCandidate;
 
     public static OrchestrationResult error(String message) {
         return OrchestrationResult.builder()

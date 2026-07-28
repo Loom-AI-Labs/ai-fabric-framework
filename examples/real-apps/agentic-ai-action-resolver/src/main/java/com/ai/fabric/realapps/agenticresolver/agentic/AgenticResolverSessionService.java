@@ -1,11 +1,12 @@
 package com.ai.fabric.realapps.agenticresolver.agentic;
 
 import ai.fabric.chat.service.ChatSessionService;
+import com.ai.fabric.realapps.agenticresolver.entity.AgenticResolverDemoSession;
+import com.ai.fabric.realapps.agenticresolver.repository.AgenticResolverDemoSessionRepository;
 import com.ai.fabric.realapps.agenticresolver.service.AccountResolutionService;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -22,8 +23,9 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 /**
- * Bounded public-demo session map. The map is the authority linking a browser session to
- * server-created scenario accounts; clients never submit account identifiers.
+ * Bounded public-demo session service. Durable server-side records bind each
+ * opaque browser session to application-created scenario accounts; clients
+ * never submit account identifiers.
  */
 @Service
 public class AgenticResolverSessionService {
@@ -31,10 +33,13 @@ public class AgenticResolverSessionService {
     private static final Logger log =
         LoggerFactory.getLogger(AgenticResolverSessionService.class);
     private static final String DEFAULT_SCENARIO = "missing-payment";
-    private static final Set<String> READ_ONLY_SCENARIOS = Set.of(
+    private static final List<String> SUPPORTED_SCENARIO_ORDER = List.of(
         "ready-account",
         "missing-payment",
         "missing-address"
+    );
+    private static final Set<String> SUPPORTED_SCENARIOS = Set.copyOf(
+        SUPPORTED_SCENARIO_ORDER
     );
     private static final Map<String, String> ASSESSMENT_PROMPTS = Map.of(
         "ready-account",
@@ -50,6 +55,7 @@ public class AgenticResolverSessionService {
     private final Duration ttl;
     private final int maxActive;
     private final ObjectProvider<ChatSessionService> chatSessionService;
+    private final AgenticResolverDemoSessionRepository sessionRepository;
     private final Map<String, SessionState> sessions = new ConcurrentHashMap<>();
 
     public AgenticResolverSessionService(
@@ -57,7 +63,8 @@ public class AgenticResolverSessionService {
         Clock clock,
         @Value("${app.agentic-resolver.sessions.ttl:PT6H}") Duration ttl,
         @Value("${app.agentic-resolver.sessions.max-active:500}") int maxActive,
-        ObjectProvider<ChatSessionService> chatSessionService
+        ObjectProvider<ChatSessionService> chatSessionService,
+        ObjectProvider<AgenticResolverDemoSessionRepository> sessionRepository
     ) {
         this.accountResolutionService = accountResolutionService;
         this.clock = clock;
@@ -66,11 +73,14 @@ public class AgenticResolverSessionService {
             : Duration.ofHours(6);
         this.maxActive = Math.max(1, maxActive);
         this.chatSessionService = chatSessionService;
+        this.sessionRepository = sessionRepository != null
+            ? sessionRepository.getIfAvailable()
+            : null;
     }
 
     public synchronized SessionView create() {
         cleanupExpired();
-        if (sessions.size() >= maxActive) {
+        if (activeSessionCount() >= maxActive) {
             throw new SessionCapacityExceededException();
         }
         AccountResolutionService.DemoSession seeded =
@@ -78,7 +88,7 @@ public class AgenticResolverSessionService {
         Map<String, ScenarioBinding> scenarios = new LinkedHashMap<>();
         for (AccountResolutionService.DemoResolverScenario scenario :
             seeded.scenarios()) {
-            if (!READ_ONLY_SCENARIOS.contains(scenario.id())) {
+            if (!SUPPORTED_SCENARIOS.contains(scenario.id())) {
                 continue;
             }
             scenarios.put(
@@ -107,6 +117,7 @@ public class AgenticResolverSessionService {
             now,
             now
         );
+        persist(state);
         sessions.put(sessionId, state);
         return view(state);
     }
@@ -122,6 +133,7 @@ public class AgenticResolverSessionService {
         }
         state.activeScenarioId = scenarioId.trim();
         state.lastAccessedAt = clock.instant();
+        persist(state);
         return view(state);
     }
 
@@ -129,6 +141,7 @@ public class AgenticResolverSessionService {
         SessionState state = require(sessionId);
         ScenarioBinding scenario = state.scenarios.get(state.activeScenarioId);
         state.lastAccessedAt = clock.instant();
+        persist(state);
         String ownerId = "demo:" + state.sessionId + ":" + scenario.id;
         return new ActiveSession(
             state.sessionId,
@@ -143,9 +156,18 @@ public class AgenticResolverSessionService {
         if (sessionId == null) {
             return false;
         }
-        SessionState removed = sessions.remove(sessionId.trim());
+        String normalized = sessionId.trim();
+        SessionState removed = sessions.remove(normalized);
+        if (removed == null && sessionRepository != null) {
+            removed = sessionRepository.findById(normalized)
+                .map(this::restore)
+                .orElse(null);
+        }
         if (removed == null) {
             return false;
+        }
+        if (sessionRepository != null) {
+            sessionRepository.deleteById(normalized);
         }
         deleteConversationHistory(removed);
         return true;
@@ -156,16 +178,26 @@ public class AgenticResolverSessionService {
     )
     public int cleanupExpired() {
         Instant cutoff = clock.instant().minus(ttl);
-        List<SessionState> expired = new ArrayList<>();
+        Map<String, SessionState> expired = new LinkedHashMap<>();
         sessions.values().stream()
             .filter(state -> state.lastAccessedAt.isBefore(cutoff))
-            .forEach(expired::add);
+            .forEach(state -> expired.put(state.sessionId, state));
+        if (sessionRepository != null) {
+            sessionRepository.findByLastAccessedAtBefore(cutoff)
+                .forEach(record -> expired.putIfAbsent(
+                    record.sessionId(),
+                    restore(record)
+                ));
+        }
         int removed = 0;
-        for (SessionState state : expired) {
-            if (sessions.remove(state.sessionId, state)) {
-                removed++;
-                deleteConversationHistory(state);
+        for (SessionState state : expired.values()) {
+            SessionState cached = sessions.remove(state.sessionId);
+            SessionState removedState = cached != null ? cached : state;
+            if (sessionRepository != null) {
+                sessionRepository.deleteById(state.sessionId);
             }
+            removed++;
+            deleteConversationHistory(removedState);
         }
         return removed;
     }
@@ -175,13 +207,106 @@ public class AgenticResolverSessionService {
         if (sessionId == null || sessionId.isBlank()) {
             throw new NoSuchElementException("Agentic resolver session is required");
         }
-        SessionState state = sessions.get(sessionId.trim());
+        String normalized = sessionId.trim();
+        if (normalized.length() > 120) {
+            throw new NoSuchElementException(
+                "Agentic resolver session was not found or expired"
+            );
+        }
+        SessionState state = sessions.get(normalized);
+        if (state == null && sessionRepository != null) {
+            state = sessionRepository.findById(normalized)
+                .map(this::restore)
+                .orElse(null);
+            if (state != null) {
+                sessions.put(normalized, state);
+            }
+        }
         if (state == null) {
             throw new NoSuchElementException(
                 "Agentic resolver session was not found or expired"
             );
         }
         return state;
+    }
+
+    private long activeSessionCount() {
+        if (sessionRepository == null) {
+            return sessions.size();
+        }
+        return sessionRepository.countByLastAccessedAtGreaterThanEqual(
+            clock.instant().minus(ttl)
+        );
+    }
+
+    private void persist(SessionState state) {
+        if (sessionRepository == null) {
+            return;
+        }
+        Map<String, AgenticResolverDemoSession.PersistedScenario> scenarios =
+            new LinkedHashMap<>();
+        state.scenarios.forEach((id, scenario) ->
+            scenarios.put(
+                id,
+                new AgenticResolverDemoSession.PersistedScenario(
+                    scenario.subjectUserId,
+                    scenario.title,
+                    scenario.description,
+                    scenario.suggestedPrompt
+                )
+            )
+        );
+        sessionRepository.save(new AgenticResolverDemoSession(
+            state.sessionId,
+            state.activeScenarioId,
+            state.createdAt,
+            state.lastAccessedAt,
+            scenarios
+        ));
+    }
+
+    private SessionState restore(AgenticResolverDemoSession record) {
+        Map<String, AgenticResolverDemoSession.PersistedScenario> persisted =
+            record.scenarios();
+        Map<String, ScenarioBinding> scenarios = new LinkedHashMap<>();
+        for (String id : SUPPORTED_SCENARIO_ORDER) {
+            AgenticResolverDemoSession.PersistedScenario scenario =
+                persisted.get(id);
+            if (scenario != null) {
+                scenarios.put(id, restoreScenario(id, scenario));
+            }
+        }
+        persisted.forEach((id, scenario) ->
+            scenarios.putIfAbsent(id, restoreScenario(id, scenario))
+        );
+        if (
+            scenarios.isEmpty()
+                || !scenarios.containsKey(record.activeScenarioId())
+        ) {
+            throw new IllegalStateException(
+                "Persisted resolver session has no valid active scenario"
+            );
+        }
+        return new SessionState(
+            record.sessionId(),
+            Collections.unmodifiableMap(scenarios),
+            record.activeScenarioId(),
+            record.createdAt(),
+            record.lastAccessedAt()
+        );
+    }
+
+    private ScenarioBinding restoreScenario(
+        String id,
+        AgenticResolverDemoSession.PersistedScenario scenario
+    ) {
+        return new ScenarioBinding(
+            id,
+            scenario.subjectUserId(),
+            scenario.title(),
+            scenario.description(),
+            scenario.suggestedPrompt()
+        );
     }
 
     private SessionView view(SessionState state) {

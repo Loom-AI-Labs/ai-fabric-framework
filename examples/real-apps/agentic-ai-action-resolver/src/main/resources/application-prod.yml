@@ -29,11 +29,24 @@ ai:
         - account-resolution-policy
       allowed-actions:
         - get_account_profile
+        - update_address
     async:
       core-pool-size: ${AI_EXECUTION_CORE_POOL_SIZE:2}
       max-pool-size: ${AI_EXECUTION_MAX_POOL_SIZE:4}
       queue-capacity: ${AI_EXECUTION_QUEUE_CAPACITY:24}
       result-ttl: ${AI_EXECUTION_RESULT_TTL:PT15M}
+    receipts:
+      enabled: true
+      repository: JDBC
+      initialize-schema: ${AI_EXECUTION_RECEIPT_INITIALIZE_SCHEMA:true}
+      ttl: ${AI_EXECUTION_RECEIPT_TTL:PT10M}
+      stale-executing-after: ${AI_EXECUTION_STALE_EXECUTION:PT2M}
+      recovery-interval: ${AI_EXECUTION_RECOVERY_INTERVAL:PT1M}
+      recovery-batch-size: ${AI_EXECUTION_RECOVERY_BATCH_SIZE:100}
+      cleanup-enabled: ${AI_EXECUTION_RECEIPT_CLEANUP_ENABLED:true}
+      retention: ${AI_EXECUTION_RECEIPT_RETENTION:P30D}
+      encryption-secret: ${AI_EXECUTION_RECEIPT_ENCRYPTION_SECRET:}
+      fingerprint-secret: ${AI_EXECUTION_RECEIPT_FINGERPRINT_SECRET:}
 
   chat:
     enabled: true

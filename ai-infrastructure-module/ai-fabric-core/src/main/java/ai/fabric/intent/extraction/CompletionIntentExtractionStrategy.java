@@ -157,11 +157,12 @@ public class CompletionIntentExtractionStrategy {
                 .model(response != null ? response.getModel() : null)
                 .build();
         } catch (Exception ex) {
-            log.warn("Completion extraction failed: {}", ex.getMessage());
+            String diagnostic = IntentExtractionFailureSanitizer.diagnosticMessage(ex);
+            log.warn("Completion extraction failed: {}", diagnostic);
             return ExtractionAttempt.builder()
                 .success(false)
                 .strategyName(getStrategyName())
-                .errorMessage(ex.getMessage())
+                .errorMessage(diagnostic)
                 .exception(ex)
                 .generationRequest(request)
                 .llmCalls(llmCalls)

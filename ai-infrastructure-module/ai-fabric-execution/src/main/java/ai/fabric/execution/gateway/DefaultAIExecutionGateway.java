@@ -1,32 +1,35 @@
 package ai.fabric.execution.gateway;
 
 import ai.fabric.evidence.AIEvidenceReference;
+import ai.fabric.execution.action.ActionProposalCoordinator;
+import ai.fabric.execution.action.ActionProposalPersistenceException;
+import ai.fabric.execution.action.ActionProposalValidationException;
+import ai.fabric.execution.action.ActionProposalView;
 import ai.fabric.execution.context.TrustedExecutionContext;
 import ai.fabric.execution.gateway.DefaultSpecialistAuthorityResolver.AuthorityDeniedException;
-import ai.fabric.execution.specialist.ExecutionStrategy;
 import ai.fabric.execution.specialist.SpecialistDefinition;
 import ai.fabric.execution.specialist.SpecialistInputAdapter;
 import ai.fabric.execution.specialist.SpecialistOutputAdapter;
 import ai.fabric.execution.specialist.SpecialistOutputMode;
 import ai.fabric.execution.specialist.SpecialistRegistry;
 import ai.fabric.intent.action.AIActionRegistry;
+import ai.fabric.intent.action.invocation.ActionProposalCandidate;
 import ai.fabric.intent.orchestration.OrchestrationContext;
 import ai.fabric.intent.orchestration.OrchestrationResult;
 import ai.fabric.intent.orchestration.OrchestrationResultType;
-import ai.fabric.intent.orchestration.capability.CapabilityResolutionRequest;
 import ai.fabric.intent.orchestration.capability.EffectiveCapabilitiesResolver;
 import ai.fabric.intent.orchestration.capability.EffectiveCapabilityPolicySupport;
 import ai.fabric.intent.orchestration.capability.EffectiveCapabilityProfile;
-import ai.fabric.intent.orchestration.capability.RequestedCapabilityProfile;
 import ai.fabric.intent.orchestration.pipeline.Pipeline;
 import ai.fabric.intent.orchestration.pipeline.PipelineContext;
 import ai.fabric.intent.orchestration.pipeline.steps.OrchestrationPolicyResolutionStep;
 import ai.fabric.intent.orchestration.request.ConversationPersistencePolicy;
 import ai.fabric.intent.orchestration.request.OrchestrationRequest;
+import ai.fabric.intent.orchestration.request.OrchestrationRequestPurpose;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -49,13 +52,12 @@ public final class DefaultAIExecutionGateway implements AIExecutionGateway {
     private final SpecialistRegistry specialistRegistry;
     private final Pipeline pipeline;
     private final OrchestrationPolicyResolutionStep policyResolutionStep;
-    private final EffectiveCapabilitiesResolver capabilitiesResolver;
-    private final AIActionRegistry actionRegistry;
-    private final ExecutionCapabilityInventory capabilityInventory;
-    private final SpecialistAuthorityResolver authorityResolver;
+    private final SpecialistCapabilityResolver specialistCapabilityResolver;
     private final OrchestrationEvidenceProjector evidenceProjector;
     private final SpecialistOutputFinalizer outputFinalizer;
     private final AIExecutionConversationRecorder conversationRecorder;
+    private final java.util.function.Supplier<ActionProposalCoordinator>
+        actionProposalCoordinator;
     private final AsyncTaskExecutor taskExecutor;
     private final Clock clock;
     private final EphemeralExecutionStore executionStore;
@@ -75,6 +77,41 @@ public final class DefaultAIExecutionGateway implements AIExecutionGateway {
         Clock clock,
         java.time.Duration resultTtl
     ) {
+        this(
+            specialistRegistry,
+            pipeline,
+            policyResolutionStep,
+            capabilitiesResolver,
+            actionRegistry,
+            capabilityInventory,
+            authorityResolver,
+            evidenceProjector,
+            outputFinalizer,
+            conversationRecorder,
+            () -> null,
+            taskExecutor,
+            clock,
+            resultTtl
+        );
+    }
+
+    public DefaultAIExecutionGateway(
+        SpecialistRegistry specialistRegistry,
+        Pipeline pipeline,
+        OrchestrationPolicyResolutionStep policyResolutionStep,
+        EffectiveCapabilitiesResolver capabilitiesResolver,
+        AIActionRegistry actionRegistry,
+        ExecutionCapabilityInventory capabilityInventory,
+        SpecialistAuthorityResolver authorityResolver,
+        OrchestrationEvidenceProjector evidenceProjector,
+        SpecialistOutputFinalizer outputFinalizer,
+        AIExecutionConversationRecorder conversationRecorder,
+        java.util.function.Supplier<ActionProposalCoordinator>
+            actionProposalCoordinator,
+        AsyncTaskExecutor taskExecutor,
+        Clock clock,
+        java.time.Duration resultTtl
+    ) {
         this.specialistRegistry = java.util.Objects.requireNonNull(
             specialistRegistry,
             "specialistRegistry is required"
@@ -84,21 +121,11 @@ public final class DefaultAIExecutionGateway implements AIExecutionGateway {
             policyResolutionStep,
             "policyResolutionStep is required"
         );
-        this.capabilitiesResolver = java.util.Objects.requireNonNull(
+        this.specialistCapabilityResolver = new SpecialistCapabilityResolver(
             capabilitiesResolver,
-            "capabilitiesResolver is required"
-        );
-        this.actionRegistry = java.util.Objects.requireNonNull(
             actionRegistry,
-            "actionRegistry is required"
-        );
-        this.capabilityInventory = java.util.Objects.requireNonNull(
             capabilityInventory,
-            "capabilityInventory is required"
-        );
-        this.authorityResolver = java.util.Objects.requireNonNull(
-            authorityResolver,
-            "authorityResolver is required"
+            authorityResolver
         );
         this.evidenceProjector = java.util.Objects.requireNonNull(
             evidenceProjector,
@@ -109,6 +136,10 @@ public final class DefaultAIExecutionGateway implements AIExecutionGateway {
             "outputFinalizer is required"
         );
         this.conversationRecorder = conversationRecorder;
+        this.actionProposalCoordinator = java.util.Objects.requireNonNull(
+            actionProposalCoordinator,
+            "actionProposalCoordinator supplier is required"
+        );
         this.taskExecutor = java.util.Objects.requireNonNull(
             taskExecutor,
             "taskExecutor is required"
@@ -332,16 +363,11 @@ public final class DefaultAIExecutionGateway implements AIExecutionGateway {
                 );
             }
 
-            SpecialistAuthority authority = authorityResolver.resolve(
-                definition,
-                request.trustedExecutionContext()
-            );
             EffectiveCapabilityProfile effective = resolveCapabilities(
                 definition,
                 preflight,
-                authority
+                request.trustedExecutionContext()
             );
-            validateStrategy(definition, preflight);
 
             OrchestrationContext effectiveContext = preflight.getOrchestrationContext()
                 .toBuilder()
@@ -357,7 +383,9 @@ public final class DefaultAIExecutionGateway implements AIExecutionGateway {
                 request.trustedExecutionContext(),
                 persistence,
                 effective,
-                conversationInput
+                conversationInput,
+                definition.instructions().render(),
+                OrchestrationRequestPurpose.SPECIALIST
             );
             OrchestrationResult orchestrationResult = pipeline.execute(orchestrationRequest);
             if (deadline != null && !clock.instant().isBefore(deadline)) {
@@ -370,6 +398,72 @@ public final class DefaultAIExecutionGateway implements AIExecutionGateway {
                     true,
                     startedAt,
                     diagnostics(definition, effective, null, 0)
+                );
+            }
+            ActionProposalCandidate proposalCandidate =
+                extractProposalCandidate(orchestrationResult);
+            if (proposalCandidate != null) {
+                ActionProposalCoordinator proposalCoordinator =
+                    actionProposalCoordinator.get();
+                if (proposalCoordinator == null) {
+                    return failure(
+                        invocationId,
+                        definition.id(),
+                        AIExecutionStatus.FAILED,
+                        "ACTION_PROPOSAL_COORDINATOR_UNAVAILABLE",
+                        "Durable action proposal support is unavailable.",
+                        false,
+                        startedAt,
+                        diagnostics(
+                            definition,
+                            effective,
+                            orchestrationResult,
+                            0
+                        )
+                    );
+                }
+                String defaultVectorSpace =
+                    effective.effectiveVectorSpaces().size() == 1
+                        ? effective.effectiveVectorSpaces().iterator().next()
+                        : null;
+                List<AIEvidenceReference> proposalEvidence =
+                    evidenceProjector.projectStrict(
+                        orchestrationResult,
+                        effective.effectiveVectorSpaces(),
+                        defaultVectorSpace,
+                        definition.limits().maxEvidenceReferences()
+                    );
+                ActionProposalView proposal =
+                    proposalCoordinator.propose(
+                        invocationId,
+                        definition,
+                        proposalCandidate,
+                        request.trustedExecutionContext(),
+                        effective,
+                        request.idempotencyKey(),
+                        proposalEvidence
+                    );
+                Map<String, Object> proposalDiagnostics =
+                    new LinkedHashMap<>(
+                        diagnostics(
+                            definition,
+                            effective,
+                            orchestrationResult,
+                            proposalEvidence.size()
+                        )
+                    );
+                proposalDiagnostics.put("actionProposal", true);
+                return new AIExecutionResult<>(
+                    invocationId,
+                    definition.id(),
+                    AIExecutionStatus.CONFIRMATION_REQUIRED,
+                    null,
+                    proposalEvidence,
+                    Map.copyOf(proposalDiagnostics),
+                    null,
+                    startedAt,
+                    clock.instant(),
+                    proposal
                 );
             }
             if (orchestrationResult == null || !orchestrationResult.isSuccess()) {
@@ -557,12 +651,12 @@ public final class DefaultAIExecutionGateway implements AIExecutionGateway {
                 startedAt,
                 Map.of()
             );
-        } catch (CapabilityResolutionException ex) {
+        } catch (SpecialistCapabilityResolutionException ex) {
             return failure(
                 invocationId,
                 definition.id(),
                 AIExecutionStatus.DENIED,
-                ex.reason,
+                ex.reason(),
                 ex.getMessage(),
                 false,
                 startedAt,
@@ -576,6 +670,28 @@ public final class DefaultAIExecutionGateway implements AIExecutionGateway {
                 ex.reason(),
                 ex.getMessage(),
                 false,
+                startedAt,
+                Map.of()
+            );
+        } catch (ActionProposalValidationException ex) {
+            return failure(
+                invocationId,
+                definition.id(),
+                AIExecutionStatus.DENIED,
+                ex.reason(),
+                ex.getMessage(),
+                false,
+                startedAt,
+                Map.of()
+            );
+        } catch (ActionProposalPersistenceException ex) {
+            return failure(
+                invocationId,
+                definition.id(),
+                AIExecutionStatus.FAILED,
+                ex.reason(),
+                ex.getMessage(),
+                true,
                 startedAt,
                 Map.of()
             );
@@ -658,81 +774,103 @@ public final class DefaultAIExecutionGateway implements AIExecutionGateway {
     private EffectiveCapabilityProfile resolveCapabilities(
         SpecialistDefinition<?, ?> definition,
         PipelineContext preflight,
-        SpecialistAuthority authority
+        ai.fabric.execution.context.TrustedExecutionContext trustedContext
     ) {
-        RequestedCapabilityProfile requested =
-            definition.executionProfile().requestedCapabilities();
-
-        if (!authority.allowedActions().containsAll(requested.visibleActions())) {
-            throw new CapabilityResolutionException(
-                "ACTION_AUTHORITY_INTERSECTION_FAILED",
-                "The trusted caller is not authorized for every requested action."
-            );
-        }
-        if (requested.retrievalEnabled()) {
-            if (!authority.allowedVectorSpaces()
-                .containsAll(requested.requestedVectorSpaces())) {
-                throw new CapabilityResolutionException(
-                    "VECTOR_AUTHORITY_INTERSECTION_FAILED",
-                    "The trusted caller is not authorized for every requested vector space."
-                );
-            }
-            if (!normalize(capabilityInventory.registeredVectorSpaces())
-                .containsAll(requested.requestedVectorSpaces())) {
-                throw new CapabilityResolutionException(
-                    "VECTOR_SPACE_NOT_REGISTERED",
-                    "A requested vector space is not registered in this deployment."
-                );
-            }
-        }
-
-        Set<String> authorizedRegisteredSpaces =
-            new LinkedHashSet<>(normalize(capabilityInventory.registeredVectorSpaces()));
-        authorizedRegisteredSpaces.retainAll(authority.allowedVectorSpaces());
-        EffectiveCapabilityProfile effective = capabilitiesResolver.resolve(
-            new CapabilityResolutionRequest(
-                requested,
-                preflight.getOrchestrationPolicy(),
-                actionRegistry.getAllMetadata(),
-                authorizedRegisteredSpaces,
-                authority.allowedActions(),
-                capabilityInventory.deploymentAllowedActions(),
-                null
-            )
+        return specialistCapabilityResolver.resolve(
+            definition,
+            preflight,
+            trustedContext
         );
-        if (!effective.visibleActions().containsAll(requested.visibleActions())
-            || !effective.executableReadActions()
-                .containsAll(requested.requestableReadActions())
-            || !effective.proposableWriteActions()
-                .containsAll(requested.proposableWriteActions())
-            || (requested.retrievalEnabled()
-                && !effective.effectiveVectorSpaces()
-                    .containsAll(requested.requestedVectorSpaces()))) {
-            throw new CapabilityResolutionException(
-                "EFFECTIVE_CAPABILITY_INTERSECTION_FAILED",
-                "Mode, deployment, or authority policy denied a requested capability."
-            );
-        }
-        return effective;
     }
 
-    private void validateStrategy(
-        SpecialistDefinition<?, ?> definition,
-        PipelineContext preflight
+    private ActionProposalCandidate extractProposalCandidate(
+        OrchestrationResult result
     ) {
-        if (definition.executionProfile().strategy() != ExecutionStrategy.BOUNDED_ITERATIVE) {
+        if (!isProposalEnvelope(result)) {
+            return null;
+        }
+        List<ActionProposalCandidate> candidates = new ArrayList<>();
+        collectProposalCandidates(
+            result,
+            candidates,
+            java.util.Collections.newSetFromMap(
+                new java.util.IdentityHashMap<>()
+            )
+        );
+        if (candidates.size() > 1) {
+            throw new ActionProposalValidationException(
+                "MULTIPLE_ACTION_PROPOSALS",
+                "A specialist execution may create only one write proposal."
+            );
+        }
+        return candidates.isEmpty() ? null : candidates.get(0);
+    }
+
+    private boolean isProposalEnvelope(OrchestrationResult result) {
+        if (result == null || result.getType() == null) {
+            return false;
+        }
+        boolean supportedTopLevel =
+            result.getType() == OrchestrationResultType.CONFIRMATION_REQUIRED
+                || (result.getType() == OrchestrationResultType.COMPOUND_HANDLED
+                    && result.isSuccess());
+        return supportedTopLevel && !containsHardFailure(
+            result.getChildren(),
+            java.util.Collections.newSetFromMap(
+                new java.util.IdentityHashMap<>()
+            )
+        );
+    }
+
+    private boolean containsHardFailure(
+        List<OrchestrationResult> results,
+        Set<OrchestrationResult> visited
+    ) {
+        if (results == null || results.isEmpty()) {
+            return false;
+        }
+        for (OrchestrationResult result : results) {
+            if (result == null || !visited.add(result)) {
+                continue;
+            }
+            OrchestrationResultType type = result.getType();
+            boolean pending = type == OrchestrationResultType.CONFIRMATION_REQUIRED
+                || type == OrchestrationResultType.CLARIFICATION_REQUIRED;
+            if (type == OrchestrationResultType.ERROR
+                || type == OrchestrationResultType.ACTION_DENIED
+                || (!result.isSuccess() && !pending)) {
+                return true;
+            }
+            if (containsHardFailure(result.getChildren(), visited)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private void collectProposalCandidates(
+        OrchestrationResult result,
+        List<ActionProposalCandidate> candidates,
+        Set<OrchestrationResult> visited
+    ) {
+        if (result == null || !visited.add(result)) {
             return;
         }
-        var readPolicy = preflight.getOrchestrationPolicy().readActionResolutionPolicy();
-        if (readPolicy == null
-            || !readPolicy.enabled()
-            || readPolicy.planningMode()
-                != ai.fabric.config.OrchestrationProperties
-                    .ReadActionResolutionPlanningMode.ITERATIVE) {
-            throw new CapabilityResolutionException(
-                "ITERATIVE_MODE_REQUIRED",
-                "BOUNDED_ITERATIVE requires an iterative read-action Mode."
-            );
+        if (result.getActionProposalCandidate() != null) {
+            if (result.getType()
+                    != OrchestrationResultType.CONFIRMATION_REQUIRED
+                || result.isSuccess()) {
+                throw new ActionProposalValidationException(
+                    "ACTION_PROPOSAL_ENVELOPE_INVALID",
+                    "A write proposal must be emitted as a pending confirmation."
+                );
+            }
+            candidates.add(result.getActionProposalCandidate());
+        }
+        if (result.getChildren() != null) {
+            for (OrchestrationResult child : result.getChildren()) {
+                collectProposalCandidates(child, candidates, visited);
+            }
         }
     }
 
@@ -742,7 +880,8 @@ public final class DefaultAIExecutionGateway implements AIExecutionGateway {
         ConversationBinding binding
     ) {
         OrchestrationContext.OrchestrationContextBuilder builder = context.toBuilder()
-            .mode(definition.executionProfile().mode());
+            .mode(definition.executionProfile().mode())
+            .specialistInstructions(definition.instructions().render());
         if (binding != null) {
             builder.userId(binding.userId())
                 .conversationId(binding.conversationId());
@@ -914,20 +1053,6 @@ public final class DefaultAIExecutionGateway implements AIExecutionGateway {
         return executionStore.find(invocationId.trim());
     }
 
-    private Set<String> normalize(Set<String> values) {
-        if (values == null || values.isEmpty()) {
-            return Set.of();
-        }
-        Set<String> normalized = new LinkedHashSet<>();
-        values.stream()
-            .filter(java.util.Objects::nonNull)
-            .map(String::trim)
-            .filter(value -> !value.isEmpty())
-            .map(value -> value.toLowerCase(Locale.ROOT))
-            .forEach(normalized::add);
-        return Set.copyOf(normalized);
-    }
-
     @SuppressWarnings("unchecked")
     private AIExecutionRequest<Object> castRequest(AIExecutionRequest<?> request) {
         return (AIExecutionRequest<Object>) request;
@@ -935,15 +1060,6 @@ public final class DefaultAIExecutionGateway implements AIExecutionGateway {
 
     private String invocationId() {
         return "exec-" + UUID.randomUUID();
-    }
-
-    private static final class CapabilityResolutionException extends RuntimeException {
-        private final String reason;
-
-        private CapabilityResolutionException(String reason, String message) {
-            super(message);
-            this.reason = reason;
-        }
     }
 
     private static final class ContractValidationException extends RuntimeException {

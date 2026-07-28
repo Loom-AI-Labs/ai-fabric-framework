@@ -9,6 +9,7 @@ import ai.fabric.dto.IntentType;
 import ai.fabric.dto.MultiIntentResponse;
 import ai.fabric.dto.ResponseGenerationProfile;
 import ai.fabric.intent.OrchestrationPolicyPromptConstraints;
+import ai.fabric.intent.SpecialistPromptInstructionSupport;
 import ai.fabric.intent.IntentExtractionJsonSupport;
 import ai.fabric.intent.IntentExtractionValidator;
 import ai.fabric.intent.action.AIActionMetaData;
@@ -174,20 +175,22 @@ public class MultiStepIntentExtractionStrategy implements IntentExtractionStrate
                 .build();
         } catch (LlmCallFailureException ex) {
             llmCalls += ex.llmCalls();
-            log.warn("Multi-step extraction failed during LLM call: {}", ex.getMessage());
+            String diagnostic = IntentExtractionFailureSanitizer.diagnosticMessage(ex);
+            log.warn("Multi-step extraction failed during LLM call: {}", diagnostic);
             return ExtractionAttempt.builder()
                 .success(false)
                 .strategyName(getStrategyName())
-                .errorMessage(ex.getMessage())
+                .errorMessage(diagnostic)
                 .exception(ex)
                 .llmCalls(llmCalls)
                 .build();
         } catch (Exception ex) {
-            log.warn("Multi-step extraction failed: {}", ex.getMessage());
+            String diagnostic = IntentExtractionFailureSanitizer.diagnosticMessage(ex);
+            log.warn("Multi-step extraction failed: {}", diagnostic);
             return ExtractionAttempt.builder()
                 .success(false)
                 .strategyName(getStrategyName())
-                .errorMessage(ex.getMessage())
+                .errorMessage(diagnostic)
                 .exception(ex)
                 .llmCalls(llmCalls)
                 .build();
@@ -604,10 +607,15 @@ public class MultiStepIntentExtractionStrategy implements IntentExtractionStrate
         String addon = OrchestrationPolicyPromptConstraints.buildSystemAddon(
             context != null ? context.getOrchestrationPolicy() : null
         );
-        if (!StringUtils.hasText(addon)) {
-            return base;
+        String prompt = base;
+        if (StringUtils.hasText(addon)) {
+            prompt = (StringUtils.hasText(base) ? base.trim() + "\n\n" : "")
+                + addon;
         }
-        return (StringUtils.hasText(base) ? base.trim() + "\n\n" : "") + addon;
+        return SpecialistPromptInstructionSupport.appendToSystemPrompt(
+            prompt,
+            context
+        );
     }
 
     private String normalizeActionName(String value) {

@@ -8,5 +8,11 @@ public enum GovernedActionInvocationStatus {
     CONFIRMATION_REQUIRED,
     DENIED,
     INVALID,
-    FAILED
+    FAILED,
+    /**
+     * The handler may have produced a side effect before an exception made the
+     * authoritative result unavailable. Callers must reconcile, never retry
+     * blindly.
+     */
+    OUTCOME_UNKNOWN
 }

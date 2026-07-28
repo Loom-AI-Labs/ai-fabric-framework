@@ -12,6 +12,10 @@ import ai.fabric.config.OrchestrationProperties;
 import ai.fabric.dto.RAGResponse;
 import ai.fabric.evidence.AIEvidenceReference;
 import ai.fabric.evidence.AIEvidenceReferenceMapper;
+import ai.fabric.execution.action.ActionProposalCoordinator;
+import ai.fabric.execution.action.ActionProposalPersistenceException;
+import ai.fabric.execution.action.ActionProposalReceiptStatus;
+import ai.fabric.execution.action.ActionProposalView;
 import ai.fabric.execution.context.ExecutionPrincipal;
 import ai.fabric.execution.context.ExecutionPrincipalType;
 import ai.fabric.execution.context.ExecutionSource;
@@ -31,6 +35,8 @@ import ai.fabric.execution.specialist.SpecialistOutputMode;
 import ai.fabric.intent.action.AIActionMetaData;
 import ai.fabric.intent.action.AIActionRegistry;
 import ai.fabric.intent.action.ActionAccessMode;
+import ai.fabric.intent.action.ActionContext;
+import ai.fabric.intent.action.invocation.ActionProposalCandidate;
 import ai.fabric.intent.orchestration.OrchestrationContext;
 import ai.fabric.intent.orchestration.OrchestrationResult;
 import ai.fabric.intent.orchestration.OrchestrationResultType;
@@ -48,6 +54,7 @@ import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.atomic.AtomicReference;
@@ -104,7 +111,17 @@ class DefaultAIExecutionGatewayTest {
             .contains("Why is this account blocked?")
             .doesNotContain("Return strict JSON.");
         assertThat(pipelineContext.getOrchestrationRequest().responseInstructions())
-            .isNull();
+            .contains(
+                "Objective: Explain account blockers from live profile and policy evidence."
+            )
+            .contains(
+                "Specialist constraints:\nNever infer account state without evidence."
+            );
+        assertThat(pipelineContext.getOrchestrationContext()
+            .getSpecialistInstructions())
+            .isEqualTo(
+                pipelineContext.getOrchestrationRequest().responseInstructions()
+            );
         assertThat(pipelineContext.getOrchestrationContext().getUserId()).isNull();
         assertThat(pipelineContext.getOrchestrationContext().getConversationId()).isNull();
         assertThat(pipelineContext.getEffectiveCapabilityProfile().visibleActions())
@@ -589,6 +606,174 @@ class DefaultAIExecutionGatewayTest {
         assertThat(result.failure().reason()).isEqualTo("DEADLINE_EXCEEDED");
     }
 
+    @Test
+    void convertsInternalWriteCandidateIntoSafeDurableProposal() {
+        ActionProposalCoordinator coordinator =
+            mock(ActionProposalCoordinator.class);
+        ActionProposalView proposal = new ActionProposalView(
+            "action-receipt-1",
+            "update_address",
+            "Update your billing address?",
+            ActionProposalReceiptStatus.PROPOSED,
+            NOW,
+            NOW.plusSeconds(600)
+        );
+        when(coordinator.propose(
+            any(),
+            any(),
+            any(),
+            any(),
+            any(),
+            any(),
+            any()
+        )).thenReturn(proposal);
+        DefaultAIExecutionGateway gateway = writeGateway(coordinator);
+
+        AIExecutionResult<ResolverOutput> result = gateway.execute(
+            new AIExecutionRequest<>(
+                SPECIALIST_ID,
+                new ResolverInput("Update my billing address"),
+                applicationContext(Set.of(
+                    "specialist:account-resolver@1",
+                    "action:update_address"
+                )),
+                null,
+                null,
+                "update-address-request-1"
+            )
+        );
+
+        assertThat(result.status())
+            .isEqualTo(AIExecutionStatus.CONFIRMATION_REQUIRED);
+        assertThat(result.output()).isNull();
+        assertThat(result.actionProposal()).isEqualTo(proposal);
+        assertThat(result.failure()).isNull();
+        assertThat(result.diagnostics())
+            .containsEntry("actionProposal", true)
+            .doesNotContainValue("10 Downing Street");
+        verify(coordinator).propose(
+            eq(result.invocationId()),
+            any(),
+            any(),
+            any(),
+            any(),
+            eq("update-address-request-1"),
+            any()
+        );
+    }
+
+    @Test
+    void doesNotCreateProposalFromErroredCompoundEnvelope() {
+        ActionProposalCoordinator coordinator =
+            mock(ActionProposalCoordinator.class);
+        OrchestrationResult proposal = writeProposalResult();
+        OrchestrationResult erroredCompound = OrchestrationResult.builder()
+            .type(OrchestrationResultType.ERROR)
+            .success(false)
+            .message("A compound child failed.")
+            .errorCode("COMPOUND_CHILD_FAILED")
+            .children(List.of(
+                proposal,
+                OrchestrationResult.builder()
+                    .type(OrchestrationResultType.ERROR)
+                    .success(false)
+                    .message("Provider failed.")
+                    .errorCode("PROVIDER_FAILED")
+                    .build()
+            ))
+            .build();
+        DefaultAIExecutionGateway gateway = writeGateway(
+            coordinator,
+            erroredCompound
+        );
+
+        AIExecutionResult<ResolverOutput> result = gateway.execute(
+            new AIExecutionRequest<>(
+                SPECIALIST_ID,
+                new ResolverInput("Update my billing address"),
+                applicationContext(Set.of(
+                    "specialist:account-resolver@1",
+                    "action:update_address"
+                )),
+                null,
+                null,
+                "update-address-request-failed-compound"
+            )
+        );
+
+        assertThat(result.status()).isEqualTo(AIExecutionStatus.FAILED);
+        assertThat(result.failure().reason())
+            .isEqualTo("COMPOUND_CHILD_FAILED");
+        assertThat(result.actionProposal()).isNull();
+        verifyNoInteractions(coordinator);
+    }
+
+    @Test
+    void failsVisiblyWhenDurableProposalSupportIsUnavailable() {
+        DefaultAIExecutionGateway gateway = writeGateway(null);
+
+        AIExecutionResult<ResolverOutput> result = gateway.execute(
+            new AIExecutionRequest<>(
+                SPECIALIST_ID,
+                new ResolverInput("Update my billing address"),
+                applicationContext(Set.of(
+                    "specialist:account-resolver@1",
+                    "action:update_address"
+                )),
+                null,
+                null,
+                null
+            )
+        );
+
+        assertThat(result.status()).isEqualTo(AIExecutionStatus.FAILED);
+        assertThat(result.output()).isNull();
+        assertThat(result.actionProposal()).isNull();
+        assertThat(result.failure().reason())
+            .isEqualTo("ACTION_PROPOSAL_COORDINATOR_UNAVAILABLE");
+    }
+
+    @Test
+    void failsVisiblyWhenDurableProposalCannotBePersisted() {
+        ActionProposalCoordinator coordinator =
+            mock(ActionProposalCoordinator.class);
+        when(coordinator.propose(
+            any(),
+            any(),
+            any(),
+            any(),
+            any(),
+            any(),
+            any()
+        )).thenThrow(new ActionProposalPersistenceException(
+            "ACTION_RECEIPT_PERSISTENCE_FAILED",
+            "The action proposal could not be persisted. No action was executed.",
+            new IllegalStateException("receipt store unavailable")
+        ));
+        DefaultAIExecutionGateway gateway = writeGateway(coordinator);
+
+        AIExecutionResult<ResolverOutput> result = gateway.execute(
+            new AIExecutionRequest<>(
+                SPECIALIST_ID,
+                new ResolverInput("Update my billing address"),
+                applicationContext(Set.of(
+                    "specialist:account-resolver@1",
+                    "action:update_address"
+                )),
+                null,
+                null,
+                "update-address-request-2"
+            )
+        );
+
+        assertThat(result.status()).isEqualTo(AIExecutionStatus.FAILED);
+        assertThat(result.output()).isNull();
+        assertThat(result.actionProposal()).isNull();
+        assertThat(result.failure().reason())
+            .isEqualTo("ACTION_RECEIPT_PERSISTENCE_FAILED");
+        assertThat(result.failure().retryable()).isTrue();
+    }
+
     private DefaultAIExecutionGateway gateway(
         Pipeline pipeline,
         SpecialistDefinition<ResolverInput, ResolverOutput> definition,
@@ -698,6 +883,84 @@ class DefaultAIExecutionGatewayTest {
         );
     }
 
+    private DefaultAIExecutionGateway writeGateway(
+        ActionProposalCoordinator coordinator
+    ) {
+        return writeGateway(coordinator, writeProposalResult());
+    }
+
+    private DefaultAIExecutionGateway writeGateway(
+        ActionProposalCoordinator coordinator,
+        OrchestrationResult orchestrationResult
+    ) {
+        AIActionMetaData writeMetadata = AIActionMetaData.builder()
+            .name("update_address")
+            .accessMode(ActionAccessMode.WRITE_ONLY)
+            .confirmationRequired(true)
+            .build();
+        AIActionRegistry actionRegistry = mock(AIActionRegistry.class);
+        when(actionRegistry.getAllMetadata())
+            .thenReturn(List.of(writeMetadata));
+        when(actionRegistry.findMetadata("update_address"))
+            .thenReturn(Optional.of(writeMetadata));
+        OrchestrationProperties properties = orchestrationProperties();
+        SpecialistDefinition<ResolverInput, ResolverOutput> definition =
+            writeDefinition();
+        return new DefaultAIExecutionGateway(
+            new DefaultSpecialistRegistry(
+                List.of(definition),
+                actionRegistry,
+                properties.getModes().keySet()
+            ),
+            resultPipeline(
+                orchestrationResult,
+                new AtomicReference<>()
+            ),
+            new OrchestrationPolicyResolutionStep(properties),
+            new DefaultEffectiveCapabilitiesResolver(),
+            actionRegistry,
+            new StaticExecutionCapabilityInventory(
+                Set.of(),
+                Set.of("update_address")
+            ),
+            new DefaultSpecialistAuthorityResolver(),
+            new OrchestrationEvidenceProjector(
+                new AIEvidenceReferenceMapper()
+            ),
+            mock(SpecialistOutputFinalizer.class),
+            null,
+            () -> coordinator,
+            new TaskExecutorAdapter(Runnable::run),
+            Clock.fixed(NOW, ZoneOffset.UTC),
+            Duration.ofMinutes(5)
+        );
+    }
+
+    private OrchestrationResult writeProposalResult() {
+        Map<String, Object> parameters = Map.of(
+            "addressType",
+            "BILLING",
+            "streetAddress",
+            "10 Downing Street"
+        );
+        return OrchestrationResult.builder()
+            .type(OrchestrationResultType.CONFIRMATION_REQUIRED)
+            .success(false)
+            .message("Confirmation required.")
+            .actionProposalCandidate(new ActionProposalCandidate(
+                "update_address",
+                parameters,
+                new ActionContext(
+                    OrchestrationContext.forUser(
+                        "model-supplied-account"
+                    ),
+                    null,
+                    parameters
+                )
+            ))
+            .build();
+    }
+
     private Pipeline successPipeline(AtomicReference<PipelineContext> observed) {
         RAGResponse.RAGDocument document = RAGResponse.RAGDocument.builder()
             .id("policy-payment")
@@ -744,6 +1007,76 @@ class DefaultAIExecutionGatewayTest {
         return definition(
             invalidOutput,
             SpecialistOutputMode.DIRECT_PROJECTION
+        );
+    }
+
+    private SpecialistDefinition<ResolverInput, ResolverOutput> writeDefinition() {
+        RequestedCapabilityProfile requested =
+            new RequestedCapabilityProfile(
+                false,
+                Set.of(),
+                Set.of("update_address"),
+                Set.of(),
+                Set.of("update_address")
+            );
+        return new SpecialistDefinition<>(
+            new SpecialistIdentity(
+                SPECIALIST_ID,
+                "Account Resolver",
+                "Proposes governed account updates"
+            ),
+            new SpecialistInstructions(
+                "Use only registered current-account actions.",
+                "Never bypass confirmation."
+            ),
+            new SpecialistExecutionProfile(
+                "resolver",
+                requested,
+                ExecutionStrategy.SINGLE_PASS,
+                true
+            ),
+            SpecialistLimits.defaults(),
+            new SpecialistInputAdapter<>() {
+                @Override
+                public Class<ResolverInput> inputType() {
+                    return ResolverInput.class;
+                }
+
+                @Override
+                public void validate(ResolverInput input) {
+                    if (input.question() == null
+                        || input.question().isBlank()) {
+                        throw new IllegalArgumentException(
+                            "question is required"
+                        );
+                    }
+                }
+
+                @Override
+                public String renderModelInput(ResolverInput input) {
+                    return input.question();
+                }
+            },
+            new SpecialistOutputAdapter<>() {
+                @Override
+                public Class<ResolverOutput> outputType() {
+                    return ResolverOutput.class;
+                }
+
+                @Override
+                public ResolverOutput project(
+                    OrchestrationResult result,
+                    List<AIEvidenceReference> evidence
+                ) {
+                    return new ResolverOutput(
+                        result.getMessage(),
+                        evidence.size()
+                    );
+                }
+
+                @Override
+                public void validate(ResolverOutput output) {}
+            }
         );
     }
 

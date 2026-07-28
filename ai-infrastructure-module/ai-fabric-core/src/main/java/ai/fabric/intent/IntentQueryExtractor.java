@@ -135,7 +135,7 @@ public class IntentQueryExtractor {
         coerceMisclassifiedActionIntents(response);
         validateResponse(response, userQuery);
         if (!response.hasIntents()) {
-            log.warn("Intent extractor returned no intents for query '{}'", userQuery);
+            log.warn("Intent extractor returned no intents");
         }
         return new ExtractionTrace(
             response,

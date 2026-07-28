@@ -47,7 +47,7 @@ public class IntentExtractionPostProcessor {
         attachNormalizationDiagnostics(response, appliedRules);
 
         if (!response.hasIntents()) {
-            log.warn("Intent extractor returned no intents for query '{}'", originalQuery);
+            log.warn("Intent extractor returned no intents");
         }
 
         return response;

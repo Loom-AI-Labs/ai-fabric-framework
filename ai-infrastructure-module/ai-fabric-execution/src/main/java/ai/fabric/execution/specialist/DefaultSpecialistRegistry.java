@@ -143,12 +143,20 @@ public final class DefaultSpecialistRegistry implements SpecialistRegistry {
             }
         }
         for (String action : capabilities.proposableWriteActions()) {
-            if (registeredActions.get(action).getAccessMode()
+            AIActionMetaData metadata = registeredActions.get(action);
+            if (metadata.getAccessMode()
                 == ai.fabric.intent.action.ActionAccessMode.READ) {
                 throw new IllegalStateException(
                     "Specialist " + definition.id()
                         + " declares READ action " + action
                         + " as proposable WRITE"
+                );
+            }
+            if (!metadata.isConfirmationRequired()) {
+                throw new IllegalStateException(
+                    "Specialist " + definition.id()
+                        + " declares write action " + action
+                        + " without application-owned confirmation"
                 );
             }
         }

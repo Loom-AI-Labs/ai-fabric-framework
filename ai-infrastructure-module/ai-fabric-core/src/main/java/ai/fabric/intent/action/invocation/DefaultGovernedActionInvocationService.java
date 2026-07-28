@@ -161,6 +161,9 @@ public final class DefaultGovernedActionInvocationService
             String message = handled != null && StringUtils.hasText(handled.getMessage())
                 ? handled.getMessage()
                 : "Action execution failed.";
+            if (!metadata.getAccessMode().isReadOnly()) {
+                return outcomeUnknown(reason, message, handled);
+            }
             return failure(reason, message, false, handled);
         }
     }
@@ -266,6 +269,20 @@ public final class DefaultGovernedActionInvocationService
         ActionResult result
     ) {
         return outcome(GovernedActionInvocationStatus.FAILED, reason, message, retryable, result);
+    }
+
+    private GovernedActionInvocationOutcome outcomeUnknown(
+        String reason,
+        String message,
+        ActionResult result
+    ) {
+        return outcome(
+            GovernedActionInvocationStatus.OUTCOME_UNKNOWN,
+            reason,
+            message,
+            false,
+            result
+        );
     }
 
     private GovernedActionInvocationOutcome outcome(

@@ -6,6 +6,7 @@ import ai.fabric.dto.AIGenerationRequest;
 import ai.fabric.dto.AIGenerationResponse;
 import ai.fabric.dto.Intent;
 import ai.fabric.intent.IntentExtractionJsonSupport;
+import ai.fabric.intent.SpecialistPromptInstructionSupport;
 import ai.fabric.intent.action.AIActionHandler;
 import ai.fabric.intent.action.AIActionMetaData;
 import ai.fabric.intent.action.AIActionParamSchema;
@@ -307,10 +308,17 @@ public class ReadActionResolutionService {
                                         int iteration,
                                         int maxIterations) {
         try {
-            String systemPrompt = promptRenderer.render(
-                promptTemplateResolver.resolve(TEMPLATE_FAMILY, TEMPLATE_SYSTEM).template(),
-                Map.of()
-            );
+            String systemPrompt =
+                SpecialistPromptInstructionSupport.appendToSystemPrompt(
+                    promptRenderer.render(
+                        promptTemplateResolver.resolve(
+                            TEMPLATE_FAMILY,
+                            TEMPLATE_SYSTEM
+                        ).template(),
+                        Map.of()
+                    ),
+                    orchestrationContext
+                );
             String userPrompt = promptRenderer.render(
                 promptTemplateResolver.resolve(TEMPLATE_FAMILY, TEMPLATE_USER).template(),
                 Map.of(
@@ -533,6 +541,12 @@ public class ReadActionResolutionService {
                                  boolean hasSuccessfulActionEvidence,
                                  boolean hasInsufficientActionEvidence,
                                  OrchestrationPolicy.ReadActionResolutionPolicy readPolicy) {
+        if (readPolicy.ragCooperationMode()
+            == ai.fabric.config.OrchestrationProperties
+                .ReadActionResolutionRagCooperationMode
+                .PARALLEL_ACTIONS_AND_RAG) {
+            return true;
+        }
         if (decision == null) {
             return readPolicy.ragCooperationMode() != ai.fabric.config.OrchestrationProperties.ReadActionResolutionRagCooperationMode.NONE;
         }

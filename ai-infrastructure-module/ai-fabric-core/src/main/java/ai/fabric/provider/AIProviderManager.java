@@ -102,11 +102,18 @@ public class AIProviderManager {
             return response;
             
         } catch (Exception e) {
-            log.error("Provider {} failed, trying fallback", selectedProvider.getProviderName(), e);
+            boolean fallbackAllowed = isFallbackEnabled()
+                && !TransientInputSupport.hasFileUrlInputs(request);
+            log.error(
+                "Provider {} failed for content generation; fallbackAllowed={} cause={}",
+                selectedProvider.getProviderName(),
+                fallbackAllowed,
+                e.getClass().getSimpleName()
+            );
             updateProviderStatus(selectedProvider.getProviderName(), false);
             
             // Try fallback providers
-            if (!isFallbackEnabled() || TransientInputSupport.hasFileUrlInputs(request)) {
+            if (!fallbackAllowed) {
                 throw e;
             }
             return tryFallbackProviders(request, availableProviders, selectedProvider);
@@ -142,11 +149,17 @@ public class AIProviderManager {
             return response;
             
         } catch (Exception e) {
-            log.error("Provider {} failed, trying fallback", selectedProvider.getProviderName(), e);
+            boolean fallbackAllowed = isFallbackEnabled();
+            log.error(
+                "Provider {} failed for embedding generation; fallbackAllowed={} cause={}",
+                selectedProvider.getProviderName(),
+                fallbackAllowed,
+                e.getClass().getSimpleName()
+            );
             updateProviderStatus(selectedProvider.getProviderName(), false);
             
             // Try fallback providers
-            if (!isFallbackEnabled()) {
+            if (!fallbackAllowed) {
                 throw e;
             }
             return tryFallbackEmbedding(request, availableProviders, selectedProvider);
@@ -320,7 +333,11 @@ public class AIProviderManager {
                 updateProviderStatus(provider.getProviderName(), true);
                 return response;
             } catch (Exception e) {
-                log.warn("Fallback provider {} also failed", provider.getProviderName(), e);
+                log.warn(
+                    "Fallback provider {} failed for content generation; cause={}",
+                    provider.getProviderName(),
+                    e.getClass().getSimpleName()
+                );
                 updateProviderStatus(provider.getProviderName(), false);
             }
         }
@@ -350,7 +367,11 @@ public class AIProviderManager {
                 updateProviderStatus(provider.getProviderName(), true);
                 return response;
             } catch (Exception e) {
-                log.warn("Fallback provider {} also failed for embedding", provider.getProviderName(), e);
+                log.warn(
+                    "Fallback provider {} failed for embedding generation; cause={}",
+                    provider.getProviderName(),
+                    e.getClass().getSimpleName()
+                );
                 updateProviderStatus(provider.getProviderName(), false);
             }
         }

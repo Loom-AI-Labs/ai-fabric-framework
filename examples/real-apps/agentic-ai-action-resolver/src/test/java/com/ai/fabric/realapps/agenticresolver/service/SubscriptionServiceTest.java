@@ -3,12 +3,15 @@ package com.ai.fabric.realapps.agenticresolver.service;
 import ai.fabric.core.AICoreService;
 import ai.fabric.dto.AISearchRequest;
 import ai.fabric.dto.AISearchResponse;
+import com.ai.fabric.realapps.agenticresolver.entity.Address;
+import com.ai.fabric.realapps.agenticresolver.entity.Subscription;
 import com.ai.fabric.realapps.agenticresolver.entity.SubscriptionPlan;
 import com.ai.fabric.realapps.agenticresolver.repository.SubscriptionPlanRepository;
 import com.ai.fabric.realapps.agenticresolver.repository.SubscriptionRepository;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -17,6 +20,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -103,6 +107,57 @@ class SubscriptionServiceTest {
         assertThatThrownBy(() -> service.resolvePlanId("Premium"))
             .isInstanceOf(IllegalArgumentException.class)
             .hasMessageContaining("Plan not found");
+    }
+
+    @Test
+    void updateAddressPersistsAuthoritativeStateAndTracksSafeEvent() {
+        UUID userId = UUID.randomUUID();
+        UUID subscriptionId = UUID.randomUUID();
+        Subscription subscription = Subscription.builder()
+            .id(subscriptionId)
+            .userId(userId)
+            .planId(UUID.randomUUID())
+            .status(Subscription.SubscriptionStatus.ACTIVE)
+            .startDate(LocalDateTime.now().minusDays(1))
+            .billingCycle(Subscription.BillingCycle.MONTHLY)
+            .build();
+        Address address = Address.builder()
+            .streetAddress("10 Downing Street")
+            .city("London")
+            .state("London")
+            .postalCode("SW1A 2AA")
+            .country("GB")
+            .type(Address.AddressType.BILLING)
+            .isValidated(true)
+            .build();
+        when(subscriptionRepository.findById(subscriptionId))
+            .thenReturn(Optional.of(subscription));
+        when(subscriptionRepository.save(subscription))
+            .thenReturn(subscription);
+
+        Subscription updated = service.updateAddress(
+            subscriptionId,
+            Address.AddressType.BILLING,
+            address
+        );
+
+        assertThat(updated.getBillingAddress()).isSameAs(address);
+        verify(subscriptionRepository).save(subscription);
+        assertThat(behaviorEventService.getEventsForUser(
+            userId.toString(),
+            LocalDateTime.MIN,
+            LocalDateTime.now().plusSeconds(1)
+        )).singleElement().satisfies(event -> {
+            assertThat(event.getEventType()).isEqualTo("UPDATE_ADDRESS");
+            assertThat(event.getEventData())
+                .containsEntry("addressType", "BILLING")
+                .containsEntry("isValidated", "true")
+                .doesNotContainKeys(
+                    "streetAddress",
+                    "postalCode",
+                    "subscriptionId"
+                );
+        });
     }
 
     private static SubscriptionPlan plan(UUID id, String name, String description) {

@@ -80,7 +80,11 @@ class DefaultStructuredSpecialistOutputFinalizerTest {
             .generateContent(request.capture(), eq(LlmPurpose.GENERATION));
         assertThat(request.getValue().getSystemPrompt())
             .contains("untrusted data")
+            .contains("READ_ACTION_FACTS")
+            .contains("authoritative server-produced application state")
+            .contains("a requirement alone")
             .contains("Return exactly one JSON object");
+        assertThat(request.getValue().getTemperature()).isZero();
         assertThat(request.getValue().getPrompt())
             .contains("Is this account ready?")
             .contains("Current account has no verified payment method.")

@@ -109,8 +109,12 @@ public class AICoreService {
             AIProviderConfig.GenerationDefaults defaults = resolveDefaultsForPurpose(effectivePurpose);
             AIGenerationRequest generationRequest = applyGenerationDefaults(request, defaults, effectivePurpose);
 
-            log.debug("Generating AI content via provider manager for purpose={} prompt={}",
-                effectivePurpose, generationRequest.getPrompt());
+            log.debug(
+                "Generating AI content via provider manager for purpose={} entityType={} generationType={}",
+                effectivePurpose,
+                generationRequest.getEntityType(),
+                generationRequest.getGenerationType()
+            );
 
             AIGenerationResponse response = providerManager.generateContent(generationRequest, defaults.providerName());
 
@@ -120,8 +124,12 @@ public class AICoreService {
             return response;
 
         } catch (Exception e) {
-            log.error("Error generating AI content for purpose={}", purpose, e);
-            throw new AIServiceException("Failed to generate AI content: " + e.getMessage(), e);
+            log.error(
+                "Error generating AI content for purpose={} cause={}",
+                purpose,
+                e.getClass().getSimpleName()
+            );
+            throw new AIServiceException("Failed to generate AI content", e);
         }
     }
     
@@ -418,8 +426,11 @@ public class AICoreService {
             return generateContent(request, effectivePurpose);
                 
         } catch (Exception e) {
-            log.error("Error generating text: {}", e.getMessage(), e);
-            throw new AIServiceException("Failed to generate text: " + e.getMessage(), e);
+            log.error(
+                "Error generating text cause={}",
+                e.getClass().getSimpleName()
+            );
+            throw new AIServiceException("Failed to generate text", e);
         }
     }
 

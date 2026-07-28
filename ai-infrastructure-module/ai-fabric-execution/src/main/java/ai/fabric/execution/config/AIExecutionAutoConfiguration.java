@@ -3,6 +3,7 @@ package ai.fabric.execution.config;
 import ai.fabric.config.OrchestrationProperties;
 import ai.fabric.core.AICoreService;
 import ai.fabric.evidence.AIEvidenceReferenceMapper;
+import ai.fabric.execution.action.ActionProposalCoordinator;
 import ai.fabric.execution.gateway.AIExecutionGateway;
 import ai.fabric.execution.gateway.AIExecutionConversationRecorder;
 import ai.fabric.execution.gateway.DefaultAIExecutionGateway;
@@ -11,6 +12,7 @@ import ai.fabric.execution.gateway.DefaultSpecialistAuthorityResolver;
 import ai.fabric.execution.gateway.ExecutionCapabilityInventory;
 import ai.fabric.execution.gateway.OrchestrationEvidenceProjector;
 import ai.fabric.execution.gateway.SpecialistAuthorityResolver;
+import ai.fabric.execution.gateway.SpecialistCapabilityResolver;
 import ai.fabric.execution.gateway.SpecialistGroundingProjector;
 import ai.fabric.execution.gateway.SpecialistOutputFinalizer;
 import ai.fabric.execution.specialist.DefaultSpecialistRegistry;
@@ -112,6 +114,22 @@ public class AIExecutionAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
+    public SpecialistCapabilityResolver specialistCapabilityResolver(
+        EffectiveCapabilitiesResolver capabilitiesResolver,
+        AIActionRegistry actionRegistry,
+        ExecutionCapabilityInventory capabilityInventory,
+        SpecialistAuthorityResolver authorityResolver
+    ) {
+        return new SpecialistCapabilityResolver(
+            capabilitiesResolver,
+            actionRegistry,
+            capabilityInventory,
+            authorityResolver
+        );
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
     public AIEvidenceReferenceMapper aiExecutionEvidenceReferenceMapper() {
         return new AIEvidenceReferenceMapper();
     }
@@ -185,6 +203,7 @@ public class AIExecutionAutoConfiguration {
         OrchestrationEvidenceProjector evidenceProjector,
         SpecialistOutputFinalizer outputFinalizer,
         ObjectProvider<AIExecutionConversationRecorder> conversationRecorder,
+        ObjectProvider<ActionProposalCoordinator> actionProposalCoordinator,
         @Qualifier("aiFabricExecutionTaskExecutor") AsyncTaskExecutor taskExecutor,
         Clock clock,
         AIExecutionProperties properties
@@ -200,6 +219,7 @@ public class AIExecutionAutoConfiguration {
             evidenceProjector,
             outputFinalizer,
             conversationRecorder.getIfAvailable(),
+            actionProposalCoordinator::getIfAvailable,
             taskExecutor,
             clock,
             properties.getAsync().getResultTtl()

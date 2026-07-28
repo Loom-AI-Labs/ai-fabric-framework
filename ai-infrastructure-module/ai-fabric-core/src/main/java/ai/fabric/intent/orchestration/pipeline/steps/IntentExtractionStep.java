@@ -3,13 +3,16 @@ package ai.fabric.intent.orchestration.pipeline.steps;
 import ai.fabric.dto.Intent;
 import ai.fabric.dto.IntentType;
 import ai.fabric.dto.MultiIntentResponse;
+import ai.fabric.exception.AIServiceException;
 import ai.fabric.intent.IntentQueryExtractor;
 import ai.fabric.intent.extraction.ProgressiveIntentExtractionEngine;
 import ai.fabric.intent.extraction.IntentExtractionInput;
 import ai.fabric.intent.orchestration.OrchestrationResult;
+import ai.fabric.intent.orchestration.OrchestrationResultType;
 import ai.fabric.intent.orchestration.OrchestrationAuthContextResolver;
 import ai.fabric.intent.orchestration.pipeline.PipelineContext;
 import ai.fabric.intent.orchestration.pipeline.PipelineStep;
+import ai.fabric.intent.orchestration.request.OrchestrationRequestPurpose;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.ObjectProvider;
@@ -54,6 +57,10 @@ public class IntentExtractionStep implements PipelineStep {
     private static final String STEP_NAME = "IntentExtraction";
     private static final int STEP_ORDER = 50;
     private static final String EXTRACTION_DIAGNOSTICS_KEY = "extractionDiagnostics";
+    private static final String PROVIDER_FAILURE_REASON =
+        "INTENT_PROVIDER_FAILED";
+    private static final String EXTRACTION_FAILURE_REASON =
+        "INTENT_EXTRACTION_FAILED";
     
     // Error messages
     private static final String ERROR_MSG_NO_INTENT = "Unable to determine user intent.";
@@ -127,6 +134,8 @@ public class IntentExtractionStep implements PipelineStep {
             : null;
 
         MultiIntentResponse intentResponse;
+        ProgressiveIntentExtractionEngine.ExtractionFailure extractionFailure =
+            null;
         PipelineContext updatedContext = context.withMetadata(
             "llmPrompting",
             Map.of(
@@ -144,6 +153,7 @@ public class IntentExtractionStep implements PipelineStep {
                     context.getOrchestrationContext()
                 );
                 intentResponse = output != null ? output.response() : null;
+                extractionFailure = output != null ? output.failure() : null;
                 if (output != null && output.diagnostics() != null && !output.diagnostics().isEmpty()) {
                     updatedContext = updatedContext.withMetadata(EXTRACTION_DIAGNOSTICS_KEY, output.diagnostics());
                 }
@@ -158,17 +168,46 @@ public class IntentExtractionStep implements PipelineStep {
                 updatedContext = updatedContext.withMetadata(EXTRACTION_DIAGNOSTICS_KEY, directExtractionDiagnostics(extractionTrace));
             }
         } catch (Exception ex) {
-            log.warn("Intent extraction failed for request {}: {}", context.getRequestId(), ex.getMessage());
+            log.warn(
+                "Intent extraction failed for request {} ({})",
+                context.getRequestId(),
+                ex.getClass().getSimpleName()
+            );
+            if (isSpecialistRequest(context)) {
+                return terminateExtractionFailure(
+                    updatedContext,
+                    extractionFailure(ex)
+                );
+            }
             updatedContext = updatedContext.withMetadata(
                 "intentExtractionError",
-                Map.of("message", ex.getMessage(), "fallback", true)
+                Map.of("message", safeMessage(ex), "fallback", true)
             );
             intentResponse = fallbackIntentResponse("Intent extraction failed: " + safeMessage(ex));
         }
-        
-        if (!intentResponse.hasIntents()) {
-            log.warn("No intents extracted for query '{}' in request {}", 
-                userQuery, context.getRequestId());
+
+        if (isSpecialistRequest(context) && extractionFailure != null) {
+            return terminateExtractionFailure(
+                updatedContext,
+                extractionFailure
+            );
+        }
+
+        if (intentResponse == null || !intentResponse.hasIntents()) {
+            log.warn(
+                "No intents extracted for request {}",
+                context.getRequestId()
+            );
+            if (isSpecialistRequest(context)) {
+                return terminateExtractionFailure(
+                    updatedContext,
+                    new ProgressiveIntentExtractionEngine.ExtractionFailure(
+                        EXTRACTION_FAILURE_REASON,
+                        "AI intent analysis did not produce a valid result.",
+                        false
+                    )
+                );
+            }
             updatedContext = updatedContext.withMetadata(
                 "intentExtractionError",
                 Map.of("message", ERROR_MSG_NO_INTENT, "fallback", true)
@@ -185,6 +224,83 @@ public class IntentExtractionStep implements PipelineStep {
         return updatedContext.toBuilder()
             .intentResponse(intentResponse)
             .build();
+    }
+
+    private boolean isSpecialistRequest(PipelineContext context) {
+        return context != null
+            && context.getOrchestrationRequest() != null
+            && context.getOrchestrationRequest().purpose()
+                == OrchestrationRequestPurpose.SPECIALIST;
+    }
+
+    private PipelineContext terminateExtractionFailure(
+        PipelineContext context,
+        ProgressiveIntentExtractionEngine.ExtractionFailure failure
+    ) {
+        ProgressiveIntentExtractionEngine.ExtractionFailure safeFailure =
+            failure != null
+                ? failure
+                : new ProgressiveIntentExtractionEngine.ExtractionFailure(
+                    EXTRACTION_FAILURE_REASON,
+                    "AI intent analysis did not produce a valid result.",
+                    false
+                );
+        PipelineContext withFailure = context.withMetadata(
+            "intentExtractionError",
+            Map.of(
+                "reason",
+                safeFailure.reason(),
+                "message",
+                safeFailure.publicMessage(),
+                "fallback",
+                false,
+                "retryable",
+                safeFailure.retryable()
+            )
+        );
+        return withFailure.terminate(
+            OrchestrationResult.builder()
+                .type(OrchestrationResultType.ERROR)
+                .success(false)
+                .errorCode(safeFailure.reason())
+                .message(safeFailure.publicMessage())
+                .metadata(Map.of("phase", "intent_extraction"))
+                .build()
+        );
+    }
+
+    private ProgressiveIntentExtractionEngine.ExtractionFailure
+        extractionFailure(Exception exception) {
+        boolean providerFailure = hasCause(exception, AIServiceException.class);
+        return providerFailure
+            ? new ProgressiveIntentExtractionEngine.ExtractionFailure(
+                PROVIDER_FAILURE_REASON,
+                "The configured AI provider could not complete intent analysis.",
+                true
+            )
+            : new ProgressiveIntentExtractionEngine.ExtractionFailure(
+                EXTRACTION_FAILURE_REASON,
+                "AI intent analysis did not produce a valid result.",
+                false
+            );
+    }
+
+    private boolean hasCause(
+        Throwable error,
+        Class<? extends Throwable> expectedType
+    ) {
+        Throwable current = error;
+        while (current != null) {
+            if (expectedType.isInstance(current)) {
+                return true;
+            }
+            Throwable cause = current.getCause();
+            if (cause == current) {
+                break;
+            }
+            current = cause;
+        }
+        return false;
     }
 
     private String buildCurrentUserMessage(String pinnedTargetsContext, String userQuery) {

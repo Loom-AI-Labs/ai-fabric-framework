@@ -1,6 +1,8 @@
 package com.ai.fabric.realapps.agenticresolver.service;
 
 import ai.fabric.execution.gateway.AIExecutionGateway;
+import ai.fabric.execution.action.ActionProposalReceiptRepository;
+import ai.fabric.execution.config.AIExecutionProperties;
 import ai.fabric.execution.specialist.SpecialistRegistry;
 import ai.fabric.provider.AIProvider;
 import com.ai.fabric.realapps.agenticresolver.agentic.AccountResolverSpecialistConfiguration;
@@ -33,12 +35,16 @@ public class DeploymentInfoService {
     private final List<AIProvider> providers;
     private final AIExecutionGateway executionGateway;
     private final SpecialistRegistry specialistRegistry;
+    private final ActionProposalReceiptRepository receiptRepository;
+    private final AIExecutionProperties executionProperties;
 
     public DeploymentInfoService(
         Environment environment,
         List<AIProvider> providers,
         AIExecutionGateway executionGateway,
-        SpecialistRegistry specialistRegistry
+        SpecialistRegistry specialistRegistry,
+        ActionProposalReceiptRepository receiptRepository,
+        AIExecutionProperties executionProperties
     ) {
         this.environment = environment;
         this.startedAt = Instant.now();
@@ -47,6 +53,8 @@ public class DeploymentInfoService {
         this.providers = providers != null ? List.copyOf(providers) : List.of();
         this.executionGateway = executionGateway;
         this.specialistRegistry = specialistRegistry;
+        this.receiptRepository = receiptRepository;
+        this.executionProperties = executionProperties;
     }
 
     public Map<String, Object> health() {
@@ -94,15 +102,38 @@ public class DeploymentInfoService {
             .map(definition -> definition.id().toString())
             .sorted()
             .toList();
-        health.put("execution", Map.of(
-            "ready", executionGateway != null,
-            "asyncDurability", "EPHEMERAL",
-            "specialists", specialists,
+        AIExecutionProperties.Receipts receipts =
+            executionProperties.getReceipts();
+        Map<String, Object> execution = new LinkedHashMap<>();
+        execution.put("ready", executionGateway != null);
+        execution.put("asyncDurability", "EPHEMERAL");
+        execution.put(
+            "writeReceiptDurability",
+            receipts.getRepository().name()
+        );
+        execution.put("writeReceiptsReady", receiptRepository != null);
+        execution.put("receiptTtl", receipts.getTtl().toString());
+        execution.put(
+            "staleExecutingAfter",
+            receipts.getStaleExecutingAfter().toString()
+        );
+        execution.put("receiptCleanupEnabled", receipts.isCleanupEnabled());
+        execution.put("receiptRetention", receipts.getRetention().toString());
+        execution.put("specialists", specialists);
+        execution.put(
             "accountResolverRegistered",
             specialists.contains(
                 AccountResolverSpecialistConfiguration.SPECIALIST_ID.toString()
             )
-        ));
+        );
+        execution.put(
+            "accountResolverReadRegistered",
+            specialists.contains(
+                AccountResolverSpecialistConfiguration.READ_SPECIALIST_ID
+                    .toString()
+            )
+        );
+        health.put("execution", Map.copyOf(execution));
         health.put("startedAt", startedAt.toString());
         health.put("checkedAt", Instant.now().toString());
         return health;

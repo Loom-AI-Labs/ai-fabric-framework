@@ -1,2 +1,5 @@
 ai.fabric.execution.config.AIExecutionAutoConfiguration
 ai.fabric.execution.config.AIExecutionChatSessionAutoConfiguration
+ai.fabric.execution.config.AIExecutionJdbcReceiptAutoConfiguration
+ai.fabric.execution.config.AIExecutionReceiptMetricsAutoConfiguration
+ai.fabric.execution.config.AIExecutionReceiptAutoConfiguration

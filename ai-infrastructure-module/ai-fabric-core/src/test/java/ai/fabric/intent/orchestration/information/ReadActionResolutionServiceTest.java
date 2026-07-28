@@ -155,6 +155,145 @@ class ReadActionResolutionServiceTest {
     }
 
     @Test
+    void shouldContinueWithRagWhenParallelModeHasUsableReadActionEvidence() {
+        AICoreService aiCoreService = mock(AICoreService.class);
+        AIActionRegistry actionRegistry = mock(AIActionRegistry.class);
+        PromptTemplateResolver templateResolver = mock(
+            PromptTemplateResolver.class
+        );
+
+        AIActionMetaData profile = AIActionMetaData.builder()
+            .name("get_account_profile")
+            .description("Read the current account profile.")
+            .category("account")
+            .accessMode(ActionAccessMode.READ)
+            .groundingEligible(true)
+            .readActionResolutionEligible(true)
+            .build();
+        AIActionHandler profileHandler = mock(AIActionHandler.class);
+        when(profileHandler.validateActionAllowed(any(ActionContext.class)))
+            .thenReturn(true);
+        when(profileHandler.executeAction(eq(Map.of()), any(ActionContext.class)))
+            .thenReturn(ActionResult.builder()
+                .success(true)
+                .message("Account profile loaded.")
+                .data(ActionPayload.object(Map.of(
+                    "subscriptionActive", true,
+                    "billingAddressPresent", false
+                )))
+                .build());
+        when(profileHandler.buildPostActionLlmFacts(
+            any(ActionResult.class),
+            any(ActionContext.class)
+        )).thenReturn(Optional.of(Map.of(
+            "subscriptionActive", true,
+            "billingAddressPresent", false
+        )));
+
+        when(actionRegistry.getAllMetadata()).thenReturn(List.of(profile));
+        when(actionRegistry.findHandler("get_account_profile"))
+            .thenReturn(Optional.of(profileHandler));
+        when(actionRegistry.findMetadata("get_account_profile"))
+            .thenReturn(Optional.of(profile));
+        when(templateResolver.resolve(
+            "orchestration/read-action-resolution",
+            "system"
+        )).thenReturn(resolvedTemplate("system", ""));
+        when(templateResolver.resolve(
+            "orchestration/read-action-resolution",
+            "user"
+        )).thenReturn(resolvedTemplate(
+            "user",
+            "mode={{mode}}\nquery={{query}}\nintent={{intent_json}}\n"
+                + "actions={{eligible_actions_json}}\n"
+                + "prior={{prior_evidence_json}}\n"
+                + "max={{max_actions_per_iteration}}\n"
+                + "total={{max_total_actions}}\n"
+                + "rag={{rag_cooperation_mode}}\n"
+                + "iteration={{iteration}}\niterations={{max_iterations}}"
+        ));
+        when(aiCoreService.generateContent(
+            any(),
+            eq(LlmPurpose.ORCHESTRATION)
+        )).thenReturn(AIGenerationResponse.builder()
+            .content("""
+                {
+                  "decision": "EXECUTE_READ_ACTIONS",
+                  "actions": [
+                    {
+                      "name": "get_account_profile",
+                      "params": {},
+                      "priority": 1
+                    }
+                  ],
+                  "needsMoreSteps": false,
+                  "suggestedVectorSpaces": ["account-resolution-policy"]
+                }
+                """)
+            .build());
+
+        ReadActionResolutionService service = new ReadActionResolutionService(
+            aiCoreService,
+            actionRegistry,
+            new IntentExtractionJsonSupport(new ObjectMapper()),
+            templateResolver,
+            new PromptRenderer()
+        );
+        OrchestrationContext context = OrchestrationContext.builder()
+            .userId("user-1")
+            .specialistInstructions(
+                "Objective: Assess current account readiness.\n"
+                    + "Specialist constraints:\n"
+                    + "Always read current profile facts before deciding."
+            )
+            .build();
+
+        ReadActionResolutionService.ResolutionOutcome outcome = service.resolve(
+            Intent.builder()
+                .type(IntentType.INFORMATION)
+                .intent("What prevents this account from placing an order?")
+                .optimizedQuery("account ordering requirements")
+                .build(),
+            context,
+            PipelineContext.from(
+                "What prevents this account from placing an order?",
+                context
+            ).toBuilder()
+                .orchestrationPolicy(readActionPolicy(
+                    "resolver",
+                    List.of("get_account_profile"),
+                    OrchestrationProperties
+                        .ReadActionResolutionPlanningMode
+                        .SINGLE_PASS,
+                    OrchestrationProperties
+                        .ReadActionResolutionRagCooperationMode
+                        .PARALLEL_ACTIONS_AND_RAG
+                ))
+                .build()
+        );
+
+        assertThat(outcome.attempted()).isTrue();
+        assertThat(outcome.hasGroundingEvidence()).isTrue();
+        assertThat(outcome.useRag()).isTrue();
+        assertThat(outcome.canAnswerFromActionEvidenceOnly()).isFalse();
+        assertThat(outcome.preferredVectorSpaces())
+            .containsExactly("account-resolution-policy");
+        assertThat(outcome.diagnostics())
+            .containsEntry("ragCooperationMode", "PARALLEL_ACTIONS_AND_RAG")
+            .containsEntry("useRag", true);
+        ArgumentCaptor<AIGenerationRequest> plannerRequest =
+            ArgumentCaptor.forClass(AIGenerationRequest.class);
+        verify(aiCoreService).generateContent(
+            plannerRequest.capture(),
+            eq(LlmPurpose.ORCHESTRATION)
+        );
+        assertThat(plannerRequest.getValue().getSystemPrompt())
+            .contains("APPLICATION-OWNED SPECIALIST CONTRACT")
+            .contains("Objective: Assess current account readiness.")
+            .contains("Always read current profile facts before deciding.");
+    }
+
+    @Test
     void shouldExecuteMultiplePlannerSelectedReadActionsWithinBudget() {
         AICoreService aiCoreService = mock(AICoreService.class);
         AIActionRegistry actionRegistry = mock(AIActionRegistry.class);

@@ -1,5 +1,6 @@
 package ai.fabric.intent.orchestration;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 
 import java.util.Locale;
@@ -83,5 +84,21 @@ class OrchestrationContextTest {
 
         assertThat(context.isAnonymous()).isTrue();
         assertThat(context.getSessionId()).startsWith("anon-");
+    }
+
+    @Test
+    void specialistInstructionsAreNotSerialized() throws Exception {
+        OrchestrationContext context = OrchestrationContext.builder()
+            .userId("user")
+            .specialistInstructions("Application-only specialist contract")
+            .build();
+
+        String json = new ObjectMapper().writeValueAsString(context);
+
+        assertThat(json)
+            .doesNotContain(
+                "specialistInstructions",
+                "Application-only specialist contract"
+            );
     }
 }

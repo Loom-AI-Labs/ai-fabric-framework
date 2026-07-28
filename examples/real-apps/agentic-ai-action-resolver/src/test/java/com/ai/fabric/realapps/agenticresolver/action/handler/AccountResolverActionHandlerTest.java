@@ -21,12 +21,14 @@ import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isA;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import org.mockito.ArgumentCaptor;
 
 class AccountResolverActionHandlerTest {
 
@@ -416,6 +418,15 @@ class AccountResolverActionHandlerTest {
                 .containsOnlyKeys("addressType", "streetAddress", "city", "state", "postalCode", "country");
             assertThat(address.getRequiredParameters())
                 .containsExactlyInAnyOrder("streetAddress", "city", "state", "postalCode", "country");
+            assertThat(address.getParameterSchemas().get("addressType")
+                .getAllowedValues())
+                .containsExactly("BILLING", "SHIPPING");
+            assertThat(address.getParameterSchemas().get("streetAddress")
+                .getPattern())
+                .isEqualTo("(?s).{1,200}");
+            assertThat(address.getParameterSchemas().get("postalCode")
+                .getPattern())
+                .isEqualTo("(?s).{1,32}");
 
             AIActionMetaData refund = registry.findMetadata("request_refund").orElseThrow();
             assertThat(refund.getParameters()).containsOnlyKeys("amount", "reason", "resolutionType");
@@ -475,7 +486,65 @@ class AccountResolverActionHandlerTest {
         );
 
         assertThat(result.isSuccess()).isTrue();
-        verify(subscriptionService).updateAddress(eq(subscriptionId), eq(Address.AddressType.BILLING), isA(Address.class));
+        ArgumentCaptor<Address> addressCaptor =
+            ArgumentCaptor.forClass(Address.class);
+        verify(subscriptionService).updateAddress(
+            eq(subscriptionId),
+            eq(Address.AddressType.BILLING),
+            addressCaptor.capture()
+        );
+        assertThat(addressCaptor.getValue()).satisfies(address -> {
+            assertThat(address.getStreetAddress()).isEqualTo("101 Market St");
+            assertThat(address.getPostalCode()).isEqualTo("94105");
+            assertThat(address.getIsValidated()).isTrue();
+            assertThat(address.getValidationScore()).isEqualTo(1.0);
+        });
+    }
+
+    @Test
+    void unexpectedAddressWriteFailurePropagatesForUnknownOutcomeClassification() {
+        UUID userUuid = UUID.randomUUID();
+        UUID subscriptionId = UUID.randomUUID();
+        Subscription subscription = Subscription.builder()
+            .id(subscriptionId)
+            .userId(userUuid)
+            .status(Subscription.SubscriptionStatus.ACTIVE)
+            .billingCycle(Subscription.BillingCycle.MONTHLY)
+            .startDate(LocalDateTime.now().minusDays(3))
+            .build();
+        when(userService.getUserIdFromNumeric(93L)).thenReturn(userUuid);
+        when(subscriptionService.getActiveSubscription(userUuid))
+            .thenReturn(Optional.of(subscription));
+        when(subscriptionService.updateAddress(
+            eq(subscriptionId),
+            eq(Address.AddressType.BILLING),
+            isA(Address.class)
+        )).thenThrow(new IllegalStateException(
+            "database write unavailable for internal-subscription-id"
+        ));
+        UpdateAddressActionHandler handler =
+            new UpdateAddressActionHandler(
+                subscriptionService,
+                userService
+            );
+        ActionContext context = new ActionContext(
+            OrchestrationContext.builder()
+                .userId("93")
+                .sessionId("resolver-test")
+                .build(),
+            null
+        );
+
+        assertThatThrownBy(() -> handler.execute(
+                "BILLING",
+                "101 Market St",
+                "San Francisco",
+                "CA",
+                "94105",
+                "USA",
+                context
+            ))
+            .isInstanceOf(IllegalStateException.class);
     }
 
     @Test
