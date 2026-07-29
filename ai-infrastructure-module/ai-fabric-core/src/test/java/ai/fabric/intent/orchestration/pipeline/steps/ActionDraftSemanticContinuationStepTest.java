@@ -68,6 +68,28 @@ class ActionDraftSemanticContinuationStepTest {
         verify(analyzer, never()).analyze(context);
     }
 
+    @Test
+    void shouldLeaveAnIndependentTurnForGeneralIntentExtraction() {
+        ActionDraftContinuationAnalyzer analyzer =
+            mock(ActionDraftContinuationAnalyzer.class);
+        PipelineContext context = context();
+        when(analyzer.analyze(context)).thenReturn(
+            ActionDraftContinuationAnalyzer.AnalysisOutcome.independent(
+                1,
+                "model"
+            )
+        );
+
+        PipelineContext updated =
+            new ActionDraftSemanticContinuationStep(analyzer)
+                .process(context);
+
+        assertThat(updated.getActionDraftIntentResponse()).isNull();
+        assertThat(updated.getMetadata())
+            .containsKey("actionDraftSemanticContinuation");
+        assertThat(updated.toString()).doesNotContain("16 Dairy Drive");
+    }
+
     private PipelineContext context() {
         return PipelineContext.from(
             "The state is Bristol.",
