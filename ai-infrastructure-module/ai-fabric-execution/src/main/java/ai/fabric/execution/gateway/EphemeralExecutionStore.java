@@ -5,6 +5,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Future;
 
@@ -16,22 +17,50 @@ final class EphemeralExecutionStore {
     private final Clock clock;
     private final Duration ttl;
     private final Map<String, Entry> entries = new ConcurrentHashMap<>();
-    private final Map<String, String> idempotencyKeys = new ConcurrentHashMap<>();
+    private final Map<IdempotencyBinding, String> idempotencyKeys =
+        new ConcurrentHashMap<>();
 
     EphemeralExecutionStore(Clock clock, Duration ttl) {
         this.clock = java.util.Objects.requireNonNull(clock, "clock is required");
         this.ttl = java.util.Objects.requireNonNull(ttl, "ttl is required");
     }
 
-    Optional<String> invocationForIdempotencyKey(String key) {
+    IdempotencyReplay replay(
+        String key,
+        ExecutionAccessBinding accessBinding,
+        String requestFingerprint
+    ) {
         cleanup();
-        return key == null ? Optional.empty() : Optional.ofNullable(idempotencyKeys.get(key));
+        if (key == null) {
+            return IdempotencyReplay.missing();
+        }
+        IdempotencyBinding binding = new IdempotencyBinding(
+            accessBinding,
+            key
+        );
+        String invocationId = idempotencyKeys.get(binding);
+        if (invocationId == null) {
+            return IdempotencyReplay.missing();
+        }
+        Entry entry = entries.get(invocationId);
+        if (entry == null) {
+            idempotencyKeys.remove(binding, invocationId);
+            return IdempotencyReplay.missing();
+        }
+        if (!Objects.equals(
+            entry.requestFingerprint,
+            requestFingerprint
+        )) {
+            return IdempotencyReplay.conflict();
+        }
+        return IdempotencyReplay.match(entry);
     }
 
     Entry create(
         String invocationId,
         String idempotencyKey,
         ExecutionAccessBinding accessBinding,
+        String requestFingerprint,
         Instant deadline,
         ExecutionHandleStatus status,
         String failureReason
@@ -45,6 +74,7 @@ final class EphemeralExecutionStore {
             invocationId,
             idempotencyKey,
             accessBinding,
+            requestFingerprint,
             deadline,
             retentionAnchor.plus(ttl),
             status,
@@ -54,7 +84,14 @@ final class EphemeralExecutionStore {
             throw new IllegalStateException("Duplicate invocation ID " + invocationId);
         }
         if (idempotencyKey != null) {
-            String existing = idempotencyKeys.putIfAbsent(idempotencyKey, invocationId);
+            IdempotencyBinding binding = new IdempotencyBinding(
+                accessBinding,
+                idempotencyKey
+            );
+            String existing = idempotencyKeys.putIfAbsent(
+                binding,
+                invocationId
+            );
             if (existing != null) {
                 entries.remove(invocationId);
                 throw new DuplicateIdempotencyKeyException(existing);
@@ -74,6 +111,7 @@ final class EphemeralExecutionStore {
             invocationId,
             idempotencyKey,
             null,
+            idempotencyKey,
             deadline,
             status,
             failureReason
@@ -201,7 +239,13 @@ final class EphemeralExecutionStore {
                 return false;
             }
             if (entry.idempotencyKey != null) {
-                idempotencyKeys.remove(entry.idempotencyKey, entry.invocationId);
+                idempotencyKeys.remove(
+                    new IdempotencyBinding(
+                        entry.accessBinding,
+                        entry.idempotencyKey
+                    ),
+                    entry.invocationId
+                );
             }
             return true;
         });
@@ -211,6 +255,7 @@ final class EphemeralExecutionStore {
         private final String invocationId;
         private final String idempotencyKey;
         private final ExecutionAccessBinding accessBinding;
+        private final String requestFingerprint;
         private volatile Instant deadline;
         private volatile Instant expiresAt;
         private volatile ExecutionHandleStatus status;
@@ -222,6 +267,7 @@ final class EphemeralExecutionStore {
             String invocationId,
             String idempotencyKey,
             ExecutionAccessBinding accessBinding,
+            String requestFingerprint,
             Instant deadline,
             Instant expiresAt,
             ExecutionHandleStatus status,
@@ -230,6 +276,7 @@ final class EphemeralExecutionStore {
             this.invocationId = invocationId;
             this.idempotencyKey = idempotencyKey;
             this.accessBinding = accessBinding;
+            this.requestFingerprint = requestFingerprint;
             this.deadline = deadline;
             this.expiresAt = expiresAt;
             this.status = status;
@@ -288,6 +335,47 @@ final class EphemeralExecutionStore {
                 || status == ExecutionHandleStatus.CANCELLED
                 || status == ExecutionHandleStatus.REJECTED
                 || status == ExecutionHandleStatus.EXPIRED;
+        }
+    }
+
+    enum IdempotencyReplayStatus {
+        MISSING,
+        MATCH,
+        CONFLICT
+    }
+
+    record IdempotencyReplay(
+        IdempotencyReplayStatus status,
+        Entry entry
+    ) {
+        private static IdempotencyReplay missing() {
+            return new IdempotencyReplay(
+                IdempotencyReplayStatus.MISSING,
+                null
+            );
+        }
+
+        private static IdempotencyReplay match(Entry entry) {
+            return new IdempotencyReplay(
+                IdempotencyReplayStatus.MATCH,
+                entry
+            );
+        }
+
+        private static IdempotencyReplay conflict() {
+            return new IdempotencyReplay(
+                IdempotencyReplayStatus.CONFLICT,
+                null
+            );
+        }
+    }
+
+    private record IdempotencyBinding(
+        ExecutionAccessBinding accessBinding,
+        String key
+    ) {
+        private IdempotencyBinding {
+            key = Objects.requireNonNull(key, "key is required");
         }
     }
 

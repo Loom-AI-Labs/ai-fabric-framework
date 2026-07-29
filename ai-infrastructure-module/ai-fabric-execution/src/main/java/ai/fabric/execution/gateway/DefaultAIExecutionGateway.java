@@ -284,6 +284,9 @@ public final class DefaultAIExecutionGateway implements AIExecutionGateway {
     public ExecutionHandle submit(AIExecutionRequest<?> request) {
         java.util.Objects.requireNonNull(request, "request is required");
         String invocationId = invocationId();
+        ExecutionAccessBinding accessBinding = ExecutionAccessBinding.from(
+            request.trustedExecutionContext()
+        );
         SpecialistDefinition<?, ?> definition;
         try {
             definition = specialistRegistry.require(request.specialistId());
@@ -291,9 +294,8 @@ public final class DefaultAIExecutionGateway implements AIExecutionGateway {
             EphemeralExecutionStore.Entry rejected = executionStore.create(
                 invocationId,
                 null,
-                ExecutionAccessBinding.from(
-                    request.trustedExecutionContext()
-                ),
+                accessBinding,
+                null,
                 request.deadline(),
                 ExecutionHandleStatus.REJECTED,
                 "SPECIALIST_NOT_FOUND"
@@ -301,20 +303,28 @@ public final class DefaultAIExecutionGateway implements AIExecutionGateway {
             return executionStore.snapshot(rejected).handle();
         }
         Instant deadline = requestedDeadline(request, definition);
-
-        if (request.idempotencyKey() != null
-            && executionStore.invocationForIdempotencyKey(request.idempotencyKey()).isPresent()) {
-            EphemeralExecutionStore.Entry rejected = executionStore.create(
+        String requestFingerprint;
+        try {
+            requestFingerprint = request.idempotencyKey() == null
+                ? null
+                : submissionFingerprint(request);
+        } catch (RuntimeException ex) {
+            return rejectedHandle(
                 invocationId,
-                null,
-                ExecutionAccessBinding.from(
-                    request.trustedExecutionContext()
-                ),
+                accessBinding,
                 deadline,
-                ExecutionHandleStatus.REJECTED,
-                "DUPLICATE_IDEMPOTENCY_KEY"
+                "IDEMPOTENCY_FINGERPRINT_INVALID"
             );
-            return executionStore.snapshot(rejected).handle();
+        }
+        ExecutionHandle replay = replayOrConflict(
+            invocationId,
+            request,
+            accessBinding,
+            requestFingerprint,
+            deadline
+        );
+        if (replay != null) {
+            return replay;
         }
 
         EphemeralExecutionStore.Entry entry;
@@ -322,25 +332,28 @@ public final class DefaultAIExecutionGateway implements AIExecutionGateway {
             entry = executionStore.create(
                 invocationId,
                 request.idempotencyKey(),
-                ExecutionAccessBinding.from(
-                    request.trustedExecutionContext()
-                ),
+                accessBinding,
+                requestFingerprint,
                 deadline,
                 ExecutionHandleStatus.QUEUED,
                 null
             );
         } catch (EphemeralExecutionStore.DuplicateIdempotencyKeyException ex) {
-            EphemeralExecutionStore.Entry rejected = executionStore.create(
+            ExecutionHandle raced = replayOrConflict(
                 invocationId(),
-                null,
-                ExecutionAccessBinding.from(
-                    request.trustedExecutionContext()
-                ),
-                deadline,
-                ExecutionHandleStatus.REJECTED,
-                "DUPLICATE_IDEMPOTENCY_KEY"
+                request,
+                accessBinding,
+                requestFingerprint,
+                deadline
             );
-            return executionStore.snapshot(rejected).handle();
+            return raced != null
+                ? raced
+                : rejectedHandle(
+                    invocationId(),
+                    accessBinding,
+                    deadline,
+                    "IDEMPOTENCY_CONFLICT"
+                );
         }
 
         try {
@@ -359,6 +372,57 @@ public final class DefaultAIExecutionGateway implements AIExecutionGateway {
             executionStore.reject(entry, "QUEUE_CAPACITY_EXCEEDED");
         }
         return executionStore.snapshot(entry).handle();
+    }
+
+    private ExecutionHandle replayOrConflict(
+        String rejectedInvocationId,
+        AIExecutionRequest<?> request,
+        ExecutionAccessBinding accessBinding,
+        String requestFingerprint,
+        Instant deadline
+    ) {
+        EphemeralExecutionStore.IdempotencyReplay replay =
+            executionStore.replay(
+                request.idempotencyKey(),
+                accessBinding,
+                requestFingerprint
+            );
+        return switch (replay.status()) {
+            case MISSING -> null;
+            case MATCH -> executionStore.snapshot(replay.entry()).handle();
+            case CONFLICT -> rejectedHandle(
+                rejectedInvocationId,
+                accessBinding,
+                deadline,
+                "IDEMPOTENCY_CONFLICT"
+            );
+        };
+    }
+
+    private ExecutionHandle rejectedHandle(
+        String invocationId,
+        ExecutionAccessBinding accessBinding,
+        Instant deadline,
+        String reason
+    ) {
+        EphemeralExecutionStore.Entry rejected = executionStore.create(
+            invocationId,
+            null,
+            accessBinding,
+            null,
+            deadline,
+            ExecutionHandleStatus.REJECTED,
+            reason
+        );
+        return executionStore.snapshot(rejected).handle();
+    }
+
+    private String submissionFingerprint(AIExecutionRequest<?> request) {
+        return canonicalJson.hashValue(new SubmissionFingerprint(
+            request.specialistId().toString(),
+            request.input(),
+            request.conversationBinding()
+        ));
     }
 
     @Override
@@ -1783,6 +1847,12 @@ public final class DefaultAIExecutionGateway implements AIExecutionGateway {
     private String invocationId() {
         return "exec-" + UUID.randomUUID();
     }
+
+    private record SubmissionFingerprint(
+        String specialistId,
+        Object input,
+        ConversationBinding conversationBinding
+    ) {}
 
     private record ResumeConstraints(
         String specialistContentHash,

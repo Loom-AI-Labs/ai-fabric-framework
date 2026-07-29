@@ -181,6 +181,17 @@ public class DeploymentInfoService {
                     .toString()
             )
         );
+        execution.put("proactiveEventExecution", Map.of(
+            "ready",
+                executionGateway != null && specialists.contains(
+                    AccountResolverSpecialists.READ_SPECIALIST_ID.toString()
+                ),
+            "eventType", "PAYMENT_VERIFICATION_FAILED",
+            "source", "EVENT",
+            "principalType", "SERVICE",
+            "durability", "EPHEMERAL",
+            "automaticMutation", false
+        ));
         health.put("execution", Map.copyOf(execution));
         health.put("startedAt", startedAt.toString());
         health.put("checkedAt", Instant.now().toString());

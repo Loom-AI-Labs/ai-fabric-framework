@@ -527,7 +527,7 @@ class DefaultAIExecutionGatewayTest {
     }
 
     @Test
-    void submitsEphemeralExecutionAndRejectsDuplicateLiveIdempotencyKey() {
+    void replaysIdenticalEphemeralSubmissionByScopedIdempotencyKey() {
         DefaultAIExecutionGateway gateway = gateway(
             successPipeline(new AtomicReference<>()),
             definition(false),
@@ -557,9 +557,107 @@ class DefaultAIExecutionGatewayTest {
                 assertThat(snapshot.result()).isNotNull();
                 assertThat(snapshot.result().succeeded()).isTrue();
             });
-        assertThat(duplicate.status()).isEqualTo(ExecutionHandleStatus.REJECTED);
-        assertThat(duplicate.failureReason())
-            .isEqualTo("DUPLICATE_IDEMPOTENCY_KEY");
+        assertThat(duplicate.invocationId())
+            .isEqualTo(completed.invocationId());
+        assertThat(duplicate.status()).isEqualTo(ExecutionHandleStatus.SUCCEEDED);
+        assertThat(duplicate.failureReason()).isNull();
+    }
+
+    @Test
+    void rejectsChangedSubmissionUnderTheSameScopedIdempotencyKey() {
+        DefaultAIExecutionGateway gateway = gateway(
+            successPipeline(new AtomicReference<>()),
+            definition(false),
+            Set.of("account-policy")
+        );
+        TrustedExecutionContext context =
+            applicationContext(authorizedScopes());
+
+        ExecutionHandle original = gateway.submit(new AIExecutionRequest<>(
+            SPECIALIST_ID,
+            new ResolverInput("Inspect the account"),
+            context,
+            null,
+            null,
+            "event-42"
+        ));
+        ExecutionHandle conflict = gateway.submit(new AIExecutionRequest<>(
+            SPECIALIST_ID,
+            new ResolverInput("Inspect a different event payload"),
+            context,
+            null,
+            null,
+            "event-42"
+        ));
+
+        assertThat(original.status()).isEqualTo(
+            ExecutionHandleStatus.SUCCEEDED
+        );
+        assertThat(conflict.invocationId())
+            .isNotEqualTo(original.invocationId());
+        assertThat(conflict.status()).isEqualTo(
+            ExecutionHandleStatus.REJECTED
+        );
+        assertThat(conflict.failureReason())
+            .isEqualTo("IDEMPOTENCY_CONFLICT");
+    }
+
+    @Test
+    void isolatesTheSameIdempotencyKeyAcrossTrustedAccessBindings() {
+        DefaultAIExecutionGateway gateway = gateway(
+            successPipeline(new AtomicReference<>()),
+            definition(false),
+            Set.of("account-policy")
+        );
+        TrustedExecutionContext first =
+            applicationContext(authorizedScopes());
+        TrustedExecutionContext second = new TrustedExecutionContext(
+            new ExecutionPrincipal(
+                "account-service",
+                ExecutionPrincipalType.SERVICE
+            ),
+            new ExecutionSubjectRef("account", "account-84"),
+            ExecutionSource.APPLICATION,
+            "tenant-2",
+            "test",
+            authorizedScopes(),
+            "correlation-2",
+            NOW
+        );
+        AIExecutionRequest<ResolverInput> firstRequest =
+            new AIExecutionRequest<>(
+                SPECIALIST_ID,
+                new ResolverInput("Inspect the account"),
+                first,
+                null,
+                null,
+                "shared-event-id"
+            );
+        AIExecutionRequest<ResolverInput> secondRequest =
+            new AIExecutionRequest<>(
+                SPECIALIST_ID,
+                new ResolverInput("Inspect the account"),
+                second,
+                null,
+                null,
+                "shared-event-id"
+            );
+
+        ExecutionHandle firstHandle = gateway.submit(firstRequest);
+        ExecutionHandle secondHandle = gateway.submit(secondRequest);
+
+        assertThat(firstHandle.status()).isEqualTo(
+            ExecutionHandleStatus.SUCCEEDED
+        );
+        assertThat(secondHandle.status()).isEqualTo(
+            ExecutionHandleStatus.SUCCEEDED
+        );
+        assertThat(secondHandle.invocationId())
+            .isNotEqualTo(firstHandle.invocationId());
+        assertThat(gateway.find(
+            firstHandle.invocationId(),
+            second
+        )).isEmpty();
     }
 
     @Test

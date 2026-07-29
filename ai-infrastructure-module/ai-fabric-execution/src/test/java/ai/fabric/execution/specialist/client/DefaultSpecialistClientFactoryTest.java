@@ -3,7 +3,9 @@ package ai.fabric.execution.specialist.client;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import ai.fabric.execution.context.ExecutionPrincipal;
@@ -14,6 +16,10 @@ import ai.fabric.execution.context.TrustedExecutionContext;
 import ai.fabric.execution.gateway.AIExecutionGateway;
 import ai.fabric.execution.gateway.AIExecutionResult;
 import ai.fabric.execution.gateway.AIExecutionStatus;
+import ai.fabric.execution.gateway.ExecutionDurability;
+import ai.fabric.execution.gateway.ExecutionHandle;
+import ai.fabric.execution.gateway.ExecutionHandleStatus;
+import ai.fabric.execution.gateway.ExecutionSnapshot;
 import ai.fabric.execution.specialist.DefaultSpecialistRegistry;
 import ai.fabric.execution.specialist.RegisteredSpecialist;
 import ai.fabric.execution.specialist.SpecialistDefinition;
@@ -28,6 +34,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
 
@@ -168,6 +175,85 @@ class DefaultSpecialistClientFactoryTest {
 
         assertThat(second).isSameAs(first);
         assertThat(result.output()).isSameAs(answer);
+    }
+
+    @Test
+    void submitsFindsAndCancelsSchemaBoundExecutionWithTypedOutput() {
+        var compiled = new DefaultSpecialistManifestCompiler()
+            .compile(
+                ManifestTestFixtures.manifest(),
+                ManifestTestFixtures.compilationContext()
+            )
+            .specialist();
+        var registry = new DefaultSpecialistRegistry(
+            List.of(compiled),
+            ManifestTestFixtures.definitionValidator()
+        );
+        AIExecutionGateway gateway = mock(AIExecutionGateway.class);
+        ExecutionHandle handle = new ExecutionHandle(
+            "exec-async",
+            ExecutionDurability.EPHEMERAL,
+            ExecutionHandleStatus.SUCCEEDED,
+            null,
+            Instant.parse("2026-07-29T11:00:00Z"),
+            null
+        );
+        ObjectNode rawOutput = ManifestTestFixtures.objectMapper()
+            .createObjectNode()
+            .put("answer", "Use the approved recovery process.");
+        AIExecutionResult<ObjectNode> rawResult =
+            new AIExecutionResult<>(
+                "exec-async",
+                SpecialistId.of("support-knowledge", "1"),
+                AIExecutionStatus.SUCCEEDED,
+                rawOutput,
+                List.of(),
+                Map.of(),
+                null,
+                Instant.EPOCH,
+                Instant.EPOCH
+            );
+        when(gateway.submit(any())).thenReturn(handle);
+        when(gateway.find(eq("exec-async"), any()))
+            .thenReturn(Optional.of(
+                new ExecutionSnapshot(handle, rawResult)
+            ));
+        when(gateway.cancel(eq("exec-async"), any())).thenReturn(true);
+        SpecialistClientFactory factory = new DefaultSpecialistClientFactory(
+            registry,
+            gateway,
+            ManifestTestFixtures.objectMapper()
+        );
+        SpecialistClient<Question, Answer> client = factory.bind(
+            SpecialistId.of("support-knowledge", "1"),
+            Question.class,
+            Answer.class
+        );
+        TrustedExecutionContext context = trustedContext();
+        SpecialistInvocation<Question> invocation =
+            new SpecialistInvocation<>(
+                new Question("How do I reset MFA?"),
+                context,
+                null,
+                null,
+                "event-1"
+            );
+
+        ExecutionHandle submitted = client.submit(invocation);
+        Optional<SpecialistExecutionSnapshot<Answer>> snapshot =
+            client.find("exec-async", context);
+        boolean cancelled = client.cancel("exec-async", context);
+
+        assertThat(submitted).isSameAs(handle);
+        assertThat(snapshot).hasValueSatisfying(found -> {
+            assertThat(found.handle()).isSameAs(handle);
+            assertThat(found.result().output().answer())
+                .isEqualTo("Use the approved recovery process.");
+        });
+        assertThat(cancelled).isTrue();
+        verify(gateway).submit(any());
+        verify(gateway).find("exec-async", context);
+        verify(gateway).cancel("exec-async", context);
     }
 
     private TrustedExecutionContext trustedContext() {

@@ -5,6 +5,8 @@ import ai.fabric.execution.gateway.AIExecutionRequest;
 import ai.fabric.execution.gateway.AIExecutionResult;
 import ai.fabric.execution.gateway.AIExecutionResumeRequest;
 import ai.fabric.execution.gateway.AIExecutionResumeResult;
+import ai.fabric.execution.gateway.ExecutionHandle;
+import ai.fabric.execution.gateway.ExecutionSnapshot;
 import ai.fabric.execution.specialist.JsonSchemaOutputContract;
 import ai.fabric.execution.specialist.RegisteredSpecialist;
 import ai.fabric.execution.specialist.SpecialistId;
@@ -15,6 +17,7 @@ import ai.fabric.execution.specialist.manifest.SpecialistSchemaDirection;
 import ai.fabric.execution.specialist.manifest.SpecialistSchemaSpec;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
@@ -207,34 +210,41 @@ public final class DefaultSpecialistClientFactory
             SpecialistInvocation<I> invocation
         ) {
             Objects.requireNonNull(invocation, "invocation is required");
-            Object input = schemaBound
-                ? objectMapper.valueToTree(
-                    inputType.cast(invocation.input())
-                )
-                : inputType.cast(invocation.input());
             AIExecutionResult<?> raw = executionGateway.execute(
-                new AIExecutionRequest<>(
-                    specialistId,
-                    input,
-                    invocation.trustedExecutionContext(),
-                    invocation.conversationBinding(),
-                    invocation.deadline(),
-                    invocation.idempotencyKey()
-                )
+                request(invocation)
             );
-            O output = convertOutput(raw.output());
-            return new AIExecutionResult<>(
-                raw.invocationId(),
-                raw.specialistId(),
-                raw.status(),
-                output,
-                raw.evidence(),
-                raw.diagnostics(),
-                raw.failure(),
-                raw.startedAt(),
-                raw.completedAt(),
-                raw.actionProposal(),
-                raw.needsUserInput()
+            return convertExecution(raw);
+        }
+
+        @Override
+        public ExecutionHandle submit(
+            SpecialistInvocation<I> invocation
+        ) {
+            Objects.requireNonNull(invocation, "invocation is required");
+            return executionGateway.submit(request(invocation));
+        }
+
+        @Override
+        public Optional<SpecialistExecutionSnapshot<O>> find(
+            String invocationId,
+            ai.fabric.execution.context.TrustedExecutionContext
+                trustedExecutionContext
+        ) {
+            return executionGateway.find(
+                invocationId,
+                trustedExecutionContext
+            ).map(this::convertSnapshot);
+        }
+
+        @Override
+        public boolean cancel(
+            String invocationId,
+            ai.fabric.execution.context.TrustedExecutionContext
+                trustedExecutionContext
+        ) {
+            return executionGateway.cancel(
+                invocationId,
+                trustedExecutionContext
             );
         }
 
@@ -260,26 +270,62 @@ public final class DefaultSpecialistClientFactory
                     raw.failure()
                 );
             }
-            AIExecutionResult<?> rawExecution =
-                raw.executionResult();
-            O output = convertOutput(rawExecution.output());
-            AIExecutionResult<O> execution = new AIExecutionResult<>(
-                rawExecution.invocationId(),
-                rawExecution.specialistId(),
-                rawExecution.status(),
-                output,
-                rawExecution.evidence(),
-                rawExecution.diagnostics(),
-                rawExecution.failure(),
-                rawExecution.startedAt(),
-                rawExecution.completedAt(),
-                rawExecution.actionProposal(),
-                rawExecution.needsUserInput()
+            AIExecutionResult<O> execution = convertExecution(
+                raw.executionResult()
             );
             return new AIExecutionResumeResult<>(
                 raw.status(),
                 execution,
                 null
+            );
+        }
+
+        private AIExecutionRequest<Object> request(
+            SpecialistInvocation<I> invocation
+        ) {
+            Object input = schemaBound
+                ? objectMapper.valueToTree(
+                    inputType.cast(invocation.input())
+                )
+                : inputType.cast(invocation.input());
+            return new AIExecutionRequest<>(
+                specialistId,
+                input,
+                invocation.trustedExecutionContext(),
+                invocation.conversationBinding(),
+                invocation.deadline(),
+                invocation.idempotencyKey()
+            );
+        }
+
+        private SpecialistExecutionSnapshot<O> convertSnapshot(
+            ExecutionSnapshot snapshot
+        ) {
+            AIExecutionResult<O> result = snapshot.result() == null
+                ? null
+                : convertExecution(snapshot.result());
+            return new SpecialistExecutionSnapshot<>(
+                snapshot.handle(),
+                result
+            );
+        }
+
+        private AIExecutionResult<O> convertExecution(
+            AIExecutionResult<?> raw
+        ) {
+            O output = convertOutput(raw.output());
+            return new AIExecutionResult<>(
+                raw.invocationId(),
+                raw.specialistId(),
+                raw.status(),
+                output,
+                raw.evidence(),
+                raw.diagnostics(),
+                raw.failure(),
+                raw.startedAt(),
+                raw.completedAt(),
+                raw.actionProposal(),
+                raw.needsUserInput()
             );
         }
 

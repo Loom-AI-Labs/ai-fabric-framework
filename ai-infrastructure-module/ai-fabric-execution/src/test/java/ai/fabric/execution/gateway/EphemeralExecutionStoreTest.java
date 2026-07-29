@@ -127,8 +127,15 @@ class EphemeralExecutionStoreTest {
 
         assertThat(restartedProcess.find("exec-before-restart")).isEmpty();
         assertThat(restartedProcess
-            .invocationForIdempotencyKey("request-before-restart"))
-            .isEmpty();
+            .replay(
+                "request-before-restart",
+                null,
+                "request-before-restart"
+            )
+            .status())
+            .isEqualTo(
+                EphemeralExecutionStore.IdempotencyReplayStatus.MISSING
+            );
     }
 
     @Test
@@ -149,8 +156,11 @@ class EphemeralExecutionStoreTest {
         clock.advance(Duration.ofMinutes(2));
 
         assertThat(store.find("exec-running")).contains(entry);
-        assertThat(store.invocationForIdempotencyKey("request-running"))
-            .contains("exec-running");
+        assertThat(store.replay(
+            "request-running",
+            null,
+            "request-running"
+        ).entry()).isSameAs(entry);
     }
 
     @Test

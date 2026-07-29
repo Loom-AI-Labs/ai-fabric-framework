@@ -5,11 +5,15 @@ import java.util.Map;
 import java.util.NoSuchElementException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
-@RestControllerAdvice(assignableTypes = AgenticResolverController.class)
+@RestControllerAdvice(assignableTypes = {
+    AgenticResolverController.class,
+    ProactiveAccountEventController.class
+})
 public class AgenticResolverErrorHandler {
 
     @ExceptionHandler(NoSuchElementException.class)
@@ -30,7 +34,8 @@ public class AgenticResolverErrorHandler {
 
     @ExceptionHandler({
         IllegalArgumentException.class,
-        MethodArgumentNotValidException.class
+        MethodArgumentNotValidException.class,
+        HttpMessageNotReadableException.class
     })
     ResponseEntity<Map<String, String>> invalid(Exception ex) {
         return error(

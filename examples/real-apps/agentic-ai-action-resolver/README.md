@@ -32,6 +32,11 @@ the billing advisor, passing only the validated typed account result through a
 registered mapper. Missing billing amount pauses step two; resume does not
 rerun step one.
 
+It also proves proactive, read-only intelligence from a raw application event.
+A payment-verification failure is mapped to `account-resolver-read@1` and
+submitted asynchronously under a backend-owned service principal with
+`ExecutionSource.EVENT`. No chat turn or fabricated user message is created.
+
 The original `ai-fabric-account-resolver` remains unchanged and deployable as
 the governed-action baseline.
 
@@ -54,6 +59,15 @@ the governed-action baseline.
   no shared worker conversation.
 - Completed plan steps are retained in a bounded `EPHEMERAL` checkpoint store;
   restart requires a new plan execution.
+- A raw payment-verification event contains facts only; identity, subject,
+  tenant, specialist, and authority are resolved by the backend.
+- Typed asynchronous submit/status/cancel calls preserve the manifest input
+  and output contract.
+- Identical retained event delivery returns the original invocation without a
+  second specialist execution; changed facts under the same event ID fail as
+  `IDEMPOTENCY_CONFLICT`.
+- Event execution is service-owned, `EVENT` sourced, read-only, and explicitly
+  `EPHEMERAL`.
 - Server-created, database-backed session state binds the opaque browser
   session to the trusted principal, tenant, and current account subject.
 - `account-resolver@1` requests one Mode, one READ action, one WRITE proposal,
@@ -198,6 +212,54 @@ Pending input waits are bounded process-local state. They do not survive an
 application restart and must not be presented as durable workflow tasks.
 Action receipts remain a separate JDBC-backed mechanism with different
 semantics and guarantees.
+
+## Proactive Event Execution
+
+The app accepts this raw event:
+
+```json
+{
+  "eventId": "payment-attempt-42",
+  "failureCode": "DECLINED",
+  "attemptNumber": 2,
+  "occurredAt": "2026-07-29T10:00:00Z"
+}
+```
+
+Supported failure codes are `DECLINED`, `EXPIRED`, `VERIFICATION_FAILED`, and
+`PROVIDER_UNAVAILABLE`. The body deliberately has no user, account,
+subscription, tenant, principal, scope, specialist, provider, or action
+fields.
+
+The application performs the trusted mapping:
+
+```text
+opaque demo session
+  -> current account subject
+  -> raw event validation
+  -> deterministic AccountResolutionRequest
+  -> SERVICE principal + ExecutionSource.EVENT + READ scopes
+  -> account-resolver-read@1
+  -> current profile READ + policy RAG + provider reasoning
+  -> typed AccountResolutionResult
+```
+
+This path evaluates the event against current application state and policy
+evidence. It cannot propose or execute `update_address`, mutate payment
+details, create a conversation, or choose a different specialist.
+
+The stable idempotency key is derived from the event contract version and
+event ID. While the process-local result is retained:
+
+- an exact redelivery returns the same invocation ID;
+- changed facts under that event ID return a rejected handle with
+  `IDEMPOTENCY_CONFLICT`; and
+- another session cannot inspect or cancel the invocation.
+
+The general asynchronous store is in memory. A restart loses queued, running,
+and retained event executions and their idempotency bindings. This is an
+at-least-once event-consumer proof, not a broker, durable job store, or
+exactly-once workflow claim.
 
 ## Fixed Sequential Plans
 
@@ -356,6 +418,33 @@ Content-Type: application/json
 {"question":"Can I place an order?"}
 ```
 
+Submit a raw payment-verification failure:
+
+```http
+POST /api/agentic-resolver/events/payment-verification-failed
+X-AI-Fabric-Demo-Session: {sessionId}
+Content-Type: application/json
+
+{
+  "eventId":"payment-attempt-42",
+  "failureCode":"DECLINED",
+  "attemptNumber":2,
+  "occurredAt":"2026-07-29T10:00:00Z"
+}
+```
+
+Read or cancel its process-local execution:
+
+```http
+GET /api/agentic-resolver/events/executions/{invocationId}
+DELETE /api/agentic-resolver/events/executions/{invocationId}
+X-AI-Fabric-Demo-Session: {sessionId}
+```
+
+Use the same event ID and identical facts when redelivering an event. Reusing
+the ID with changed facts returns a rejected execution handle rather than
+silently reusing or replacing the first result.
+
 Run an interactive call. This is the only path granted the write-proposal
 scope:
 
@@ -484,8 +573,10 @@ GET /api/demo/health
 
 The `execution` block reports the repository type, receipt TTL, stale
 execution threshold, cleanup policy, retention, specialist source/ID/version/
-hash, manifest runtime readiness and counts, and the registry content hash. It
-never exposes prompts, schemas, receipt secrets, or user data.
+hash, manifest runtime readiness and counts, registry content hash, and the
+proactive event source, service-principal type, no-automatic-mutation policy,
+and `EPHEMERAL` durability. It never exposes prompts, schemas, receipt
+secrets, or user data.
 
 ## Run Locally
 
@@ -579,6 +670,10 @@ action receipts. It checkpoints only the original typed input, validated step
 outputs, safe evidence references, status, timing, and access binding needed
 for same-process continuation.
 
+The same `ai.execution.async` bounds apply to proactive event submissions.
+Their handles, typed outcomes, and idempotency bindings use the configured
+`result-ttl`; they are not stored in the JDBC action-receipt table.
+
 ## Receipt Configuration
 
 Required for every shared or production deployment:
@@ -660,6 +755,12 @@ For Coolify source deployment:
 
 - Provider, retrieval, grounding, schema, policy, persistence, and domain
   failures remain visible as typed non-success results.
+- A proactive event never falls back to a fabricated assessment. Provider or
+  grounding failure remains visible on its typed execution snapshot.
+- Identical retained event redelivery replays the original handle; changed
+  facts under the same event ID fail with `IDEMPOTENCY_CONFLICT`.
+- Event status and cancellation require the same trusted execution binding,
+  and a proactive read never mutates the account.
 - Missing specialist input returns `WAITING_FOR_INPUT`, not a generated guess,
   action confirmation, or fabricated fallback.
 - Invalid input responses are rejected against the pinned schema and remain
@@ -740,6 +841,7 @@ No verification command for this feature uses `-DskipTests`.
 - dynamic/model-authored planning, delegation, or handoff;
 - conditional, parallel, WRITE-capable, or durable plans;
 - event or scheduled write adapters;
+- framework-owned event-broker consumption or durable event execution;
 - blind retries for unknown write outcomes;
 - durable async job execution;
 - durable or cross-process specialist input waits;

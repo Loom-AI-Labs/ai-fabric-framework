@@ -167,6 +167,49 @@ A non-success result contains a typed status and sanitized
 `AIExecutionFailure`. Provider, retrieval, policy, grounding, and output
 validation failures are not replaced with deterministic answers.
 
+## Typed Asynchronous And Event Calls
+
+A schema-bound `SpecialistClient<I, O>` exposes the same specialist contract
+for synchronous and asynchronous application calls:
+
+```java
+SpecialistClient<AccountRequest, AccountAssessment> client =
+    specialistClientFactory.bind(
+        SpecialistId.of("account-resolver", "1"),
+        AccountRequest.class,
+        AccountAssessment.class
+    );
+
+ExecutionHandle handle = client.submit(new SpecialistInvocation<>(
+    request,
+    trustedEventContext,
+    null,
+    null,
+    "payment-verification-failed:v1:" + eventId
+));
+
+Optional<SpecialistExecutionSnapshot<AccountAssessment>> snapshot =
+    client.find(handle.invocationId(), trustedEventContext);
+```
+
+The bound client converts manifest-backed JSON schemas to application DTOs.
+Queued and running snapshots contain only the handle. Completed snapshots
+contain a typed `AIExecutionResult<O>`. `find` and `cancel` require a trusted
+context matching the original principal, subject, source, tenant, and
+deployment.
+
+For event-driven execution, the host application owns the adapter:
+
+1. validate the raw domain event;
+2. resolve subject and tenant from trusted backend state;
+3. map event facts deterministically to a registered specialist input;
+4. construct a service or system principal with `ExecutionSource.EVENT`; and
+5. submit a stable event-derived idempotency key.
+
+The event body must not select identity, authority, specialist, Mode, vector
+space, action, provider, or conversation. AI Fabric does not consume a broker
+or invent a chat message for the event.
+
 ## Fixed Sequential Plans
 
 Applications may compose registered read-only specialists into an immutable
@@ -305,7 +348,12 @@ model hints. A specialist cannot expand them.
 
 - work and results are held in memory;
 - queue capacity is bounded;
-- duplicate live idempotency keys are rejected;
+- idempotency keys are scoped to principal, subject, source, tenant, and
+  deployment;
+- an identical retained submission returns the original current handle without
+  running the specialist again;
+- a changed specialist, input, or conversation under the same scoped key
+  returns `REJECTED` with `IDEMPOTENCY_CONFLICT`;
 - deadlines are enforced;
 - terminal results are retained for the configured TTL; and
 - restart loses queued, running, and retained executions.
@@ -361,7 +409,7 @@ The following remain deferred:
 - conditional, parallel, dynamic, or WRITE-capable plans;
 - delegation and model-selected specialist routing;
 - durable execution;
-- scheduler or event-broker adapters; and
+- framework-owned scheduler or event-broker consumers; and
 - unrestricted model-selected specialist discovery.
 
 See the independent reference app:

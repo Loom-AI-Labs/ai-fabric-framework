@@ -24,6 +24,12 @@ bounded fixed sequential plans with typed step mappings, deterministic
 aggregation, checkpointed input waits, and safe resume. The model never
 receives authority to approve or directly execute a write.
 
+Trusted application event adapters can now submit those same typed specialists
+as bounded asynchronous work. The first proof maps a raw payment-verification
+failure to a read-only Account Resolver execution under a service principal
+and `ExecutionSource.EVENT`, without creating chat history or accepting
+identity and authority from the event body.
+
 This work does not add a second orchestration engine. It composes the AI Fabric
 capabilities that already exist:
 
@@ -66,6 +72,7 @@ The adoption boundary is:
 | Structured provider output validation | Domain consistency validators |
 | Backend conversation binding | Conversation ownership supplied by the backend |
 | Exact-version fixed-plan registry and coordinator | Application-owned plan selection, typed mappers, and deterministic aggregators |
+| Typed asynchronous specialist client and scoped replay semantics | Raw-event validation, subject resolution, deterministic event mapping, and broker/outbox ownership |
 | Manifest and execution diagnostics | Deployment, monitoring, support, and rollback |
 
 ## 3. Included Change Set
@@ -80,6 +87,7 @@ The adoption boundary is:
 | `480aa4c` | Configurable specialist manifests, schema-backed execution, authoring catalogue, and manifest-based reference app |
 | `958e80a` | Typed specialist input waits, bounded continuation state, and authority-scoped safe resume |
 | `ce03c22` | Exact-version fixed sequential plans, process-local checkpoints, typed resume, and one-step/two-step Account Resolver proofs |
+| Pending Plan 0006 commit | Typed asynchronous specialist access, scoped payload-checked idempotency, and a proactive read-only event proof |
 
 These commits build on the released `0.4.0` lifecycle, indexing, RAG, action,
 provider, and chat-session contracts.
@@ -113,7 +121,8 @@ Use it when an application needs:
 - confirmation-gated write proposals; or
 - durable proposal and decision semantics;
 - typed input waits that resume the same specialist invocation; or
-- fixed application-selected read-only specialist plans.
+- fixed application-selected read-only specialist plans; or
+- bounded service-owned event analysis with typed asynchronous results.
 
 ## 5. Specialist Execution Contract
 
@@ -186,6 +195,29 @@ CANCELLED
 Provider, retrieval, policy, grounding, schema, persistence, and domain
 validation failures remain visible. AI Fabric does not replace them with a
 deterministic success response.
+
+### 5.4 Typed asynchronous execution and idempotency
+
+`SpecialistClient<I, O>` now exposes typed `submit`, `find`, and `cancel`
+operations. Manifest-backed input is converted to the registered schema on
+submission, and a completed `SpecialistExecutionSnapshot<O>` converts output
+back to the application DTO.
+
+Status and cancellation require the same principal, subject, source, tenant,
+and deployment binding as the original submission. Queued and running
+snapshots contain a handle but no fabricated result.
+
+Retained submissions use payload-checked idempotency:
+
+- the key namespace is scoped to the trusted execution access binding;
+- an identical specialist, input, and conversation binding returns the
+  original current handle without another pipeline invocation;
+- changed payload under the same scoped key returns `REJECTED` with
+  `IDEMPOTENCY_CONFLICT`; and
+- the key expires with the bounded process-local result.
+
+This is not durable idempotency. Restart loses queued work, retained results,
+and replay bindings.
 
 ## 6. Manifest-First Specialist Authoring
 
@@ -574,6 +606,31 @@ This is an application-selected composition contract, not a model-generated
 plan, graph engine, supervisor, or unrestricted multi-agent runtime. The first
 version rejects interactive invocation and WRITE-capable specialists.
 
+### 11.5 Proactive application-event execution
+
+The reference application accepts a raw `PAYMENT_VERIFICATION_FAILED` event
+containing only event ID, failure code, attempt number, and occurrence time.
+Application code resolves the current account from opaque server-owned session
+state, maps event facts deterministically to `AccountResolutionRequest`, and
+submits `account-resolver-read@1` under:
+
+```text
+principal type: SERVICE
+source: EVENT
+write authority: none
+conversation binding: none
+durability: EPHEMERAL
+```
+
+The model reasons over the current account profile and registered policy
+evidence. It does not select identity, specialist, provider, action, Mode, or
+vector space and cannot mutate the account. Provider and grounding failures
+remain visible rather than receiving an application-authored answer.
+
+Loom AI or the host application still owns the broker, outbox, raw event
+schema, validation, subject/tenant resolution, and redelivery policy. AI
+Fabric owns the bounded specialist execution and scoped replay contract.
+
 ## 12. Evidence And Indexing Boundary
 
 Specialist results return `AIEvidenceReference`.
@@ -666,6 +723,7 @@ The application must separately configure:
 | Specialist write receipt | JDBC `ai_action_proposal_receipt` | Durable across restart |
 | Specialist input wait | Bounded execution-module process memory | `EPHEMERAL`; lost on restart |
 | Fixed-plan checkpoints and terminal result | Bounded execution-module process memory | `EPHEMERAL`; lost on restart |
+| Proactive event execution, result, and replay binding | Bounded execution-module process memory | `EPHEMERAL`; lost on restart |
 | Vector evidence | Existing AI Fabric vector provider | Provider lifecycle |
 | Domain entity and authoritative action result | Host application system of record | Application lifecycle |
 | General `submit` execution and result | Bounded process memory | `EPHEMERAL`; lost on restart |
@@ -720,6 +778,19 @@ aliases for an unpublished configuration contract.
 Fixed plans are also additive. Existing direct specialist callers keep their
 current behavior. A plan must be selected explicitly by trusted application
 code and cannot be inferred or activated by a model response.
+
+Typed asynchronous methods are additive to `SpecialistClient`. Existing bound
+client calls continue to compile. The general `submit` behavior is hardened:
+an identical retained idempotent request now returns its original handle
+instead of a new duplicate-key rejection, while changed payload fails with
+`IDEMPOTENCY_CONFLICT`.
+
+The interface methods are additive for callers but source-incompatible for a
+custom class that directly implements `SpecialistClient`. The specialist
+client contract is not part of a previously published agentic release and
+there are no known external implementations. Any pre-release custom
+implementation must add typed `submit`, `find`, and `cancel` methods or switch
+to `SpecialistClientFactory`.
 
 ## 16. Earlier Documentation Superseded
 
@@ -781,6 +852,21 @@ For current adoption use, in order:
 - [ ] Treat plan checkpoints as process-local and restart the request from the
   beginning after process loss.
 
+### Phase 1.75: Proactive read-only event proof
+
+- [ ] Choose one raw application event that benefits from bounded AI analysis.
+- [ ] Keep identity, tenant, authority, specialist, provider, and action fields
+  out of the public event schema.
+- [ ] Resolve the subject from authenticated backend or application-owned
+  state.
+- [ ] Map event facts deterministically to one exact-version read specialist.
+- [ ] Use a service or system principal with `ExecutionSource.EVENT`.
+- [ ] Derive a stable versioned idempotency key from the event identity.
+- [ ] Verify exact redelivery reuses one invocation and changed facts conflict.
+- [ ] Verify cross-tenant/subject access denial and unchanged domain state.
+- [ ] Treat process restart as loss until a durable execution plan is
+  implemented.
+
 ### Phase 2: Governed write proof
 
 - [ ] Choose one low-risk, confirmation-required registered WRITE.
@@ -826,6 +912,11 @@ For current adoption use, in order:
 - [ ] Identity and subject are fingerprinted.
 - [ ] Secrets are stable across all replicas.
 - [ ] Cross-principal, subject, tenant, deployment, and session access is denied.
+- [ ] Event payload cannot select identity, authority, specialist, provider, or
+  conversation.
+- [ ] Event specialists have the minimum required READ scopes and no automatic
+  mutation authority.
+- [ ] Idempotency replay compares canonical payload and trusted access scope.
 - [ ] Provider and validation failures remain visible.
 - [ ] Logs and diagnostics exclude prompts, raw receipt payloads, keys, and PII.
 - [ ] Unknown action outcomes are reconciled and never blindly retried.
@@ -972,6 +1063,25 @@ commit.
   incompatibility. The public resume contract now accepts a typed host response
   and a Spring MVC regression test protects deserialization.
 
+### Typed asynchronous and proactive event execution
+
+- The focused execution reactor passed all tests, including 174
+  `ai-fabric-execution` tests.
+- The packaged Agentic AI Action Resolver passed 12 shared smoke tests and 106
+  application tests.
+- Deterministic application integration proved one invocation for identical
+  redelivery, `IDEMPOTENCY_CONFLICT` for changed facts, cross-session status
+  denial, visible disabled-provider failure, and unchanged account state.
+- All 36 infrastructure modules were covered with tests enabled. The first 32
+  passed before the documented local ONNX path prerequisite stopped the
+  integration module; the integration module and three remaining modules then
+  passed with explicit model and tokenizer paths.
+- Real OpenAI packaged verification produced a typed `BLOCKED` result with one
+  `VERIFIED_PAYMENT_METHOD` blocker and four safe evidence references. Exact
+  redelivery returned the same successful invocation, changed event facts
+  returned `IDEMPOTENCY_CONFLICT`, cross-session lookup returned `404`, and
+  account state remained unchanged.
+
 ## 22. Release Gate Still Required
 
 Before Loom AI adopts a published artifact:
@@ -988,8 +1098,8 @@ Before Loom AI adopts a published artifact:
 - [ ] Run Loom AI consumer compilation and runtime smoke tests.
 - [ ] Obtain explicit release approval.
 
-Until those items pass, Loom AI should treat the final fixed-plan commit named
-at the top of this document as a verified framework candidate, not a published
+Until those items pass, Loom AI should treat the candidate commit named at the
+top of this document as a verified framework candidate, not a published
 dependency.
 
 ## 23. Explicitly Deferred
@@ -1004,7 +1114,7 @@ This release does not provide:
 - model-selected unrestricted specialist discovery;
 - durable general or plan execution;
 - a workflow graph or workflow engine;
-- event-broker or scheduler adapters;
+- framework-owned event-broker or scheduler consumers;
 - a specialist-definition database;
 - runtime manifest hot reload;
 - draft/validate/activate/retire framework persistence;

@@ -37,6 +37,7 @@ import ai.fabric.execution.plan.SpecialistPlanStep;
 import ai.fabric.execution.specialist.SpecialistId;
 import ai.fabric.execution.specialist.client.SpecialistClient;
 import ai.fabric.execution.specialist.client.SpecialistClientFactory;
+import ai.fabric.execution.specialist.client.SpecialistExecutionSnapshot;
 import ai.fabric.execution.specialist.client.SpecialistInvocation;
 import ai.fabric.execution.specialist.client.SpecialistResumeInvocation;
 import ai.fabric.execution.specialist.manifest.CanonicalJsonSupport;
@@ -570,6 +571,48 @@ class DefaultAIExecutionCoordinatorTest {
                                 invocation.trustedExecutionContext(),
                                 invocation.idempotencyKey()
                             )
+                        );
+                    }
+
+                    @Override
+                    public ExecutionHandle submit(
+                        SpecialistInvocation<I> invocation
+                    ) {
+                        return executionGateway.submit(
+                            new AIExecutionRequest<>(
+                                specialistId,
+                                inputType.cast(invocation.input()),
+                                invocation.trustedExecutionContext(),
+                                invocation.conversationBinding(),
+                                invocation.deadline(),
+                                invocation.idempotencyKey()
+                            )
+                        );
+                    }
+
+                    @Override
+                    @SuppressWarnings("unchecked")
+                    public Optional<SpecialistExecutionSnapshot<O>> find(
+                        String invocationId,
+                        TrustedExecutionContext trustedExecutionContext
+                    ) {
+                        return executionGateway.find(
+                            invocationId,
+                            trustedExecutionContext
+                        ).map(snapshot -> new SpecialistExecutionSnapshot<>(
+                            snapshot.handle(),
+                            (AIExecutionResult<O>) snapshot.result()
+                        ));
+                    }
+
+                    @Override
+                    public boolean cancel(
+                        String invocationId,
+                        TrustedExecutionContext trustedExecutionContext
+                    ) {
+                        return executionGateway.cancel(
+                            invocationId,
+                            trustedExecutionContext
                         );
                     }
                 };

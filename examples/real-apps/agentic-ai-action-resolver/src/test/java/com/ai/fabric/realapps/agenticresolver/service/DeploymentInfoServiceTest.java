@@ -115,6 +115,14 @@ class DeploymentInfoServiceTest {
                     .containsEntry("receiptRetention", "PT720H")
                     .containsEntry("accountResolverRegistered", true)
                     .containsEntry("accountResolverReadRegistered", true)
+                    .containsEntry("proactiveEventExecution", Map.of(
+                        "ready", true,
+                        "eventType", "PAYMENT_VERIFICATION_FAILED",
+                        "source", "EVENT",
+                        "principalType", "SERVICE",
+                        "durability", "EPHEMERAL",
+                        "automaticMutation", false
+                    ))
             );
     }
 
