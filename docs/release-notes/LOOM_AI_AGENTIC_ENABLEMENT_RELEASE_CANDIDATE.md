@@ -6,7 +6,7 @@
 - **Compatibility baseline:** AI Fabric `0.4.0`
 - **Baseline tag:** `ai-fabric-framework-v0.4.0`
 - **Baseline commit:** `857619f`
-- **Candidate commit:** `cbd1404`
+- **Candidate implementation commit:** `e415a52`
 - **Prepared:** 2026-07-29
 - **Reference application:**
   [`agentic-ai-action-resolver`](../../examples/real-apps/agentic-ai-action-resolver)
@@ -36,6 +36,15 @@ and typed terminal results survive restart. This is an at-least-once read
 execution contract, not exactly-once model invocation or durable write
 execution.
 
+AI-proposed governed actions may now enter a separately authorized durable
+human-review lifecycle. AI Fabric persists a version-bound review task before
+dispatch, keeps delivery receipts separate from decisions, authenticates a
+backend-owned reviewer context, and advances an approved write only through
+the existing governed action receipt. Approval, rejection, typed correction,
+information requests, escalation, expiry, recovery, and exact replay are
+explicit state transitions. The model cannot choose the policy, reviewer,
+dispatcher, recipient, authority, or decision.
+
 This work does not add a second orchestration engine. It composes the AI Fabric
 capabilities that already exist:
 
@@ -47,6 +56,7 @@ capabilities that already exist:
 - trusted application context;
 - structured output;
 - confirmation;
+- separately authorized durable human review;
 - safe action-result projection; and
 - visible provider, validation, policy, and persistence failures.
 
@@ -79,6 +89,7 @@ The adoption boundary is:
 | Backend conversation binding | Conversation ownership supplied by the backend |
 | Exact-version fixed-plan registry and coordinator | Application-owned plan selection, typed mappers, and deterministic aggregators |
 | Typed asynchronous specialist client, optional durable read-job state, leasing, recovery, and scoped replay | Raw-event validation, subject resolution, deterministic event mapping, production schema migration, secrets, and broker/outbox ownership |
+| Durable review gateway, encrypted task/decision state, optimistic transitions, recovery, and safe review projections | Application-selected review policies, trusted reviewer authentication/authorization, dispatcher integration, production migrations, and reviewer experience |
 | Manifest and execution diagnostics | Deployment, monitoring, support, and rollback |
 
 ## 3. Included Change Set
@@ -95,6 +106,7 @@ The adoption boundary is:
 | `ce03c22` | Exact-version fixed sequential plans, process-local checkpoints, typed resume, and one-step/two-step Account Resolver proofs |
 | `67be5f5` | Typed asynchronous specialist access, scoped payload-checked idempotency, and a proactive read-only event proof |
 | `cbd1404` | Encrypted JDBC read-job state, worker leasing, restart recovery, durable replay, and packaged OpenAI restart proof |
+| `e415a52` | Durable human-review policies, encrypted JDBC tasks and dispatch receipts, trusted reviewer decisions, continuation/recovery, and an OpenAI-backed support-credit proof |
 
 These commits build on the released `0.4.0` lifecycle, indexing, RAG, action,
 provider, and chat-session contracts.
@@ -130,7 +142,9 @@ Use it when an application needs:
 - typed input waits that resume the same specialist invocation; or
 - fixed application-selected read-only specialist plans; or
 - bounded service-owned event analysis with typed asynchronous results; or
-- opt-in restart-safe read-only specialist jobs.
+- opt-in restart-safe read-only specialist jobs; or
+- separately authorized, restart-safe human review around a governed action
+  proposal.
 
 ## 5. Specialist Execution Contract
 
@@ -559,6 +573,45 @@ Receipt storage is not chat history and is not specialist configuration. It
 exists only to preserve a proposed write, confirmation decision, execution
 state, and authoritative outcome safely across requests and restarts.
 
+### Durable human-review storage
+
+Production human review uses two separate JDBC tables:
+
+```text
+ai_review_task
+ai_review_dispatch
+```
+
+The task protects the linked source receipt, safe presentation, decision,
+typed information, correction, and safe terminal result. Query columns retain
+only lifecycle state and keyed access/idempotency fingerprints. The dispatch
+table records delivery acceptance or failure; delivery never counts as a
+review decision.
+
+```yaml
+ai:
+  execution:
+    reviews:
+      enabled: true
+      repository: JDBC
+      initialize-schema: false
+      decision-lease-duration: PT2M
+      recovery-interval: PT30S
+      recovery-batch-size: 50
+      max-dispatch-attempts: 3
+      max-decision-attempts: 3
+      cleanup-enabled: true
+      retention: P90D
+      encryption-secret: ${AI_EXECUTION_REVIEW_ENCRYPTION_SECRET}
+      fingerprint-secret: ${AI_EXECUTION_REVIEW_FINGERPRINT_SECRET}
+```
+
+Install both tables through the migration in the Durable Human Review Guide.
+Keep the two review secrets stable, distinct from each other and from every
+other execution secret, and available on every replica. Stop task creation
+before rotating them. Cleanup deletes retained dispatch history before its
+terminal task and never removes active work.
+
 ## 11. Conversation Memory And Action Drafts
 
 ### 11.1 Backend-owned conversation
@@ -727,6 +780,19 @@ ai:
       retention: P90D
       encryption-secret: ${AI_EXECUTION_RECEIPT_ENCRYPTION_SECRET}
       fingerprint-secret: ${AI_EXECUTION_RECEIPT_FINGERPRINT_SECRET}
+    reviews:
+      enabled: true
+      repository: JDBC
+      initialize-schema: false
+      decision-lease-duration: PT2M
+      recovery-interval: PT30S
+      recovery-batch-size: 50
+      max-dispatch-attempts: 3
+      max-decision-attempts: 3
+      cleanup-enabled: true
+      retention: P90D
+      encryption-secret: ${AI_EXECUTION_REVIEW_ENCRYPTION_SECRET}
+      fingerprint-secret: ${AI_EXECUTION_REVIEW_FINGERPRINT_SECRET}
     input-waits:
       enabled: true
       default-ttl: PT10M
@@ -763,6 +829,8 @@ The application must separately configure:
 | Chat turns | Configured `ai-fabric-chat-session` provider | Backend conversation lifecycle |
 | Pending ordinary chat action/draft | Chat-session action state | Conversation lifecycle |
 | Specialist write receipt | JDBC `ai_action_proposal_receipt` | Durable across restart |
+| Human-review task and protected decision/result | JDBC `ai_review_task` | Durable across restart until configured terminal retention |
+| Review delivery attempt | JDBC `ai_review_dispatch` | Separate persist-before-delivery audit record |
 | Specialist input wait | Bounded execution-module process memory | `EPHEMERAL`; lost on restart |
 | Fixed-plan checkpoints and terminal result | Bounded execution-module process memory | `EPHEMERAL`; lost on restart |
 | Eligible proactive read execution, result, and replay binding | JDBC `ai_specialist_execution` | Durable across restart with at-least-once read execution |
@@ -770,9 +838,11 @@ The application must separately configure:
 | Domain entity and authoritative action result | Host application system of record | Application lifecycle |
 | Default `IN_MEMORY` submit execution and result | Bounded process memory | `EPHEMERAL`; lost on restart |
 
-Durable read jobs and durable write receipts are independent state machines.
-Neither makes plans, input waits, confirmations, or arbitrary writes into a
-durable workflow system.
+Durable read jobs, governed write receipts, and durable review tasks are
+independent state machines. Review approval delegates to the write receipt;
+it does not copy executable parameters or call a domain handler directly.
+None of these stores turns plans, input waits, or arbitrary writes into a
+general durable workflow system.
 
 ## 15. Compatibility With AI Fabric 0.4
 
@@ -860,8 +930,12 @@ For current adoption use, in order:
    [manifest-runtime implementation plan](../planning/ai-fabric-flow-architecture-analysis-pack/implementation-plans/0003-configurable-specialist-manifest-runtime-implementation-plan.md);
 6. the
    [Durable Read-Only Specialist Jobs Guide](../Framework-Dev-Guides/application-patterns/DURABLE_READ_ONLY_SPECIALIST_JOBS.md);
-   and
 7. the
+   [Durable Human Review Guide](../Framework-Dev-Guides/application-patterns/DURABLE_HUMAN_REVIEW.md);
+8. the
+   [durable-review implementation plan](../planning/ai-fabric-flow-architecture-analysis-pack/implementation-plans/0008-durable-human-review-implementation-plan.md);
+   and
+9. the
    [`agentic-ai-action-resolver`](../../examples/real-apps/agentic-ai-action-resolver)
    reference application.
 
@@ -930,6 +1004,28 @@ For current adoption use, in order:
 - [ ] Verify confirm, reject, expiry, concurrency, terminal replay, and restart.
 - [ ] Prove `OUTCOME_UNKNOWN` reconciliation against the system of record.
 
+### Phase 2.5: Durable operational review proof
+
+- [ ] Choose one governed action proposal that requires a different,
+  authenticated operational reviewer.
+- [ ] Select an immutable review policy in application code; never accept it
+  from user text, public JSON, or model output.
+- [ ] Register the reviewer authorizer and dispatcher, and build
+  `TrustedReviewerContext` only from backend authentication.
+- [ ] Install migrations for `ai_review_task` and `ai_review_dispatch`, then
+  keep runtime schema initialization disabled.
+- [ ] Configure stable review encryption and fingerprint secrets that differ
+  from durable-job and action-receipt secrets.
+- [ ] Keep reviewer identity, tenant, role, scopes, dispatcher, and recipient
+  out of public decision payloads.
+- [ ] Verify persist-before-dispatch, inbox isolation, separation of duty,
+  approval, rejection, correction, information, escalation, expiry, and
+  terminal replay.
+- [ ] Restart between task creation and decision, then again before exact
+  replay; prove the system of record changes once.
+- [ ] Keep approval on the existing governed receipt path and expose
+  `OUTCOME_UNKNOWN` without blind retry.
+
 ### Phase 3: Loom AI authoring support
 
 - [ ] Read `SpecialistAuthoringCatalogProvider` from trusted platform code.
@@ -963,6 +1059,16 @@ For current adoption use, in order:
 - [ ] Identity and subject are fingerprinted.
 - [ ] Secrets are stable across all replicas.
 - [ ] Cross-principal, subject, tenant, deployment, and session access is denied.
+- [ ] Review policy, reviewer, dispatcher, recipient, and authority are
+  application-selected or backend-authenticated, never model-selected.
+- [ ] Review source, presentation, decision, information, and terminal result
+  are encrypted; query columns contain only safe state and keyed fingerprints.
+- [ ] Review decisions bind task version, reviewer, policy, source, and
+  canonical response so only an exact replay returns a stored result.
+- [ ] Review approval reaches the application action only through the linked
+  governed receipt and current action authorization/preflight.
+- [ ] Review correction creates a successor instead of rewriting the original
+  receipt, and escalation creates one bounded higher-authority task.
 - [ ] Event payload cannot select identity, authority, specialist, provider, or
   conversation.
 - [ ] Event specialists have the minimum required READ scopes and no automatic
@@ -986,6 +1092,12 @@ ai.fabric.execution.action.receipts
 ai.fabric.execution.input.waits
 ai.fabric.execution.plans
 ```
+
+Until a stable public review-metric contract is published, applications
+should monitor safe aggregate counts from their operational layer for waiting,
+deciding, information-pending, escalated, expired, failed, and terminal review
+states; dispatch failures; lease recovery; and decision latency. Do not use
+raw encrypted payloads or identity fingerprints as metric labels.
 
 Health may expose:
 
@@ -1017,6 +1129,8 @@ Alert on:
 - recovery-marked unknown receipts;
 - abnormal expiry growth;
 - repeated cross-context confirmation denial; and
+- review dispatch exhaustion, stuck `DECIDING` leases, authorization-denial
+  spikes, correction/escalation loops, or retained terminal-task growth; and
 - plan registration failure, wait expiry, resume denial, or deadline growth.
 
 ## 20. Rollback
@@ -1042,6 +1156,20 @@ reconciled. Do not drop the receipt table during rollback.
 Disable manifest loading and restore an already tested Java specialist
 definition if required. Do not create duplicate exact IDs while both sources
 are active.
+
+### Stop new durable reviews
+
+1. stop application routes that create new review tasks;
+2. keep reviewer read/decision routes and recovery running for existing
+   waiting or deciding tasks;
+3. reject, expire, or complete each outstanding task according to policy;
+4. reconcile any linked action receipt in `OUTCOME_UNKNOWN`;
+5. retain review and dispatch tables for the required audit period; and
+6. disable `ai.execution.reviews.enabled` only after no active review remains.
+
+Disabling review must not bypass it by confirming linked action receipts
+automatically. Do not drop review tables or rotate review secrets while active
+or retained tasks still require decryption.
 
 ### Remove the optional module
 
@@ -1153,6 +1281,27 @@ commit.
 - The reference proof created no chat conversation and made no account
   mutation.
 
+### Durable human review
+
+- The final execution reactor passed 952 tests with tests enabled and no
+  skips: 5 curated-default, 671 core, 56 chat-session, and 220 execution
+  tests.
+- Focused review security, JDBC, decision, continuation, recovery, and
+  auto-configuration coverage passed 31 tests.
+- The packaged Agentic AI Action Resolver passed 12 shared smoke-support and
+  111 application tests.
+- Application acceptance proved approval, rejection without mutation,
+  correction with a successor proposal, typed information response,
+  regular-to-senior escalation, expiry, cross-session denial, safe Spring Boot
+  4 projection, cleanup, and exact replay.
+- A packaged real OpenAI call produced a genuine governed support-credit
+  proposal and one dispatched `WAITING_FOR_REVIEW` task.
+- The task survived restart; a separately authenticated reviewer approved it
+  through the linked `request_refund` receipt.
+- After another restart, the exact original decision returned the same safe
+  outcome, and the authoritative file-backed database contained exactly one
+  `$25.00` account-credit mutation.
+
 ## 22. Release Gate Still Required
 
 Before Loom AI adopts a published artifact:
@@ -1183,8 +1332,10 @@ This release does not provide:
 - interactive plan dialogue ownership;
 - WRITE-capable composed plans;
 - model-selected unrestricted specialist discovery;
-- durable WRITE-capable specialist jobs, input waits, confirmations, plans, or
-  human review;
+- durable WRITE-capable specialist jobs, input waits, ordinary chat
+  confirmations, or plans;
+- dynamic reviewer assignment, unrestricted reviewer search, third-party
+  review-channel ownership, dynamic escalation graphs, or compensation;
 - a workflow graph or workflow engine;
 - framework-owned event-broker or scheduler consumers;
 - a specialist-definition database;
@@ -1214,9 +1365,12 @@ For Loom AI:
 4. start with a read-only internal specialist;
 5. add one low-risk governed write only after JDBC receipt operations are
    ready;
-6. use fixed read-only plans only where application-owned decomposition is
+6. add durable review only where a separately authenticated operational actor
+   genuinely owns the later decision, with its own migrations, secrets,
+   authorization, and dispatcher;
+7. use fixed read-only plans only where application-owned decomposition is
    deterministic and measurably better than one specialist; and
-7. defer dynamic planning, delegation, WRITE composition, and durable plan
+8. defer dynamic planning, delegation, WRITE composition, and durable plan
    execution until the fixed-plan contract has production usage evidence.
 
 This moves Loom AI from generating ad hoc AI integrations toward composing

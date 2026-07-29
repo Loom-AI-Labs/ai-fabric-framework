@@ -4,6 +4,7 @@
 - **Date:** 2026-07-29
 - **Framework baseline:** AI Fabric `0.4.0`
 - **Code reviewed at:** `d2b4ac0`
+- **Implementation commit:** `e415a52`
 - **Prerequisite:** Plans `0001` through `0007`
 - **Target:** P3 release slice 6; version not assigned
 - **Reference proof:** `examples/real-apps/agentic-ai-action-resolver`
