@@ -1,5 +1,8 @@
 @baseUrl = http://localhost:8105
 @sessionId = replace-with-session-id
+@reviewerKey = replace-with-regular-reviewer-key
+@seniorReviewerKey = replace-with-senior-reviewer-key
+@reviewTaskId = replace-with-review-task-id
 
 ### Deployment and specialist health
 GET {{baseUrl}}/api/demo/health
@@ -60,6 +63,42 @@ Content-Type: application/json
 {
   "question": "Review my current account against the policies. Can I place an order?"
 }
+
+### Real provider proposal for a separately authorized durable review
+POST {{baseUrl}}/api/agentic-resolver/reviews/support-credit
+X-AI-Fabric-Demo-Session: {{sessionId}}
+Idempotency-Key: support-credit-proposal-1
+Content-Type: application/json
+
+{
+  "question": "Propose a support credit for the verified incident.",
+  "resolutionType": "ACCOUNT_CREDIT",
+  "amount": 25,
+  "reason": "Verified support incident"
+}
+
+### Regular reviewer inbox
+GET {{baseUrl}}/api/agentic-resolver/reviews
+X-AI-Fabric-Review-Key: {{reviewerKey}}
+
+### Authorized review detail
+GET {{baseUrl}}/api/agentic-resolver/reviews/{{reviewTaskId}}
+X-AI-Fabric-Review-Key: {{reviewerKey}}
+
+### Approve through the governed action receipt
+POST {{baseUrl}}/api/agentic-resolver/reviews/{{reviewTaskId}}/decision
+X-AI-Fabric-Review-Key: {{reviewerKey}}
+Content-Type: application/json
+
+{
+  "decisionId": "approve-support-credit-1",
+  "decision": "APPROVE",
+  "expectedVersion": 0
+}
+
+### Senior reviewer inbox for escalated tasks
+GET {{baseUrl}}/api/agentic-resolver/reviews
+X-AI-Fabric-Review-Key: {{seniorReviewerKey}}
 
 ### Delete the session and its backend conversation
 DELETE {{baseUrl}}/api/agentic-resolver/sessions/{{sessionId}}

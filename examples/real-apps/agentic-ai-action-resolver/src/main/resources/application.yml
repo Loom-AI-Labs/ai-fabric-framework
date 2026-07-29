@@ -45,6 +45,7 @@ ai:
         - get_account_profile
         - assess_billing_resolution
         - update_address
+        - request_refund
     async:
       repository: ${AI_EXECUTION_ASYNC_REPOSITORY:JDBC}
       initialize-schema: ${AI_EXECUTION_ASYNC_INITIALIZE_SCHEMA:true}
@@ -78,7 +79,7 @@ ai:
       enabled: true
       repository: JDBC
       initialize-schema: ${AI_EXECUTION_RECEIPT_INITIALIZE_SCHEMA:true}
-      ttl: ${AI_EXECUTION_RECEIPT_TTL:PT10M}
+      ttl: ${AI_EXECUTION_RECEIPT_TTL:P7D}
       stale-executing-after: ${AI_EXECUTION_STALE_EXECUTION:PT2M}
       recovery-interval: ${AI_EXECUTION_RECOVERY_INTERVAL:PT1M}
       recovery-batch-size: ${AI_EXECUTION_RECOVERY_BATCH_SIZE:100}
@@ -86,6 +87,19 @@ ai:
       retention: ${AI_EXECUTION_RECEIPT_RETENTION:P30D}
       encryption-secret: ${AI_EXECUTION_RECEIPT_ENCRYPTION_SECRET:}
       fingerprint-secret: ${AI_EXECUTION_RECEIPT_FINGERPRINT_SECRET:}
+    reviews:
+      enabled: ${AI_EXECUTION_REVIEWS_ENABLED:false}
+      repository: JDBC
+      initialize-schema: ${AI_EXECUTION_REVIEW_INITIALIZE_SCHEMA:false}
+      decision-lease-duration: ${AI_EXECUTION_REVIEW_DECISION_LEASE:PT2M}
+      recovery-interval: ${AI_EXECUTION_REVIEW_RECOVERY_INTERVAL:PT30S}
+      recovery-batch-size: ${AI_EXECUTION_REVIEW_RECOVERY_BATCH_SIZE:50}
+      max-dispatch-attempts: ${AI_EXECUTION_REVIEW_MAX_DISPATCH_ATTEMPTS:3}
+      max-decision-attempts: ${AI_EXECUTION_REVIEW_MAX_ATTEMPTS:3}
+      cleanup-enabled: ${AI_EXECUTION_REVIEW_CLEANUP_ENABLED:true}
+      retention: ${AI_EXECUTION_REVIEW_RETENTION:P90D}
+      encryption-secret: ${AI_EXECUTION_REVIEW_ENCRYPTION_SECRET:}
+      fingerprint-secret: ${AI_EXECUTION_REVIEW_FINGERPRINT_SECRET:}
 
   chat:
     enabled: true
@@ -180,6 +194,9 @@ app:
       ttl: ${APP_AGENTIC_SESSION_TTL:PT6H}
       max-active: ${APP_AGENTIC_MAX_SESSIONS:500}
       cleanup-cron: ${APP_AGENTIC_SESSION_CLEANUP_CRON:0 */15 * * * *}
+    reviews:
+      reviewer-api-key: ${APP_REVIEWER_API_KEY:}
+      senior-reviewer-api-key: ${APP_SENIOR_REVIEWER_API_KEY:}
   demo:
     cleanup:
       enabled: ${APP_DEMO_CLEANUP_ENABLED:true}

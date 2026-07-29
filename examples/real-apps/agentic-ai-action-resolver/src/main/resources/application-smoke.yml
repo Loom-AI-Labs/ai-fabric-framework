@@ -8,3 +8,14 @@ ai:
       # self-contained. Shared and production profiles have no key fallback.
       encryption-secret: smoke-agentic-receipt-encryption-key-local-only
       fingerprint-secret: smoke-agentic-receipt-fingerprint-key-local-only
+    reviews:
+      enabled: true
+      repository: JDBC
+      initialize-schema: true
+      encryption-secret: smoke-agentic-review-encryption-key-local-only-0001
+      fingerprint-secret: smoke-agentic-review-fingerprint-key-local-only-0002
+app:
+  agentic-resolver:
+    reviews:
+      reviewer-api-key: smoke-regular-reviewer-key
+      senior-reviewer-api-key: smoke-senior-reviewer-key

@@ -28,6 +28,82 @@
       "type": "java.lang.Integer",
       "description": "Maximum byte size of one configured specialist resource file.",
       "defaultValue": 65536
+    },
+    {
+      "name": "ai.execution.reviews.enabled",
+      "type": "java.lang.Boolean",
+      "description": "Enable durable, separately authorized human review around governed action proposal receipts.",
+      "defaultValue": false
+    },
+    {
+      "name": "ai.execution.reviews.repository",
+      "type": "ai.fabric.execution.config.AIExecutionProperties$ReviewRepository",
+      "description": "Review task and dispatch receipt repository. JDBC is required for durable cross-process review.",
+      "defaultValue": "JDBC"
+    },
+    {
+      "name": "ai.execution.reviews.initialize-schema",
+      "type": "java.lang.Boolean",
+      "description": "Create review JDBC tables at startup. Intended for tests and self-contained demos; production applications should own migrations.",
+      "defaultValue": false
+    },
+    {
+      "name": "ai.execution.reviews.decision-lease-duration",
+      "type": "java.time.Duration",
+      "description": "Lease duration for one claimed review decision continuation.",
+      "defaultValue": "PT2M"
+    },
+    {
+      "name": "ai.execution.reviews.recovery-interval",
+      "type": "java.time.Duration",
+      "description": "Interval between expired-task, abandoned-decision, and retention recovery scans.",
+      "defaultValue": "PT30S"
+    },
+    {
+      "name": "ai.execution.reviews.recovery-batch-size",
+      "type": "java.lang.Integer",
+      "description": "Maximum review tasks processed by one recovery scan.",
+      "defaultValue": 50
+    },
+    {
+      "name": "ai.execution.reviews.max-dispatch-attempts",
+      "type": "java.lang.Integer",
+      "description": "Maximum idempotent dispatcher delivery attempts retained for one waiting review task.",
+      "defaultValue": 3
+    },
+    {
+      "name": "ai.execution.reviews.max-decision-attempts",
+      "type": "java.lang.Integer",
+      "description": "Maximum durable continuation claims before a review decision fails visibly.",
+      "defaultValue": 3
+    },
+    {
+      "name": "ai.execution.reviews.cleanup-enabled",
+      "type": "java.lang.Boolean",
+      "description": "Delete terminal review tasks after the configured retention period.",
+      "defaultValue": false
+    },
+    {
+      "name": "ai.execution.reviews.retention",
+      "type": "java.time.Duration",
+      "description": "Retention period for terminal review tasks when cleanup is enabled.",
+      "defaultValue": "P90D"
+    },
+    {
+      "name": "ai.execution.reviews.encryption-secret",
+      "type": "java.lang.String",
+      "description": "Stable secret used to encrypt protected review source, decision, and result state. Must be at least 32 characters and distinct from receipt secrets."
+    },
+    {
+      "name": "ai.execution.reviews.fingerprint-secret",
+      "type": "java.lang.String",
+      "description": "Stable secret used for keyed reviewer, tenant, source, and idempotency fingerprints. Must be at least 32 characters and distinct from receipt secrets."
+    },
+    {
+      "name": "ai.execution.reviews.allow-in-production",
+      "type": "java.lang.Boolean",
+      "description": "Explicitly acknowledge non-durable IN_MEMORY review state under a prod or production profile.",
+      "defaultValue": false
     }
   ]
 }

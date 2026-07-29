@@ -3,9 +3,10 @@
 ## Status
 
 The independent `agentic-ai-action-resolver` app is the reference proof for
-bounded specialist reads plus one durable, confirmation-gated write. It was
-copied from Account Resolver to preserve the existing live demo while the new
-execution contract is developed and verified.
+bounded specialist reads, durable read jobs, confirmation-gated writes, and a
+separately authorized durable human-review lifecycle. It was copied from
+Account Resolver to preserve the existing live demo while the new execution
+contracts are developed and verified.
 
 The copy has its own artifact, Java package, port, database, Lucene index,
 durable opaque demo sessions, Dockerfile, and tests. The tracked source under
@@ -29,6 +30,9 @@ Vector space: account-resolution-policy
 Write policy: CONFIRMATION_RECEIPT_REQUIRED
 Read output: AccountResolutionResult
 Write output: durable ActionProposalView, then safe ActionOutcomeView
+Review proposer: support-credit-proposer@1
+Review policy: support-credit-review@1
+Senior policy: support-credit-senior-review@1
 ```
 
 `POST /api/agentic-resolver/evaluate` receives application authority and is
@@ -81,6 +85,38 @@ address fields.
   an HTTP decision can be resumed after process restart. Real applications
   should re-resolve this context from authentication.
 
+## Durable Human Review
+
+```text
+support-credit-proposer@1
+  -> real provider + account-resolution-policy evidence
+  -> governed request_refund proposal receipt
+  -> application-selected support-credit-review@1
+  -> encrypted JDBC task committed before dispatch
+  -> separate local-inbox dispatch receipt
+  -> backend-authenticated reviewer
+  -> approve | reject | correct | request information | escalate
+  -> current reviewer, policy, source, and action revalidation
+  -> safe terminal result or successor review
+```
+
+Regular and senior reviewer API keys are mapped server-side to fixed trusted
+reviewer principals and scopes. The HTTP body cannot claim reviewer identity
+or authority. Review details expose plain safe maps at the Spring Boot 4 HTTP
+boundary while encrypted source, decision, and information payloads remain
+inside the execution module.
+
+Approval and rejection delegate to `ActionProposalCoordinator`; the review
+layer never invokes a domain handler directly. Correction retires the original
+receipt and creates a successor. Information is schema-bound and accepted only
+from the original trusted source session. Escalation creates one successor
+under the senior policy without changing the action.
+
+Review tasks, dispatch attempts, decisions, requested information, safe
+outcomes, leases, and terminal status survive restart. Exact replay includes
+the task version and reviewer fingerprint. Cleanup removes retained dispatch
+history with its terminal task.
+
 ## Failure Behavior
 
 There is no success fallback. Typed failures cover:
@@ -94,21 +130,32 @@ There is no success fallback. Typed failures cover:
 - outcome projection/persistence failure;
 - profile, specialist version, or action-schema drift;
 - cross-principal, cross-account, and cross-tenant receipt access;
+- cross-tenant review access, missing reviewer scope, and separation of duty;
+- changed review policy, receipt source fingerprint, or decision version;
+- invalid correction or information schemas;
+- review dispatch failure and exhausted decision recovery;
 - deadline and conversation recording failure.
 
 ## Verification
 
-- Source-based Docker build: 1,175 framework tests across 15 modules.
-- Packaged app build: 12 smoke-support tests and 79 copied-app tests.
+- Final execution reactor: 952 tests with no failures or skips: 5
+  curated-default, 671 core, 56 chat-session, and 220 execution tests.
+- Final packaged app build: 12 smoke-support tests and 111 copied-app tests.
 - Original Account Resolver: 49 app tests and 12 smoke-support tests.
 - Manifest contract, compiler, registry, schema adapter, typed client,
   published example, metrics, and receipt-hash migration tests.
-- Full copied-app Spring context: JDBC receipts and HTTP decisions.
-- Durable-volume restart: proposal before restart, confirmation after restart,
-  and identical terminal replay after a second restart.
+- Full copied-app Spring context: JDBC receipts, durable review tasks, and HTTP
+  decisions.
+- Review acceptance: approve, reject, correct/successor, typed information,
+  regular-to-senior escalation, cross-session denial, and safe result
+  projection.
+- Durable-volume review restart: a real-provider proposal and waiting task
+  before restart, reviewer approval after restart, and identical terminal
+  replay after another restart with one authoritative account-credit mutation.
 - Real OpenAI: blocked read, proposal/confirm, post-action `READY` read,
   rejection, hostile instruction, malformed/extra parameters, idempotent
-  replay, and cross-session isolation.
+  replay, cross-session isolation, and a genuine support-credit proposal
+  routed into durable human review.
 - Invalid provider: visible `INTENT_PROVIDER_FAILED`, no receipt, and no native
   provider message or key in the public result or packaged logs.
 - Privacy: synthetic address input and provider keys were absent from packaged

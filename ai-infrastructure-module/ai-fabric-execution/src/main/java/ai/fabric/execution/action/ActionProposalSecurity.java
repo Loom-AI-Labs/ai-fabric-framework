@@ -5,6 +5,7 @@ import ai.fabric.execution.context.TrustedExecutionContext;
 import ai.fabric.execution.specialist.SpecialistId;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.MapperFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
@@ -65,6 +66,14 @@ public final class ActionProposalSecurity {
         );
         this.canonicalMapper.configure(
             MapperFeature.SORT_PROPERTIES_ALPHABETICALLY,
+            true
+        );
+        this.canonicalMapper.configure(
+            DeserializationFeature.USE_BIG_DECIMAL_FOR_FLOATS,
+            true
+        );
+        this.canonicalMapper.configure(
+            DeserializationFeature.USE_BIG_INTEGER_FOR_INTS,
             true
         );
         byte[] encryptionSecretBytes = secret(

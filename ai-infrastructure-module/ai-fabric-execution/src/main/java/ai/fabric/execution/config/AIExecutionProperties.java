@@ -13,6 +13,7 @@ public class AIExecutionProperties {
     private final Async async = new Async();
     private final Capabilities capabilities = new Capabilities();
     private final Receipts receipts = new Receipts();
+    private final Reviews reviews = new Reviews();
     private final Manifests manifests = new Manifests();
     private final InputWaits inputWaits = new InputWaits();
     private final Plans plans = new Plans();
@@ -27,6 +28,10 @@ public class AIExecutionProperties {
 
     public Receipts getReceipts() {
         return receipts;
+    }
+
+    public Reviews getReviews() {
+        return reviews;
     }
 
     public Manifests getManifests() {
@@ -570,6 +575,166 @@ public class AIExecutionProperties {
     }
 
     public enum ReceiptRepository {
+        JDBC,
+        IN_MEMORY
+    }
+
+    public static class Reviews {
+        private boolean enabled;
+        private ReviewRepository repository = ReviewRepository.JDBC;
+        private boolean initializeSchema;
+        private Duration decisionLeaseDuration = Duration.ofMinutes(2);
+        private Duration recoveryInterval = Duration.ofSeconds(30);
+        private int recoveryBatchSize = 50;
+        private int maxDispatchAttempts = 3;
+        private int maxDecisionAttempts = 3;
+        private boolean cleanupEnabled;
+        private Duration retention = Duration.ofDays(90);
+        private String encryptionSecret;
+        private String fingerprintSecret;
+        private boolean allowInProduction;
+
+        public boolean isEnabled() {
+            return enabled;
+        }
+
+        public void setEnabled(boolean enabled) {
+            this.enabled = enabled;
+        }
+
+        public ReviewRepository getRepository() {
+            return repository;
+        }
+
+        public void setRepository(ReviewRepository repository) {
+            this.repository = repository == null
+                ? ReviewRepository.JDBC
+                : repository;
+        }
+
+        public boolean isInitializeSchema() {
+            return initializeSchema;
+        }
+
+        public void setInitializeSchema(boolean initializeSchema) {
+            this.initializeSchema = initializeSchema;
+        }
+
+        public Duration getDecisionLeaseDuration() {
+            return decisionLeaseDuration;
+        }
+
+        public void setDecisionLeaseDuration(Duration value) {
+            this.decisionLeaseDuration = positive(
+                value,
+                "decisionLeaseDuration"
+            );
+        }
+
+        public Duration getRecoveryInterval() {
+            return recoveryInterval;
+        }
+
+        public void setRecoveryInterval(Duration recoveryInterval) {
+            this.recoveryInterval = positive(
+                recoveryInterval,
+                "recoveryInterval"
+            );
+        }
+
+        public int getRecoveryBatchSize() {
+            return recoveryBatchSize;
+        }
+
+        public void setRecoveryBatchSize(int recoveryBatchSize) {
+            this.recoveryBatchSize = positive(
+                recoveryBatchSize,
+                "recoveryBatchSize"
+            );
+        }
+
+        public int getMaxDecisionAttempts() {
+            return maxDecisionAttempts;
+        }
+
+        public int getMaxDispatchAttempts() {
+            return maxDispatchAttempts;
+        }
+
+        public void setMaxDispatchAttempts(int maxDispatchAttempts) {
+            this.maxDispatchAttempts = positive(
+                maxDispatchAttempts,
+                "maxDispatchAttempts"
+            );
+        }
+
+        public void setMaxDecisionAttempts(int maxDecisionAttempts) {
+            this.maxDecisionAttempts = positive(
+                maxDecisionAttempts,
+                "maxDecisionAttempts"
+            );
+        }
+
+        public boolean isCleanupEnabled() {
+            return cleanupEnabled;
+        }
+
+        public void setCleanupEnabled(boolean cleanupEnabled) {
+            this.cleanupEnabled = cleanupEnabled;
+        }
+
+        public Duration getRetention() {
+            return retention;
+        }
+
+        public void setRetention(Duration retention) {
+            this.retention = positive(retention, "retention");
+        }
+
+        public String getEncryptionSecret() {
+            return encryptionSecret;
+        }
+
+        public void setEncryptionSecret(String encryptionSecret) {
+            this.encryptionSecret = encryptionSecret;
+        }
+
+        public String getFingerprintSecret() {
+            return fingerprintSecret;
+        }
+
+        public void setFingerprintSecret(String fingerprintSecret) {
+            this.fingerprintSecret = fingerprintSecret;
+        }
+
+        public boolean isAllowInProduction() {
+            return allowInProduction;
+        }
+
+        public void setAllowInProduction(boolean allowInProduction) {
+            this.allowInProduction = allowInProduction;
+        }
+
+        private Duration positive(Duration value, String field) {
+            if (value == null || value.isZero() || value.isNegative()) {
+                throw new IllegalArgumentException(
+                    field + " must be positive"
+                );
+            }
+            return value;
+        }
+
+        private int positive(int value, String field) {
+            if (value < 1) {
+                throw new IllegalArgumentException(
+                    field + " must be positive"
+                );
+            }
+            return value;
+        }
+    }
+
+    public enum ReviewRepository {
         JDBC,
         IN_MEMORY
     }

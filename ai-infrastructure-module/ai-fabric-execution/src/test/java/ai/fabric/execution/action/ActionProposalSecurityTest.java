@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import ai.fabric.execution.specialist.SpecialistId;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.math.BigDecimal;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
@@ -63,6 +64,28 @@ class ActionProposalSecurityTest {
 
         assertThat(security.canonicalHash(first))
             .isEqualTo(security.canonicalHash(second));
+    }
+
+    @Test
+    void protectedNumericParametersKeepTheirCanonicalHash() {
+        Map<String, Object> parameters = Map.of(
+            "amount",
+            new BigDecimal("25.00"),
+            "quantity",
+            2
+        );
+
+        String protectedPayload = security.protect(
+            parameters,
+            "receipt-1:parameters"
+        );
+        Map<String, Object> restored = security.unprotect(
+            protectedPayload,
+            "receipt-1:parameters"
+        );
+
+        assertThat(security.canonicalHash(restored))
+            .isEqualTo(security.canonicalHash(parameters));
     }
 
     @Test

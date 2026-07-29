@@ -8,8 +8,9 @@ manifest specialists:
   account-resolver@1
   account-resolver-read@1
   billing-resolution-advisor@1
+  support-credit-proposer@1
 read actions: get_account_profile, assess_billing_resolution
-write proposal: update_address
+write proposals: update_address, request_refund
 evidence: account-resolution-policy
 ```
 
@@ -36,6 +37,12 @@ It also proves proactive, read-only intelligence from a raw application event.
 A payment-verification failure is mapped to `account-resolver-read@1` and
 submitted asynchronously under a backend-owned service principal with
 `ExecutionSource.EVENT`. No chat turn or fabricated user message is created.
+
+The support-credit specialist adds a cross-request human-review boundary. A
+real provider proposes one governed billing action, the application places its
+receipt into a durable review task, and a separately authenticated reviewer
+may approve, reject, correct, request information, or escalate it. The model
+cannot choose or impersonate the reviewer.
 
 The original `ai-fabric-account-resolver` remains unchanged and deployable as
 the governed-action baseline.
@@ -95,6 +102,14 @@ the governed-action baseline.
 - Replays cannot execute a terminal receipt twice.
 - Stale `EXECUTING` receipts become `OUTCOME_UNKNOWN`; they are never retried
   blindly.
+- `support-credit-proposer@1` can create a governed `request_refund` proposal
+  for later operational review.
+- Review tasks and delivery receipts are committed separately in JDBC.
+- Reviewer identity, tenant, and scopes are mapped by the backend rather than
+  accepted in public JSON.
+- Approval and rejection advance only the linked governed action receipt.
+- Correction creates a successor proposal and task without rewriting history.
+- Typed information exchange and senior escalation survive request boundaries.
 - The next profile read observes the authoritative database update. Account
   PII is intentionally not copied into the policy vector index.
 
@@ -326,6 +341,39 @@ The chat call does not execute the write. A valid proposal returns:
 ```
 
 The public view deliberately contains no executable parameters or identity.
+
+## Durable Human Review
+
+`support-credit-proposer@1` is defined in
+[`src/main/resources/ai-specialists/support-credit-review.yml`](src/main/resources/ai-specialists/support-credit-review.yml).
+It retrieves the approved refund/credit policy and asks AI Fabric to create one
+`request_refund` proposal. The application then chooses
+`support-credit-review@1`; neither user text nor model output can choose that
+policy.
+
+```text
+real OpenAI proposal
+  -> governed action receipt
+  -> application-selected review policy
+  -> encrypted JDBC task before dispatch
+  -> local inbox dispatch receipt
+  -> backend-authenticated regular or senior reviewer
+  -> approve | reject | correct | request information | escalate
+  -> current policy, authority, source, and action revalidation
+  -> governed action path or non-mutating terminal result
+```
+
+The standard policy supports all five decisions. The senior policy supports
+approval or rejection and requires an additional senior-review scope.
+Separation of duty prevents the original initiator from deciding the task.
+
+Correction rejects the original action receipt and creates a new receipt plus
+one successor review. Information responses are accepted only from the
+original server-owned demo session. Escalation leaves the action untouched and
+creates one task visible only to the senior reviewer.
+
+The full framework adoption and migration guide is
+[`DURABLE_HUMAN_REVIEW.md`](../../../docs/Framework-Dev-Guides/application-patterns/DURABLE_HUMAN_REVIEW.md).
 
 ## Published Scenarios
 
@@ -575,6 +623,65 @@ Content-Type: application/json
 
 The only accepted decisions are `CONFIRM` and `REJECT`.
 
+Create a real provider-backed support-credit proposal and durable review:
+
+```http
+POST /api/agentic-resolver/reviews/support-credit
+X-AI-Fabric-Demo-Session: {sessionId}
+Idempotency-Key: {stable-review-proposal-key}
+Content-Type: application/json
+
+{
+  "question":"Propose a support credit for the verified incident.",
+  "resolutionType":"ACCOUNT_CREDIT",
+  "amount":25,
+  "reason":"Verified support incident"
+}
+```
+
+List or inspect tasks with a backend-configured reviewer key:
+
+```http
+GET /api/agentic-resolver/reviews
+X-AI-Fabric-Review-Key: {reviewerKey}
+
+GET /api/agentic-resolver/reviews/{taskId}
+X-AI-Fabric-Review-Key: {reviewerKey}
+```
+
+Submit a version-bound review decision:
+
+```http
+POST /api/agentic-resolver/reviews/{taskId}/decision
+X-AI-Fabric-Review-Key: {reviewerKey}
+Content-Type: application/json
+
+{
+  "decisionId":"review-decision-1",
+  "decision":"APPROVE",
+  "expectedVersion":0
+}
+```
+
+`CORRECT` and `REQUEST_INFORMATION` also require a `response` object matching
+their exact manifest schema. The original source session supplies requested
+information through:
+
+```http
+POST /api/agentic-resolver/reviews/{taskId}/information
+X-AI-Fabric-Demo-Session: {sessionId}
+Content-Type: application/json
+
+{
+  "submissionId":"information-1",
+  "expectedVersion":2,
+  "response":{"incidentReference":"INC-2026-42"}
+}
+```
+
+The public body never supplies reviewer identity, tenant, scopes, role,
+dispatcher, recipient, action receipt, or confirmation authority.
+
 Deployment and receipt readiness:
 
 ```http
@@ -750,6 +857,25 @@ secret, drain or expire confirmable receipts and reconcile unknown outcomes.
 Changing a key while active receipts remain makes their identity or encrypted
 payload unverifiable.
 
+## Durable Review Configuration
+
+Required when `ai.execution.reviews.enabled=true`:
+
+- `AI_EXECUTION_REVIEW_ENCRYPTION_SECRET`: stable and at least 32 characters.
+- `AI_EXECUTION_REVIEW_FINGERPRINT_SECRET`: a different stable secret.
+- `APP_REVIEWER_API_KEY`: demo mapping for a regular reviewer.
+- `APP_SENIOR_REVIEWER_API_KEY`: demo mapping for a senior reviewer.
+
+The two review secrets must also differ from every action-receipt and durable
+job secret. This self-contained app enables JDBC schema initialization in its
+smoke and production-demo profiles. A production adoption should set
+`AI_EXECUTION_REVIEW_INITIALIZE_SCHEMA=false` after installing the migration
+from the durable human-review guide.
+
+Review task retention defaults to 90 days in this app. Cleanup removes
+dispatch history before its retained terminal task. Waiting and deciding tasks
+are never removed by retention cleanup.
+
 ## Docker
 
 Build from the repository root. Tests run in both framework and app build
@@ -784,6 +910,10 @@ docker run --rm -p 8105:8105 \
   -e AI_EXECUTION_RECEIPT_FINGERPRINT_SECRET="$AI_EXECUTION_RECEIPT_FINGERPRINT_SECRET" \
   -e AI_EXECUTION_ASYNC_ENCRYPTION_SECRET="$AI_EXECUTION_ASYNC_ENCRYPTION_SECRET" \
   -e AI_EXECUTION_ASYNC_FINGERPRINT_SECRET="$AI_EXECUTION_ASYNC_FINGERPRINT_SECRET" \
+  -e AI_EXECUTION_REVIEW_ENCRYPTION_SECRET="$AI_EXECUTION_REVIEW_ENCRYPTION_SECRET" \
+  -e AI_EXECUTION_REVIEW_FINGERPRINT_SECRET="$AI_EXECUTION_REVIEW_FINGERPRINT_SECRET" \
+  -e APP_REVIEWER_API_KEY="$APP_REVIEWER_API_KEY" \
+  -e APP_SENIOR_REVIEWER_API_KEY="$APP_SENIOR_REVIEWER_API_KEY" \
   -e CORS_ALLOWED_ORIGINS=https://ai-fabric.dev \
   agentic-ai-action-resolver:source
 ```
@@ -844,6 +974,14 @@ For Coolify source deployment:
 - Unknown outcomes require an application-authoritative reconciliation.
 - Replaying a successful, failed, rejected, expired, or unknown receipt returns
   its terminal state without executing it again.
+- Review tasks are committed before dispatch and use separate delivery
+  receipts. Delivery acceptance is never treated as approval.
+- A repeated exact review decision returns the stored result. A different
+  reviewer, task version, decision, or response conflicts without executing.
+- Expired reviewer leases recover the same protected decision. Exhausted
+  attempts become a visible terminal failure.
+- Review expiry leaves the linked action proposal untouched. Rejection retires
+  it without a domain mutation; correction creates a successor.
 
 Disable specialist writes for rollback by removing `update_address` from the
 specialist/deployment/authority scopes or by setting
@@ -905,7 +1043,7 @@ No verification command for this feature uses `-DskipTests`.
 - durable WRITE-capable specialist jobs;
 - blind retries for unknown write outcomes;
 - durable or cross-process specialist input waits;
-- durable confirmation, composed-plan continuation, or human review;
+- durable chat confirmation or composed-plan continuation;
 - exactly-once provider invocation;
 - multi-question input collection;
 - a public reconciliation endpoint;

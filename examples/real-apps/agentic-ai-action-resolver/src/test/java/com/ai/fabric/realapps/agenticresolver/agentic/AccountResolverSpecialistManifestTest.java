@@ -202,6 +202,37 @@ class AccountResolverSpecialistManifestTest {
     }
 
     @Test
+    void declaresSupportCreditProposerForDurableReviewOnly() {
+        SpecialistDefinition<JsonNode, JsonNode> definition = definition(
+            AccountResolverSpecialists.SUPPORT_CREDIT_SPECIALIST_ID
+        );
+
+        assertThat(definition.id().toString())
+            .isEqualTo("support-credit-proposer@1");
+        assertThat(definition.executionProfile().writeEnabled()).isTrue();
+        assertThat(definition.executionProfile()
+            .requestedCapabilities().visibleActions())
+            .containsExactly("request_refund");
+        assertThat(definition.executionProfile()
+            .requestedCapabilities().requestableReadActions())
+            .isEmpty();
+        assertThat(definition.executionProfile()
+            .requestedCapabilities().proposableWriteActions())
+            .containsExactly("request_refund");
+        assertThat(definition.executionProfile()
+            .requestedCapabilities().requestedVectorSpaces())
+            .containsExactly("account-resolution-policy");
+        assertThat(definition.instructions().render())
+            .contains("later")
+            .contains("human review")
+            .contains("Never execute")
+            .doesNotContain(
+                "reviewer API key",
+                "senior-account-operations-reviewer"
+            );
+    }
+
+    @Test
     void waitsForBillingAmountBeforeAttemptingDisabledProvider() {
         AgenticResolverSessionService.SessionView session =
             sessionService.create();
