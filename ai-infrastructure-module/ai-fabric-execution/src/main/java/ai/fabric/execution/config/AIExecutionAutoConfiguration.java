@@ -5,6 +5,7 @@ import ai.fabric.core.AICoreService;
 import ai.fabric.evidence.AIEvidenceReferenceMapper;
 import ai.fabric.execution.action.ActionProposalCoordinator;
 import ai.fabric.execution.delegation.DefaultSpecialistDelegationGateway;
+import ai.fabric.execution.delegation.DefaultSpecialistHandoffGateway;
 import ai.fabric.execution.delegation.SpecialistDelegationGateway;
 import ai.fabric.execution.gateway.AIExecutionConversationRecorder;
 import ai.fabric.execution.gateway.AIExecutionGateway;
@@ -19,6 +20,7 @@ import ai.fabric.execution.gateway.SpecialistAuthorityResolver;
 import ai.fabric.execution.gateway.SpecialistCapabilityResolver;
 import ai.fabric.execution.gateway.SpecialistGroundingProjector;
 import ai.fabric.execution.gateway.SpecialistOutputFinalizer;
+import ai.fabric.execution.handoff.SpecialistHandoffGateway;
 import ai.fabric.execution.specialist.DefaultSpecialistRegistry;
 import ai.fabric.execution.specialist.SpecialistDefinition;
 import ai.fabric.execution.specialist.SpecialistDefinitionValidator;
@@ -526,6 +528,25 @@ public class AIExecutionAutoConfiguration {
         AIExecutionProperties properties
     ) {
         return new DefaultSpecialistDelegationGateway(
+            specialistRegistry,
+            specialistClientFactory,
+            canonicalJson,
+            clock,
+            properties.getAsync().getResultTtl()
+        );
+    }
+
+    @Bean
+    @ConditionalOnBean(SpecialistClientFactory.class)
+    @ConditionalOnMissingBean
+    public SpecialistHandoffGateway specialistHandoffGateway(
+        SpecialistRegistry specialistRegistry,
+        SpecialistClientFactory specialistClientFactory,
+        CanonicalJsonSupport canonicalJson,
+        Clock clock,
+        AIExecutionProperties properties
+    ) {
+        return new DefaultSpecialistHandoffGateway(
             specialistRegistry,
             specialistClientFactory,
             canonicalJson,

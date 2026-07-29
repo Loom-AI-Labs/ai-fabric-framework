@@ -10,12 +10,43 @@ public record SpecialistManifestSpec(
     SpecialistOutputSpec output,
     SpecialistConversationSpec conversation,
     SpecialistLimitSpec limits,
-    SpecialistDelegationSpec delegation
+    SpecialistDelegationSpec delegation,
+    SpecialistHandoffSpec handoff
 ) {
     public SpecialistManifestSpec {
         delegation = delegation == null
             ? SpecialistDelegationSpec.disabled()
             : delegation;
+        handoff = handoff == null
+            ? SpecialistHandoffSpec.disabled()
+            : handoff;
+    }
+
+    public SpecialistManifestSpec(
+        String mode,
+        SpecialistInstructionSpec instructions,
+        SpecialistExecutionSpec execution,
+        SpecialistCapabilitySpec capabilities,
+        SpecialistInputSpec input,
+        SpecialistGroundingSpec grounding,
+        SpecialistOutputSpec output,
+        SpecialistConversationSpec conversation,
+        SpecialistLimitSpec limits,
+        SpecialistDelegationSpec delegation
+    ) {
+        this(
+            mode,
+            instructions,
+            execution,
+            capabilities,
+            input,
+            grounding,
+            output,
+            conversation,
+            limits,
+            delegation,
+            SpecialistHandoffSpec.disabled()
+        );
     }
 
     public SpecialistManifestSpec(
@@ -39,7 +70,8 @@ public record SpecialistManifestSpec(
             output,
             conversation,
             limits,
-            SpecialistDelegationSpec.disabled()
+            SpecialistDelegationSpec.disabled(),
+            SpecialistHandoffSpec.disabled()
         );
     }
 

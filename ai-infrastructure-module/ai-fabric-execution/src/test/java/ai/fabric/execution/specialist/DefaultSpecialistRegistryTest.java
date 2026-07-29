@@ -260,6 +260,102 @@ class DefaultSpecialistRegistryTest {
             .hasMessageContaining(targetId.toString());
     }
 
+    @Test
+    void registersExactReadOnlyHandoffTargetIndependentlyOfDelegation() {
+        SpecialistId targetId = SpecialistId.of("policy-successor", "1");
+        SpecialistDefinition<String, String> source = definition(
+            ID,
+            "resolver",
+            readProfile(),
+            SpecialistDelegationPolicy.disabled(),
+            SpecialistHandoffPolicy.oneLevel(Set.of(targetId))
+        );
+        SpecialistDefinition<String, String> target = definition(
+            targetId,
+            "resolver",
+            readProfile(),
+            SpecialistDelegationPolicy.disabled(),
+            SpecialistHandoffPolicy.disabled()
+        );
+
+        DefaultSpecialistRegistry registry = new DefaultSpecialistRegistry(
+            List.of(source, target),
+            actionRegistry("inspect_account", ActionAccessMode.READ),
+            Set.of("resolver"),
+            Set.of("account-policy")
+        );
+
+        assertThat(registry.require(ID).handoffPolicy().allowedTargets())
+            .containsExactly(targetId);
+        assertThat(registry.require(ID).delegationPolicy().enabled())
+            .isFalse();
+    }
+
+    @Test
+    void rejectsUnknownSelfAndWriteCapableHandoffTargets() {
+        SpecialistId missing = SpecialistId.of("missing-successor", "1");
+        assertThatThrownBy(() -> new DefaultSpecialistRegistry(
+            List.of(definition(
+                ID,
+                "resolver",
+                readProfile(),
+                SpecialistDelegationPolicy.disabled(),
+                SpecialistHandoffPolicy.oneLevel(Set.of(missing))
+            )),
+            actionRegistry("inspect_account", ActionAccessMode.READ),
+            Set.of("resolver"),
+            Set.of("account-policy")
+        ))
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessageContaining("unregistered handoff target")
+            .hasMessageContaining(missing.toString());
+
+        assertThatThrownBy(() -> new DefaultSpecialistRegistry(
+            List.of(definition(
+                ID,
+                "resolver",
+                readProfile(),
+                SpecialistDelegationPolicy.disabled(),
+                SpecialistHandoffPolicy.oneLevel(Set.of(ID))
+            )),
+            actionRegistry("inspect_account", ActionAccessMode.READ),
+            Set.of("resolver"),
+            Set.of("account-policy")
+        ))
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessageContaining("cannot hand off to itself");
+
+        SpecialistId writerId = SpecialistId.of("account-writer", "1");
+        SpecialistDefinition<String, String> source = definition(
+            ID,
+            "resolver",
+            emptyProfile(),
+            SpecialistDelegationPolicy.disabled(),
+            SpecialistHandoffPolicy.oneLevel(Set.of(writerId))
+        );
+        SpecialistDefinition<String, String> writer = definition(
+            writerId,
+            "resolver",
+            writeProfile(),
+            SpecialistDelegationPolicy.disabled(),
+            SpecialistHandoffPolicy.disabled()
+        );
+        assertThatThrownBy(() -> new DefaultSpecialistRegistry(
+            List.of(source, writer),
+            actionRegistry(
+                AIActionMetaData.builder()
+                    .name("update_address")
+                    .accessMode(ActionAccessMode.READ_WRITE)
+                    .confirmationRequired(true)
+                    .build()
+            ),
+            Set.of("resolver")
+        ))
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessageContaining("cannot hand off to WRITE-capable target")
+            .hasMessageContaining(writerId.toString());
+    }
+
     private SpecialistExecutionProfile readProfile() {
         return new SpecialistExecutionProfile(
             "resolver",
@@ -323,6 +419,22 @@ class DefaultSpecialistRegistryTest {
         SpecialistExecutionProfile profile,
         SpecialistDelegationPolicy delegationPolicy
     ) {
+        return definition(
+            id,
+            mode,
+            profile,
+            delegationPolicy,
+            SpecialistHandoffPolicy.disabled()
+        );
+    }
+
+    private SpecialistDefinition<String, String> definition(
+        SpecialistId id,
+        String mode,
+        SpecialistExecutionProfile profile,
+        SpecialistDelegationPolicy delegationPolicy,
+        SpecialistHandoffPolicy handoffPolicy
+    ) {
         return new SpecialistDefinition<>(
             new SpecialistIdentity(id, "Account Resolver", "Resolves account blockers"),
             new SpecialistInstructions("Explain account blockers", null),
@@ -334,6 +446,7 @@ class DefaultSpecialistRegistryTest {
             ),
             SpecialistLimits.defaults(),
             delegationPolicy,
+            handoffPolicy,
             new SpecialistInputAdapter<>() {
                 @Override
                 public Class<String> inputType() {

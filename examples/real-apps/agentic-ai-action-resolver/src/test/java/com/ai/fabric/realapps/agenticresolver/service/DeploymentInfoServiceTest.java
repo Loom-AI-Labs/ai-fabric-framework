@@ -47,16 +47,35 @@ class DeploymentInfoServiceTest {
         SpecialistDefinition<?, ?> readDefinition = mock(
             SpecialistDefinition.class
         );
+        SpecialistDefinition<?, ?> coordinatorDefinition = mock(
+            SpecialistDefinition.class
+        );
+        SpecialistDefinition<?, ?> intakeDefinition = mock(
+            SpecialistDefinition.class
+        );
         when(definition.id()).thenReturn(
             AccountResolverSpecialists.SPECIALIST_ID
         );
         when(readDefinition.id()).thenReturn(
             AccountResolverSpecialists.READ_SPECIALIST_ID
         );
-        when(registry.list()).thenReturn(List.of(definition, readDefinition));
+        when(coordinatorDefinition.id()).thenReturn(
+            AccountResolverSpecialists.DELEGATION_COORDINATOR_ID
+        );
+        when(intakeDefinition.id()).thenReturn(
+            AccountResolverSpecialists.HANDOFF_INTAKE_ID
+        );
+        when(registry.list()).thenReturn(List.of(
+            definition,
+            readDefinition,
+            coordinatorDefinition,
+            intakeDefinition
+        ));
         when(registry.listRegistered()).thenReturn(List.of(
             registered(definition),
-            registered(readDefinition)
+            registered(readDefinition),
+            registered(coordinatorDefinition),
+            registered(intakeDefinition)
         ));
         AIExecutionProperties executionProperties = new AIExecutionProperties();
         executionProperties.getReceipts().setEnabled(true);
@@ -81,8 +100,8 @@ class DeploymentInfoServiceTest {
             new SpecialistManifestRuntimeStatus(
                 true,
                 true,
-                2,
-                2,
+                4,
+                4,
                 0,
                 "b".repeat(64),
                 List.of()
@@ -122,6 +141,14 @@ class DeploymentInfoServiceTest {
                     .containsEntry("receiptRetention", "PT720H")
                     .containsEntry("accountResolverRegistered", true)
                     .containsEntry("accountResolverReadRegistered", true)
+                    .containsEntry(
+                        "accountResolutionCoordinatorRegistered",
+                        true
+                    )
+                    .containsEntry(
+                        "accountResolutionIntakeRegistered",
+                        true
+                    )
                     .containsEntry("proactiveEventExecution", Map.of(
                         "ready", true,
                         "eventType", "PAYMENT_VERIFICATION_FAILED",

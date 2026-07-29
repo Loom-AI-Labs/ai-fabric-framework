@@ -18,6 +18,9 @@ import ai.fabric.execution.gateway.AIExecutionStatus;
 import ai.fabric.execution.gateway.ConversationBinding;
 import ai.fabric.execution.gateway.ExecutionHandle;
 import ai.fabric.execution.gateway.ExecutionHandleStatus;
+import ai.fabric.execution.handoff.SpecialistHandoffGateway;
+import ai.fabric.execution.handoff.SpecialistHandoffRequest;
+import ai.fabric.execution.handoff.SpecialistHandoffResult;
 import ai.fabric.execution.plan.AIExecutionCoordinator;
 import ai.fabric.execution.plan.PlanExecutionRequest;
 import ai.fabric.execution.plan.PlanExecutionResult;
@@ -45,9 +48,9 @@ import org.springframework.stereotype.Service;
 @Service
 public class AgenticResolverExecutionService {
 
-    private static final Duration COORDINATOR_WAIT_LIMIT =
+    private static final Duration SPECIALIST_WAIT_LIMIT =
         Duration.ofSeconds(65);
-    private static final long COORDINATOR_POLL_NANOS =
+    private static final long SPECIALIST_POLL_NANOS =
         Duration.ofMillis(25).toNanos();
 
     private static final Set<String> READ_SCOPES = Set.of(
@@ -81,6 +84,14 @@ public class AgenticResolverExecutionService {
         "action:assess_billing_resolution",
         "vector:account-resolution-policy"
     );
+    private static final Set<String> HANDOFF_SCOPES = Set.of(
+        "specialist:account-resolution-intake@1",
+        "specialist:account-resolver-read@1",
+        "specialist:billing-resolution-advisor@1",
+        "action:get_account_profile",
+        "action:assess_billing_resolution",
+        "vector:account-resolution-policy"
+    );
 
     private final SpecialistClient<
         AccountResolutionRequest,
@@ -98,7 +109,12 @@ public class AgenticResolverExecutionService {
         AccountDelegationCoordinatorRequest,
         AccountDelegationDecision
     > delegationCoordinatorClient;
+    private final SpecialistClient<
+        AccountHandoffIntakeRequest,
+        AccountHandoffDecision
+    > handoffIntakeClient;
     private final SpecialistDelegationGateway delegationGateway;
+    private final SpecialistHandoffGateway handoffGateway;
     private final AIExecutionCoordinator executionCoordinator;
     private final ActionProposalCoordinator actionProposalCoordinator;
     private final AgenticResolverSessionService sessionService;
@@ -111,6 +127,7 @@ public class AgenticResolverExecutionService {
         ActionProposalCoordinator actionProposalCoordinator,
         AgenticResolverSessionService sessionService,
         SpecialistDelegationGateway delegationGateway,
+        SpecialistHandoffGateway handoffGateway,
         Clock clock
     ) {
         this.interactiveClient = specialistClientFactory.bind(
@@ -133,11 +150,36 @@ public class AgenticResolverExecutionService {
             AccountDelegationCoordinatorRequest.class,
             AccountDelegationDecision.class
         );
+        this.handoffIntakeClient = specialistClientFactory.bind(
+            AccountResolverSpecialists.HANDOFF_INTAKE_ID,
+            AccountHandoffIntakeRequest.class,
+            AccountHandoffDecision.class
+        );
         this.delegationGateway = delegationGateway;
+        this.handoffGateway = handoffGateway;
         this.executionCoordinator = executionCoordinator;
         this.actionProposalCoordinator = actionProposalCoordinator;
         this.sessionService = sessionService;
         this.clock = clock;
+    }
+
+    AgenticResolverExecutionService(
+        SpecialistClientFactory specialistClientFactory,
+        AIExecutionCoordinator executionCoordinator,
+        ActionProposalCoordinator actionProposalCoordinator,
+        AgenticResolverSessionService sessionService,
+        SpecialistDelegationGateway delegationGateway,
+        Clock clock
+    ) {
+        this(
+            specialistClientFactory,
+            executionCoordinator,
+            actionProposalCoordinator,
+            sessionService,
+            delegationGateway,
+            null,
+            clock
+        );
     }
 
     AgenticResolverExecutionService(
@@ -152,6 +194,7 @@ public class AgenticResolverExecutionService {
             executionCoordinator,
             actionProposalCoordinator,
             sessionService,
+            null,
             null,
             clock
         );
@@ -328,7 +371,13 @@ public class AgenticResolverExecutionService {
                 requiredIdempotencyKey
             );
         AIExecutionResult<AccountDelegationDecision> coordinator =
-            submitCoordinatorAndAwait(invocation);
+            submitSpecialistAndAwait(
+                delegationCoordinatorClient,
+                invocation,
+                AccountResolverSpecialists.DELEGATION_COORDINATOR_ID,
+                "COORDINATOR",
+                "coordinator"
+            );
         if (!coordinator.succeeded()
             || coordinator.output().decision()
                 != AccountDelegationDecision.Decision.DELEGATE) {
@@ -379,75 +428,171 @@ public class AgenticResolverExecutionService {
         return new AccountDelegationResponse(coordinator, delegated);
     }
 
-    private AIExecutionResult<AccountDelegationDecision>
-    submitCoordinatorAndAwait(
-        SpecialistInvocation<AccountDelegationCoordinatorRequest> invocation
+    public AccountHandoffResponse handoffAccountResolution(
+        String sessionId,
+        AccountHandoffIntakeRequest request,
+        String idempotencyKey
     ) {
-        ExecutionHandle submitted =
-            delegationCoordinatorClient.submit(invocation);
+        String requiredIdempotencyKey = requireIdempotencyKey(
+            idempotencyKey
+        );
+        AgenticResolverSessionService.ActiveSession session =
+            sessionService.active(sessionId);
+        TrustedExecutionContext trustedContext = trustedContext(
+            session,
+            ExecutionSource.APPLICATION,
+            HANDOFF_SCOPES
+        );
+        SpecialistInvocation<AccountHandoffIntakeRequest> invocation =
+            new SpecialistInvocation<>(
+                request,
+                trustedContext,
+                null,
+                null,
+                requiredIdempotencyKey
+            );
+        AIExecutionResult<AccountHandoffDecision> predecessor =
+            submitSpecialistAndAwait(
+                handoffIntakeClient,
+                invocation,
+                AccountResolverSpecialists.HANDOFF_INTAKE_ID,
+                "INTAKE",
+                "intake"
+            );
+        if (!predecessor.succeeded()
+            || predecessor.output().decision()
+                != AccountHandoffDecision.Decision.HANDOFF) {
+            return new AccountHandoffResponse(predecessor, null);
+        }
+
+        SpecialistId target = SpecialistId.parse(
+            predecessor.output().targetSpecialist()
+        );
+        SpecialistHandoffResult<AccountHandoffDecision, ?> handoff;
+        if (target.equals(AccountResolverSpecialists.READ_SPECIALIST_ID)) {
+            handoff = handoffGateway.handoff(
+                new SpecialistHandoffRequest<>(
+                    predecessor,
+                    target,
+                    new AccountResolutionRequest(request.question()),
+                    trustedContext,
+                    null,
+                    requiredIdempotencyKey
+                ),
+                AccountResolutionRequest.class,
+                AccountResolutionResult.class
+            );
+        } else if (target.equals(
+            AccountResolverSpecialists.BILLING_ADVISOR_SPECIALIST_ID
+        )) {
+            handoff = handoffGateway.handoff(
+                new SpecialistHandoffRequest<>(
+                    predecessor,
+                    target,
+                    new BillingResolutionAssessmentRequest(
+                        request.question(),
+                        request.resolutionType(),
+                        request.amount()
+                    ),
+                    trustedContext,
+                    null,
+                    requiredIdempotencyKey
+                ),
+                BillingResolutionAssessmentRequest.class,
+                BillingResolutionAssessmentResult.class
+            );
+        } else {
+            throw new IllegalStateException(
+                "Validated intake selected an unsupported successor"
+            );
+        }
+        return new AccountHandoffResponse(predecessor, handoff);
+    }
+
+    private <I, O> AIExecutionResult<O> submitSpecialistAndAwait(
+        SpecialistClient<I, O> client,
+        SpecialistInvocation<I> invocation,
+        SpecialistId specialistId,
+        String roleCode,
+        String roleLabel
+    ) {
+        ExecutionHandle submitted = client.submit(invocation);
         long waitDeadline = System.nanoTime()
-            + COORDINATOR_WAIT_LIMIT.toNanos();
+            + SPECIALIST_WAIT_LIMIT.toNanos();
         while (true) {
-            Optional<SpecialistExecutionSnapshot<AccountDelegationDecision>>
-                snapshot = delegationCoordinatorClient.find(
-                    submitted.invocationId(),
-                    invocation.trustedExecutionContext()
-                );
+            Optional<SpecialistExecutionSnapshot<O>> snapshot = client.find(
+                submitted.invocationId(),
+                invocation.trustedExecutionContext()
+            );
             if (snapshot.isPresent()) {
-                SpecialistExecutionSnapshot<AccountDelegationDecision> value =
-                    snapshot.get();
+                SpecialistExecutionSnapshot<O> value = snapshot.get();
                 if (value.result() != null) {
                     return value.result();
                 }
                 if (isTerminal(value.handle().status())) {
-                    return coordinatorInfrastructureFailure(
+                    return specialistInfrastructureFailure(
                         value.handle(),
-                        "The coordinator execution ended without a result."
+                        specialistId,
+                        roleCode,
+                        roleLabel,
+                        "The " + roleLabel
+                            + " execution ended without a result."
                     );
                 }
             } else if (isTerminal(submitted.status())) {
-                return coordinatorInfrastructureFailure(
+                return specialistInfrastructureFailure(
                     submitted,
-                    "The coordinator execution could not be read."
+                    specialistId,
+                    roleCode,
+                    roleLabel,
+                    "The " + roleLabel
+                        + " execution could not be read."
                 );
             }
 
             if (System.nanoTime() >= waitDeadline) {
-                delegationCoordinatorClient.cancel(
+                client.cancel(
                     submitted.invocationId(),
                     invocation.trustedExecutionContext()
                 );
-                return coordinatorInfrastructureFailure(
+                return specialistInfrastructureFailure(
                     new ExecutionHandle(
                         submitted.invocationId(),
                         submitted.durability(),
                         ExecutionHandleStatus.EXPIRED,
                         submitted.deadline(),
                         submitted.expiresAt(),
-                        "COORDINATOR_WAIT_TIMEOUT"
+                        roleCode + "_WAIT_TIMEOUT"
                     ),
-                    "The coordinator execution exceeded the application wait limit."
+                    specialistId,
+                    roleCode,
+                    roleLabel,
+                    "The " + roleLabel
+                        + " execution exceeded the application wait limit."
                 );
             }
             if (Thread.currentThread().isInterrupted()) {
-                delegationCoordinatorClient.cancel(
+                client.cancel(
                     submitted.invocationId(),
                     invocation.trustedExecutionContext()
                 );
                 Thread.currentThread().interrupt();
-                return coordinatorInfrastructureFailure(
+                return specialistInfrastructureFailure(
                     new ExecutionHandle(
                         submitted.invocationId(),
                         submitted.durability(),
                         ExecutionHandleStatus.CANCELLED,
                         submitted.deadline(),
                         submitted.expiresAt(),
-                        "COORDINATOR_WAIT_INTERRUPTED"
+                        roleCode + "_WAIT_INTERRUPTED"
                     ),
-                    "The coordinator wait was interrupted."
+                    specialistId,
+                    roleCode,
+                    roleLabel,
+                    "The " + roleLabel + " wait was interrupted."
                 );
             }
-            LockSupport.parkNanos(COORDINATOR_POLL_NANOS);
+            LockSupport.parkNanos(SPECIALIST_POLL_NANOS);
         }
     }
 
@@ -459,14 +604,16 @@ public class AgenticResolverExecutionService {
             || status == ExecutionHandleStatus.EXPIRED;
     }
 
-    private AIExecutionResult<AccountDelegationDecision>
-    coordinatorInfrastructureFailure(
+    private <O> AIExecutionResult<O> specialistInfrastructureFailure(
         ExecutionHandle handle,
+        SpecialistId specialistId,
+        String roleCode,
+        String roleLabel,
         String publicMessage
     ) {
         String reason = handle.failureReason() != null
             ? handle.failureReason()
-            : "COORDINATOR_RESULT_UNAVAILABLE";
+            : roleCode + "_RESULT_UNAVAILABLE";
         AIExecutionStatus status = switch (handle.status()) {
             case CANCELLED -> AIExecutionStatus.CANCELLED;
             case EXPIRED -> AIExecutionStatus.DEADLINE_EXCEEDED;
@@ -476,11 +623,14 @@ public class AgenticResolverExecutionService {
         Instant now = clock.instant();
         return new AIExecutionResult<>(
             handle.invocationId(),
-            AccountResolverSpecialists.DELEGATION_COORDINATOR_ID,
+            specialistId,
             status,
             null,
             java.util.List.of(),
-            java.util.Map.of("phase", "coordinator_submission"),
+            java.util.Map.of(
+                "phase",
+                roleLabel + "_submission"
+            ),
             new AIExecutionFailure(
                 reason,
                 publicMessage,
@@ -608,7 +758,7 @@ public class AgenticResolverExecutionService {
         String normalized = normalizeIdempotencyKey(value);
         if (normalized == null) {
             throw new IllegalArgumentException(
-                "Idempotency-Key is required to resume an input request"
+                "Idempotency-Key is required"
             );
         }
         return normalized;

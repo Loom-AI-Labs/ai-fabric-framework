@@ -6,6 +6,7 @@ import ai.fabric.execution.specialist.SpecialistDefinition;
 import ai.fabric.execution.specialist.SpecialistDefinitionSource;
 import ai.fabric.execution.specialist.SpecialistDelegationPolicy;
 import ai.fabric.execution.specialist.SpecialistExecutionProfile;
+import ai.fabric.execution.specialist.SpecialistHandoffPolicy;
 import ai.fabric.execution.specialist.SpecialistId;
 import ai.fabric.execution.specialist.SpecialistIdentity;
 import ai.fabric.execution.specialist.SpecialistInstructions;
@@ -138,6 +139,7 @@ public final class DefaultSpecialistManifestCompiler
                 ),
                 limits,
                 delegation(spec.delegation(), context.source()),
+                handoff(spec.handoff(), context.source()),
                 new JsonSchemaSpecialistInputAdapter(
                     inputSchema,
                     spec.input(),
@@ -321,6 +323,38 @@ public final class DefaultSpecialistManifestCompiler
             }
         }
         return SpecialistDelegationPolicy.oneLevel(targets);
+    }
+
+    private SpecialistHandoffPolicy handoff(
+        SpecialistHandoffSpec spec,
+        String source
+    ) {
+        List<String> references = spec == null
+            ? List.of()
+            : spec.targets();
+        rejectDuplicates(references, "handoff targets", source);
+        if (references.size() > SpecialistHandoffPolicy.MAX_TARGETS) {
+            throw failure(
+                "HANDOFF_TARGET_LIMIT_EXCEEDED",
+                "A specialist may declare at most "
+                    + SpecialistHandoffPolicy.MAX_TARGETS
+                    + " handoff targets.",
+                source
+            );
+        }
+        Set<SpecialistId> targets = new LinkedHashSet<>();
+        for (String reference : references) {
+            try {
+                targets.add(SpecialistId.parse(reference));
+            } catch (IllegalArgumentException ex) {
+                throw failure(
+                    "HANDOFF_TARGET_INVALID",
+                    "Handoff targets must use exact name@version references.",
+                    source
+                );
+            }
+        }
+        return SpecialistHandoffPolicy.oneLevel(targets);
     }
 
     private RequestedCapabilityProfile capabilities(

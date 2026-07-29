@@ -1,5 +1,9 @@
 package ai.fabric.execution.delegation;
 
+import ai.fabric.execution.handoff.SpecialistHandoffFailure;
+import ai.fabric.execution.handoff.SpecialistHandoffGateway;
+import ai.fabric.execution.handoff.SpecialistHandoffRequest;
+import ai.fabric.execution.handoff.SpecialistHandoffResult;
 import ai.fabric.execution.specialist.SpecialistRegistry;
 import ai.fabric.execution.specialist.client.SpecialistClientFactory;
 import ai.fabric.execution.specialist.manifest.CanonicalJsonSupport;
@@ -7,21 +11,21 @@ import java.time.Clock;
 import java.time.Duration;
 
 /**
- * Enforces exact-version, one-level, read-only specialist delegation.
+ * Enforces exact-version, one-level, read-only specialist handoff.
  */
-public final class DefaultSpecialistDelegationGateway
-    implements SpecialistDelegationGateway {
+public final class DefaultSpecialistHandoffGateway
+    implements SpecialistHandoffGateway {
 
     public static final int MAX_DEPTH =
         OneLevelSpecialistTransitionEngine.MAX_DEPTH;
     public static final String DIAGNOSTIC_DEPTH =
-        OneLevelSpecialistTransitionEngine.DELEGATION_DEPTH;
+        OneLevelSpecialistTransitionEngine.HANDOFF_DEPTH;
     public static final String DIAGNOSTIC_DEADLINE =
         OneLevelSpecialistTransitionEngine.DIAGNOSTIC_DEADLINE;
 
     private final OneLevelSpecialistTransitionEngine transitionEngine;
 
-    public DefaultSpecialistDelegationGateway(
+    public DefaultSpecialistHandoffGateway(
         SpecialistRegistry specialistRegistry,
         SpecialistClientFactory clientFactory,
         CanonicalJsonSupport canonicalJson,
@@ -34,32 +38,32 @@ public final class DefaultSpecialistDelegationGateway
             canonicalJson,
             clock,
             resultTtl,
-            OneLevelSpecialistTransitionEngine.Relation.DELEGATION
+            OneLevelSpecialistTransitionEngine.Relation.HANDOFF
         );
     }
 
     @Override
-    public <P, I, O> SpecialistDelegationResult<P, O> delegate(
-        SpecialistDelegationRequest<P, I> request,
-        Class<I> targetInputType,
-        Class<O> targetOutputType
+    public <P, I, O> SpecialistHandoffResult<P, O> handoff(
+        SpecialistHandoffRequest<P, I> request,
+        Class<I> successorInputType,
+        Class<O> successorOutputType
     ) {
         OneLevelSpecialistTransitionEngine.TransitionResult<P, O> result =
             transitionEngine.transition(
                 new OneLevelSpecialistTransitionEngine.TransitionRequest<>(
-                    request.sourceExecution(),
-                    request.targetSpecialistId(),
-                    request.targetInput(),
+                    request.predecessorExecution(),
+                    request.successorSpecialistId(),
+                    request.successorInput(),
                     request.trustedExecutionContext(),
                     request.deadline(),
                     request.idempotencyKey()
                 ),
-                targetInputType,
-                targetOutputType
+                successorInputType,
+                successorOutputType
             );
         OneLevelSpecialistTransitionEngine.TransitionFailure failure =
             result.failure();
-        return new SpecialistDelegationResult<>(
+        return new SpecialistHandoffResult<>(
             result.transitionId(),
             result.sourceInvocationId(),
             result.sourceSpecialistId(),
@@ -70,7 +74,7 @@ public final class DefaultSpecialistDelegationGateway
             result.targetExecution(),
             failure == null
                 ? null
-                : new SpecialistDelegationFailure(
+                : new SpecialistHandoffFailure(
                     failure.reason(),
                     failure.publicMessage(),
                     failure.retryable()

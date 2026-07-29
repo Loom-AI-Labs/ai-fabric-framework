@@ -62,10 +62,46 @@ public final class DefaultSpecialistRegistry implements SpecialistRegistry {
             }
         }
         validateDelegationTargets(validated);
+        validateHandoffTargets(validated);
         this.definitions = java.util.Collections.unmodifiableMap(
             new LinkedHashMap<>(validated)
         );
         this.contentHash = SpecialistRegistry.super.registryContentHash();
+    }
+
+    private void validateHandoffTargets(
+        Map<SpecialistId, RegisteredSpecialist> definitions
+    ) {
+        definitions.values().forEach(source ->
+            source.definition().handoffPolicy().allowedTargets().forEach(
+                targetId -> {
+                    if (source.id().equals(targetId)) {
+                        throw new IllegalStateException(
+                            "Specialist " + source.id()
+                                + " cannot hand off to itself"
+                        );
+                    }
+                    RegisteredSpecialist target = definitions.get(targetId);
+                    if (target == null) {
+                        throw new IllegalStateException(
+                            "Specialist " + source.id()
+                                + " references unregistered handoff target "
+                                + targetId
+                        );
+                    }
+                    if (!target.definition().executionProfile()
+                        .requestedCapabilities()
+                        .proposableWriteActions()
+                        .isEmpty()) {
+                        throw new IllegalStateException(
+                            "Specialist " + source.id()
+                                + " cannot hand off to WRITE-capable target "
+                                + targetId
+                        );
+                    }
+                }
+            )
+        );
     }
 
     private void validateDelegationTargets(

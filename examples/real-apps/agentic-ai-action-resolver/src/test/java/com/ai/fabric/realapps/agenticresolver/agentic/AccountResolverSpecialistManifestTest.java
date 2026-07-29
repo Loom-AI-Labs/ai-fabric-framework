@@ -267,6 +267,73 @@ class AccountResolverSpecialistManifestTest {
     }
 
     @Test
+    void declaresClosedReadOnlyAccountResolutionHandoff() {
+        SpecialistDefinition<JsonNode, JsonNode> definition = definition(
+            AccountResolverSpecialists.HANDOFF_INTAKE_ID
+        );
+        RegisteredSpecialist registered =
+            specialistRegistry.requireRegistered(
+                AccountResolverSpecialists.HANDOFF_INTAKE_ID
+            );
+        JsonNode request = objectMapper.valueToTree(
+            new AccountHandoffIntakeRequest(
+                "Why can I not place an order?",
+                null,
+                null
+            )
+        );
+
+        definition.inputAdapter().validate(request);
+
+        assertThat(registered.source())
+            .isEqualTo(SpecialistDefinitionSource.MANIFEST);
+        assertThat(registered.sourceDescription())
+            .contains("account-resolution-intake.yml");
+        assertThat(definition.executionProfile().writeEnabled()).isFalse();
+        assertThat(definition.executionProfile()
+            .requestedCapabilities().visibleActions()).isEmpty();
+        assertThat(definition.executionProfile()
+            .requestedCapabilities().requestedVectorSpaces()).isEmpty();
+        assertThat(definition.outputAdapter().orchestrationIntentPolicy())
+            .isEqualTo(OrchestrationIntentPolicy.GENERATION_ONLY);
+        assertThat(definition.delegationPolicy().enabled()).isFalse();
+        assertThat(definition.handoffPolicy().allowedTargets())
+            .containsExactlyInAnyOrder(
+                AccountResolverSpecialists.READ_SPECIALIST_ID,
+                AccountResolverSpecialists.BILLING_ADVISOR_SPECIALIST_ID
+            );
+        assertThat(definition.inputAdapter().renderModelInput(request))
+            .contains("Why can I not place an order?")
+            .doesNotContain("userId", "subscriptionId", "tenantId");
+        assertThat(definition.instructions().render())
+            .contains("account-resolver-read@1")
+            .contains("billing-resolution-advisor@1")
+            .contains("Never invent");
+
+        JsonNode validDecision = objectMapper.valueToTree(Map.of(
+            "decision",
+            "HANDOFF",
+            "targetSpecialist",
+            "account-resolver-read@1",
+            "reason",
+            "The request asks about current account readiness."
+        ));
+        definition.outputAdapter().validate(validDecision);
+
+        JsonNode inventedTarget = objectMapper.valueToTree(Map.of(
+            "decision",
+            "HANDOFF",
+            "targetSpecialist",
+            "unregistered-specialist@1",
+            "reason",
+            "Invented route."
+        ));
+        assertThatThrownBy(() ->
+            definition.outputAdapter().validate(inventedTarget)
+        ).isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
     void declaresSupportCreditProposerForDurableReviewOnly() {
         SpecialistDefinition<JsonNode, JsonNode> definition = definition(
             AccountResolverSpecialists.SUPPORT_CREDIT_SPECIALIST_ID

@@ -6,9 +6,9 @@ The independent `agentic-ai-action-resolver` app is the reference proof for
 bounded specialist reads, durable read jobs, confirmation-gated writes, and a
 separately authorized durable human-review lifecycle. It now also proves
 one-level model-selected delegation across a closed set of exact-version,
-read-only specialists. It was copied from Account Resolver to preserve the
-existing live demo while the new execution contracts are developed and
-verified.
+read-only specialists and an explicitly distinct one-level responsibility
+handoff. It was copied from Account Resolver to preserve the existing live
+demo while the new execution contracts are developed and verified.
 
 The copy has its own artifact, Java package, port, database, Lucene index,
 durable opaque demo sessions, Dockerfile, and tests. The tracked source under
@@ -37,6 +37,8 @@ Review policy: support-credit-review@1
 Senior policy: support-credit-senior-review@1
 Delegation coordinator: account-resolution-coordinator@1
 Delegation targets: account-resolver-read@1, billing-resolution-advisor@1
+Handoff intake: account-resolution-intake@1
+Handoff successors: account-resolver-read@1, billing-resolution-advisor@1
 ```
 
 `POST /api/agentic-resolver/evaluate` receives application authority and is
@@ -83,6 +85,30 @@ path. WRITE-capable targets fail startup validation. Child input waits,
 confirmations, recursive delegation, and provider failures remain explicit.
 Identical scoped work replays in process; changed work conflicts, and restart
 does not preserve delegation replay state.
+
+## Explicit Read-Only Handoff
+
+```text
+typed intake request
+  -> account-resolution-intake@1
+  -> validated COMPLETE or HANDOFF decision
+  -> exact successor from closed schema enum and handoff allowlist
+  -> application maps trusted request fields to successor DTO
+  -> SpecialistHandoffGateway
+  -> predecessor hash, depth, deadline, target, type, and authority checks
+  -> existing AIExecutionGateway
+  -> typed successor result with predecessor/successor lineage
+```
+
+Handoff is intentionally not delegation. The intake finishes its routing
+responsibility and the successor result becomes the relationship outcome.
+There is no result callback for intake continuation.
+
+The first handoff boundary is synchronous, one-level, and read-only. It
+transfers no conversation, pending action, review task, evidence body, or
+hidden model state. The successor is independently authorized with
+backend-owned context. Exact work replays in process; changed work conflicts,
+and restart does not preserve handoff replay state.
 
 ## Governed Write
 

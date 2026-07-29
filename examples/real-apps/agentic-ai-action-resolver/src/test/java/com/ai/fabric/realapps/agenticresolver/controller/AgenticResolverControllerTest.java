@@ -9,6 +9,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.ai.fabric.realapps.agenticresolver.agentic.AgenticResolverExecutionService;
 import com.ai.fabric.realapps.agenticresolver.agentic.AgenticResolverSessionService;
 import com.ai.fabric.realapps.agenticresolver.agentic.AccountDelegationCoordinatorRequest;
+import com.ai.fabric.realapps.agenticresolver.agentic.AccountHandoffIntakeRequest;
 import com.ai.fabric.realapps.agenticresolver.agentic.plan.PlanInputResumeRequest;
 import java.math.BigDecimal;
 import org.junit.jupiter.api.Test;
@@ -103,5 +104,39 @@ class AgenticResolverControllerTest {
             .isEqualTo("REFUND");
         assertThat(request.getValue().amount())
             .isEqualByComparingTo(new BigDecimal("75"));
+    }
+
+    @Test
+    void requiresAndForwardsHandoffIdempotencyKey() throws Exception {
+        mockMvc.perform(post("/api/agentic-resolver/handoff")
+                .header(
+                    AgenticResolverController.SESSION_HEADER,
+                    "session-1"
+                )
+                .header(
+                    AgenticResolverController.IDEMPOTENCY_HEADER,
+                    "handoff-1"
+                )
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {
+                      "question": "Assess this account credit.",
+                      "resolutionType": "ACCOUNT_CREDIT",
+                      "amount": 25
+                    }
+                    """))
+            .andExpect(status().isOk());
+
+        ArgumentCaptor<AccountHandoffIntakeRequest> request =
+            ArgumentCaptor.forClass(AccountHandoffIntakeRequest.class);
+        verify(executionService).handoffAccountResolution(
+            eq("session-1"),
+            request.capture(),
+            eq("handoff-1")
+        );
+        assertThat(request.getValue().resolutionType().name())
+            .isEqualTo("ACCOUNT_CREDIT");
+        assertThat(request.getValue().amount())
+            .isEqualByComparingTo(new BigDecimal("25"));
     }
 }

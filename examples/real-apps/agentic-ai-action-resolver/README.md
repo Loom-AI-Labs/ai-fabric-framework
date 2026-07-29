@@ -8,6 +8,7 @@ manifest specialists:
   account-resolver@1
   account-resolver-read@1
   account-resolution-coordinator@1
+  account-resolution-intake@1
   billing-resolution-advisor@1
   support-credit-proposer@1
 read actions: get_account_profile, assess_billing_resolution
@@ -41,6 +42,13 @@ manifest enum and delegation allowlist. The application maps the validated
 request to typed child input; AI Fabric rechecks source version, depth,
 deadline, target declaration, target type, and backend authority before the
 child runs through the normal execution gateway.
+
+The app separately proves explicit responsibility handoff.
+`account-resolution-intake@1` may select the same two exact-version read-only
+specialists through an independent `handoff` policy. AI Fabric records
+predecessor/successor lineage and treats the successor as the relationship
+outcome; it does not return the result for intake continuation, transfer a
+conversation, or relabel the transition as delegation.
 
 It also proves proactive, read-only intelligence from a raw application event.
 A payment-verification failure is mapped to `account-resolver-read@1` and
@@ -77,6 +85,14 @@ the governed-action baseline.
   independently authorizes the typed child through `AIExecutionGateway`.
 - Identical scoped delegation replays in process; changed work under the same
   key conflicts. Delegation state is not durable across restart.
+- One validated intake result may hand responsibility to one exact-version,
+  read-only successor from an independent closed handoff allowlist.
+- Handoff rechecks the predecessor content hash, target declaration, typed
+  binding, deadline, depth, and target authority through the normal gateway.
+- Handoff transfers no conversation, pending action, review state, or hidden
+  model context; successor diagnostics use predecessor/successor lineage.
+- Identical scoped handoff replays in process; changed work conflicts.
+  Handoff state is not durable across restart.
 - Each plan step receives an independent effective-capability evaluation and
   no shared worker conversation.
 - Completed plan steps are retained in a bounded `EPHEMERAL` checkpoint store;
@@ -546,6 +562,34 @@ application request:
 
 The response contains the validated coordinator result and, when delegation
 succeeds, the typed child execution with parent/child lineage.
+
+Transfer responsibility from a validated intake to one approved read-only
+successor:
+
+```http
+POST /api/agentic-resolver/handoff
+X-AI-Fabric-Demo-Session: {sessionId}
+Idempotency-Key: {stable-handoff-key}
+Content-Type: application/json
+
+{
+  "question": "Review my current account and explain any order blockers."
+}
+```
+
+For a billing-policy handoff, provide the same application-owned typed fields:
+
+```json
+{
+  "question": "What policy path applies to this account credit?",
+  "resolutionType": "ACCOUNT_CREDIT",
+  "amount": 25
+}
+```
+
+The response contains the validated predecessor and, when handoff succeeds,
+the typed successor execution with predecessor/successor lineage. Handoff is
+not a fixed plan step, delegation, or conversation transfer.
 
 Submit a raw payment-verification failure:
 
@@ -1108,7 +1152,8 @@ No verification command for this feature uses `-DskipTests`.
 - automatic LLM confirmation;
 - direct model-to-handler execution;
 - unrestricted model-authored planning or specialist discovery;
-- recursive delegation, dialogue handoff, or durable delegation state;
+- recursive delegation or handoff;
+- dialogue-owner transfer or durable delegation/handoff state;
 - conditional, parallel, WRITE-capable, or durable plans;
 - event or scheduled write adapters;
 - framework-owned event-broker consumption or scheduler ownership;

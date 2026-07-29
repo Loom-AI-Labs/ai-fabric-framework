@@ -30,6 +30,11 @@ final class SpecialistDefinitionFingerprinter {
                     .map(SpecialistId::toString)
                     .toList()
             ).toString(),
+            new TreeSet<>(
+                definition.handoffPolicy().allowedTargets().stream()
+                    .map(SpecialistId::toString)
+                    .toList()
+            ).toString(),
             definition.inputAdapter().getClass().getName(),
             definition.inputAdapter().inputType().getName(),
             definition.inputAdapter().inputContinuation()

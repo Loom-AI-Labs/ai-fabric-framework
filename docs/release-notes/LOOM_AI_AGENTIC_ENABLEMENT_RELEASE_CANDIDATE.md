@@ -6,7 +6,8 @@
 - **Compatibility baseline:** AI Fabric `0.4.0`
 - **Baseline tag:** `ai-fabric-framework-v0.4.0`
 - **Baseline commit:** `857619f`
-- **Candidate baseline commit:** `21d0ca5`
+- **Candidate baseline commit:** current `main` plus Plan `0010`; final commit
+  assigned at the release boundary
 - **Prepared:** 2026-07-29
 - **Reference application:**
   [`agentic-ai-action-resolver`](../../examples/real-apps/agentic-ai-action-resolver)
@@ -30,6 +31,14 @@ input, and AI Fabric rechecks source content, depth, deadline, target
 declaration, typed binding, and backend authority before invoking the child
 through the existing execution gateway. This is one-level delegation, not
 unrestricted discovery, recursive agents, or dialogue handoff.
+
+A validated intake specialist may also complete its routing responsibility by
+handing one typed request to an exact-version, read-only successor. AI Fabric
+records distinct predecessor/successor lineage, independently authorizes the
+successor, and returns the successor result as the handoff outcome. This first
+boundary is synchronous, depth-one, process-local, and conversation-free. It
+does not transfer dialogue ownership, pending actions, receipts, or hidden
+working state.
 
 Trusted application event adapters can now submit those same typed specialists
 as bounded asynchronous work. The first proof maps a raw payment-verification
@@ -98,6 +107,7 @@ The adoption boundary is:
 | Typed asynchronous specialist client, optional durable read-job state, leasing, recovery, and scoped replay | Raw-event validation, subject resolution, deterministic event mapping, production schema migration, secrets, and broker/outbox ownership |
 | Durable review gateway, encrypted task/decision state, optimistic transitions, recovery, and safe review projections | Application-selected review policies, trusted reviewer authentication/authorization, dispatcher integration, production migrations, and reviewer experience |
 | Exact-version one-level delegation validation, typed child binding, independent child authorization, lineage, and process-local replay | Root selection, closed target schema, trusted child-input mapping, public UX, and deciding whether delegation is appropriate |
+| Exact-version read-only handoff validation, predecessor/successor lineage, independent successor authorization, and process-local replay | Intake selection, closed target schema, trusted successor-input mapping, public UX, and deciding whether responsibility should transfer |
 | Manifest and execution diagnostics | Deployment, monitoring, support, and rollback |
 
 ## 3. Included Change Set
@@ -115,7 +125,8 @@ The adoption boundary is:
 | `67be5f5` | Typed asynchronous specialist access, scoped payload-checked idempotency, and a proactive read-only event proof |
 | `cbd1404` | Encrypted JDBC read-job state, worker leasing, restart recovery, durable replay, and packaged OpenAI restart proof |
 | `e415a52` | Durable human-review policies, encrypted JDBC tasks and dispatch receipts, trusted reviewer decisions, continuation/recovery, and an OpenAI-backed support-credit proof |
-| Plan `0009` candidate | Closed, exact-version, one-level read-only specialist delegation and Account Resolver proof |
+| `8690964` | Closed, exact-version, one-level read-only specialist delegation and Account Resolver proof |
+| Plan `0010` candidate | Explicit, exact-version, one-level read-only specialist handoff and Account Resolver intake proof |
 
 These commits build on the released `0.4.0` lifecycle, indexing, RAG, action,
 provider, and chat-session contracts.
@@ -721,7 +732,32 @@ not a durable workflow, recursive graph, supervisor, catalogue search, or
 dialogue handoff. Adoption details are in
 [`ONE_LEVEL_SPECIALIST_DELEGATION.md`](../Framework-Dev-Guides/application-patterns/ONE_LEVEL_SPECIALIST_DELEGATION.md).
 
-### 11.6 Proactive application-event execution
+### 11.6 Explicit read-only specialist handoff
+
+A successful, validated intake result may transfer responsibility to one
+exact-version successor declared in its immutable handoff policy. Handoff is
+not delegation: the predecessor does not resume with a borrowed child result.
+The successor execution and result are the relationship outcome.
+
+The application maps validated intake fields into the successor's typed input.
+`SpecialistHandoffGateway` then revalidates the predecessor content hash,
+depth, inherited deadline, declared target, read-only eligibility, typed
+binding, and backend authority before invoking the successor through
+`AIExecutionGateway`.
+
+The successor receives backend-created trusted context and no conversation.
+Diagnostics use `predecessorInvocationId`, never `parentInvocationId`.
+Input waits, confirmations, WRITE-capable successors, recursive transitions,
+and handoff chains are rejected. Provider and authorization failures remain
+visible.
+
+Replay is access-scoped and payload-checked but process-local. This first
+version does not transfer dialogue ownership, pending action proposals,
+receipts, reviews, evidence bodies, or hidden working state. Adoption details
+are in
+[`EXPLICIT_SPECIALIST_HANDOFF.md`](../Framework-Dev-Guides/application-patterns/EXPLICIT_SPECIALIST_HANDOFF.md).
+
+### 11.7 Proactive application-event execution
 
 The reference application accepts a raw `PAYMENT_VERIFICATION_FAILED` event
 containing only event ID, failure code, attempt number, and occurrence time.
@@ -973,8 +1009,11 @@ For current adoption use, in order:
    [One-Level Specialist Delegation Guide](../Framework-Dev-Guides/application-patterns/ONE_LEVEL_SPECIALIST_DELEGATION.md);
 10. the
     [delegation implementation plan](../planning/ai-fabric-flow-architecture-analysis-pack/implementation-plans/0009-one-level-declared-specialist-delegation-implementation-plan.md);
-    and
 11. the
+    [Explicit Specialist Handoff Guide](../Framework-Dev-Guides/application-patterns/EXPLICIT_SPECIALIST_HANDOFF.md);
+12. the
+    [handoff implementation plan](../planning/ai-fabric-flow-architecture-analysis-pack/implementation-plans/0010-explicit-read-only-specialist-handoff-implementation-plan.md); and
+13. the
    [`agentic-ai-action-resolver`](../../examples/real-apps/agentic-ai-action-resolver)
    reference application.
 
@@ -1026,6 +1065,23 @@ For current adoption use, in order:
   confirmation, provider failure, replay, and conflict behavior.
 - [ ] Treat replay as process-local and restart the root request after process
   loss.
+
+### Phase 1.7: Explicit read-only handoff proof
+
+- [ ] Choose an intake scenario where responsibility genuinely transfers
+  instead of returning a borrowed child result to a coordinator.
+- [ ] Pin every successor as an exact `name@version` in both the structured
+  output schema and manifest handoff allowlist.
+- [ ] Keep identity, authority, provider, and arbitrary successor payloads out
+  of intake output.
+- [ ] Map validated application fields into each typed successor DTO.
+- [ ] Verify the successor is read-only, independently authorized, and receives
+  no conversation or pending action state.
+- [ ] Prove predecessor/successor lineage, invented target denial, incomplete
+  request completion, provider failure, exact replay, and changed-work
+  conflict.
+- [ ] Treat replay as process-local and restart the intake request after
+  process loss.
 
 ### Phase 1.75: Proactive read-only event proof
 
@@ -1384,6 +1440,28 @@ commit.
 - A real unsupported marketing request returned `COMPLETE` without starting a
   child.
 
+### Explicit read-only specialist handoff
+
+- Definition and registry tests cover exact targets, limits, duplicates,
+  unknown/self/WRITE targets, fingerprint changes, and strict manifest
+  compilation.
+- Gateway tests cover typed success, distinct predecessor lineage, source hash
+  drift, undeclared targets, transition depth, deadline inheritance,
+  conversation exclusion, independent authorization, provider failure,
+  unsupported waits/confirmations, replay, and conflict.
+- The final execution reactor passed 985 tests with no failures or skips: 5
+  curated-default, 673 core, 56 chat-session, and 251 execution tests.
+- The real-app reactor and clean packaged app each passed 12 shared
+  smoke-support and 123 Agentic Resolver tests.
+- The packaged core and execution JAR hashes matched their verified local
+  Maven artifacts.
+- Real OpenAI routed current-account and account-credit requests to the two
+  declared successor families, each with typed output and policy evidence.
+- Exact replay returned the original predecessor, handoff, and successor IDs.
+  Changed work returned visible `IDEMPOTENCY_CONFLICT`.
+- Real incomplete billing and unsupported marketing requests returned
+  `COMPLETE` without starting a successor.
+
 ## 22. Release Gate Still Required
 
 Before Loom AI adopts a published artifact:
@@ -1410,7 +1488,8 @@ This release does not provide:
 
 - model-generated or dynamic multi-specialist planning;
 - conditional or parallel specialist branches;
-- recursive specialist delegation or dialogue handoff;
+- recursive specialist delegation, handoff chains, or interactive
+  dialogue-owner transfer;
 - interactive plan dialogue ownership;
 - WRITE-capable composed plans;
 - model-selected unrestricted specialist discovery;
@@ -1453,10 +1532,13 @@ For Loom AI:
 7. use fixed read-only plans only where application-owned decomposition is
    deterministic and measurably better than one specialist; and
 8. use one-level delegation only when a closed read-only target set needs
-   model selection and the application can map typed child input safely; and
-9. defer unrestricted planning, recursive delegation, WRITE composition, and
-   durable plan execution until bounded contracts have production usage
-   evidence.
+   model selection and the application can map typed child input safely;
+9. use explicit handoff only when responsibility genuinely transfers to one
+   closed, read-only successor and no dialogue or pending-action state needs
+   migration; and
+10. defer unrestricted planning, recursive transitions, WRITE composition,
+    dialogue-owner transfer, and durable plan execution until bounded
+    contracts have production usage evidence.
 
 This moves Loom AI from generating ad hoc AI integrations toward composing
 versioned, governed AI-enabled application capabilities without turning model

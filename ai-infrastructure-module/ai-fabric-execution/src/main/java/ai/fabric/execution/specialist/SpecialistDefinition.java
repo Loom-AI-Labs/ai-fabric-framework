@@ -11,6 +11,7 @@ public record SpecialistDefinition<I, O>(
     SpecialistExecutionProfile executionProfile,
     SpecialistLimits limits,
     SpecialistDelegationPolicy delegationPolicy,
+    SpecialistHandoffPolicy handoffPolicy,
     SpecialistInputAdapter<I> inputAdapter,
     SpecialistOutputAdapter<O> outputAdapter
 ) {
@@ -23,10 +24,32 @@ public record SpecialistDefinition<I, O>(
             delegationPolicy,
             "delegationPolicy is required"
         );
+        Objects.requireNonNull(handoffPolicy, "handoffPolicy is required");
         Objects.requireNonNull(inputAdapter, "inputAdapter is required");
         Objects.requireNonNull(outputAdapter, "outputAdapter is required");
         Objects.requireNonNull(inputAdapter.inputType(), "inputAdapter.inputType is required");
         Objects.requireNonNull(outputAdapter.outputType(), "outputAdapter.outputType is required");
+    }
+
+    public SpecialistDefinition(
+        SpecialistIdentity identity,
+        SpecialistInstructions instructions,
+        SpecialistExecutionProfile executionProfile,
+        SpecialistLimits limits,
+        SpecialistDelegationPolicy delegationPolicy,
+        SpecialistInputAdapter<I> inputAdapter,
+        SpecialistOutputAdapter<O> outputAdapter
+    ) {
+        this(
+            identity,
+            instructions,
+            executionProfile,
+            limits,
+            delegationPolicy,
+            SpecialistHandoffPolicy.disabled(),
+            inputAdapter,
+            outputAdapter
+        );
     }
 
     public SpecialistDefinition(
@@ -43,6 +66,7 @@ public record SpecialistDefinition<I, O>(
             executionProfile,
             limits,
             SpecialistDelegationPolicy.disabled(),
+            SpecialistHandoffPolicy.disabled(),
             inputAdapter,
             outputAdapter
         );

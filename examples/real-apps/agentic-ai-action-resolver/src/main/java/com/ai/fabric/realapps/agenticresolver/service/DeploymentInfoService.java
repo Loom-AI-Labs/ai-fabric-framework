@@ -197,6 +197,19 @@ public class DeploymentInfoService {
                     .toString()
             )
         );
+        execution.put(
+            "accountResolutionCoordinatorRegistered",
+            specialists.contains(
+                AccountResolverSpecialists.DELEGATION_COORDINATOR_ID
+                    .toString()
+            )
+        );
+        execution.put(
+            "accountResolutionIntakeRegistered",
+            specialists.contains(
+                AccountResolverSpecialists.HANDOFF_INTAKE_ID.toString()
+            )
+        );
         execution.put("proactiveEventExecution", Map.of(
             "ready",
                 executionGateway != null && specialists.contains(

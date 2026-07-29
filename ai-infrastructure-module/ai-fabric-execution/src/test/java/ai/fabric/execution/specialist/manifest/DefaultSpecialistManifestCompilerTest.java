@@ -44,6 +44,8 @@ class DefaultSpecialistManifestCompilerTest {
             .isInstanceOf(JsonSchemaOutputContract.class);
         assertThat(result.specialist().definition().delegationPolicy().enabled())
             .isFalse();
+        assertThat(result.specialist().definition().handoffPolicy().enabled())
+            .isFalse();
         assertThat(result.specialist().definition().outputAdapter()
             .orchestrationIntentPolicy())
             .isEqualTo(OrchestrationIntentPolicy.MODEL_DIRECTED);
@@ -153,6 +155,50 @@ class DefaultSpecialistManifestCompilerTest {
             .satisfies(error -> assertThat(
                 ((SpecialistManifestException) error).reason()
             ).isEqualTo("DELEGATION_TARGET_INVALID"));
+    }
+
+    @Test
+    void compilesExactHandoffTargetsSeparatelyFromDelegation() {
+        SpecialistCompilationResult result = compiler.compile(
+            withHandoff(List.of(
+                "account-profile-checker@1",
+                "billing-policy-checker@2"
+            )),
+            ManifestTestFixtures.compilationContext()
+        );
+
+        assertThat(result.specialist().definition()
+            .handoffPolicy().allowedTargets())
+            .containsExactlyInAnyOrder(
+                SpecialistId.of("account-profile-checker", "1"),
+                SpecialistId.of("billing-policy-checker", "2")
+            );
+        assertThat(result.specialist().definition()
+            .delegationPolicy().enabled()).isFalse();
+    }
+
+    @Test
+    void rejectsDuplicateAndNonExactHandoffTargets() {
+        assertThatThrownBy(() -> compiler.compile(
+            withHandoff(List.of(
+                "account-profile-checker@1",
+                "account-profile-checker@1"
+            )),
+            ManifestTestFixtures.compilationContext()
+        ))
+            .isInstanceOf(SpecialistManifestException.class)
+            .hasMessageContaining(
+                "Duplicate values are not allowed in handoff targets"
+            );
+
+        assertThatThrownBy(() -> compiler.compile(
+            withHandoff(List.of("account-profile-checker")),
+            ManifestTestFixtures.compilationContext()
+        ))
+            .isInstanceOf(SpecialistManifestException.class)
+            .satisfies(error -> assertThat(
+                ((SpecialistManifestException) error).reason()
+            ).isEqualTo("HANDOFF_TARGET_INVALID"));
     }
 
     @Test
@@ -448,6 +494,29 @@ class DefaultSpecialistManifestCompilerTest {
                 spec.conversation(),
                 spec.limits(),
                 new SpecialistDelegationSpec(targets)
+            )
+        );
+    }
+
+    private SpecialistManifest withHandoff(List<String> targets) {
+        SpecialistManifest manifest = ManifestTestFixtures.manifest();
+        SpecialistManifestSpec spec = manifest.spec();
+        return new SpecialistManifest(
+            manifest.apiVersion(),
+            manifest.kind(),
+            manifest.metadata(),
+            new SpecialistManifestSpec(
+                spec.mode(),
+                spec.instructions(),
+                spec.execution(),
+                spec.capabilities(),
+                spec.input(),
+                spec.grounding(),
+                spec.output(),
+                spec.conversation(),
+                spec.limits(),
+                SpecialistDelegationSpec.disabled(),
+                new SpecialistHandoffSpec(targets)
             )
         );
     }

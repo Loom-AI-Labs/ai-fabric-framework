@@ -11,6 +11,8 @@ import com.ai.fabric.realapps.agenticresolver.agentic.AccountResolutionRequest;
 import com.ai.fabric.realapps.agenticresolver.agentic.AccountResolutionResult;
 import com.ai.fabric.realapps.agenticresolver.agentic.AccountDelegationCoordinatorRequest;
 import com.ai.fabric.realapps.agenticresolver.agentic.AccountDelegationResponse;
+import com.ai.fabric.realapps.agenticresolver.agentic.AccountHandoffIntakeRequest;
+import com.ai.fabric.realapps.agenticresolver.agentic.AccountHandoffResponse;
 import com.ai.fabric.realapps.agenticresolver.agentic.AgenticResolverExecutionService;
 import com.ai.fabric.realapps.agenticresolver.agentic.AgenticResolverSessionService;
 import com.ai.fabric.realapps.agenticresolver.agentic.BillingAssessmentResumeRequest;
@@ -134,6 +136,19 @@ public class AgenticResolverController {
         @Valid @RequestBody AccountDelegationCoordinatorRequest request
     ) {
         return executionService.delegateAccountResolution(
+            sessionId,
+            request,
+            idempotencyKey
+        );
+    }
+
+    @PostMapping("/handoff")
+    public AccountHandoffResponse handoff(
+        @RequestHeader(SESSION_HEADER) String sessionId,
+        @RequestHeader(IDEMPOTENCY_HEADER) String idempotencyKey,
+        @Valid @RequestBody AccountHandoffIntakeRequest request
+    ) {
+        return executionService.handoffAccountResolution(
             sessionId,
             request,
             idempotencyKey
