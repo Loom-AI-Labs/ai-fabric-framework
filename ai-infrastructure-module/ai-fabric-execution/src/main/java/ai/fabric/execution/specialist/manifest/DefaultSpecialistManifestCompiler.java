@@ -4,6 +4,7 @@ import ai.fabric.execution.specialist.ExecutionStrategy;
 import ai.fabric.execution.specialist.RegisteredSpecialist;
 import ai.fabric.execution.specialist.SpecialistDefinition;
 import ai.fabric.execution.specialist.SpecialistDefinitionSource;
+import ai.fabric.execution.specialist.SpecialistDelegationPolicy;
 import ai.fabric.execution.specialist.SpecialistExecutionProfile;
 import ai.fabric.execution.specialist.SpecialistId;
 import ai.fabric.execution.specialist.SpecialistIdentity;
@@ -136,6 +137,7 @@ public final class DefaultSpecialistManifestCompiler
                     spec.execution().writePolicy()
                 ),
                 limits,
+                delegation(spec.delegation(), context.source()),
                 new JsonSchemaSpecialistInputAdapter(
                     inputSchema,
                     spec.input(),
@@ -287,6 +289,38 @@ public final class DefaultSpecialistManifestCompiler
             "instructions.promptProfileRef",
             source
         );
+    }
+
+    private SpecialistDelegationPolicy delegation(
+        SpecialistDelegationSpec spec,
+        String source
+    ) {
+        List<String> references = spec == null
+            ? List.of()
+            : spec.targets();
+        rejectDuplicates(references, "delegation targets", source);
+        if (references.size() > SpecialistDelegationPolicy.MAX_TARGETS) {
+            throw failure(
+                "DELEGATION_TARGET_LIMIT_EXCEEDED",
+                "A specialist may declare at most "
+                    + SpecialistDelegationPolicy.MAX_TARGETS
+                    + " delegation targets.",
+                source
+            );
+        }
+        Set<SpecialistId> targets = new LinkedHashSet<>();
+        for (String reference : references) {
+            try {
+                targets.add(SpecialistId.parse(reference));
+            } catch (IllegalArgumentException ex) {
+                throw failure(
+                    "DELEGATION_TARGET_INVALID",
+                    "Delegation targets must use exact name@version references.",
+                    source
+                );
+            }
+        }
+        return SpecialistDelegationPolicy.oneLevel(targets);
     }
 
     private RequestedCapabilityProfile capabilities(

@@ -16,6 +16,22 @@ public record SpecialistId(String name, String version) {
         return new SpecialistId(name, version);
     }
 
+    public static SpecialistId parse(String reference) {
+        String normalized = requireText(reference, "reference");
+        int separator = normalized.indexOf('@');
+        if (separator <= 0
+            || separator != normalized.lastIndexOf('@')
+            || separator == normalized.length() - 1) {
+            throw new IllegalArgumentException(
+                "Specialist reference must use exact name@version syntax"
+            );
+        }
+        return new SpecialistId(
+            normalized.substring(0, separator),
+            normalized.substring(separator + 1)
+        );
+    }
+
     @Override
     public String toString() {
         return name + "@" + version;

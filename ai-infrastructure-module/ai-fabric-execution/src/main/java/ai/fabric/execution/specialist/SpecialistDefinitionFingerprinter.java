@@ -25,6 +25,11 @@ final class SpecialistDefinitionFingerprinter {
             new TreeSet<>(capabilities.requestableReadActions()).toString(),
             new TreeSet<>(capabilities.proposableWriteActions()).toString(),
             definition.limits().toString(),
+            new TreeSet<>(
+                definition.delegationPolicy().allowedTargets().stream()
+                    .map(SpecialistId::toString)
+                    .toList()
+            ).toString(),
             definition.inputAdapter().getClass().getName(),
             definition.inputAdapter().inputType().getName(),
             definition.inputAdapter().inputContinuation()

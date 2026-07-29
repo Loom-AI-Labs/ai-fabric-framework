@@ -7,6 +7,7 @@ import ai.fabric.execution.specialist.SpecialistOutputContract;
 import ai.fabric.execution.specialist.SpecialistOutputMode;
 import ai.fabric.intent.orchestration.OrchestrationResult;
 import ai.fabric.intent.orchestration.capability.RequestedCapabilityProfile;
+import ai.fabric.intent.orchestration.request.OrchestrationIntentPolicy;
 import com.fasterxml.jackson.databind.JsonNode;
 import java.util.List;
 import java.util.Objects;
@@ -88,6 +89,22 @@ public final class JsonSchemaSpecialistOutputAdapter
     @Override
     public SpecialistOutputMode outputMode() {
         return specification.mode();
+    }
+
+    @Override
+    public OrchestrationIntentPolicy orchestrationIntentPolicy() {
+        boolean noActions = capabilities.visibleActions().isEmpty()
+            && capabilities.requestableReadActions().isEmpty()
+            && capabilities.proposableWriteActions().isEmpty();
+        boolean generationOnly =
+            specification.mode() == SpecialistOutputMode.STRUCTURED_GENERATION
+                && grounding.requirement()
+                    == SpecialistGroundingRequirement.NONE
+                && !capabilities.retrievalEnabled()
+                && noActions;
+        return generationOnly
+            ? OrchestrationIntentPolicy.GENERATION_ONLY
+            : OrchestrationIntentPolicy.MODEL_DIRECTED;
     }
 
     @Override

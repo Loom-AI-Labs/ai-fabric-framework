@@ -17,7 +17,8 @@ public record OrchestrationRequest(
     EffectiveCapabilityProfile effectiveCapabilityProfile,
     String conversationInput,
     String responseInstructions,
-    OrchestrationRequestPurpose purpose
+    OrchestrationRequestPurpose purpose,
+    OrchestrationIntentPolicy intentPolicy
 ) {
     public OrchestrationRequest {
         modelInput = Objects.requireNonNull(modelInput, "modelInput must not be null").trim();
@@ -31,6 +32,32 @@ public record OrchestrationRequest(
         conversationInput = normalizeOptional(conversationInput);
         responseInstructions = normalizeOptional(responseInstructions);
         purpose = purpose == null ? OrchestrationRequestPurpose.GENERAL : purpose;
+        intentPolicy = intentPolicy == null
+            ? OrchestrationIntentPolicy.MODEL_DIRECTED
+            : intentPolicy;
+    }
+
+    public OrchestrationRequest(
+        String modelInput,
+        OrchestrationContext orchestrationContext,
+        TrustedExecutionContext trustedExecutionContext,
+        ConversationPersistencePolicy conversationPersistencePolicy,
+        EffectiveCapabilityProfile effectiveCapabilityProfile,
+        String conversationInput,
+        String responseInstructions,
+        OrchestrationRequestPurpose purpose
+    ) {
+        this(
+            modelInput,
+            orchestrationContext,
+            trustedExecutionContext,
+            conversationPersistencePolicy,
+            effectiveCapabilityProfile,
+            conversationInput,
+            responseInstructions,
+            purpose,
+            OrchestrationIntentPolicy.MODEL_DIRECTED
+        );
     }
 
     public OrchestrationRequest(
@@ -50,7 +77,8 @@ public record OrchestrationRequest(
             effectiveCapabilityProfile,
             conversationInput,
             responseInstructions,
-            OrchestrationRequestPurpose.GENERAL
+            OrchestrationRequestPurpose.GENERAL,
+            OrchestrationIntentPolicy.MODEL_DIRECTED
         );
     }
 
@@ -70,7 +98,8 @@ public record OrchestrationRequest(
             effectiveCapabilityProfile,
             conversationInput,
             null,
-            OrchestrationRequestPurpose.GENERAL
+            OrchestrationRequestPurpose.GENERAL,
+            OrchestrationIntentPolicy.MODEL_DIRECTED
         );
     }
 
@@ -88,7 +117,8 @@ public record OrchestrationRequest(
             null,
             null,
             null,
-            OrchestrationRequestPurpose.GENERAL
+            OrchestrationRequestPurpose.GENERAL,
+            OrchestrationIntentPolicy.MODEL_DIRECTED
         );
     }
 
@@ -107,7 +137,8 @@ public record OrchestrationRequest(
             effectiveCapabilityProfile,
             null,
             null,
-            OrchestrationRequestPurpose.GENERAL
+            OrchestrationRequestPurpose.GENERAL,
+            OrchestrationIntentPolicy.MODEL_DIRECTED
         );
     }
 
@@ -126,7 +157,8 @@ public record OrchestrationRequest(
             null,
             modelInput,
             null,
-            OrchestrationRequestPurpose.GENERAL
+            OrchestrationRequestPurpose.GENERAL,
+            OrchestrationIntentPolicy.MODEL_DIRECTED
         );
     }
 

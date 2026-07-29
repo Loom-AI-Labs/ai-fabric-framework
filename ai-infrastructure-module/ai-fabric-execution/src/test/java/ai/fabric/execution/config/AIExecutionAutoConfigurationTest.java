@@ -11,6 +11,7 @@ import ai.fabric.execution.gateway.AIExecutionConversationRecorder;
 import ai.fabric.execution.gateway.AIExecutionGateway;
 import ai.fabric.execution.gateway.DurableAIExecutionGateway;
 import ai.fabric.execution.gateway.ExecutionCapabilityInventory;
+import ai.fabric.execution.delegation.SpecialistDelegationGateway;
 import ai.fabric.execution.plan.AIExecutionCoordinator;
 import ai.fabric.execution.plan.ExecutionPlanRegistry;
 import ai.fabric.execution.plan.PlanComponentRegistry;
@@ -59,6 +60,8 @@ class AIExecutionAutoConfigurationTest {
             )
             .run(context -> {
                 assertThat(context).hasSingleBean(AIExecutionGateway.class);
+                assertThat(context)
+                    .hasSingleBean(SpecialistDelegationGateway.class);
                 assertThat(context)
                     .hasSingleBean(AIExecutionCoordinator.class);
                 assertThat(context)

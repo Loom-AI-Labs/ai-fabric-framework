@@ -23,6 +23,7 @@ checklists here.
 | [0006 - Proactive event specialist execution](./0006-proactive-event-specialist-execution-implementation-plan.md) | Implemented and verified; not released | Typed asynchronous specialist access, scoped idempotent event replay, service-owned event execution, and a read-only Account Resolver event proof |
 | [0007 - Durable read-only specialist jobs](./0007-durable-read-only-specialist-job-implementation-plan.md) | Implemented and verified; not released | Encrypted JDBC execution state, worker leasing, restart recovery, durable scoped replay, and a restart-safe proactive Account Resolver proof |
 | [0008 - Durable human review](./0008-durable-human-review-implementation-plan.md) | Implemented and verified; not released | Version-bound durable review tasks, separate dispatch receipts, trusted reviewer authorization, duplicate-safe decisions, and governed-action continuation |
+| [0009 - One-level declared specialist delegation](./0009-one-level-declared-specialist-delegation-implementation-plan.md) | Implemented and verified; not released | Exact-version delegation allowlists, typed one-level child execution, independent authorization, lineage, and an Agentic Resolver routing proof |
 
 ## Plan Rules
 

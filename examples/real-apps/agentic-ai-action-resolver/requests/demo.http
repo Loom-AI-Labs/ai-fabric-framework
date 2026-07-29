@@ -3,6 +3,7 @@
 @reviewerKey = replace-with-regular-reviewer-key
 @seniorReviewerKey = replace-with-senior-reviewer-key
 @reviewTaskId = replace-with-review-task-id
+@delegationKey = account-delegation-1
 
 ### Deployment and specialist health
 GET {{baseUrl}}/api/demo/health
@@ -23,6 +24,48 @@ Content-Type: application/json
 
 {
   "question": "Review my current account profile against the policies. What prevents me from placing an order?"
+}
+
+### One-level delegation: coordinator selects current-account specialist
+POST {{baseUrl}}/api/agentic-resolver/delegate
+X-AI-Fabric-Demo-Session: {{sessionId}}
+Idempotency-Key: {{delegationKey}}
+Content-Type: application/json
+
+{
+  "question": "Review my current account and explain any order blockers."
+}
+
+### Exact replay: same access binding, key, and typed payload
+POST {{baseUrl}}/api/agentic-resolver/delegate
+X-AI-Fabric-Demo-Session: {{sessionId}}
+Idempotency-Key: {{delegationKey}}
+Content-Type: application/json
+
+{
+  "question": "Review my current account and explain any order blockers."
+}
+
+### One-level delegation: coordinator selects billing advisor
+POST {{baseUrl}}/api/agentic-resolver/delegate
+X-AI-Fabric-Demo-Session: {{sessionId}}
+Idempotency-Key: billing-delegation-1
+Content-Type: application/json
+
+{
+  "question": "What policy path applies to this account credit?",
+  "resolutionType": "ACCOUNT_CREDIT",
+  "amount": 25
+}
+
+### Unsupported request: coordinator completes without a child
+POST {{baseUrl}}/api/agentic-resolver/delegate
+X-AI-Fabric-Demo-Session: {{sessionId}}
+Idempotency-Key: unsupported-delegation-1
+Content-Type: application/json
+
+{
+  "question": "Write a marketing campaign for this account."
 }
 
 ### Interactive call: backend reads and records validated conversation turns

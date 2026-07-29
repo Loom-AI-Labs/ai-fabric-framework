@@ -12,6 +12,7 @@ import ai.fabric.intent.orchestration.OrchestrationResultType;
 import ai.fabric.intent.orchestration.OrchestrationAuthContextResolver;
 import ai.fabric.intent.orchestration.pipeline.PipelineContext;
 import ai.fabric.intent.orchestration.pipeline.PipelineStep;
+import ai.fabric.intent.orchestration.request.OrchestrationIntentPolicy;
 import ai.fabric.intent.orchestration.request.OrchestrationRequestPurpose;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -260,6 +261,24 @@ public class IntentExtractionStep implements PipelineStep {
                 Map.copyOf(draftDiagnostics)
             );
         }
+
+        IntentPolicyAdjustment policyAdjustment = applyIntentPolicy(
+            intentResponse,
+            context
+        );
+        if (policyAdjustment.applied()) {
+            updatedContext = updatedContext.withMetadata(
+                "intentPolicy",
+                Map.of(
+                    "policy",
+                    policyAdjustment.policy().name(),
+                    "adjustedIntentCount",
+                    policyAdjustment.adjustedIntentCount(),
+                    "semanticIntentPreserved",
+                    true
+                )
+            );
+        }
         
         int intentCount = intentResponse.getIntents().size();
         boolean isCompound = intentCount > 1;
@@ -270,6 +289,38 @@ public class IntentExtractionStep implements PipelineStep {
         return updatedContext.toBuilder()
             .intentResponse(intentResponse)
             .build();
+    }
+
+    private IntentPolicyAdjustment applyIntentPolicy(
+        MultiIntentResponse response,
+        PipelineContext context
+    ) {
+        OrchestrationIntentPolicy policy =
+            context != null
+                && context.getOrchestrationRequest() != null
+                ? context.getOrchestrationRequest().intentPolicy()
+                : OrchestrationIntentPolicy.MODEL_DIRECTED;
+        if (policy != OrchestrationIntentPolicy.GENERATION_ONLY
+            || response == null
+            || response.getIntents() == null) {
+            return new IntentPolicyAdjustment(policy, 0, false);
+        }
+
+        int adjusted = 0;
+        for (Intent intent : response.getIntents()) {
+            if (intent == null || intent.getType() != IntentType.INFORMATION) {
+                continue;
+            }
+            boolean changed =
+                !Boolean.FALSE.equals(intent.getRequiresRetrieval())
+                    || !Boolean.TRUE.equals(intent.getRequiresGeneration());
+            intent.setRequiresRetrieval(false);
+            intent.setRequiresGeneration(true);
+            if (changed) {
+                adjusted++;
+            }
+        }
+        return new IntentPolicyAdjustment(policy, adjusted, true);
     }
 
     private boolean isSpecialistRequest(PipelineContext context) {
@@ -415,4 +466,10 @@ public class IntentExtractionStep implements PipelineStep {
         diagnostics.put("attempts", List.of(Map.copyOf(attempt)));
         return Map.copyOf(diagnostics);
     }
+
+    private record IntentPolicyAdjustment(
+        OrchestrationIntentPolicy policy,
+        int adjustedIntentCount,
+        boolean applied
+    ) {}
 }

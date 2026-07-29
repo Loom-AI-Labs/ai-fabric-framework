@@ -12,6 +12,8 @@ public final class AccountResolverSpecialists {
         SpecialistId.of("billing-resolution-advisor", "1");
     public static final SpecialistId SUPPORT_CREDIT_SPECIALIST_ID =
         SpecialistId.of("support-credit-proposer", "1");
+    public static final SpecialistId DELEGATION_COORDINATOR_ID =
+        SpecialistId.of("account-resolution-coordinator", "1");
     public static final String PROFILE_ACTION = "get_account_profile";
     public static final String BILLING_ASSESSMENT_ACTION =
         "assess_billing_resolution";

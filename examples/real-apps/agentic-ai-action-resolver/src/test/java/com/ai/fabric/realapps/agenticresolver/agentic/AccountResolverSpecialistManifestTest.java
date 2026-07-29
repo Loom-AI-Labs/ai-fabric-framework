@@ -18,6 +18,7 @@ import ai.fabric.execution.specialist.manifest.MicrometerSpecialistManifestMetri
 import ai.fabric.execution.specialist.manifest.SpecialistManifestMetrics;
 import ai.fabric.intent.orchestration.OrchestrationResult;
 import ai.fabric.intent.orchestration.OrchestrationResultType;
+import ai.fabric.intent.orchestration.request.OrchestrationIntentPolicy;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.micrometer.core.instrument.MeterRegistry;
@@ -199,6 +200,70 @@ class AccountResolverSpecialistManifestTest {
             .contains("REFUND")
             .contains("\"/amount\":75")
             .doesNotContain("userId", "subscriptionId", "tenantId");
+    }
+
+    @Test
+    void declaresClosedReadOnlyAccountResolutionDelegation() {
+        SpecialistDefinition<JsonNode, JsonNode> definition = definition(
+            AccountResolverSpecialists.DELEGATION_COORDINATOR_ID
+        );
+        RegisteredSpecialist registered =
+            specialistRegistry.requireRegistered(
+                AccountResolverSpecialists.DELEGATION_COORDINATOR_ID
+            );
+        JsonNode request = objectMapper.valueToTree(
+            new AccountDelegationCoordinatorRequest(
+                "Why can I not place an order?",
+                null,
+                null
+            )
+        );
+
+        definition.inputAdapter().validate(request);
+
+        assertThat(registered.source())
+            .isEqualTo(SpecialistDefinitionSource.MANIFEST);
+        assertThat(definition.executionProfile().writeEnabled()).isFalse();
+        assertThat(definition.executionProfile()
+            .requestedCapabilities().visibleActions()).isEmpty();
+        assertThat(definition.executionProfile()
+            .requestedCapabilities().requestedVectorSpaces()).isEmpty();
+        assertThat(definition.outputAdapter().orchestrationIntentPolicy())
+            .isEqualTo(OrchestrationIntentPolicy.GENERATION_ONLY);
+        assertThat(definition.delegationPolicy().allowedTargets())
+            .containsExactlyInAnyOrder(
+                AccountResolverSpecialists.READ_SPECIALIST_ID,
+                AccountResolverSpecialists.BILLING_ADVISOR_SPECIALIST_ID
+            );
+        assertThat(definition.inputAdapter().renderModelInput(request))
+            .contains("Why can I not place an order?")
+            .doesNotContain("userId", "subscriptionId", "tenantId");
+        assertThat(definition.instructions().render())
+            .contains("account-resolver-read@1")
+            .contains("billing-resolution-advisor@1")
+            .contains("Never invent");
+
+        JsonNode validDecision = objectMapper.valueToTree(Map.of(
+            "decision",
+            "DELEGATE",
+            "targetSpecialist",
+            "account-resolver-read@1",
+            "reason",
+            "The request asks about current account readiness."
+        ));
+        definition.outputAdapter().validate(validDecision);
+
+        JsonNode inventedTarget = objectMapper.valueToTree(Map.of(
+            "decision",
+            "DELEGATE",
+            "targetSpecialist",
+            "unregistered-specialist@1",
+            "reason",
+            "Invented route."
+        ));
+        assertThatThrownBy(() ->
+            definition.outputAdapter().validate(inventedTarget)
+        ).isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test

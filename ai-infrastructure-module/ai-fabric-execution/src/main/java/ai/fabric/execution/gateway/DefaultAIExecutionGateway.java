@@ -38,6 +38,7 @@ import ai.fabric.intent.orchestration.pipeline.Pipeline;
 import ai.fabric.intent.orchestration.pipeline.PipelineContext;
 import ai.fabric.intent.orchestration.pipeline.steps.OrchestrationPolicyResolutionStep;
 import ai.fabric.intent.orchestration.request.ConversationPersistencePolicy;
+import ai.fabric.intent.orchestration.request.OrchestrationIntentPolicy;
 import ai.fabric.intent.orchestration.request.OrchestrationRequest;
 import ai.fabric.intent.orchestration.request.OrchestrationRequestPurpose;
 import java.time.Clock;
@@ -61,6 +62,8 @@ import org.springframework.core.task.AsyncTaskExecutor;
 public final class DefaultAIExecutionGateway
     implements AIExecutionGateway, AssignedExecutionRunner {
 
+    private static final String EXECUTION_DEADLINE_DIAGNOSTIC =
+        "executionDeadline";
     private static final Logger log =
         LoggerFactory.getLogger(DefaultAIExecutionGateway.class);
 
@@ -780,7 +783,8 @@ public final class DefaultAIExecutionGateway
                 effective,
                 conversationInput,
                 definition.instructions().render(),
-                OrchestrationRequestPurpose.SPECIALIST
+                OrchestrationRequestPurpose.SPECIALIST,
+                definition.outputAdapter().orchestrationIntentPolicy()
             );
             OrchestrationResult orchestrationResult = pipeline.execute(orchestrationRequest);
             if (deadline != null && !clock.instant().isBefore(deadline)) {
@@ -1023,6 +1027,12 @@ public final class DefaultAIExecutionGateway
                 diagnostics.put(
                     "outputMode",
                     SpecialistOutputMode.DIRECT_PROJECTION.name()
+                );
+            }
+            if (deadline != null) {
+                diagnostics.put(
+                    EXECUTION_DEADLINE_DIAGNOSTIC,
+                    deadline.toString()
                 );
             }
             log.info(
@@ -1779,8 +1789,22 @@ public final class DefaultAIExecutionGateway
         diagnostics.put("strategy", definition.executionProfile().strategy().name());
         diagnostics.put("effectiveProfileHash", effective.profileHash());
         diagnostics.put("evidenceCount", evidenceCount);
+        OrchestrationIntentPolicy intentPolicy =
+            definition.outputAdapter().orchestrationIntentPolicy();
+        if (intentPolicy != OrchestrationIntentPolicy.MODEL_DIRECTED) {
+            diagnostics.put("orchestrationIntentPolicy", intentPolicy.name());
+        }
         if (result != null && result.getType() != null) {
             diagnostics.put("orchestrationResultType", result.getType().name());
+        }
+        if (result != null
+            && result.getMetadata() != null
+            && result.getMetadata().get("intentPolicy") instanceof Map<?, ?>
+                adjustment) {
+            diagnostics.put(
+                "intentPolicyAdjustment",
+                Map.copyOf(adjustment)
+            );
         }
         return Map.copyOf(diagnostics);
     }

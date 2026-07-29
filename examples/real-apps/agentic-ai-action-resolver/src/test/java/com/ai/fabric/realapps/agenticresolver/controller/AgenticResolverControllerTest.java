@@ -8,6 +8,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.ai.fabric.realapps.agenticresolver.agentic.AgenticResolverExecutionService;
 import com.ai.fabric.realapps.agenticresolver.agentic.AgenticResolverSessionService;
+import com.ai.fabric.realapps.agenticresolver.agentic.AccountDelegationCoordinatorRequest;
 import com.ai.fabric.realapps.agenticresolver.agentic.plan.PlanInputResumeRequest;
 import java.math.BigDecimal;
 import org.junit.jupiter.api.Test;
@@ -65,6 +66,42 @@ class AgenticResolverControllerTest {
         assertThat(request.getValue().requestId())
             .isEqualTo("input-request-1");
         assertThat(request.getValue().response().amount())
+            .isEqualByComparingTo(new BigDecimal("75"));
+    }
+
+    @Test
+    void requiresAndForwardsDelegationIdempotencyKey() throws Exception {
+        mockMvc.perform(post("/api/agentic-resolver/delegate")
+                .header(
+                    AgenticResolverController.SESSION_HEADER,
+                    "session-1"
+                )
+                .header(
+                    AgenticResolverController.IDEMPOTENCY_HEADER,
+                    "delegate-1"
+                )
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {
+                      "question": "Assess this refund.",
+                      "resolutionType": "REFUND",
+                      "amount": 75
+                    }
+                    """))
+            .andExpect(status().isOk());
+
+        ArgumentCaptor<AccountDelegationCoordinatorRequest> request =
+            ArgumentCaptor.forClass(
+                AccountDelegationCoordinatorRequest.class
+            );
+        verify(executionService).delegateAccountResolution(
+            eq("session-1"),
+            request.capture(),
+            eq("delegate-1")
+        );
+        assertThat(request.getValue().resolutionType().name())
+            .isEqualTo("REFUND");
+        assertThat(request.getValue().amount())
             .isEqualByComparingTo(new BigDecimal("75"));
     }
 }

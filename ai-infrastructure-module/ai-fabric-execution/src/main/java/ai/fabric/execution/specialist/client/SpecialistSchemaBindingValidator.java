@@ -148,6 +148,11 @@ final class SpecialistSchemaBindingValidator {
             return;
         }
         Set<String> actual = textValues(generated.path("enum"));
+        if (actual.isEmpty() && "string".equals(scalarType(generated))) {
+            // The pinned manifest still validates the closed value set before
+            // conversion; a Java String can represent every accepted value.
+            return;
+        }
         if (!actual.containsAll(expected)) {
             throw failure(
                 direction,

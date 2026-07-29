@@ -9,6 +9,8 @@ import ai.fabric.execution.action.ActionProposalDecisionRequest;
 import ai.fabric.execution.action.ActionProposalDecisionResult;
 import com.ai.fabric.realapps.agenticresolver.agentic.AccountResolutionRequest;
 import com.ai.fabric.realapps.agenticresolver.agentic.AccountResolutionResult;
+import com.ai.fabric.realapps.agenticresolver.agentic.AccountDelegationCoordinatorRequest;
+import com.ai.fabric.realapps.agenticresolver.agentic.AccountDelegationResponse;
 import com.ai.fabric.realapps.agenticresolver.agentic.AgenticResolverExecutionService;
 import com.ai.fabric.realapps.agenticresolver.agentic.AgenticResolverSessionService;
 import com.ai.fabric.realapps.agenticresolver.agentic.BillingAssessmentResumeRequest;
@@ -119,6 +121,19 @@ public class AgenticResolverController {
         @Valid @RequestBody BillingResolutionAssessmentRequest request
     ) {
         return executionService.assessBillingResolution(
+            sessionId,
+            request,
+            idempotencyKey
+        );
+    }
+
+    @PostMapping("/delegate")
+    public AccountDelegationResponse delegate(
+        @RequestHeader(SESSION_HEADER) String sessionId,
+        @RequestHeader(IDEMPOTENCY_HEADER) String idempotencyKey,
+        @Valid @RequestBody AccountDelegationCoordinatorRequest request
+    ) {
+        return executionService.delegateAccountResolution(
             sessionId,
             request,
             idempotencyKey

@@ -1,0 +1,185 @@
+apiVersion: ai.fabric/v1
+kind: SpecialistSchema
+metadata:
+  name: account-resolution-coordinator-request
+  version: "1"
+spec:
+  direction: INPUT
+  draft: "2020-12"
+  schema:
+    type: object
+    additionalProperties: false
+    required:
+      - question
+    properties:
+      question:
+        type: string
+        minLength: 1
+        maxLength: 2000
+      resolutionType:
+        type:
+          - string
+          - "null"
+        enum:
+          - REFUND
+          - ACCOUNT_CREDIT
+          - null
+      amount:
+        type:
+          - number
+          - "null"
+        exclusiveMinimum: 0
+        maximum: 1000000
+---
+apiVersion: ai.fabric/v1
+kind: SpecialistSchema
+metadata:
+  name: account-resolution-coordinator-decision
+  version: "1"
+spec:
+  direction: OUTPUT
+  draft: "2020-12"
+  schema:
+    type: object
+    additionalProperties: false
+    required:
+      - decision
+      - targetSpecialist
+      - reason
+    properties:
+      decision:
+        type: string
+        enum:
+          - COMPLETE
+          - DELEGATE
+      targetSpecialist:
+        type:
+          - string
+          - "null"
+        enum:
+          - account-resolver-read@1
+          - billing-resolution-advisor@1
+          - null
+      reason:
+        type: string
+        minLength: 1
+        maxLength: 500
+    allOf:
+      - if:
+          properties:
+            decision:
+              const: DELEGATE
+        then:
+          properties:
+            targetSpecialist:
+              type: string
+      - if:
+          properties:
+            decision:
+              const: COMPLETE
+        then:
+          properties:
+            targetSpecialist:
+              type: "null"
+---
+apiVersion: ai.fabric/v1
+kind: SpecialistPromptProfile
+metadata:
+  name: account-resolution-coordinator
+  version: "1"
+spec:
+  constraints: |
+    This coordinator performs structured routing generation without retrieval
+    or actions. Classify supported routing requests as information that
+    requires generation, with requiresRetrieval false and
+    requiresGeneration true. Never request RAG, vector search, read actions,
+    write actions, or confirmation.
+    Select at most one exact specialist from the approved target list by
+    applying these rules in order:
+    1. Choose account-resolver-read@1 for questions about current account
+       readiness, blockers, ordering eligibility, payment readiness, address
+       readiness, or subscription readiness. This route never requires
+       resolutionType or amount.
+    2. Otherwise, choose billing-resolution-advisor@1 only for an
+       informational refund or account-credit policy assessment when both
+       resolutionType and amount are present in the supplied application
+       context.
+    3. Otherwise, return COMPLETE with targetSpecialist null. Mention missing
+       resolutionType or amount only when the question itself requests a
+       billing-policy assessment.
+    Never invent a specialist, identity, account, amount, resolution type,
+    authority, action, or application fact.
+    Selection is routing only. Never claim that the child ran or that an
+    account or billing result is known.
+  outputContract: |
+    Return decision, targetSpecialist, and reason.
+    DELEGATE requires exactly account-resolver-read@1 or
+    billing-resolution-advisor@1. COMPLETE requires targetSpecialist null.
+    Keep the reason concise and describe only why the target fits.
+---
+apiVersion: ai.fabric/v1
+kind: Specialist
+metadata:
+  name: account-resolution-coordinator
+  version: "1"
+  displayName: Account Resolution Coordinator
+  description: >
+    Selects one approved read-only account specialist from a closed,
+    exact-version delegation allowlist.
+  labels:
+    domain: account-support
+    owner: account-resolver-demo
+spec:
+  mode: resolver
+  instructions:
+    objective: >
+      Decide whether one approved account-resolution specialist should handle
+      the current typed request.
+    promptProfileRef: account-resolution-coordinator@1
+  execution:
+    strategy: SINGLE_PASS
+    writePolicy: DISABLED
+  capabilities:
+    retrieval:
+      enabled: false
+      vectorSpaces: []
+    actions:
+      visible: []
+      requestableReads: []
+      proposableWrites: []
+  input:
+    schemaRef: account-resolution-coordinator-request@1
+    rendering: PRIMARY_TEXT_WITH_JSON_CONTEXT
+    primaryTextPointer: /question
+    conversationTextPointer: null
+    contextPointers:
+      - /resolutionType
+      - /amount
+    context:
+      position: resolver
+  grounding:
+    requirement: NONE
+    requireEvidenceCitations: false
+    sources: []
+    validatorRefs: []
+  output:
+    mode: STRUCTURED_GENERATION
+    schemaRef: account-resolution-coordinator-decision@1
+    directProjectorRef: null
+    conversationTextPointer: null
+    finalValidatorRefs: []
+    normalizerRef: null
+  conversation:
+    binding: DISABLED
+    recordValidatedTurns: false
+  limits:
+    maxDuration: PT1M
+    maxInputCharacters: 5000
+    maxGroundingCharacters: 1000
+    maxEvidenceReferences: 0
+    maxOutputCharacters: 2000
+    maxOutputTokens: 300
+  delegation:
+    targets:
+      - account-resolver-read@1
+      - billing-resolution-advisor@1

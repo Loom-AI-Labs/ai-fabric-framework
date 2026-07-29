@@ -4,6 +4,8 @@ import ai.fabric.config.OrchestrationProperties;
 import ai.fabric.core.AICoreService;
 import ai.fabric.evidence.AIEvidenceReferenceMapper;
 import ai.fabric.execution.action.ActionProposalCoordinator;
+import ai.fabric.execution.delegation.DefaultSpecialistDelegationGateway;
+import ai.fabric.execution.delegation.SpecialistDelegationGateway;
 import ai.fabric.execution.gateway.AIExecutionConversationRecorder;
 import ai.fabric.execution.gateway.AIExecutionGateway;
 import ai.fabric.execution.gateway.DefaultAIExecutionCoordinator;
@@ -510,6 +512,25 @@ public class AIExecutionAutoConfiguration {
             specialistRegistry,
             executionGateway,
             objectMapper
+        );
+    }
+
+    @Bean
+    @ConditionalOnBean(SpecialistClientFactory.class)
+    @ConditionalOnMissingBean
+    public SpecialistDelegationGateway specialistDelegationGateway(
+        SpecialistRegistry specialistRegistry,
+        SpecialistClientFactory specialistClientFactory,
+        CanonicalJsonSupport canonicalJson,
+        Clock clock,
+        AIExecutionProperties properties
+    ) {
+        return new DefaultSpecialistDelegationGateway(
+            specialistRegistry,
+            specialistClientFactory,
+            canonicalJson,
+            clock,
+            properties.getAsync().getResultTtl()
         );
     }
 

@@ -9,8 +9,40 @@ public record SpecialistManifestSpec(
     SpecialistGroundingSpec grounding,
     SpecialistOutputSpec output,
     SpecialistConversationSpec conversation,
-    SpecialistLimitSpec limits
+    SpecialistLimitSpec limits,
+    SpecialistDelegationSpec delegation
 ) {
+    public SpecialistManifestSpec {
+        delegation = delegation == null
+            ? SpecialistDelegationSpec.disabled()
+            : delegation;
+    }
+
+    public SpecialistManifestSpec(
+        String mode,
+        SpecialistInstructionSpec instructions,
+        SpecialistExecutionSpec execution,
+        SpecialistCapabilitySpec capabilities,
+        SpecialistInputSpec input,
+        SpecialistGroundingSpec grounding,
+        SpecialistOutputSpec output,
+        SpecialistConversationSpec conversation,
+        SpecialistLimitSpec limits
+    ) {
+        this(
+            mode,
+            instructions,
+            execution,
+            capabilities,
+            input,
+            grounding,
+            output,
+            conversation,
+            limits,
+            SpecialistDelegationSpec.disabled()
+        );
+    }
+
     public SpecialistExtensionRefs extensionRefs() {
         return new SpecialistExtensionRefs(
             grounding != null ? grounding.validatorRefs() : null,

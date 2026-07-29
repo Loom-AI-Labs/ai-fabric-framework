@@ -6,7 +6,7 @@
 - **Compatibility baseline:** AI Fabric `0.4.0`
 - **Baseline tag:** `ai-fabric-framework-v0.4.0`
 - **Baseline commit:** `857619f`
-- **Candidate implementation commit:** `e415a52`
+- **Candidate baseline commit:** `21d0ca5`
 - **Prepared:** 2026-07-29
 - **Reference application:**
   [`agentic-ai-action-resolver`](../../examples/real-apps/agentic-ai-action-resolver)
@@ -23,6 +23,13 @@ Applications can also compose exact-version, read-only specialists into
 bounded fixed sequential plans with typed step mappings, deterministic
 aggregation, checkpointed input waits, and safe resume. The model never
 receives authority to approve or directly execute a write.
+
+A validated coordinator may now select one read-only child from a closed,
+exact-version manifest allowlist. The host application constructs typed child
+input, and AI Fabric rechecks source content, depth, deadline, target
+declaration, typed binding, and backend authority before invoking the child
+through the existing execution gateway. This is one-level delegation, not
+unrestricted discovery, recursive agents, or dialogue handoff.
 
 Trusted application event adapters can now submit those same typed specialists
 as bounded asynchronous work. The first proof maps a raw payment-verification
@@ -90,6 +97,7 @@ The adoption boundary is:
 | Exact-version fixed-plan registry and coordinator | Application-owned plan selection, typed mappers, and deterministic aggregators |
 | Typed asynchronous specialist client, optional durable read-job state, leasing, recovery, and scoped replay | Raw-event validation, subject resolution, deterministic event mapping, production schema migration, secrets, and broker/outbox ownership |
 | Durable review gateway, encrypted task/decision state, optimistic transitions, recovery, and safe review projections | Application-selected review policies, trusted reviewer authentication/authorization, dispatcher integration, production migrations, and reviewer experience |
+| Exact-version one-level delegation validation, typed child binding, independent child authorization, lineage, and process-local replay | Root selection, closed target schema, trusted child-input mapping, public UX, and deciding whether delegation is appropriate |
 | Manifest and execution diagnostics | Deployment, monitoring, support, and rollback |
 
 ## 3. Included Change Set
@@ -107,6 +115,7 @@ The adoption boundary is:
 | `67be5f5` | Typed asynchronous specialist access, scoped payload-checked idempotency, and a proactive read-only event proof |
 | `cbd1404` | Encrypted JDBC read-job state, worker leasing, restart recovery, durable replay, and packaged OpenAI restart proof |
 | `e415a52` | Durable human-review policies, encrypted JDBC tasks and dispatch receipts, trusted reviewer decisions, continuation/recovery, and an OpenAI-backed support-credit proof |
+| Plan `0009` candidate | Closed, exact-version, one-level read-only specialist delegation and Account Resolver proof |
 
 These commits build on the released `0.4.0` lifecycle, indexing, RAG, action,
 provider, and chat-session contracts.
@@ -144,7 +153,9 @@ Use it when an application needs:
 - bounded service-owned event analysis with typed asynchronous results; or
 - opt-in restart-safe read-only specialist jobs; or
 - separately authorized, restart-safe human review around a governed action
-  proposal.
+  proposal; or
+- one-level model-selected routing among a closed set of read-only
+  specialists.
 
 ## 5. Specialist Execution Contract
 
@@ -686,7 +697,31 @@ This is an application-selected composition contract, not a model-generated
 plan, graph engine, supervisor, or unrestricted multi-agent runtime. The first
 version rejects interactive invocation and WRITE-capable specialists.
 
-### 11.5 Proactive application-event execution
+### 11.5 One-level declared specialist delegation
+
+A successful, validated specialist result may request one exact-version child
+declared in its immutable delegation policy. The same target set should be
+closed in the coordinator output schema so invented IDs fail before
+application mapping.
+
+The host application maps its validated request to the typed child input.
+Model output never supplies identity, tenant, subject, authority, credentials,
+or arbitrary child payloads. `SpecialistDelegationGateway` then checks the
+current source content hash, depth, inherited deadline, source allowlist,
+registered target, read-only profile, and typed binding before invoking the
+child through `AIExecutionGateway`.
+
+The child receives the current backend-created trusted context, no
+conversation, and an independent effective-capability evaluation. Child input
+waits and confirmations are explicitly unsupported. Provider and policy
+failures remain visible.
+
+Replay is scoped and payload-checked but process-local. This first version is
+not a durable workflow, recursive graph, supervisor, catalogue search, or
+dialogue handoff. Adoption details are in
+[`ONE_LEVEL_SPECIALIST_DELEGATION.md`](../Framework-Dev-Guides/application-patterns/ONE_LEVEL_SPECIALIST_DELEGATION.md).
+
+### 11.6 Proactive application-event execution
 
 The reference application accepts a raw `PAYMENT_VERIFICATION_FAILED` event
 containing only event ID, failure code, attempt number, and occurrence time.
@@ -934,8 +969,12 @@ For current adoption use, in order:
    [Durable Human Review Guide](../Framework-Dev-Guides/application-patterns/DURABLE_HUMAN_REVIEW.md);
 8. the
    [durable-review implementation plan](../planning/ai-fabric-flow-architecture-analysis-pack/implementation-plans/0008-durable-human-review-implementation-plan.md);
-   and
 9. the
+   [One-Level Specialist Delegation Guide](../Framework-Dev-Guides/application-patterns/ONE_LEVEL_SPECIALIST_DELEGATION.md);
+10. the
+    [delegation implementation plan](../planning/ai-fabric-flow-architecture-analysis-pack/implementation-plans/0009-one-level-declared-specialist-delegation-implementation-plan.md);
+    and
+11. the
    [`agentic-ai-action-resolver`](../../examples/real-apps/agentic-ai-action-resolver)
    reference application.
 
@@ -970,6 +1009,23 @@ For current adoption use, in order:
 - [ ] Verify a second-step input wait resumes without rerunning step one.
 - [ ] Treat plan checkpoints as process-local and restart the request from the
   beginning after process loss.
+
+### Phase 1.6: One-level delegation proof
+
+- [ ] Choose a coordinator that genuinely needs model selection among a small,
+  closed set of read-only specialists.
+- [ ] Pin every target as an exact `name@version` in both the output schema and
+  manifest delegation allowlist.
+- [ ] Keep identity, authority, provider, and arbitrary child payloads out of
+  coordinator output.
+- [ ] Map validated application request fields to each typed child DTO in
+  application code.
+- [ ] Verify every target is independently authorized through
+  `AIExecutionGateway` and receives no transferred conversation.
+- [ ] Prove invented target, missing authority, stale source, child wait,
+  confirmation, provider failure, replay, and conflict behavior.
+- [ ] Treat replay as process-local and restart the root request after process
+  loss.
 
 ### Phase 1.75: Proactive read-only event proof
 
@@ -1302,6 +1358,32 @@ commit.
   outcome, and the authoritative file-backed database contained exactly one
   `$25.00` account-credit mutation.
 
+### One-level declared delegation
+
+- Manifest compiler and registry tests cover exact references, duplicates,
+  target limits, unknown targets, self-targets, and WRITE-capable targets.
+- Gateway tests cover typed success, source hash drift, undeclared targets,
+  recursion, deadline inheritance, provider failure, child waits,
+  cancellation failure, confirmation rejection, replay, and conflict.
+- The final execution reactor passed 970 tests with no failures or skips: 5
+  curated-default, 673 core, 56 chat-session, and 236 execution tests.
+- The final real-app reactor passed 12 shared smoke-support and 117 Agentic
+  Resolver tests; the clean packaged app also passed all 117 application
+  tests.
+- The packaged Agentic AI Action Resolver loads
+  `account-resolution-coordinator@1` and its closed two-target schema.
+- The packaged core and execution JAR hashes matched their verified local
+  Maven artifacts before live testing.
+- Real OpenAI routed current-account and account-credit requests to the two
+  approved target families. Both child executions succeeded with safe policy
+  evidence.
+- The closed coordinator exposed its derived `GENERATION_ONLY` intent policy;
+  grounded specialists retained their normal model-directed behavior.
+- Exact replay returned the original coordinator, delegation, and child
+  invocation IDs. Changed work returned visible `IDEMPOTENCY_CONFLICT`.
+- A real unsupported marketing request returned `COMPLETE` without starting a
+  child.
+
 ## 22. Release Gate Still Required
 
 Before Loom AI adopts a published artifact:
@@ -1328,7 +1410,7 @@ This release does not provide:
 
 - model-generated or dynamic multi-specialist planning;
 - conditional or parallel specialist branches;
-- specialist-authored delegation or handoff;
+- recursive specialist delegation or dialogue handoff;
 - interactive plan dialogue ownership;
 - WRITE-capable composed plans;
 - model-selected unrestricted specialist discovery;
@@ -1370,8 +1452,11 @@ For Loom AI:
    authorization, and dispatcher;
 7. use fixed read-only plans only where application-owned decomposition is
    deterministic and measurably better than one specialist; and
-8. defer dynamic planning, delegation, WRITE composition, and durable plan
-   execution until the fixed-plan contract has production usage evidence.
+8. use one-level delegation only when a closed read-only target set needs
+   model selection and the application can map typed child input safely; and
+9. defer unrestricted planning, recursive delegation, WRITE composition, and
+   durable plan execution until bounded contracts have production usage
+   evidence.
 
 This moves Loom AI from generating ad hoc AI integrations toward composing
 versioned, governed AI-enabled application capabilities without turning model

@@ -4,10 +4,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import ai.fabric.execution.specialist.JsonSchemaOutputContract;
+import ai.fabric.execution.specialist.SpecialistId;
 import ai.fabric.execution.specialist.SpecialistDefinitionSource;
 import ai.fabric.execution.specialist.SpecialistOutputMode;
 import ai.fabric.execution.input.SpecialistInputContinuation;
 import ai.fabric.execution.input.SpecialistInputRequirement;
+import ai.fabric.intent.orchestration.request.OrchestrationIntentPolicy;
 import com.fasterxml.jackson.databind.JsonNode;
 import java.time.Duration;
 import java.util.List;
@@ -40,6 +42,117 @@ class DefaultSpecialistManifestCompilerTest {
         assertThat(result.specialist().definition()
             .outputAdapter().outputContract())
             .isInstanceOf(JsonSchemaOutputContract.class);
+        assertThat(result.specialist().definition().delegationPolicy().enabled())
+            .isFalse();
+        assertThat(result.specialist().definition().outputAdapter()
+            .orchestrationIntentPolicy())
+            .isEqualTo(OrchestrationIntentPolicy.MODEL_DIRECTED);
+    }
+
+    @Test
+    void derivesGenerationOnlyIntentPolicyFromClosedManifestContract() {
+        SpecialistManifest valid = ManifestTestFixtures.manifest();
+        SpecialistManifestSpec spec = valid.spec();
+        SpecialistManifest generationOnly = new SpecialistManifest(
+            valid.apiVersion(),
+            valid.kind(),
+            valid.metadata(),
+            new SpecialistManifestSpec(
+                spec.mode(),
+                spec.instructions(),
+                spec.execution(),
+                new SpecialistCapabilitySpec(
+                    new SpecialistRetrievalSpec(false, List.of()),
+                    new SpecialistActionSpec(
+                        List.of(),
+                        List.of(),
+                        List.of()
+                    )
+                ),
+                spec.input(),
+                new SpecialistGroundingSpec(
+                    SpecialistGroundingRequirement.NONE,
+                    false,
+                    List.of(),
+                    List.of()
+                ),
+                spec.output(),
+                spec.conversation(),
+                spec.limits(),
+                spec.delegation()
+            )
+        );
+
+        SpecialistCompilationResult result = compiler.compile(
+            generationOnly,
+            ManifestTestFixtures.compilationContext()
+        );
+
+        assertThat(result.specialist().definition().outputAdapter()
+            .orchestrationIntentPolicy())
+            .isEqualTo(OrchestrationIntentPolicy.GENERATION_ONLY);
+    }
+
+    @Test
+    void compilesExactDelegationTargetsIntoTheCanonicalDefinition() {
+        SpecialistManifest valid = ManifestTestFixtures.manifest();
+        SpecialistManifestSpec spec = valid.spec();
+        SpecialistManifest delegated = new SpecialistManifest(
+            valid.apiVersion(),
+            valid.kind(),
+            valid.metadata(),
+            new SpecialistManifestSpec(
+                spec.mode(),
+                spec.instructions(),
+                spec.execution(),
+                spec.capabilities(),
+                spec.input(),
+                spec.grounding(),
+                spec.output(),
+                spec.conversation(),
+                spec.limits(),
+                new SpecialistDelegationSpec(List.of(
+                    "account-profile-checker@1",
+                    "billing-policy-checker@2"
+                ))
+            )
+        );
+
+        SpecialistCompilationResult result = compiler.compile(
+            delegated,
+            ManifestTestFixtures.compilationContext()
+        );
+
+        assertThat(result.specialist().definition()
+            .delegationPolicy().allowedTargets())
+            .containsExactlyInAnyOrder(
+                SpecialistId.of("account-profile-checker", "1"),
+                SpecialistId.of("billing-policy-checker", "2")
+            );
+    }
+
+    @Test
+    void rejectsDuplicateAndNonExactDelegationTargets() {
+        assertThatThrownBy(() -> compiler.compile(
+            withDelegation(List.of(
+                "account-profile-checker@1",
+                "account-profile-checker@1"
+            )),
+            ManifestTestFixtures.compilationContext()
+        ))
+            .isInstanceOf(SpecialistManifestException.class)
+            .hasMessageContaining(
+                "Duplicate values are not allowed in delegation targets"
+            );
+
+        assertThatThrownBy(() -> compiler.compile(
+            withDelegation(List.of("account-profile-checker")),
+            ManifestTestFixtures.compilationContext()
+        ))
+            .isInstanceOf(SpecialistManifestException.class)
+            .satisfies(error -> assertThat(
+                ((SpecialistManifestException) error).reason()
+            ).isEqualTo("DELEGATION_TARGET_INVALID"));
     }
 
     @Test
@@ -313,6 +426,28 @@ class DefaultSpecialistManifestCompilerTest {
                 spec.output(),
                 spec.conversation(),
                 spec.limits()
+            )
+        );
+    }
+
+    private SpecialistManifest withDelegation(List<String> targets) {
+        SpecialistManifest manifest = ManifestTestFixtures.manifest();
+        SpecialistManifestSpec spec = manifest.spec();
+        return new SpecialistManifest(
+            manifest.apiVersion(),
+            manifest.kind(),
+            manifest.metadata(),
+            new SpecialistManifestSpec(
+                spec.mode(),
+                spec.instructions(),
+                spec.execution(),
+                spec.capabilities(),
+                spec.input(),
+                spec.grounding(),
+                spec.output(),
+                spec.conversation(),
+                spec.limits(),
+                new SpecialistDelegationSpec(targets)
             )
         );
     }

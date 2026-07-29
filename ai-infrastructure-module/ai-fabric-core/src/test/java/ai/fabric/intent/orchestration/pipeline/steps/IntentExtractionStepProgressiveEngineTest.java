@@ -14,6 +14,7 @@ import ai.fabric.intent.extraction.ProgressiveIntentExtractionEngine;
 import ai.fabric.intent.orchestration.OrchestrationContext;
 import ai.fabric.intent.orchestration.pipeline.PipelineContext;
 import ai.fabric.intent.orchestration.request.ConversationPersistencePolicy;
+import ai.fabric.intent.orchestration.request.OrchestrationIntentPolicy;
 import ai.fabric.intent.orchestration.request.OrchestrationRequest;
 import ai.fabric.intent.orchestration.request.OrchestrationRequestPurpose;
 import java.time.Instant;
@@ -32,6 +33,117 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class IntentExtractionStepProgressiveEngineTest {
+
+    @Test
+    void generationOnlyPolicyConstrainsExecutionFlagsWithoutChangingSemantics() {
+        IntentQueryExtractor extractor = mock(IntentQueryExtractor.class);
+        ProgressiveIntentExtractionEngine engine =
+            mock(ProgressiveIntentExtractionEngine.class);
+        @SuppressWarnings("unchecked")
+        ObjectProvider<ProgressiveIntentExtractionEngine> provider =
+            mock(ObjectProvider.class);
+        when(provider.getIfAvailable()).thenReturn(engine);
+
+        Intent information = Intent.builder()
+            .type(IntentType.INFORMATION)
+            .intent("select_specialist")
+            .requiresRetrieval(true)
+            .requiresGeneration(false)
+            .vectorSpace("unapproved-space")
+            .build();
+        MultiIntentResponse response = MultiIntentResponse.builder()
+            .intents(List.of(information))
+            .build();
+        when(engine.extract(
+            any(IntentExtractionInput.class),
+            any(OrchestrationContext.class)
+        )).thenReturn(
+            new ProgressiveIntentExtractionEngine.ExtractionOutput(
+                response,
+                Map.of()
+            )
+        );
+
+        OrchestrationRequest request = new OrchestrationRequest(
+            "Select an approved specialist",
+            OrchestrationContext.forUser("user-1"),
+            null,
+            ConversationPersistencePolicy.NEVER,
+            null,
+            null,
+            null,
+            OrchestrationRequestPurpose.SPECIALIST,
+            OrchestrationIntentPolicy.GENERATION_ONLY
+        );
+
+        PipelineContext updated = new IntentExtractionStep(
+            extractor,
+            provider
+        ).process(PipelineContext.from(request));
+
+        Intent adjusted = updated.getIntentResponse().getIntents().getFirst();
+        assertThat(adjusted.getType()).isEqualTo(IntentType.INFORMATION);
+        assertThat(adjusted.getIntent()).isEqualTo("select_specialist");
+        assertThat(adjusted.getVectorSpace()).isEqualTo("unapproved-space");
+        assertThat(adjusted.getRequiresRetrieval()).isFalse();
+        assertThat(adjusted.getRequiresGeneration()).isTrue();
+        assertThat(updated.getMetadata()).containsEntry(
+            "intentPolicy",
+            Map.of(
+                "policy",
+                "GENERATION_ONLY",
+                "adjustedIntentCount",
+                1,
+                "semanticIntentPreserved",
+                true
+            )
+        );
+    }
+
+    @Test
+    void modelDirectedPolicyDoesNotRepairDisallowedRetrieval() {
+        IntentQueryExtractor extractor = mock(IntentQueryExtractor.class);
+        ProgressiveIntentExtractionEngine engine =
+            mock(ProgressiveIntentExtractionEngine.class);
+        @SuppressWarnings("unchecked")
+        ObjectProvider<ProgressiveIntentExtractionEngine> provider =
+            mock(ObjectProvider.class);
+        when(provider.getIfAvailable()).thenReturn(engine);
+
+        Intent information = Intent.builder()
+            .type(IntentType.INFORMATION)
+            .intent("grounded_answer")
+            .requiresRetrieval(true)
+            .requiresGeneration(false)
+            .build();
+        MultiIntentResponse response = MultiIntentResponse.builder()
+            .intents(List.of(information))
+            .build();
+        when(engine.extract(
+            any(IntentExtractionInput.class),
+            any(OrchestrationContext.class)
+        )).thenReturn(
+            new ProgressiveIntentExtractionEngine.ExtractionOutput(
+                response,
+                Map.of()
+            )
+        );
+
+        PipelineContext updated = new IntentExtractionStep(
+            extractor,
+            provider
+        ).process(
+            PipelineContext.from(
+                "Answer from evidence",
+                OrchestrationContext.forUser("user-1")
+            )
+        );
+
+        Intent unchanged = updated.getIntentResponse().getIntents().getFirst();
+        assertThat(unchanged.getRequiresRetrieval()).isTrue();
+        assertThat(unchanged.getRequiresGeneration()).isFalse();
+        assertThat(updated.getMetadata()).doesNotContainKey("intentPolicy");
+    }
 
     @Test
     void specialistRequestTerminatesOnVisibleProviderFailure() {

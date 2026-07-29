@@ -7,6 +7,7 @@ specialist execution model with one governed write:
 manifest specialists:
   account-resolver@1
   account-resolver-read@1
+  account-resolution-coordinator@1
   billing-resolution-advisor@1
   support-credit-proposer@1
 read actions: get_account_profile, assess_billing_resolution
@@ -32,6 +33,14 @@ Account Resolver demo. `account-readiness@1` is a one-step parity plan.
 the billing advisor, passing only the validated typed account result through a
 registered mapper. Missing billing amount pauses step two; resume does not
 rerun step one.
+
+It also proves one-level model-selected delegation without exposing an open
+specialist catalogue. `account-resolution-coordinator@1` may select only
+`account-resolver-read@1` or `billing-resolution-advisor@1` from a closed
+manifest enum and delegation allowlist. The application maps the validated
+request to typed child input; AI Fabric rechecks source version, depth,
+deadline, target declaration, target type, and backend authority before the
+child runs through the normal execution gateway.
 
 It also proves proactive, read-only intelligence from a raw application event.
 A payment-verification failure is mapped to `account-resolver-read@1` and
@@ -62,6 +71,12 @@ the governed-action baseline.
   an identical successful resume is replayed without repeating execution.
 - Exact-version application plans, mappers, and aggregators are validated at
   startup against the pinned manifest schemas.
+- One validated coordinator result may select one exact-version, read-only
+  target from its closed manifest allowlist.
+- Delegation reuses backend-owned authority, transfers no conversation, and
+  independently authorizes the typed child through `AIExecutionGateway`.
+- Identical scoped delegation replays in process; changed work under the same
+  key conflicts. Delegation state is not durable across restart.
 - Each plan step receives an independent effective-capability evaluation and
   no shared worker conversation.
 - Completed plan steps are retained in a bounded `EPHEMERAL` checkpoint store;
@@ -120,9 +135,9 @@ The complete deployment bundle is
 It defines:
 
 - exact-version input and output JSON schemas;
-- separate read/write prompt profiles;
-- `account-resolver-read@1`, `account-resolver@1`, and
-  `billing-resolution-advisor@1`;
+- separate read/write/coordinator prompt profiles;
+- `account-resolver-read@1`, `account-resolver@1`,
+  `account-resolution-coordinator@1`, and `billing-resolution-advisor@1`;
 - Mode, execution strategy, requested vector/action capabilities, grounding
   requirements, conversation policy, and bounded limits; and
 - stable references to approved application extensions.
@@ -316,6 +331,35 @@ sources. Interactive plan execution and WRITE-capable plan steps fail closed
 until dialogue ownership and durable composed-action continuation have
 separate contracts.
 
+## One-Level Declared Delegation
+
+The configuration-defined `account-resolution-coordinator@1` returns a
+validated `AccountDelegationDecision`:
+
+```json
+{
+  "decision": "DELEGATE",
+  "targetSpecialist": "account-resolver-read@1",
+  "reason": "The request asks about current account readiness."
+}
+```
+
+The output schema and manifest allowlist contain the same two exact targets.
+The model cannot enumerate the registry or invent a specialist. It also does
+not provide account identity, authority, or arbitrary child input.
+
+The application maps the original validated request to the selected child's
+DTO and calls `SpecialistDelegationGateway`. The gateway requires a successful
+current source result, depth zero, a declared registered read-only target, an
+unexpired inherited deadline, and a valid typed child binding. It invokes the
+child through `AIExecutionGateway` with the current backend-created trusted
+context and no conversation.
+
+Child waits and confirmations are unsupported and explicitly rejected. Replay
+is scoped and payload-checked but process-local. See
+[`ONE_LEVEL_SPECIALIST_DELEGATION.md`](../../../docs/Framework-Dev-Guides/application-patterns/ONE_LEVEL_SPECIALIST_DELEGATION.md)
+for the complete adoption contract.
+
 Write request example:
 
 ```json
@@ -475,6 +519,33 @@ Content-Type: application/json
 
 {"question":"Can I place an order?"}
 ```
+
+Let the coordinator select one approved read-only specialist:
+
+```http
+POST /api/agentic-resolver/delegate
+X-AI-Fabric-Demo-Session: {sessionId}
+Idempotency-Key: {stable-delegation-key}
+Content-Type: application/json
+
+{
+  "question": "Review my current account and explain any order blockers."
+}
+```
+
+For a billing-policy assessment, include the typed fields owned by the
+application request:
+
+```json
+{
+  "question": "What policy path applies to this account credit?",
+  "resolutionType": "ACCOUNT_CREDIT",
+  "amount": 25
+}
+```
+
+The response contains the validated coordinator result and, when delegation
+succeeds, the typed child execution with parent/child lineage.
 
 Submit a raw payment-verification failure:
 
@@ -1036,7 +1107,8 @@ No verification command for this feature uses `-DskipTests`.
 
 - automatic LLM confirmation;
 - direct model-to-handler execution;
-- dynamic/model-authored planning, delegation, or handoff;
+- unrestricted model-authored planning or specialist discovery;
+- recursive delegation, dialogue handoff, or durable delegation state;
 - conditional, parallel, WRITE-capable, or durable plans;
 - event or scheduled write adapters;
 - framework-owned event-broker consumption or scheduler ownership;

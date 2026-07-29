@@ -2,6 +2,7 @@ package ai.fabric.execution.specialist;
 
 import ai.fabric.evidence.AIEvidenceReference;
 import ai.fabric.intent.orchestration.OrchestrationResult;
+import ai.fabric.intent.orchestration.request.OrchestrationIntentPolicy;
 import java.util.List;
 
 /**
@@ -16,6 +17,15 @@ public interface SpecialistOutputAdapter<O> {
      */
     default SpecialistOutputMode outputMode() {
         return SpecialistOutputMode.DIRECT_PROJECTION;
+    }
+
+    /**
+     * Constrains orchestration flags when required by this output contract.
+     *
+     * <p>The default leaves semantic and capability decisions model-directed.</p>
+     */
+    default OrchestrationIntentPolicy orchestrationIntentPolicy() {
+        return OrchestrationIntentPolicy.MODEL_DIRECTED;
     }
 
     /**

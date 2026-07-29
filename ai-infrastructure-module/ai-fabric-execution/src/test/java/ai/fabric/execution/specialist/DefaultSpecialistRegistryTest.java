@@ -167,6 +167,99 @@ class DefaultSpecialistRegistryTest {
             .hasMessageContaining("without a bounded vector-space scope");
     }
 
+    @Test
+    void registersExactReadOnlyDelegationTarget() {
+        SpecialistId targetId = SpecialistId.of("policy-checker", "1");
+        SpecialistDefinition<String, String> source = definition(
+            ID,
+            "resolver",
+            readProfile(),
+            SpecialistDelegationPolicy.oneLevel(Set.of(targetId))
+        );
+        SpecialistDefinition<String, String> target = definition(
+            targetId,
+            "resolver",
+            readProfile(),
+            SpecialistDelegationPolicy.disabled()
+        );
+
+        DefaultSpecialistRegistry registry = new DefaultSpecialistRegistry(
+            List.of(source, target),
+            actionRegistry("inspect_account", ActionAccessMode.READ),
+            Set.of("resolver"),
+            Set.of("account-policy")
+        );
+
+        assertThat(registry.require(ID).delegationPolicy().allowedTargets())
+            .containsExactly(targetId);
+    }
+
+    @Test
+    void rejectsUnknownAndSelfDelegationTargets() {
+        SpecialistId missing = SpecialistId.of("missing-checker", "1");
+
+        assertThatThrownBy(() -> new DefaultSpecialistRegistry(
+            List.of(definition(
+                ID,
+                "resolver",
+                readProfile(),
+                SpecialistDelegationPolicy.oneLevel(Set.of(missing))
+            )),
+            actionRegistry("inspect_account", ActionAccessMode.READ),
+            Set.of("resolver"),
+            Set.of("account-policy")
+        ))
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessageContaining("unregistered delegation target")
+            .hasMessageContaining(missing.toString());
+
+        assertThatThrownBy(() -> new DefaultSpecialistRegistry(
+            List.of(definition(
+                ID,
+                "resolver",
+                readProfile(),
+                SpecialistDelegationPolicy.oneLevel(Set.of(ID))
+            )),
+            actionRegistry("inspect_account", ActionAccessMode.READ),
+            Set.of("resolver"),
+            Set.of("account-policy")
+        ))
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessageContaining("cannot delegate to itself");
+    }
+
+    @Test
+    void rejectsWriteCapableDelegationTarget() {
+        SpecialistId targetId = SpecialistId.of("account-writer", "1");
+        SpecialistDefinition<String, String> source = definition(
+            ID,
+            "resolver",
+            emptyProfile(),
+            SpecialistDelegationPolicy.oneLevel(Set.of(targetId))
+        );
+        SpecialistDefinition<String, String> target = definition(
+            targetId,
+            "resolver",
+            writeProfile(),
+            SpecialistDelegationPolicy.disabled()
+        );
+
+        assertThatThrownBy(() -> new DefaultSpecialistRegistry(
+            List.of(source, target),
+            actionRegistry(
+                AIActionMetaData.builder()
+                    .name("update_address")
+                    .accessMode(ActionAccessMode.READ_WRITE)
+                    .confirmationRequired(true)
+                    .build()
+            ),
+            Set.of("resolver")
+        ))
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessageContaining("WRITE-capable target")
+            .hasMessageContaining(targetId.toString());
+    }
+
     private SpecialistExecutionProfile readProfile() {
         return new SpecialistExecutionProfile(
             "resolver",
@@ -182,12 +275,56 @@ class DefaultSpecialistRegistryTest {
         );
     }
 
+    private SpecialistExecutionProfile emptyProfile() {
+        return new SpecialistExecutionProfile(
+            "resolver",
+            new RequestedCapabilityProfile(
+                false,
+                Set.of(),
+                Set.of(),
+                Set.of(),
+                Set.of()
+            ),
+            ExecutionStrategy.SINGLE_PASS,
+            SpecialistWritePolicy.DISABLED
+        );
+    }
+
+    private SpecialistExecutionProfile writeProfile() {
+        return new SpecialistExecutionProfile(
+            "resolver",
+            new RequestedCapabilityProfile(
+                false,
+                Set.of(),
+                Set.of("update_address"),
+                Set.of(),
+                Set.of("update_address")
+            ),
+            ExecutionStrategy.SINGLE_PASS,
+            SpecialistWritePolicy.CONFIRMATION_RECEIPT_REQUIRED
+        );
+    }
+
     private SpecialistDefinition<String, String> definition(
         String mode,
         SpecialistExecutionProfile profile
     ) {
+        return definition(
+            ID,
+            mode,
+            profile,
+            SpecialistDelegationPolicy.disabled()
+        );
+    }
+
+    private SpecialistDefinition<String, String> definition(
+        SpecialistId id,
+        String mode,
+        SpecialistExecutionProfile profile,
+        SpecialistDelegationPolicy delegationPolicy
+    ) {
         return new SpecialistDefinition<>(
-            new SpecialistIdentity(ID, "Account Resolver", "Resolves account blockers"),
+            new SpecialistIdentity(id, "Account Resolver", "Resolves account blockers"),
             new SpecialistInstructions("Explain account blockers", null),
             new SpecialistExecutionProfile(
                 mode,
@@ -196,6 +333,7 @@ class DefaultSpecialistRegistryTest {
                 profile.writePolicy()
             ),
             SpecialistLimits.defaults(),
+            delegationPolicy,
             new SpecialistInputAdapter<>() {
                 @Override
                 public Class<String> inputType() {
@@ -244,14 +382,20 @@ class DefaultSpecialistRegistryTest {
     }
 
     private AIActionRegistry actionRegistry(String action, ActionAccessMode accessMode) {
-        AIActionRegistry registry = mock(AIActionRegistry.class);
-        when(registry.getAllMetadata()).thenReturn(List.of(
+        return actionRegistry(
             AIActionMetaData.builder()
                 .name(action)
                 .accessMode(accessMode)
-                .readActionResolutionEligible(accessMode == ActionAccessMode.READ)
+                .readActionResolutionEligible(
+                    accessMode == ActionAccessMode.READ
+                )
                 .build()
-        ));
+        );
+    }
+
+    private AIActionRegistry actionRegistry(AIActionMetaData... actions) {
+        AIActionRegistry registry = mock(AIActionRegistry.class);
+        when(registry.getAllMetadata()).thenReturn(List.of(actions));
         return registry;
     }
 }

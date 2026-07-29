@@ -4,9 +4,11 @@
 
 The independent `agentic-ai-action-resolver` app is the reference proof for
 bounded specialist reads, durable read jobs, confirmation-gated writes, and a
-separately authorized durable human-review lifecycle. It was copied from
-Account Resolver to preserve the existing live demo while the new execution
-contracts are developed and verified.
+separately authorized durable human-review lifecycle. It now also proves
+one-level model-selected delegation across a closed set of exact-version,
+read-only specialists. It was copied from Account Resolver to preserve the
+existing live demo while the new execution contracts are developed and
+verified.
 
 The copy has its own artifact, Java package, port, database, Lucene index,
 durable opaque demo sessions, Dockerfile, and tests. The tracked source under
@@ -33,6 +35,8 @@ Write output: durable ActionProposalView, then safe ActionOutcomeView
 Review proposer: support-credit-proposer@1
 Review policy: support-credit-review@1
 Senior policy: support-credit-senior-review@1
+Delegation coordinator: account-resolution-coordinator@1
+Delegation targets: account-resolver-read@1, billing-resolution-advisor@1
 ```
 
 `POST /api/agentic-resolver/evaluate` receives application authority and is
@@ -47,6 +51,38 @@ grounding requirements, and limits are loaded from
 only for authoritative account projection/validation and registered action
 behavior. Health diagnostics expose a canonical content hash for each
 manifest definition.
+
+## One-Level Delegation
+
+```text
+typed coordinator request
+  -> account-resolution-coordinator@1
+  -> validated COMPLETE or DELEGATE decision
+  -> exact target from closed manifest enum and allowlist
+  -> application maps trusted request fields to child DTO
+  -> SpecialistDelegationGateway
+  -> source hash, depth, deadline, target, type, and authority checks
+  -> existing AIExecutionGateway
+  -> typed child result with parent/child lineage
+```
+
+The coordinator can select only `account-resolver-read@1` for current-account
+readiness or `billing-resolution-advisor@1` for a complete typed billing-policy
+assessment. It cannot select identity, account, tenant, scopes, provider,
+actions, arbitrary child parameters, or another specialist.
+
+Because this coordinator is structured generation with no retrieval,
+grounding, or actions, its manifest adapter derives the server-owned
+`GENERATION_ONLY` intent policy. Semantic intent extraction still belongs to
+the model, while an inconsistent model-produced retrieval flag cannot bypass
+the coordinator's closed capability contract.
+
+The child receives the backend-created trusted context but no conversation.
+It is independently authorized and grounded through the normal specialist
+path. WRITE-capable targets fail startup validation. Child input waits,
+confirmations, recursive delegation, and provider failures remain explicit.
+Identical scoped work replays in process; changed work conflicts, and restart
+does not preserve delegation replay state.
 
 ## Governed Write
 
@@ -134,13 +170,20 @@ There is no success fallback. Typed failures cover:
 - changed review policy, receipt source fingerprint, or decision version;
 - invalid correction or information schemas;
 - review dispatch failure and exhausted decision recovery;
-- deadline and conversation recording failure.
+- deadline and conversation recording failure;
+- undeclared, stale, recursive, WRITE-capable, or type-incompatible
+  delegation;
+- malformed or expired parent deadline;
+- unsupported child input wait or confirmation; and
+- failure to cancel an unsupported child input wait.
 
 ## Verification
 
-- Final execution reactor: 952 tests with no failures or skips: 5
-  curated-default, 671 core, 56 chat-session, and 220 execution tests.
-- Final packaged app build: 12 smoke-support tests and 111 copied-app tests.
+- Final execution reactor: 970 tests with no failures or skips: 5
+  curated-default, 673 core, 56 chat-session, and 236 execution tests.
+- Final real-app reactor: 12 smoke-support tests and 117 copied-app tests.
+- Clean packaged app build: 117 copied-app tests. Its nested core and
+  execution JAR hashes matched the locally verified Maven artifacts.
 - Original Account Resolver: 49 app tests and 12 smoke-support tests.
 - Manifest contract, compiler, registry, schema adapter, typed client,
   published example, metrics, and receipt-hash migration tests.
@@ -156,6 +199,10 @@ There is no success fallback. Typed failures cover:
   rejection, hostile instruction, malformed/extra parameters, idempotent
   replay, cross-session isolation, and a genuine support-credit proposal
   routed into durable human review.
+- Packaged real OpenAI delegation: current-account and account-credit requests
+  selected the two declared target families, each child succeeded with safe
+  policy evidence, exact replay preserved all invocation identities, changed
+  work conflicted, and an unsupported request completed without a child.
 - Invalid provider: visible `INTENT_PROVIDER_FAILED`, no receipt, and no native
   provider message or key in the public result or packaged logs.
 - Privacy: synthetic address input and provider keys were absent from packaged
