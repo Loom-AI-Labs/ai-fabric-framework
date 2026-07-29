@@ -447,11 +447,17 @@ public class IntentHandlingStep implements PipelineStep {
         validation = suppressConfirmationGateParameter(validation, requiresConfirmation);
         List<String> missingRequired = validation != null ? validation.missingRequired() : List.of();
         if (!missingRequired.isEmpty()) {
+            List<String> userMissingRequired = publicMissingRequiredParameters(
+                meta,
+                missingRequired
+            );
             if (context.hasConversation() && actionDraftStore != null) {
-                String missingSummary = String.join(", ", missingRequired);
+                String missingSummary = userMissingRequired.isEmpty()
+                    ? "trusted application context"
+                    : String.join(", ", userMissingRequired);
                 ActionDraft draft = new ActionDraft(
                     actionName,
-                    Collections.unmodifiableMap(new LinkedHashMap<>(effectiveParams)),
+                    publicProvidedParameters(meta, effectiveParams),
                     missingSummary,
                     Instant.now(),
                     Instant.now()
@@ -461,7 +467,6 @@ public class IntentHandlingStep implements PipelineStep {
 
             Map<String, Object> data = new LinkedHashMap<>();
             data.put(DATA_KEY_ACTION, actionName);
-            List<String> userMissingRequired = publicMissingRequiredParameters(meta, missingRequired);
             data.put(DATA_KEY_MISSING_REQUIRED_PARAMETERS, List.copyOf(userMissingRequired));
             data.put(DATA_KEY_PROVIDED_PARAMETERS, publicProvidedParameters(meta, effectiveParams));
 
@@ -500,7 +505,7 @@ public class IntentHandlingStep implements PipelineStep {
                 String missingSummary = String.join(", ", executableValidation.publicMissing());
                 ActionDraft draft = new ActionDraft(
                     actionName,
-                    Collections.unmodifiableMap(new LinkedHashMap<>(effectiveParams)),
+                    publicProvidedParameters(meta, effectiveParams),
                     StringUtils.hasText(missingSummary) ? missingSummary : "trusted action target",
                     Instant.now(),
                     Instant.now()

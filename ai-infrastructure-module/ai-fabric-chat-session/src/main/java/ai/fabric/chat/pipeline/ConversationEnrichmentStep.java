@@ -4,8 +4,6 @@ import ai.fabric.chat.config.ChatSessionProperties;
 import ai.fabric.chat.exception.ChatSessionAccessDeniedException;
 import ai.fabric.chat.service.ChatSessionService;
 import ai.fabric.dto.AIChatMessage;
-import ai.fabric.intent.action.PendingActionStore;
-import ai.fabric.intent.actiondraft.ActionDraftStore;
 import ai.fabric.intent.orchestration.OrchestrationContextMetadataKeys;
 import ai.fabric.intent.orchestration.OrchestrationResult;
 import ai.fabric.intent.orchestration.pipeline.PipelineContext;
@@ -45,8 +43,6 @@ public class ConversationEnrichmentStep implements PipelineStep {
 
     private final ChatSessionService chatSessionService;
     private final ChatSessionProperties properties;
-    private final PendingActionStore pendingActionStore;
-    private final ActionDraftStore actionDraftStore;
 
     @Override
     public String getStepName() {

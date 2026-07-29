@@ -39,7 +39,10 @@ public class CompoundIntentExtractionStrategy implements IntentExtractionStrateg
         String query = input != null ? input.userQuery() : null;
         String currentUserMessage = input != null ? input.currentUserMessage() : null;
 
-        String systemPrompt = enrichedPromptBuilder.buildSystemPrompt(context);
+        String systemPrompt = IntentExtractionSystemContextSupport.append(
+            enrichedPromptBuilder.buildSystemPrompt(context),
+            input
+        );
         String userPrompt = enrichedPromptBuilder.buildUserPrompt(currentUserMessage);
 
         AIGenerationRequest request = AIGenerationRequest.builder()

@@ -95,6 +95,10 @@ public class CompletionIntentExtractionStrategy {
         String systemPrompt = enrichedPromptBuilder.buildSystemPrompt(safeContext)
             + "\n\n"
             + promptTemplateResolver.resolve(TEMPLATE_FAMILY, TEMPLATE_SYSTEM_ADDON).template();
+        systemPrompt = IntentExtractionSystemContextSupport.append(
+            systemPrompt,
+            input
+        );
 
         String allowedActions = buildAllowedActionsSpec(safeContext);
         String issuesPayload = formatIssues(errorIssues);

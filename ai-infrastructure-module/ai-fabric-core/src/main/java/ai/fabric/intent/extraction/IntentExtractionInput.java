@@ -11,17 +11,38 @@ import java.util.List;
  * Typed input for intent extraction.
  *
  * <p>Separates the user's actual query (used for validation/post-processing and RAG) from the
- * current user message sent to the LLM (which may include bounded pinned-target context).</p>
+ * current user message sent to the LLM (which may include bounded pinned-target context).
+ * Trusted runtime instructions are carried separately so server-owned control context is never
+ * presented as user-authored text.</p>
  */
 public record IntentExtractionInput(
     String userQuery,
     String currentUserMessage,
     List<AIChatMessage> historyMessages,
-    AIAccessSubjectContext resolvedAuthContext
+    AIAccessSubjectContext resolvedAuthContext,
+    String trustedSystemContext
 ) {
 
     public IntentExtractionInput {
         historyMessages = historyMessages != null ? List.copyOf(historyMessages) : List.of();
+        trustedSystemContext = hasText(trustedSystemContext)
+            ? trustedSystemContext.trim()
+            : null;
+    }
+
+    public IntentExtractionInput(
+        String userQuery,
+        String currentUserMessage,
+        List<AIChatMessage> historyMessages,
+        AIAccessSubjectContext resolvedAuthContext
+    ) {
+        this(
+            userQuery,
+            currentUserMessage,
+            historyMessages,
+            resolvedAuthContext,
+            null
+        );
     }
 
     public IntentExtractionInput(
@@ -29,7 +50,7 @@ public record IntentExtractionInput(
         String currentUserMessage,
         List<AIChatMessage> historyMessages
     ) {
-        this(userQuery, currentUserMessage, historyMessages, null);
+        this(userQuery, currentUserMessage, historyMessages, null, null);
     }
 
     public AIAccessSubjectContext authContext(OrchestrationContext context) {

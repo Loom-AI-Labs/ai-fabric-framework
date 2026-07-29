@@ -211,7 +211,7 @@ public class MultiStepIntentExtractionStrategy implements IntentExtractionStrate
             .entityId("intent-" + UUID.randomUUID())
             .entityType(ENTITY_TYPE)
             .generationType(GENERATION_TYPE + "_classify")
-            .systemPrompt(buildSystemPrompt(context))
+            .systemPrompt(buildSystemPrompt(context, input))
             .prompt(prompt)
             .messages(input != null ? input.historyMessages() : List.of())
             .parameters(jsonSupport.jsonOnlyResponseParameters())
@@ -312,7 +312,7 @@ public class MultiStepIntentExtractionStrategy implements IntentExtractionStrate
             .entityId("intent-" + UUID.randomUUID())
             .entityType(ENTITY_TYPE)
             .generationType(GENERATION_TYPE + "_select_actions")
-            .systemPrompt(buildSystemPrompt(context))
+            .systemPrompt(buildSystemPrompt(context, input))
             .prompt(prompt)
             .messages(input != null ? input.historyMessages() : List.of())
             .parameters(jsonSupport.jsonOnlyResponseParameters())
@@ -485,7 +485,7 @@ public class MultiStepIntentExtractionStrategy implements IntentExtractionStrate
             .entityId("intent-" + UUID.randomUUID())
             .entityType(ENTITY_TYPE)
             .generationType(GENERATION_TYPE + "_fill_params")
-            .systemPrompt(buildSystemPrompt(context))
+            .systemPrompt(buildSystemPrompt(context, input))
             .prompt(prompt)
             .messages(input != null ? input.historyMessages() : List.of())
             .parameters(jsonSupport.jsonOnlyResponseParameters())
@@ -602,7 +602,10 @@ public class MultiStepIntentExtractionStrategy implements IntentExtractionStrate
         return models.isEmpty() ? null : String.join(", ", models);
     }
 
-    private String buildSystemPrompt(OrchestrationContext context) {
+    private String buildSystemPrompt(
+        OrchestrationContext context,
+        IntentExtractionInput input
+    ) {
         String base = renderTemplate(TEMPLATE_SYSTEM, Map.of());
         String addon = OrchestrationPolicyPromptConstraints.buildSystemAddon(
             context != null ? context.getOrchestrationPolicy() : null
@@ -612,9 +615,12 @@ public class MultiStepIntentExtractionStrategy implements IntentExtractionStrate
             prompt = (StringUtils.hasText(base) ? base.trim() + "\n\n" : "")
                 + addon;
         }
-        return SpecialistPromptInstructionSupport.appendToSystemPrompt(
-            prompt,
-            context
+        return IntentExtractionSystemContextSupport.append(
+            SpecialistPromptInstructionSupport.appendToSystemPrompt(
+                prompt,
+                context
+            ),
+            input
         );
     }
 

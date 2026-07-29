@@ -153,6 +153,61 @@ class IntentQueryExtractorTest {
     }
 
     @Test
+    void keepsTrustedRuntimeContextInTheSystemPrompt() {
+        when(enrichedPromptBuilder.buildSystemPrompt(
+            any(OrchestrationContext.class)
+        )).thenReturn("base-system-prompt");
+        when(enrichedPromptBuilder.buildUserPrompt(
+            "Can I place an order?"
+        )).thenReturn("Can I place an order?");
+        when(aiCoreService.generateContent(
+            any(AIGenerationRequest.class),
+            any(LlmPurpose.class)
+        )).thenReturn(AIGenerationResponse.builder().content("""
+            {
+              "intents": [{
+                "type": "INFORMATION",
+                "intent": "account_readiness",
+                "confidence": 0.95,
+                "requiresRetrieval": true,
+                "requiresGeneration": true
+              }]
+            }
+            """).build());
+        IntentQueryExtractor extractor = new IntentQueryExtractor(
+            aiCoreService,
+            enrichedPromptBuilder,
+            actionHandlerRegistry,
+            objectMapper,
+            promptTemplateResolver(),
+            new PromptRenderer()
+        );
+
+        extractor.extract(
+            new IntentExtractionInput(
+                "Can I place an order?",
+                "Can I place an order?",
+                List.of(),
+                null,
+                "INCOMPLETE ACTION DRAFT CONTEXT:\n- action=update_address"
+            ),
+            OrchestrationContext.forUser("user-runtime-context")
+        );
+
+        ArgumentCaptor<AIGenerationRequest> request =
+            ArgumentCaptor.forClass(AIGenerationRequest.class);
+        verify(aiCoreService).generateContent(
+            request.capture(),
+            eq(LlmPurpose.ORCHESTRATION)
+        );
+        assertThat(request.getValue().getSystemPrompt())
+            .contains("TRUSTED RUNTIME INTENT-EXTRACTION CONTEXT")
+            .contains("action=update_address");
+        assertThat(request.getValue().getPrompt())
+            .doesNotContain("INCOMPLETE ACTION DRAFT CONTEXT");
+    }
+
+    @Test
     void shouldParseWrappedJsonWithoutRepairCall() {
         when(enrichedPromptBuilder.buildSystemPrompt(any(OrchestrationContext.class))).thenReturn("system-prompt");
 

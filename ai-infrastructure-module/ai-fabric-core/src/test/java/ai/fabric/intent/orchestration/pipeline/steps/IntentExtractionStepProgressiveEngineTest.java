@@ -190,6 +190,51 @@ class IntentExtractionStepProgressiveEngineTest {
     }
 
     @Test
+    void shouldUseResolvedActionDraftIntentWithoutGeneralExtraction() {
+        IntentQueryExtractor extractor = mock(IntentQueryExtractor.class);
+        ProgressiveIntentExtractionEngine engine =
+            mock(ProgressiveIntentExtractionEngine.class);
+        @SuppressWarnings("unchecked")
+        ObjectProvider<ProgressiveIntentExtractionEngine> provider =
+            mock(ObjectProvider.class);
+        when(provider.getIfAvailable()).thenReturn(engine);
+        MultiIntentResponse response = MultiIntentResponse.builder()
+            .intents(List.of(Intent.builder()
+                .type(IntentType.ACTION)
+                .action("update_address")
+                .actionParams(Map.of("state", "Bristol"))
+                .build()))
+            .build();
+        PipelineContext context = PipelineContext.from(
+            "The state is Bristol.",
+            OrchestrationContext.forUser("user-1")
+        ).toBuilder()
+            .actionDraftIntentResponse(response)
+            .build();
+
+        PipelineContext updated =
+            new IntentExtractionStep(extractor, provider).process(context);
+
+        assertThat(updated.getIntentResponse()).isSameAs(response);
+        assertThat(updated.getMetadata()).containsEntry(
+            "extractionDiagnostics",
+            Map.of(
+                "extractionPath", "action_draft_continuation",
+                "extractionAttempts", 1,
+                "llmCalls", 1
+            )
+        );
+        verify(engine, never()).extract(
+            any(IntentExtractionInput.class),
+            any(OrchestrationContext.class)
+        );
+        verify(extractor, never()).extractWithTrace(
+            any(IntentExtractionInput.class),
+            any(OrchestrationContext.class)
+        );
+    }
+
+    @Test
     void shouldAttachSinglePassDiagnosticsWhenProgressiveEngineUnavailable() {
         IntentQueryExtractor extractor = mock(IntentQueryExtractor.class);
 

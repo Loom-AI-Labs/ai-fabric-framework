@@ -126,28 +126,47 @@ public class IntentExtractionStep implements PipelineStep {
                 )
                 : OrchestrationAuthContextResolver.from(
                     context.getOrchestrationContext()
-                )
+                ),
+            context.getIntentExtractionSystemInstructions()
         );
 
         ProgressiveIntentExtractionEngine engine = progressiveEngineProvider != null
             ? progressiveEngineProvider.getIfAvailable()
             : null;
 
-        MultiIntentResponse intentResponse;
+        MultiIntentResponse intentResponse =
+            context.getActionDraftIntentResponse();
         ProgressiveIntentExtractionEngine.ExtractionFailure extractionFailure =
             null;
         PipelineContext updatedContext = context.withMetadata(
             "llmPrompting",
             Map.of(
-                "standard", "MULTI_MESSAGE",
+                "standard", intentResponse != null
+                    ? "ACTION_DRAFT_CONTINUATION"
+                    : "MULTI_MESSAGE",
                 "historyMessagesCount", input.historyMessages() != null ? input.historyMessages().size() : 0,
                 "currentUserMessageChars", currentUserMessage != null ? currentUserMessage.length() : 0,
-                "pinnedTargetsContextChars", context.getPinnedTargetsContext() != null ? context.getPinnedTargetsContext().length() : 0
+                "pinnedTargetsContextChars", context.getPinnedTargetsContext() != null ? context.getPinnedTargetsContext().length() : 0,
+                "trustedSystemContextChars", input.trustedSystemContext() != null
+                    ? input.trustedSystemContext().length()
+                    : 0
             )
         );
 
         try {
-            if (engine != null) {
+            if (intentResponse != null) {
+                updatedContext = updatedContext.withMetadata(
+                    EXTRACTION_DIAGNOSTICS_KEY,
+                    Map.of(
+                        "extractionPath",
+                        "action_draft_continuation",
+                        "extractionAttempts",
+                        1,
+                        "llmCalls",
+                        1
+                    )
+                );
+            } else if (engine != null) {
                 ProgressiveIntentExtractionEngine.ExtractionOutput output = engine.extract(
                     input,
                     context.getOrchestrationContext()
@@ -213,6 +232,33 @@ public class IntentExtractionStep implements PipelineStep {
                 Map.of("message", ERROR_MSG_NO_INTENT, "fallback", true)
             );
             intentResponse = fallbackIntentResponse(ERROR_MSG_NO_INTENT);
+        }
+
+        ActionDraftContinuationSupport.MergeOutcome draftMerge =
+            ActionDraftContinuationSupport.merge(
+                intentResponse,
+                context.getActionDraftContinuation()
+            );
+        intentResponse = draftMerge.response();
+        if (context.getActionDraftContinuation() != null) {
+            Map<String, Object> draftDiagnostics = new LinkedHashMap<>();
+            draftDiagnostics.put(
+                "action",
+                context.getActionDraftContinuation().action()
+            );
+            draftDiagnostics.put("matched", draftMerge.matched());
+            draftDiagnostics.put(
+                "preservedParameterNames",
+                draftMerge.preservedParameterNames()
+            );
+            draftDiagnostics.put(
+                "suppliedParameterNames",
+                draftMerge.suppliedParameterNames()
+            );
+            updatedContext = updatedContext.withMetadata(
+                "actionDraftContinuation",
+                Map.copyOf(draftDiagnostics)
+            );
         }
         
         int intentCount = intentResponse.getIntents().size();

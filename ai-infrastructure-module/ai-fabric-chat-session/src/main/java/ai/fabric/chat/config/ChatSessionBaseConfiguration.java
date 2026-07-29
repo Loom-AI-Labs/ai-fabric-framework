@@ -62,10 +62,8 @@ class ChatSessionBaseConfiguration {
     @Bean
     @ConditionalOnBean(ChatSessionService.class)
     ConversationEnrichmentStep conversationEnrichmentStep(ChatSessionService chatSessionService,
-                                                          ChatSessionProperties properties,
-                                                          PendingActionStore pendingActionStore,
-                                                          ActionDraftStore actionDraftStore) {
-        return new ConversationEnrichmentStep(chatSessionService, properties, pendingActionStore, actionDraftStore);
+                                                          ChatSessionProperties properties) {
+        return new ConversationEnrichmentStep(chatSessionService, properties);
     }
 
     @Bean

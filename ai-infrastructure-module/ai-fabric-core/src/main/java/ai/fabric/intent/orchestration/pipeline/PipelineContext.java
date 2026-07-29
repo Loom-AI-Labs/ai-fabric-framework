@@ -4,16 +4,19 @@ import ai.fabric.dto.MultiIntentResponse;
 import ai.fabric.dto.AIChatMessage;
 import ai.fabric.execution.context.ExecutionSubjectRef;
 import ai.fabric.execution.context.TrustedExecutionContext;
+import ai.fabric.intent.actiondraft.ActionDraftContinuation;
 import ai.fabric.intent.orchestration.policy.OrchestrationPolicy;
 import ai.fabric.intent.orchestration.capability.EffectiveCapabilityProfile;
 import ai.fabric.intent.orchestration.OrchestrationContext;
 import ai.fabric.intent.orchestration.OrchestrationResult;
 import ai.fabric.intent.orchestration.request.OrchestrationRequest;
 import ai.fabric.intent.orchestration.targets.ResolvedTarget;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import lombok.Builder;
 import lombok.Data;
+import lombok.ToString;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -166,6 +169,36 @@ public class PipelineContext {
      */
     @Builder.Default
     private final List<AIChatMessage> historyMessages = new ArrayList<>();
+
+    /**
+     * User-safe state for an incomplete action awaiting additional parameters.
+     *
+     * <p>This internal value may contain user-provided data. It must not be
+     * serialized or included in diagnostic string output.</p>
+     */
+    @JsonIgnore
+    @ToString.Exclude
+    private final transient ActionDraftContinuation actionDraftContinuation;
+
+    /**
+     * LLM-resolved intent for a turn that semantically continues an incomplete action.
+     *
+     * <p>This may contain user-provided parameter values and therefore must remain
+     * internal to the pipeline.</p>
+     */
+    @JsonIgnore
+    @ToString.Exclude
+    private final transient MultiIntentResponse actionDraftIntentResponse;
+
+    /**
+     * Trusted, request-scoped instructions used only by intent extraction.
+     *
+     * <p>This value is assembled by server-side pipeline steps. It must not be
+     * serialized, logged through {@code toString()}, or treated as user input.</p>
+     */
+    @JsonIgnore
+    @ToString.Exclude
+    private final transient String intentExtractionSystemInstructions;
 
     /**
      * Rendered pinned targets context (attachments / selected UI cards) to be injected into the

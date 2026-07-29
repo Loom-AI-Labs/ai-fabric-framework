@@ -10,8 +10,6 @@ import ai.fabric.execution.context.TrustedExecutionContext;
 import ai.fabric.intent.orchestration.targets.ResolvedTargetSource;
 import ai.fabric.chat.exception.ChatSessionAccessDeniedException;
 import ai.fabric.chat.service.ChatSessionService;
-import ai.fabric.intent.action.PendingActionStore;
-import ai.fabric.intent.actiondraft.ActionDraftStore;
 import ai.fabric.intent.orchestration.OrchestrationContext;
 import ai.fabric.intent.orchestration.OrchestrationContextMetadataKeys;
 import ai.fabric.intent.orchestration.OrchestrationResultType;
@@ -22,7 +20,6 @@ import ai.fabric.dto.AIChatMessage;
 import org.junit.jupiter.api.Test;
 
 import java.util.Map;
-import java.util.Optional;
 import java.util.List;
 import java.util.Set;
 
@@ -42,11 +39,6 @@ class ConversationEnrichmentStepTest {
             AIChatMessage.user("hi"),
             AIChatMessage.assistant("hello")
         ));
-        PendingActionStore pendingActionStore = mock(PendingActionStore.class);
-        when(pendingActionStore.peekPendingAction(anyString(), anyString())).thenReturn(Optional.empty());
-        ActionDraftStore actionDraftStore = mock(ActionDraftStore.class);
-        when(actionDraftStore.peekDraft(anyString(), anyString())).thenReturn(Optional.empty());
-
         ChatSessionProperties properties = new ChatSessionProperties();
         properties.setEnabled(true);
         properties.setWindowSize(5);
@@ -54,9 +46,7 @@ class ConversationEnrichmentStepTest {
 
         ConversationEnrichmentStep step = new ConversationEnrichmentStep(
             service,
-            properties,
-            pendingActionStore,
-            actionDraftStore
+            properties
         );
 
         OrchestrationContext orchestrationContext = OrchestrationContext.builder()
@@ -80,17 +70,12 @@ class ConversationEnrichmentStepTest {
     @Test
     void shouldNotLoadHistoryForNeverPersistQuery() {
         ChatSessionService service = mock(ChatSessionService.class);
-        PendingActionStore pendingActionStore = mock(PendingActionStore.class);
-        ActionDraftStore actionDraftStore = mock(ActionDraftStore.class);
-
         ChatSessionProperties properties = new ChatSessionProperties();
         properties.setEnabled(true);
 
         ConversationEnrichmentStep step = new ConversationEnrichmentStep(
             service,
-            properties,
-            pendingActionStore,
-            actionDraftStore
+            properties
         );
 
         OrchestrationContext orchestrationContext = OrchestrationContext.builder()
@@ -105,21 +90,17 @@ class ConversationEnrichmentStepTest {
         assertThat(updated).isSameAs(context);
         assertThat(updated.getHistoryMessages()).isEmpty();
         assertThat(updated.getMetadata()).doesNotContainKey("chat");
-        verifyNoInteractions(service, pendingActionStore, actionDraftStore);
+        verifyNoInteractions(service);
     }
 
     @Test
     void shouldPreferTypedNeverPersistencePolicy() {
         ChatSessionService service = mock(ChatSessionService.class);
-        PendingActionStore pendingActionStore = mock(PendingActionStore.class);
-        ActionDraftStore actionDraftStore = mock(ActionDraftStore.class);
         ChatSessionProperties properties = new ChatSessionProperties();
         properties.setEnabled(true);
         ConversationEnrichmentStep step = new ConversationEnrichmentStep(
             service,
-            properties,
-            pendingActionStore,
-            actionDraftStore
+            properties
         );
         OrchestrationContext orchestrationContext = OrchestrationContext.builder()
             .userId("user-1")
@@ -136,7 +117,7 @@ class ConversationEnrichmentStepTest {
 
         assertThat(updated).isSameAs(context);
         assertThat(updated.getHistoryMessages()).isEmpty();
-        verifyNoInteractions(service, pendingActionStore, actionDraftStore);
+        verifyNoInteractions(service);
     }
 
     @Test
@@ -147,19 +128,11 @@ class ConversationEnrichmentStepTest {
                 AIChatMessage.user("Why am I blocked?"),
                 AIChatMessage.assistant("{\"assessment\":\"BLOCKED\"}")
             ));
-        PendingActionStore pendingActionStore = mock(PendingActionStore.class);
-        when(pendingActionStore.peekPendingAction(anyString(), anyString()))
-            .thenReturn(Optional.empty());
-        ActionDraftStore actionDraftStore = mock(ActionDraftStore.class);
-        when(actionDraftStore.peekDraft(anyString(), anyString()))
-            .thenReturn(Optional.empty());
         ChatSessionProperties properties = new ChatSessionProperties();
         properties.setEnabled(true);
         ConversationEnrichmentStep step = new ConversationEnrichmentStep(
             service,
-            properties,
-            pendingActionStore,
-            actionDraftStore
+            properties
         );
         OrchestrationContext orchestrationContext = OrchestrationContext.builder()
             .userId("user-1")
@@ -187,19 +160,11 @@ class ConversationEnrichmentStepTest {
         ChatSessionService service = mock(ChatSessionService.class);
         when(service.getConversationMessages("conversation-1", "support-agent-7"))
             .thenReturn(List.of());
-        PendingActionStore pendingActionStore = mock(PendingActionStore.class);
-        when(pendingActionStore.peekPendingAction(anyString(), anyString()))
-            .thenReturn(Optional.empty());
-        ActionDraftStore actionDraftStore = mock(ActionDraftStore.class);
-        when(actionDraftStore.peekDraft(anyString(), anyString()))
-            .thenReturn(Optional.empty());
         ChatSessionProperties properties = new ChatSessionProperties();
         properties.setEnabled(true);
         ConversationEnrichmentStep step = new ConversationEnrichmentStep(
             service,
-            properties,
-            pendingActionStore,
-            actionDraftStore
+            properties
         );
         TrustedExecutionContext trustedContext = new TrustedExecutionContext(
             new ExecutionPrincipal(
@@ -238,19 +203,12 @@ class ConversationEnrichmentStepTest {
     void shouldTerminateWhenAccessDenied() {
         ChatSessionService service = mock(ChatSessionService.class);
         when(service.getConversationMessages(anyString(), anyString())).thenThrow(new ChatSessionAccessDeniedException("denied"));
-        PendingActionStore pendingActionStore = mock(PendingActionStore.class);
-        when(pendingActionStore.peekPendingAction(anyString(), anyString())).thenReturn(Optional.empty());
-        ActionDraftStore actionDraftStore = mock(ActionDraftStore.class);
-        when(actionDraftStore.peekDraft(anyString(), anyString())).thenReturn(Optional.empty());
-
         ChatSessionProperties properties = new ChatSessionProperties();
         properties.setEnabled(true);
 
         ConversationEnrichmentStep step = new ConversationEnrichmentStep(
             service,
-            properties,
-            pendingActionStore,
-            actionDraftStore
+            properties
         );
 
         OrchestrationContext orchestrationContext = OrchestrationContext.builder()
@@ -297,20 +255,13 @@ class ConversationEnrichmentStepTest {
 
         when(service.getSession(anyString(), anyString())).thenReturn(session);
 
-        PendingActionStore pendingActionStore = mock(PendingActionStore.class);
-        when(pendingActionStore.peekPendingAction(anyString(), anyString())).thenReturn(Optional.empty());
-        ActionDraftStore actionDraftStore = mock(ActionDraftStore.class);
-        when(actionDraftStore.peekDraft(anyString(), anyString())).thenReturn(Optional.empty());
-
         ChatSessionProperties properties = new ChatSessionProperties();
         properties.setEnabled(true);
         properties.setPinnedTargetReuseWindowTurns(3);
 
         ConversationEnrichmentStep step = new ConversationEnrichmentStep(
             service,
-            properties,
-            pendingActionStore,
-            actionDraftStore
+            properties
         );
 
         OrchestrationContext orchestrationContext = OrchestrationContext.builder()

@@ -9,6 +9,7 @@ import ai.fabric.dto.IntentType;
 import ai.fabric.dto.MultiIntentResponse;
 import ai.fabric.exception.AIServiceException;
 import ai.fabric.intent.extraction.IntentExtractionInput;
+import ai.fabric.intent.extraction.IntentExtractionSystemContextSupport;
 import ai.fabric.intent.action.AIActionRegistry;
 import ai.fabric.intent.orchestration.OrchestrationContext;
 import ai.fabric.prompt.PromptRenderer;
@@ -95,7 +96,10 @@ public class IntentQueryExtractor {
         OrchestrationContext safeContext = context != null ? context : OrchestrationContext.anonymous();
         input.validateIdentity(safeContext);
 
-        String systemPrompt = enrichedPromptBuilder.buildSystemPrompt(safeContext);
+        String systemPrompt = IntentExtractionSystemContextSupport.append(
+            enrichedPromptBuilder.buildSystemPrompt(safeContext),
+            input
+        );
 
         String userPrompt = enrichedPromptBuilder.buildUserPrompt(StringUtils.hasText(currentUserMessage) ? currentUserMessage : userQuery);
 

@@ -116,6 +116,62 @@ class MultiStepIntentExtractionStrategyTest {
     }
 
     @Test
+    void shouldKeepTrustedRuntimeContextInSystemPromptOnly() {
+        when(validator.validate(any())).thenReturn(
+            new IntentExtractionValidator.ValidationResult(
+                true,
+                IntentExtractionValidator.ErrorCategory.NONE,
+                List.of(),
+                List.of()
+            )
+        );
+        when(aiCoreService.generateContent(
+            any(AIGenerationRequest.class),
+            eq(LlmPurpose.ORCHESTRATION)
+        )).thenReturn(
+            AIGenerationResponse.builder()
+                .content(classificationInformationOnly())
+                .build()
+        );
+        MultiStepIntentExtractionStrategy strategy =
+            new MultiStepIntentExtractionStrategy(
+                aiCoreService,
+                actionHandlerRegistry,
+                jsonSupport,
+                validator,
+                promptRenderer,
+                promptTemplateResolver
+            );
+        IntentExtractionInput extractionInput = new IntentExtractionInput(
+            "What plan am I on?",
+            "What plan am I on?",
+            List.of(),
+            null,
+            "INCOMPLETE ACTION DRAFT CONTEXT:\n- action=update_address"
+        );
+
+        strategy.attemptExtract(
+            extractionInput,
+            OrchestrationContext.forUser("user-system-context")
+        );
+
+        ArgumentCaptor<AIGenerationRequest> requestCaptor =
+            ArgumentCaptor.forClass(AIGenerationRequest.class);
+        verify(aiCoreService).generateContent(
+            requestCaptor.capture(),
+            eq(LlmPurpose.ORCHESTRATION)
+        );
+        AIGenerationRequest request = requestCaptor.getValue();
+        assertThat(request.getSystemPrompt())
+            .contains("TRUSTED RUNTIME INTENT-EXTRACTION CONTEXT")
+            .contains("INCOMPLETE ACTION DRAFT CONTEXT")
+            .contains("action=update_address");
+        assertThat(request.getPrompt())
+            .contains("What plan am I on?")
+            .doesNotContain("INCOMPLETE ACTION DRAFT CONTEXT");
+    }
+
+    @Test
     void shouldCountActionSelectionCallWhenProviderThrows() {
         when(actionHandlerRegistry.getAllMetadata()).thenReturn(List.of(AIActionMetaData.builder().name("cancel_subscription").build()));
 
