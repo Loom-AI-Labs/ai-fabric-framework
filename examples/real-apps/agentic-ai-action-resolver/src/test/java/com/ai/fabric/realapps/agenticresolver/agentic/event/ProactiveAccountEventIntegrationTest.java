@@ -3,6 +3,7 @@ package com.ai.fabric.realapps.agenticresolver.agentic.event;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import ai.fabric.execution.gateway.AIExecutionStatus;
+import ai.fabric.execution.gateway.ExecutionDurability;
 import ai.fabric.execution.gateway.ExecutionHandleStatus;
 import ai.fabric.execution.specialist.client.SpecialistExecutionSnapshot;
 import com.ai.fabric.realapps.agenticresolver.agentic.AccountResolutionResult;
@@ -85,6 +86,8 @@ class ProactiveAccountEventIntegrationTest {
 
             assertThat(replay.execution().invocationId())
                 .isEqualTo(first.execution().invocationId());
+            assertThat(first.execution().durability())
+                .isEqualTo(ExecutionDurability.DURABLE);
 
             ProactiveEventSubmission conflict = eventService.submit(
                 owner.sessionId(),

@@ -1,19 +1,17 @@
 package com.ai.fabric.realapps.agenticresolver.service;
 
-import ai.fabric.execution.gateway.AIExecutionGateway;
 import ai.fabric.execution.action.ActionProposalReceiptRepository;
 import ai.fabric.execution.config.AIExecutionProperties;
+import ai.fabric.execution.gateway.AIExecutionGateway;
+import ai.fabric.execution.gateway.ExecutionDurability;
 import ai.fabric.execution.plan.AIExecutionCoordinator;
 import ai.fabric.execution.plan.ExecutionPlanRegistry;
 import ai.fabric.execution.specialist.RegisteredSpecialist;
 import ai.fabric.execution.specialist.SpecialistRegistry;
 import ai.fabric.execution.specialist.manifest.SpecialistManifestRuntimeStatus;
+import ai.fabric.execution.state.DurableExecutionRepository;
 import ai.fabric.provider.AIProvider;
 import com.ai.fabric.realapps.agenticresolver.agentic.AccountResolverSpecialists;
-import org.springframework.core.env.Environment;
-import org.springframework.stereotype.Service;
-import org.springframework.util.StringUtils;
-
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
@@ -23,7 +21,11 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Properties;
+import org.springframework.core.env.Environment;
+import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 
 @Service
 public class DeploymentInfoService {
@@ -42,6 +44,7 @@ public class DeploymentInfoService {
     private final ExecutionPlanRegistry executionPlanRegistry;
     private final SpecialistRegistry specialistRegistry;
     private final ActionProposalReceiptRepository receiptRepository;
+    private final DurableExecutionRepository durableExecutionRepository;
     private final AIExecutionProperties executionProperties;
     private final SpecialistManifestRuntimeStatus manifestRuntimeStatus;
 
@@ -53,6 +56,7 @@ public class DeploymentInfoService {
         ExecutionPlanRegistry executionPlanRegistry,
         SpecialistRegistry specialistRegistry,
         ActionProposalReceiptRepository receiptRepository,
+        Optional<DurableExecutionRepository> durableExecutionRepository,
         AIExecutionProperties executionProperties,
         SpecialistManifestRuntimeStatus manifestRuntimeStatus
     ) {
@@ -66,6 +70,8 @@ public class DeploymentInfoService {
         this.executionPlanRegistry = executionPlanRegistry;
         this.specialistRegistry = specialistRegistry;
         this.receiptRepository = receiptRepository;
+        this.durableExecutionRepository =
+            durableExecutionRepository.orElse(null);
         this.executionProperties = executionProperties;
         this.manifestRuntimeStatus = manifestRuntimeStatus;
     }
@@ -124,6 +130,12 @@ public class DeploymentInfoService {
                 .toList();
         AIExecutionProperties.Receipts receipts =
             executionProperties.getReceipts();
+        boolean durableAsync =
+            executionProperties.getAsync().getRepository()
+                == AIExecutionProperties.AsyncRepository.JDBC;
+        String asyncDurability = durableAsync
+            ? ExecutionDurability.DURABLE.name()
+            : ExecutionDurability.EPHEMERAL.name();
         Map<String, Object> execution = new LinkedHashMap<>();
         execution.put("ready", executionGateway != null);
         execution.put("planCoordinatorReady", executionCoordinator != null);
@@ -141,7 +153,11 @@ public class DeploymentInfoService {
                 ))
                 .toList()
         );
-        execution.put("asyncDurability", "EPHEMERAL");
+        execution.put("asyncDurability", asyncDurability);
+        execution.put(
+            "durableAsyncStateReady",
+            !durableAsync || durableExecutionRepository != null
+        );
         execution.put(
             "writeReceiptDurability",
             receipts.getRepository().name()
@@ -185,11 +201,11 @@ public class DeploymentInfoService {
             "ready",
                 executionGateway != null && specialists.contains(
                     AccountResolverSpecialists.READ_SPECIALIST_ID.toString()
-                ),
+                ) && (!durableAsync || durableExecutionRepository != null),
             "eventType", "PAYMENT_VERIFICATION_FAILED",
             "source", "EVENT",
             "principalType", "SERVICE",
-            "durability", "EPHEMERAL",
+            "durability", asyncDurability,
             "automaticMutation", false
         ));
         health.put("execution", Map.copyOf(execution));

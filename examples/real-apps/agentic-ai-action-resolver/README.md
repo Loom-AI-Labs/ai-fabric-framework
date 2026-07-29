@@ -67,7 +67,11 @@ the governed-action baseline.
   second specialist execution; changed facts under the same event ID fail as
   `IDEMPOTENCY_CONFLICT`.
 - Event execution is service-owned, `EVENT` sourced, read-only, and explicitly
-  `EPHEMERAL`.
+  `DURABLE`.
+- The validated request is encrypted and committed to JDBC before dispatch;
+  the typed result, access binding, and replay decision survive restart.
+- Expired worker leases can recover abandoned read-only work. This provides
+  one durable terminal record, not exactly-once provider invocation.
 - Server-created, database-backed session state binds the opaque browser
   session to the trusted principal, tenant, and current account subject.
 - `account-resolver@1` requests one Mode, one READ action, one WRITE proposal,
@@ -249,17 +253,23 @@ evidence. It cannot propose or execute `update_address`, mutate payment
 details, create a conversation, or choose a different specialist.
 
 The stable idempotency key is derived from the event contract version and
-event ID. While the process-local result is retained:
+event ID. The durable repository preserves these behaviors across restart:
 
 - an exact redelivery returns the same invocation ID;
 - changed facts under that event ID return a rejected handle with
   `IDEMPOTENCY_CONFLICT`; and
 - another session cannot inspect or cancel the invocation.
 
-The general asynchronous store is in memory. A restart loses queued, running,
-and retained event executions and their idempotency bindings. This is an
-at-least-once event-consumer proof, not a broker, durable job store, or
-exactly-once workflow claim.
+The validated request and typed result are encrypted at rest. JDBC query
+columns contain keyed access and idempotency fingerprints rather than raw
+principal, subject, tenant, or idempotency values. A worker owns a bounded
+lease; startup and scheduled recovery reclaim queued work and read-only work
+whose lease expired before a terminal result was committed.
+
+This remains an at-least-once read execution model. A crash during a provider
+call can cause the read-only analysis to run again after lease expiry, but the
+repository retains one invocation and one terminal result. AI Fabric does not
+own the event broker and does not claim exactly-once model invocation.
 
 ## Fixed Sequential Plans
 
@@ -575,8 +585,9 @@ The `execution` block reports the repository type, receipt TTL, stale
 execution threshold, cleanup policy, retention, specialist source/ID/version/
 hash, manifest runtime readiness and counts, registry content hash, and the
 proactive event source, service-principal type, no-automatic-mutation policy,
-and `EPHEMERAL` durability. It never exposes prompts, schemas, receipt
-secrets, or user data.
+and `DURABLE` durability. It also reports whether the JDBC async repository is
+ready. It never exposes prompts, schemas, encryption/fingerprint secrets, or
+user data.
 
 ## Run Locally
 
@@ -610,6 +621,8 @@ Real OpenAI:
 ```bash
 export AI_EXECUTION_RECEIPT_ENCRYPTION_SECRET="<stable-secret-of-at-least-32-characters>"
 export AI_EXECUTION_RECEIPT_FINGERPRINT_SECRET="<different-stable-secret-of-at-least-32-characters>"
+export AI_EXECUTION_ASYNC_ENCRYPTION_SECRET="<third-stable-secret-of-at-least-32-characters>"
+export AI_EXECUTION_ASYNC_FINGERPRINT_SECRET="<fourth-stable-secret-of-at-least-32-characters>"
 
 OPENAI_ENABLED=true \
 OPENAI_API_KEY="$OPENAI_API_KEY" \
@@ -619,7 +632,7 @@ java -jar \
   examples/real-apps/agentic-ai-action-resolver/target/agentic-ai-action-resolver-1.0.0-SNAPSHOT.jar
 ```
 
-Never commit provider or receipt secrets.
+Never commit provider, receipt, or durable-execution secrets.
 
 The default profile uses file-backed H2 for a self-contained local proof. The
 `prod` profile uses PostgreSQL. When selecting it, also provide:
@@ -670,9 +683,40 @@ action receipts. It checkpoints only the original typed input, validated step
 outputs, safe evidence references, status, timing, and access binding needed
 for same-process continuation.
 
-The same `ai.execution.async` bounds apply to proactive event submissions.
-Their handles, typed outcomes, and idempotency bindings use the configured
-`result-ttl`; they are not stored in the JDBC action-receipt table.
+## Durable Async Configuration
+
+The proactive event path uses the framework's separate durable read-job
+repository:
+
+```yaml
+ai:
+  execution:
+    async:
+      repository: JDBC
+      initialize-schema: true
+      lease-duration: PT2M
+      recovery-interval: PT30S
+      recovery-batch-size: 50
+      max-attempts: 3
+      cleanup-enabled: true
+      retention: P30D
+      encryption-secret: ${AI_EXECUTION_ASYNC_ENCRYPTION_SECRET}
+      fingerprint-secret: ${AI_EXECUTION_ASYNC_FINGERPRINT_SECRET}
+```
+
+`initialize-schema=true` is convenient for this self-contained demo.
+Production applications should set it to `false` and own the table through
+Flyway or Liquibase. Both async secrets must contain at least 32 characters,
+must differ, and must remain stable across restarts and replicas.
+
+The lease should cover a normal bounded specialist call. If a process crashes
+during a provider request, recovery may repeat that read-only request after
+lease expiry. Terminal provider, grounding, and validation failures are stored
+and are not automatically retried.
+
+This repository is separate from pending input waits, fixed-plan checkpoints,
+chat history, and governed action receipts. It stores only eligible
+service/system-owned, read-only terminal specialist jobs.
 
 ## Receipt Configuration
 
@@ -723,8 +767,9 @@ docker build \
 ```
 
 Run with durable local data. The volume holds application state, opaque demo
-session bindings, action receipts, chat sessions, and the local vector index.
-It deliberately does not make pending input waits durable:
+session bindings, action receipts, durable specialist jobs, chat sessions, and
+the local vector index. It deliberately does not make pending input waits or
+fixed-plan checkpoints durable:
 
 ```bash
 docker volume create agentic-resolver-data
@@ -737,6 +782,8 @@ docker run --rm -p 8105:8105 \
   -e OPENAI_MODEL=gpt-4o-mini \
   -e AI_EXECUTION_RECEIPT_ENCRYPTION_SECRET="$AI_EXECUTION_RECEIPT_ENCRYPTION_SECRET" \
   -e AI_EXECUTION_RECEIPT_FINGERPRINT_SECRET="$AI_EXECUTION_RECEIPT_FINGERPRINT_SECRET" \
+  -e AI_EXECUTION_ASYNC_ENCRYPTION_SECRET="$AI_EXECUTION_ASYNC_ENCRYPTION_SECRET" \
+  -e AI_EXECUTION_ASYNC_FINGERPRINT_SECRET="$AI_EXECUTION_ASYNC_FINGERPRINT_SECRET" \
   -e CORS_ALLOWED_ORIGINS=https://ai-fabric.dev \
   agentic-ai-action-resolver:source
 ```
@@ -757,10 +804,23 @@ For Coolify source deployment:
   failures remain visible as typed non-success results.
 - A proactive event never falls back to a fabricated assessment. Provider or
   grounding failure remains visible on its typed execution snapshot.
-- Identical retained event redelivery replays the original handle; changed
-  facts under the same event ID fail with `IDEMPOTENCY_CONFLICT`.
+- The durable request is committed before dispatch. Identical event
+  redelivery replays the original handle across restart; changed facts under
+  the same event ID fail with `IDEMPOTENCY_CONFLICT`.
 - Event status and cancellation require the same trusted execution binding,
   and a proactive read never mutates the account.
+- Queued jobs and lease-expired read jobs are recovered after restart.
+  Deadlines become terminal `EXPIRED`; exhausted attempts become terminal
+  `FAILED`.
+- A terminal provider failure is persisted and never automatically retried.
+  Definition-hash drift, protected-payload verification failure, and typed
+  payload incompatibility fail closed.
+- A crash during a provider call can repeat the read operation after lease
+  expiry. The terminal record is singular, but provider invocation is not
+  claimed as exactly once.
+- `WAITING_FOR_INPUT` and `CONFIRMATION_REQUIRED` are unsupported durable-job
+  outcomes in this release and fail visibly rather than creating fake durable
+  continuation state.
 - Missing specialist input returns `WAITING_FOR_INPUT`, not a generated guess,
   action confirmation, or fabricated fallback.
 - Invalid input responses are rejected against the pinned schema and remain
@@ -841,11 +901,13 @@ No verification command for this feature uses `-DskipTests`.
 - dynamic/model-authored planning, delegation, or handoff;
 - conditional, parallel, WRITE-capable, or durable plans;
 - event or scheduled write adapters;
-- framework-owned event-broker consumption or durable event execution;
+- framework-owned event-broker consumption or scheduler ownership;
+- durable WRITE-capable specialist jobs;
 - blind retries for unknown write outcomes;
-- durable async job execution;
 - durable or cross-process specialist input waits;
-- multi-question input collection or durable human review;
+- durable confirmation, composed-plan continuation, or human review;
+- exactly-once provider invocation;
+- multi-question input collection;
 - a public reconciliation endpoint;
 - vectorizing account PII.
 

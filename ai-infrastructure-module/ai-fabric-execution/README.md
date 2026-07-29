@@ -327,6 +327,7 @@ ai:
       allowed-actions:
         - get_account_profile
     async:
+      repository: IN_MEMORY
       core-pool-size: 2
       max-pool-size: 4
       queue-capacity: 32
@@ -344,7 +345,8 @@ model hints. A specialist cannot expand them.
 
 ## Submission Semantics
 
-`submit` is bounded and explicitly `EPHEMERAL`:
+With the default `ai.execution.async.repository=IN_MEMORY`, `submit` is
+bounded and explicitly `EPHEMERAL`:
 
 - work and results are held in memory;
 - queue capacity is bounded;
@@ -358,8 +360,54 @@ model hints. A specialist cannot expand them.
 - terminal results are retained for the configured TTL; and
 - restart loses queued, running, and retained executions.
 
-Do not describe P0/P1 submission as durable, resumable, exactly-once, or a
+Do not describe the default path as durable, resumable, exactly-once, or a
 workflow engine.
+
+### Durable Read-Only Jobs
+
+Set `repository: JDBC` to opt into durable terminal specialist jobs:
+
+```yaml
+ai:
+  execution:
+    async:
+      repository: JDBC
+      initialize-schema: false
+      lease-duration: PT2M
+      recovery-interval: PT30S
+      recovery-batch-size: 50
+      max-attempts: 3
+      cleanup-enabled: true
+      retention: P30D
+      encryption-secret: ${AI_EXECUTION_ASYNC_ENCRYPTION_SECRET}
+      fingerprint-secret: ${AI_EXECUTION_ASYNC_FINGERPRINT_SECRET}
+```
+
+This path persists the validated request before dispatch, encrypts request and
+typed-result payloads, pins the exact specialist content hash, and uses
+optimistic worker leases for startup and scheduled recovery. Scoped
+idempotency, status, cancellation, replay, and payload-conflict checks survive
+restart.
+
+The durable V1 boundary accepts only `APPLICATION`, `EVENT`, or `SCHEDULED`
+work owned by a `SERVICE` or `SYSTEM` principal, with an application-owned
+subject, no conversation, and a specialist with writes disabled. Durable jobs
+that produce `WAITING_FOR_INPUT` or `CONFIRMATION_REQUIRED` fail visibly.
+
+Applications own the datasource and production schema migration.
+`initialize-schema=true` is for local demos and tests. Encryption and
+fingerprint secrets must be different, stable values of at least 32
+characters.
+
+This is at-least-once read execution. A crash during a provider call can cause
+that read-only analysis to run again after lease expiry. AI Fabric retains one
+invocation and terminal record; it does not claim exactly-once provider calls,
+own an event broker, or make writes safe to retry.
+
+See
+[`DURABLE_READ_ONLY_SPECIALIST_JOBS.md`](../../docs/Framework-Dev-Guides/application-patterns/DURABLE_READ_ONLY_SPECIALIST_JOBS.md)
+for the production schema, operational semantics, rotation procedure, and
+verification gate.
 
 ## Evidence Boundary
 
@@ -399,16 +447,18 @@ for configuration, migrations, recovery, metrics, and rollback guidance.
 ## Current Boundary
 
 The implemented scope supports bounded single-specialist execution, optional
-confirmation-gated writes, and fixed sequential read-only plans. General
-execution submitted through `submit` and sequential plan checkpoints remain
-explicitly ephemeral; durable write receipts do not turn either path into a
-durable workflow engine.
+confirmation-gated writes, fixed sequential read-only plans, and opt-in
+durable terminal read-only jobs. Sequential-plan checkpoints, specialist
+input waits, and confirmation continuation remain explicitly ephemeral.
+Durable read jobs and durable write receipts are separate state machines and
+do not turn AI Fabric into an unrestricted workflow engine.
 
 The following remain deferred:
 
 - conditional, parallel, dynamic, or WRITE-capable plans;
 - delegation and model-selected specialist routing;
-- durable execution;
+- durable WRITE-capable specialist jobs, input waits, confirmations, or plans;
+- durable human review;
 - framework-owned scheduler or event-broker consumers; and
 - unrestricted model-selected specialist discovery.
 

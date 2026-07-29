@@ -21,6 +21,7 @@ checklists here.
 | [0004 - Typed specialist input wait and safe resume](./0004-typed-specialist-input-wait-and-safe-resume-implementation-plan.md) | Implemented and verified; not released | Typed `NeedsUserInput`, authority-scoped same-process resume, bounded pending state, and one billing-resolution proof |
 | [0005 - Fixed sequential specialist plans](./0005-fixed-sequential-specialist-plan-implementation-plan.md) | Implemented and verified; not released | Immutable exact-version plans, registered typed mappings and aggregation, independent specialist execution, process-local checkpoints, and a two-step Agentic Resolver proof |
 | [0006 - Proactive event specialist execution](./0006-proactive-event-specialist-execution-implementation-plan.md) | Implemented and verified; not released | Typed asynchronous specialist access, scoped idempotent event replay, service-owned event execution, and a read-only Account Resolver event proof |
+| [0007 - Durable read-only specialist jobs](./0007-durable-read-only-specialist-job-implementation-plan.md) | Implemented and verified; not released | Encrypted JDBC execution state, worker leasing, restart recovery, durable scoped replay, and a restart-safe proactive Account Resolver proof |
 
 ## Plan Rules
 

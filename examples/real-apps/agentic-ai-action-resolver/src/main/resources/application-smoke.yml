@@ -1,5 +1,8 @@
 ai:
   execution:
+    async:
+      encryption-secret: smoke-agentic-async-encryption-key-local-only-0001
+      fingerprint-secret: smoke-agentic-async-fingerprint-key-local-only-0002
     receipts:
       # Deterministic local-only keys keep the explicit offline smoke profile
       # self-contained. Shared and production profiles have no key fallback.

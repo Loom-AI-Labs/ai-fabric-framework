@@ -58,7 +58,8 @@ import org.springframework.core.task.AsyncTaskExecutor;
 /**
  * Single-invocation coordinator over the existing AI Fabric pipeline.
  */
-public final class DefaultAIExecutionGateway implements AIExecutionGateway {
+public final class DefaultAIExecutionGateway
+    implements AIExecutionGateway, AssignedExecutionRunner {
 
     private static final Logger log =
         LoggerFactory.getLogger(DefaultAIExecutionGateway.class);
@@ -522,6 +523,25 @@ public final class DefaultAIExecutionGateway implements AIExecutionGateway {
         AIExecutionRequest<I> request
     ) {
         return executeInternal(invocationId, request, null, null);
+    }
+
+    @Override
+    public AIExecutionResult<?> executeAssigned(
+        String invocationId,
+        AIExecutionRequest<?> request
+    ) {
+        return executeInternal(
+            invocationId,
+            castRequest(request)
+        );
+    }
+
+    @Override
+    public Instant resolveDeadline(
+        AIExecutionRequest<?> request,
+        SpecialistDefinition<?, ?> definition
+    ) {
+        return requestedDeadline(request, definition);
     }
 
     private <I, O> AIExecutionResult<O> executeInternal(

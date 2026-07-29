@@ -2,8 +2,8 @@ package ai.fabric.execution.config;
 
 import java.time.Duration;
 import java.util.ArrayList;
-import java.util.List;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Set;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
@@ -268,6 +268,16 @@ public class AIExecutionProperties {
         private int maxPoolSize = 4;
         private int queueCapacity = 32;
         private Duration resultTtl = Duration.ofMinutes(15);
+        private AsyncRepository repository = AsyncRepository.IN_MEMORY;
+        private boolean initializeSchema = true;
+        private Duration leaseDuration = Duration.ofMinutes(2);
+        private Duration recoveryInterval = Duration.ofSeconds(30);
+        private int recoveryBatchSize = 50;
+        private int maxAttempts = 3;
+        private boolean cleanupEnabled;
+        private Duration retention = Duration.ofDays(30);
+        private String encryptionSecret;
+        private String fingerprintSecret;
 
         public int getCorePoolSize() {
             return corePoolSize;
@@ -305,6 +315,104 @@ public class AIExecutionProperties {
                 throw new IllegalArgumentException("resultTtl must be positive");
             }
             this.resultTtl = resultTtl;
+        }
+
+        public AsyncRepository getRepository() {
+            return repository;
+        }
+
+        public void setRepository(AsyncRepository repository) {
+            this.repository = repository == null
+                ? AsyncRepository.IN_MEMORY
+                : repository;
+        }
+
+        public boolean isInitializeSchema() {
+            return initializeSchema;
+        }
+
+        public void setInitializeSchema(boolean initializeSchema) {
+            this.initializeSchema = initializeSchema;
+        }
+
+        public Duration getLeaseDuration() {
+            return leaseDuration;
+        }
+
+        public void setLeaseDuration(Duration leaseDuration) {
+            this.leaseDuration = positive(
+                leaseDuration,
+                "leaseDuration"
+            );
+        }
+
+        public Duration getRecoveryInterval() {
+            return recoveryInterval;
+        }
+
+        public void setRecoveryInterval(Duration recoveryInterval) {
+            this.recoveryInterval = positive(
+                recoveryInterval,
+                "recoveryInterval"
+            );
+        }
+
+        public int getRecoveryBatchSize() {
+            return recoveryBatchSize;
+        }
+
+        public void setRecoveryBatchSize(int recoveryBatchSize) {
+            this.recoveryBatchSize = positive(
+                recoveryBatchSize,
+                "recoveryBatchSize"
+            );
+        }
+
+        public int getMaxAttempts() {
+            return maxAttempts;
+        }
+
+        public void setMaxAttempts(int maxAttempts) {
+            this.maxAttempts = positive(maxAttempts, "maxAttempts");
+        }
+
+        public boolean isCleanupEnabled() {
+            return cleanupEnabled;
+        }
+
+        public void setCleanupEnabled(boolean cleanupEnabled) {
+            this.cleanupEnabled = cleanupEnabled;
+        }
+
+        public Duration getRetention() {
+            return retention;
+        }
+
+        public void setRetention(Duration retention) {
+            this.retention = positive(retention, "retention");
+        }
+
+        public String getEncryptionSecret() {
+            return encryptionSecret;
+        }
+
+        public void setEncryptionSecret(String encryptionSecret) {
+            this.encryptionSecret = encryptionSecret;
+        }
+
+        public String getFingerprintSecret() {
+            return fingerprintSecret;
+        }
+
+        public void setFingerprintSecret(String fingerprintSecret) {
+            this.fingerprintSecret = fingerprintSecret;
+        }
+
+        private Duration positive(Duration value, String field) {
+            if (value == null || value.isZero() || value.isNegative()) {
+                throw new IllegalArgumentException(field + " must be positive");
+            }
+            return value;
         }
 
         private int positive(int value, String field) {
@@ -464,5 +572,10 @@ public class AIExecutionProperties {
     public enum ReceiptRepository {
         JDBC,
         IN_MEMORY
+    }
+
+    public enum AsyncRepository {
+        IN_MEMORY,
+        JDBC
     }
 }

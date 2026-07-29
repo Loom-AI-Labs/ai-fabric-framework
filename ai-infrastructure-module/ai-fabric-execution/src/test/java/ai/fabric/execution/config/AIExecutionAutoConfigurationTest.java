@@ -4,11 +4,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import ai.fabric.chat.service.ChatSessionService;
 import ai.fabric.config.OrchestrationProperties;
 import ai.fabric.core.AICoreService;
-import ai.fabric.execution.gateway.AIExecutionGateway;
 import ai.fabric.execution.gateway.AIExecutionConversationRecorder;
-import ai.fabric.chat.service.ChatSessionService;
+import ai.fabric.execution.gateway.AIExecutionGateway;
+import ai.fabric.execution.gateway.DurableAIExecutionGateway;
 import ai.fabric.execution.gateway.ExecutionCapabilityInventory;
 import ai.fabric.execution.plan.AIExecutionCoordinator;
 import ai.fabric.execution.plan.ExecutionPlanRegistry;
@@ -16,6 +17,7 @@ import ai.fabric.execution.plan.PlanComponentRegistry;
 import ai.fabric.execution.specialist.SpecialistRegistry;
 import ai.fabric.execution.specialist.manifest.SpecialistAuthoringCatalogProvider;
 import ai.fabric.execution.specialist.manifest.SpecialistManifestMetrics;
+import ai.fabric.execution.state.DurableExecutionRepository;
 import ai.fabric.intent.action.AIActionMetaData;
 import ai.fabric.intent.action.AIActionRegistry;
 import ai.fabric.intent.action.ActionAccessMode;
@@ -28,6 +30,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Clock;
 import java.util.List;
+import org.h2.jdbcx.JdbcDataSource;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
@@ -157,6 +160,95 @@ class AIExecutionAutoConfigurationTest {
                 assertThat(context)
                     .hasSingleBean(AIExecutionConversationRecorder.class)
             );
+    }
+
+    @Test
+    void selectsDurableGatewayWhenJdbcStateIsFullyConfigured() {
+        JdbcDataSource dataSource = dataSource();
+
+        new ApplicationContextRunner()
+            .withConfiguration(AutoConfigurations.of(
+                AIExecutionJdbcStateAutoConfiguration.class,
+                AIExecutionAutoConfiguration.class
+            ))
+            .withUserConfiguration(InfrastructureConfiguration.class)
+            .withBean(javax.sql.DataSource.class, () -> dataSource)
+            .withPropertyValues(
+                "ai.execution.async.repository=JDBC",
+                "ai.execution.async.encryption-secret="
+                    + "execution-encryption-secret-for-tests-0001",
+                "ai.execution.async.fingerprint-secret="
+                    + "execution-fingerprint-secret-for-tests-0002"
+            )
+            .run(context -> {
+                assertThat(context).hasNotFailed();
+                assertThat(context).hasSingleBean(
+                    DurableExecutionRepository.class
+                );
+                assertThat(context.getBean(AIExecutionGateway.class))
+                    .isInstanceOf(DurableAIExecutionGateway.class);
+            });
+    }
+
+    @Test
+    void jdbcSelectionFailsClosedWithoutDataSource() {
+        new ApplicationContextRunner()
+            .withConfiguration(AutoConfigurations.of(
+                AIExecutionJdbcStateAutoConfiguration.class,
+                AIExecutionAutoConfiguration.class
+            ))
+            .withUserConfiguration(InfrastructureConfiguration.class)
+            .withPropertyValues(
+                "ai.execution.async.repository=JDBC",
+                "ai.execution.async.encryption-secret="
+                    + "execution-encryption-secret-for-tests-0001",
+                "ai.execution.async.fingerprint-secret="
+                    + "execution-fingerprint-secret-for-tests-0002"
+            )
+            .run(context -> {
+                assertThat(context).hasFailed();
+                assertThat(context.getStartupFailure())
+                    .hasRootCauseInstanceOf(IllegalStateException.class)
+                    .hasStackTraceContaining(
+                        "repository=JDBC requires a DataSource"
+                    );
+            });
+    }
+
+    @Test
+    void jdbcSelectionFailsClosedWithoutStrongDistinctSecrets() {
+        new ApplicationContextRunner()
+            .withConfiguration(AutoConfigurations.of(
+                AIExecutionJdbcStateAutoConfiguration.class,
+                AIExecutionAutoConfiguration.class
+            ))
+            .withUserConfiguration(InfrastructureConfiguration.class)
+            .withBean(javax.sql.DataSource.class, this::dataSource)
+            .withPropertyValues(
+                "ai.execution.async.repository=JDBC",
+                "ai.execution.async.encryption-secret=short",
+                "ai.execution.async.fingerprint-secret=short"
+            )
+            .run(context -> {
+                assertThat(context).hasFailed();
+                assertThat(context.getStartupFailure())
+                    .hasRootCauseInstanceOf(IllegalArgumentException.class)
+                    .hasStackTraceContaining(
+                        "encryptionSecret must contain at least 32 characters"
+                    );
+            });
+    }
+
+    private JdbcDataSource dataSource() {
+        JdbcDataSource dataSource = new JdbcDataSource();
+        dataSource.setURL(
+            "jdbc:h2:mem:execution-auto-config-"
+                + java.util.UUID.randomUUID()
+                + ";DB_CLOSE_DELAY=-1"
+        );
+        dataSource.setUser("sa");
+        dataSource.setPassword("");
+        return dataSource;
     }
 
     @Configuration(proxyBeanMethods = false)

@@ -37,7 +37,7 @@ class ProactiveAccountEventControllerTest {
         throws Exception {
         ExecutionHandle handle = new ExecutionHandle(
             "exec-event-1",
-            ExecutionDurability.EPHEMERAL,
+            ExecutionDurability.DURABLE,
             ExecutionHandleStatus.QUEUED,
             Instant.parse("2026-07-29T10:01:00Z"),
             Instant.parse("2026-07-29T10:05:00Z"),
@@ -73,7 +73,7 @@ class ProactiveAccountEventControllerTest {
             .andExpect(jsonPath("$.execution.invocationId")
                 .value("exec-event-1"))
             .andExpect(jsonPath("$.execution.durability")
-                .value("EPHEMERAL"));
+                .value("DURABLE"));
 
         verify(eventService).submit(eq("session-1"), any());
     }

@@ -6,7 +6,7 @@
 - **Compatibility baseline:** AI Fabric `0.4.0`
 - **Baseline tag:** `ai-fabric-framework-v0.4.0`
 - **Baseline commit:** `857619f`
-- **Candidate commit:** `67be5f5`
+- **Candidate scope:** Through Plan `0007`, durable read-only specialist jobs
 - **Prepared:** 2026-07-29
 - **Reference application:**
   [`agentic-ai-action-resolver`](../../examples/real-apps/agentic-ai-action-resolver)
@@ -29,6 +29,12 @@ as bounded asynchronous work. The first proof maps a raw payment-verification
 failure to a read-only Account Resolver execution under a service principal
 and `ExecutionSource.EVENT`, without creating chat history or accepting
 identity and authority from the event body.
+
+Eligible machine-owned read specialists may now use encrypted JDBC execution
+state. Persist-before-dispatch, worker leases, startup recovery, scoped replay,
+and typed terminal results survive restart. This is an at-least-once read
+execution contract, not exactly-once model invocation or durable write
+execution.
 
 This work does not add a second orchestration engine. It composes the AI Fabric
 capabilities that already exist:
@@ -72,7 +78,7 @@ The adoption boundary is:
 | Structured provider output validation | Domain consistency validators |
 | Backend conversation binding | Conversation ownership supplied by the backend |
 | Exact-version fixed-plan registry and coordinator | Application-owned plan selection, typed mappers, and deterministic aggregators |
-| Typed asynchronous specialist client and scoped replay semantics | Raw-event validation, subject resolution, deterministic event mapping, and broker/outbox ownership |
+| Typed asynchronous specialist client, optional durable read-job state, leasing, recovery, and scoped replay | Raw-event validation, subject resolution, deterministic event mapping, production schema migration, secrets, and broker/outbox ownership |
 | Manifest and execution diagnostics | Deployment, monitoring, support, and rollback |
 
 ## 3. Included Change Set
@@ -88,6 +94,7 @@ The adoption boundary is:
 | `958e80a` | Typed specialist input waits, bounded continuation state, and authority-scoped safe resume |
 | `ce03c22` | Exact-version fixed sequential plans, process-local checkpoints, typed resume, and one-step/two-step Account Resolver proofs |
 | `67be5f5` | Typed asynchronous specialist access, scoped payload-checked idempotency, and a proactive read-only event proof |
+| Plan `0007` implementation commit | Encrypted JDBC read-job state, worker leasing, restart recovery, durable replay, and packaged OpenAI restart proof |
 
 These commits build on the released `0.4.0` lifecycle, indexing, RAG, action,
 provider, and chat-session contracts.
@@ -122,7 +129,8 @@ Use it when an application needs:
 - durable proposal and decision semantics;
 - typed input waits that resume the same specialist invocation; or
 - fixed application-selected read-only specialist plans; or
-- bounded service-owned event analysis with typed asynchronous results.
+- bounded service-owned event analysis with typed asynchronous results; or
+- opt-in restart-safe read-only specialist jobs.
 
 ## 5. Specialist Execution Contract
 
@@ -207,7 +215,8 @@ Status and cancellation require the same principal, subject, source, tenant,
 and deployment binding as the original submission. Queued and running
 snapshots contain a handle but no fabricated result.
 
-Retained submissions use payload-checked idempotency:
+The default `IN_MEMORY` repository retains payload-checked idempotency only
+for its configured result TTL:
 
 - the key namespace is scoped to the trusted execution access binding;
 - an identical specialist, input, and conversation binding returns the
@@ -216,8 +225,26 @@ Retained submissions use payload-checked idempotency:
   `IDEMPOTENCY_CONFLICT`; and
 - the key expires with the bounded process-local result.
 
-This is not durable idempotency. Restart loses queued work, retained results,
-and replay bindings.
+Select `ai.execution.async.repository=JDBC` for eligible machine-owned
+read-only work. That path:
+
+- encrypts the validated request before committing it ahead of dispatch;
+- stores keyed access and idempotency fingerprints rather than raw identity;
+- pins and rechecks the exact specialist content hash;
+- leases work to one bounded worker;
+- recovers queued and lease-expired read work after restart;
+- retains typed terminal results and payload-checked replay across restart;
+  and
+- keeps status and cancellation bound to the original trusted context.
+
+Durable V1 accepts only `APPLICATION`, `EVENT`, or `SCHEDULED` execution under
+a `SERVICE` or `SYSTEM` principal, with an application-owned subject, no
+conversation, and a read-only specialist. It rejects durable input waits,
+confirmation outcomes, and WRITE-capable specialists.
+
+A process crash during a provider call may lead to a repeated read after lease
+expiry. The invocation and stored terminal result are singular, but AI Fabric
+does not claim exactly-once provider invocation.
 
 ## 6. Manifest-First Specialist Authoring
 
@@ -619,7 +646,7 @@ principal type: SERVICE
 source: EVENT
 write authority: none
 conversation binding: none
-durability: EPHEMERAL
+durability: DURABLE
 ```
 
 The model reasons over the current account profile and registered policy
@@ -629,7 +656,8 @@ remain visible rather than receiving an application-authored answer.
 
 Loom AI or the host application still owns the broker, outbox, raw event
 schema, validation, subject/tenant resolution, and redelivery policy. AI
-Fabric owns the bounded specialist execution and scoped replay contract.
+Fabric owns the bounded specialist execution, encrypted JDBC state, worker
+lease, restart recovery, and scoped replay contract.
 
 ## 12. Evidence And Indexing Boundary
 
@@ -674,10 +702,20 @@ ai:
         - get_account_profile
         - update_address
     async:
+      repository: JDBC
+      initialize-schema: false
       core-pool-size: 2
       max-pool-size: 4
       queue-capacity: 32
       result-ttl: PT15M
+      lease-duration: PT2M
+      recovery-interval: PT30S
+      recovery-batch-size: 50
+      max-attempts: 3
+      cleanup-enabled: true
+      retention: P30D
+      encryption-secret: ${AI_EXECUTION_ASYNC_ENCRYPTION_SECRET}
+      fingerprint-secret: ${AI_EXECUTION_ASYNC_FINGERPRINT_SECRET}
     receipts:
       enabled: true
       repository: JDBC
@@ -691,8 +729,12 @@ ai:
       fingerprint-secret: ${AI_EXECUTION_RECEIPT_FINGERPRINT_SECRET}
     input-waits:
       enabled: true
-      max-active: 1000
-      ttl: PT10M
+      default-ttl: PT10M
+      max-ttl: PT30M
+      max-pending: 1000
+      max-attempts: 3
+      max-requests-per-invocation: 3
+      result-ttl: PT15M
     plans:
       enabled: true
       max-steps: 8
@@ -723,13 +765,14 @@ The application must separately configure:
 | Specialist write receipt | JDBC `ai_action_proposal_receipt` | Durable across restart |
 | Specialist input wait | Bounded execution-module process memory | `EPHEMERAL`; lost on restart |
 | Fixed-plan checkpoints and terminal result | Bounded execution-module process memory | `EPHEMERAL`; lost on restart |
-| Proactive event execution, result, and replay binding | Bounded execution-module process memory | `EPHEMERAL`; lost on restart |
+| Eligible proactive read execution, result, and replay binding | JDBC `ai_specialist_execution` | Durable across restart with at-least-once read execution |
 | Vector evidence | Existing AI Fabric vector provider | Provider lifecycle |
 | Domain entity and authoritative action result | Host application system of record | Application lifecycle |
-| General `submit` execution and result | Bounded process memory | `EPHEMERAL`; lost on restart |
+| Default `IN_MEMORY` submit execution and result | Bounded process memory | `EPHEMERAL`; lost on restart |
 
-Durable write receipts do not make the general execution engine a durable
-workflow system.
+Durable read jobs and durable write receipts are independent state machines.
+Neither makes plans, input waits, confirmations, or arbitrary writes into a
+durable workflow system.
 
 ## 15. Compatibility With AI Fabric 0.4
 
@@ -815,8 +858,10 @@ For current adoption use, in order:
    [governed-write implementation plan](../planning/ai-fabric-flow-architecture-analysis-pack/implementation-plans/0002-governed-specialist-write-and-receipt-implementation-plan.md);
 5. the
    [manifest-runtime implementation plan](../planning/ai-fabric-flow-architecture-analysis-pack/implementation-plans/0003-configurable-specialist-manifest-runtime-implementation-plan.md);
-   and
 6. the
+   [Durable Read-Only Specialist Jobs Guide](../Framework-Dev-Guides/application-patterns/DURABLE_READ_ONLY_SPECIALIST_JOBS.md);
+   and
+7. the
    [`agentic-ai-action-resolver`](../../examples/real-apps/agentic-ai-action-resolver)
    reference application.
 
@@ -864,8 +909,14 @@ For current adoption use, in order:
 - [ ] Derive a stable versioned idempotency key from the event identity.
 - [ ] Verify exact redelivery reuses one invocation and changed facts conflict.
 - [ ] Verify cross-tenant/subject access denial and unchanged domain state.
-- [ ] Treat process restart as loss until a durable execution plan is
-  implemented.
+- [ ] Choose `IN_MEMORY` explicitly for disposable work or configure the JDBC
+  durable read-job repository.
+- [ ] For JDBC, own the production migration and provide stable, distinct
+  async encryption and fingerprint secrets.
+- [ ] Verify successful result, replay, conflict, and access denial across a
+  packaged application restart.
+- [ ] Treat a recovered provider call as at-least-once read execution; do not
+  use this job path for writes.
 
 ### Phase 2: Governed write proof
 
@@ -1065,7 +1116,7 @@ commit.
 
 ### Typed asynchronous and proactive event execution
 
-- The focused execution reactor passed all tests, including 174
+- The focused execution reactor passed all tests, including 192
   `ai-fabric-execution` tests.
 - The packaged Agentic AI Action Resolver passed 12 shared smoke tests and 106
   application tests.
@@ -1081,6 +1132,26 @@ commit.
   redelivery returned the same successful invocation, changed event facts
   returned `IDEMPOTENCY_CONFLICT`, cross-session lookup returned `404`, and
   account state remained unchanged.
+
+### Durable read-only specialist jobs
+
+- The focused four-module execution reactor passed 924 tests with tests
+  enabled: 5 curated-prompt, 671 core, 56 chat-session, and 192 execution
+  tests.
+- Repository and gateway coverage proves encrypted payloads, authenticated
+  binding, tamper/wrong-key rejection, lease ownership, restart replay,
+  payload conflicts, cross-context denial, definition drift, deadlines,
+  attempt exhaustion, unsupported continuation outcomes, and no automatic
+  retry of terminal provider failure.
+- The packaged reference-app reactor passed 12 shared smoke tests and 106
+  application tests.
+- Packaged real OpenAI verification created one grounded durable assessment,
+  restarted the application against the same file-backed database, retrieved
+  the same typed terminal result, replayed identical event facts to the same
+  invocation, rejected changed facts with `IDEMPOTENCY_CONFLICT`, and returned
+  `404` to another session.
+- The reference proof created no chat conversation and made no account
+  mutation.
 
 ## 22. Release Gate Still Required
 
@@ -1112,7 +1183,8 @@ This release does not provide:
 - interactive plan dialogue ownership;
 - WRITE-capable composed plans;
 - model-selected unrestricted specialist discovery;
-- durable general or plan execution;
+- durable WRITE-capable specialist jobs, input waits, confirmations, plans, or
+  human review;
 - a workflow graph or workflow engine;
 - framework-owned event-broker or scheduler consumers;
 - a specialist-definition database;

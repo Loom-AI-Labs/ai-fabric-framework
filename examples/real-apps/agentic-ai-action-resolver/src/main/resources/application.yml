@@ -46,10 +46,20 @@ ai:
         - assess_billing_resolution
         - update_address
     async:
+      repository: ${AI_EXECUTION_ASYNC_REPOSITORY:JDBC}
+      initialize-schema: ${AI_EXECUTION_ASYNC_INITIALIZE_SCHEMA:true}
       core-pool-size: 2
       max-pool-size: 4
       queue-capacity: 24
       result-ttl: PT15M
+      lease-duration: ${AI_EXECUTION_ASYNC_LEASE_DURATION:PT2M}
+      recovery-interval: ${AI_EXECUTION_ASYNC_RECOVERY_INTERVAL:PT30S}
+      recovery-batch-size: ${AI_EXECUTION_ASYNC_RECOVERY_BATCH_SIZE:50}
+      max-attempts: ${AI_EXECUTION_ASYNC_MAX_ATTEMPTS:3}
+      cleanup-enabled: ${AI_EXECUTION_ASYNC_CLEANUP_ENABLED:true}
+      retention: ${AI_EXECUTION_ASYNC_RETENTION:P30D}
+      encryption-secret: ${AI_EXECUTION_ASYNC_ENCRYPTION_SECRET:${ai.execution.receipts.encryption-secret:}}
+      fingerprint-secret: ${AI_EXECUTION_ASYNC_FINGERPRINT_SECRET:${ai.execution.receipts.fingerprint-secret:}}
     input-waits:
       enabled: true
       default-ttl: PT10M

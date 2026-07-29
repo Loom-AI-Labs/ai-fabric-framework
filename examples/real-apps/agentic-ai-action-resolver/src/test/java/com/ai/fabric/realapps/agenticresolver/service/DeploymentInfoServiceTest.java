@@ -13,10 +13,12 @@ import ai.fabric.execution.specialist.RegisteredSpecialist;
 import ai.fabric.execution.specialist.SpecialistDefinitionSource;
 import ai.fabric.execution.specialist.SpecialistRegistry;
 import ai.fabric.execution.specialist.manifest.SpecialistManifestRuntimeStatus;
+import ai.fabric.execution.state.DurableExecutionRepository;
 import ai.fabric.provider.AIProvider;
 import com.ai.fabric.realapps.agenticresolver.agentic.AccountResolverSpecialists;
 import java.time.Duration;
 import java.util.List;
+import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.env.MockEnvironment;
 
@@ -63,6 +65,9 @@ class DeploymentInfoServiceTest {
         );
         executionProperties.getReceipts().setCleanupEnabled(true);
         executionProperties.getReceipts().setRetention(Duration.ofDays(30));
+        executionProperties.getAsync().setRepository(
+            AIExecutionProperties.AsyncRepository.JDBC
+        );
         Map<String, Object> health = new DeploymentInfoService(
             environment,
             List.of(provider),
@@ -71,6 +76,7 @@ class DeploymentInfoServiceTest {
             emptyPlanRegistry(),
             registry,
             mock(ActionProposalReceiptRepository.class),
+            Optional.of(mock(DurableExecutionRepository.class)),
             executionProperties,
             new SpecialistManifestRuntimeStatus(
                 true,
@@ -106,7 +112,8 @@ class DeploymentInfoServiceTest {
                     .containsEntry("planCoordinatorReady", true)
                     .containsEntry("planDurability", "EPHEMERAL")
                     .containsEntry("plans", List.of())
-                    .containsEntry("asyncDurability", "EPHEMERAL")
+                    .containsEntry("asyncDurability", "DURABLE")
+                    .containsEntry("durableAsyncStateReady", true)
                     .containsEntry("writeReceiptDurability", "JDBC")
                     .containsEntry("writeReceiptsReady", true)
                     .containsEntry("receiptTtl", "PT10M")
@@ -120,7 +127,7 @@ class DeploymentInfoServiceTest {
                         "eventType", "PAYMENT_VERIFICATION_FAILED",
                         "source", "EVENT",
                         "principalType", "SERVICE",
-                        "durability", "EPHEMERAL",
+                        "durability", "DURABLE",
                         "automaticMutation", false
                     ))
             );

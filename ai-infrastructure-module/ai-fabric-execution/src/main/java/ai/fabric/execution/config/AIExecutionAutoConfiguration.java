@@ -4,12 +4,13 @@ import ai.fabric.config.OrchestrationProperties;
 import ai.fabric.core.AICoreService;
 import ai.fabric.evidence.AIEvidenceReferenceMapper;
 import ai.fabric.execution.action.ActionProposalCoordinator;
+import ai.fabric.execution.gateway.AIExecutionConversationRecorder;
 import ai.fabric.execution.gateway.AIExecutionGateway;
 import ai.fabric.execution.gateway.DefaultAIExecutionCoordinator;
-import ai.fabric.execution.gateway.AIExecutionConversationRecorder;
 import ai.fabric.execution.gateway.DefaultAIExecutionGateway;
-import ai.fabric.execution.gateway.DefaultStructuredSpecialistOutputFinalizer;
 import ai.fabric.execution.gateway.DefaultSpecialistAuthorityResolver;
+import ai.fabric.execution.gateway.DefaultStructuredSpecialistOutputFinalizer;
+import ai.fabric.execution.gateway.DurableAIExecutionGateway;
 import ai.fabric.execution.gateway.ExecutionCapabilityInventory;
 import ai.fabric.execution.gateway.OrchestrationEvidenceProjector;
 import ai.fabric.execution.gateway.SpecialistAuthorityResolver;
@@ -54,6 +55,10 @@ import ai.fabric.execution.specialist.manifest.SpecialistOutputNormalizerRegistr
 import ai.fabric.execution.specialist.manifest.SpecialistPromptProfileRegistry;
 import ai.fabric.execution.specialist.manifest.SpecialistRegistryBootstrap;
 import ai.fabric.execution.specialist.manifest.SpecialistResourceBundle;
+import ai.fabric.execution.state.DurableExecutionPayloadCodec;
+import ai.fabric.execution.state.DurableExecutionRepository;
+import ai.fabric.execution.state.DurableExecutionSecurity;
+import ai.fabric.execution.state.DurableExecutionSubmissionPolicy;
 import ai.fabric.indexing.descriptor.AIEntityDescriptorRegistry;
 import ai.fabric.intent.action.AIActionRegistry;
 import ai.fabric.intent.orchestration.capability.EffectiveCapabilitiesResolver;
@@ -430,9 +435,12 @@ public class AIExecutionAutoConfiguration {
         SpecialistManifestMetrics specialistMetrics,
         SpecialistJsonSchemaRegistry schemaRegistry,
         SpecialistJsonSchemaValidator schemaValidator,
-        CanonicalJsonSupport canonicalJson
+        CanonicalJsonSupport canonicalJson,
+        ObjectMapper objectMapper,
+        ObjectProvider<DurableExecutionRepository> durableRepository,
+        ObjectProvider<DurableExecutionSecurity> durableSecurity
     ) {
-        return new DefaultAIExecutionGateway(
+        DefaultAIExecutionGateway gateway = new DefaultAIExecutionGateway(
             specialistRegistry,
             pipeline,
             policyResolutionStep,
@@ -452,6 +460,41 @@ public class AIExecutionAutoConfiguration {
             schemaValidator,
             canonicalJson,
             properties.getInputWaits()
+        );
+        if (properties.getAsync().getRepository()
+            == AIExecutionProperties.AsyncRepository.IN_MEMORY) {
+            return gateway;
+        }
+
+        DurableExecutionRepository repository =
+            durableRepository.getIfAvailable();
+        DurableExecutionSecurity security = durableSecurity.getIfAvailable();
+        if (repository == null || security == null) {
+            throw new IllegalStateException(
+                "ai.execution.async.repository=JDBC requires a DataSource, "
+                    + "the JDBC execution state adapter, and two distinct "
+                    + "ai.execution.async secrets of at least 32 characters"
+            );
+        }
+        return new DurableAIExecutionGateway(
+            gateway,
+            gateway,
+            specialistRegistry,
+            repository,
+            new DurableExecutionPayloadCodec(
+                objectMapper,
+                specialistRegistry,
+                security
+            ),
+            security,
+            new DurableExecutionSubmissionPolicy(),
+            taskExecutor,
+            clock,
+            properties.getAsync().getLeaseDuration(),
+            properties.getAsync().getRetention(),
+            properties.getAsync().getRecoveryBatchSize(),
+            properties.getAsync().getMaxAttempts(),
+            properties.getAsync().isCleanupEnabled()
         );
     }
 
