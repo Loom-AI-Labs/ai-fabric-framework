@@ -4,6 +4,7 @@
 - **Date:** 2026-07-29
 - **Framework baseline:** AI Fabric `0.4.0`
 - **Code reviewed at:** `958e80a9a3a3`
+- **Implemented at:** `ce03c22`
 - **Prerequisite:** Plans `0001` through `0004`
 - **Target:** P2.2 of the agentic-enablement roadmap; version not assigned
 - **Reference proof:** `examples/real-apps/agentic-ai-action-resolver`
