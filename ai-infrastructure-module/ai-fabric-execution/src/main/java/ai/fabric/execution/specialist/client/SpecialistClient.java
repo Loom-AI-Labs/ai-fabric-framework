@@ -6,7 +6,7 @@ import ai.fabric.execution.gateway.AIExecutionResumeResult;
 import ai.fabric.execution.specialist.SpecialistId;
 
 /**
- * Typed caller convenience over one immutable manifest-backed specialist.
+ * Typed caller boundary over one immutable registered specialist.
  */
 public interface SpecialistClient<I, O> {
 

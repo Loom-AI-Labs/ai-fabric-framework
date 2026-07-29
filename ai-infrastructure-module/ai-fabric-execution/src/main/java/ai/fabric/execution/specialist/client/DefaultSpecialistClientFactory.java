@@ -13,9 +13,10 @@ import ai.fabric.execution.specialist.manifest.JsonSchemaSpecialistInputAdapter;
 import ai.fabric.execution.specialist.manifest.SpecialistSchemaDefinition;
 import ai.fabric.execution.specialist.manifest.SpecialistSchemaDirection;
 import ai.fabric.execution.specialist.manifest.SpecialistSchemaSpec;
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.Objects;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 
 public final class DefaultSpecialistClientFactory
     implements SpecialistClientFactory {
@@ -24,6 +25,8 @@ public final class DefaultSpecialistClientFactory
     private final AIExecutionGateway executionGateway;
     private final ObjectMapper objectMapper;
     private final SpecialistSchemaBindingValidator bindingValidator;
+    private final ConcurrentMap<BindingKey, SpecialistClient<?, ?>> clients =
+        new ConcurrentHashMap<>();
 
     public DefaultSpecialistClientFactory(
         SpecialistRegistry specialistRegistry,
@@ -56,23 +59,72 @@ public final class DefaultSpecialistClientFactory
         Objects.requireNonNull(specialistId, "specialistId is required");
         Objects.requireNonNull(inputType, "inputType is required");
         Objects.requireNonNull(outputType, "outputType is required");
+        BindingKey key = new BindingKey(
+            specialistId,
+            inputType,
+            outputType
+        );
+        @SuppressWarnings("unchecked")
+        SpecialistClient<I, O> client = (SpecialistClient<I, O>)
+            clients.computeIfAbsent(key, this::createBinding);
+        return client;
+    }
+
+    private SpecialistClient<?, ?> createBinding(BindingKey key) {
         RegisteredSpecialist registered =
-            specialistRegistry.requireRegistered(specialistId);
-        if (!(registered.definition().inputAdapter()
-                instanceof JsonSchemaSpecialistInputAdapter inputAdapter)) {
+            specialistRegistry.requireRegistered(key.specialistId());
+        boolean schemaInput = registered.definition().inputAdapter()
+            instanceof JsonSchemaSpecialistInputAdapter;
+        boolean schemaOutput = registered.definition().outputAdapter()
+            .outputContract() instanceof JsonSchemaOutputContract;
+        if (schemaInput != schemaOutput) {
             throw new IllegalArgumentException(
-                "Typed schema binding requires a manifest JSON input adapter"
+                "Typed binding requires matching specialist input and output "
+                    + "adapter families"
             );
         }
-        if (!(registered.definition().outputAdapter().outputContract()
-                instanceof JsonSchemaOutputContract outputContract)) {
-            throw new IllegalArgumentException(
-                "Typed schema binding requires a manifest JSON output adapter"
-            );
+        if (schemaInput) {
+            validateSchemaBinding(registered, key);
+        } else {
+            validateNativeBinding(registered, key);
         }
+        return createBoundClient(
+            key.specialistId(),
+            key.inputType(),
+            key.outputType(),
+            schemaInput
+        );
+    }
+
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    private SpecialistClient<?, ?> createBoundClient(
+        SpecialistId specialistId,
+        Class<?> inputType,
+        Class<?> outputType,
+        boolean schemaBound
+    ) {
+        return new BoundSpecialistClient(
+            specialistId,
+            inputType,
+            outputType,
+            schemaBound
+        );
+    }
+
+    private void validateSchemaBinding(
+        RegisteredSpecialist registered,
+        BindingKey key
+    ) {
+        JsonSchemaSpecialistInputAdapter inputAdapter =
+            (JsonSchemaSpecialistInputAdapter)
+                registered.definition().inputAdapter();
+        JsonSchemaOutputContract outputContract =
+            (JsonSchemaOutputContract) registered.definition()
+                .outputAdapter()
+                .outputContract();
         bindingValidator.validate(
             inputAdapter.schemaDefinition(),
-            inputType,
+            key.inputType(),
             "input"
         );
         SpecialistSchemaDefinition outputSchema =
@@ -90,12 +142,39 @@ public final class DefaultSpecialistClientFactory
                     outputContract.schema()
                 )
             );
-        bindingValidator.validate(outputSchema, outputType, "output");
-        return new BoundSpecialistClient<>(
-            specialistId,
-            inputType,
-            outputType
+        bindingValidator.validate(
+            outputSchema,
+            key.outputType(),
+            "output"
         );
+    }
+
+    private void validateNativeBinding(
+        RegisteredSpecialist registered,
+        BindingKey key
+    ) {
+        Class<?> registeredInput = registered.definition()
+            .inputAdapter()
+            .inputType();
+        Class<?> registeredOutput = registered.definition()
+            .outputAdapter()
+            .outputType();
+        if (!registeredInput.equals(key.inputType())) {
+            throw new IllegalArgumentException(
+                "Typed input binding must use "
+                    + registeredInput.getName()
+                    + " but was "
+                    + key.inputType().getName()
+            );
+        }
+        if (!registeredOutput.equals(key.outputType())) {
+            throw new IllegalArgumentException(
+                "Typed output binding must use "
+                    + registeredOutput.getName()
+                    + " but was "
+                    + key.outputType().getName()
+            );
+        }
     }
 
     private final class BoundSpecialistClient<I, O>
@@ -104,15 +183,18 @@ public final class DefaultSpecialistClientFactory
         private final SpecialistId specialistId;
         private final Class<I> inputType;
         private final Class<O> outputType;
+        private final boolean schemaBound;
 
         private BoundSpecialistClient(
             SpecialistId specialistId,
             Class<I> inputType,
-            Class<O> outputType
+            Class<O> outputType,
+            boolean schemaBound
         ) {
             this.specialistId = specialistId;
             this.inputType = inputType;
             this.outputType = outputType;
+            this.schemaBound = schemaBound;
         }
 
         @Override
@@ -125,10 +207,12 @@ public final class DefaultSpecialistClientFactory
             SpecialistInvocation<I> invocation
         ) {
             Objects.requireNonNull(invocation, "invocation is required");
-            JsonNode input = objectMapper.valueToTree(
-                inputType.cast(invocation.input())
-            );
-            AIExecutionResult<JsonNode> raw = executionGateway.execute(
+            Object input = schemaBound
+                ? objectMapper.valueToTree(
+                    inputType.cast(invocation.input())
+                )
+                : inputType.cast(invocation.input());
+            AIExecutionResult<?> raw = executionGateway.execute(
                 new AIExecutionRequest<>(
                     specialistId,
                     input,
@@ -138,9 +222,7 @@ public final class DefaultSpecialistClientFactory
                     invocation.idempotencyKey()
                 )
             );
-            O output = raw.output() == null
-                ? null
-                : objectMapper.convertValue(raw.output(), outputType);
+            O output = convertOutput(raw.output());
             return new AIExecutionResult<>(
                 raw.invocationId(),
                 raw.specialistId(),
@@ -161,7 +243,7 @@ public final class DefaultSpecialistClientFactory
             SpecialistResumeInvocation invocation
         ) {
             Objects.requireNonNull(invocation, "invocation is required");
-            AIExecutionResumeResult<JsonNode> raw = executionGateway.resume(
+            AIExecutionResumeResult<?> raw = executionGateway.resume(
                 new AIExecutionResumeRequest(
                     specialistId,
                     invocation.invocationId(),
@@ -178,14 +260,9 @@ public final class DefaultSpecialistClientFactory
                     raw.failure()
                 );
             }
-            AIExecutionResult<JsonNode> rawExecution =
+            AIExecutionResult<?> rawExecution =
                 raw.executionResult();
-            O output = rawExecution.output() == null
-                ? null
-                : objectMapper.convertValue(
-                    rawExecution.output(),
-                    outputType
-                );
+            O output = convertOutput(rawExecution.output());
             AIExecutionResult<O> execution = new AIExecutionResult<>(
                 rawExecution.invocationId(),
                 rawExecution.specialistId(),
@@ -205,5 +282,26 @@ public final class DefaultSpecialistClientFactory
                 null
             );
         }
+
+        private O convertOutput(Object output) {
+            if (output == null) {
+                return null;
+            }
+            if (outputType.isInstance(output)) {
+                return outputType.cast(output);
+            }
+            if (schemaBound) {
+                return objectMapper.convertValue(output, outputType);
+            }
+            throw new IllegalStateException(
+                "Specialist returned an output outside its native binding"
+            );
+        }
     }
+
+    private record BindingKey(
+        SpecialistId specialistId,
+        Class<?> inputType,
+        Class<?> outputType
+    ) {}
 }

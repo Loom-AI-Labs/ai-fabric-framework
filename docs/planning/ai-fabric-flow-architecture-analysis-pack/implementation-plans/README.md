@@ -19,6 +19,7 @@ checklists here.
 | [0002 - Governed specialist write and receipt](./0002-governed-specialist-write-and-receipt-implementation-plan.md) | Implemented and verified; not released | Durable, profile-pinned confirmation receipts and one governed specialist WRITE |
 | [0003 - Configurable specialist manifest runtime](./0003-configurable-specialist-manifest-runtime-implementation-plan.md) | Implemented and verified; not released | Startup-loaded JSON Schema-backed specialists, exact-version resources, governed receipt pinning, and Loom AI configuration authoring |
 | [0004 - Typed specialist input wait and safe resume](./0004-typed-specialist-input-wait-and-safe-resume-implementation-plan.md) | Implemented and verified; not released | Typed `NeedsUserInput`, authority-scoped same-process resume, bounded pending state, and one billing-resolution proof |
+| [0005 - Fixed sequential specialist plans](./0005-fixed-sequential-specialist-plan-implementation-plan.md) | Implemented and verified; not released | Immutable exact-version plans, registered typed mappings and aggregation, independent specialist execution, process-local checkpoints, and a two-step Agentic Resolver proof |
 
 ## Plan Rules
 

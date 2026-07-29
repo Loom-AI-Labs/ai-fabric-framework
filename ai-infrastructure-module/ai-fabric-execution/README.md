@@ -167,6 +167,70 @@ A non-success result contains a typed status and sanitized
 `AIExecutionFailure`. Provider, retrieval, policy, grounding, and output
 validation failures are not replaced with deterministic answers.
 
+## Fixed Sequential Plans
+
+Applications may compose registered read-only specialists into an immutable
+ordered plan. This is useful when one validated specialist result is required
+as typed input to the next specialist:
+
+```java
+@Bean
+ExecutionPlanDefinition<AccountRequest, BillingPath> billingPlan() {
+    return new ExecutionPlanDefinition<>(
+        ExecutionPlanId.of("account-billing", "1"),
+        AccountRequest.class,
+        BillingPath.class,
+        List.of(
+            new SpecialistPlanStep(
+                "account-state",
+                SpecialistId.of("account-reader", "1"),
+                AccountRequest.class,
+                AccountAssessment.class,
+                PlanComponentId.of("account-input", "1")
+            ),
+            new SpecialistPlanStep(
+                "billing-path",
+                SpecialistId.of("billing-advisor", "1"),
+                BillingRequest.class,
+                BillingAssessment.class,
+                PlanComponentId.of("billing-input", "1")
+            )
+        ),
+        PlanComponentId.of("billing-result", "1"),
+        Duration.ofSeconds(45)
+    );
+}
+```
+
+The application also registers exact-version `PlanStepInputMapper` and
+`PlanResultAggregator` beans. Startup fails for unknown references, type or
+schema mismatches, future-step dependencies, duplicate IDs, excessive plans,
+or WRITE-capable specialists.
+
+Every step uses a cached `SpecialistClient` binding and independently traverses
+`AIExecutionGateway`. A mapper sees only the original typed plan input and its
+declared predecessor outputs. It never receives trusted identity, authority,
+provider clients, prompts, or raw evidence.
+
+```java
+PlanExecutionResult<BillingPath> result = coordinator.execute(
+    PlanExecutionRequest.synchronous(
+        ExecutionPlanId.of("account-billing", "1"),
+        request,
+        trustedApplicationContext
+    )
+);
+```
+
+If an active child returns `WAITING_FOR_INPUT`, the coordinator checkpoints
+completed predecessors and resumes only that child. Plan status, cancellation,
+resume, and replay are bound to the original principal, subject, source,
+tenant, and deployment.
+
+The initial plan store is bounded and explicitly `EPHEMERAL`. It does not
+survive restart, support WRITE-capable steps, branch, run in parallel, choose
+specialists dynamically, or own an interactive conversation.
+
 ## Conversation Memory
 
 Typed application execution does not read or write chat history by default.
@@ -224,6 +288,12 @@ ai:
       max-pool-size: 4
       queue-capacity: 32
       result-ttl: PT15M
+    plans:
+      enabled: true
+      max-steps: 8
+      max-duration: PT2M
+      max-active: 1000
+      result-ttl: PT15M
 ```
 
 `registered-vector-spaces` and `allowed-actions` are deployment boundaries, not
@@ -280,14 +350,16 @@ for configuration, migrations, recovery, metrics, and rollback guidance.
 
 ## Current Boundary
 
-The implemented scope supports bounded single-specialist reads and optional
-confirmation-gated writes. General execution submitted through `submit`
-remains explicitly ephemeral; durable write receipts do not turn it into a
+The implemented scope supports bounded single-specialist execution, optional
+confirmation-gated writes, and fixed sequential read-only plans. General
+execution submitted through `submit` and sequential plan checkpoints remain
+explicitly ephemeral; durable write receipts do not turn either path into a
 durable workflow engine.
 
 The following remain deferred:
 
-- multi-specialist plans and delegation;
+- conditional, parallel, dynamic, or WRITE-capable plans;
+- delegation and model-selected specialist routing;
 - durable execution;
 - scheduler or event-broker adapters; and
 - unrestricted model-selected specialist discovery.

@@ -6,6 +6,8 @@ import static org.mockito.Mockito.when;
 import ai.fabric.execution.action.ActionProposalReceiptRepository;
 import ai.fabric.execution.config.AIExecutionProperties;
 import ai.fabric.execution.gateway.AIExecutionGateway;
+import ai.fabric.execution.plan.AIExecutionCoordinator;
+import ai.fabric.execution.plan.ExecutionPlanRegistry;
 import ai.fabric.execution.specialist.SpecialistDefinition;
 import ai.fabric.execution.specialist.RegisteredSpecialist;
 import ai.fabric.execution.specialist.SpecialistDefinitionSource;
@@ -65,6 +67,8 @@ class DeploymentInfoServiceTest {
             environment,
             List.of(provider),
             mock(AIExecutionGateway.class),
+            mock(AIExecutionCoordinator.class),
+            emptyPlanRegistry(),
             registry,
             mock(ActionProposalReceiptRepository.class),
             executionProperties,
@@ -99,6 +103,9 @@ class DeploymentInfoServiceTest {
             .isInstanceOfSatisfying(Map.class, execution ->
                 assertThat(execution)
                     .containsEntry("ready", true)
+                    .containsEntry("planCoordinatorReady", true)
+                    .containsEntry("planDurability", "EPHEMERAL")
+                    .containsEntry("plans", List.of())
                     .containsEntry("asyncDurability", "EPHEMERAL")
                     .containsEntry("writeReceiptDurability", "JDBC")
                     .containsEntry("writeReceiptsReady", true)
@@ -109,6 +116,12 @@ class DeploymentInfoServiceTest {
                     .containsEntry("accountResolverRegistered", true)
                     .containsEntry("accountResolverReadRegistered", true)
             );
+    }
+
+    private ExecutionPlanRegistry emptyPlanRegistry() {
+        ExecutionPlanRegistry registry = mock(ExecutionPlanRegistry.class);
+        when(registry.list()).thenReturn(List.of());
+        return registry;
     }
 
     private RegisteredSpecialist registered(

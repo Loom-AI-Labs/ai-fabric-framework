@@ -15,6 +15,7 @@ public class AIExecutionProperties {
     private final Receipts receipts = new Receipts();
     private final Manifests manifests = new Manifests();
     private final InputWaits inputWaits = new InputWaits();
+    private final Plans plans = new Plans();
 
     public Async getAsync() {
         return async;
@@ -34,6 +35,72 @@ public class AIExecutionProperties {
 
     public InputWaits getInputWaits() {
         return inputWaits;
+    }
+
+    public Plans getPlans() {
+        return plans;
+    }
+
+    public static class Plans {
+        private boolean enabled = true;
+        private int maxSteps = 8;
+        private Duration maxDuration = Duration.ofMinutes(2);
+        private int maxActive = 1_000;
+        private Duration resultTtl = Duration.ofMinutes(15);
+
+        public boolean isEnabled() {
+            return enabled;
+        }
+
+        public void setEnabled(boolean enabled) {
+            this.enabled = enabled;
+        }
+
+        public int getMaxSteps() {
+            return maxSteps;
+        }
+
+        public void setMaxSteps(int maxSteps) {
+            this.maxSteps = positive(maxSteps, "maxSteps");
+        }
+
+        public Duration getMaxDuration() {
+            return maxDuration;
+        }
+
+        public void setMaxDuration(Duration maxDuration) {
+            this.maxDuration = positive(maxDuration, "maxDuration");
+        }
+
+        public int getMaxActive() {
+            return maxActive;
+        }
+
+        public void setMaxActive(int maxActive) {
+            this.maxActive = positive(maxActive, "maxActive");
+        }
+
+        public Duration getResultTtl() {
+            return resultTtl;
+        }
+
+        public void setResultTtl(Duration resultTtl) {
+            this.resultTtl = positive(resultTtl, "resultTtl");
+        }
+
+        private Duration positive(Duration value, String field) {
+            if (value == null || value.isZero() || value.isNegative()) {
+                throw new IllegalArgumentException(field + " must be positive");
+            }
+            return value;
+        }
+
+        private int positive(int value, String field) {
+            if (value < 1) {
+                throw new IllegalArgumentException(field + " must be positive");
+            }
+            return value;
+        }
     }
 
     public static class InputWaits {

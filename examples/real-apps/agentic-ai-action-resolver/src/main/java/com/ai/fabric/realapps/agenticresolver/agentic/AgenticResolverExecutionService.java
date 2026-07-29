@@ -11,11 +11,22 @@ import ai.fabric.execution.action.ActionProposalDecisionResult;
 import ai.fabric.execution.gateway.AIExecutionResult;
 import ai.fabric.execution.gateway.AIExecutionResumeResult;
 import ai.fabric.execution.gateway.ConversationBinding;
+import ai.fabric.execution.plan.AIExecutionCoordinator;
+import ai.fabric.execution.plan.PlanExecutionRequest;
+import ai.fabric.execution.plan.PlanExecutionResult;
+import ai.fabric.execution.plan.PlanExecutionResumeRequest;
+import ai.fabric.execution.plan.PlanExecutionResumeResult;
+import ai.fabric.execution.plan.PlanExecutionSnapshot;
 import ai.fabric.execution.specialist.client.SpecialistClient;
 import ai.fabric.execution.specialist.client.SpecialistClientFactory;
 import ai.fabric.execution.specialist.client.SpecialistInvocation;
 import ai.fabric.execution.specialist.client.SpecialistResumeInvocation;
+import com.ai.fabric.realapps.agenticresolver.agentic.plan.AccountBillingResolutionPlanRequest;
+import com.ai.fabric.realapps.agenticresolver.agentic.plan.AccountBillingResolutionPlanResult;
+import com.ai.fabric.realapps.agenticresolver.agentic.plan.AccountResolverPlans;
+import com.ai.fabric.realapps.agenticresolver.agentic.plan.PlanInputResumeRequest;
 import java.time.Clock;
+import java.util.Optional;
 import java.util.Set;
 import org.springframework.stereotype.Service;
 
@@ -38,6 +49,13 @@ public class AgenticResolverExecutionService {
         "action:assess_billing_resolution",
         "vector:account-resolution-policy"
     );
+    private static final Set<String> ACCOUNT_BILLING_PLAN_SCOPES = Set.of(
+        "specialist:account-resolver-read@1",
+        "specialist:billing-resolution-advisor@1",
+        "action:get_account_profile",
+        "action:assess_billing_resolution",
+        "vector:account-resolution-policy"
+    );
 
     private final SpecialistClient<
         AccountResolutionRequest,
@@ -51,12 +69,14 @@ public class AgenticResolverExecutionService {
         BillingResolutionAssessmentRequest,
         BillingResolutionAssessmentResult
     > billingAdvisorClient;
+    private final AIExecutionCoordinator executionCoordinator;
     private final ActionProposalCoordinator actionProposalCoordinator;
     private final AgenticResolverSessionService sessionService;
     private final Clock clock;
 
     public AgenticResolverExecutionService(
         SpecialistClientFactory specialistClientFactory,
+        AIExecutionCoordinator executionCoordinator,
         ActionProposalCoordinator actionProposalCoordinator,
         AgenticResolverSessionService sessionService,
         Clock clock
@@ -76,6 +96,7 @@ public class AgenticResolverExecutionService {
             BillingResolutionAssessmentRequest.class,
             BillingResolutionAssessmentResult.class
         );
+        this.executionCoordinator = executionCoordinator;
         this.actionProposalCoordinator = actionProposalCoordinator;
         this.sessionService = sessionService;
         this.clock = clock;
@@ -182,6 +203,103 @@ public class AgenticResolverExecutionService {
                     BILLING_ADVISOR_SCOPES
                 ),
                 requireIdempotencyKey(idempotencyKey)
+            )
+        );
+    }
+
+    public PlanExecutionResult<AccountResolutionResult>
+    executeAccountReadinessPlan(
+        String sessionId,
+        AccountResolutionRequest request,
+        String idempotencyKey
+    ) {
+        AgenticResolverSessionService.ActiveSession session =
+            sessionService.active(sessionId);
+        return executionCoordinator.execute(new PlanExecutionRequest<>(
+            AccountResolverPlans.ACCOUNT_READINESS,
+            request,
+            trustedContext(
+                session,
+                ExecutionSource.APPLICATION,
+                READ_SCOPES
+            ),
+            null,
+            normalizeIdempotencyKey(idempotencyKey)
+        ));
+    }
+
+    public PlanExecutionResult<AccountBillingResolutionPlanResult>
+    executeAccountBillingPlan(
+        String sessionId,
+        AccountBillingResolutionPlanRequest request,
+        String idempotencyKey
+    ) {
+        AgenticResolverSessionService.ActiveSession session =
+            sessionService.active(sessionId);
+        return executionCoordinator.execute(new PlanExecutionRequest<>(
+            AccountResolverPlans.ACCOUNT_BILLING_RESOLUTION,
+            request,
+            trustedContext(
+                session,
+                ExecutionSource.APPLICATION,
+                ACCOUNT_BILLING_PLAN_SCOPES
+            ),
+            null,
+            normalizeIdempotencyKey(idempotencyKey)
+        ));
+    }
+
+    public PlanExecutionResumeResult<AccountBillingResolutionPlanResult>
+    resumeAccountBillingPlan(
+        String sessionId,
+        PlanInputResumeRequest request,
+        String idempotencyKey
+    ) {
+        AgenticResolverSessionService.ActiveSession session =
+            sessionService.active(sessionId);
+        return executionCoordinator.resume(
+            new PlanExecutionResumeRequest(
+                request.executionId(),
+                request.requestId(),
+                request.response(),
+                trustedContext(
+                    session,
+                    ExecutionSource.APPLICATION,
+                    ACCOUNT_BILLING_PLAN_SCOPES
+                ),
+                requireIdempotencyKey(idempotencyKey)
+            )
+        );
+    }
+
+    public Optional<PlanExecutionSnapshot> findPlanExecution(
+        String sessionId,
+        String executionId
+    ) {
+        AgenticResolverSessionService.ActiveSession session =
+            sessionService.active(sessionId);
+        return executionCoordinator.find(
+            executionId,
+            trustedContext(
+                session,
+                ExecutionSource.APPLICATION,
+                ACCOUNT_BILLING_PLAN_SCOPES
+            )
+        );
+    }
+
+    public boolean cancelPlanExecution(
+        String sessionId,
+        String executionId
+    ) {
+        AgenticResolverSessionService.ActiveSession session =
+            sessionService.active(sessionId);
+        return executionCoordinator.cancel(
+            executionId,
+            trustedContext(
+                session,
+                ExecutionSource.APPLICATION,
+                ACCOUNT_BILLING_PLAN_SCOPES
             )
         );
     }

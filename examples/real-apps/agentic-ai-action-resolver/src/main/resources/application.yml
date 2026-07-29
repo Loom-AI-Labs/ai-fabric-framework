@@ -58,6 +58,12 @@ ai:
       max-attempts: 3
       max-requests-per-invocation: 2
       result-ttl: PT15M
+    plans:
+      enabled: true
+      max-steps: 4
+      max-duration: PT1M
+      max-active: ${AI_EXECUTION_PLAN_MAX_ACTIVE:500}
+      result-ttl: PT15M
     receipts:
       enabled: true
       repository: JDBC

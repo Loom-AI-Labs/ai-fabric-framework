@@ -17,11 +17,17 @@ import ai.fabric.execution.gateway.AIExecutionRequest;
 import ai.fabric.execution.gateway.AIExecutionResumeResult;
 import ai.fabric.execution.gateway.AIExecutionResult;
 import ai.fabric.execution.gateway.AIExecutionStatus;
+import ai.fabric.execution.plan.AIExecutionCoordinator;
+import ai.fabric.execution.plan.PlanExecutionRequest;
+import ai.fabric.execution.plan.PlanExecutionResumeRequest;
 import ai.fabric.execution.specialist.SpecialistId;
 import ai.fabric.execution.specialist.client.SpecialistClient;
 import ai.fabric.execution.specialist.client.SpecialistClientFactory;
 import ai.fabric.execution.specialist.client.SpecialistInvocation;
 import ai.fabric.execution.specialist.client.SpecialistResumeInvocation;
+import com.ai.fabric.realapps.agenticresolver.agentic.plan.AccountBillingResolutionPlanRequest;
+import com.ai.fabric.realapps.agenticresolver.agentic.plan.AccountResolverPlans;
+import com.ai.fabric.realapps.agenticresolver.agentic.plan.PlanInputResumeRequest;
 import com.ai.fabric.realapps.agenticresolver.entity.RefundRequest;
 import java.math.BigDecimal;
 import java.time.Clock;
@@ -32,6 +38,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 
 class AgenticResolverExecutionServiceTest {
 
@@ -251,6 +258,7 @@ class AgenticResolverExecutionServiceTest {
         AgenticResolverExecutionService service =
             new AgenticResolverExecutionService(
                 clientFactory,
+                mock(AIExecutionCoordinator.class),
                 coordinator,
                 sessions,
                 Clock.fixed(NOW, ZoneOffset.UTC)
@@ -269,6 +277,118 @@ class AgenticResolverExecutionServiceTest {
                 interactiveContextMatches(context, selectedSubject)
             )
         );
+    }
+
+    @Test
+    void billingPlanUsesCombinedReadOnlyScopesAndServerOwnedSubject() {
+        UUID selectedSubject = UUID.randomUUID();
+        AIExecutionCoordinator coordinator =
+            mock(AIExecutionCoordinator.class);
+        AgenticResolverSessionService sessions =
+            mock(AgenticResolverSessionService.class);
+        when(sessions.active("session-1")).thenReturn(activeSession(
+            selectedSubject
+        ));
+        AgenticResolverExecutionService service =
+            new AgenticResolverExecutionService(
+                clientFactory(new AtomicReference<>()),
+                coordinator,
+                mock(ActionProposalCoordinator.class),
+                sessions,
+                Clock.fixed(NOW, ZoneOffset.UTC)
+            );
+        AccountBillingResolutionPlanRequest request =
+            new AccountBillingResolutionPlanRequest(
+                "Assess this refund.",
+                RefundRequest.ResolutionType.REFUND,
+                new BigDecimal("75.00")
+            );
+
+        service.executeAccountBillingPlan(
+            "session-1",
+            request,
+            "plan-request-1"
+        );
+
+        ArgumentCaptor<PlanExecutionRequest<?>> captured =
+            planRequestCaptor();
+        verify(coordinator).execute(captured.capture());
+        PlanExecutionRequest<?> invocation = captured.getValue();
+        assertThat(invocation.planId())
+            .isEqualTo(AccountResolverPlans.ACCOUNT_BILLING_RESOLUTION);
+        assertThat(invocation.input()).isEqualTo(request);
+        assertThat(invocation.idempotencyKey())
+            .isEqualTo("plan-request-1");
+        assertThat(invocation.trustedExecutionContext().subject().subjectId())
+            .isEqualTo(selectedSubject.toString());
+        assertThat(invocation.trustedExecutionContext().grantedScopes())
+            .containsExactlyInAnyOrder(
+                "specialist:account-resolver-read@1",
+                "specialist:billing-resolution-advisor@1",
+                "action:get_account_profile",
+                "action:assess_billing_resolution",
+                "vector:account-resolution-policy"
+            )
+            .noneMatch(scope -> scope.startsWith("action:update_"))
+            .noneMatch(scope -> scope.startsWith("action:request_"));
+    }
+
+    @Test
+    void planResumeUsesCurrentBackendContextAndRequiredIdempotency() {
+        UUID selectedSubject = UUID.randomUUID();
+        AIExecutionCoordinator coordinator =
+            mock(AIExecutionCoordinator.class);
+        AgenticResolverSessionService sessions =
+            mock(AgenticResolverSessionService.class);
+        when(sessions.active("session-1")).thenReturn(activeSession(
+            selectedSubject
+        ));
+        AgenticResolverExecutionService service =
+            new AgenticResolverExecutionService(
+                clientFactory(new AtomicReference<>()),
+                coordinator,
+                mock(ActionProposalCoordinator.class),
+                sessions,
+                Clock.fixed(NOW, ZoneOffset.UTC)
+            );
+        var response = new BillingAmountResponse(
+            new java.math.BigDecimal("75")
+        );
+
+        service.resumeAccountBillingPlan(
+            "session-1",
+            new PlanInputResumeRequest(
+                "plan-execution-1",
+                "amount-request-1",
+                response
+            ),
+            "plan-resume-1"
+        );
+
+        ArgumentCaptor<PlanExecutionResumeRequest> captured =
+            ArgumentCaptor.forClass(PlanExecutionResumeRequest.class);
+        verify(coordinator).resume(captured.capture());
+        PlanExecutionResumeRequest invocation = captured.getValue();
+        assertThat(invocation.executionId())
+            .isEqualTo("plan-execution-1");
+        assertThat(invocation.requestId()).isEqualTo("amount-request-1");
+        assertThat(invocation.response()).isEqualTo(response);
+        assertThat(invocation.idempotencyKey())
+            .isEqualTo("plan-resume-1");
+        assertThat(invocation.trustedExecutionContext().subject().subjectId())
+            .isEqualTo(selectedSubject.toString());
+
+        assertThatThrownBy(() -> service.resumeAccountBillingPlan(
+                "session-1",
+                new PlanInputResumeRequest(
+                    "plan-execution-1",
+                    "amount-request-1",
+                    response
+                ),
+                " "
+            ))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("Idempotency-Key is required");
     }
 
     @SuppressWarnings({"unchecked", "rawtypes"})
@@ -297,6 +417,7 @@ class AgenticResolverExecutionServiceTest {
         );
         return new AgenticResolverExecutionService(
             clientFactory(observed, observedResume),
+            mock(AIExecutionCoordinator.class),
             mock(ActionProposalCoordinator.class),
             sessions,
             Clock.fixed(NOW, ZoneOffset.UTC)
@@ -406,6 +527,13 @@ class AgenticResolverExecutionServiceTest {
             null,
             NOW,
             NOW
+        );
+    }
+
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    private ArgumentCaptor<PlanExecutionRequest<?>> planRequestCaptor() {
+        return (ArgumentCaptor) ArgumentCaptor.forClass(
+            PlanExecutionRequest.class
         );
     }
 

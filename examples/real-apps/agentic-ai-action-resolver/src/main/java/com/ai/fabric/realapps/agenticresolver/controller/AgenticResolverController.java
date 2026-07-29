@@ -2,6 +2,9 @@ package com.ai.fabric.realapps.agenticresolver.controller;
 
 import ai.fabric.execution.gateway.AIExecutionResult;
 import ai.fabric.execution.gateway.AIExecutionResumeResult;
+import ai.fabric.execution.plan.PlanExecutionResult;
+import ai.fabric.execution.plan.PlanExecutionResumeResult;
+import ai.fabric.execution.plan.PlanExecutionSnapshot;
 import ai.fabric.execution.action.ActionProposalDecisionRequest;
 import ai.fabric.execution.action.ActionProposalDecisionResult;
 import com.ai.fabric.realapps.agenticresolver.agentic.AccountResolutionRequest;
@@ -11,6 +14,9 @@ import com.ai.fabric.realapps.agenticresolver.agentic.AgenticResolverSessionServ
 import com.ai.fabric.realapps.agenticresolver.agentic.BillingAssessmentResumeRequest;
 import com.ai.fabric.realapps.agenticresolver.agentic.BillingResolutionAssessmentRequest;
 import com.ai.fabric.realapps.agenticresolver.agentic.BillingResolutionAssessmentResult;
+import com.ai.fabric.realapps.agenticresolver.agentic.plan.AccountBillingResolutionPlanRequest;
+import com.ai.fabric.realapps.agenticresolver.agentic.plan.AccountBillingResolutionPlanResult;
+import com.ai.fabric.realapps.agenticresolver.agentic.plan.PlanInputResumeRequest;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -131,5 +137,76 @@ public class AgenticResolverController {
             request,
             idempotencyKey
         );
+    }
+
+    @PostMapping("/plans/account-readiness")
+    public PlanExecutionResult<AccountResolutionResult>
+    executeAccountReadinessPlan(
+        @RequestHeader(SESSION_HEADER) String sessionId,
+        @RequestHeader(
+            name = IDEMPOTENCY_HEADER,
+            required = false
+        ) String idempotencyKey,
+        @Valid @RequestBody AccountResolutionRequest request
+    ) {
+        return executionService.executeAccountReadinessPlan(
+            sessionId,
+            request,
+            idempotencyKey
+        );
+    }
+
+    @PostMapping("/plans/account-billing-resolution")
+    public PlanExecutionResult<AccountBillingResolutionPlanResult>
+    executeAccountBillingPlan(
+        @RequestHeader(SESSION_HEADER) String sessionId,
+        @RequestHeader(
+            name = IDEMPOTENCY_HEADER,
+            required = false
+        ) String idempotencyKey,
+        @Valid @RequestBody AccountBillingResolutionPlanRequest request
+    ) {
+        return executionService.executeAccountBillingPlan(
+            sessionId,
+            request,
+            idempotencyKey
+        );
+    }
+
+    @PostMapping("/plans/input/resume")
+    public PlanExecutionResumeResult<AccountBillingResolutionPlanResult>
+    resumeAccountBillingPlan(
+        @RequestHeader(SESSION_HEADER) String sessionId,
+        @RequestHeader(IDEMPOTENCY_HEADER) String idempotencyKey,
+        @Valid @RequestBody PlanInputResumeRequest request
+    ) {
+        return executionService.resumeAccountBillingPlan(
+            sessionId,
+            request,
+            idempotencyKey
+        );
+    }
+
+    @GetMapping("/plans/executions/{executionId}")
+    public ResponseEntity<PlanExecutionSnapshot> planExecution(
+        @RequestHeader(SESSION_HEADER) String sessionId,
+        @PathVariable String executionId
+    ) {
+        return executionService.findPlanExecution(sessionId, executionId)
+            .map(ResponseEntity::ok)
+            .orElseGet(() -> ResponseEntity.notFound().build());
+    }
+
+    @DeleteMapping("/plans/executions/{executionId}")
+    public ResponseEntity<Void> cancelPlanExecution(
+        @RequestHeader(SESSION_HEADER) String sessionId,
+        @PathVariable String executionId
+    ) {
+        return executionService.cancelPlanExecution(
+                sessionId,
+                executionId
+            )
+            ? ResponseEntity.noContent().build()
+            : ResponseEntity.notFound().build();
     }
 }

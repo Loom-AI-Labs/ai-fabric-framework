@@ -3,6 +3,8 @@ package com.ai.fabric.realapps.agenticresolver.service;
 import ai.fabric.execution.gateway.AIExecutionGateway;
 import ai.fabric.execution.action.ActionProposalReceiptRepository;
 import ai.fabric.execution.config.AIExecutionProperties;
+import ai.fabric.execution.plan.AIExecutionCoordinator;
+import ai.fabric.execution.plan.ExecutionPlanRegistry;
 import ai.fabric.execution.specialist.RegisteredSpecialist;
 import ai.fabric.execution.specialist.SpecialistRegistry;
 import ai.fabric.execution.specialist.manifest.SpecialistManifestRuntimeStatus;
@@ -36,6 +38,8 @@ public class DeploymentInfoService {
     private final Properties fileBuildProperties;
     private final List<AIProvider> providers;
     private final AIExecutionGateway executionGateway;
+    private final AIExecutionCoordinator executionCoordinator;
+    private final ExecutionPlanRegistry executionPlanRegistry;
     private final SpecialistRegistry specialistRegistry;
     private final ActionProposalReceiptRepository receiptRepository;
     private final AIExecutionProperties executionProperties;
@@ -45,6 +49,8 @@ public class DeploymentInfoService {
         Environment environment,
         List<AIProvider> providers,
         AIExecutionGateway executionGateway,
+        AIExecutionCoordinator executionCoordinator,
+        ExecutionPlanRegistry executionPlanRegistry,
         SpecialistRegistry specialistRegistry,
         ActionProposalReceiptRepository receiptRepository,
         AIExecutionProperties executionProperties,
@@ -56,6 +62,8 @@ public class DeploymentInfoService {
         this.fileBuildProperties = loadFileProperties(BUILD_INFO_FILE);
         this.providers = providers != null ? List.copyOf(providers) : List.of();
         this.executionGateway = executionGateway;
+        this.executionCoordinator = executionCoordinator;
+        this.executionPlanRegistry = executionPlanRegistry;
         this.specialistRegistry = specialistRegistry;
         this.receiptRepository = receiptRepository;
         this.executionProperties = executionProperties;
@@ -118,6 +126,21 @@ public class DeploymentInfoService {
             executionProperties.getReceipts();
         Map<String, Object> execution = new LinkedHashMap<>();
         execution.put("ready", executionGateway != null);
+        execution.put("planCoordinatorReady", executionCoordinator != null);
+        execution.put(
+            "planDurability",
+            "EPHEMERAL"
+        );
+        execution.put(
+            "plans",
+            executionPlanRegistry.list().stream()
+                .map(plan -> Map.of(
+                    "id", plan.id().toString(),
+                    "contentHash", plan.contentHash(),
+                    "steps", plan.definition().steps().size()
+                ))
+                .toList()
+        );
         execution.put("asyncDurability", "EPHEMERAL");
         execution.put(
             "writeReceiptDurability",

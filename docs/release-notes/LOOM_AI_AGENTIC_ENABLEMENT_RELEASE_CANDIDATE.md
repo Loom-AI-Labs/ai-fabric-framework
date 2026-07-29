@@ -6,7 +6,7 @@
 - **Compatibility baseline:** AI Fabric `0.4.0`
 - **Baseline tag:** `ai-fabric-framework-v0.4.0`
 - **Baseline commit:** `857619f`
-- **Candidate commit:** `480aa4c`
+- **Candidate commit:** pending the fixed-plan release-candidate commit
 - **Prepared:** 2026-07-29
 - **Reference application:**
   [`agentic-ai-action-resolver`](../../examples/real-apps/agentic-ai-action-resolver)
@@ -19,7 +19,10 @@ application-selected AI specialists.
 Loom AI can use this layer to define a specialist from versioned configuration,
 invoke it through a typed execution API, ground it with approved retrieval and
 READ actions, and allow it to propose confirmation-gated application writes.
-The model never receives authority to approve or directly execute a write.
+Applications can also compose exact-version, read-only specialists into
+bounded fixed sequential plans with typed step mappings, deterministic
+aggregation, checkpointed input waits, and safe resume. The model never
+receives authority to approve or directly execute a write.
 
 This work does not add a second orchestration engine. It composes the AI Fabric
 capabilities that already exist:
@@ -62,6 +65,7 @@ The adoption boundary is:
 | Safe evidence contract | Tenant and subject policy |
 | Structured provider output validation | Domain consistency validators |
 | Backend conversation binding | Conversation ownership supplied by the backend |
+| Exact-version fixed-plan registry and coordinator | Application-owned plan selection, typed mappers, and deterministic aggregators |
 | Manifest and execution diagnostics | Deployment, monitoring, support, and rollback |
 
 ## 3. Included Change Set
@@ -74,6 +78,8 @@ The adoption boundary is:
 | `9722834` | Semantic multi-turn completion of missing action parameters |
 | `aec429f` | Regression proof that an unrelated turn does not hijack an action draft |
 | `480aa4c` | Configurable specialist manifests, schema-backed execution, authoring catalogue, and manifest-based reference app |
+| `958e80a` | Typed specialist input waits, bounded continuation state, and authority-scoped safe resume |
+| Pending | Exact-version fixed sequential plans, process-local checkpoints, typed resume, and one-step/two-step Account Resolver proofs |
 
 These commits build on the released `0.4.0` lifecycle, indexing, RAG, action,
 provider, and chat-session contracts.
@@ -105,7 +111,9 @@ Use it when an application needs:
 - optional backend conversation memory;
 - safe evidence references;
 - confirmation-gated write proposals; or
-- durable proposal and decision semantics.
+- durable proposal and decision semantics;
+- typed input waits that resume the same specialist invocation; or
+- fixed application-selected read-only specialist plans.
 
 ## 5. Specialist Execution Contract
 
@@ -167,6 +175,7 @@ Supported execution statuses are:
 ```text
 SUCCEEDED
 CONFIRMATION_REQUIRED
+WAITING_FOR_INPUT
 FAILED
 DENIED
 INVALID
@@ -531,6 +540,40 @@ authorization, and execution safety.
 An unrelated question does not accidentally execute or replace the draft.
 Ambiguous values remain a clarification rather than being guessed.
 
+### 11.3 Typed specialist input waits
+
+A specialist may return a typed `NeedsUserInput` outcome when required public
+input is missing. AI Fabric stores a bounded, process-local continuation bound
+to the original invocation, exact specialist/profile identity, trusted access
+context, deadline, and response schema.
+
+Resume accepts the registered typed host response and delegates conversion and
+schema validation through the same specialist client. The caller cannot select
+specialist identity, tenant, subject, authority, or profile during resume.
+Malformed responses remain visible and retryable while the wait is valid;
+cross-context, expired, conflicting, or cancelled resumes fail closed.
+
+Input-wait state is not chat history and is not durable workflow state. It is
+`EPHEMERAL` and does not survive process restart.
+
+### 11.4 Fixed sequential specialist plans
+
+An application may register an immutable exact-version plan containing one or
+more exact-version read-only specialist steps. Java-registered typed mappers
+construct each step input from the original plan input and explicitly declared
+predecessor outputs. A deterministic registered aggregator constructs the
+final typed result.
+
+Every step independently invokes `AIExecutionGateway`, so capability,
+authority, grounding, schema, deadline, provider, and result validation remain
+in force. Completed steps are checkpointed in a bounded process-local plan
+store. If a later step needs user input, resume continues that step without
+rerunning successful predecessors.
+
+This is an application-selected composition contract, not a model-generated
+plan, graph engine, supervisor, or unrestricted multi-agent runtime. The first
+version rejects interactive invocation and WRITE-capable specialists.
+
 ## 12. Evidence And Indexing Boundary
 
 Specialist results return `AIEvidenceReference`.
@@ -589,6 +632,16 @@ ai:
       retention: P90D
       encryption-secret: ${AI_EXECUTION_RECEIPT_ENCRYPTION_SECRET}
       fingerprint-secret: ${AI_EXECUTION_RECEIPT_FINGERPRINT_SECRET}
+    input-waits:
+      enabled: true
+      max-active: 1000
+      ttl: PT10M
+    plans:
+      enabled: true
+      max-steps: 8
+      max-duration: PT2M
+      max-active: 1000
+      result-ttl: PT15M
 ```
 
 The application must separately configure:
@@ -611,6 +664,8 @@ The application must separately configure:
 | Chat turns | Configured `ai-fabric-chat-session` provider | Backend conversation lifecycle |
 | Pending ordinary chat action/draft | Chat-session action state | Conversation lifecycle |
 | Specialist write receipt | JDBC `ai_action_proposal_receipt` | Durable across restart |
+| Specialist input wait | Bounded execution-module process memory | `EPHEMERAL`; lost on restart |
+| Fixed-plan checkpoints and terminal result | Bounded execution-module process memory | `EPHEMERAL`; lost on restart |
 | Vector evidence | Existing AI Fabric vector provider | Provider lifecycle |
 | Domain entity and authoritative action result | Host application system of record | Application lifecycle |
 | General `submit` execution and result | Bounded process memory | `EPHEMERAL`; lost on restart |
@@ -630,7 +685,7 @@ Existing `0.4.0` applications do not need to:
 - replace action annotations or handlers;
 - replace chat-session storage;
 - replace live data sync; or
-- adopt specialist manifests.
+- adopt specialist manifests or fixed specialist plans.
 
 The execution artifact remains opt-in.
 
@@ -661,6 +716,10 @@ migrate them incrementally:
 Because Loom AI currently has no external specialist users, use the clean
 manifest-first model for new specialists instead of adding compatibility
 aliases for an unpublished configuration contract.
+
+Fixed plans are also additive. Existing direct specialist callers keep their
+current behavior. A plan must be selected explicitly by trusted application
+code and cannot be inferred or activated by a model response.
 
 ## 16. Earlier Documentation Superseded
 
@@ -709,6 +768,18 @@ For current adoption use, in order:
 - [ ] Enable manifest fail-fast startup.
 - [ ] Verify safe evidence, grounding, provider failure, and tenant denial.
 - [ ] Deploy and record the specialist ID and content hash.
+
+### Phase 1.5: Fixed read-only composition proof
+
+- [ ] Choose a deterministic use case that genuinely benefits from two bounded
+  specialist assessments.
+- [ ] Register exact-version plan, mapper, and aggregator components in
+  application code.
+- [ ] Keep every step read-only and reject interactive plan invocation.
+- [ ] Verify each child receives only its own effective capability boundary.
+- [ ] Verify a second-step input wait resumes without rerunning step one.
+- [ ] Treat plan checkpoints as process-local and restart the request from the
+  beginning after process loss.
 
 ### Phase 2: Governed write proof
 
@@ -770,6 +841,8 @@ ai.fabric.specialist.manifest.validation
 ai.fabric.specialist.registry.definition.count
 ai.fabric.specialist.execution.by.source
 ai.fabric.execution.action.receipts
+ai.fabric.execution.input.waits
+ai.fabric.execution.plans
 ```
 
 Health may expose:
@@ -800,8 +873,9 @@ Alert on:
 - outcome-persistence failure;
 - `OUTCOME_UNKNOWN`;
 - recovery-marked unknown receipts;
-- abnormal expiry growth; and
-- repeated cross-context confirmation denial.
+- abnormal expiry growth;
+- repeated cross-context confirmation denial; and
+- plan registration failure, wait expiry, resume denial, or deadline growth.
 
 ## 20. Rollback
 
@@ -885,6 +959,19 @@ These suites overlap and must not be summed into a single test-count claim.
 The release CI must rerun the authoritative matrix from the final release
 commit.
 
+### Typed input waits and fixed sequential plans
+
+- The final 36-module infrastructure reactor passed with tests enabled.
+- Focused plan coordinator and contract installation passed 11 tests.
+- The packaged Agentic AI Action Resolver passed 12 shared smoke tests and 96
+  application tests.
+- Packaged OpenAI verification proved one-step success, two-step success,
+  second-step `WAITING_FOR_INPUT`, typed resume without rerunning step one, and
+  idempotent replay.
+- Packaged verification exposed and fixed a Spring Boot 4/Jackson web-boundary
+  incompatibility. The public resume contract now accepts a typed host response
+  and a Spring MVC regression test protects deserialization.
+
 ## 22. Release Gate Still Required
 
 Before Loom AI adopts a published artifact:
@@ -901,16 +988,21 @@ Before Loom AI adopts a published artifact:
 - [ ] Run Loom AI consumer compilation and runtime smoke tests.
 - [ ] Obtain explicit release approval.
 
-Until those items pass, Loom AI should treat `480aa4c` as a verified framework
-candidate, not a published dependency.
+Until those items pass, Loom AI should treat the final fixed-plan commit named
+at the top of this document as a verified framework candidate, not a published
+dependency.
 
 ## 23. Explicitly Deferred
 
 This release does not provide:
 
-- multi-specialist planning, delegation, or handoff;
+- model-generated or dynamic multi-specialist planning;
+- conditional or parallel specialist branches;
+- specialist-authored delegation or handoff;
+- interactive plan dialogue ownership;
+- WRITE-capable composed plans;
 - model-selected unrestricted specialist discovery;
-- durable general execution;
+- durable general or plan execution;
 - a workflow graph or workflow engine;
 - event-broker or scheduler adapters;
 - a specialist-definition database;
@@ -939,9 +1031,11 @@ For Loom AI:
 3. use Java only for real domain behavior;
 4. start with a read-only internal specialist;
 5. add one low-risk governed write only after JDBC receipt operations are
-   ready; and
-6. defer multi-specialist orchestration until this single-specialist contract
-   has production usage evidence.
+   ready;
+6. use fixed read-only plans only where application-owned decomposition is
+   deterministic and measurably better than one specialist; and
+7. defer dynamic planning, delegation, WRITE composition, and durable plan
+   execution until the fixed-plan contract has production usage evidence.
 
 This moves Loom AI from generating ad hoc AI integrations toward composing
 versioned, governed AI-enabled application capabilities without turning model

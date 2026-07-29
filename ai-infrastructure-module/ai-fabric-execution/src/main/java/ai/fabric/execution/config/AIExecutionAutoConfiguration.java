@@ -5,6 +5,7 @@ import ai.fabric.core.AICoreService;
 import ai.fabric.evidence.AIEvidenceReferenceMapper;
 import ai.fabric.execution.action.ActionProposalCoordinator;
 import ai.fabric.execution.gateway.AIExecutionGateway;
+import ai.fabric.execution.gateway.DefaultAIExecutionCoordinator;
 import ai.fabric.execution.gateway.AIExecutionConversationRecorder;
 import ai.fabric.execution.gateway.DefaultAIExecutionGateway;
 import ai.fabric.execution.gateway.DefaultStructuredSpecialistOutputFinalizer;
@@ -34,6 +35,13 @@ import ai.fabric.execution.specialist.manifest.SpecialistFinalOutputValidatorReg
 import ai.fabric.execution.specialist.manifest.SpecialistGroundingValidator;
 import ai.fabric.execution.specialist.manifest.SpecialistGroundingValidatorRegistry;
 import ai.fabric.execution.input.SpecialistInputContinuation;
+import ai.fabric.execution.plan.AIExecutionCoordinator;
+import ai.fabric.execution.plan.DefaultExecutionPlanRegistry;
+import ai.fabric.execution.plan.ExecutionPlanDefinition;
+import ai.fabric.execution.plan.ExecutionPlanRegistry;
+import ai.fabric.execution.plan.PlanComponentRegistry;
+import ai.fabric.execution.plan.PlanResultAggregator;
+import ai.fabric.execution.plan.PlanStepInputMapper;
 import ai.fabric.execution.specialist.manifest.SpecialistInputContinuationRegistry;
 import ai.fabric.execution.specialist.manifest.SpecialistJsonSchemaRegistry;
 import ai.fabric.execution.specialist.manifest.SpecialistJsonSchemaValidator;
@@ -459,6 +467,63 @@ public class AIExecutionAutoConfiguration {
             specialistRegistry,
             executionGateway,
             objectMapper
+        );
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    public PlanComponentRegistry planComponentRegistry(
+        List<PlanStepInputMapper<?, ?>> inputMappers,
+        List<PlanResultAggregator<?, ?>> resultAggregators
+    ) {
+        return new PlanComponentRegistry(inputMappers, resultAggregators);
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    public ExecutionPlanRegistry executionPlanRegistry(
+        List<ExecutionPlanDefinition<?, ?>> definitions,
+        SpecialistRegistry specialistRegistry,
+        SpecialistClientFactory specialistClientFactory,
+        PlanComponentRegistry componentRegistry,
+        AIExecutionProperties properties
+    ) {
+        return new DefaultExecutionPlanRegistry(
+            definitions,
+            specialistRegistry,
+            specialistClientFactory,
+            componentRegistry,
+            properties.getPlans().getMaxSteps(),
+            properties.getPlans().getMaxDuration()
+        );
+    }
+
+    @Bean
+    @ConditionalOnBean(AIExecutionGateway.class)
+    @ConditionalOnProperty(
+        prefix = "ai.execution.plans",
+        name = "enabled",
+        havingValue = "true",
+        matchIfMissing = true
+    )
+    @ConditionalOnMissingBean
+    public AIExecutionCoordinator aiExecutionCoordinator(
+        ExecutionPlanRegistry planRegistry,
+        PlanComponentRegistry componentRegistry,
+        AIExecutionGateway executionGateway,
+        SpecialistClientFactory specialistClientFactory,
+        CanonicalJsonSupport canonicalJson,
+        Clock clock,
+        AIExecutionProperties properties
+    ) {
+        return new DefaultAIExecutionCoordinator(
+            planRegistry,
+            componentRegistry,
+            executionGateway,
+            specialistClientFactory,
+            canonicalJson,
+            clock,
+            properties.getPlans()
         );
     }
 

@@ -10,6 +10,9 @@ import ai.fabric.execution.gateway.AIExecutionGateway;
 import ai.fabric.execution.gateway.AIExecutionConversationRecorder;
 import ai.fabric.chat.service.ChatSessionService;
 import ai.fabric.execution.gateway.ExecutionCapabilityInventory;
+import ai.fabric.execution.plan.AIExecutionCoordinator;
+import ai.fabric.execution.plan.ExecutionPlanRegistry;
+import ai.fabric.execution.plan.PlanComponentRegistry;
 import ai.fabric.execution.specialist.SpecialistRegistry;
 import ai.fabric.execution.specialist.manifest.SpecialistAuthoringCatalogProvider;
 import ai.fabric.execution.specialist.manifest.SpecialistManifestMetrics;
@@ -53,6 +56,15 @@ class AIExecutionAutoConfigurationTest {
             )
             .run(context -> {
                 assertThat(context).hasSingleBean(AIExecutionGateway.class);
+                assertThat(context)
+                    .hasSingleBean(AIExecutionCoordinator.class);
+                assertThat(context)
+                    .hasSingleBean(ExecutionPlanRegistry.class);
+                assertThat(context)
+                    .hasSingleBean(PlanComponentRegistry.class);
+                assertThat(context.getBean(
+                    ExecutionPlanRegistry.class
+                ).list()).isEmpty();
                 assertThat(context).hasSingleBean(SpecialistRegistry.class);
                 assertThat(context)
                     .hasSingleBean(SpecialistAuthoringCatalogProvider.class);
@@ -86,6 +98,19 @@ class AIExecutionAutoConfigurationTest {
                             assertThat(executor.getQueueCapacity()).isEqualTo(3);
                         }
                     );
+            });
+    }
+
+    @Test
+    void canDisablePlanCoordinationWithoutDisablingSpecialistExecution() {
+        contextRunner
+            .withPropertyValues("ai.execution.plans.enabled=false")
+            .run(context -> {
+                assertThat(context).hasSingleBean(AIExecutionGateway.class);
+                assertThat(context)
+                    .hasSingleBean(ExecutionPlanRegistry.class);
+                assertThat(context)
+                    .doesNotHaveBean(AIExecutionCoordinator.class);
             });
     }
 

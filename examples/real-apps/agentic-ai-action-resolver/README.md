@@ -25,6 +25,13 @@ contract, and safely resume the same invocation after the host supplies the
 missing value. This is not action confirmation and does not create a refund or
 account credit.
 
+The app also proves fixed sequential composition without changing the original
+Account Resolver demo. `account-readiness@1` is a one-step parity plan.
+`account-billing-resolution@1` runs the read-only account specialist and then
+the billing advisor, passing only the validated typed account result through a
+registered mapper. Missing billing amount pauses step two; resume does not
+rerun step one.
+
 The original `ai-fabric-account-resolver` remains unchanged and deployable as
 the governed-action baseline.
 
@@ -41,6 +48,12 @@ the governed-action baseline.
   response schema, and idempotency key.
 - A malformed response remains visibly rejected without invoking the provider;
   an identical successful resume is replayed without repeating execution.
+- Exact-version application plans, mappers, and aggregators are validated at
+  startup against the pinned manifest schemas.
+- Each plan step receives an independent effective-capability evaluation and
+  no shared worker conversation.
+- Completed plan steps are retained in a bounded `EPHEMERAL` checkpoint store;
+  restart requires a new plan execution.
 - Server-created, database-backed session state binds the opaque browser
   session to the trusted principal, tenant, and current account subject.
 - `account-resolver@1` requests one Mode, one READ action, one WRITE proposal,
@@ -185,6 +198,36 @@ Pending input waits are bounded process-local state. They do not survive an
 application restart and must not be presented as durable workflow tasks.
 Action receipts remain a separate JDBC-backed mechanism with different
 semantics and guarantees.
+
+## Fixed Sequential Plans
+
+The application registers two fixed plans in
+`AccountResolverPlanConfiguration`:
+
+```text
+account-readiness@1
+  account-state -> account-resolver-read@1
+
+account-billing-resolution@1
+  account-state -> account-resolver-read@1
+  billing-path  -> billing-resolution-advisor@1
+```
+
+Plan definitions contain only exact IDs, application DTO classes, ordered
+steps, registered mapper/aggregator references, and a maximum duration.
+They do not carry identity, scopes, prompts, provider settings, model names,
+actions, or vector-space grants.
+
+The two-step mapper receives `AccountBillingResolutionPlanRequest` and the
+declared `AccountResolutionResult` checkpoint. It creates a bounded
+`BillingResolutionAssessmentRequest`; no transcript, raw evidence, account ID,
+or trusted context is copied into model input. The deterministic aggregator
+returns `AccountBillingResolutionPlanResult`.
+
+The coordinator currently accepts `APPLICATION`, `EVENT`, and `SCHEDULED`
+sources. Interactive plan execution and WRITE-capable plan steps fail closed
+until dialogue ownership and durable composed-action continuation have
+separate contracts.
 
 Write request example:
 
@@ -371,6 +414,56 @@ process-local wait state compares that key together with the canonical response
 hash. An identical completed resume returns `REPLAYED`; different data for the
 claimed request returns `INPUT_RESUME_CONFLICT`.
 
+Run the one-step parity plan:
+
+```http
+POST /api/agentic-resolver/plans/account-readiness
+X-AI-Fabric-Demo-Session: {sessionId}
+Idempotency-Key: {stable-plan-start-key}
+Content-Type: application/json
+
+{"question":"Can the current account place an order?"}
+```
+
+Run the two-step plan:
+
+```http
+POST /api/agentic-resolver/plans/account-billing-resolution
+X-AI-Fabric-Demo-Session: {sessionId}
+Idempotency-Key: {stable-plan-start-key}
+Content-Type: application/json
+
+{
+  "question":"Can this account receive a refund?",
+  "resolutionType":"REFUND",
+  "amount":75
+}
+```
+
+Omit `amount` to receive a plan-level `WAITING_FOR_INPUT`. Resume it without
+selecting a specialist:
+
+```http
+POST /api/agentic-resolver/plans/input/resume
+X-AI-Fabric-Demo-Session: {sessionId}
+Idempotency-Key: {stable-plan-resume-key}
+Content-Type: application/json
+
+{
+  "executionId":"plan-execution-...",
+  "requestId":"input-request-...",
+  "response":{"amount":75}
+}
+```
+
+Inspect or cancel process-local plan state:
+
+```http
+GET /api/agentic-resolver/plans/executions/{executionId}
+DELETE /api/agentic-resolver/plans/executions/{executionId}
+X-AI-Fabric-Demo-Session: {sessionId}
+```
+
 Confirm or reject the durable receipt:
 
 ```http
@@ -467,6 +560,24 @@ The cap covers active waits and completed entries retained for idempotent
 replay; expired replay entries are removed on the next store operation.
 Restarting the process invalidates pending input request IDs; clients must
 start a new specialist invocation.
+
+The app also configures bounded process-local plan state:
+
+```yaml
+ai:
+  execution:
+    plans:
+      enabled: true
+      max-steps: 4
+      max-duration: PT1M
+      max-active: 500
+      result-ttl: PT15M
+```
+
+Plan state is separate from chat history, pending specialist input, and durable
+action receipts. It checkpoints only the original typed input, validated step
+outputs, safe evidence references, status, timing, and access binding needed
+for same-process continuation.
 
 ## Receipt Configuration
 
@@ -626,7 +737,8 @@ No verification command for this feature uses `-DskipTests`.
 
 - automatic LLM confirmation;
 - direct model-to-handler execution;
-- multi-specialist planning, delegation, or handoff;
+- dynamic/model-authored planning, delegation, or handoff;
+- conditional, parallel, WRITE-capable, or durable plans;
 - event or scheduled write adapters;
 - blind retries for unknown write outcomes;
 - durable async job execution;

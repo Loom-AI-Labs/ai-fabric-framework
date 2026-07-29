@@ -15,7 +15,13 @@ import ai.fabric.execution.gateway.AIExecutionGateway;
 import ai.fabric.execution.gateway.AIExecutionResult;
 import ai.fabric.execution.gateway.AIExecutionStatus;
 import ai.fabric.execution.specialist.DefaultSpecialistRegistry;
+import ai.fabric.execution.specialist.RegisteredSpecialist;
+import ai.fabric.execution.specialist.SpecialistDefinition;
+import ai.fabric.execution.specialist.SpecialistDefinitionSource;
 import ai.fabric.execution.specialist.SpecialistId;
+import ai.fabric.execution.specialist.SpecialistInputAdapter;
+import ai.fabric.execution.specialist.SpecialistOutputAdapter;
+import ai.fabric.execution.specialist.manifest.CanonicalJsonSupport;
 import ai.fabric.execution.specialist.manifest.DefaultSpecialistManifestCompiler;
 import ai.fabric.execution.specialist.manifest.ManifestTestFixtures;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -99,6 +105,69 @@ class DefaultSpecialistClientFactoryTest {
             .isInstanceOf(IllegalArgumentException.class)
             .hasMessageContaining("input")
             .hasMessageContaining("question");
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void bindsAndCachesNativeJavaSpecialistsWithoutJsonConversion() {
+        SpecialistId id = SpecialistId.of("native-support", "1");
+        SpecialistInputAdapter<Question> inputAdapter =
+            mock(SpecialistInputAdapter.class);
+        SpecialistOutputAdapter<Answer> outputAdapter =
+            mock(SpecialistOutputAdapter.class);
+        SpecialistDefinition<Question, Answer> definition =
+            mock(SpecialistDefinition.class);
+        when(inputAdapter.inputType()).thenReturn(Question.class);
+        when(outputAdapter.outputType()).thenReturn(Answer.class);
+        when(definition.inputAdapter()).thenReturn(inputAdapter);
+        when(definition.outputAdapter()).thenReturn(outputAdapter);
+        var registered = new RegisteredSpecialist(
+            definition,
+            SpecialistDefinitionSource.JAVA,
+            CanonicalJsonSupport.sha256("native-support"),
+            "test:native-support",
+            Map.of()
+        );
+        var registry = mock(
+            ai.fabric.execution.specialist.SpecialistRegistry.class
+        );
+        when(registry.requireRegistered(id)).thenReturn(registered);
+        AIExecutionGateway gateway = mock(AIExecutionGateway.class);
+        Answer answer = new Answer("Use the native specialist.");
+        when(gateway.execute(any())).thenReturn(new AIExecutionResult<>(
+            "exec-native",
+            id,
+            AIExecutionStatus.SUCCEEDED,
+            answer,
+            List.of(),
+            Map.of(),
+            null,
+            Instant.EPOCH,
+            Instant.EPOCH
+        ));
+        SpecialistClientFactory factory = new DefaultSpecialistClientFactory(
+            registry,
+            gateway,
+            ManifestTestFixtures.objectMapper()
+        );
+
+        SpecialistClient<Question, Answer> first = factory.bind(
+            id,
+            Question.class,
+            Answer.class
+        );
+        SpecialistClient<Question, Answer> second = factory.bind(
+            id,
+            Question.class,
+            Answer.class
+        );
+        AIExecutionResult<Answer> result = first.execute(
+            new Question("What is the native path?"),
+            trustedContext()
+        );
+
+        assertThat(second).isSameAs(first);
+        assertThat(result.output()).isSameAs(answer);
     }
 
     private TrustedExecutionContext trustedContext() {
