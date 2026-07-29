@@ -6,7 +6,7 @@
 - **Compatibility baseline:** AI Fabric `0.4.0`
 - **Baseline tag:** `ai-fabric-framework-v0.4.0`
 - **Baseline commit:** `857619f`
-- **Candidate commit:** `ce03c22`
+- **Candidate commit:** `67be5f5`
 - **Prepared:** 2026-07-29
 - **Reference application:**
   [`agentic-ai-action-resolver`](../../examples/real-apps/agentic-ai-action-resolver)
@@ -87,7 +87,7 @@ The adoption boundary is:
 | `480aa4c` | Configurable specialist manifests, schema-backed execution, authoring catalogue, and manifest-based reference app |
 | `958e80a` | Typed specialist input waits, bounded continuation state, and authority-scoped safe resume |
 | `ce03c22` | Exact-version fixed sequential plans, process-local checkpoints, typed resume, and one-step/two-step Account Resolver proofs |
-| Pending Plan 0006 commit | Typed asynchronous specialist access, scoped payload-checked idempotency, and a proactive read-only event proof |
+| `67be5f5` | Typed asynchronous specialist access, scoped payload-checked idempotency, and a proactive read-only event proof |
 
 These commits build on the released `0.4.0` lifecycle, indexing, RAG, action,
 provider, and chat-session contracts.
