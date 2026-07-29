@@ -6,7 +6,7 @@
 - **Compatibility baseline:** AI Fabric `0.4.0`
 - **Baseline tag:** `ai-fabric-framework-v0.4.0`
 - **Baseline commit:** `857619f`
-- **Candidate scope:** Through Plan `0007`, durable read-only specialist jobs
+- **Candidate commit:** `cbd1404`
 - **Prepared:** 2026-07-29
 - **Reference application:**
   [`agentic-ai-action-resolver`](../../examples/real-apps/agentic-ai-action-resolver)
@@ -94,7 +94,7 @@ The adoption boundary is:
 | `958e80a` | Typed specialist input waits, bounded continuation state, and authority-scoped safe resume |
 | `ce03c22` | Exact-version fixed sequential plans, process-local checkpoints, typed resume, and one-step/two-step Account Resolver proofs |
 | `67be5f5` | Typed asynchronous specialist access, scoped payload-checked idempotency, and a proactive read-only event proof |
-| Plan `0007` implementation commit | Encrypted JDBC read-job state, worker leasing, restart recovery, durable replay, and packaged OpenAI restart proof |
+| `cbd1404` | Encrypted JDBC read-job state, worker leasing, restart recovery, durable replay, and packaged OpenAI restart proof |
 
 These commits build on the released `0.4.0` lifecycle, indexing, RAG, action,
 provider, and chat-session contracts.
