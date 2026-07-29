@@ -6,8 +6,7 @@
 - **Compatibility baseline:** AI Fabric `0.4.0`
 - **Baseline tag:** `ai-fabric-framework-v0.4.0`
 - **Baseline commit:** `857619f`
-- **Candidate baseline commit:** current `main` plus Plan `0010`; final commit
-  assigned at the release boundary
+- **Candidate baseline commit:** `28e726d`
 - **Prepared:** 2026-07-29
 - **Reference application:**
   [`agentic-ai-action-resolver`](../../examples/real-apps/agentic-ai-action-resolver)
@@ -126,7 +125,7 @@ The adoption boundary is:
 | `cbd1404` | Encrypted JDBC read-job state, worker leasing, restart recovery, durable replay, and packaged OpenAI restart proof |
 | `e415a52` | Durable human-review policies, encrypted JDBC tasks and dispatch receipts, trusted reviewer decisions, continuation/recovery, and an OpenAI-backed support-credit proof |
 | `8690964` | Closed, exact-version, one-level read-only specialist delegation and Account Resolver proof |
-| Plan `0010` candidate | Explicit, exact-version, one-level read-only specialist handoff and Account Resolver intake proof |
+| `28e726d` | Explicit, exact-version, one-level read-only specialist handoff and Account Resolver intake proof |
 
 These commits build on the released `0.4.0` lifecycle, indexing, RAG, action,
 provider, and chat-session contracts.
