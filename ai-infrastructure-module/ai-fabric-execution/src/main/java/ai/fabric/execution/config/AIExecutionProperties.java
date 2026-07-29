@@ -14,6 +14,7 @@ public class AIExecutionProperties {
     private final Capabilities capabilities = new Capabilities();
     private final Receipts receipts = new Receipts();
     private final Manifests manifests = new Manifests();
+    private final InputWaits inputWaits = new InputWaits();
 
     public Async getAsync() {
         return async;
@@ -29,6 +30,95 @@ public class AIExecutionProperties {
 
     public Manifests getManifests() {
         return manifests;
+    }
+
+    public InputWaits getInputWaits() {
+        return inputWaits;
+    }
+
+    public static class InputWaits {
+        private boolean enabled;
+        private Duration defaultTtl = Duration.ofMinutes(15);
+        private Duration maxTtl = Duration.ofHours(1);
+        private int maxPending = 1_000;
+        private int maxAttempts = 3;
+        private int maxRequestsPerInvocation = 3;
+        private Duration resultTtl = Duration.ofMinutes(15);
+
+        public boolean isEnabled() {
+            return enabled;
+        }
+
+        public void setEnabled(boolean enabled) {
+            this.enabled = enabled;
+        }
+
+        public Duration getDefaultTtl() {
+            return defaultTtl;
+        }
+
+        public void setDefaultTtl(Duration defaultTtl) {
+            this.defaultTtl = positive(defaultTtl, "defaultTtl");
+        }
+
+        public Duration getMaxTtl() {
+            return maxTtl;
+        }
+
+        public void setMaxTtl(Duration maxTtl) {
+            this.maxTtl = positive(maxTtl, "maxTtl");
+        }
+
+        public int getMaxPending() {
+            return maxPending;
+        }
+
+        public void setMaxPending(int maxPending) {
+            this.maxPending = positive(maxPending, "maxPending");
+        }
+
+        public int getMaxAttempts() {
+            return maxAttempts;
+        }
+
+        public void setMaxAttempts(int maxAttempts) {
+            this.maxAttempts = positive(maxAttempts, "maxAttempts");
+        }
+
+        public int getMaxRequestsPerInvocation() {
+            return maxRequestsPerInvocation;
+        }
+
+        public void setMaxRequestsPerInvocation(
+            int maxRequestsPerInvocation
+        ) {
+            this.maxRequestsPerInvocation = positive(
+                maxRequestsPerInvocation,
+                "maxRequestsPerInvocation"
+            );
+        }
+
+        public Duration getResultTtl() {
+            return resultTtl;
+        }
+
+        public void setResultTtl(Duration resultTtl) {
+            this.resultTtl = positive(resultTtl, "resultTtl");
+        }
+
+        private Duration positive(Duration value, String field) {
+            if (value == null || value.isZero() || value.isNegative()) {
+                throw new IllegalArgumentException(field + " must be positive");
+            }
+            return value;
+        }
+
+        private int positive(int value, String field) {
+            if (value < 1) {
+                throw new IllegalArgumentException(field + " must be positive");
+            }
+            return value;
+        }
     }
 
     public static class Manifests {

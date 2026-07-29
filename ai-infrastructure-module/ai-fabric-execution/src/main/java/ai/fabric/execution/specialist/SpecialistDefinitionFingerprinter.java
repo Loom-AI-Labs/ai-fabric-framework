@@ -27,6 +27,9 @@ final class SpecialistDefinitionFingerprinter {
             definition.limits().toString(),
             definition.inputAdapter().getClass().getName(),
             definition.inputAdapter().inputType().getName(),
+            definition.inputAdapter().inputContinuation()
+                .map(ai.fabric.execution.input.SpecialistInputContinuation::id)
+                .orElse("none"),
             definition.outputAdapter().getClass().getName(),
             definition.outputAdapter().outputType().getName(),
             definition.outputAdapter().outputMode().name()

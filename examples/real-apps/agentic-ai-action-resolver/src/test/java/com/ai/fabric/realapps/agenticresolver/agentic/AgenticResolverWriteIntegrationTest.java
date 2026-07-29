@@ -109,6 +109,49 @@ class AgenticResolverWriteIntegrationTest {
     private ApplicationContext applicationContext;
 
     @Test
+    void missingBillingAmountSerializesPortableJsonSchema() throws Exception {
+        AgenticResolverSessionService.SessionView session =
+            sessionService.create();
+
+        mockMvc.perform(post(
+                "/api/agentic-resolver/billing-assessment"
+            )
+                .header(
+                    AgenticResolverController.SESSION_HEADER,
+                    session.sessionId()
+                )
+                .header(
+                    AgenticResolverController.IDEMPOTENCY_HEADER,
+                    "integration-billing-wait"
+                )
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsBytes(Map.of(
+                    "question",
+                    "What path would this refund take?",
+                    "resolutionType",
+                    "REFUND"
+                ))))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.status").value("WAITING_FOR_INPUT"))
+            .andExpect(jsonPath("$.output").doesNotExist())
+            .andExpect(jsonPath("$.needsUserInput.purposeCode")
+                .value("MISSING_BILLING_AMOUNT"))
+            .andExpect(jsonPath(
+                "$.needsUserInput.responseContract.schema.type"
+            ).value("object"))
+            .andExpect(jsonPath(
+                "$.needsUserInput.responseContract.schema.properties.amount.type"
+            ).value("number"))
+            .andExpect(jsonPath(
+                "$.needsUserInput.responseContract.schema.properties.amount"
+                    + ".exclusiveMinimum"
+            ).value(0))
+            .andExpect(jsonPath(
+                "$.needsUserInput.responseContract.schema.array"
+            ).doesNotExist());
+    }
+
+    @Test
     void confirmedHttpDecisionChangesStateOnceAndReturnsOnlySafeOutcome()
         throws Exception {
         TestSession testSession = missingAddressSession();

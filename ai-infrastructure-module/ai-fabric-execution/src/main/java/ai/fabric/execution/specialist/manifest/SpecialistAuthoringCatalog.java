@@ -74,13 +74,30 @@ public record SpecialistAuthoringCatalog(
         Set<String> groundingValidators,
         Set<String> finalOutputValidators,
         Set<String> directOutputProjectors,
-        Set<String> outputNormalizers
+        Set<String> outputNormalizers,
+        Set<String> inputContinuations
     ) {
+        public ExtensionOptions(
+            Set<String> groundingValidators,
+            Set<String> finalOutputValidators,
+            Set<String> directOutputProjectors,
+            Set<String> outputNormalizers
+        ) {
+            this(
+                groundingValidators,
+                finalOutputValidators,
+                directOutputProjectors,
+                outputNormalizers,
+                Set.of()
+            );
+        }
+
         public ExtensionOptions {
             groundingValidators = immutable(groundingValidators);
             finalOutputValidators = immutable(finalOutputValidators);
             directOutputProjectors = immutable(directOutputProjectors);
             outputNormalizers = immutable(outputNormalizers);
+            inputContinuations = immutable(inputContinuations);
         }
     }
 

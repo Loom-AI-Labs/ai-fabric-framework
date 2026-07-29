@@ -43,11 +43,20 @@ ai:
         - account-resolution-policy
       allowed-actions:
         - get_account_profile
+        - assess_billing_resolution
         - update_address
     async:
       core-pool-size: 2
       max-pool-size: 4
       queue-capacity: 24
+      result-ttl: PT15M
+    input-waits:
+      enabled: true
+      default-ttl: PT10M
+      max-ttl: PT30M
+      max-pending: ${AI_EXECUTION_INPUT_WAIT_MAX_PENDING:500}
+      max-attempts: 3
+      max-requests-per-invocation: 2
       result-ttl: PT15M
     receipts:
       enabled: true
@@ -120,6 +129,7 @@ ai:
           require-allowlist: true
           allowed-read-actions:
             - get_account_profile
+            - assess_billing_resolution
           max-iterations: 2
           max-actions-per-iteration: 1
           max-total-actions: 2

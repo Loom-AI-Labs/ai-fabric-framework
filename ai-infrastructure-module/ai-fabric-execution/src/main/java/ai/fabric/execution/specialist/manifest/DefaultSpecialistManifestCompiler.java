@@ -11,6 +11,7 @@ import ai.fabric.execution.specialist.SpecialistInstructions;
 import ai.fabric.execution.specialist.SpecialistLimits;
 import ai.fabric.execution.specialist.SpecialistOutputMode;
 import ai.fabric.execution.specialist.SpecialistWritePolicy;
+import ai.fabric.execution.input.SpecialistInputContinuation;
 import ai.fabric.intent.orchestration.capability.RequestedCapabilityProfile;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -103,6 +104,9 @@ public final class DefaultSpecialistManifestCompiler
                     : context.outputNormalizerRegistry().require(
                         spec.output().normalizerRef()
                     );
+            SpecialistInputContinuation<
+                com.fasterxml.jackson.databind.JsonNode
+            > inputContinuation = inputContinuation(spec.input(), context);
 
             SpecialistDefinition<
                 com.fasterxml.jackson.databind.JsonNode,
@@ -136,6 +140,7 @@ public final class DefaultSpecialistManifestCompiler
                     inputSchema,
                     spec.input(),
                     spec.conversation(),
+                    inputContinuation,
                     limits,
                     context.schemaValidator(),
                     context.canonicalJson(),
@@ -376,6 +381,13 @@ public final class DefaultSpecialistManifestCompiler
 
     private void validateInput(SpecialistInputSpec input, String source) {
         requireText(input.schemaRef(), "input.schemaRef", source);
+        if (input.continuationRef() != null) {
+            requireText(
+                input.continuationRef(),
+                "input.continuationRef",
+                source
+            );
+        }
         if (input.rendering()
             != SpecialistInputRendering.PRIMARY_TEXT_WITH_JSON_CONTEXT) {
             throw failure(
@@ -403,6 +415,40 @@ public final class DefaultSpecialistManifestCompiler
                 source
             );
         }
+    }
+
+    @SuppressWarnings("unchecked")
+    private SpecialistInputContinuation<
+        com.fasterxml.jackson.databind.JsonNode
+    > inputContinuation(
+        SpecialistInputSpec input,
+        SpecialistCompilationContext context
+    ) {
+        if (input.continuationRef() == null
+            || input.continuationRef().isBlank()) {
+            return null;
+        }
+        SpecialistInputContinuation<?> continuation =
+            context.inputContinuationRegistry().require(
+                input.continuationRef()
+            );
+        if (continuation.inputType()
+            != com.fasterxml.jackson.databind.JsonNode.class) {
+            throw failure(
+                "INPUT_CONTINUATION_TYPE_MISMATCH",
+                "Manifest input continuations must accept JsonNode input.",
+                context.source()
+            );
+        }
+        continuation.responseSchemas().forEach(schemaId ->
+            context.schemaRegistry().require(
+                schemaId,
+                SpecialistSchemaDirection.INPUT
+            )
+        );
+        return (SpecialistInputContinuation<
+            com.fasterxml.jackson.databind.JsonNode
+        >) continuation;
     }
 
     private void validateGrounding(

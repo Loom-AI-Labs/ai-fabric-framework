@@ -129,6 +129,30 @@ public class AccountResolutionService {
         return buildAccountProfile(user, subscription);
     }
 
+    @Transactional(readOnly = true)
+    public BillingResolutionAssessment assessBillingResolution(
+        BigDecimal amount,
+        RefundRequest.ResolutionType resolutionType
+    ) {
+        BigDecimal normalizedAmount = normalizeAmount(amount);
+        RefundRequest.ResolutionType effectiveType =
+            resolutionType != null
+                ? resolutionType
+                : RefundRequest.ResolutionType.ACCOUNT_CREDIT;
+        RefundRequest.RefundStatus status = refundStatus(
+            effectiveType,
+            normalizedAmount
+        );
+        return new BillingResolutionAssessment(
+            effectiveType.name(),
+            normalizedAmount,
+            policyDecision(status),
+            status.name(),
+            autoApprovalLimit(effectiveType),
+            refundPolicyExplanation(effectiveType, status)
+        );
+    }
+
     @Transactional
     public PaymentMethodResult updatePaymentMethod(UUID subscriptionId,
                                                    PaymentMethod.PaymentType type,
@@ -763,6 +787,15 @@ public class AccountResolutionService {
         String policyDecision,
         String policyExplanation,
         BigDecimal autoApprovalLimit
+    ) { }
+
+    public record BillingResolutionAssessment(
+        String resolutionType,
+        BigDecimal amount,
+        String decision,
+        String expectedStatus,
+        BigDecimal automaticLimit,
+        String explanation
     ) { }
 
     private record DemoScenarioDefinition(

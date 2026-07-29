@@ -191,6 +191,200 @@ spec:
     maxOutputTokens: 1000
 ---
 apiVersion: ai.fabric/v1
+kind: SpecialistSchema
+metadata:
+  name: billing-resolution-assessment-request
+  version: "1"
+spec:
+  direction: INPUT
+  draft: "2020-12"
+  schema:
+    type: object
+    additionalProperties: false
+    required:
+      - question
+      - resolutionType
+      - amount
+    properties:
+      question:
+        type: string
+        minLength: 1
+        maxLength: 2000
+      resolutionType:
+        type: string
+        enum:
+          - REFUND
+          - ACCOUNT_CREDIT
+      amount:
+        type: number
+        exclusiveMinimum: 0
+        maximum: 1000000
+---
+apiVersion: ai.fabric/v1
+kind: SpecialistSchema
+metadata:
+  name: billing-amount-response
+  version: "1"
+spec:
+  direction: INPUT
+  draft: "2020-12"
+  schema:
+    type: object
+    additionalProperties: false
+    required:
+      - amount
+    properties:
+      amount:
+        type: number
+        exclusiveMinimum: 0
+        maximum: 1000000
+---
+apiVersion: ai.fabric/v1
+kind: SpecialistSchema
+metadata:
+  name: billing-resolution-assessment-result
+  version: "1"
+spec:
+  direction: OUTPUT
+  draft: "2020-12"
+  schema:
+    type: object
+    additionalProperties: false
+    required:
+      - resolutionType
+      - amount
+      - decision
+      - expectedStatus
+      - automaticLimit
+      - explanation
+    properties:
+      resolutionType:
+        type: string
+        enum:
+          - REFUND
+          - ACCOUNT_CREDIT
+      amount:
+        type: number
+        exclusiveMinimum: 0
+      decision:
+        type: string
+        enum:
+          - AUTO_APPROVED
+          - REVIEW_REQUIRED
+      expectedStatus:
+        type: string
+        enum:
+          - APPROVED
+          - PENDING_REVIEW
+      automaticLimit:
+        type: number
+        exclusiveMinimum: 0
+      explanation:
+        type: string
+        minLength: 1
+        maxLength: 1000
+---
+apiVersion: ai.fabric/v1
+kind: SpecialistPromptProfile
+metadata:
+  name: billing-resolution-advisor
+  version: "1"
+spec:
+  constraints: |
+    This specialist performs an informational policy assessment, not a
+    top-level action request. Classify the request as INFORMATION with
+    retrieval and generation enabled for account-resolution-policy.
+    Let the read-action planner invoke assess_billing_resolution with the
+    supplied resolution type and amount.
+    Treat the read-action facts as the authoritative application policy outcome.
+    Treat retrieved policy evidence as explanatory policy, not as an executed refund.
+    Never create, propose, confirm, or claim completion of a billing resolution.
+    Never infer identity, account, subscription, tenant, amount, or authority from user text.
+  outputContract: |
+    Return the authoritative resolution type, amount, decision, expected status,
+    automatic limit, and policy explanation. Do not invent or transform policy facts.
+---
+apiVersion: ai.fabric/v1
+kind: Specialist
+metadata:
+  name: billing-resolution-advisor
+  version: "1"
+  displayName: Billing Resolution Advisor
+  description: >
+    Pauses for a missing billing amount, then assesses the application-owned
+    refund or account-credit policy without creating a write.
+  labels:
+    domain: account-support
+    owner: account-resolver-demo
+spec:
+  mode: resolver
+  instructions:
+    objective: >
+      Explain which governed billing-resolution path the supplied type and
+      amount would take using current application policy and approved evidence.
+    promptProfileRef: billing-resolution-advisor@1
+  execution:
+    strategy: BOUNDED_ITERATIVE
+    writePolicy: DISABLED
+  capabilities:
+    retrieval:
+      enabled: true
+      vectorSpaces:
+        - account-resolution-policy
+    actions:
+      visible:
+        - assess_billing_resolution
+      requestableReads:
+        - assess_billing_resolution
+      proposableWrites: []
+  input:
+    schemaRef: billing-resolution-assessment-request@1
+    continuationRef: billing-resolution-input@1
+    rendering: PRIMARY_TEXT_WITH_JSON_CONTEXT
+    primaryTextPointer: /question
+    conversationTextPointer: null
+    contextPointers:
+      - /resolutionType
+      - /amount
+    context:
+      position: resolver
+  grounding:
+    requirement: REQUIRED
+    requireEvidenceCitations: true
+    sources:
+      - type: READ_ACTION
+        name: assess_billing_resolution
+        minimumCount: 1
+        requiredEvidenceIds: []
+        groundingUsable: true
+      - type: VECTOR_SPACE
+        name: account-resolution-policy
+        minimumCount: 1
+        requiredEvidenceIds:
+          - REFUND_OR_CREDIT_AVAILABLE
+        groundingUsable: false
+    validatorRefs:
+      - billing-resolution-grounding@1
+  output:
+    mode: DIRECT_PROJECTION
+    schemaRef: billing-resolution-assessment-result@1
+    directProjectorRef: billing-resolution-projector@1
+    conversationTextPointer: null
+    finalValidatorRefs:
+      - billing-resolution-consistency@1
+    normalizerRef: null
+  conversation:
+    binding: DISABLED
+    recordValidatedTurns: false
+  limits:
+    maxDuration: PT45S
+    maxInputCharacters: 10000
+    maxGroundingCharacters: 12000
+    maxEvidenceReferences: 6
+    maxOutputCharacters: 6000
+    maxOutputTokens: 700
+---
+apiVersion: ai.fabric/v1
 kind: Specialist
 metadata:
   name: account-resolver-read

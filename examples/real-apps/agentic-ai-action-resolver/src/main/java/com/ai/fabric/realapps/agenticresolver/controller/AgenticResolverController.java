@@ -1,12 +1,16 @@
 package com.ai.fabric.realapps.agenticresolver.controller;
 
 import ai.fabric.execution.gateway.AIExecutionResult;
+import ai.fabric.execution.gateway.AIExecutionResumeResult;
 import ai.fabric.execution.action.ActionProposalDecisionRequest;
 import ai.fabric.execution.action.ActionProposalDecisionResult;
 import com.ai.fabric.realapps.agenticresolver.agentic.AccountResolutionRequest;
 import com.ai.fabric.realapps.agenticresolver.agentic.AccountResolutionResult;
 import com.ai.fabric.realapps.agenticresolver.agentic.AgenticResolverExecutionService;
 import com.ai.fabric.realapps.agenticresolver.agentic.AgenticResolverSessionService;
+import com.ai.fabric.realapps.agenticresolver.agentic.BillingAssessmentResumeRequest;
+import com.ai.fabric.realapps.agenticresolver.agentic.BillingResolutionAssessmentRequest;
+import com.ai.fabric.realapps.agenticresolver.agentic.BillingResolutionAssessmentResult;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -96,5 +100,36 @@ public class AgenticResolverController {
         @Valid @RequestBody ActionProposalDecisionRequest request
     ) {
         return executionService.decide(sessionId, request);
+    }
+
+    @PostMapping("/billing-assessment")
+    public AIExecutionResult<BillingResolutionAssessmentResult>
+    assessBillingResolution(
+        @RequestHeader(SESSION_HEADER) String sessionId,
+        @RequestHeader(
+            name = IDEMPOTENCY_HEADER,
+            required = false
+        ) String idempotencyKey,
+        @Valid @RequestBody BillingResolutionAssessmentRequest request
+    ) {
+        return executionService.assessBillingResolution(
+            sessionId,
+            request,
+            idempotencyKey
+        );
+    }
+
+    @PostMapping("/input/resume")
+    public AIExecutionResumeResult<BillingResolutionAssessmentResult>
+    resumeBillingAssessment(
+        @RequestHeader(SESSION_HEADER) String sessionId,
+        @RequestHeader(IDEMPOTENCY_HEADER) String idempotencyKey,
+        @Valid @RequestBody BillingAssessmentResumeRequest request
+    ) {
+        return executionService.resumeBillingAssessment(
+            sessionId,
+            request,
+            idempotencyKey
+        );
     }
 }

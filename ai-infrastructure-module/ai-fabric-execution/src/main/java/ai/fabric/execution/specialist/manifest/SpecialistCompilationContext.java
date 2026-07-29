@@ -12,6 +12,7 @@ public record SpecialistCompilationContext(
     SpecialistFinalOutputValidatorRegistry finalOutputValidatorRegistry,
     SpecialistDirectOutputProjectorRegistry directOutputProjectorRegistry,
     SpecialistOutputNormalizerRegistry outputNormalizerRegistry,
+    SpecialistInputContinuationRegistry inputContinuationRegistry,
     SpecialistJsonSchemaValidator schemaValidator,
     SpecialistDefinitionValidator definitionValidator,
     CanonicalJsonSupport canonicalJson,
@@ -20,6 +21,39 @@ public record SpecialistCompilationContext(
     String source,
     String contentHash
 ) {
+    public SpecialistCompilationContext(
+        SpecialistJsonSchemaRegistry schemaRegistry,
+        SpecialistPromptProfileRegistry promptProfileRegistry,
+        SpecialistGroundingValidatorRegistry groundingValidatorRegistry,
+        SpecialistFinalOutputValidatorRegistry finalOutputValidatorRegistry,
+        SpecialistDirectOutputProjectorRegistry directOutputProjectorRegistry,
+        SpecialistOutputNormalizerRegistry outputNormalizerRegistry,
+        SpecialistJsonSchemaValidator schemaValidator,
+        SpecialistDefinitionValidator definitionValidator,
+        CanonicalJsonSupport canonicalJson,
+        ObjectMapper objectMapper,
+        Set<String> iterativeModes,
+        String source,
+        String contentHash
+    ) {
+        this(
+            schemaRegistry,
+            promptProfileRegistry,
+            groundingValidatorRegistry,
+            finalOutputValidatorRegistry,
+            directOutputProjectorRegistry,
+            outputNormalizerRegistry,
+            new SpecialistInputContinuationRegistry(java.util.List.of()),
+            schemaValidator,
+            definitionValidator,
+            canonicalJson,
+            objectMapper,
+            iterativeModes,
+            source,
+            contentHash
+        );
+    }
+
     public SpecialistCompilationContext {
         Objects.requireNonNull(schemaRegistry, "schemaRegistry is required");
         Objects.requireNonNull(
@@ -41,6 +75,10 @@ public record SpecialistCompilationContext(
         Objects.requireNonNull(
             outputNormalizerRegistry,
             "outputNormalizerRegistry is required"
+        );
+        Objects.requireNonNull(
+            inputContinuationRegistry,
+            "inputContinuationRegistry is required"
         );
         Objects.requireNonNull(
             schemaValidator,

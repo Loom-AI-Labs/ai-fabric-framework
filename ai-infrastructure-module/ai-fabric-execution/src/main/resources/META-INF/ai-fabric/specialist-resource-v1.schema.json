@@ -346,6 +346,16 @@
         "schemaRef": {
           "$ref": "#/$defs/exactRef"
         },
+        "continuationRef": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/exactRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "rendering": {
           "const": "PRIMARY_TEXT_WITH_JSON_CONTEXT"
         },

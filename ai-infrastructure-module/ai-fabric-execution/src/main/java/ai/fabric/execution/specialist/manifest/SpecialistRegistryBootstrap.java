@@ -46,6 +46,42 @@ public final class SpecialistRegistryBootstrap {
         AIExecutionProperties.Manifests properties,
         SpecialistManifestMetrics metrics
     ) {
+        this(
+            javaDefinitions,
+            resources,
+            compiler,
+            definitionValidator,
+            groundingValidators,
+            finalOutputValidators,
+            directOutputProjectors,
+            outputNormalizers,
+            new SpecialistInputContinuationRegistry(List.of()),
+            schemaValidator,
+            canonicalJson,
+            objectMapper,
+            iterativeModes,
+            properties,
+            metrics
+        );
+    }
+
+    public SpecialistRegistryBootstrap(
+        List<SpecialistDefinition<?, ?>> javaDefinitions,
+        SpecialistResourceBundle resources,
+        SpecialistManifestCompiler compiler,
+        SpecialistDefinitionValidator definitionValidator,
+        SpecialistGroundingValidatorRegistry groundingValidators,
+        SpecialistFinalOutputValidatorRegistry finalOutputValidators,
+        SpecialistDirectOutputProjectorRegistry directOutputProjectors,
+        SpecialistOutputNormalizerRegistry outputNormalizers,
+        SpecialistInputContinuationRegistry inputContinuations,
+        SpecialistJsonSchemaValidator schemaValidator,
+        CanonicalJsonSupport canonicalJson,
+        ObjectMapper objectMapper,
+        Set<String> iterativeModes,
+        AIExecutionProperties.Manifests properties,
+        SpecialistManifestMetrics metrics
+    ) {
         Objects.requireNonNull(resources, "resources is required");
         Objects.requireNonNull(compiler, "compiler is required");
         Objects.requireNonNull(
@@ -100,6 +136,7 @@ public final class SpecialistRegistryBootstrap {
                     finalOutputValidators,
                     directOutputProjectors,
                     outputNormalizers,
+                    inputContinuations,
                     schemaValidator,
                     definitionValidator,
                     canonicalJson,

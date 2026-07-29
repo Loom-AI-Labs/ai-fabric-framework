@@ -47,7 +47,10 @@ class AccountResolverOrchestrationConfigurationTest {
         assertThat(resolver.getReadActionResolution().getPlanningMode())
             .isEqualTo(OrchestrationProperties.ReadActionResolutionPlanningMode.ITERATIVE);
         assertThat(resolver.getReadActionResolution().getAllowedReadActions())
-            .containsExactly("get_account_profile");
+            .containsExactly(
+                "get_account_profile",
+                "assess_billing_resolution"
+            );
         assertThat(resolver.getReadActionResolution().getMaxIterations()).isEqualTo(2);
         assertThat(resolver.getReadActionResolution().getMaxTotalActions()).isEqualTo(2);
         assertThat(resolver.getReadActionResolution().getRagCooperationMode())

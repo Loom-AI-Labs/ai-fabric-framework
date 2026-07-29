@@ -1,5 +1,6 @@
 package ai.fabric.execution.specialist.manifest;
 
+import ai.fabric.execution.input.SpecialistInputContinuation;
 import ai.fabric.execution.specialist.SpecialistInputAdapter;
 import ai.fabric.execution.specialist.SpecialistLimits;
 import ai.fabric.intent.orchestration.OrchestrationContext;
@@ -7,6 +8,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.Objects;
+import java.util.Optional;
 
 public final class JsonSchemaSpecialistInputAdapter
     implements SpecialistInputAdapter<JsonNode> {
@@ -14,6 +16,7 @@ public final class JsonSchemaSpecialistInputAdapter
     private final SpecialistSchemaDefinition schema;
     private final SpecialistInputSpec specification;
     private final SpecialistConversationSpec conversation;
+    private final SpecialistInputContinuation<JsonNode> inputContinuation;
     private final SpecialistLimits limits;
     private final SpecialistJsonSchemaValidator schemaValidator;
     private final CanonicalJsonSupport canonicalJson;
@@ -23,6 +26,7 @@ public final class JsonSchemaSpecialistInputAdapter
         SpecialistSchemaDefinition schema,
         SpecialistInputSpec specification,
         SpecialistConversationSpec conversation,
+        SpecialistInputContinuation<JsonNode> inputContinuation,
         SpecialistLimits limits,
         SpecialistJsonSchemaValidator schemaValidator,
         CanonicalJsonSupport canonicalJson,
@@ -37,6 +41,7 @@ public final class JsonSchemaSpecialistInputAdapter
             conversation,
             "conversation is required"
         );
+        this.inputContinuation = inputContinuation;
         this.limits = Objects.requireNonNull(limits, "limits is required");
         this.schemaValidator = Objects.requireNonNull(
             schemaValidator,
@@ -49,6 +54,27 @@ public final class JsonSchemaSpecialistInputAdapter
         this.objectMapper = Objects.requireNonNull(
             objectMapper,
             "objectMapper is required"
+        );
+    }
+
+    public JsonSchemaSpecialistInputAdapter(
+        SpecialistSchemaDefinition schema,
+        SpecialistInputSpec specification,
+        SpecialistConversationSpec conversation,
+        SpecialistLimits limits,
+        SpecialistJsonSchemaValidator schemaValidator,
+        CanonicalJsonSupport canonicalJson,
+        ObjectMapper objectMapper
+    ) {
+        this(
+            schema,
+            specification,
+            conversation,
+            null,
+            limits,
+            schemaValidator,
+            canonicalJson,
+            objectMapper
         );
     }
 
@@ -145,6 +171,12 @@ public final class JsonSchemaSpecialistInputAdapter
     @Override
     public boolean recordValidatedTurns() {
         return conversation.recordValidatedTurns();
+    }
+
+    @Override
+    public Optional<SpecialistInputContinuation<JsonNode>>
+        inputContinuation() {
+        return Optional.ofNullable(inputContinuation);
     }
 
     private String requireTextPointer(

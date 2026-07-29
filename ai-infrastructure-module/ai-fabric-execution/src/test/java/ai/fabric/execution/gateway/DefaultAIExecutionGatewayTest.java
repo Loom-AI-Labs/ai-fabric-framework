@@ -549,7 +549,10 @@ class DefaultAIExecutionGatewayTest {
         assertThat(completed.status()).isEqualTo(ExecutionHandleStatus.SUCCEEDED);
         assertThat(completed.deadline())
             .isEqualTo(NOW.plus(SpecialistLimits.defaults().maxDuration()));
-        assertThat(gateway.find(completed.invocationId()))
+        assertThat(gateway.find(
+            completed.invocationId(),
+            request.trustedExecutionContext()
+        ))
             .hasValueSatisfying(snapshot -> {
                 assertThat(snapshot.result()).isNotNull();
                 assertThat(snapshot.result().succeeded()).isTrue();

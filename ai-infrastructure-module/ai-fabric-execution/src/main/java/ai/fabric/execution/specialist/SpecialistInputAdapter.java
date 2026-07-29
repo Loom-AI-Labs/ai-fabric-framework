@@ -1,7 +1,9 @@
 package ai.fabric.execution.specialist;
 
 import ai.fabric.intent.orchestration.OrchestrationContext;
+import ai.fabric.execution.input.SpecialistInputContinuation;
 import ai.fabric.execution.specialist.manifest.SpecialistConversationBinding;
+import java.util.Optional;
 
 /**
  * Validates typed application input and renders bounded model input deterministically.
@@ -34,5 +36,12 @@ public interface SpecialistInputAdapter<I> {
 
     default boolean recordValidatedTurns() {
         return true;
+    }
+
+    /**
+     * Optional exact-version extension for typed missing-input detection and resume.
+     */
+    default Optional<SpecialistInputContinuation<I>> inputContinuation() {
+        return Optional.empty();
     }
 }

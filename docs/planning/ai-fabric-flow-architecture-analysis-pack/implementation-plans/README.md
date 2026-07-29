@@ -18,6 +18,7 @@ checklists here.
 | [0001 - Release impact](./0001-agentic-enablement-release-impact.md) | Proposed release documentation | Additive artifact and compatibility impact for a proposed `0.5.0` |
 | [0002 - Governed specialist write and receipt](./0002-governed-specialist-write-and-receipt-implementation-plan.md) | Implemented and verified; not released | Durable, profile-pinned confirmation receipts and one governed specialist WRITE |
 | [0003 - Configurable specialist manifest runtime](./0003-configurable-specialist-manifest-runtime-implementation-plan.md) | Implemented and verified; not released | Startup-loaded JSON Schema-backed specialists, exact-version resources, governed receipt pinning, and Loom AI configuration authoring |
+| [0004 - Typed specialist input wait and safe resume](./0004-typed-specialist-input-wait-and-safe-resume-implementation-plan.md) | Implemented and verified; not released | Typed `NeedsUserInput`, authority-scoped same-process resume, bounded pending state, and one billing-resolution proof |
 
 ## Plan Rules
 

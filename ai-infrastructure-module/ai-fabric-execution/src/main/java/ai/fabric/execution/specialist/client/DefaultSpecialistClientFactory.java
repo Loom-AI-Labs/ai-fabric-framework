@@ -3,6 +3,8 @@ package ai.fabric.execution.specialist.client;
 import ai.fabric.execution.gateway.AIExecutionGateway;
 import ai.fabric.execution.gateway.AIExecutionRequest;
 import ai.fabric.execution.gateway.AIExecutionResult;
+import ai.fabric.execution.gateway.AIExecutionResumeRequest;
+import ai.fabric.execution.gateway.AIExecutionResumeResult;
 import ai.fabric.execution.specialist.JsonSchemaOutputContract;
 import ai.fabric.execution.specialist.RegisteredSpecialist;
 import ai.fabric.execution.specialist.SpecialistId;
@@ -149,7 +151,58 @@ public final class DefaultSpecialistClientFactory
                 raw.failure(),
                 raw.startedAt(),
                 raw.completedAt(),
-                raw.actionProposal()
+                raw.actionProposal(),
+                raw.needsUserInput()
+            );
+        }
+
+        @Override
+        public AIExecutionResumeResult<O> resume(
+            SpecialistResumeInvocation invocation
+        ) {
+            Objects.requireNonNull(invocation, "invocation is required");
+            AIExecutionResumeResult<JsonNode> raw = executionGateway.resume(
+                new AIExecutionResumeRequest(
+                    specialistId,
+                    invocation.invocationId(),
+                    invocation.requestId(),
+                    objectMapper.valueToTree(invocation.response()),
+                    invocation.trustedExecutionContext(),
+                    invocation.idempotencyKey()
+                )
+            );
+            if (raw.executionResult() == null) {
+                return new AIExecutionResumeResult<>(
+                    raw.status(),
+                    null,
+                    raw.failure()
+                );
+            }
+            AIExecutionResult<JsonNode> rawExecution =
+                raw.executionResult();
+            O output = rawExecution.output() == null
+                ? null
+                : objectMapper.convertValue(
+                    rawExecution.output(),
+                    outputType
+                );
+            AIExecutionResult<O> execution = new AIExecutionResult<>(
+                rawExecution.invocationId(),
+                rawExecution.specialistId(),
+                rawExecution.status(),
+                output,
+                rawExecution.evidence(),
+                rawExecution.diagnostics(),
+                rawExecution.failure(),
+                rawExecution.startedAt(),
+                rawExecution.completedAt(),
+                rawExecution.actionProposal(),
+                rawExecution.needsUserInput()
+            );
+            return new AIExecutionResumeResult<>(
+                raw.status(),
+                execution,
+                null
             );
         }
     }

@@ -3,6 +3,7 @@ package com.ai.fabric.realapps.agenticresolver.agentic;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -13,12 +14,16 @@ import ai.fabric.execution.action.ActionProposalDecisionRequest;
 import ai.fabric.execution.context.ExecutionSource;
 import ai.fabric.execution.context.TrustedExecutionContext;
 import ai.fabric.execution.gateway.AIExecutionRequest;
+import ai.fabric.execution.gateway.AIExecutionResumeResult;
 import ai.fabric.execution.gateway.AIExecutionResult;
 import ai.fabric.execution.gateway.AIExecutionStatus;
 import ai.fabric.execution.specialist.SpecialistId;
 import ai.fabric.execution.specialist.client.SpecialistClient;
 import ai.fabric.execution.specialist.client.SpecialistClientFactory;
 import ai.fabric.execution.specialist.client.SpecialistInvocation;
+import ai.fabric.execution.specialist.client.SpecialistResumeInvocation;
+import com.ai.fabric.realapps.agenticresolver.entity.RefundRequest;
+import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -103,6 +108,116 @@ class AgenticResolverExecutionServiceTest {
     }
 
     @Test
+    void billingAssessmentUsesServerSubjectAndReadOnlyScopes() {
+        UUID selectedSubject = UUID.randomUUID();
+        AtomicReference<AIExecutionRequest<?>> observed =
+            new AtomicReference<>();
+        AgenticResolverExecutionService service = service(
+            selectedSubject,
+            observed
+        );
+
+        service.assessBillingResolution(
+            "session-1",
+            new BillingResolutionAssessmentRequest(
+                "Assess the current refund policy.",
+                RefundRequest.ResolutionType.REFUND,
+                null
+            ),
+            "billing-request-1"
+        );
+
+        AIExecutionRequest<?> request = observed.get();
+        assertThat(request.specialistId())
+            .isEqualTo(
+                AccountResolverSpecialists.BILLING_ADVISOR_SPECIALIST_ID
+            );
+        assertThat(request.trustedExecutionContext().source())
+            .isEqualTo(ExecutionSource.APPLICATION);
+        assertThat(request.trustedExecutionContext().initiator().principalId())
+            .isEqualTo("agentic-account-resolver");
+        assertThat(request.trustedExecutionContext().subject().subjectId())
+            .isEqualTo(selectedSubject.toString());
+        assertThat(request.conversationBinding()).isNull();
+        assertThat(request.idempotencyKey()).isEqualTo("billing-request-1");
+        assertThat(request.trustedExecutionContext().grantedScopes())
+            .containsExactlyInAnyOrder(
+                "specialist:billing-resolution-advisor@1",
+                "action:assess_billing_resolution",
+                "vector:account-resolution-policy"
+            );
+        assertThat(request.trustedExecutionContext().grantedScopes())
+            .noneMatch(scope -> scope.startsWith("action:update_"))
+            .noneMatch(scope -> scope.startsWith("action:request_"));
+    }
+
+    @Test
+    void billingResumeUsesCurrentBackendIdentityAndTypedResponse() {
+        UUID selectedSubject = UUID.randomUUID();
+        AtomicReference<AIExecutionRequest<?>> observed =
+            new AtomicReference<>();
+        AtomicReference<SpecialistResumeInvocation> observedResume =
+            new AtomicReference<>();
+        AgenticResolverExecutionService service = service(
+            selectedSubject,
+            observed,
+            observedResume
+        );
+        BillingAmountResponse response =
+            new BillingAmountResponse(new BigDecimal("75.00"));
+
+        service.resumeBillingAssessment(
+            "session-1",
+            new BillingAssessmentResumeRequest(
+                "invocation-1",
+                "request-1",
+                response
+            ),
+            "resume-key-1"
+        );
+
+        SpecialistResumeInvocation invocation = observedResume.get();
+        assertThat(invocation.invocationId()).isEqualTo("invocation-1");
+        assertThat(invocation.requestId()).isEqualTo("request-1");
+        assertThat(invocation.response()).isEqualTo(response);
+        assertThat(invocation.idempotencyKey()).isEqualTo("resume-key-1");
+        assertThat(invocation.trustedExecutionContext().source())
+            .isEqualTo(ExecutionSource.APPLICATION);
+        assertThat(invocation.trustedExecutionContext().subject().subjectId())
+            .isEqualTo(selectedSubject.toString());
+        assertThat(invocation.trustedExecutionContext().grantedScopes())
+            .containsExactlyInAnyOrder(
+                "specialist:billing-resolution-advisor@1",
+                "action:assess_billing_resolution",
+                "vector:account-resolution-policy"
+            );
+    }
+
+    @Test
+    void billingResumeRejectsMissingIdempotencyKeyBeforeGatewayCall() {
+        AtomicReference<SpecialistResumeInvocation> observedResume =
+            new AtomicReference<>();
+        AgenticResolverExecutionService service = service(
+            UUID.randomUUID(),
+            new AtomicReference<>(),
+            observedResume
+        );
+
+        assertThatThrownBy(() -> service.resumeBillingAssessment(
+                "session-1",
+                new BillingAssessmentResumeRequest(
+                    "invocation-1",
+                    "request-1",
+                    new BillingAmountResponse(new BigDecimal("25.00"))
+                ),
+                " "
+            ))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("Idempotency-Key is required");
+        assertThat(observedResume).hasValue(null);
+    }
+
+    @Test
     void rejectsOversizedIdempotencyKeyBeforeProviderExecution() {
         AtomicReference<AIExecutionRequest<?>> observed = new AtomicReference<>();
         AgenticResolverExecutionService service = service(
@@ -161,6 +276,14 @@ class AgenticResolverExecutionServiceTest {
         UUID subject,
         AtomicReference<AIExecutionRequest<?>> observed
     ) {
+        return service(subject, observed, new AtomicReference<>());
+    }
+
+    private AgenticResolverExecutionService service(
+        UUID subject,
+        AtomicReference<AIExecutionRequest<?>> observed,
+        AtomicReference<SpecialistResumeInvocation> observedResume
+    ) {
         AgenticResolverSessionService sessions =
             mock(AgenticResolverSessionService.class);
         when(sessions.active("session-1")).thenReturn(
@@ -173,7 +296,7 @@ class AgenticResolverExecutionServiceTest {
             )
         );
         return new AgenticResolverExecutionService(
-            clientFactory(observed),
+            clientFactory(observed, observedResume),
             mock(ActionProposalCoordinator.class),
             sessions,
             Clock.fixed(NOW, ZoneOffset.UTC)
@@ -183,6 +306,14 @@ class AgenticResolverExecutionServiceTest {
     @SuppressWarnings({"unchecked", "rawtypes"})
     private SpecialistClientFactory clientFactory(
         AtomicReference<AIExecutionRequest<?>> observed
+    ) {
+        return clientFactory(observed, new AtomicReference<>());
+    }
+
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private SpecialistClientFactory clientFactory(
+        AtomicReference<AIExecutionRequest<?>> observed,
+        AtomicReference<SpecialistResumeInvocation> observedResume
     ) {
         SpecialistClientFactory factory = mock(SpecialistClientFactory.class);
         when(factory.bind(
@@ -222,7 +353,60 @@ class AgenticResolverExecutionServiceTest {
                 });
             return client;
         });
+        when(factory.bind(
+            eq(AccountResolverSpecialists.BILLING_ADVISOR_SPECIALIST_ID),
+            eq(BillingResolutionAssessmentRequest.class),
+            eq(BillingResolutionAssessmentResult.class)
+        )).thenAnswer(binding -> {
+            SpecialistClient client = mock(SpecialistClient.class);
+            when(client.execute(any(SpecialistInvocation.class)))
+                .thenAnswer(execution -> {
+                    SpecialistInvocation<
+                        BillingResolutionAssessmentRequest
+                    > invocation = execution.getArgument(0);
+                    observed.set(new AIExecutionRequest<>(
+                        AccountResolverSpecialists
+                            .BILLING_ADVISOR_SPECIALIST_ID,
+                        invocation.input(),
+                        invocation.trustedExecutionContext(),
+                        invocation.conversationBinding(),
+                        invocation.deadline(),
+                        invocation.idempotencyKey()
+                    ));
+                    return billingResult();
+                });
+            when(client.resume(any(SpecialistResumeInvocation.class)))
+                .thenAnswer(resume -> {
+                    SpecialistResumeInvocation invocation =
+                        resume.getArgument(0);
+                    observedResume.set(invocation);
+                    return AIExecutionResumeResult.resumed(billingResult());
+                });
+            return client;
+        });
         return factory;
+    }
+
+    private AIExecutionResult<BillingResolutionAssessmentResult>
+    billingResult() {
+        return new AIExecutionResult<>(
+            "billing-exec-1",
+            AccountResolverSpecialists.BILLING_ADVISOR_SPECIALIST_ID,
+            AIExecutionStatus.SUCCEEDED,
+            new BillingResolutionAssessmentResult(
+                RefundRequest.ResolutionType.REFUND,
+                new BigDecimal("25.00"),
+                BillingResolutionAssessmentResult.Decision.AUTO_APPROVED,
+                BillingResolutionAssessmentResult.ExpectedStatus.APPROVED,
+                new BigDecimal("50.00"),
+                "Within the automatic refund limit."
+            ),
+            List.of(),
+            Map.of(),
+            null,
+            NOW,
+            NOW
+        );
     }
 
     private AgenticResolverSessionService.ActiveSession activeSession(

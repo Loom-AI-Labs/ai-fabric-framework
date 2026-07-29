@@ -1,5 +1,6 @@
 package ai.fabric.execution.gateway;
 
+import ai.fabric.execution.context.TrustedExecutionContext;
 import java.util.Optional;
 
 public interface AIExecutionGateway {
@@ -8,7 +9,17 @@ public interface AIExecutionGateway {
 
     ExecutionHandle submit(AIExecutionRequest<?> request);
 
-    Optional<ExecutionSnapshot> find(String invocationId);
+    <O> AIExecutionResumeResult<O> resume(
+        AIExecutionResumeRequest request
+    );
 
-    boolean cancel(String invocationId);
+    Optional<ExecutionSnapshot> find(
+        String invocationId,
+        TrustedExecutionContext trustedExecutionContext
+    );
+
+    boolean cancel(
+        String invocationId,
+        TrustedExecutionContext trustedExecutionContext
+    );
 }

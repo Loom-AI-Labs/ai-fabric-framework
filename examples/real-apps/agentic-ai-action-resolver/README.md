@@ -4,8 +4,11 @@ This independent reference app proves AI Fabric's configurable, bounded
 specialist execution model with one governed write:
 
 ```text
-manifest specialists: account-resolver@1, account-resolver-read@1
-read action: get_account_profile
+manifest specialists:
+  account-resolver@1
+  account-resolver-read@1
+  billing-resolution-advisor@1
+read actions: get_account_profile, assess_billing_resolution
 write proposal: update_address
 evidence: account-resolution-policy
 ```
@@ -16,6 +19,12 @@ application create an identity-bound durable receipt, require an explicit user
 decision, revalidate authority, and execute the registered application action
 at most once.
 
+The billing specialist proves a different boundary: required factual input can
+pause an invocation before provider orchestration, return a typed JSON response
+contract, and safely resume the same invocation after the host supplies the
+missing value. This is not action confirmation and does not create a refund or
+account credit.
+
 The original `ai-fabric-account-resolver` remains unchanged and deployable as
 the governed-action baseline.
 
@@ -23,6 +32,15 @@ the governed-action baseline.
 
 - A typed `AccountResolutionRequest` enters through a schema-bound
   `SpecialistClient` over `AIExecutionGateway`.
+- `billing-resolution-advisor@1` binds a registered input continuation and
+  returns `WAITING_FOR_INPUT` when its billing amount is absent.
+- Its host-facing wait result contains a safe question, exact response schema,
+  expiry, attempt limit, delivery target, and explicit `EPHEMERAL` durability.
+- Resume is bound to the original invocation, principal, subject, tenant,
+  deployment, execution source, specialist content hash, capability profile,
+  response schema, and idempotency key.
+- A malformed response remains visibly rejected without invoking the provider;
+  an identical successful resume is replayed without repeating execution.
 - Server-created, database-backed session state binds the opaque browser
   session to the trusted principal, tenant, and current account subject.
 - `account-resolver@1` requests one Mode, one READ action, one WRITE proposal,
@@ -57,7 +75,8 @@ It defines:
 
 - exact-version input and output JSON schemas;
 - separate read/write prompt profiles;
-- `account-resolver-read@1` and `account-resolver@1`;
+- `account-resolver-read@1`, `account-resolver@1`, and
+  `billing-resolution-advisor@1`;
 - Mode, execution strategy, requested vector/action capabilities, grounding
   requirements, conversation policy, and bounded limits; and
 - stable references to approved application extensions.
@@ -107,6 +126,65 @@ Successful read output:
 
 `READY` and `INSUFFICIENT_EVIDENCE` require an empty blocker list. `BLOCKED`
 requires at least one complete blocker.
+
+## Typed Input Continuation
+
+The billing assessment accepts a resolution type and an optional amount:
+
+```json
+{
+  "question": "What path would this refund take?",
+  "resolutionType": "REFUND"
+}
+```
+
+Because the amount is missing, AI Fabric stops before provider orchestration:
+
+```json
+{
+  "status": "WAITING_FOR_INPUT",
+  "needsUserInput": {
+    "purposeCode": "MISSING_BILLING_AMOUNT",
+    "safeQuestion": "What billing amount should be assessed?",
+    "responseContract": {
+      "schemaId": {
+        "name": "billing-amount-response",
+        "version": "1"
+      },
+      "schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["amount"],
+        "properties": {
+          "amount": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "maximum": 1000000
+          }
+        }
+      }
+    },
+    "deliveryTarget": "HOST_APPLICATION",
+    "durability": "EPHEMERAL",
+    "maxAttempts": 3
+  }
+}
+```
+
+The host submits only the schema-valid response plus the returned request and
+invocation IDs. AI Fabric reconstructs trusted context server-side, revalidates
+the pinned specialist and authority, and resumes the same invocation.
+
+The final assessment is informational. For example, the current demo policy
+automatically approves a small account credit, while a refund above its
+automatic threshold is routed to review. The registered read action supplies
+those application-owned policy facts; RAG supplies policy evidence; neither
+path executes a financial write.
+
+Pending input waits are bounded process-local state. They do not survive an
+application restart and must not be presented as durable workflow tasks.
+Action receipts remain a separate JDBC-backed mechanism with different
+semantics and guarantees.
 
 Write request example:
 
@@ -247,10 +325,51 @@ Content-Type: application/json
 {"question":"Update my billing address to 10 Downing Street, London, London, SW1A 2AA, GB."}
 ```
 
-`Idempotency-Key` is optional, opaque, and limited to 200 characters. Supply a
-stable value when retrying the same client request. AI Fabric stores only an
-identity-scoped HMAC of the value; reusing it for different parameters fails
-closed instead of creating another executable proposal.
+Start a typed billing assessment:
+
+```http
+POST /api/agentic-resolver/billing-assessment
+X-AI-Fabric-Demo-Session: {sessionId}
+Idempotency-Key: {stable-client-request-id}
+Content-Type: application/json
+
+{
+  "question": "What path would this refund take?",
+  "resolutionType": "REFUND"
+}
+```
+
+Resume the returned input request:
+
+```http
+POST /api/agentic-resolver/input/resume
+X-AI-Fabric-Demo-Session: {sessionId}
+Idempotency-Key: {stable-resume-idempotency-key}
+Content-Type: application/json
+
+{
+  "invocationId": "exec-...",
+  "requestId": "input-request-...",
+  "response": {
+    "amount": 75
+  }
+}
+```
+
+The public resume body cannot select a principal, subject, tenant, deployment,
+specialist, capability, or action. A request from a different session receives
+the same unavailable response as an unknown request.
+
+`Idempotency-Key` is optional for the initial chat and billing-assessment
+calls, opaque, and limited to 200 characters. Supply a stable value when
+retrying the same initial request. A write proposal persists only an
+identity-scoped HMAC of that value; reusing it for different proposal
+parameters fails closed.
+
+The resume endpoint requires its own stable `Idempotency-Key`. The bounded
+process-local wait state compares that key together with the canonical response
+hash. An identical completed resume returns `REPLAYED`; different data for the
+claimed request returns `INPUT_RESUME_CONFLICT`.
 
 Confirm or reject the durable receipt:
 
@@ -325,6 +444,30 @@ The default profile uses file-backed H2 for a self-contained local proof. The
 - `DB_USERNAME=<database user>`
 - `DB_PASSWORD=<database secret>`
 
+## Input Wait Configuration
+
+This app enables the framework's bounded process-local input-wait store:
+
+```yaml
+ai:
+  execution:
+    input-waits:
+      enabled: true
+      default-ttl: PT10M
+      max-ttl: PT30M
+      max-pending: 500
+      max-attempts: 3
+      max-requests-per-invocation: 3
+      result-ttl: PT15M
+```
+
+`AI_EXECUTION_INPUT_WAIT_MAX_PENDING` may override the demo capacity. A shared
+deployment must size the bound deliberately and expose expiry to its client.
+The cap covers active waits and completed entries retained for idempotent
+replay; expired replay entries are removed on the next store operation.
+Restarting the process invalidates pending input request IDs; clients must
+start a new specialist invocation.
+
 ## Receipt Configuration
 
 Required for every shared or production deployment:
@@ -374,7 +517,8 @@ docker build \
 ```
 
 Run with durable local data. The volume holds application state, opaque demo
-session bindings, action receipts, chat sessions, and the local vector index:
+session bindings, action receipts, chat sessions, and the local vector index.
+It deliberately does not make pending input waits durable:
 
 ```bash
 docker volume create agentic-resolver-data
@@ -405,6 +549,14 @@ For Coolify source deployment:
 
 - Provider, retrieval, grounding, schema, policy, persistence, and domain
   failures remain visible as typed non-success results.
+- Missing specialist input returns `WAITING_FOR_INPUT`, not a generated guess,
+  action confirmation, or fabricated fallback.
+- Invalid input responses are rejected against the pinned schema and remain
+  retryable only within the bounded attempt limit.
+- Expired, unauthorized, content-changed, or authority-changed resumes fail
+  closed without revealing whether another session owns the request.
+- An identical completed resume returns `REPLAYED`; it does not invoke the
+  provider pipeline or application read action again.
 - Proposal persistence failure returns
   `ACTION_RECEIPT_PERSISTENCE_FAILED`; no receipt is claimed and no action runs.
 - Decision-time receipt-store failure returns `RECEIPT_STORE_UNAVAILABLE`; no
@@ -478,6 +630,8 @@ No verification command for this feature uses `-DskipTests`.
 - event or scheduled write adapters;
 - blind retries for unknown write outcomes;
 - durable async job execution;
+- durable or cross-process specialist input waits;
+- multi-question input collection or durable human review;
 - a public reconciliation endpoint;
 - vectorizing account PII.
 

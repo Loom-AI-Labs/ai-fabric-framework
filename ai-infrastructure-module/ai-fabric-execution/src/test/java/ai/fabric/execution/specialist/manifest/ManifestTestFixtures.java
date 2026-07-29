@@ -7,9 +7,11 @@ import ai.fabric.execution.specialist.ExecutionStrategy;
 import ai.fabric.execution.specialist.SpecialistDefinitionValidator;
 import ai.fabric.execution.specialist.SpecialistOutputMode;
 import ai.fabric.execution.specialist.SpecialistWritePolicy;
+import ai.fabric.execution.input.SpecialistInputContinuation;
 import ai.fabric.intent.action.AIActionRegistry;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -183,12 +185,25 @@ public final class ManifestTestFixtures {
     }
 
     public static SpecialistCompilationContext compilationContext() {
+        return compilationContext(List.of(), List.of());
+    }
+
+    public static SpecialistCompilationContext compilationContext(
+        List<SpecialistInputContinuation<?>> continuations,
+        List<SpecialistSchemaDefinition> additionalSchemas
+    ) {
         ObjectMapper mapper = objectMapper();
         SpecialistJsonSchemaValidator schemaValidator =
             new SpecialistJsonSchemaValidator();
+        List<SpecialistSchemaDefinition> schemas = new ArrayList<>(
+            List.of(inputSchema(), outputSchema())
+        );
+        schemas.addAll(
+            additionalSchemas == null ? List.of() : additionalSchemas
+        );
         return new SpecialistCompilationContext(
             new SpecialistJsonSchemaRegistry(
-                List.of(inputSchema(), outputSchema()),
+                schemas,
                 schemaValidator
             ),
             new SpecialistPromptProfileRegistry(List.of(promptProfile())),
@@ -196,6 +211,7 @@ public final class ManifestTestFixtures {
             new SpecialistFinalOutputValidatorRegistry(List.of()),
             new SpecialistDirectOutputProjectorRegistry(List.of()),
             new SpecialistOutputNormalizerRegistry(List.of()),
+            new SpecialistInputContinuationRegistry(continuations),
             schemaValidator,
             definitionValidator(),
             new CanonicalJsonSupport(mapper),

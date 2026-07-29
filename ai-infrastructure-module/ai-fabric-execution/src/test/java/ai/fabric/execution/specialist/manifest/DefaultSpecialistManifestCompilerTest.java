@@ -6,7 +6,13 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import ai.fabric.execution.specialist.JsonSchemaOutputContract;
 import ai.fabric.execution.specialist.SpecialistDefinitionSource;
 import ai.fabric.execution.specialist.SpecialistOutputMode;
+import ai.fabric.execution.input.SpecialistInputContinuation;
+import ai.fabric.execution.input.SpecialistInputRequirement;
 import com.fasterxml.jackson.databind.JsonNode;
+import java.time.Duration;
+import java.util.List;
+import java.util.Optional;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 class DefaultSpecialistManifestCompilerTest {
@@ -67,5 +73,247 @@ class DefaultSpecialistManifestCompilerTest {
             .satisfies(error -> assertThat(
                 ((SpecialistManifestException) error).reason()
             ).isEqualTo("RESOURCE_API_VERSION_UNSUPPORTED"));
+    }
+
+    @Test
+    void compilesExactInputContinuationAndRegisteredResponseSchema() {
+        SpecialistInputContinuation<JsonNode> continuation =
+            jsonContinuation();
+        SpecialistCompilationResult result = compiler.compile(
+            withContinuation(
+                ManifestTestFixtures.manifest(),
+                continuation.id()
+            ),
+            ManifestTestFixtures.compilationContext(
+                List.of(continuation),
+                List.of(amountResponseSchema(
+                    SpecialistSchemaDirection.INPUT
+                ))
+            )
+        );
+
+        assertThat(result.specialist().definition().inputAdapter()
+            .inputContinuation())
+            .hasValueSatisfying(value ->
+                assertThat(value.id()).isEqualTo(continuation.id())
+            );
+    }
+
+    @Test
+    void rejectsUnknownContinuationBeforeRegistration() {
+        assertThatThrownBy(() -> compiler.compile(
+            withContinuation(
+                ManifestTestFixtures.manifest(),
+                "missing-continuation@1"
+            ),
+            ManifestTestFixtures.compilationContext()
+        ))
+            .isInstanceOf(SpecialistManifestException.class)
+            .satisfies(error -> assertThat(
+                ((SpecialistManifestException) error).reason()
+            ).isEqualTo("EXTENSION_REFERENCE_NOT_FOUND"));
+    }
+
+    @Test
+    void rejectsContinuationWhoseResponseSchemaIsMissingOrNotInput() {
+        SpecialistInputContinuation<JsonNode> continuation =
+            jsonContinuation();
+
+        assertThatThrownBy(() -> compiler.compile(
+            withContinuation(
+                ManifestTestFixtures.manifest(),
+                continuation.id()
+            ),
+            ManifestTestFixtures.compilationContext(
+                List.of(continuation),
+                List.of()
+            )
+        ))
+            .isInstanceOf(SpecialistManifestException.class)
+            .satisfies(error -> assertThat(
+                ((SpecialistManifestException) error).reason()
+            ).isEqualTo("SCHEMA_REFERENCE_NOT_FOUND"));
+        assertThatThrownBy(() -> compiler.compile(
+            withContinuation(
+                ManifestTestFixtures.manifest(),
+                continuation.id()
+            ),
+            ManifestTestFixtures.compilationContext(
+                List.of(continuation),
+                List.of(amountResponseSchema(
+                    SpecialistSchemaDirection.OUTPUT
+                ))
+            )
+        ))
+            .isInstanceOf(SpecialistManifestException.class)
+            .satisfies(error -> assertThat(
+                ((SpecialistManifestException) error).reason()
+            ).isEqualTo("SCHEMA_DIRECTION_MISMATCH"));
+    }
+
+    @Test
+    void rejectsManifestContinuationWithNonJsonInputType() {
+        SpecialistInputContinuation<String> continuation =
+            new SpecialistInputContinuation<>() {
+                @Override
+                public String id() {
+                    return "string-continuation@1";
+                }
+
+                @Override
+                public Class<String> inputType() {
+                    return String.class;
+                }
+
+                @Override
+                public Set<SpecialistSchemaId> responseSchemas() {
+                    return Set.of(AMOUNT_RESPONSE_SCHEMA);
+                }
+
+                @Override
+                public Optional<SpecialistInputRequirement> requiredInput(
+                    String input
+                ) {
+                    return Optional.empty();
+                }
+
+                @Override
+                public String resume(
+                    String originalInput,
+                    SpecialistInputRequirement requirement,
+                    JsonNode response
+                ) {
+                    return originalInput;
+                }
+            };
+
+        assertThatThrownBy(() -> compiler.compile(
+            withContinuation(
+                ManifestTestFixtures.manifest(),
+                continuation.id()
+            ),
+            ManifestTestFixtures.compilationContext(
+                List.of(continuation),
+                List.of(amountResponseSchema(
+                    SpecialistSchemaDirection.INPUT
+                ))
+            )
+        ))
+            .isInstanceOf(SpecialistManifestException.class)
+            .satisfies(error -> assertThat(
+                ((SpecialistManifestException) error).reason()
+            ).isEqualTo("INPUT_CONTINUATION_TYPE_MISMATCH"));
+    }
+
+    private static final SpecialistSchemaId AMOUNT_RESPONSE_SCHEMA =
+        SpecialistSchemaId.parse("billing-amount-response@1");
+
+    private SpecialistInputContinuation<JsonNode> jsonContinuation() {
+        return new SpecialistInputContinuation<>() {
+            @Override
+            public String id() {
+                return "billing-amount-input@1";
+            }
+
+            @Override
+            public Class<JsonNode> inputType() {
+                return JsonNode.class;
+            }
+
+            @Override
+            public Set<SpecialistSchemaId> responseSchemas() {
+                return Set.of(AMOUNT_RESPONSE_SCHEMA);
+            }
+
+            @Override
+            public Optional<SpecialistInputRequirement> requiredInput(
+                JsonNode input
+            ) {
+                return Optional.of(new SpecialistInputRequirement(
+                    "MISSING_BILLING_AMOUNT",
+                    "What amount should be assessed?",
+                    AMOUNT_RESPONSE_SCHEMA,
+                    Duration.ofMinutes(5),
+                    2
+                ));
+            }
+
+            @Override
+            public JsonNode resume(
+                JsonNode originalInput,
+                SpecialistInputRequirement requirement,
+                JsonNode response
+            ) {
+                var resumed = originalInput.deepCopy();
+                ((com.fasterxml.jackson.databind.node.ObjectNode) resumed)
+                    .set("amount", response.required("amount"));
+                return resumed;
+            }
+
+            @Override
+            public JsonNode snapshot(JsonNode input) {
+                return input.deepCopy();
+            }
+        };
+    }
+
+    private SpecialistSchemaDefinition amountResponseSchema(
+        SpecialistSchemaDirection direction
+    ) {
+        var mapper = ManifestTestFixtures.objectMapper();
+        var schema = mapper.createObjectNode();
+        schema.put("type", "object");
+        schema.put("additionalProperties", false);
+        schema.set("required", mapper.createArrayNode().add("amount"));
+        schema.set(
+            "properties",
+            mapper.createObjectNode().set(
+                "amount",
+                mapper.createObjectNode()
+                    .put("type", "number")
+                    .put("exclusiveMinimum", 0)
+            )
+        );
+        return new SpecialistSchemaDefinition(
+            "ai.fabric/v1",
+            "SpecialistSchema",
+            new SpecialistResourceMetadata(
+                AMOUNT_RESPONSE_SCHEMA.name(),
+                AMOUNT_RESPONSE_SCHEMA.version()
+            ),
+            new SpecialistSchemaSpec(direction, "2020-12", schema)
+        );
+    }
+
+    private SpecialistManifest withContinuation(
+        SpecialistManifest manifest,
+        String continuationRef
+    ) {
+        SpecialistManifestSpec spec = manifest.spec();
+        SpecialistInputSpec input = spec.input();
+        return new SpecialistManifest(
+            manifest.apiVersion(),
+            manifest.kind(),
+            manifest.metadata(),
+            new SpecialistManifestSpec(
+                spec.mode(),
+                spec.instructions(),
+                spec.execution(),
+                spec.capabilities(),
+                new SpecialistInputSpec(
+                    input.schemaRef(),
+                    continuationRef,
+                    input.rendering(),
+                    input.primaryTextPointer(),
+                    input.conversationTextPointer(),
+                    input.contextPointers(),
+                    input.context()
+                ),
+                spec.grounding(),
+                spec.output(),
+                spec.conversation(),
+                spec.limits()
+            )
+        );
     }
 }

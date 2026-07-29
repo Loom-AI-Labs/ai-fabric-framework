@@ -1,6 +1,7 @@
 package com.ai.fabric.realapps.agenticresolver.action.handler;
 
 import ai.fabric.intent.action.AIActionMetaData;
+import ai.fabric.intent.action.AIActionHandler;
 import ai.fabric.intent.action.AIActionRegistry;
 import ai.fabric.intent.action.ActionContext;
 import ai.fabric.intent.action.ActionResult;
@@ -365,6 +366,130 @@ class AccountResolverActionHandlerTest {
     }
 
     @Test
+    void billingAssessmentActionExposesStableAuthoritativeFacts() {
+        AccountResolutionService.BillingResolutionAssessment assessment =
+            new AccountResolutionService.BillingResolutionAssessment(
+                "REFUND",
+                new BigDecimal("75.00"),
+                "REVIEW_REQUIRED",
+                "PENDING_REVIEW",
+                new BigDecimal("50.00"),
+                "Routed to review because this refund is above the limit."
+            );
+        when(accountResolutionService.assessBillingResolution(
+            new BigDecimal("75.00"),
+            RefundRequest.ResolutionType.REFUND
+        )).thenReturn(assessment);
+        AssessBillingResolutionActionHandler handler =
+            new AssessBillingResolutionActionHandler(
+                accountResolutionService
+            );
+        ActionContext context = new ActionContext(
+            OrchestrationContext.builder()
+                .userId("94")
+                .sessionId("resolver-test")
+                .build(),
+            null
+        );
+
+        ActionResult result = handler.execute(
+            new BigDecimal("75.00"),
+            RefundRequest.ResolutionType.REFUND,
+            context
+        );
+        Map<String, Object> facts = handler.facts(result, context);
+
+        assertThat(result.isSuccess()).isTrue();
+        assertThat(result.getData().toMap())
+            .containsEntry("resolutionType", "REFUND")
+            .containsEntry("amount", new BigDecimal("75.00"))
+            .containsEntry("decision", "REVIEW_REQUIRED")
+            .containsEntry("expectedStatus", "PENDING_REVIEW")
+            .containsEntry("automaticLimit", new BigDecimal("50.00"));
+        assertThat(facts)
+            .containsEntry("factSource", "billing_resolution_policy")
+            .containsEntry("decision", "REVIEW_REQUIRED")
+            .containsEntry("expectedStatus", "PENDING_REVIEW");
+    }
+
+    @Test
+    void billingAssessmentActionAcceptsPositiveSubUnitAmountsThroughRegistryBinding() {
+        BigDecimal amount = new BigDecimal("0.50");
+        AccountResolutionService.BillingResolutionAssessment assessment =
+            new AccountResolutionService.BillingResolutionAssessment(
+                "REFUND",
+                amount,
+                "AUTO_APPROVED",
+                "APPROVED",
+                new BigDecimal("50.00"),
+                "Automatically approved under the refund limit."
+            );
+        when(accountResolutionService.assessBillingResolution(
+            amount,
+            RefundRequest.ResolutionType.REFUND
+        )).thenReturn(assessment);
+
+        try (AnnotationConfigApplicationContext context =
+                 new AnnotationConfigApplicationContext()) {
+            context.registerBean(
+                AccountResolutionService.class,
+                () -> accountResolutionService
+            );
+            context.register(AIActionRegistry.class);
+            context.register(AssessBillingResolutionActionHandler.class);
+            context.refresh();
+
+            AIActionHandler handler = context
+                .getBean(AIActionRegistry.class)
+                .findHandler("assess_billing_resolution")
+                .orElseThrow();
+            ActionContext actionContext = new ActionContext(
+                OrchestrationContext.builder()
+                    .userId("94")
+                    .sessionId("resolver-test")
+                    .build(),
+                null
+            );
+
+            ActionResult result = handler.executeAction(
+                Map.of(
+                    "amount", "0.50",
+                    "resolutionType", "REFUND"
+                ),
+                actionContext
+            );
+
+            assertThat(result.isSuccess()).isTrue();
+            assertThat(result.getData().toMap())
+                .containsEntry("amount", amount)
+                .containsEntry("decision", "AUTO_APPROVED");
+            assertThat(handler.getActionMetadata()
+                .getParameterSchemas()
+                .get("amount")
+                .getMin())
+                .isZero();
+        }
+    }
+
+    @Test
+    void billingAssessmentFactsRejectIncompleteActionPayloads() {
+        AssessBillingResolutionActionHandler handler =
+            new AssessBillingResolutionActionHandler(
+                accountResolutionService
+            );
+        ActionResult incomplete = ActionResult.builder()
+            .success(true)
+            .data(ai.fabric.intent.action.ActionResultContracts.object(
+                Map.of("amount", new BigDecimal("12.00"))
+            ))
+            .build();
+
+        assertThatThrownBy(() -> handler.facts(incomplete, null))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("resolutionType");
+    }
+
+    @Test
     void actionMetadataExposesOnlyUserSuppliedParameters() {
         try (AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext()) {
             context.registerBean(AccountResolutionService.class, () -> accountResolutionService);
@@ -372,6 +497,7 @@ class AccountResolverActionHandlerTest {
             context.registerBean(UserService.class, () -> userService);
             context.register(AIActionRegistry.class);
             context.register(GetAccountProfileActionHandler.class);
+            context.register(AssessBillingResolutionActionHandler.class);
             context.register(UpdatePaymentMethodActionHandler.class);
             context.register(UpdateAddressActionHandler.class);
             context.register(RequestRefundActionHandler.class);
@@ -387,6 +513,7 @@ class AccountResolverActionHandlerTest {
                 .extracting(AIActionMetaData::getName)
                 .containsExactlyInAnyOrder(
                     "get_account_profile",
+                    "assess_billing_resolution",
                     "update_payment_method",
                     "update_address",
                     "request_refund",
@@ -405,6 +532,18 @@ class AccountResolverActionHandlerTest {
             assertThat(profile.getParameters()).isEmpty();
             assertThat(profile.getParameterSchemas()).isEmpty();
             assertThat(profile.getRequiredParameters()).isEmpty();
+
+            AIActionMetaData assessment = registry
+                .findMetadata("assess_billing_resolution")
+                .orElseThrow();
+            assertThat(assessment.getParameters())
+                .containsOnlyKeys("amount", "resolutionType");
+            assertThat(assessment.getRequiredParameters())
+                .containsExactlyInAnyOrder("amount", "resolutionType");
+            assertThat(assessment.getParameterSchemas()
+                .get("resolutionType")
+                .getAllowedValues())
+                .containsExactly("REFUND", "ACCOUNT_CREDIT");
 
             AIActionMetaData payment = registry.findMetadata("update_payment_method").orElseThrow();
             assertThat(payment.getParameters()).containsOnlyKeys("last4");

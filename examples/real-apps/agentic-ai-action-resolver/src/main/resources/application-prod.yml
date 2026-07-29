@@ -29,6 +29,7 @@ ai:
         - account-resolution-policy
       allowed-actions:
         - get_account_profile
+        - assess_billing_resolution
         - update_address
     async:
       core-pool-size: ${AI_EXECUTION_CORE_POOL_SIZE:2}
@@ -106,6 +107,7 @@ ai:
           require-allowlist: true
           allowed-read-actions:
             - get_account_profile
+            - assess_billing_resolution
           max-iterations: 2
           max-actions-per-iteration: 1
           max-total-actions: 2

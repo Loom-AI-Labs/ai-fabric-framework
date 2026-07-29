@@ -2,6 +2,7 @@ package ai.fabric.execution.gateway;
 
 import ai.fabric.evidence.AIEvidenceReference;
 import ai.fabric.execution.action.ActionProposalView;
+import ai.fabric.execution.input.NeedsUserInput;
 import ai.fabric.execution.specialist.SpecialistId;
 import java.time.Instant;
 import java.util.Collections;
@@ -20,7 +21,8 @@ public record AIExecutionResult<O>(
     AIExecutionFailure failure,
     Instant startedAt,
     Instant completedAt,
-    ActionProposalView actionProposal
+    ActionProposalView actionProposal,
+    NeedsUserInput needsUserInput
 ) {
     public AIExecutionResult {
         invocationId = requireText(invocationId, "invocationId");
@@ -35,6 +37,14 @@ public record AIExecutionResult<O>(
         if (status == AIExecutionStatus.SUCCEEDED && output == null) {
             throw new IllegalArgumentException("Successful execution requires output");
         }
+        if (status == AIExecutionStatus.SUCCEEDED
+            && (failure != null
+                || actionProposal != null
+                || needsUserInput != null)) {
+            throw new IllegalArgumentException(
+                "Successful execution cannot contain failure, action proposal, or input request"
+            );
+        }
         if (status == AIExecutionStatus.CONFIRMATION_REQUIRED
             && actionProposal == null) {
             throw new IllegalArgumentException(
@@ -42,16 +52,70 @@ public record AIExecutionResult<O>(
             );
         }
         if (status == AIExecutionStatus.CONFIRMATION_REQUIRED
-            && failure != null) {
+            && (failure != null || output != null || needsUserInput != null)) {
             throw new IllegalArgumentException(
-                "Confirmation-required execution is not a failure"
+                "Confirmation-required execution cannot contain output, failure, or input request"
+            );
+        }
+        if (status == AIExecutionStatus.WAITING_FOR_INPUT
+            && needsUserInput == null) {
+            throw new IllegalArgumentException(
+                "Waiting execution requires a typed input request"
+            );
+        }
+        if (status == AIExecutionStatus.WAITING_FOR_INPUT
+            && (failure != null || actionProposal != null || output != null)) {
+            throw new IllegalArgumentException(
+                "Waiting execution cannot contain output, failure, or action proposal"
             );
         }
         if (status != AIExecutionStatus.SUCCEEDED
             && status != AIExecutionStatus.CONFIRMATION_REQUIRED
+            && status != AIExecutionStatus.WAITING_FOR_INPUT
             && failure == null) {
             throw new IllegalArgumentException("Non-success execution requires failure");
         }
+        if (status != AIExecutionStatus.SUCCEEDED
+            && status != AIExecutionStatus.CONFIRMATION_REQUIRED
+            && status != AIExecutionStatus.WAITING_FOR_INPUT
+            && (output != null || actionProposal != null)) {
+            throw new IllegalArgumentException(
+                "Failed execution cannot contain output or action proposal"
+            );
+        }
+        if (status != AIExecutionStatus.WAITING_FOR_INPUT
+            && needsUserInput != null) {
+            throw new IllegalArgumentException(
+                "Only waiting execution may contain a typed input request"
+            );
+        }
+    }
+
+    public AIExecutionResult(
+        String invocationId,
+        SpecialistId specialistId,
+        AIExecutionStatus status,
+        O output,
+        List<AIEvidenceReference> evidence,
+        Map<String, Object> diagnostics,
+        AIExecutionFailure failure,
+        Instant startedAt,
+        Instant completedAt,
+        ActionProposalView actionProposal
+    ) {
+        this(
+            invocationId,
+            specialistId,
+            status,
+            output,
+            evidence,
+            diagnostics,
+            failure,
+            startedAt,
+            completedAt,
+            actionProposal,
+            null
+        );
     }
 
     public AIExecutionResult(
@@ -75,12 +139,17 @@ public record AIExecutionResult<O>(
             failure,
             startedAt,
             completedAt,
+            null,
             null
         );
     }
 
     public boolean succeeded() {
         return status == AIExecutionStatus.SUCCEEDED;
+    }
+
+    public boolean waitingForInput() {
+        return status == AIExecutionStatus.WAITING_FOR_INPUT;
     }
 
     private static String requireText(String value, String field) {

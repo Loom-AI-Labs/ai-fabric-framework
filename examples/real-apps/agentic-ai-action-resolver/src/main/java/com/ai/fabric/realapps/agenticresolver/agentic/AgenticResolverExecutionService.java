@@ -9,10 +9,12 @@ import ai.fabric.execution.action.ActionProposalCoordinator;
 import ai.fabric.execution.action.ActionProposalDecisionRequest;
 import ai.fabric.execution.action.ActionProposalDecisionResult;
 import ai.fabric.execution.gateway.AIExecutionResult;
+import ai.fabric.execution.gateway.AIExecutionResumeResult;
 import ai.fabric.execution.gateway.ConversationBinding;
 import ai.fabric.execution.specialist.client.SpecialistClient;
 import ai.fabric.execution.specialist.client.SpecialistClientFactory;
 import ai.fabric.execution.specialist.client.SpecialistInvocation;
+import ai.fabric.execution.specialist.client.SpecialistResumeInvocation;
 import java.time.Clock;
 import java.util.Set;
 import org.springframework.stereotype.Service;
@@ -31,6 +33,11 @@ public class AgenticResolverExecutionService {
         "action:update_address",
         "vector:account-resolution-policy"
     );
+    private static final Set<String> BILLING_ADVISOR_SCOPES = Set.of(
+        "specialist:billing-resolution-advisor@1",
+        "action:assess_billing_resolution",
+        "vector:account-resolution-policy"
+    );
 
     private final SpecialistClient<
         AccountResolutionRequest,
@@ -40,6 +47,10 @@ public class AgenticResolverExecutionService {
         AccountResolutionRequest,
         AccountResolutionResult
     > readClient;
+    private final SpecialistClient<
+        BillingResolutionAssessmentRequest,
+        BillingResolutionAssessmentResult
+    > billingAdvisorClient;
     private final ActionProposalCoordinator actionProposalCoordinator;
     private final AgenticResolverSessionService sessionService;
     private final Clock clock;
@@ -59,6 +70,11 @@ public class AgenticResolverExecutionService {
             AccountResolverSpecialists.READ_SPECIALIST_ID,
             AccountResolutionRequest.class,
             AccountResolutionResult.class
+        );
+        this.billingAdvisorClient = specialistClientFactory.bind(
+            AccountResolverSpecialists.BILLING_ADVISOR_SPECIALIST_ID,
+            BillingResolutionAssessmentRequest.class,
+            BillingResolutionAssessmentResult.class
         );
         this.actionProposalCoordinator = actionProposalCoordinator;
         this.sessionService = sessionService;
@@ -126,9 +142,67 @@ public class AgenticResolverExecutionService {
         );
     }
 
+    public AIExecutionResult<BillingResolutionAssessmentResult>
+    assessBillingResolution(
+        String sessionId,
+        BillingResolutionAssessmentRequest request,
+        String idempotencyKey
+    ) {
+        AgenticResolverSessionService.ActiveSession session =
+            sessionService.active(sessionId);
+        return billingAdvisorClient.execute(new SpecialistInvocation<>(
+            request,
+            trustedContext(
+                session,
+                ExecutionSource.APPLICATION,
+                BILLING_ADVISOR_SCOPES
+            ),
+            null,
+            null,
+            normalizeIdempotencyKey(idempotencyKey)
+        ));
+    }
+
+    public AIExecutionResumeResult<BillingResolutionAssessmentResult>
+    resumeBillingAssessment(
+        String sessionId,
+        BillingAssessmentResumeRequest request,
+        String idempotencyKey
+    ) {
+        AgenticResolverSessionService.ActiveSession session =
+            sessionService.active(sessionId);
+        return billingAdvisorClient.resume(
+            new SpecialistResumeInvocation(
+                request.invocationId(),
+                request.requestId(),
+                request.response(),
+                trustedContext(
+                    session,
+                    ExecutionSource.APPLICATION,
+                    BILLING_ADVISOR_SCOPES
+                ),
+                requireIdempotencyKey(idempotencyKey)
+            )
+        );
+    }
+
     private TrustedExecutionContext trustedContext(
         AgenticResolverSessionService.ActiveSession session,
         ExecutionSource source
+    ) {
+        return trustedContext(
+            session,
+            source,
+            source == ExecutionSource.INTERACTIVE
+                ? INTERACTIVE_SCOPES
+                : READ_SCOPES
+        );
+    }
+
+    private TrustedExecutionContext trustedContext(
+        AgenticResolverSessionService.ActiveSession session,
+        ExecutionSource source,
+        Set<String> scopes
     ) {
         ExecutionPrincipal principal = source == ExecutionSource.INTERACTIVE
             ? new ExecutionPrincipal(
@@ -148,9 +222,7 @@ public class AgenticResolverExecutionService {
             source,
             "public-demo",
             "agentic-ai-action-resolver",
-            source == ExecutionSource.INTERACTIVE
-                ? INTERACTIVE_SCOPES
-                : READ_SCOPES,
+            scopes,
             null,
             clock.instant()
         );
@@ -167,6 +239,16 @@ public class AgenticResolverExecutionService {
         if (normalized.length() > 200) {
             throw new IllegalArgumentException(
                 "Idempotency-Key must not exceed 200 characters"
+            );
+        }
+        return normalized;
+    }
+
+    private String requireIdempotencyKey(String value) {
+        String normalized = normalizeIdempotencyKey(value);
+        if (normalized == null) {
+            throw new IllegalArgumentException(
+                "Idempotency-Key is required to resume an input request"
             );
         }
         return normalized;

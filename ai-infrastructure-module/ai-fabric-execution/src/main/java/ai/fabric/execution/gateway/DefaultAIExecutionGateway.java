@@ -6,13 +6,25 @@ import ai.fabric.execution.action.ActionProposalPersistenceException;
 import ai.fabric.execution.action.ActionProposalValidationException;
 import ai.fabric.execution.action.ActionProposalView;
 import ai.fabric.execution.context.TrustedExecutionContext;
+import ai.fabric.execution.config.AIExecutionProperties;
 import ai.fabric.execution.gateway.DefaultSpecialistAuthorityResolver.AuthorityDeniedException;
+import ai.fabric.execution.input.InputDeliveryTarget;
+import ai.fabric.execution.input.NeedsUserInput;
+import ai.fabric.execution.input.SpecialistInputContinuation;
+import ai.fabric.execution.input.SpecialistInputRequirement;
+import ai.fabric.execution.input.SpecialistInputResponseContract;
+import ai.fabric.execution.specialist.RegisteredSpecialist;
 import ai.fabric.execution.specialist.SpecialistDefinition;
 import ai.fabric.execution.specialist.SpecialistInputAdapter;
 import ai.fabric.execution.specialist.SpecialistOutputAdapter;
 import ai.fabric.execution.specialist.SpecialistOutputMode;
 import ai.fabric.execution.specialist.SpecialistRegistry;
 import ai.fabric.execution.specialist.manifest.SpecialistConversationBinding;
+import ai.fabric.execution.specialist.manifest.CanonicalJsonSupport;
+import ai.fabric.execution.specialist.manifest.SpecialistJsonSchemaRegistry;
+import ai.fabric.execution.specialist.manifest.SpecialistJsonSchemaValidator;
+import ai.fabric.execution.specialist.manifest.SpecialistSchemaDefinition;
+import ai.fabric.execution.specialist.manifest.SpecialistSchemaDirection;
 import ai.fabric.execution.specialist.manifest.SpecialistManifestMetrics;
 import ai.fabric.intent.action.AIActionRegistry;
 import ai.fabric.intent.action.invocation.ActionProposalCandidate;
@@ -63,7 +75,11 @@ public final class DefaultAIExecutionGateway implements AIExecutionGateway {
     private final AsyncTaskExecutor taskExecutor;
     private final Clock clock;
     private final EphemeralExecutionStore executionStore;
+    private final EphemeralInputWaitStore inputWaitStore;
     private final SpecialistManifestMetrics specialistMetrics;
+    private final SpecialistJsonSchemaRegistry schemaRegistry;
+    private final SpecialistJsonSchemaValidator schemaValidator;
+    private final CanonicalJsonSupport canonicalJson;
 
     public DefaultAIExecutionGateway(
         SpecialistRegistry specialistRegistry,
@@ -153,6 +169,56 @@ public final class DefaultAIExecutionGateway implements AIExecutionGateway {
         java.time.Duration resultTtl,
         SpecialistManifestMetrics specialistMetrics
     ) {
+        this(
+            specialistRegistry,
+            pipeline,
+            policyResolutionStep,
+            capabilitiesResolver,
+            actionRegistry,
+            capabilityInventory,
+            authorityResolver,
+            evidenceProjector,
+            outputFinalizer,
+            conversationRecorder,
+            actionProposalCoordinator,
+            taskExecutor,
+            clock,
+            resultTtl,
+            specialistMetrics,
+            new SpecialistJsonSchemaRegistry(
+                List.of(),
+                new SpecialistJsonSchemaValidator()
+            ),
+            new SpecialistJsonSchemaValidator(),
+            new CanonicalJsonSupport(
+                new com.fasterxml.jackson.databind.ObjectMapper()
+            ),
+            new AIExecutionProperties.InputWaits()
+        );
+    }
+
+    public DefaultAIExecutionGateway(
+        SpecialistRegistry specialistRegistry,
+        Pipeline pipeline,
+        OrchestrationPolicyResolutionStep policyResolutionStep,
+        EffectiveCapabilitiesResolver capabilitiesResolver,
+        AIActionRegistry actionRegistry,
+        ExecutionCapabilityInventory capabilityInventory,
+        SpecialistAuthorityResolver authorityResolver,
+        OrchestrationEvidenceProjector evidenceProjector,
+        SpecialistOutputFinalizer outputFinalizer,
+        AIExecutionConversationRecorder conversationRecorder,
+        java.util.function.Supplier<ActionProposalCoordinator>
+            actionProposalCoordinator,
+        AsyncTaskExecutor taskExecutor,
+        Clock clock,
+        java.time.Duration resultTtl,
+        SpecialistManifestMetrics specialistMetrics,
+        SpecialistJsonSchemaRegistry schemaRegistry,
+        SpecialistJsonSchemaValidator schemaValidator,
+        CanonicalJsonSupport canonicalJson,
+        AIExecutionProperties.InputWaits inputWaitProperties
+    ) {
         this.specialistRegistry = java.util.Objects.requireNonNull(
             specialistRegistry,
             "specialistRegistry is required"
@@ -187,9 +253,25 @@ public final class DefaultAIExecutionGateway implements AIExecutionGateway {
         );
         this.clock = java.util.Objects.requireNonNull(clock, "clock is required");
         this.executionStore = new EphemeralExecutionStore(clock, resultTtl);
+        this.inputWaitStore = new EphemeralInputWaitStore(
+            clock,
+            inputWaitProperties
+        );
         this.specialistMetrics = specialistMetrics != null
             ? specialistMetrics
             : SpecialistManifestMetrics.noop();
+        this.schemaRegistry = java.util.Objects.requireNonNull(
+            schemaRegistry,
+            "schemaRegistry is required"
+        );
+        this.schemaValidator = java.util.Objects.requireNonNull(
+            schemaValidator,
+            "schemaValidator is required"
+        );
+        this.canonicalJson = java.util.Objects.requireNonNull(
+            canonicalJson,
+            "canonicalJson is required"
+        );
     }
 
     @Override
@@ -209,6 +291,9 @@ public final class DefaultAIExecutionGateway implements AIExecutionGateway {
             EphemeralExecutionStore.Entry rejected = executionStore.create(
                 invocationId,
                 null,
+                ExecutionAccessBinding.from(
+                    request.trustedExecutionContext()
+                ),
                 request.deadline(),
                 ExecutionHandleStatus.REJECTED,
                 "SPECIALIST_NOT_FOUND"
@@ -222,6 +307,9 @@ public final class DefaultAIExecutionGateway implements AIExecutionGateway {
             EphemeralExecutionStore.Entry rejected = executionStore.create(
                 invocationId,
                 null,
+                ExecutionAccessBinding.from(
+                    request.trustedExecutionContext()
+                ),
                 deadline,
                 ExecutionHandleStatus.REJECTED,
                 "DUPLICATE_IDEMPOTENCY_KEY"
@@ -234,6 +322,9 @@ public final class DefaultAIExecutionGateway implements AIExecutionGateway {
             entry = executionStore.create(
                 invocationId,
                 request.idempotencyKey(),
+                ExecutionAccessBinding.from(
+                    request.trustedExecutionContext()
+                ),
                 deadline,
                 ExecutionHandleStatus.QUEUED,
                 null
@@ -242,6 +333,9 @@ public final class DefaultAIExecutionGateway implements AIExecutionGateway {
             EphemeralExecutionStore.Entry rejected = executionStore.create(
                 invocationId(),
                 null,
+                ExecutionAccessBinding.from(
+                    request.trustedExecutionContext()
+                ),
                 deadline,
                 ExecutionHandleStatus.REJECTED,
                 "DUPLICATE_IDEMPOTENCY_KEY"
@@ -268,23 +362,116 @@ public final class DefaultAIExecutionGateway implements AIExecutionGateway {
     }
 
     @Override
-    public Optional<ExecutionSnapshot> find(String invocationId) {
-        if (invocationId == null || invocationId.isBlank()) {
-            return Optional.empty();
-        }
-        return executionStore.find(invocationId.trim()).map(executionStore::snapshot);
+    public <O> AIExecutionResumeResult<O> resume(
+        AIExecutionResumeRequest request
+    ) {
+        java.util.Objects.requireNonNull(request, "request is required");
+        String responseHash = canonicalJson.hash(request.response());
+        EphemeralInputWaitStore.Claim claim = inputWaitStore.claim(
+            request,
+            responseHash
+        );
+        return switch (claim.status()) {
+            case ACQUIRED -> resumeClaim(request, claim.entry());
+            case REPLAYED -> replayed(claim.replayedResult());
+            case DENIED -> resumeRejected(
+                AIExecutionResumeStatus.DENIED,
+                "INPUT_REQUEST_UNAVAILABLE",
+                "The input request is not available for this trusted context.",
+                false
+            );
+            case EXPIRED -> resumeRejected(
+                AIExecutionResumeStatus.EXPIRED,
+                "INPUT_REQUEST_EXPIRED",
+                "The input request has expired.",
+                false
+            );
+            case CONFLICT -> resumeRejected(
+                AIExecutionResumeStatus.REJECTED,
+                "INPUT_RESUME_CONFLICT",
+                "The input request was already resumed with different data.",
+                false
+            );
+            case IN_PROGRESS -> resumeRejected(
+                AIExecutionResumeStatus.IN_PROGRESS,
+                "INPUT_RESUME_IN_PROGRESS",
+                "An identical input resume is already in progress.",
+                true
+            );
+            case CANCELLED -> resumeRejected(
+                AIExecutionResumeStatus.REJECTED,
+                "INPUT_REQUEST_CANCELLED",
+                "The input request is no longer active.",
+                false
+            );
+        };
     }
 
     @Override
-    public boolean cancel(String invocationId) {
-        return findEntry(invocationId).map(executionStore::cancel).orElse(false);
+    public Optional<ExecutionSnapshot> find(
+        String invocationId,
+        TrustedExecutionContext trustedExecutionContext
+    ) {
+        if (invocationId == null || invocationId.isBlank()) {
+            return Optional.empty();
+        }
+        java.util.Objects.requireNonNull(
+            trustedExecutionContext,
+            "trustedExecutionContext is required"
+        );
+        Optional<ExecutionSnapshot> asynchronous = executionStore
+            .find(invocationId.trim(), trustedExecutionContext)
+            .map(executionStore::snapshot);
+        if (asynchronous.isPresent()) {
+            return asynchronous;
+        }
+        return inputWaitStore
+            .findByInvocation(
+                invocationId.trim(),
+                trustedExecutionContext
+            )
+            .map(inputWaitStore::snapshot);
+    }
+
+    @Override
+    public boolean cancel(
+        String invocationId,
+        TrustedExecutionContext trustedExecutionContext
+    ) {
+        java.util.Objects.requireNonNull(
+            trustedExecutionContext,
+            "trustedExecutionContext is required"
+        );
+        boolean inputCancelled = inputWaitStore.cancel(
+            invocationId,
+            trustedExecutionContext
+        );
+        boolean executionCancelled = findEntry(
+            invocationId,
+            trustedExecutionContext
+        ).map(executionStore::cancel).orElse(false);
+        return inputCancelled || executionCancelled;
     }
 
     private <I, O> AIExecutionResult<O> executeInternal(
         String invocationId,
         AIExecutionRequest<I> request
     ) {
-        AIExecutionResult<O> result = doExecuteInternal(invocationId, request);
+        return executeInternal(invocationId, request, null, null);
+    }
+
+    private <I, O> AIExecutionResult<O> executeInternal(
+        String invocationId,
+        AIExecutionRequest<I> request,
+        ResumeConstraints resumeConstraints,
+        Instant originalStartedAt
+    ) {
+        AIExecutionResult<O> result = doExecuteInternal(
+            invocationId,
+            request,
+            resumeConstraints,
+            originalStartedAt
+        );
         specialistRegistry.findRegistered(result.specialistId()).ifPresent(
             registered -> specialistMetrics.recordExecution(
                 registered.source(),
@@ -296,9 +483,13 @@ public final class DefaultAIExecutionGateway implements AIExecutionGateway {
 
     private <I, O> AIExecutionResult<O> doExecuteInternal(
         String invocationId,
-        AIExecutionRequest<I> request
+        AIExecutionRequest<I> request,
+        ResumeConstraints resumeConstraints,
+        Instant originalStartedAt
     ) {
-        Instant startedAt = clock.instant();
+        Instant startedAt = originalStartedAt != null
+            ? originalStartedAt
+            : clock.instant();
         if (request == null) {
             return failure(
                 invocationId,
@@ -367,6 +558,36 @@ public final class DefaultAIExecutionGateway implements AIExecutionGateway {
                     throw new IllegalArgumentException(
                         "Input must be " + inputAdapter.inputType().getName()
                     );
+                }
+                Optional<SpecialistInputContinuation<I>> continuation =
+                    inputAdapter.inputContinuation();
+                if (continuation.isPresent()) {
+                    SpecialistInputContinuation<I> extension =
+                        continuation.get();
+                    if (extension.inputType() != inputAdapter.inputType()) {
+                        throw new IllegalArgumentException(
+                            "Input continuation type does not match its adapter"
+                        );
+                    }
+                    Optional<SpecialistInputRequirement> requirement =
+                        extension.requiredInput(request.input());
+                    if (requirement == null) {
+                        throw new IllegalArgumentException(
+                            "Input continuation returned null instead of Optional"
+                        );
+                    }
+                    if (requirement.isPresent()) {
+                        return waitForInput(
+                            invocationId,
+                            request,
+                            definition,
+                            inputAdapter,
+                            extension,
+                            requirement.get(),
+                            resumeConstraints,
+                            startedAt
+                        );
+                    }
                 }
                 inputAdapter.validate(request.input());
                 applicationInput = inputAdapter.renderModelInput(request.input());
@@ -443,6 +664,21 @@ public final class DefaultAIExecutionGateway implements AIExecutionGateway {
                 preflight,
                 request.trustedExecutionContext()
             );
+            if (resumeConstraints != null
+                && !resumeConstraints.effectiveProfileHash().equals(
+                    effective.profileHash()
+                )) {
+                return failure(
+                    invocationId,
+                    definition.id(),
+                    AIExecutionStatus.DENIED,
+                    "EFFECTIVE_PROFILE_CHANGED",
+                    "The effective specialist profile changed while waiting.",
+                    false,
+                    startedAt,
+                    Map.of()
+                );
+            }
 
             OrchestrationContext effectiveContext = preflight.getOrchestrationContext()
                 .toBuilder()
@@ -778,6 +1014,17 @@ public final class DefaultAIExecutionGateway implements AIExecutionGateway {
                 startedAt,
                 Map.of()
             );
+        } catch (EphemeralInputWaitStore.InputWaitStoreException ex) {
+            return failure(
+                invocationId,
+                definition.id(),
+                AIExecutionStatus.FAILED,
+                ex.reason(),
+                ex.getMessage(),
+                retryable(ex.reason()),
+                startedAt,
+                Map.of()
+            );
         } catch (ContractValidationException ex) {
             return failure(
                 invocationId,
@@ -852,6 +1099,380 @@ public final class DefaultAIExecutionGateway implements AIExecutionGateway {
                 Map.of()
             );
         }
+    }
+
+    private <I, O> AIExecutionResult<O> waitForInput(
+        String invocationId,
+        AIExecutionRequest<I> request,
+        SpecialistDefinition<I, O> definition,
+        SpecialistInputAdapter<I> inputAdapter,
+        SpecialistInputContinuation<I> continuation,
+        SpecialistInputRequirement requirement,
+        ResumeConstraints resumeConstraints,
+        Instant startedAt
+    ) {
+        if (!continuation.responseSchemas().contains(
+                requirement.responseSchemaId()
+            )) {
+            throw new ContractValidationException(
+                "INPUT_RESPONSE_SCHEMA_NOT_DECLARED",
+                "The input continuation requested an undeclared response schema."
+            );
+        }
+        SpecialistSchemaDefinition responseSchema = schemaRegistry.require(
+            requirement.responseSchemaId(),
+            SpecialistSchemaDirection.INPUT
+        );
+        OrchestrationContext orchestrationContext;
+        try {
+            orchestrationContext = inputAdapter.orchestrationContext(
+                request.input()
+            );
+        } catch (IllegalArgumentException ex) {
+            throw new ContractValidationException(
+                "INPUT_VALIDATION_FAILED",
+                ex.getMessage()
+            );
+        }
+        if (orchestrationContext == null) {
+            orchestrationContext = OrchestrationContext.builder().build();
+        }
+        orchestrationContext = bindContext(
+            orchestrationContext,
+            definition,
+            request.conversationBinding()
+        );
+        String preflightInput =
+            "Specialist input requirement: " + requirement.purposeCode();
+        PipelineContext preflight = policyResolutionStep.process(
+            PipelineContext.from(new OrchestrationRequest(
+                preflightInput,
+                orchestrationContext,
+                request.trustedExecutionContext(),
+                ConversationPersistencePolicy.NEVER
+            ))
+        );
+        if (preflight.isShouldTerminate()) {
+            return pipelineFailure(
+                invocationId,
+                definition,
+                preflight.getEarlyTerminationResult(),
+                startedAt,
+                Map.of("phase", "input_wait_policy_resolution")
+            );
+        }
+        EffectiveCapabilityProfile effective = resolveCapabilities(
+            definition,
+            preflight,
+            request.trustedExecutionContext()
+        );
+        if (resumeConstraints != null
+            && !resumeConstraints.effectiveProfileHash().equals(
+                effective.profileHash()
+            )) {
+            return failure(
+                invocationId,
+                definition.id(),
+                AIExecutionStatus.DENIED,
+                "EFFECTIVE_PROFILE_CHANGED",
+                "The effective specialist profile changed while waiting.",
+                false,
+                startedAt,
+                Map.of()
+            );
+        }
+        RegisteredSpecialist registered =
+            specialistRegistry.requireRegistered(definition.id());
+        if (resumeConstraints != null
+            && !resumeConstraints.specialistContentHash().equals(
+                registered.contentHash()
+            )) {
+            return failure(
+                invocationId,
+                definition.id(),
+                AIExecutionStatus.DENIED,
+                "SPECIALIST_CONTENT_CHANGED",
+                "The specialist content changed while waiting.",
+                false,
+                startedAt,
+                Map.of()
+            );
+        }
+        I inputSnapshot;
+        try {
+            inputSnapshot = continuation.snapshot(request.input());
+            if (inputSnapshot == null
+                || !inputAdapter.inputType().isInstance(inputSnapshot)) {
+                throw new IllegalArgumentException(
+                    "Input continuation returned an invalid snapshot"
+                );
+            }
+        } catch (IllegalArgumentException ex) {
+            throw new ContractValidationException(
+                "INPUT_SNAPSHOT_FAILED",
+                ex.getMessage()
+            );
+        }
+        AIExecutionRequest<I> retainedRequest = new AIExecutionRequest<>(
+            request.specialistId(),
+            inputSnapshot,
+            request.trustedExecutionContext(),
+            request.conversationBinding(),
+            request.deadline(),
+            request.idempotencyKey()
+        );
+        int requestNumber = resumeConstraints == null
+            ? 1
+            : resumeConstraints.nextRequestNumber();
+        EphemeralInputWaitStore.Entry entry = inputWaitStore.create(
+            invocationId,
+            retainedRequest,
+            inputSnapshot,
+            continuation,
+            requirement,
+            responseSchema,
+            registered,
+            effective.profileHash(),
+            startedAt,
+            requestNumber
+        );
+        NeedsUserInput needsUserInput = new NeedsUserInput(
+            entry.requestId(),
+            invocationId,
+            definition.id(),
+            requirement.purposeCode(),
+            requirement.safeQuestion(),
+            new SpecialistInputResponseContract(
+                responseSchema.id(),
+                responseSchema.spec().schema()
+            ),
+            request.trustedExecutionContext().source()
+                    == ai.fabric.execution.context.ExecutionSource.INTERACTIVE
+                && request.conversationBinding() != null
+                    ? InputDeliveryTarget.DIALOGUE_OWNER
+                    : InputDeliveryTarget.HOST_APPLICATION,
+            ExecutionDurability.EPHEMERAL,
+            entry.createdAt(),
+            entry.expiresAt(),
+            entry.maxAttempts()
+        );
+        Map<String, Object> waitDiagnostics = new LinkedHashMap<>(
+            diagnostics(definition, effective, null, 0)
+        );
+        waitDiagnostics.put("inputWait", true);
+        waitDiagnostics.put(
+            "inputWaitDurability",
+            ExecutionDurability.EPHEMERAL.name()
+        );
+        waitDiagnostics.put(
+            "inputPurpose",
+            requirement.purposeCode()
+        );
+        AIExecutionResult<O> result = new AIExecutionResult<>(
+            invocationId,
+            definition.id(),
+            AIExecutionStatus.WAITING_FOR_INPUT,
+            null,
+            List.of(),
+            Map.copyOf(waitDiagnostics),
+            null,
+            startedAt,
+            clock.instant(),
+            null,
+            needsUserInput
+        );
+        inputWaitStore.attachWaitingResult(entry, result);
+        log.info(
+            "AI execution {} specialist={} status=WAITING_FOR_INPUT purpose={} durability={}",
+            invocationId,
+            definition.id(),
+            requirement.purposeCode(),
+            ExecutionDurability.EPHEMERAL
+        );
+        return result;
+    }
+
+    @SuppressWarnings("unchecked")
+    private <O> AIExecutionResumeResult<O> resumeClaim(
+        AIExecutionResumeRequest request,
+        EphemeralInputWaitStore.Entry entry
+    ) {
+        RegisteredSpecialist registered = specialistRegistry
+            .findRegistered(request.specialistId())
+            .orElse(null);
+        if (registered == null
+            || !registered.contentHash().equals(
+                entry.specialistContentHash()
+            )) {
+            return terminalResumeFailure(
+                entry,
+                AIExecutionStatus.DENIED,
+                "SPECIALIST_CONTENT_CHANGED",
+                "The specialist content changed while waiting."
+            );
+        }
+        SpecialistInputAdapter<Object> inputAdapter =
+            (SpecialistInputAdapter<Object>) registered.definition()
+                .inputAdapter();
+        SpecialistInputContinuation<Object> continuation = inputAdapter
+            .inputContinuation()
+            .orElse(null);
+        if (continuation == null
+            || !continuation.id().equals(entry.continuation().id())
+            || !continuation.responseSchemas().contains(
+                entry.requirement().responseSchemaId()
+            )) {
+            return terminalResumeFailure(
+                entry,
+                AIExecutionStatus.DENIED,
+                "INPUT_CONTINUATION_CHANGED",
+                "The specialist input continuation changed while waiting."
+            );
+        }
+        SpecialistSchemaDefinition currentSchema;
+        try {
+            currentSchema = schemaRegistry.require(
+                entry.requirement().responseSchemaId(),
+                SpecialistSchemaDirection.INPUT
+            );
+        } catch (RuntimeException ex) {
+            return terminalResumeFailure(
+                entry,
+                AIExecutionStatus.DENIED,
+                "INPUT_RESPONSE_SCHEMA_CHANGED",
+                "The input response schema changed while waiting."
+            );
+        }
+        if (!canonicalJson.write(currentSchema.spec().schema()).equals(
+                canonicalJson.write(entry.responseSchema().spec().schema())
+            )) {
+            return terminalResumeFailure(
+                entry,
+                AIExecutionStatus.DENIED,
+                "INPUT_RESPONSE_SCHEMA_CHANGED",
+                "The input response schema changed while waiting."
+            );
+        }
+        Object resumedInput;
+        try {
+            schemaValidator.validate(
+                entry.responseSchema(),
+                request.response()
+            );
+            resumedInput = continuation.resume(
+                entry.inputSnapshot(),
+                entry.requirement(),
+                request.response()
+            );
+            if (resumedInput == null
+                || !inputAdapter.inputType().isInstance(resumedInput)) {
+                throw new IllegalArgumentException(
+                    "Input continuation returned an invalid resumed input"
+                );
+            }
+        } catch (IllegalArgumentException ex) {
+            boolean waiting = inputWaitStore.rejectAttempt(entry);
+            return resumeRejected(
+                AIExecutionResumeStatus.REJECTED,
+                waiting
+                    ? "INPUT_RESPONSE_INVALID"
+                    : "INPUT_RESPONSE_ATTEMPTS_EXHAUSTED",
+                waiting
+                    ? "The input response does not satisfy the required contract."
+                    : "The input request is no longer active after repeated invalid responses.",
+                waiting
+            );
+        }
+
+        AIExecutionRequest<Object> resumedRequest = new AIExecutionRequest<>(
+            entry.originalRequest().specialistId(),
+            resumedInput,
+            request.trustedExecutionContext(),
+            entry.originalRequest().conversationBinding(),
+            entry.originalRequest().deadline(),
+            entry.originalRequest().idempotencyKey()
+        );
+        Optional<EphemeralExecutionStore.Entry> asynchronous =
+            executionStore.find(
+                entry.invocationId(),
+                request.trustedExecutionContext()
+            );
+        if (asynchronous.isPresent()
+            && !executionStore.markResuming(
+                asynchronous.get(),
+                requestedDeadline(
+                    resumedRequest,
+                    registered.definition()
+                )
+            )) {
+            return terminalResumeFailure(
+                entry,
+                AIExecutionStatus.CANCELLED,
+                "INPUT_RESUME_CANCELLED",
+                "The execution was cancelled before it could resume."
+            );
+        }
+        AIExecutionResult<O> result = executeInternal(
+            entry.invocationId(),
+            resumedRequest,
+            new ResumeConstraints(
+                entry.specialistContentHash(),
+                entry.effectiveProfileHash(),
+                entry.requestNumber() + 1
+            ),
+            entry.startedAt()
+        );
+        inputWaitStore.complete(entry, result);
+        asynchronous.ifPresent(value ->
+            executionStore.complete(value, result)
+        );
+        return AIExecutionResumeResult.resumed(result);
+    }
+
+    private <O> AIExecutionResumeResult<O> terminalResumeFailure(
+        EphemeralInputWaitStore.Entry entry,
+        AIExecutionStatus status,
+        String reason,
+        String message
+    ) {
+        AIExecutionResult<O> result = failure(
+            entry.invocationId(),
+            entry.originalRequest().specialistId(),
+            status,
+            reason,
+            message,
+            false,
+            entry.startedAt(),
+            Map.of()
+        );
+        inputWaitStore.complete(entry, result);
+        executionStore.find(entry.invocationId()).ifPresent(value ->
+            executionStore.complete(value, result)
+        );
+        return AIExecutionResumeResult.resumed(result);
+    }
+
+    @SuppressWarnings("unchecked")
+    private <O> AIExecutionResumeResult<O> replayed(
+        AIExecutionResult<?> result
+    ) {
+        return AIExecutionResumeResult.replayed(
+            (AIExecutionResult<O>) result
+        );
+    }
+
+    private <O> AIExecutionResumeResult<O> resumeRejected(
+        AIExecutionResumeStatus status,
+        String reason,
+        String message,
+        boolean retryable
+    ) {
+        return AIExecutionResumeResult.rejected(
+            status,
+            reason,
+            message,
+            retryable
+        );
     }
 
     private EffectiveCapabilityProfile resolveCapabilities(
@@ -1141,11 +1762,17 @@ public final class DefaultAIExecutionGateway implements AIExecutionGateway {
         return specialistDeadline;
     }
 
-    private Optional<EphemeralExecutionStore.Entry> findEntry(String invocationId) {
+    private Optional<EphemeralExecutionStore.Entry> findEntry(
+        String invocationId,
+        TrustedExecutionContext trustedExecutionContext
+    ) {
         if (invocationId == null || invocationId.isBlank()) {
             return Optional.empty();
         }
-        return executionStore.find(invocationId.trim());
+        return executionStore.find(
+            invocationId.trim(),
+            trustedExecutionContext
+        );
     }
 
     @SuppressWarnings("unchecked")
@@ -1156,6 +1783,12 @@ public final class DefaultAIExecutionGateway implements AIExecutionGateway {
     private String invocationId() {
         return "exec-" + UUID.randomUUID();
     }
+
+    private record ResumeConstraints(
+        String specialistContentHash,
+        String effectiveProfileHash,
+        int nextRequestNumber
+    ) {}
 
     private static final class ContractValidationException extends RuntimeException {
         private final String reason;

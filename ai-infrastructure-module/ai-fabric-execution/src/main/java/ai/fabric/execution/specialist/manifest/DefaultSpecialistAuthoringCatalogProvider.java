@@ -23,6 +23,7 @@ public final class DefaultSpecialistAuthoringCatalogProvider
     private final SpecialistFinalOutputValidatorRegistry finalValidators;
     private final SpecialistDirectOutputProjectorRegistry directProjectors;
     private final SpecialistOutputNormalizerRegistry outputNormalizers;
+    private final SpecialistInputContinuationRegistry inputContinuations;
 
     public DefaultSpecialistAuthoringCatalogProvider(
         Set<String> modes,
@@ -34,6 +35,32 @@ public final class DefaultSpecialistAuthoringCatalogProvider
         SpecialistFinalOutputValidatorRegistry finalValidators,
         SpecialistDirectOutputProjectorRegistry directProjectors,
         SpecialistOutputNormalizerRegistry outputNormalizers
+    ) {
+        this(
+            modes,
+            capabilityInventory,
+            actionRegistry,
+            schemaRegistry,
+            promptProfileRegistry,
+            groundingValidators,
+            finalValidators,
+            directProjectors,
+            outputNormalizers,
+            new SpecialistInputContinuationRegistry(List.of())
+        );
+    }
+
+    public DefaultSpecialistAuthoringCatalogProvider(
+        Set<String> modes,
+        ExecutionCapabilityInventory capabilityInventory,
+        AIActionRegistry actionRegistry,
+        SpecialistJsonSchemaRegistry schemaRegistry,
+        SpecialistPromptProfileRegistry promptProfileRegistry,
+        SpecialistGroundingValidatorRegistry groundingValidators,
+        SpecialistFinalOutputValidatorRegistry finalValidators,
+        SpecialistDirectOutputProjectorRegistry directProjectors,
+        SpecialistOutputNormalizerRegistry outputNormalizers,
+        SpecialistInputContinuationRegistry inputContinuations
     ) {
         this.modes = normalize(modes);
         this.capabilityInventory = Objects.requireNonNull(
@@ -67,6 +94,10 @@ public final class DefaultSpecialistAuthoringCatalogProvider
         this.outputNormalizers = Objects.requireNonNull(
             outputNormalizers,
             "outputNormalizers are required"
+        );
+        this.inputContinuations = Objects.requireNonNull(
+            inputContinuations,
+            "inputContinuations are required"
         );
     }
 
@@ -121,6 +152,10 @@ public final class DefaultSpecialistAuthoringCatalogProvider
                     .toList()),
                 ids(outputNormalizers.list().stream()
                     .map(SpecialistOutputNormalizer::id)
+                    .toList()),
+                ids(inputContinuations.list().stream()
+                    .map(ai.fabric.execution.input
+                        .SpecialistInputContinuation::id)
                     .toList())
             ),
             SpecialistFrameworkLimits.DEFAULT

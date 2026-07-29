@@ -33,6 +33,8 @@ import ai.fabric.execution.specialist.manifest.SpecialistFinalOutputValidator;
 import ai.fabric.execution.specialist.manifest.SpecialistFinalOutputValidatorRegistry;
 import ai.fabric.execution.specialist.manifest.SpecialistGroundingValidator;
 import ai.fabric.execution.specialist.manifest.SpecialistGroundingValidatorRegistry;
+import ai.fabric.execution.input.SpecialistInputContinuation;
+import ai.fabric.execution.specialist.manifest.SpecialistInputContinuationRegistry;
 import ai.fabric.execution.specialist.manifest.SpecialistJsonSchemaRegistry;
 import ai.fabric.execution.specialist.manifest.SpecialistJsonSchemaValidator;
 import ai.fabric.execution.specialist.manifest.SpecialistManifestCompiler;
@@ -158,6 +160,15 @@ public class AIExecutionAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
+    public SpecialistInputContinuationRegistry
+        specialistInputContinuationRegistry(
+            List<SpecialistInputContinuation<?>> continuations
+        ) {
+        return new SpecialistInputContinuationRegistry(continuations);
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
     public SpecialistManifestMetrics specialistManifestMetrics(
         ObjectProvider<MeterRegistry> meterRegistryProvider
     ) {
@@ -188,6 +199,7 @@ public class AIExecutionAutoConfiguration {
         SpecialistFinalOutputValidatorRegistry finalOutputValidators,
         SpecialistDirectOutputProjectorRegistry directOutputProjectors,
         SpecialistOutputNormalizerRegistry outputNormalizers,
+        SpecialistInputContinuationRegistry inputContinuations,
         SpecialistJsonSchemaValidator schemaValidator,
         CanonicalJsonSupport canonicalJson,
         ObjectMapper objectMapper,
@@ -203,6 +215,7 @@ public class AIExecutionAutoConfiguration {
             finalOutputValidators,
             directOutputProjectors,
             outputNormalizers,
+            inputContinuations,
             schemaValidator,
             canonicalJson,
             objectMapper,
@@ -256,7 +269,8 @@ public class AIExecutionAutoConfiguration {
             SpecialistGroundingValidatorRegistry groundingValidators,
             SpecialistFinalOutputValidatorRegistry finalOutputValidators,
             SpecialistDirectOutputProjectorRegistry directOutputProjectors,
-            SpecialistOutputNormalizerRegistry outputNormalizers
+            SpecialistOutputNormalizerRegistry outputNormalizers,
+            SpecialistInputContinuationRegistry inputContinuations
         ) {
         return new DefaultSpecialistAuthoringCatalogProvider(
             knownModes(orchestrationProperties),
@@ -267,7 +281,8 @@ public class AIExecutionAutoConfiguration {
             groundingValidators,
             finalOutputValidators,
             directOutputProjectors,
-            outputNormalizers
+            outputNormalizers,
+            inputContinuations
         );
     }
 
@@ -404,7 +419,10 @@ public class AIExecutionAutoConfiguration {
         @Qualifier("aiFabricExecutionTaskExecutor") AsyncTaskExecutor taskExecutor,
         Clock clock,
         AIExecutionProperties properties,
-        SpecialistManifestMetrics specialistMetrics
+        SpecialistManifestMetrics specialistMetrics,
+        SpecialistJsonSchemaRegistry schemaRegistry,
+        SpecialistJsonSchemaValidator schemaValidator,
+        CanonicalJsonSupport canonicalJson
     ) {
         return new DefaultAIExecutionGateway(
             specialistRegistry,
@@ -421,7 +439,11 @@ public class AIExecutionAutoConfiguration {
             taskExecutor,
             clock,
             properties.getAsync().getResultTtl(),
-            specialistMetrics
+            specialistMetrics,
+            schemaRegistry,
+            schemaValidator,
+            canonicalJson,
+            properties.getInputWaits()
         );
     }
 

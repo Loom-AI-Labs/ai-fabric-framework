@@ -31,6 +31,7 @@ final class EphemeralExecutionStore {
     Entry create(
         String invocationId,
         String idempotencyKey,
+        ExecutionAccessBinding accessBinding,
         Instant deadline,
         ExecutionHandleStatus status,
         String failureReason
@@ -43,6 +44,7 @@ final class EphemeralExecutionStore {
         Entry entry = new Entry(
             invocationId,
             idempotencyKey,
+            accessBinding,
             deadline,
             retentionAnchor.plus(ttl),
             status,
@@ -61,9 +63,40 @@ final class EphemeralExecutionStore {
         return entry;
     }
 
+    Entry create(
+        String invocationId,
+        String idempotencyKey,
+        Instant deadline,
+        ExecutionHandleStatus status,
+        String failureReason
+    ) {
+        return create(
+            invocationId,
+            idempotencyKey,
+            null,
+            deadline,
+            status,
+            failureReason
+        );
+    }
+
     Optional<Entry> find(String invocationId) {
         cleanup();
         return Optional.ofNullable(entries.get(invocationId));
+    }
+
+    Optional<Entry> find(
+        String invocationId,
+        ai.fabric.execution.context.TrustedExecutionContext context
+    ) {
+        cleanup();
+        Entry entry = entries.get(invocationId);
+        if (entry == null
+            || entry.accessBinding == null
+            || !entry.accessBinding.matches(context)) {
+            return Optional.empty();
+        }
+        return Optional.of(entry);
     }
 
     boolean markRunning(Entry entry) {
@@ -77,18 +110,39 @@ final class EphemeralExecutionStore {
         }
     }
 
+    boolean markResuming(Entry entry, Instant deadline) {
+        synchronized (entry) {
+            if (entry.status != ExecutionHandleStatus.WAITING_FOR_INPUT) {
+                return false;
+            }
+            entry.status = ExecutionHandleStatus.RUNNING;
+            entry.deadline = deadline;
+            entry.failureReason = null;
+            entry.result = null;
+            entry.future = null;
+            return true;
+        }
+    }
+
     void complete(Entry entry, AIExecutionResult<?> result) {
         ExecutionHandleStatus status = result.succeeded()
             ? ExecutionHandleStatus.SUCCEEDED
-            : result.status() == AIExecutionStatus.CANCELLED
-                ? ExecutionHandleStatus.CANCELLED
-                : ExecutionHandleStatus.FAILED;
+            : result.waitingForInput()
+                ? ExecutionHandleStatus.WAITING_FOR_INPUT
+                : result.status() == AIExecutionStatus.CANCELLED
+                    ? ExecutionHandleStatus.CANCELLED
+                    : ExecutionHandleStatus.FAILED;
         entry.update(
             status,
             result,
             result.failure() != null ? result.failure().reason() : null
         );
-        entry.expiresAt = clock.instant().plus(ttl);
+        if (result.waitingForInput()) {
+            entry.deadline = result.needsUserInput().expiresAt();
+            entry.expiresAt = result.needsUserInput().expiresAt();
+        } else {
+            entry.expiresAt = clock.instant().plus(ttl);
+        }
     }
 
     void reject(Entry entry, String reason) {
@@ -103,10 +157,14 @@ final class EphemeralExecutionStore {
     boolean cancel(Entry entry) {
         synchronized (entry) {
             if (entry.status != ExecutionHandleStatus.QUEUED
-                && entry.status != ExecutionHandleStatus.RUNNING) {
+                && entry.status != ExecutionHandleStatus.RUNNING
+                && entry.status != ExecutionHandleStatus.WAITING_FOR_INPUT) {
                 return false;
             }
-            boolean cancelled = entry.future == null || entry.future.cancel(true);
+            boolean cancelled =
+                entry.status == ExecutionHandleStatus.WAITING_FOR_INPUT
+                    || entry.future == null
+                    || entry.future.cancel(true);
             if (cancelled) {
                 entry.status = ExecutionHandleStatus.CANCELLED;
                 entry.failureReason = "CANCELLED";
@@ -152,7 +210,8 @@ final class EphemeralExecutionStore {
     static final class Entry {
         private final String invocationId;
         private final String idempotencyKey;
-        private final Instant deadline;
+        private final ExecutionAccessBinding accessBinding;
+        private volatile Instant deadline;
         private volatile Instant expiresAt;
         private volatile ExecutionHandleStatus status;
         private volatile AIExecutionResult<?> result;
@@ -162,6 +221,7 @@ final class EphemeralExecutionStore {
         private Entry(
             String invocationId,
             String idempotencyKey,
+            ExecutionAccessBinding accessBinding,
             Instant deadline,
             Instant expiresAt,
             ExecutionHandleStatus status,
@@ -169,6 +229,7 @@ final class EphemeralExecutionStore {
         ) {
             this.invocationId = invocationId;
             this.idempotencyKey = idempotencyKey;
+            this.accessBinding = accessBinding;
             this.deadline = deadline;
             this.expiresAt = expiresAt;
             this.status = status;
@@ -193,6 +254,14 @@ final class EphemeralExecutionStore {
             Duration ttl
         ) {
             if (isTerminal()) {
+                return;
+            }
+            if (status == ExecutionHandleStatus.WAITING_FOR_INPUT) {
+                if (now.isAfter(expiresAt)) {
+                    status = ExecutionHandleStatus.EXPIRED;
+                    failureReason = "INPUT_WAIT_EXPIRED";
+                    expiresAt = now.plus(ttl);
+                }
                 return;
             }
             if (deadline == null) {
