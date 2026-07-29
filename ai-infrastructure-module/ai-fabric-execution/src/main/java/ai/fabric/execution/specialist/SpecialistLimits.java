@@ -10,7 +10,9 @@ public record SpecialistLimits(
     Duration maxDuration,
     int maxInputCharacters,
     int maxGroundingCharacters,
-    int maxEvidenceReferences
+    int maxEvidenceReferences,
+    int maxOutputCharacters,
+    int maxOutputTokens
 ) {
     public SpecialistLimits {
         Objects.requireNonNull(maxDuration, "maxDuration is required");
@@ -28,6 +30,30 @@ public record SpecialistLimits(
         if (maxEvidenceReferences < 0) {
             throw new IllegalArgumentException("maxEvidenceReferences must not be negative");
         }
+        if (maxOutputCharacters < 1) {
+            throw new IllegalArgumentException(
+                "maxOutputCharacters must be positive"
+            );
+        }
+        if (maxOutputTokens < 1) {
+            throw new IllegalArgumentException("maxOutputTokens must be positive");
+        }
+    }
+
+    public SpecialistLimits(
+        Duration maxDuration,
+        int maxInputCharacters,
+        int maxGroundingCharacters,
+        int maxEvidenceReferences
+    ) {
+        this(
+            maxDuration,
+            maxInputCharacters,
+            maxGroundingCharacters,
+            maxEvidenceReferences,
+            12_000,
+            1_000
+        );
     }
 
     public SpecialistLimits(
@@ -39,11 +65,20 @@ public record SpecialistLimits(
             maxDuration,
             maxInputCharacters,
             maxInputCharacters,
-            maxEvidenceReferences
+            maxEvidenceReferences,
+            12_000,
+            1_000
         );
     }
 
     public static SpecialistLimits defaults() {
-        return new SpecialistLimits(Duration.ofSeconds(45), 12_000, 16_000, 20);
+        return new SpecialistLimits(
+            Duration.ofSeconds(45),
+            12_000,
+            16_000,
+            20,
+            12_000,
+            1_000
+        );
     }
 }

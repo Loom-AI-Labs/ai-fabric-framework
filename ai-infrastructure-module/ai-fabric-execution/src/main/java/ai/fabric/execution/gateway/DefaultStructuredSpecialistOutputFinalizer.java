@@ -6,7 +6,10 @@ import ai.fabric.dto.AIGenerationRequest;
 import ai.fabric.dto.AIGenerationResponse;
 import ai.fabric.evidence.AIEvidenceReference;
 import ai.fabric.execution.specialist.SpecialistDefinition;
+import ai.fabric.execution.specialist.JavaTypeOutputContract;
+import ai.fabric.execution.specialist.JsonSchemaOutputContract;
 import ai.fabric.execution.specialist.SpecialistOutputAdapter;
+import ai.fabric.execution.specialist.SpecialistOutputContract;
 import ai.fabric.intent.orchestration.OrchestrationAuthContextResolver;
 import ai.fabric.intent.orchestration.OrchestrationContext;
 import ai.fabric.intent.orchestration.OrchestrationResult;
@@ -22,6 +25,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Function;
 
 /**
  * Route-independent structured output generation for specialist executions.
@@ -29,7 +33,6 @@ import java.util.concurrent.atomic.AtomicReference;
 public final class DefaultStructuredSpecialistOutputFinalizer
     implements SpecialistOutputFinalizer {
 
-    private static final int MAX_OUTPUT_TOKENS = 1_000;
     private static final String SYSTEM_PROMPT = """
         You are the final structured-output stage of an AI Fabric specialist.
         Convert the approved orchestration grounding into the required application JSON.
@@ -84,8 +87,8 @@ public final class DefaultStructuredSpecialistOutputFinalizer
     ) {
         java.util.Objects.requireNonNull(definition, "definition is required");
         SpecialistOutputAdapter<O> adapter = definition.outputAdapter();
-        String outputContract = adapter.outputContractInstructions();
-        if (outputContract == null || outputContract.isBlank()) {
+        SpecialistOutputContract outputContract = adapter.outputContract();
+        if (outputContract == null) {
             throw new SpecialistOutputFinalizationException(
                 "OUTPUT_CONTRACT_REQUIRED",
                 "Structured specialist output requires an output contract.",
@@ -99,13 +102,15 @@ public final class DefaultStructuredSpecialistOutputFinalizer
             evidence,
             definition.limits().maxGroundingCharacters()
         );
-        var structuredOutput =
-            SpringAiStructuredOutputSupport.bean(adapter.outputType());
+        ResolvedOutputFormat<O> structuredOutput = resolveFormat(
+            adapter,
+            outputContract
+        );
         String prompt = prompt(
             definition,
             applicationInput,
             grounding,
-            outputContract,
+            outputContract.promptInstructions(),
             structuredOutput.format()
         );
         AtomicReference<AIGenerationResponse> providerResponse =
@@ -124,7 +129,7 @@ public final class DefaultStructuredSpecialistOutputFinalizer
                             .generationType("structured")
                             .systemPrompt(SYSTEM_PROMPT)
                             .prompt(prompt)
-                            .maxTokens(MAX_OUTPUT_TOKENS)
+                            .maxTokens(definition.limits().maxOutputTokens())
                             .temperature(0.0d)
                             .authContext(
                                 OrchestrationAuthContextResolver.from(
@@ -159,6 +164,76 @@ public final class DefaultStructuredSpecialistOutputFinalizer
         return new SpecialistOutputFinalization<>(
             result.getValue(),
             diagnostics
+        );
+    }
+
+    @SuppressWarnings("unchecked")
+    private <O> ResolvedOutputFormat<O> resolveFormat(
+        SpecialistOutputAdapter<O> adapter,
+        SpecialistOutputContract contract
+    ) {
+        if (contract instanceof JavaTypeOutputContract javaContract) {
+            if (!javaContract.outputType().equals(adapter.outputType())) {
+                throw new SpecialistOutputFinalizationException(
+                    "OUTPUT_CONTRACT_TYPE_MISMATCH",
+                    "The Java output contract does not match the adapter type.",
+                    false,
+                    Map.of()
+                );
+            }
+            var spring = SpringAiStructuredOutputSupport.bean(
+                adapter.outputType()
+            );
+            return new ResolvedOutputFormat<>(
+                spring.format(),
+                spring.converter()
+            );
+        }
+        if (contract instanceof JsonSchemaOutputContract schemaContract) {
+            if (!com.fasterxml.jackson.databind.JsonNode.class.equals(
+                    adapter.outputType()
+                )) {
+                throw new SpecialistOutputFinalizationException(
+                    "OUTPUT_CONTRACT_TYPE_MISMATCH",
+                    "A JSON Schema output contract requires a JsonNode adapter.",
+                    false,
+                    Map.of()
+                );
+            }
+            String schema;
+            try {
+                schema = objectMapper.writeValueAsString(
+                    schemaContract.schema()
+                );
+            } catch (JsonProcessingException ex) {
+                throw new SpecialistOutputFinalizationException(
+                    "OUTPUT_SCHEMA_SERIALIZATION_FAILED",
+                    "The specialist output schema could not be prepared.",
+                    false,
+                    Map.of()
+                );
+            }
+            Function<String, O> converter = value -> {
+                try {
+                    return (O) objectMapper.readTree(value);
+                } catch (JsonProcessingException ex) {
+                    throw new IllegalArgumentException(
+                        "Structured output is not valid JSON",
+                        ex
+                    );
+                }
+            };
+            return new ResolvedOutputFormat<>(
+                "Return one JSON value matching this exact JSON Schema:\n"
+                    + schema,
+                converter
+            );
+        }
+        throw new SpecialistOutputFinalizationException(
+            "OUTPUT_CONTRACT_UNSUPPORTED",
+            "The specialist output contract is not supported.",
+            false,
+            Map.of()
         );
     }
 
@@ -248,4 +323,9 @@ public final class DefaultStructuredSpecialistOutputFinalizer
             diagnostics
         );
     }
+
+    private record ResolvedOutputFormat<O>(
+        String format,
+        Function<String, O> converter
+    ) {}
 }

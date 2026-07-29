@@ -7,9 +7,12 @@ import ai.fabric.execution.action.ActionProposalReceiptRepository;
 import ai.fabric.execution.config.AIExecutionProperties;
 import ai.fabric.execution.gateway.AIExecutionGateway;
 import ai.fabric.execution.specialist.SpecialistDefinition;
+import ai.fabric.execution.specialist.RegisteredSpecialist;
+import ai.fabric.execution.specialist.SpecialistDefinitionSource;
 import ai.fabric.execution.specialist.SpecialistRegistry;
+import ai.fabric.execution.specialist.manifest.SpecialistManifestRuntimeStatus;
 import ai.fabric.provider.AIProvider;
-import com.ai.fabric.realapps.agenticresolver.agentic.AccountResolverSpecialistConfiguration;
+import com.ai.fabric.realapps.agenticresolver.agentic.AccountResolverSpecialists;
 import java.time.Duration;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -41,12 +44,16 @@ class DeploymentInfoServiceTest {
             SpecialistDefinition.class
         );
         when(definition.id()).thenReturn(
-            AccountResolverSpecialistConfiguration.SPECIALIST_ID
+            AccountResolverSpecialists.SPECIALIST_ID
         );
         when(readDefinition.id()).thenReturn(
-            AccountResolverSpecialistConfiguration.READ_SPECIALIST_ID
+            AccountResolverSpecialists.READ_SPECIALIST_ID
         );
         when(registry.list()).thenReturn(List.of(definition, readDefinition));
+        when(registry.listRegistered()).thenReturn(List.of(
+            registered(definition),
+            registered(readDefinition)
+        ));
         AIExecutionProperties executionProperties = new AIExecutionProperties();
         executionProperties.getReceipts().setEnabled(true);
         executionProperties.getReceipts().setRepository(
@@ -60,7 +67,16 @@ class DeploymentInfoServiceTest {
             mock(AIExecutionGateway.class),
             registry,
             mock(ActionProposalReceiptRepository.class),
-            executionProperties
+            executionProperties,
+            new SpecialistManifestRuntimeStatus(
+                true,
+                true,
+                2,
+                2,
+                0,
+                "b".repeat(64),
+                List.of()
+            )
         ).health();
 
         assertThat(health)
@@ -93,5 +109,17 @@ class DeploymentInfoServiceTest {
                     .containsEntry("accountResolverRegistered", true)
                     .containsEntry("accountResolverReadRegistered", true)
             );
+    }
+
+    private RegisteredSpecialist registered(
+        SpecialistDefinition<?, ?> definition
+    ) {
+        return new RegisteredSpecialist(
+            definition,
+            SpecialistDefinitionSource.MANIFEST,
+            "a".repeat(64),
+            "test.yml#1",
+            Map.of()
+        );
     }
 }

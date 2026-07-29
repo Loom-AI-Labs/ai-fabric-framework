@@ -1,0 +1,33 @@
+{
+  "properties": [
+    {
+      "name": "ai.execution.manifests.enabled",
+      "type": "java.lang.Boolean",
+      "description": "Load versioned specialist manifests, schemas, and prompt profiles during application startup.",
+      "defaultValue": false
+    },
+    {
+      "name": "ai.execution.manifests.fail-fast",
+      "type": "java.lang.Boolean",
+      "description": "Fail application startup when a specialist resource cannot be loaded, validated, compiled, or merged.",
+      "defaultValue": true
+    },
+    {
+      "name": "ai.execution.manifests.locations",
+      "type": "java.util.List<java.lang.String>",
+      "description": "Classpath or mounted resource patterns containing immutable specialist YAML or JSON documents."
+    },
+    {
+      "name": "ai.execution.manifests.max-manifest-bytes",
+      "type": "java.lang.Integer",
+      "description": "Maximum canonical byte size of one Specialist manifest document.",
+      "defaultValue": 65536
+    },
+    {
+      "name": "ai.execution.manifests.max-resource-bytes",
+      "type": "java.lang.Integer",
+      "description": "Maximum byte size of one configured specialist resource file.",
+      "defaultValue": 65536
+    }
+  ]
+}

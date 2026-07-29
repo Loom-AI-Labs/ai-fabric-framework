@@ -11,6 +11,8 @@ import ai.fabric.execution.gateway.AIExecutionConversationRecorder;
 import ai.fabric.chat.service.ChatSessionService;
 import ai.fabric.execution.gateway.ExecutionCapabilityInventory;
 import ai.fabric.execution.specialist.SpecialistRegistry;
+import ai.fabric.execution.specialist.manifest.SpecialistAuthoringCatalogProvider;
+import ai.fabric.execution.specialist.manifest.SpecialistManifestMetrics;
 import ai.fabric.intent.action.AIActionMetaData;
 import ai.fabric.intent.action.AIActionRegistry;
 import ai.fabric.intent.action.ActionAccessMode;
@@ -20,6 +22,7 @@ import ai.fabric.intent.orchestration.pipeline.Pipeline;
 import ai.fabric.intent.orchestration.pipeline.steps.OrchestrationPolicyResolutionStep;
 import ai.fabric.llm.structured.StructuredJsonCallExecutor;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Clock;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -51,6 +54,8 @@ class AIExecutionAutoConfigurationTest {
             .run(context -> {
                 assertThat(context).hasSingleBean(AIExecutionGateway.class);
                 assertThat(context).hasSingleBean(SpecialistRegistry.class);
+                assertThat(context)
+                    .hasSingleBean(SpecialistAuthoringCatalogProvider.class);
                 assertThat(context).hasSingleBean(ExecutionCapabilityInventory.class);
                 assertThat(context)
                     .getBean(ExecutionCapabilityInventory.class)
@@ -58,6 +63,17 @@ class AIExecutionAutoConfigurationTest {
                         assertThat(inventory.registeredVectorSpaces())
                             .containsExactly("account-policy");
                         assertThat(inventory.deploymentAllowedActions())
+                            .containsExactly("inspect_account");
+                    });
+                assertThat(context.getBean(
+                    SpecialistAuthoringCatalogProvider.class
+                ).catalog())
+                    .satisfies(catalog -> {
+                        assertThat(catalog.modes()).contains("resolver");
+                        assertThat(catalog.vectorSpaces())
+                            .containsExactly("account-policy");
+                        assertThat(catalog.actions())
+                            .extracting(action -> action.name())
                             .containsExactly("inspect_account");
                     });
                 assertThat(context)
@@ -82,6 +98,26 @@ class AIExecutionAutoConfigurationTest {
                 assertThat(context).doesNotHaveBean(SpecialistRegistry.class);
                 assertThat(context)
                     .doesNotHaveBean("aiFabricExecutionTaskExecutor");
+            });
+    }
+
+    @Test
+    void publishesManifestMetricsWhenMicrometerIsAvailable() {
+        SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
+
+        contextRunner
+            .withBean(SimpleMeterRegistry.class, () -> meterRegistry)
+            .run(context -> {
+                context.getBean(SpecialistManifestMetrics.class)
+                    .recordLoad("success", "none");
+
+                assertThat(meterRegistry.counter(
+                    "ai.fabric.specialist.manifest.load",
+                    "result",
+                    "success",
+                    "reason",
+                    "none"
+                ).count()).isEqualTo(1);
             });
     }
 

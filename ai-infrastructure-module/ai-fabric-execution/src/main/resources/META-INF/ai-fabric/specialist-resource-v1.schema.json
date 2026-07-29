@@ -1,0 +1,684 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ai-fabric.dev/schemas/specialist-resource-v1.schema.json",
+  "title": "AI Fabric Specialist Resource V1",
+  "description": "Authoring schema for one AI Fabric specialist manifest, JSON Schema resource, or prompt-profile resource.",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/specialist"
+    },
+    {
+      "$ref": "#/$defs/schemaResource"
+    },
+    {
+      "$ref": "#/$defs/promptProfile"
+    }
+  ],
+  "$defs": {
+    "name": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]{0,79}$"
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,39}$"
+    },
+    "exactRef": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]{0,79}@[A-Za-z0-9][A-Za-z0-9._-]{0,39}$"
+    },
+    "boundedText": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1000
+    },
+    "nameList": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 160
+      }
+    },
+    "exactRefList": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/exactRef"
+      }
+    },
+    "resourceMetadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "version"
+      ],
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/name"
+        },
+        "version": {
+          "$ref": "#/$defs/version"
+        }
+      }
+    },
+    "specialistMetadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "version",
+        "displayName",
+        "description"
+      ],
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/name"
+        },
+        "version": {
+          "$ref": "#/$defs/version"
+        },
+        "displayName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "description": {
+          "$ref": "#/$defs/boundedText"
+        },
+        "labels": {
+          "type": "object",
+          "maxProperties": 16,
+          "propertyNames": {
+            "pattern": "^[a-z][a-z0-9.-]{0,62}$"
+          },
+          "additionalProperties": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          }
+        }
+      }
+    },
+    "specialist": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "apiVersion",
+        "kind",
+        "metadata",
+        "spec"
+      ],
+      "properties": {
+        "apiVersion": {
+          "const": "ai.fabric/v1"
+        },
+        "kind": {
+          "const": "Specialist"
+        },
+        "metadata": {
+          "$ref": "#/$defs/specialistMetadata"
+        },
+        "spec": {
+          "$ref": "#/$defs/specialistSpec"
+        }
+      }
+    },
+    "specialistSpec": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mode",
+        "instructions",
+        "execution",
+        "capabilities",
+        "input",
+        "grounding",
+        "output",
+        "conversation",
+        "limits"
+      ],
+      "properties": {
+        "mode": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "instructions": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "objective",
+            "promptProfileRef"
+          ],
+          "properties": {
+            "objective": {
+              "$ref": "#/$defs/boundedText"
+            },
+            "promptProfileRef": {
+              "$ref": "#/$defs/exactRef"
+            }
+          }
+        },
+        "execution": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "strategy",
+            "writePolicy"
+          ],
+          "properties": {
+            "strategy": {
+              "enum": [
+                "SINGLE_PASS",
+                "BOUNDED_ITERATIVE"
+              ]
+            },
+            "writePolicy": {
+              "enum": [
+                "DISABLED",
+                "CONFIRMATION_RECEIPT_REQUIRED"
+              ]
+            }
+          }
+        },
+        "capabilities": {
+          "$ref": "#/$defs/capabilities"
+        },
+        "input": {
+          "$ref": "#/$defs/input"
+        },
+        "grounding": {
+          "$ref": "#/$defs/grounding"
+        },
+        "output": {
+          "$ref": "#/$defs/output"
+        },
+        "conversation": {
+          "$ref": "#/$defs/conversation"
+        },
+        "limits": {
+          "$ref": "#/$defs/limits"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "execution": {
+                "properties": {
+                  "writePolicy": {
+                    "const": "DISABLED"
+                  }
+                }
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "capabilities": {
+                "properties": {
+                  "actions": {
+                    "properties": {
+                      "proposableWrites": {
+                        "maxItems": 0
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "execution": {
+                "properties": {
+                  "writePolicy": {
+                    "const": "CONFIRMATION_RECEIPT_REQUIRED"
+                  }
+                }
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "capabilities": {
+                "properties": {
+                  "actions": {
+                    "properties": {
+                      "proposableWrites": {
+                        "minItems": 1
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "capabilities": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "retrieval",
+        "actions"
+      ],
+      "properties": {
+        "retrieval": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "enabled",
+            "vectorSpaces"
+          ],
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "vectorSpaces": {
+              "$ref": "#/$defs/nameList"
+            }
+          },
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "enabled": {
+                    "const": true
+                  }
+                }
+              },
+              "then": {
+                "properties": {
+                  "vectorSpaces": {
+                    "minItems": 1
+                  }
+                }
+              },
+              "else": {
+                "properties": {
+                  "vectorSpaces": {
+                    "maxItems": 0
+                  }
+                }
+              }
+            }
+          ]
+        },
+        "actions": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "visible",
+            "requestableReads",
+            "proposableWrites"
+          ],
+          "properties": {
+            "visible": {
+              "$ref": "#/$defs/nameList"
+            },
+            "requestableReads": {
+              "$ref": "#/$defs/nameList"
+            },
+            "proposableWrites": {
+              "$ref": "#/$defs/nameList"
+            }
+          }
+        }
+      }
+    },
+    "input": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaRef",
+        "rendering",
+        "primaryTextPointer",
+        "contextPointers"
+      ],
+      "properties": {
+        "schemaRef": {
+          "$ref": "#/$defs/exactRef"
+        },
+        "rendering": {
+          "const": "PRIMARY_TEXT_WITH_JSON_CONTEXT"
+        },
+        "primaryTextPointer": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        },
+        "conversationTextPointer": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 500
+        },
+        "contextPointers": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          }
+        },
+        "context": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "position": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "maxLength": 80
+            }
+          }
+        }
+      }
+    },
+    "grounding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "requirement",
+        "requireEvidenceCitations",
+        "sources",
+        "validatorRefs"
+      ],
+      "properties": {
+        "requirement": {
+          "enum": [
+            "NONE",
+            "WHEN_CAPABILITY_USED",
+            "REQUIRED"
+          ]
+        },
+        "requireEvidenceCitations": {
+          "type": "boolean"
+        },
+        "sources": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/groundingSource"
+          }
+        },
+        "validatorRefs": {
+          "$ref": "#/$defs/exactRefList"
+        }
+      }
+    },
+    "groundingSource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "minimumCount"
+      ],
+      "properties": {
+        "type": {
+          "enum": [
+            "READ_ACTION",
+            "VECTOR_SPACE",
+            "ANY_ALLOWED_VECTOR_SPACE"
+          ]
+        },
+        "name": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 160
+        },
+        "minimumCount": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "requiredEvidenceIds": {
+          "$ref": "#/$defs/nameList"
+        },
+        "groundingUsable": {
+          "type": "boolean"
+        }
+      }
+    },
+    "output": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mode",
+        "schemaRef",
+        "finalValidatorRefs"
+      ],
+      "properties": {
+        "mode": {
+          "enum": [
+            "DIRECT_PROJECTION",
+            "STRUCTURED_GENERATION"
+          ]
+        },
+        "schemaRef": {
+          "$ref": "#/$defs/exactRef"
+        },
+        "directProjectorRef": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/exactRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "conversationTextPointer": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 500
+        },
+        "finalValidatorRefs": {
+          "$ref": "#/$defs/exactRefList"
+        },
+        "normalizerRef": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/exactRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "mode": {
+                "const": "DIRECT_PROJECTION"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "directProjectorRef"
+            ],
+            "properties": {
+              "directProjectorRef": {
+                "$ref": "#/$defs/exactRef"
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "directProjectorRef": {
+                "type": "null"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "conversation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "binding",
+        "recordValidatedTurns"
+      ],
+      "properties": {
+        "binding": {
+          "enum": [
+            "DISABLED",
+            "OPTIONAL",
+            "REQUIRED"
+          ]
+        },
+        "recordValidatedTurns": {
+          "type": "boolean"
+        }
+      }
+    },
+    "limits": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "maxDuration",
+        "maxInputCharacters",
+        "maxGroundingCharacters",
+        "maxEvidenceReferences",
+        "maxOutputCharacters",
+        "maxOutputTokens"
+      ],
+      "properties": {
+        "maxDuration": {
+          "type": "string",
+          "pattern": "^P(?!$).+$"
+        },
+        "maxInputCharacters": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100000
+        },
+        "maxGroundingCharacters": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100000
+        },
+        "maxEvidenceReferences": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "maxOutputCharacters": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100000
+        },
+        "maxOutputTokens": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 8192
+        }
+      }
+    },
+    "schemaResource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "apiVersion",
+        "kind",
+        "metadata",
+        "spec"
+      ],
+      "properties": {
+        "apiVersion": {
+          "const": "ai.fabric/v1"
+        },
+        "kind": {
+          "const": "SpecialistSchema"
+        },
+        "metadata": {
+          "$ref": "#/$defs/resourceMetadata"
+        },
+        "spec": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "direction",
+            "draft",
+            "schema"
+          ],
+          "properties": {
+            "direction": {
+              "enum": [
+                "INPUT",
+                "OUTPUT"
+              ]
+            },
+            "draft": {
+              "const": "2020-12"
+            },
+            "schema": {
+              "type": "object"
+            }
+          }
+        }
+      }
+    },
+    "promptProfile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "apiVersion",
+        "kind",
+        "metadata",
+        "spec"
+      ],
+      "properties": {
+        "apiVersion": {
+          "const": "ai.fabric/v1"
+        },
+        "kind": {
+          "const": "SpecialistPromptProfile"
+        },
+        "metadata": {
+          "$ref": "#/$defs/resourceMetadata"
+        },
+        "spec": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "constraints",
+            "outputContract"
+          ],
+          "properties": {
+            "constraints": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 8000
+            },
+            "outputContract": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 8000
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -12,6 +12,8 @@ import ai.fabric.execution.specialist.SpecialistInputAdapter;
 import ai.fabric.execution.specialist.SpecialistOutputAdapter;
 import ai.fabric.execution.specialist.SpecialistOutputMode;
 import ai.fabric.execution.specialist.SpecialistRegistry;
+import ai.fabric.execution.specialist.manifest.SpecialistConversationBinding;
+import ai.fabric.execution.specialist.manifest.SpecialistManifestMetrics;
 import ai.fabric.intent.action.AIActionRegistry;
 import ai.fabric.intent.action.invocation.ActionProposalCandidate;
 import ai.fabric.intent.orchestration.OrchestrationContext;
@@ -61,6 +63,7 @@ public final class DefaultAIExecutionGateway implements AIExecutionGateway {
     private final AsyncTaskExecutor taskExecutor;
     private final Clock clock;
     private final EphemeralExecutionStore executionStore;
+    private final SpecialistManifestMetrics specialistMetrics;
 
     public DefaultAIExecutionGateway(
         SpecialistRegistry specialistRegistry,
@@ -91,7 +94,8 @@ public final class DefaultAIExecutionGateway implements AIExecutionGateway {
             () -> null,
             taskExecutor,
             clock,
-            resultTtl
+            resultTtl,
+            SpecialistManifestMetrics.noop()
         );
     }
 
@@ -111,6 +115,43 @@ public final class DefaultAIExecutionGateway implements AIExecutionGateway {
         AsyncTaskExecutor taskExecutor,
         Clock clock,
         java.time.Duration resultTtl
+    ) {
+        this(
+            specialistRegistry,
+            pipeline,
+            policyResolutionStep,
+            capabilitiesResolver,
+            actionRegistry,
+            capabilityInventory,
+            authorityResolver,
+            evidenceProjector,
+            outputFinalizer,
+            conversationRecorder,
+            actionProposalCoordinator,
+            taskExecutor,
+            clock,
+            resultTtl,
+            SpecialistManifestMetrics.noop()
+        );
+    }
+
+    public DefaultAIExecutionGateway(
+        SpecialistRegistry specialistRegistry,
+        Pipeline pipeline,
+        OrchestrationPolicyResolutionStep policyResolutionStep,
+        EffectiveCapabilitiesResolver capabilitiesResolver,
+        AIActionRegistry actionRegistry,
+        ExecutionCapabilityInventory capabilityInventory,
+        SpecialistAuthorityResolver authorityResolver,
+        OrchestrationEvidenceProjector evidenceProjector,
+        SpecialistOutputFinalizer outputFinalizer,
+        AIExecutionConversationRecorder conversationRecorder,
+        java.util.function.Supplier<ActionProposalCoordinator>
+            actionProposalCoordinator,
+        AsyncTaskExecutor taskExecutor,
+        Clock clock,
+        java.time.Duration resultTtl,
+        SpecialistManifestMetrics specialistMetrics
     ) {
         this.specialistRegistry = java.util.Objects.requireNonNull(
             specialistRegistry,
@@ -146,6 +187,9 @@ public final class DefaultAIExecutionGateway implements AIExecutionGateway {
         );
         this.clock = java.util.Objects.requireNonNull(clock, "clock is required");
         this.executionStore = new EphemeralExecutionStore(clock, resultTtl);
+        this.specialistMetrics = specialistMetrics != null
+            ? specialistMetrics
+            : SpecialistManifestMetrics.noop();
     }
 
     @Override
@@ -240,6 +284,20 @@ public final class DefaultAIExecutionGateway implements AIExecutionGateway {
         String invocationId,
         AIExecutionRequest<I> request
     ) {
+        AIExecutionResult<O> result = doExecuteInternal(invocationId, request);
+        specialistRegistry.findRegistered(result.specialistId()).ifPresent(
+            registered -> specialistMetrics.recordExecution(
+                registered.source(),
+                result.status().name()
+            )
+        );
+        return result;
+    }
+
+    private <I, O> AIExecutionResult<O> doExecuteInternal(
+        String invocationId,
+        AIExecutionRequest<I> request
+    ) {
         Instant startedAt = clock.instant();
         if (request == null) {
             return failure(
@@ -286,6 +344,22 @@ public final class DefaultAIExecutionGateway implements AIExecutionGateway {
 
         try {
             SpecialistInputAdapter<I> inputAdapter = definition.inputAdapter();
+            SpecialistConversationBinding conversationPolicy =
+                inputAdapter.conversationBinding();
+            if (conversationPolicy == SpecialistConversationBinding.DISABLED
+                && request.conversationBinding() != null) {
+                throw new ContractValidationException(
+                    "CONVERSATION_BINDING_DISABLED",
+                    "This specialist does not accept a conversation binding."
+                );
+            }
+            if (conversationPolicy == SpecialistConversationBinding.REQUIRED
+                && request.conversationBinding() == null) {
+                throw new ContractValidationException(
+                    "CONVERSATION_BINDING_REQUIRED",
+                    "This specialist requires a conversation binding."
+                );
+            }
             String applicationInput;
             OrchestrationContext orchestrationContext;
             try {
@@ -329,7 +403,8 @@ public final class DefaultAIExecutionGateway implements AIExecutionGateway {
                     ? ConversationPersistencePolicy.NEVER
                     : ConversationPersistencePolicy.READ_ONLY;
             String conversationInput = null;
-            if (request.conversationBinding() != null) {
+            if (request.conversationBinding() != null
+                && inputAdapter.recordValidatedTurns()) {
                 conversationInput = inputAdapter.conversationInput(request.input());
                 if (conversationInput == null || conversationInput.isBlank()) {
                     throw new ContractValidationException(
@@ -570,6 +645,13 @@ public final class DefaultAIExecutionGateway implements AIExecutionGateway {
                     orchestrationResult,
                     evidence
                 );
+                int outputCharacters =
+                    outputAdapter.serializedOutputCharacters(output);
+                if (outputCharacters > definition.limits().maxOutputCharacters()) {
+                    throw new IllegalArgumentException(
+                        "Serialized output exceeds specialist limit"
+                    );
+                }
             } catch (IllegalArgumentException ex) {
                 throw new ContractValidationException(
                     "OUTPUT_VALIDATION_FAILED",
@@ -594,7 +676,8 @@ public final class DefaultAIExecutionGateway implements AIExecutionGateway {
                 );
             }
 
-            if (request.conversationBinding() != null) {
+            if (request.conversationBinding() != null
+                && inputAdapter.recordValidatedTurns()) {
                 recordValidatedConversationTurn(
                     request.conversationBinding(),
                     conversationInput,
@@ -975,6 +1058,18 @@ public final class DefaultAIExecutionGateway implements AIExecutionGateway {
     ) {
         Map<String, Object> diagnostics = new LinkedHashMap<>();
         diagnostics.put("specialist", definition.id().toString());
+        specialistRegistry.findRegistered(definition.id()).ifPresent(
+            registered -> {
+                diagnostics.put(
+                    "specialistSource",
+                    registered.source().name()
+                );
+                diagnostics.put(
+                    "specialistContentHash",
+                    registered.contentHash()
+                );
+            }
+        );
         diagnostics.put("mode", effective.mode());
         diagnostics.put("strategy", definition.executionProfile().strategy().name());
         diagnostics.put("effectiveProfileHash", effective.profileHash());

@@ -1,10 +1,10 @@
 # Agentic AI Action Resolver
 
-This independent reference app proves AI Fabric's bounded specialist execution
-model with one governed write:
+This independent reference app proves AI Fabric's configurable, bounded
+specialist execution model with one governed write:
 
 ```text
-specialist: account-resolver@1
+manifest specialists: account-resolver@1, account-resolver-read@1
 read action: get_account_profile
 write proposal: update_address
 evidence: account-resolution-policy
@@ -21,7 +21,8 @@ the governed-action baseline.
 
 ## What This Proves
 
-- A typed `AccountResolutionRequest` enters through `AIExecutionGateway`.
+- A typed `AccountResolutionRequest` enters through a schema-bound
+  `SpecialistClient` over `AIExecutionGateway`.
 - Server-created, database-backed session state binds the opaque browser
   session to the trusted principal, tenant, and current account subject.
 - `account-resolver@1` requests one Mode, one READ action, one WRITE proposal,
@@ -47,6 +48,36 @@ the governed-action baseline.
   blindly.
 - The next profile read observes the authoritative database update. Account
   PII is intentionally not copied into the policy vector index.
+
+## Manifest-Defined Runtime
+
+The complete deployment bundle is
+[`src/main/resources/ai-specialists/account-resolver.yml`](src/main/resources/ai-specialists/account-resolver.yml).
+It defines:
+
+- exact-version input and output JSON schemas;
+- separate read/write prompt profiles;
+- `account-resolver-read@1` and `account-resolver@1`;
+- Mode, execution strategy, requested vector/action capabilities, grounding
+  requirements, conversation policy, and bounded limits; and
+- stable references to approved application extensions.
+
+No Java specialist declaration remains in the app. AI Fabric loads and
+strictly validates the bundle at startup, calculates each definition's
+canonical SHA-256 hash, compiles it to the normal execution path, and merges it
+into the same immutable registry used by Java-defined specialists.
+
+Java remains only where the application owns real domain behavior:
+
+- `AccountReadinessProjection` compares authoritative account facts with
+  policy requirements;
+- `AccountResolverSpecialistExtensions` registers that projection plus the
+  grounding and consistency validators by exact ID;
+- existing action handlers own `get_account_profile` and `update_address`; and
+- the action-level outcome projector owns the safe write result.
+
+The manifest cannot choose a user, account, tenant, scope, credential,
+provider endpoint, action implementation, or confirmation result.
 
 ## Specialist Contract
 
@@ -240,8 +271,9 @@ GET /api/demo/health
 ```
 
 The `execution` block reports the repository type, receipt TTL, stale
-execution threshold, cleanup policy, retention, and specialist registration.
-It never exposes receipt secrets.
+execution threshold, cleanup policy, retention, specialist source/ID/version/
+hash, manifest runtime readiness and counts, and the registry content hash. It
+never exposes prompts, schemas, receipt secrets, or user data.
 
 ## Run Locally
 
@@ -401,12 +433,14 @@ When Micrometer is available, the module publishes:
 
 ```text
 ai.fabric.execution.action.receipts
+ai.fabric.specialist.manifest.load
+ai.fabric.specialist.manifest.validation
+ai.fabric.specialist.registry.definition.count
+ai.fabric.specialist.execution.by.source
 ```
 
-Tags are bounded to `event`, registered `action`, and receipt `status`. Events
-include proposal, confirmation, execution, completion, denial, replay-related
-terminal reads, expiry, unknown recovery, store unavailability, reconciliation,
-and retention deletion.
+Receipt tags are bounded to `event`, registered `action`, and receipt
+`status`. Specialist tags contain bounded source/result/reason values.
 
 ## Verification
 

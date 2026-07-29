@@ -16,7 +16,7 @@ public class UpdateAddressOutcomeProjector
 
     @Override
     public String actionName() {
-        return AccountResolverSpecialistConfiguration.UPDATE_ADDRESS_ACTION;
+        return AccountResolverSpecialists.UPDATE_ADDRESS_ACTION;
     }
 
     @Override

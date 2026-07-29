@@ -11,19 +11,22 @@ The copy has its own artifact, Java package, port, database, Lucene index,
 durable opaque demo sessions, Dockerfile, and tests. The tracked source under
 `ai-fabric-account-resolver` is unchanged.
 
-The implementation and local release gates are complete. A release version has
-not yet been assigned or published.
+The implementation, manifest migration, packaged runtime, and real-provider
+release gates are complete. A release version has not yet been assigned or
+published.
 
 ## Specialist
 
 ```text
 ID: account-resolver@1
+Read-only ID: account-resolver-read@1
+Source: MANIFEST
 Mode: resolver
 Strategy: BOUNDED_ITERATIVE
 Read action: get_account_profile
 Proposable write: update_address
 Vector space: account-resolution-policy
-Write enabled: true
+Write policy: CONFIRMATION_RECEIPT_REQUIRED
 Read output: AccountResolutionResult
 Write output: durable ActionProposalView, then safe ActionOutcomeView
 ```
@@ -33,6 +36,13 @@ read-only. `POST /api/agentic-resolver/chat` receives interactive authority and
 may propose `update_address`. They use separate immutable specialist
 definitions so the read route never requests write authority:
 `account-resolver-read@1` and `account-resolver@1`, respectively.
+
+Both definitions, their exact JSON schemas, prompt profiles, capabilities,
+grounding requirements, and limits are loaded from
+`src/main/resources/ai-specialists/account-resolver.yml`. The app retains Java
+only for authoritative account projection/validation and registered action
+behavior. Health diagnostics expose a canonical content hash for each
+manifest definition.
 
 ## Governed Write
 
@@ -91,6 +101,8 @@ There is no success fallback. Typed failures cover:
 - Source-based Docker build: 1,175 framework tests across 15 modules.
 - Packaged app build: 12 smoke-support tests and 79 copied-app tests.
 - Original Account Resolver: 49 app tests and 12 smoke-support tests.
+- Manifest contract, compiler, registry, schema adapter, typed client,
+  published example, metrics, and receipt-hash migration tests.
 - Full copied-app Spring context: JDBC receipts and HTTP decisions.
 - Durable-volume restart: proposal before restart, confirmation after restart,
   and identical terminal replay after a second restart.
@@ -102,5 +114,5 @@ There is no success fallback. Typed failures cover:
 - Privacy: synthetic address input and provider keys were absent from packaged
   logs; public action outcomes contained no address or internal account IDs.
 
-These checks completed on 2026-07-28 with zero test failures. Publication and
+These checks completed on 2026-07-29 with zero test failures. Publication and
 release version assignment remain explicit follow-up decisions.

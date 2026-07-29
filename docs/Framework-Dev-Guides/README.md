@@ -71,6 +71,14 @@ For connector and action work:
 4. `actions-governance/POST_ACTION_GENERATION_FOR_ACTION_HANDLERS_GUIDE.md`
 5. `security-auth/PUBLIC_ANONYMOUS_ACTION_POLICY_GUIDE.md`
 
+For specialist execution and manifest authoring:
+
+1. `application-patterns/AGENTIC_APP_GUIDE.md`
+2. `application-patterns/SPECIALIST_MANIFEST_AUTHORING_GUIDE.md`
+3. `actions-governance/GOVERNED_SPECIALIST_WRITES_AND_RECEIPTS.md`
+4. `security-auth/RUNTIME_AUTHORIZATION_AND_ACCESS_CONTROL_GUIDE.md`
+5. `testing-verification/VERIFICATION_PLAYBOOK.md`
+
 For RAG, vector, and provider work:
 
 1. `retrieval-vectorization/RAG_EMBEDDING_QUERY_COMPOSITION_GUIDE.md`

@@ -137,10 +137,10 @@ class DefaultSpecialistRegistryTest {
             "resolver",
             requested,
             ExecutionStrategy.SINGLE_PASS,
-            false
+            SpecialistWritePolicy.DISABLED
         ))
             .isInstanceOf(IllegalArgumentException.class)
-            .hasMessageContaining("READ-only specialist");
+            .hasMessageContaining("writePolicy=DISABLED");
     }
 
     @Test
@@ -155,7 +155,7 @@ class DefaultSpecialistRegistryTest {
                 Set.of()
             ),
             ExecutionStrategy.SINGLE_PASS,
-            false
+            SpecialistWritePolicy.DISABLED
         );
 
         assertThatThrownBy(() -> new DefaultSpecialistRegistry(
@@ -178,7 +178,7 @@ class DefaultSpecialistRegistryTest {
                 Set.of()
             ),
             ExecutionStrategy.SINGLE_PASS,
-            false
+            SpecialistWritePolicy.DISABLED
         );
     }
 
@@ -193,7 +193,7 @@ class DefaultSpecialistRegistryTest {
                 mode,
                 profile.requestedCapabilities(),
                 profile.strategy(),
-                profile.writeEnabled()
+                profile.writePolicy()
             ),
             SpecialistLimits.defaults(),
             new SpecialistInputAdapter<>() {

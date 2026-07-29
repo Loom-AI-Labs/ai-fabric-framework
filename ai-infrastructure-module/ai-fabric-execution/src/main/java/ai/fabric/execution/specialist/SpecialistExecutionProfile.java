@@ -10,17 +10,24 @@ public record SpecialistExecutionProfile(
     String mode,
     RequestedCapabilityProfile requestedCapabilities,
     ExecutionStrategy strategy,
-    boolean writeEnabled
+    SpecialistWritePolicy writePolicy
 ) {
     public SpecialistExecutionProfile {
         mode = requireText(mode, "mode");
         Objects.requireNonNull(requestedCapabilities, "requestedCapabilities is required");
         Objects.requireNonNull(strategy, "strategy is required");
-        if (!writeEnabled && !requestedCapabilities.proposableWriteActions().isEmpty()) {
+        Objects.requireNonNull(writePolicy, "writePolicy is required");
+        if (!writePolicy.permitsProposals()
+            && !requestedCapabilities.proposableWriteActions().isEmpty()) {
             throw new IllegalArgumentException(
-                "READ-only specialist cannot declare proposable WRITE actions"
+                "A specialist with writePolicy=DISABLED cannot declare proposable WRITE actions"
             );
         }
+    }
+
+    public boolean writeEnabled() {
+        return writePolicy.permitsProposals()
+            && !requestedCapabilities.proposableWriteActions().isEmpty();
     }
 
     private static String requireText(String value, String field) {

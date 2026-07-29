@@ -3,9 +3,11 @@ package com.ai.fabric.realapps.agenticresolver.service;
 import ai.fabric.execution.gateway.AIExecutionGateway;
 import ai.fabric.execution.action.ActionProposalReceiptRepository;
 import ai.fabric.execution.config.AIExecutionProperties;
+import ai.fabric.execution.specialist.RegisteredSpecialist;
 import ai.fabric.execution.specialist.SpecialistRegistry;
+import ai.fabric.execution.specialist.manifest.SpecialistManifestRuntimeStatus;
 import ai.fabric.provider.AIProvider;
-import com.ai.fabric.realapps.agenticresolver.agentic.AccountResolverSpecialistConfiguration;
+import com.ai.fabric.realapps.agenticresolver.agentic.AccountResolverSpecialists;
 import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -37,6 +39,7 @@ public class DeploymentInfoService {
     private final SpecialistRegistry specialistRegistry;
     private final ActionProposalReceiptRepository receiptRepository;
     private final AIExecutionProperties executionProperties;
+    private final SpecialistManifestRuntimeStatus manifestRuntimeStatus;
 
     public DeploymentInfoService(
         Environment environment,
@@ -44,7 +47,8 @@ public class DeploymentInfoService {
         AIExecutionGateway executionGateway,
         SpecialistRegistry specialistRegistry,
         ActionProposalReceiptRepository receiptRepository,
-        AIExecutionProperties executionProperties
+        AIExecutionProperties executionProperties,
+        SpecialistManifestRuntimeStatus manifestRuntimeStatus
     ) {
         this.environment = environment;
         this.startedAt = Instant.now();
@@ -55,6 +59,7 @@ public class DeploymentInfoService {
         this.specialistRegistry = specialistRegistry;
         this.receiptRepository = receiptRepository;
         this.executionProperties = executionProperties;
+        this.manifestRuntimeStatus = manifestRuntimeStatus;
     }
 
     public Map<String, Object> health() {
@@ -102,6 +107,13 @@ public class DeploymentInfoService {
             .map(definition -> definition.id().toString())
             .sorted()
             .toList();
+        List<Map<String, Object>> specialistDefinitions =
+            specialistRegistry.listRegistered().stream()
+                .sorted(java.util.Comparator.comparing(item ->
+                    item.id().toString()
+                ))
+                .map(this::specialistDefinition)
+                .toList();
         AIExecutionProperties.Receipts receipts =
             executionProperties.getReceipts();
         Map<String, Object> execution = new LinkedHashMap<>();
@@ -120,16 +132,29 @@ public class DeploymentInfoService {
         execution.put("receiptCleanupEnabled", receipts.isCleanupEnabled());
         execution.put("receiptRetention", receipts.getRetention().toString());
         execution.put("specialists", specialists);
+        execution.put("specialistDefinitions", specialistDefinitions);
+        execution.put("manifestRuntime", Map.of(
+            "enabled", manifestRuntimeStatus.enabled(),
+            "ready", manifestRuntimeStatus.ready(),
+            "loadedDefinitionCount",
+                manifestRuntimeStatus.loadedDefinitionCount(),
+            "manifestDefinitionCount",
+                manifestRuntimeStatus.manifestDefinitionCount(),
+            "javaDefinitionCount",
+                manifestRuntimeStatus.javaDefinitionCount(),
+            "registryContentHash",
+                manifestRuntimeStatus.registryContentHash()
+        ));
         execution.put(
             "accountResolverRegistered",
             specialists.contains(
-                AccountResolverSpecialistConfiguration.SPECIALIST_ID.toString()
+                AccountResolverSpecialists.SPECIALIST_ID.toString()
             )
         );
         execution.put(
             "accountResolverReadRegistered",
             specialists.contains(
-                AccountResolverSpecialistConfiguration.READ_SPECIALIST_ID
+                AccountResolverSpecialists.READ_SPECIALIST_ID
                     .toString()
             )
         );
@@ -137,6 +162,17 @@ public class DeploymentInfoService {
         health.put("startedAt", startedAt.toString());
         health.put("checkedAt", Instant.now().toString());
         return health;
+    }
+
+    private Map<String, Object> specialistDefinition(
+        RegisteredSpecialist specialist
+    ) {
+        return Map.of(
+            "name", specialist.id().name(),
+            "version", specialist.id().version(),
+            "source", specialist.source().name(),
+            "contentHash", specialist.contentHash()
+        );
     }
 
     private Map<String, Object> providerReadiness() {

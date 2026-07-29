@@ -25,6 +25,13 @@ public interface SpecialistOutputAdapter<O> {
         return null;
     }
 
+    default SpecialistOutputContract outputContract() {
+        String instructions = outputContractInstructions();
+        return instructions == null || instructions.isBlank()
+            ? null
+            : new JavaTypeOutputContract(outputType(), instructions);
+    }
+
     O project(OrchestrationResult result, List<AIEvidenceReference> evidence);
 
     /**
@@ -80,5 +87,13 @@ public interface SpecialistOutputAdapter<O> {
      */
     default String conversationOutput(O output, OrchestrationResult sourceResult) {
         return sourceResult != null ? sourceResult.getMessage() : null;
+    }
+
+    /**
+     * Returns the exact serialized character count when the adapter can provide it.
+     * A negative value means the Java adapter does not define a serialization form.
+     */
+    default int serializedOutputCharacters(O output) {
+        return -1;
     }
 }

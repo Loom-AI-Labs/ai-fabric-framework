@@ -5,6 +5,7 @@ import ai.fabric.execution.context.TrustedExecutionContext;
 import ai.fabric.execution.gateway.SpecialistCapabilityResolutionException;
 import ai.fabric.execution.gateway.SpecialistCapabilityResolver;
 import ai.fabric.execution.specialist.SpecialistDefinition;
+import ai.fabric.execution.specialist.RegisteredSpecialist;
 import ai.fabric.execution.specialist.SpecialistRegistry;
 import ai.fabric.intent.action.AIActionMetaData;
 import ai.fabric.intent.action.AIActionRegistry;
@@ -120,12 +121,14 @@ public final class ActionProposalCoordinator {
         Objects.requireNonNull(candidate, "candidate is required");
         Objects.requireNonNull(trustedContext, "trustedContext is required");
         Objects.requireNonNull(effectiveProfile, "effectiveProfile is required");
-        SpecialistDefinition<?, ?> registeredDefinition = specialistRegistry
-            .find(definition.id())
+        RegisteredSpecialist registered = specialistRegistry
+            .findRegistered(definition.id())
             .orElseThrow(() -> new ActionProposalValidationException(
                 "SPECIALIST_VERSION_NOT_REGISTERED",
                 "The specialist version is not registered."
             ));
+        SpecialistDefinition<?, ?> registeredDefinition =
+            registered.definition();
         if (!registeredDefinition.executionProfile().writeEnabled()) {
             throw new ActionProposalValidationException(
                 "SPECIALIST_WRITE_DISABLED",
@@ -206,6 +209,7 @@ public final class ActionProposalCoordinator {
             verifyDuplicate(
                 existing,
                 registeredDefinition,
+                registered.contentHash(),
                 candidate,
                 trustedContext,
                 currentProfile,
@@ -225,6 +229,7 @@ public final class ActionProposalCoordinator {
             receiptId,
             requireText(invocationId, "invocationId"),
             registeredDefinition.id(),
+            registered.contentHash(),
             currentProfile.profileHash(),
             security.principalFingerprint(trustedContext),
             trustedSubjectType(trustedContext),
@@ -266,6 +271,7 @@ public final class ActionProposalCoordinator {
             verifyDuplicate(
                 raced,
                 registeredDefinition,
+                registered.contentHash(),
                 candidate,
                 trustedContext,
                 currentProfile,
@@ -591,12 +597,21 @@ public final class ActionProposalCoordinator {
                 "The receipt is not available for this trusted context."
             );
         }
-        SpecialistDefinition<?, ?> definition = specialistRegistry
-            .find(receipt.specialistId())
+        RegisteredSpecialist registered = specialistRegistry
+            .findRegistered(receipt.specialistId())
             .orElseThrow(() -> new ActionProposalValidationException(
                 "SPECIALIST_VERSION_NOT_REGISTERED",
                 "The specialist version used by this receipt is no longer registered."
             ));
+        if (!registered.contentHash().equals(
+                receipt.specialistContentHash()
+            )) {
+            throw new ActionProposalValidationException(
+                "SPECIALIST_CONTENT_CHANGED",
+                "The specialist content changed after this proposal."
+            );
+        }
+        SpecialistDefinition<?, ?> definition = registered.definition();
         if (!definition.executionProfile().writeEnabled()) {
             throw new ActionProposalValidationException(
                 "SPECIALIST_WRITE_DISABLED",
@@ -989,12 +1004,14 @@ public final class ActionProposalCoordinator {
     private void verifyDuplicate(
         ActionProposalReceipt existing,
         SpecialistDefinition<?, ?> definition,
+        String specialistContentHash,
         ActionProposalCandidate candidate,
         TrustedExecutionContext trustedContext,
         EffectiveCapabilityProfile effectiveProfile,
         String parameterHash
     ) {
         boolean same = existing.specialistId().equals(definition.id())
+            && existing.specialistContentHash().equals(specialistContentHash)
             && ai.fabric.intent.action.AIActionNames.normalize(
                 existing.actionName()
             ).equals(ai.fabric.intent.action.AIActionNames.normalize(

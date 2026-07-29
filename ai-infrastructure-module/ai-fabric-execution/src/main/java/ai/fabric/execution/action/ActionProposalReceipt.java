@@ -12,6 +12,7 @@ public record ActionProposalReceipt(
     String receiptId,
     String invocationId,
     SpecialistId specialistId,
+    String specialistContentHash,
     String effectiveProfileHash,
     String principalFingerprint,
     String subjectType,
@@ -43,6 +44,11 @@ public record ActionProposalReceipt(
         Objects.requireNonNull(specialistId, "specialistId is required");
         requireText(specialistId.name(), "specialistId.name", 120);
         requireText(specialistId.version(), "specialistId.version", 80);
+        specialistContentHash = requireText(
+            specialistContentHash,
+            "specialistContentHash",
+            128
+        );
         effectiveProfileHash = requireText(
             effectiveProfileHash,
             "effectiveProfileHash",
@@ -286,6 +292,7 @@ public record ActionProposalReceipt(
             receiptId,
             invocationId,
             specialistId,
+            specialistContentHash,
             effectiveProfileHash,
             principalFingerprint,
             subjectType,

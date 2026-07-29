@@ -8,10 +8,11 @@ import ai.fabric.execution.context.TrustedExecutionContext;
 import ai.fabric.execution.action.ActionProposalCoordinator;
 import ai.fabric.execution.action.ActionProposalDecisionRequest;
 import ai.fabric.execution.action.ActionProposalDecisionResult;
-import ai.fabric.execution.gateway.AIExecutionGateway;
-import ai.fabric.execution.gateway.AIExecutionRequest;
 import ai.fabric.execution.gateway.AIExecutionResult;
 import ai.fabric.execution.gateway.ConversationBinding;
+import ai.fabric.execution.specialist.client.SpecialistClient;
+import ai.fabric.execution.specialist.client.SpecialistClientFactory;
+import ai.fabric.execution.specialist.client.SpecialistInvocation;
 import java.time.Clock;
 import java.util.Set;
 import org.springframework.stereotype.Service;
@@ -31,18 +32,34 @@ public class AgenticResolverExecutionService {
         "vector:account-resolution-policy"
     );
 
-    private final AIExecutionGateway executionGateway;
+    private final SpecialistClient<
+        AccountResolutionRequest,
+        AccountResolutionResult
+    > interactiveClient;
+    private final SpecialistClient<
+        AccountResolutionRequest,
+        AccountResolutionResult
+    > readClient;
     private final ActionProposalCoordinator actionProposalCoordinator;
     private final AgenticResolverSessionService sessionService;
     private final Clock clock;
 
     public AgenticResolverExecutionService(
-        AIExecutionGateway executionGateway,
+        SpecialistClientFactory specialistClientFactory,
         ActionProposalCoordinator actionProposalCoordinator,
         AgenticResolverSessionService sessionService,
         Clock clock
     ) {
-        this.executionGateway = executionGateway;
+        this.interactiveClient = specialistClientFactory.bind(
+            AccountResolverSpecialists.SPECIALIST_ID,
+            AccountResolutionRequest.class,
+            AccountResolutionResult.class
+        );
+        this.readClient = specialistClientFactory.bind(
+            AccountResolverSpecialists.READ_SPECIALIST_ID,
+            AccountResolutionRequest.class,
+            AccountResolutionResult.class
+        );
         this.actionProposalCoordinator = actionProposalCoordinator;
         this.sessionService = sessionService;
         this.clock = clock;
@@ -62,8 +79,7 @@ public class AgenticResolverExecutionService {
     ) {
         AgenticResolverSessionService.ActiveSession session =
             sessionService.active(sessionId);
-        return executionGateway.execute(new AIExecutionRequest<>(
-            AccountResolverSpecialistConfiguration.READ_SPECIALIST_ID,
+        return readClient.execute(new SpecialistInvocation<>(
             request,
             trustedContext(session, ExecutionSource.APPLICATION),
             null,
@@ -86,8 +102,7 @@ public class AgenticResolverExecutionService {
     ) {
         AgenticResolverSessionService.ActiveSession session =
             sessionService.active(sessionId);
-        return executionGateway.execute(new AIExecutionRequest<>(
-            AccountResolverSpecialistConfiguration.SPECIALIST_ID,
+        return interactiveClient.execute(new SpecialistInvocation<>(
             request,
             trustedContext(session, ExecutionSource.INTERACTIVE),
             new ConversationBinding(

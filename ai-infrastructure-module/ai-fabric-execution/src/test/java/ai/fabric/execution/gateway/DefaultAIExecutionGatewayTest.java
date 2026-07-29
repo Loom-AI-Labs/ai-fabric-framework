@@ -32,6 +32,7 @@ import ai.fabric.execution.specialist.SpecialistInstructions;
 import ai.fabric.execution.specialist.SpecialistLimits;
 import ai.fabric.execution.specialist.SpecialistOutputAdapter;
 import ai.fabric.execution.specialist.SpecialistOutputMode;
+import ai.fabric.execution.specialist.SpecialistWritePolicy;
 import ai.fabric.intent.action.AIActionMetaData;
 import ai.fabric.intent.action.AIActionRegistry;
 import ai.fabric.intent.action.ActionAccessMode;
@@ -1033,7 +1034,7 @@ class DefaultAIExecutionGatewayTest {
                 "resolver",
                 requested,
                 ExecutionStrategy.SINGLE_PASS,
-                true
+                SpecialistWritePolicy.CONFIRMATION_RECEIPT_REQUIRED
             ),
             SpecialistLimits.defaults(),
             new SpecialistInputAdapter<>() {
@@ -1143,7 +1144,7 @@ class DefaultAIExecutionGatewayTest {
                 "resolver",
                 requested,
                 ExecutionStrategy.SINGLE_PASS,
-                false
+                SpecialistWritePolicy.DISABLED
             ),
             SpecialistLimits.defaults(),
             new SpecialistInputAdapter<>() {

@@ -14,7 +14,9 @@ import ai.fabric.execution.gateway.ExecutionCapabilityInventory;
 import ai.fabric.execution.gateway.SpecialistAuthority;
 import ai.fabric.execution.gateway.SpecialistCapabilityResolver;
 import ai.fabric.execution.specialist.ExecutionStrategy;
+import ai.fabric.execution.specialist.RegisteredSpecialist;
 import ai.fabric.execution.specialist.SpecialistDefinition;
+import ai.fabric.execution.specialist.SpecialistDefinitionSource;
 import ai.fabric.execution.specialist.SpecialistExecutionProfile;
 import ai.fabric.execution.specialist.SpecialistId;
 import ai.fabric.execution.specialist.SpecialistIdentity;
@@ -23,6 +25,7 @@ import ai.fabric.execution.specialist.SpecialistInstructions;
 import ai.fabric.execution.specialist.SpecialistLimits;
 import ai.fabric.execution.specialist.SpecialistOutputAdapter;
 import ai.fabric.execution.specialist.SpecialistRegistry;
+import ai.fabric.execution.specialist.SpecialistWritePolicy;
 import ai.fabric.intent.action.AIActionMetaData;
 import ai.fabric.intent.action.AIActionParamSchema;
 import ai.fabric.intent.action.AIActionParamType;
@@ -65,6 +68,7 @@ import java.util.concurrent.atomic.AtomicReference;
 final class ActionProposalTestFixture {
 
     static final String ACTION = "update_address";
+    static final String SPECIALIST_CONTENT_HASH = "a".repeat(64);
     static final SpecialistId SPECIALIST_ID =
         SpecialistId.of("account-resolver", "1");
     static final Instant NOW = Instant.parse("2026-07-28T10:00:00Z");
@@ -116,6 +120,14 @@ final class ActionProposalTestFixture {
         when(actionRegistry.getAllMetadata()).thenReturn(List.of(metadata));
         when(specialistRegistry.find(SPECIALIST_ID))
             .thenReturn(Optional.of(definition));
+        when(specialistRegistry.findRegistered(SPECIALIST_ID))
+            .thenReturn(Optional.of(new RegisteredSpecialist(
+                definition,
+                SpecialistDefinitionSource.JAVA,
+                SPECIALIST_CONTENT_HASH,
+                "test:" + SPECIALIST_ID,
+                Map.of()
+            )));
         when(policyResolutionStep.process(any())).thenAnswer(invocation -> {
             PipelineContext context = invocation.getArgument(0);
             return context.toBuilder()
@@ -270,6 +282,7 @@ final class ActionProposalTestFixture {
             "receipt-" + status.name().toLowerCase(),
             "invocation-" + status.name().toLowerCase(),
             SPECIALIST_ID,
+            SPECIALIST_CONTENT_HASH,
             "profile-hash",
             "principal-fingerprint",
             "account",
@@ -453,7 +466,7 @@ final class ActionProposalTestFixture {
                 "resolver",
                 capabilities,
                 ExecutionStrategy.SINGLE_PASS,
-                true
+                SpecialistWritePolicy.CONFIRMATION_RECEIPT_REQUIRED
             ),
             SpecialistLimits.defaults(),
             new SpecialistInputAdapter<>() {

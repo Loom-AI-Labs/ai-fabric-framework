@@ -35,6 +35,9 @@ ai:
 
   execution:
     enabled: true
+    manifests:
+      enabled: true
+      fail-fast: true
     capabilities:
       registered-vector-spaces:
         - account-resolution-policy

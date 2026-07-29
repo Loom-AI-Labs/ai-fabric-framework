@@ -298,7 +298,7 @@ class AgenticResolverWriteIntegrationTest {
     ) {
         TrustedExecutionContext trustedContext = trustedContext(testSession);
         SpecialistDefinition<?, ?> definition = specialistRegistry.require(
-            AccountResolverSpecialistConfiguration.SPECIALIST_ID
+            AccountResolverSpecialists.SPECIALIST_ID
         );
         OrchestrationContext baseContext = OrchestrationContext.builder()
             .userId(testSession.subjectUserId().toString())

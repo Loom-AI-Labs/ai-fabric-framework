@@ -23,7 +23,8 @@ public final class JdbcActionProposalReceiptRepository
     private static final String TABLE = "ai_action_proposal_receipt";
     private static final String SELECT_COLUMNS = """
         receipt_id, invocation_id, specialist_name, specialist_version,
-        effective_profile_hash, principal_fingerprint, subject_type,
+        specialist_content_hash, effective_profile_hash,
+        principal_fingerprint, subject_type,
         subject_fingerprint, tenant_fingerprint, deployment_fingerprint,
         action_name, protected_parameters, parameter_hash,
         parameter_schema_hash, confirmation_message, idempotency_key,
@@ -52,7 +53,8 @@ public final class JdbcActionProposalReceiptRepository
         String sql = """
             INSERT INTO ai_action_proposal_receipt (
               receipt_id, invocation_id, specialist_name, specialist_version,
-              effective_profile_hash, principal_fingerprint, subject_type,
+              specialist_content_hash, effective_profile_hash,
+              principal_fingerprint, subject_type,
               subject_fingerprint, tenant_fingerprint, deployment_fingerprint,
               action_name, protected_parameters, parameter_hash,
               parameter_schema_hash, confirmation_message, idempotency_key,
@@ -61,7 +63,7 @@ public final class JdbcActionProposalReceiptRepository
               failure_reason, updated_at, version
             ) VALUES (
               ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-              ?, ?, ?, ?, ?, ?, ?
+              ?, ?, ?, ?, ?, ?, ?, ?
             )
             """;
         try {
@@ -71,6 +73,7 @@ public final class JdbcActionProposalReceiptRepository
                 receipt.invocationId(),
                 receipt.specialistId().name(),
                 receipt.specialistId().version(),
+                receipt.specialistContentHash(),
                 receipt.effectiveProfileHash(),
                 receipt.principalFingerprint(),
                 receipt.subjectType(),
@@ -253,6 +256,7 @@ public final class JdbcActionProposalReceiptRepository
                 resultSet.getString("specialist_name"),
                 resultSet.getString("specialist_version")
             ),
+            resultSet.getString("specialist_content_hash"),
             resultSet.getString("effective_profile_hash"),
             resultSet.getString("principal_fingerprint"),
             resultSet.getString("subject_type"),
@@ -287,6 +291,7 @@ public final class JdbcActionProposalReceiptRepository
               invocation_id VARCHAR(120) NOT NULL,
               specialist_name VARCHAR(120) NOT NULL,
               specialist_version VARCHAR(80) NOT NULL,
+              specialist_content_hash VARCHAR(128) NOT NULL,
               effective_profile_hash VARCHAR(128) NOT NULL,
               principal_fingerprint VARCHAR(128) NOT NULL,
               subject_type VARCHAR(80) NOT NULL,
@@ -313,6 +318,16 @@ public final class JdbcActionProposalReceiptRepository
               version BIGINT NOT NULL
             )
             """);
+        jdbc.execute(
+            "ALTER TABLE " + TABLE
+                + " ADD COLUMN IF NOT EXISTS specialist_content_hash VARCHAR(128)"
+        );
+        jdbc.update(
+            "UPDATE " + TABLE
+                + " SET specialist_content_hash = ?"
+                + " WHERE specialist_content_hash IS NULL",
+            "legacy-unpinned"
+        );
         jdbc.execute(
             "CREATE INDEX IF NOT EXISTS idx_ai_action_receipt_status"
                 + " ON " + TABLE + " (status)"

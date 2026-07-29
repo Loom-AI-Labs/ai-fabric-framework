@@ -130,6 +130,7 @@ class ActionProposalRecoveryServiceTest {
             id,
             "invocation-" + id,
             ActionProposalTestFixture.SPECIALIST_ID,
+            ActionProposalTestFixture.SPECIALIST_CONTENT_HASH,
             "profile-hash",
             "principal-fingerprint",
             "account",

@@ -1,0 +1,17 @@
+package com.ai.fabric.realapps.agenticresolver.agentic;
+
+import ai.fabric.execution.specialist.SpecialistId;
+
+public final class AccountResolverSpecialists {
+
+    public static final SpecialistId SPECIALIST_ID =
+        SpecialistId.of("account-resolver", "1");
+    public static final SpecialistId READ_SPECIALIST_ID =
+        SpecialistId.of("account-resolver-read", "1");
+    public static final String PROFILE_ACTION = "get_account_profile";
+    public static final String UPDATE_ADDRESS_ACTION = "update_address";
+    public static final String POLICY_VECTOR_SPACE =
+        "account-resolution-policy";
+
+    private AccountResolverSpecialists() {}
+}

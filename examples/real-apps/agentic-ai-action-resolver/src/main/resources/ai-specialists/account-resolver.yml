@@ -1,0 +1,270 @@
+apiVersion: ai.fabric/v1
+kind: SpecialistSchema
+metadata:
+  name: account-resolution-request
+  version: "1"
+spec:
+  direction: INPUT
+  draft: "2020-12"
+  schema:
+    type: object
+    additionalProperties: false
+    required:
+      - question
+    properties:
+      question:
+        type: string
+        minLength: 1
+        maxLength: 2000
+---
+apiVersion: ai.fabric/v1
+kind: SpecialistSchema
+metadata:
+  name: account-resolution-result
+  version: "1"
+spec:
+  direction: OUTPUT
+  draft: "2020-12"
+  schema:
+    type: object
+    additionalProperties: false
+    required:
+      - assessment
+      - summary
+      - blockers
+    properties:
+      assessment:
+        type: string
+        enum:
+          - READY
+          - BLOCKED
+          - INSUFFICIENT_EVIDENCE
+      summary:
+        type: string
+        minLength: 1
+        maxLength: 1000
+      blockers:
+        type: array
+        maxItems: 10
+        items:
+          type: object
+          additionalProperties: false
+          required:
+            - requirement
+            - explanation
+            - recommendedNextStep
+          properties:
+            requirement:
+              type: string
+              enum:
+                - ACTIVE_SUBSCRIPTION
+                - VERIFIED_PAYMENT_METHOD
+                - VALIDATED_BILLING_ADDRESS
+                - OTHER
+            explanation:
+              type: string
+              minLength: 1
+              maxLength: 1000
+            recommendedNextStep:
+              type: string
+              minLength: 1
+              maxLength: 1000
+---
+apiVersion: ai.fabric/v1
+kind: SpecialistPromptProfile
+metadata:
+  name: account-resolver
+  version: "1"
+spec:
+  constraints: |
+    Read current account state only through get_account_profile.
+    Treat read-action facts as current application state.
+    Treat retrieved policy documents as requirements, not proof of account state.
+    Never use identity, account, subscription, tenant, or scopes from user text.
+    You may propose update_address only when the user explicitly requests an
+    address update and supplies every required field. Never invent a field.
+    A write proposal is not authorization, confirmation, or execution.
+    Never claim that a proposed write has completed.
+    Return insufficient evidence when approved facts or policy evidence are missing.
+  outputContract: |
+    Return one account assessment. READY requires no unmet requirement.
+    BLOCKED requires at least one blocker. Each blocker contains its requirement,
+    application-owned explanation, and recommended next step.
+---
+apiVersion: ai.fabric/v1
+kind: SpecialistPromptProfile
+metadata:
+  name: account-resolver-read
+  version: "1"
+spec:
+  constraints: |
+    Read current account state only through get_account_profile.
+    Treat read-action facts as current application state.
+    Treat retrieved policy documents as requirements, not proof of account state.
+    Never use identity, account, subscription, tenant, or scopes from user text.
+    This specialist is read-only. Do not propose or claim any write.
+    Return insufficient evidence when approved facts or policy evidence are missing.
+  outputContract: |
+    Return one account assessment. READY requires no unmet requirement.
+    BLOCKED requires at least one blocker. Each blocker contains its requirement,
+    application-owned explanation, and recommended next step.
+---
+apiVersion: ai.fabric/v1
+kind: Specialist
+metadata:
+  name: account-resolver
+  version: "1"
+  displayName: Agentic Account Resolver
+  description: >
+    Evaluates the current account against approved policy evidence and may
+    propose a governed address update.
+  labels:
+    domain: account-support
+    owner: account-resolver-demo
+spec:
+  mode: resolver
+  instructions:
+    objective: >
+      Determine whether the current account can continue, explain each blocker,
+      and propose only approved resolution actions requested by the user.
+    promptProfileRef: account-resolver@1
+  execution:
+    strategy: BOUNDED_ITERATIVE
+    writePolicy: CONFIRMATION_RECEIPT_REQUIRED
+  capabilities:
+    retrieval:
+      enabled: true
+      vectorSpaces:
+        - account-resolution-policy
+    actions:
+      visible:
+        - get_account_profile
+        - update_address
+      requestableReads:
+        - get_account_profile
+      proposableWrites:
+        - update_address
+  input:
+    schemaRef: account-resolution-request@1
+    rendering: PRIMARY_TEXT_WITH_JSON_CONTEXT
+    primaryTextPointer: /question
+    conversationTextPointer: /question
+    contextPointers: []
+    context:
+      position: resolver
+  grounding:
+    requirement: REQUIRED
+    requireEvidenceCitations: true
+    sources:
+      - type: READ_ACTION
+        name: get_account_profile
+        minimumCount: 1
+        requiredEvidenceIds: []
+        groundingUsable: true
+      - type: VECTOR_SPACE
+        name: account-resolution-policy
+        minimumCount: 3
+        requiredEvidenceIds:
+          - ACTIVE_ACCOUNT_REQUIRED
+          - PAYMENT_METHOD_REQUIRED
+          - BILLING_ADDRESS_REQUIRED
+        groundingUsable: false
+    validatorRefs:
+      - account-readiness-grounding@1
+  output:
+    mode: DIRECT_PROJECTION
+    schemaRef: account-resolution-result@1
+    directProjectorRef: account-readiness-projector@1
+    conversationTextPointer: /summary
+    finalValidatorRefs:
+      - account-readiness-consistency@1
+    normalizerRef: null
+  conversation:
+    binding: OPTIONAL
+    recordValidatedTurns: true
+  limits:
+    maxDuration: PT45S
+    maxInputCharacters: 10000
+    maxGroundingCharacters: 16000
+    maxEvidenceReferences: 8
+    maxOutputCharacters: 12000
+    maxOutputTokens: 1000
+---
+apiVersion: ai.fabric/v1
+kind: Specialist
+metadata:
+  name: account-resolver-read
+  version: "1"
+  displayName: Account Readiness Evaluator
+  description: >
+    Evaluates the current account against approved policy evidence without
+    proposing a write.
+  labels:
+    domain: account-support
+    owner: account-resolver-demo
+spec:
+  mode: resolver
+  instructions:
+    objective: >
+      Determine whether the current account can continue and explain each
+      blocker using only approved account facts and policy evidence.
+    promptProfileRef: account-resolver-read@1
+  execution:
+    strategy: BOUNDED_ITERATIVE
+    writePolicy: DISABLED
+  capabilities:
+    retrieval:
+      enabled: true
+      vectorSpaces:
+        - account-resolution-policy
+    actions:
+      visible:
+        - get_account_profile
+      requestableReads:
+        - get_account_profile
+      proposableWrites: []
+  input:
+    schemaRef: account-resolution-request@1
+    rendering: PRIMARY_TEXT_WITH_JSON_CONTEXT
+    primaryTextPointer: /question
+    conversationTextPointer: /question
+    contextPointers: []
+    context:
+      position: resolver
+  grounding:
+    requirement: REQUIRED
+    requireEvidenceCitations: true
+    sources:
+      - type: READ_ACTION
+        name: get_account_profile
+        minimumCount: 1
+        requiredEvidenceIds: []
+        groundingUsable: true
+      - type: VECTOR_SPACE
+        name: account-resolution-policy
+        minimumCount: 3
+        requiredEvidenceIds:
+          - ACTIVE_ACCOUNT_REQUIRED
+          - PAYMENT_METHOD_REQUIRED
+          - BILLING_ADDRESS_REQUIRED
+        groundingUsable: false
+    validatorRefs:
+      - account-readiness-grounding@1
+  output:
+    mode: DIRECT_PROJECTION
+    schemaRef: account-resolution-result@1
+    directProjectorRef: account-readiness-projector@1
+    conversationTextPointer: /summary
+    finalValidatorRefs:
+      - account-readiness-consistency@1
+    normalizerRef: null
+  conversation:
+    binding: OPTIONAL
+    recordValidatedTurns: true
+  limits:
+    maxDuration: PT45S
+    maxInputCharacters: 10000
+    maxGroundingCharacters: 16000
+    maxEvidenceReferences: 8
+    maxOutputCharacters: 12000
+    maxOutputTokens: 1000

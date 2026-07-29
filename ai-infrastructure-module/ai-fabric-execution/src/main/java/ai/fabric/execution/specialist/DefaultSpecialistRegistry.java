@@ -1,13 +1,8 @@
 package ai.fabric.execution.specialist;
 
-import ai.fabric.intent.action.AIActionMetaData;
-import ai.fabric.intent.action.AIActionNames;
 import ai.fabric.intent.action.AIActionRegistry;
-import java.util.Collections;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -17,7 +12,8 @@ import java.util.Set;
  */
 public final class DefaultSpecialistRegistry implements SpecialistRegistry {
 
-    private final Map<SpecialistId, SpecialistDefinition<?, ?>> definitions;
+    private final Map<SpecialistId, RegisteredSpecialist> definitions;
+    private final String contentHash;
 
     public DefaultSpecialistRegistry(
         List<SpecialistDefinition<?, ?>> definitions,
@@ -33,146 +29,81 @@ public final class DefaultSpecialistRegistry implements SpecialistRegistry {
         Set<String> knownModes,
         Set<String> registeredVectorSpaces
     ) {
-        Objects.requireNonNull(actionRegistry, "actionRegistry is required");
-        Set<String> normalizedModes = normalize(knownModes);
-        Set<String> normalizedVectorSpaces = normalize(registeredVectorSpaces);
-        Map<String, AIActionMetaData> registeredActions = new LinkedHashMap<>();
-        List<AIActionMetaData> metadata = actionRegistry.getAllMetadata();
-        if (metadata != null) {
-            metadata.stream()
-                .filter(Objects::nonNull)
-                .filter(action -> action.getName() != null)
-                .forEach(action ->
-                    registeredActions.put(
-                        AIActionNames.normalize(action.getName()),
-                        action
-                    )
-                );
-        }
+        this(
+            javaDefinitions(definitions),
+            new SpecialistDefinitionValidator(
+                actionRegistry,
+                knownModes,
+                registeredVectorSpaces
+            )
+        );
+    }
 
-        Map<SpecialistId, SpecialistDefinition<?, ?>> validated = new LinkedHashMap<>();
-        for (SpecialistDefinition<?, ?> definition :
-            definitions != null ? definitions : List.<SpecialistDefinition<?, ?>>of()) {
-            Objects.requireNonNull(definition, "specialist definition must not be null");
-            if (validated.putIfAbsent(definition.id(), definition) != null) {
-                throw new IllegalStateException(
-                    "Duplicate specialist definition: " + definition.id()
-                );
-            }
-            String mode = definition.executionProfile()
-                .mode()
-                .toLowerCase(Locale.ROOT);
-            if (!normalizedModes.contains(mode)) {
-                throw new IllegalStateException(
-                    "Specialist " + definition.id() + " references unknown Mode " + mode
-                );
-            }
-            Set<String> requested = new LinkedHashSet<>(
-                definition.executionProfile().requestedCapabilities().visibleActions()
+    public DefaultSpecialistRegistry(
+        List<RegisteredSpecialist> definitions,
+        SpecialistDefinitionValidator validator
+    ) {
+        Objects.requireNonNull(validator, "validator is required");
+        Map<SpecialistId, RegisteredSpecialist> validated =
+            new LinkedHashMap<>();
+        for (RegisteredSpecialist registered :
+            definitions == null
+                ? List.<RegisteredSpecialist>of()
+                : definitions) {
+            Objects.requireNonNull(
+                registered,
+                "registered specialist must not be null"
             );
-            requested.addAll(
-                definition.executionProfile().requestedCapabilities().requestableReadActions()
-            );
-            requested.addAll(
-                definition.executionProfile().requestedCapabilities().proposableWriteActions()
-            );
-            Set<String> missing = new LinkedHashSet<>(requested);
-            missing.removeAll(registeredActions.keySet());
-            if (!missing.isEmpty()) {
+            validator.validate(registered.definition());
+            if (validated.putIfAbsent(registered.id(), registered) != null) {
                 throw new IllegalStateException(
-                    "Specialist " + definition.id()
-                        + " references unregistered actions " + missing
+                    "Duplicate specialist definition: " + registered.id()
                 );
-            }
-            validateActionModes(definition, registeredActions);
-            if (definition.executionProfile()
-                    .requestedCapabilities()
-                    .retrievalEnabled()
-                && definition.executionProfile()
-                    .requestedCapabilities()
-                    .requestedVectorSpaces()
-                    .isEmpty()) {
-                throw new IllegalStateException(
-                    "Specialist " + definition.id()
-                        + " enables retrieval without a bounded vector-space scope"
-                );
-            }
-            if (!normalizedVectorSpaces.isEmpty()) {
-                Set<String> missingSpaces = new LinkedHashSet<>(
-                    definition.executionProfile()
-                        .requestedCapabilities()
-                        .requestedVectorSpaces()
-                );
-                missingSpaces.removeAll(normalizedVectorSpaces);
-                if (!missingSpaces.isEmpty()) {
-                    throw new IllegalStateException(
-                        "Specialist " + definition.id()
-                            + " references unregistered vector spaces "
-                            + missingSpaces
-                    );
-                }
             }
         }
-        this.definitions = Collections.unmodifiableMap(validated);
+        this.definitions = java.util.Collections.unmodifiableMap(
+            new LinkedHashMap<>(validated)
+        );
+        this.contentHash = SpecialistRegistry.super.registryContentHash();
     }
 
     @Override
     public java.util.Optional<SpecialistDefinition<?, ?>> find(SpecialistId id) {
-        return java.util.Optional.ofNullable(definitions.get(id));
+        return findRegistered(id).map(RegisteredSpecialist::definition);
     }
 
     @Override
     public List<SpecialistDefinition<?, ?>> list() {
+        return definitions.values().stream()
+            .map(RegisteredSpecialist::definition)
+            .toList();
+    }
+
+    @Override
+    public java.util.Optional<RegisteredSpecialist> findRegistered(
+        SpecialistId id
+    ) {
+        return java.util.Optional.ofNullable(definitions.get(id));
+    }
+
+    @Override
+    public List<RegisteredSpecialist> listRegistered() {
         return List.copyOf(definitions.values());
     }
 
-    private void validateActionModes(
-        SpecialistDefinition<?, ?> definition,
-        Map<String, AIActionMetaData> registeredActions
-    ) {
-        var capabilities =
-            definition.executionProfile().requestedCapabilities();
-        for (String action : capabilities.requestableReadActions()) {
-            if (registeredActions.get(action).getAccessMode()
-                != ai.fabric.intent.action.ActionAccessMode.READ) {
-                throw new IllegalStateException(
-                    "Specialist " + definition.id()
-                        + " declares non-READ action " + action
-                        + " as requestable READ"
-                );
-            }
-        }
-        for (String action : capabilities.proposableWriteActions()) {
-            AIActionMetaData metadata = registeredActions.get(action);
-            if (metadata.getAccessMode()
-                == ai.fabric.intent.action.ActionAccessMode.READ) {
-                throw new IllegalStateException(
-                    "Specialist " + definition.id()
-                        + " declares READ action " + action
-                        + " as proposable WRITE"
-                );
-            }
-            if (!metadata.isConfirmationRequired()) {
-                throw new IllegalStateException(
-                    "Specialist " + definition.id()
-                        + " declares write action " + action
-                        + " without application-owned confirmation"
-                );
-            }
-        }
+    @Override
+    public String registryContentHash() {
+        return contentHash;
     }
 
-    private Set<String> normalize(Set<String> values) {
-        if (values == null || values.isEmpty()) {
-            return Set.of();
-        }
-        Set<String> normalized = new LinkedHashSet<>();
-        values.stream()
-            .filter(Objects::nonNull)
-            .map(String::trim)
-            .filter(value -> !value.isEmpty())
-            .map(value -> value.toLowerCase(Locale.ROOT))
-            .forEach(normalized::add);
-        return Set.copyOf(normalized);
+    private static List<RegisteredSpecialist> javaDefinitions(
+        List<SpecialistDefinition<?, ?>> definitions
+    ) {
+        return (definitions == null
+                ? List.<SpecialistDefinition<?, ?>>of()
+                : definitions)
+            .stream()
+            .map(RegisteredSpecialist::javaDefinition)
+            .toList();
     }
 }

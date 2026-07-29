@@ -12,10 +12,13 @@ import ai.fabric.execution.action.ActionProposalDecision;
 import ai.fabric.execution.action.ActionProposalDecisionRequest;
 import ai.fabric.execution.context.ExecutionSource;
 import ai.fabric.execution.context.TrustedExecutionContext;
-import ai.fabric.execution.gateway.AIExecutionGateway;
 import ai.fabric.execution.gateway.AIExecutionRequest;
 import ai.fabric.execution.gateway.AIExecutionResult;
 import ai.fabric.execution.gateway.AIExecutionStatus;
+import ai.fabric.execution.specialist.SpecialistId;
+import ai.fabric.execution.specialist.client.SpecialistClient;
+import ai.fabric.execution.specialist.client.SpecialistClientFactory;
+import ai.fabric.execution.specialist.client.SpecialistInvocation;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -48,7 +51,7 @@ class AgenticResolverExecutionServiceTest {
         AIExecutionRequest<?> request = observed.get();
         assertThat(request.specialistId())
             .isEqualTo(
-                AccountResolverSpecialistConfiguration.READ_SPECIALIST_ID
+                AccountResolverSpecialists.READ_SPECIALIST_ID
             );
         assertThat(request.trustedExecutionContext().source())
             .isEqualTo(ExecutionSource.APPLICATION);
@@ -80,7 +83,7 @@ class AgenticResolverExecutionServiceTest {
 
         AIExecutionRequest<?> request = observed.get();
         assertThat(request.specialistId())
-            .isEqualTo(AccountResolverSpecialistConfiguration.SPECIALIST_ID);
+            .isEqualTo(AccountResolverSpecialists.SPECIALIST_ID);
         assertThat(request.trustedExecutionContext().source())
             .isEqualTo(ExecutionSource.INTERACTIVE);
         assertThat(request.trustedExecutionContext().subject().subjectId())
@@ -120,7 +123,9 @@ class AgenticResolverExecutionServiceTest {
     @Test
     void decisionUsesCurrentBackendOwnedInteractiveIdentity() {
         UUID selectedSubject = UUID.randomUUID();
-        AIExecutionGateway gateway = mock(AIExecutionGateway.class);
+        SpecialistClientFactory clientFactory = clientFactory(
+            new AtomicReference<>()
+        );
         ActionProposalCoordinator coordinator =
             mock(ActionProposalCoordinator.class);
         AgenticResolverSessionService sessions =
@@ -130,7 +135,7 @@ class AgenticResolverExecutionServiceTest {
         ));
         AgenticResolverExecutionService service =
             new AgenticResolverExecutionService(
-                gateway,
+                clientFactory,
                 coordinator,
                 sessions,
                 Clock.fixed(NOW, ZoneOffset.UTC)
@@ -156,25 +161,6 @@ class AgenticResolverExecutionServiceTest {
         UUID subject,
         AtomicReference<AIExecutionRequest<?>> observed
     ) {
-        AIExecutionGateway gateway = mock(AIExecutionGateway.class);
-        when(gateway.execute(any())).thenAnswer(invocation -> {
-            observed.set(invocation.getArgument(0));
-            return new AIExecutionResult<>(
-                "exec-1",
-                AccountResolverSpecialistConfiguration.SPECIALIST_ID,
-                AIExecutionStatus.SUCCEEDED,
-                new AccountResolutionResult(
-                    AccountResolutionResult.Assessment.READY,
-                    "Ready",
-                    List.of()
-                ),
-                List.of(),
-                Map.of(),
-                null,
-                NOW,
-                NOW
-            );
-        });
         AgenticResolverSessionService sessions =
             mock(AgenticResolverSessionService.class);
         when(sessions.active("session-1")).thenReturn(
@@ -187,11 +173,56 @@ class AgenticResolverExecutionServiceTest {
             )
         );
         return new AgenticResolverExecutionService(
-            gateway,
+            clientFactory(observed),
             mock(ActionProposalCoordinator.class),
             sessions,
             Clock.fixed(NOW, ZoneOffset.UTC)
         );
+    }
+
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private SpecialistClientFactory clientFactory(
+        AtomicReference<AIExecutionRequest<?>> observed
+    ) {
+        SpecialistClientFactory factory = mock(SpecialistClientFactory.class);
+        when(factory.bind(
+            any(SpecialistId.class),
+            org.mockito.ArgumentMatchers.eq(AccountResolutionRequest.class),
+            org.mockito.ArgumentMatchers.eq(AccountResolutionResult.class)
+        )).thenAnswer(binding -> {
+            SpecialistId specialistId = binding.getArgument(0);
+            SpecialistClient client = mock(SpecialistClient.class);
+            when(client.execute(any(SpecialistInvocation.class)))
+                .thenAnswer(execution -> {
+                    SpecialistInvocation<AccountResolutionRequest> invocation =
+                        execution.getArgument(0);
+                    observed.set(new AIExecutionRequest<>(
+                        specialistId,
+                        invocation.input(),
+                        invocation.trustedExecutionContext(),
+                        invocation.conversationBinding(),
+                        invocation.deadline(),
+                        invocation.idempotencyKey()
+                    ));
+                    return new AIExecutionResult<>(
+                        "exec-1",
+                        specialistId,
+                        AIExecutionStatus.SUCCEEDED,
+                        new AccountResolutionResult(
+                            AccountResolutionResult.Assessment.READY,
+                            "Ready",
+                            List.of()
+                        ),
+                        List.of(),
+                        Map.of(),
+                        null,
+                        NOW,
+                        NOW
+                    );
+                });
+            return client;
+        });
+        return factory;
     }
 
     private AgenticResolverSessionService.ActiveSession activeSession(

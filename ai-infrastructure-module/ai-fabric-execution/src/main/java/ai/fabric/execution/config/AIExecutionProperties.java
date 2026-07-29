@@ -1,6 +1,8 @@
 package ai.fabric.execution.config;
 
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.LinkedHashSet;
 import java.util.Set;
 import org.springframework.boot.context.properties.ConfigurationProperties;
@@ -11,6 +13,7 @@ public class AIExecutionProperties {
     private final Async async = new Async();
     private final Capabilities capabilities = new Capabilities();
     private final Receipts receipts = new Receipts();
+    private final Manifests manifests = new Manifests();
 
     public Async getAsync() {
         return async;
@@ -22,6 +25,85 @@ public class AIExecutionProperties {
 
     public Receipts getReceipts() {
         return receipts;
+    }
+
+    public Manifests getManifests() {
+        return manifests;
+    }
+
+    public static class Manifests {
+        private boolean enabled;
+        private boolean failFast = true;
+        private int maxManifestBytes = 65_536;
+        private int maxResourceBytes = 65_536;
+        private List<String> locations = List.of(
+            "classpath*:ai-specialists/*.yml",
+            "classpath*:ai-specialists/*.yaml",
+            "classpath*:ai-specialists/*.json"
+        );
+
+        public boolean isEnabled() {
+            return enabled;
+        }
+
+        public void setEnabled(boolean enabled) {
+            this.enabled = enabled;
+        }
+
+        public boolean isFailFast() {
+            return failFast;
+        }
+
+        public void setFailFast(boolean failFast) {
+            this.failFast = failFast;
+        }
+
+        public int getMaxManifestBytes() {
+            return maxManifestBytes;
+        }
+
+        public void setMaxManifestBytes(int maxManifestBytes) {
+            this.maxManifestBytes = positive(
+                maxManifestBytes,
+                "maxManifestBytes"
+            );
+        }
+
+        public int getMaxResourceBytes() {
+            return maxResourceBytes;
+        }
+
+        public void setMaxResourceBytes(int maxResourceBytes) {
+            this.maxResourceBytes = positive(
+                maxResourceBytes,
+                "maxResourceBytes"
+            );
+        }
+
+        public List<String> getLocations() {
+            return locations;
+        }
+
+        public void setLocations(List<String> locations) {
+            if (locations == null || locations.isEmpty()) {
+                this.locations = List.of();
+                return;
+            }
+            List<String> normalized = new ArrayList<>();
+            for (String location : locations) {
+                if (location != null && !location.isBlank()) {
+                    normalized.add(location.trim());
+                }
+            }
+            this.locations = List.copyOf(normalized);
+        }
+
+        private int positive(int value, String field) {
+            if (value < 1) {
+                throw new IllegalArgumentException(field + " must be positive");
+            }
+            return value;
+        }
     }
 
     public static class Async {

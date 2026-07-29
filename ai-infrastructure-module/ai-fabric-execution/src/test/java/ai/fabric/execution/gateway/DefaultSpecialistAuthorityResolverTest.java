@@ -17,6 +17,7 @@ import ai.fabric.execution.specialist.SpecialistInputAdapter;
 import ai.fabric.execution.specialist.SpecialistInstructions;
 import ai.fabric.execution.specialist.SpecialistLimits;
 import ai.fabric.execution.specialist.SpecialistOutputAdapter;
+import ai.fabric.execution.specialist.SpecialistWritePolicy;
 import ai.fabric.intent.orchestration.capability.RequestedCapabilityProfile;
 import java.time.Instant;
 import java.util.List;
@@ -92,7 +93,7 @@ class DefaultSpecialistAuthorityResolverTest {
                 "resolver",
                 RequestedCapabilityProfile.retrievalOnly(Set.of("account-policy")),
                 ExecutionStrategy.SINGLE_PASS,
-                false
+                SpecialistWritePolicy.DISABLED
             ),
             SpecialistLimits.defaults(),
             adapter(),

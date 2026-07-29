@@ -22,6 +22,9 @@ import ai.fabric.execution.specialist.SpecialistInstructions;
 import ai.fabric.execution.specialist.SpecialistLimits;
 import ai.fabric.execution.specialist.SpecialistOutputAdapter;
 import ai.fabric.execution.specialist.SpecialistOutputMode;
+import ai.fabric.execution.specialist.SpecialistWritePolicy;
+import ai.fabric.execution.specialist.manifest.DefaultSpecialistManifestCompiler;
+import ai.fabric.execution.specialist.manifest.ManifestTestFixtures;
 import ai.fabric.intent.orchestration.OrchestrationContext;
 import ai.fabric.intent.orchestration.OrchestrationResult;
 import ai.fabric.intent.orchestration.OrchestrationResultType;
@@ -29,6 +32,7 @@ import ai.fabric.intent.orchestration.capability.RequestedCapabilityProfile;
 import ai.fabric.llm.structured.DefaultStructuredJsonCallExecutor;
 import ai.fabric.llm.structured.StructuredJsonExtractor;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.JsonNode;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
@@ -141,6 +145,58 @@ class DefaultStructuredSpecialistOutputFinalizerTest {
             );
     }
 
+    @Test
+    void finalizesManifestJsonSchemaOutputWithoutAJavaDto() {
+        AICoreService aiCoreService = mock(AICoreService.class);
+        when(aiCoreService.generateContent(any(), eq(LlmPurpose.GENERATION)))
+            .thenReturn(AIGenerationResponse.builder()
+                .content("{\"answer\":\"Use approved recovery.\"}")
+                .model("gpt-test")
+                .build());
+
+        SpecialistOutputFinalization<JsonNode> finalized =
+            finalizer(aiCoreService).finalizeOutput(
+                manifestDefinition(),
+                "How do I recover access?",
+                OrchestrationContext.builder().build(),
+                successfulResult(),
+                List.of(evidence())
+            );
+
+        assertThat(finalized.output().path("answer").textValue())
+            .isEqualTo("Use approved recovery.");
+        assertThat(finalized.diagnostics())
+            .containsEntry("outputMode", "STRUCTURED_GENERATION");
+    }
+
+    @Test
+    void exposesManifestSchemaMismatchWithoutRepairOrFallback() {
+        AICoreService aiCoreService = mock(AICoreService.class);
+        when(aiCoreService.generateContent(any(), eq(LlmPurpose.GENERATION)))
+            .thenReturn(AIGenerationResponse.builder()
+                .content(
+                    "{\"answer\":\"Use approved recovery.\","
+                        + "\"internal\":\"not allowed\"}"
+                )
+                .build());
+
+        assertThatThrownBy(() -> finalizer(aiCoreService).finalizeOutput(
+            manifestDefinition(),
+            "How do I recover access?",
+            OrchestrationContext.builder().build(),
+            successfulResult(),
+            List.of(evidence())
+        ))
+            .isInstanceOfSatisfying(
+                SpecialistOutputFinalizationException.class,
+                failure -> {
+                    assertThat(failure.reason())
+                        .isEqualTo("OUTPUT_FINALIZATION_VALIDATION_FAILED");
+                    assertThat(failure.retryable()).isFalse();
+                }
+            );
+    }
+
     private DefaultStructuredSpecialistOutputFinalizer finalizer(
         AICoreService aiCoreService
     ) {
@@ -176,7 +232,7 @@ class DefaultStructuredSpecialistOutputFinalizerTest {
                     Set.of()
                 ),
                 ExecutionStrategy.SINGLE_PASS,
-                false
+                SpecialistWritePolicy.DISABLED
             ),
             new SpecialistLimits(Duration.ofSeconds(30), 2_000, 3_000, 4),
             new SpecialistInputAdapter<>() {
@@ -233,6 +289,18 @@ class DefaultStructuredSpecialistOutputFinalizerTest {
                 }
             }
         );
+    }
+
+    @SuppressWarnings("unchecked")
+    private SpecialistDefinition<JsonNode, JsonNode> manifestDefinition() {
+        return (SpecialistDefinition<JsonNode, JsonNode>)
+            new DefaultSpecialistManifestCompiler()
+                .compile(
+                    ManifestTestFixtures.manifest(),
+                    ManifestTestFixtures.compilationContext()
+                )
+                .specialist()
+                .definition();
     }
 
     private OrchestrationResult successfulResult() {

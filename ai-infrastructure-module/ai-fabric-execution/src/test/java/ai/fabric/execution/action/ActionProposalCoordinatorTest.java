@@ -435,6 +435,7 @@ class ActionProposalCoordinatorTest {
             stored.receiptId(),
             stored.invocationId(),
             stored.specialistId(),
+            stored.specialistContentHash(),
             stored.effectiveProfileHash(),
             stored.principalFingerprint(),
             stored.subjectType(),
@@ -519,7 +520,7 @@ class ActionProposalCoordinatorTest {
     void removedSpecialistVersionFailsBeforeExecution() {
         ActionProposalTestFixture fixture = new ActionProposalTestFixture();
         ActionProposalView proposal = fixture.propose();
-        org.mockito.Mockito.when(fixture.specialistRegistry.find(
+        org.mockito.Mockito.when(fixture.specialistRegistry.findRegistered(
             ActionProposalTestFixture.SPECIALIST_ID
         )).thenReturn(java.util.Optional.empty());
 
@@ -535,6 +536,38 @@ class ActionProposalCoordinatorTest {
             .isEqualTo(ActionProposalReceiptStatus.FAILED);
         assertThat(result.failure().reason())
             .isEqualTo("SPECIALIST_VERSION_NOT_REGISTERED");
+        assertThat(fixture.confirmedInvocations).hasValue(0);
+    }
+
+    @Test
+    void changedSpecialistContentUnderSameVersionFailsBeforeExecution() {
+        ActionProposalTestFixture fixture = new ActionProposalTestFixture();
+        ActionProposalView proposal = fixture.propose();
+        org.mockito.Mockito.when(fixture.specialistRegistry.findRegistered(
+            ActionProposalTestFixture.SPECIALIST_ID
+        )).thenReturn(java.util.Optional.of(
+            new ai.fabric.execution.specialist.RegisteredSpecialist(
+                fixture.definition,
+                ai.fabric.execution.specialist.SpecialistDefinitionSource
+                    .MANIFEST,
+                "b".repeat(64),
+                "changed.yml#1",
+                Map.of()
+            )
+        ));
+
+        ActionProposalDecisionResult result = fixture.coordinator.decide(
+            new ActionProposalDecisionRequest(
+                proposal.receiptId(),
+                ActionProposalDecision.CONFIRM
+            ),
+            fixture.trustedContext
+        );
+
+        assertThat(result.status())
+            .isEqualTo(ActionProposalReceiptStatus.FAILED);
+        assertThat(result.failure().reason())
+            .isEqualTo("SPECIALIST_CONTENT_CHANGED");
         assertThat(fixture.confirmedInvocations).hasValue(0);
     }
 
@@ -747,6 +780,7 @@ class ActionProposalCoordinatorTest {
             receipt.receiptId(),
             receipt.invocationId(),
             receipt.specialistId(),
+            receipt.specialistContentHash(),
             receipt.effectiveProfileHash(),
             receipt.principalFingerprint(),
             receipt.subjectType(),

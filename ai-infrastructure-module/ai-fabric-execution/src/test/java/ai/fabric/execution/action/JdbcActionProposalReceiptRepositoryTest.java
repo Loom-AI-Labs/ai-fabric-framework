@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Instant;
 import org.h2.jdbcx.JdbcDataSource;
 import org.junit.jupiter.api.Test;
+import org.springframework.jdbc.core.JdbcTemplate;
 
 class JdbcActionProposalReceiptRepositoryTest {
 
@@ -151,6 +152,38 @@ class JdbcActionProposalReceiptRepositoryTest {
             .contains(recentFailed);
     }
 
+    @Test
+    void migratesLegacyReceiptSchemaAndMarksUnpinnedContent() {
+        JdbcDataSource dataSource = dataSource();
+        JdbcActionProposalReceiptRepository initial =
+            new JdbcActionProposalReceiptRepository(
+                dataSource,
+                new ObjectMapper(),
+                true
+            );
+        ActionProposalReceipt receipt = ActionProposalTestFixture.receipt(
+            ActionProposalReceiptStatus.PROPOSED,
+            ActionProposalTestFixture.NOW
+        );
+        initial.create(receipt);
+        new JdbcTemplate(dataSource).execute(
+            "ALTER TABLE ai_action_proposal_receipt"
+                + " DROP COLUMN specialist_content_hash"
+        );
+
+        JdbcActionProposalReceiptRepository migrated =
+            new JdbcActionProposalReceiptRepository(
+                dataSource,
+                new ObjectMapper(),
+                true
+            );
+
+        assertThat(migrated.findById(receipt.receiptId()))
+            .get()
+            .extracting(ActionProposalReceipt::specialistContentHash)
+            .isEqualTo("legacy-unpinned");
+    }
+
     private JdbcDataSource dataSource() {
         JdbcDataSource dataSource = new JdbcDataSource();
         dataSource.setURL(
@@ -173,6 +206,7 @@ class JdbcActionProposalReceiptRepositoryTest {
             id,
             "invocation-" + id,
             ActionProposalTestFixture.SPECIALIST_ID,
+            ActionProposalTestFixture.SPECIALIST_CONTENT_HASH,
             "profile-hash",
             "principal-fingerprint",
             "account",

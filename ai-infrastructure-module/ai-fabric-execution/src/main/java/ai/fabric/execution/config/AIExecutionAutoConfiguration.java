@@ -17,7 +17,33 @@ import ai.fabric.execution.gateway.SpecialistGroundingProjector;
 import ai.fabric.execution.gateway.SpecialistOutputFinalizer;
 import ai.fabric.execution.specialist.DefaultSpecialistRegistry;
 import ai.fabric.execution.specialist.SpecialistDefinition;
+import ai.fabric.execution.specialist.SpecialistDefinitionValidator;
 import ai.fabric.execution.specialist.SpecialistRegistry;
+import ai.fabric.execution.specialist.client.DefaultSpecialistClientFactory;
+import ai.fabric.execution.specialist.client.SpecialistClientFactory;
+import ai.fabric.execution.specialist.manifest.CanonicalJsonSupport;
+import ai.fabric.execution.specialist.manifest.DefaultSpecialistManifestCompiler;
+import ai.fabric.execution.specialist.manifest.DefaultSpecialistManifestLoader;
+import ai.fabric.execution.specialist.manifest.DefaultSpecialistAuthoringCatalogProvider;
+import ai.fabric.execution.specialist.manifest.MicrometerSpecialistManifestMetrics;
+import ai.fabric.execution.specialist.manifest.SpecialistAuthoringCatalogProvider;
+import ai.fabric.execution.specialist.manifest.SpecialistDirectOutputProjector;
+import ai.fabric.execution.specialist.manifest.SpecialistDirectOutputProjectorRegistry;
+import ai.fabric.execution.specialist.manifest.SpecialistFinalOutputValidator;
+import ai.fabric.execution.specialist.manifest.SpecialistFinalOutputValidatorRegistry;
+import ai.fabric.execution.specialist.manifest.SpecialistGroundingValidator;
+import ai.fabric.execution.specialist.manifest.SpecialistGroundingValidatorRegistry;
+import ai.fabric.execution.specialist.manifest.SpecialistJsonSchemaRegistry;
+import ai.fabric.execution.specialist.manifest.SpecialistJsonSchemaValidator;
+import ai.fabric.execution.specialist.manifest.SpecialistManifestCompiler;
+import ai.fabric.execution.specialist.manifest.SpecialistManifestLoader;
+import ai.fabric.execution.specialist.manifest.SpecialistManifestMetrics;
+import ai.fabric.execution.specialist.manifest.SpecialistManifestRuntimeStatus;
+import ai.fabric.execution.specialist.manifest.SpecialistOutputNormalizer;
+import ai.fabric.execution.specialist.manifest.SpecialistOutputNormalizerRegistry;
+import ai.fabric.execution.specialist.manifest.SpecialistPromptProfileRegistry;
+import ai.fabric.execution.specialist.manifest.SpecialistRegistryBootstrap;
+import ai.fabric.execution.specialist.manifest.SpecialistResourceBundle;
 import ai.fabric.indexing.descriptor.AIEntityDescriptorRegistry;
 import ai.fabric.intent.action.AIActionRegistry;
 import ai.fabric.intent.orchestration.capability.EffectiveCapabilitiesResolver;
@@ -30,6 +56,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
@@ -53,24 +80,194 @@ public class AIExecutionAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
-    public SpecialistRegistry specialistRegistry(
-        List<SpecialistDefinition<?, ?>> definitions,
+    public SpecialistDefinitionValidator specialistDefinitionValidator(
         AIActionRegistry actionRegistry,
         OrchestrationProperties orchestrationProperties,
         ExecutionCapabilityInventory capabilityInventory
     ) {
-        Set<String> knownModes = new LinkedHashSet<>();
-        if (orchestrationProperties.getModes() != null) {
-            knownModes.addAll(orchestrationProperties.getModes().keySet());
-        }
-        if (orchestrationProperties.getDefaultMode() != null) {
-            knownModes.add(orchestrationProperties.getDefaultMode());
-        }
-        return new DefaultSpecialistRegistry(
-            definitions,
+        return new SpecialistDefinitionValidator(
             actionRegistry,
-            knownModes,
+            knownModes(orchestrationProperties),
             capabilityInventory.registeredVectorSpaces()
+        );
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    public CanonicalJsonSupport specialistCanonicalJsonSupport(
+        ObjectMapper objectMapper
+    ) {
+        return new CanonicalJsonSupport(objectMapper);
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    public SpecialistJsonSchemaValidator specialistJsonSchemaValidator() {
+        return new SpecialistJsonSchemaValidator();
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    public SpecialistManifestLoader specialistManifestLoader(
+        ObjectMapper objectMapper
+    ) {
+        return new DefaultSpecialistManifestLoader(objectMapper);
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    public SpecialistManifestCompiler specialistManifestCompiler() {
+        return new DefaultSpecialistManifestCompiler();
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    public SpecialistGroundingValidatorRegistry
+        specialistGroundingValidatorRegistry(
+            List<SpecialistGroundingValidator> validators
+        ) {
+        return new SpecialistGroundingValidatorRegistry(validators);
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    public SpecialistFinalOutputValidatorRegistry
+        specialistFinalOutputValidatorRegistry(
+            List<SpecialistFinalOutputValidator> validators
+        ) {
+        return new SpecialistFinalOutputValidatorRegistry(validators);
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    public SpecialistDirectOutputProjectorRegistry
+        specialistDirectOutputProjectorRegistry(
+            List<SpecialistDirectOutputProjector> projectors
+        ) {
+        return new SpecialistDirectOutputProjectorRegistry(projectors);
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    public SpecialistOutputNormalizerRegistry
+        specialistOutputNormalizerRegistry(
+            List<SpecialistOutputNormalizer> normalizers
+        ) {
+        return new SpecialistOutputNormalizerRegistry(normalizers);
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    public SpecialistManifestMetrics specialistManifestMetrics(
+        ObjectProvider<MeterRegistry> meterRegistryProvider
+    ) {
+        MeterRegistry meterRegistry = meterRegistryProvider.getIfAvailable();
+        return meterRegistry == null
+            ? SpecialistManifestMetrics.noop()
+            : new MicrometerSpecialistManifestMetrics(meterRegistry);
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    public SpecialistResourceBundle specialistResourceBundle(
+        SpecialistManifestLoader loader,
+        AIExecutionProperties properties
+    ) {
+        return loader.load(properties.getManifests());
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    public SpecialistRegistryBootstrap specialistRegistryBootstrap(
+        List<SpecialistDefinition<?, ?>> definitions,
+        OrchestrationProperties orchestrationProperties,
+        SpecialistResourceBundle resources,
+        SpecialistManifestCompiler compiler,
+        SpecialistDefinitionValidator definitionValidator,
+        SpecialistGroundingValidatorRegistry groundingValidators,
+        SpecialistFinalOutputValidatorRegistry finalOutputValidators,
+        SpecialistDirectOutputProjectorRegistry directOutputProjectors,
+        SpecialistOutputNormalizerRegistry outputNormalizers,
+        SpecialistJsonSchemaValidator schemaValidator,
+        CanonicalJsonSupport canonicalJson,
+        ObjectMapper objectMapper,
+        AIExecutionProperties properties,
+        SpecialistManifestMetrics metrics
+    ) {
+        return new SpecialistRegistryBootstrap(
+            definitions,
+            resources,
+            compiler,
+            definitionValidator,
+            groundingValidators,
+            finalOutputValidators,
+            directOutputProjectors,
+            outputNormalizers,
+            schemaValidator,
+            canonicalJson,
+            objectMapper,
+            iterativeModes(orchestrationProperties),
+            properties.getManifests(),
+            metrics
+        );
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    public SpecialistRegistry specialistRegistry(
+        SpecialistRegistryBootstrap bootstrap
+    ) {
+        return bootstrap.registry();
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    public SpecialistManifestRuntimeStatus specialistManifestRuntimeStatus(
+        SpecialistRegistryBootstrap bootstrap
+    ) {
+        return bootstrap.status();
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    public SpecialistJsonSchemaRegistry specialistJsonSchemaRegistry(
+        SpecialistRegistryBootstrap bootstrap
+    ) {
+        return bootstrap.schemaRegistry();
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    public SpecialistPromptProfileRegistry specialistPromptProfileRegistry(
+        SpecialistRegistryBootstrap bootstrap
+    ) {
+        return bootstrap.promptProfileRegistry();
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    public SpecialistAuthoringCatalogProvider
+        specialistAuthoringCatalogProvider(
+            OrchestrationProperties orchestrationProperties,
+            ExecutionCapabilityInventory capabilityInventory,
+            AIActionRegistry actionRegistry,
+            SpecialistJsonSchemaRegistry schemaRegistry,
+            SpecialistPromptProfileRegistry promptProfileRegistry,
+            SpecialistGroundingValidatorRegistry groundingValidators,
+            SpecialistFinalOutputValidatorRegistry finalOutputValidators,
+            SpecialistDirectOutputProjectorRegistry directOutputProjectors,
+            SpecialistOutputNormalizerRegistry outputNormalizers
+        ) {
+        return new DefaultSpecialistAuthoringCatalogProvider(
+            knownModes(orchestrationProperties),
+            capabilityInventory,
+            actionRegistry,
+            schemaRegistry,
+            promptProfileRegistry,
+            groundingValidators,
+            finalOutputValidators,
+            directOutputProjectors,
+            outputNormalizers
         );
     }
 
@@ -206,7 +403,8 @@ public class AIExecutionAutoConfiguration {
         ObjectProvider<ActionProposalCoordinator> actionProposalCoordinator,
         @Qualifier("aiFabricExecutionTaskExecutor") AsyncTaskExecutor taskExecutor,
         Clock clock,
-        AIExecutionProperties properties
+        AIExecutionProperties properties,
+        SpecialistManifestMetrics specialistMetrics
     ) {
         return new DefaultAIExecutionGateway(
             specialistRegistry,
@@ -222,7 +420,69 @@ public class AIExecutionAutoConfiguration {
             actionProposalCoordinator::getIfAvailable,
             taskExecutor,
             clock,
-            properties.getAsync().getResultTtl()
+            properties.getAsync().getResultTtl(),
+            specialistMetrics
         );
+    }
+
+    @Bean
+    @ConditionalOnBean(AIExecutionGateway.class)
+    @ConditionalOnMissingBean
+    public SpecialistClientFactory specialistClientFactory(
+        SpecialistRegistry specialistRegistry,
+        AIExecutionGateway executionGateway,
+        ObjectMapper objectMapper
+    ) {
+        return new DefaultSpecialistClientFactory(
+            specialistRegistry,
+            executionGateway,
+            objectMapper
+        );
+    }
+
+    private Set<String> knownModes(
+        OrchestrationProperties orchestrationProperties
+    ) {
+        Set<String> knownModes = new LinkedHashSet<>();
+        if (orchestrationProperties.getModes() != null) {
+            orchestrationProperties.getModes().keySet().stream()
+                .filter(java.util.Objects::nonNull)
+                .map(value -> value.trim().toLowerCase(Locale.ROOT))
+                .filter(value -> !value.isEmpty())
+                .forEach(knownModes::add);
+        }
+        if (orchestrationProperties.getDefaultMode() != null
+            && !orchestrationProperties.getDefaultMode().isBlank()) {
+            knownModes.add(
+                orchestrationProperties.getDefaultMode()
+                    .trim()
+                    .toLowerCase(Locale.ROOT)
+            );
+        }
+        return Set.copyOf(knownModes);
+    }
+
+    private Set<String> iterativeModes(
+        OrchestrationProperties orchestrationProperties
+    ) {
+        if (orchestrationProperties.getModes() == null) {
+            return Set.of();
+        }
+        Set<String> modes = new LinkedHashSet<>();
+        orchestrationProperties.getModes().forEach((name, overrides) -> {
+            if (name == null
+                || overrides == null
+                || overrides.getReadActionResolution() == null) {
+                return;
+            }
+            var read = overrides.getReadActionResolution();
+            if (Boolean.TRUE.equals(read.getEnabled())
+                && read.getPlanningMode()
+                    == OrchestrationProperties
+                        .ReadActionResolutionPlanningMode.ITERATIVE) {
+                modes.add(name.trim().toLowerCase(Locale.ROOT));
+            }
+        });
+        return Set.copyOf(modes);
     }
 }

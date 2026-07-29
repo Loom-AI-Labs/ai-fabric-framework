@@ -33,6 +33,43 @@ and optional RAG/chat modules needed by its specialist.
 
 ## Define A Specialist
 
+Most specialists should use versioned startup manifests. Keep the Java
+definition path for strongly typed specialists and genuinely new domain
+behavior.
+
+### Manifest Path
+
+Enable startup loading:
+
+```yaml
+ai:
+  execution:
+    manifests:
+      enabled: true
+      fail-fast: true
+      locations:
+        - classpath*:ai-specialists/*.yml
+```
+
+A bundle defines exact-version input/output schemas, a prompt profile, and one
+or more specialists. AI Fabric validates and compiles each manifest into the
+same immutable registry used by Java definitions. No specialist database or
+second execution path is introduced.
+
+The packaged public resources are:
+
+```text
+META-INF/ai-fabric/specialist-resource-v1.schema.json
+META-INF/ai-fabric/examples/support-knowledge-specialist.yml
+```
+
+See
+[`SPECIALIST_MANIFEST_AUTHORING_GUIDE.md`](../../docs/Framework-Dev-Guides/application-patterns/SPECIALIST_MANIFEST_AUTHORING_GUIDE.md)
+for the full contract, trusted authoring catalogue, extension points,
+schema-bound client, diagnostics, and deployment checks.
+
+### Java Path
+
 Register a `SpecialistDefinition<I, O>` bean. The definition contains:
 
 - a versioned `SpecialistId`;
@@ -68,7 +105,7 @@ SpecialistDefinition<AccountRequest, AccountAssessment> accountResolver() {
             "resolver",
             requested,
             ExecutionStrategy.BOUNDED_ITERATIVE,
-            false
+            SpecialistWritePolicy.DISABLED
         ),
         SpecialistLimits.defaults(),
         accountInputAdapter(),
