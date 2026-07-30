@@ -1,9 +1,10 @@
 # Bounded Read-Only Parallel Plan Implementation Plan
 
-- **Status:** Implemented and verified; commit pin pending
+- **Status:** Implemented and verified
 - **Date:** 2026-07-30
 - **Framework baseline:** AI Fabric `0.4.0`
 - **Code reviewed at:** `32d5c85`
+- **Implementation commit:** `60d7949`
 - **Prerequisite:** Plans `0001` through `0012`
 - **Target:** Optional P5 agentic-enablement capability; version not assigned
 - **Reference proof:** `examples/real-apps/agentic-ai-action-resolver`
@@ -452,7 +453,7 @@ The implementation is complete only when:
 5. [x] Add equivalent Agentic Resolver sequential and parallel controls.
 6. [x] Run normal tests, clean packaging, parity, and real OpenAI comparison.
 7. [x] Update release, adoption, operations, and reference-app documentation.
-8. [ ] Commit the implementation and pin its exact commit.
+8. [x] Commit the implementation and pin its exact commit.
 
 ## 15. Implementation Evidence
 

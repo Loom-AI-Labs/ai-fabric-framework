@@ -27,7 +27,7 @@ checklists here.
 | [0010 - Explicit read-only specialist handoff](./0010-explicit-read-only-specialist-handoff-implementation-plan.md) | Implemented and verified; not released | Distinct predecessor/successor handoff semantics, exact read-only target admission, independent authorization, and an Account Resolver intake proof |
 | [0011 - Interactive dialogue ownership](./0011-interactive-dialogue-ownership-implementation-plan.md) | Implemented and verified; not released | Backend-frozen conversation projections, one explicit dialogue owner, one active turn, and an upgraded Account Resolver chat proof |
 | [0012 - Bounded conversation manager](./0012-bounded-conversation-manager-implementation-plan.md) | Implemented and verified; not released | One manager-owned frozen turn, three typed directives, one closed read-only worker choice, and exactly one external response |
-| [0013 - Bounded read-only parallel plan](./0013-bounded-read-only-parallel-plan-implementation-plan.md) | Implemented and verified; commit pin pending | Opt-in synchronous READ-only fan-out/fan-in, `ALL_REQUIRED` validation, deterministic aggregation, and an equivalent sequential control |
+| [0013 - Bounded read-only parallel plan](./0013-bounded-read-only-parallel-plan-implementation-plan.md) | Implemented and verified | Opt-in synchronous READ-only fan-out/fan-in, `ALL_REQUIRED` validation, deterministic aggregation, and an equivalent sequential control |
 
 ## Plan Rules
 
