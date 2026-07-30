@@ -1,12 +1,13 @@
 # Loom AI Adoption Release Notes: AI Fabric Agentic Enablement
 
-- **Status:** Framework implementation complete and pushed; publication pending
+- **Status:** AI Fabric `0.5.0` published and independently consumable
 - **Audience:** Loom AI platform, application, security, and operations teams
 - **Recommended release:** AI Fabric `0.5.0`
+- **Release tag:** `ai-fabric-framework-v0.5.0`
+- **Release commit:** `a49138c6bff39c66bf48c3885cb911e8d7b78d84`
 - **Compatibility baseline:** AI Fabric `0.4.0`
 - **Baseline tag:** `ai-fabric-framework-v0.4.0`
 - **Baseline commit:** `857619f`
-- **Candidate baseline commit:** `d45f333`
 - **Prepared:** 2026-07-30
 - **Reference application:**
   [`agentic-ai-action-resolver`](../../examples/real-apps/agentic-ai-action-resolver)
@@ -108,11 +109,14 @@ authoritative reconciliation rule, or safe outcome projector.
 
 ## 2. Release Verdict For Loom AI
 
-The framework side is ready for a release candidate.
+The framework release is published and its public BOM, execution JAR, and
+transitive dependencies have been verified from Maven Central in an empty
+consumer repository.
 
-Loom AI should adopt it as an additive capability after AI Fabric publishes the
-new version. Loom AI should not build a separate agent runtime, action engine,
-receipt store, or manifest interpreter.
+Loom AI may now adopt it as an additive capability after completing its
+mandatory `0.4.0` lifecycle baseline and downstream platform gates. Loom AI
+should not build a separate agent runtime, action engine, receipt store, or
+manifest interpreter.
 
 The adoption boundary is:
 
@@ -1929,13 +1933,13 @@ commit.
 - Framework release guards passed, including provider-registry, workflow-test,
   release-documentation, vector-readiness, and no-production-stub validation.
 
-### Standalone candidate consumer
+### Standalone consumer
 
 - `examples/agentic-execution-consumer` has no reactor parent or relative
   framework module dependency. It imports `ai-fabric-bom` and explicitly
   consumes `ai-fabric-execution`.
 - A clean Maven invocation compiled the application and two test classes from
-  installed candidate JARs.
+  locally installed release-source JARs before publication.
 - Its Spring Boot 4.1 context loaded public sequential and parallel plan
   declarations with framework runtime auto-configuration explicitly disabled.
 - Its deterministic runtime test executed the real public
@@ -1944,11 +1948,14 @@ commit.
   parallel group identity, and one common source revision.
 - Two tests passed with zero failures, errors, or skips. No provider fallback,
   framework source-path dependency, or test-skipping flag was used.
-- Automatic framework CI now runs this standalone test after candidate
-  artifacts are installed. Maven Central and Loom AI platform consumption
-  remain separate post-publication gates.
+- Automatic framework CI runs this standalone test after release-source
+  artifacts are installed.
+- After publication, a copy outside the framework checkout used an empty Maven
+  repository, resolved the BOM and execution JAR from Maven Central, and passed
+  both tests. Resolver metadata recorded `central` as the artifact origin, and
+  the dependency tree contained only AI Fabric `0.5.0` artifacts.
 
-### Final `0.5.0` source-candidate gate
+### Final `0.5.0` release gate
 
 - The final 31-module release-profile reactor passed with tests enabled and
   generated the publishable source and Javadoc artifacts.
@@ -1976,9 +1983,10 @@ commit.
   stable enum order.
 - The reference app now configures an explicit, overridable OpenAI timeout.
 
-## 22. Release Gate Still Required
+## 22. Release And Downstream Adoption Gates
 
-Before Loom AI adopts a published artifact:
+Framework publication is complete. Loom AI adoption still requires its own
+baseline migration, package, deployment, and canary evidence:
 
 - [x] Assign the release version.
 - [x] Update framework, BOM, examples, and documentation consistently.
@@ -1994,18 +2002,18 @@ Before Loom AI adopts a published artifact:
 - [x] Run deterministic external retrieval boundary, P1 product scenarios,
   packaged boot matrix, and source-candidate Docker probes.
 - [x] Run packaged Docker and JDBC restart/replay proof.
-- [x] Run standalone candidate consumer compile, context, and public execution
-  runtime tests from installed JARs.
-- [ ] Verify Maven Central consumer resolution.
+- [x] Run standalone release-source consumer compile, context, and public
+  execution runtime tests from installed JARs.
+- [x] Verify Maven Central consumer resolution from an empty repository.
 - [x] Publish release notes and migration guidance in the release source.
 - [ ] Deploy the independent Agentic AI Action Resolver.
-- [ ] Verify its health reports the released version and candidate commit.
+- [ ] Verify its health reports the released version and release commit.
 - [ ] Run Loom AI consumer compilation and runtime smoke tests.
 - [x] Obtain explicit release approval.
 
-Until those items pass, Loom AI should treat the candidate commit named at the
-top of this document as a verified framework candidate, not a published
-dependency.
+AI Fabric `0.5.0` is a published dependency. The unchecked items are downstream
+application and Loom AI adoption gates; they do not change the framework
+release status.
 
 ## 23. Explicitly Deferred
 
