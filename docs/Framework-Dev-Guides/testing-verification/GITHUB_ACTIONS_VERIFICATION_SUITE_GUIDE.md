@@ -67,6 +67,7 @@ It covers:
 - AI Fabric framework reactor build, tests, and install
 - integration test-suite compilation
 - minimal Spring Boot consumer compilation
+- standalone agentic execution consumer context and public plan runtime tests
 - real-apps build/install plus offline smoke boot checks
 
 The framework release guard runs the lightweight checks that should fail before the Maven reactor is

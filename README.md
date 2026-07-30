@@ -339,6 +339,7 @@ See [Testing and Verification](docs/getting-started/11-testing-and-verification.
 ```text
 ai-infrastructure-module/     Framework modules, providers, vectors, and integration suites
 examples/minimal-spring-boot/ Minimal Spring Boot consumer
+examples/agentic-execution-consumer/ Standalone public execution API consumer and runtime proof
 examples/real-apps/           Product-shaped applications and deployment smoke tests
 docs/getting-started/         Canonical external-developer guides
 docs/llm-context/             Coding-assistant context and task recipes

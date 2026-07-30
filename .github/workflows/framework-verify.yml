@@ -80,6 +80,12 @@ jobs:
           mvn ${MAVEN_ARGS} -f examples/minimal-spring-boot/pom.xml \
             compile
 
+      - name: Verify standalone agentic execution consumer
+        run: |
+          mvn ${MAVEN_ARGS} \
+            -f examples/agentic-execution-consumer/pom.xml \
+            clean test
+
       - name: Build and install real apps suite
         run: |
           mvn ${MAVEN_ARGS} -f examples/real-apps/pom.xml \

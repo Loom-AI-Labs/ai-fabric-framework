@@ -41,6 +41,7 @@ This is the default CI gate for framework code changes.
 | Docker daemon | `Maven Build`, `Vector Provider Container Contracts` | Verified before container-backed checks. Required by Testcontainers. |
 | `.github/scripts/*` guard scripts | `Provider Registry` | Must be executable and committed. |
 | `examples/minimal-spring-boot` | `Maven Build` | Used as a consumer compile check. |
+| `examples/agentic-execution-consumer` | `Maven Build` | Standalone BOM consumer that boots and executes the public bounded-plan contracts from installed candidate JARs. |
 | `examples/real-apps` | `Maven Build` | Built, smoke-booted offline, used for the ecommerce-to-chat data-sync proof, and used for deterministic P1 product-flow smokes. |
 | `.github/scripts/run-vector-container-contracts.sh` | `Vector Provider Container Contracts` | One-command runner for Qdrant REST/gRPC, Weaviate, and Milvus contract parity. |
 
@@ -85,6 +86,7 @@ Step dependencies:
 | Build, test, and install framework reactor | JDK 21, Maven, all non-integration framework modules | Compile error, unit test failure, packaging failure, dependency resolution failure. |
 | Compile restored integration test suites | Framework modules built by `-am`, integration test modules | Integration test source no longer compiles against framework APIs. |
 | Compile minimal consumer example | Installed framework artifacts and example POM | A normal consumer app cannot compile. |
+| Verify standalone agentic execution consumer | Installed framework artifacts, public BOM, standalone consumer POM | The optional execution artifact, public plan API, Spring context, or deterministic fan-out/fan-in runtime cannot be consumed outside the reactor. |
 | Build and install real apps suite | Installed framework artifacts and real-app modules | Real application examples fail to compile, test, or package. |
 | Smoke boot-test real apps | real-app artifacts and `.github/scripts/smoke-boot-realapps.sh` | Offline smoke profile startup fails. |
 | Smoke data-sync between ecommerce and chat runtime | real-app artifacts, `.github/scripts/smoke-ecommerce-chat-datasync.sh`, free local ports, Python 3 | Cross-app product upsert/search/delete/search proof fails or stale vector results survive delete. |
@@ -117,6 +119,7 @@ Then it checks consumer/examples:
 
 ```bash
 mvn -B -V --no-transfer-progress -f examples/minimal-spring-boot/pom.xml compile
+mvn -B -V --no-transfer-progress -f examples/agentic-execution-consumer/pom.xml clean test
 mvn -B -V --no-transfer-progress -f examples/real-apps/pom.xml install
 .github/scripts/smoke-boot-realapps.sh
 .github/scripts/smoke-ecommerce-chat-datasync.sh
@@ -132,6 +135,8 @@ So automatic CI verifies:
   idempotency, API-key auth, retrieval forwarding, and documents-only rejection
 - restored integration suite compilation
 - minimal consumer compilation
+- standalone agentic execution consumer compile, context startup, and public
+  sequential/parallel plan runtime proof
 - real-app build/install
 - offline real-app smoke boot
 - deterministic ecommerce-store to chat-capabilities-demo data-sync upsert, runtime vector search,
@@ -141,6 +146,13 @@ So automatic CI verifies:
   confirmation/interceptor behavior
 
 It does not run the full RealAPI provider matrix automatically on every PR.
+
+The agentic consumer uses installed candidate JARs because an unreleased
+version cannot yet exist on Maven Central. After publication, rerun the same
+standalone POM with a fresh Maven local repository and
+`-Dai-fabric.version=<released-version>` without installing the framework
+reactor first. Only that later command proves Maven Central metadata and
+transitive artifact completeness.
 
 ### Job: Vector Provider Container Contracts
 

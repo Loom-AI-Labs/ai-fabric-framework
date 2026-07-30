@@ -414,7 +414,7 @@ public final class DefaultSpecialistManifestCompiler
         if (spec.execution().strategy() == ExecutionStrategy.DIRECT) {
             throw failure(
                 "EXECUTION_STRATEGY_UNSUPPORTED",
-                "DIRECT is not implemented for manifest specialists.",
+                "DIRECT is unsupported for manifest specialists.",
                 context.source()
             );
         }

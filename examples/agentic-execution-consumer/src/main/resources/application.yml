@@ -1,0 +1,15 @@
+spring:
+  application:
+    name: ai-fabric-agentic-execution-consumer
+  main:
+    web-application-type: none
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration
+
+# This consumer packages public plan declarations. Its deterministic runtime
+# proof constructs the coordinator in tests; no provider fallback is enabled.
+ai:
+  enabled: false
+  execution:
+    enabled: false

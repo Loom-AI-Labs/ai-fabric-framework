@@ -1853,6 +1853,25 @@ commit.
   invoked the same two specialists; this is a bounded measurement, not a
   general latency guarantee.
 
+### Standalone candidate consumer
+
+- `examples/agentic-execution-consumer` has no reactor parent or relative
+  framework module dependency. It imports `ai-fabric-bom` and explicitly
+  consumes `ai-fabric-execution`.
+- A clean Maven invocation compiled the application and two test classes from
+  installed candidate JARs.
+- Its Spring Boot 4.1 context loaded public sequential and parallel plan
+  declarations with framework runtime auto-configuration explicitly disabled.
+- Its deterministic runtime test executed the real public
+  `DefaultAIExecutionCoordinator`, proved two read branches overlapped,
+  produced one atomic typed aggregate, and verified declaration-order traces,
+  parallel group identity, and one common source revision.
+- Two tests passed with zero failures, errors, or skips. No provider fallback,
+  framework source-path dependency, or test-skipping flag was used.
+- Automatic framework CI now runs this standalone test after candidate
+  artifacts are installed. Maven Central and Loom AI platform consumption
+  remain separate post-publication gates.
+
 ## 22. Release Gate Still Required
 
 Before Loom AI adopts a published artifact:
@@ -1869,6 +1888,8 @@ Before Loom AI adopts a published artifact:
 - [ ] Run keyed OpenAI sequential/parallel parity, overlap, atomic failure,
   deadline, and disabled-feature scenarios.
 - [ ] Run packaged Docker and JDBC restart/replay proof.
+- [x] Run standalone candidate consumer compile, context, and public execution
+  runtime tests from installed JARs.
 - [ ] Verify Maven Central consumer resolution.
 - [ ] Publish release notes and migration guidance.
 - [ ] Deploy the independent Agentic AI Action Resolver.
