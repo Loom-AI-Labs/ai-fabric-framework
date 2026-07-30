@@ -46,6 +46,7 @@ import ai.fabric.intent.action.ActionAccessMode;
 import ai.fabric.intent.action.ActionContext;
 import ai.fabric.intent.action.invocation.ActionProposalCandidate;
 import ai.fabric.intent.orchestration.OrchestrationContext;
+import ai.fabric.intent.orchestration.OrchestrationContextMetadataKeys;
 import ai.fabric.intent.orchestration.OrchestrationResult;
 import ai.fabric.intent.orchestration.OrchestrationResultType;
 import ai.fabric.intent.orchestration.capability.DefaultEffectiveCapabilitiesResolver;
@@ -189,6 +190,22 @@ class DefaultAIExecutionGatewayTest {
                             .userId("untrusted-user")
                             .sessionId("untrusted-session")
                             .position("resolver")
+                            .metadata(Map.of(
+                                OrchestrationContextMetadataKeys.SUBJECT_ID,
+                                "untrusted-subject",
+                                OrchestrationContextMetadataKeys.SUBJECT_TYPE,
+                                "untrusted-subject-type",
+                                OrchestrationContextMetadataKeys.AUTH_MODE,
+                                "UNTRUSTED",
+                                OrchestrationContextMetadataKeys.CALLER_TYPE,
+                                "UNTRUSTED",
+                                OrchestrationContextMetadataKeys.DEPLOYMENT_ID,
+                                "untrusted-deployment",
+                                OrchestrationContextMetadataKeys.TENANT_ID,
+                                "untrusted-tenant",
+                                OrchestrationContextMetadataKeys.GRANTED_SCOPES,
+                                List.of("untrusted:scope")
+                            ))
                             .build();
                     }
                 },
@@ -215,6 +232,35 @@ class DefaultAIExecutionGatewayTest {
             .isNull();
         assertThat(observed.get().getOrchestrationContext().getPosition())
             .isEqualTo("resolver");
+        assertThat(observed.get().getOrchestrationContext().getMetadata())
+            .containsEntry(
+                OrchestrationContextMetadataKeys.SUBJECT_ID,
+                "account-42"
+            )
+            .containsEntry(
+                OrchestrationContextMetadataKeys.SUBJECT_TYPE,
+                "account"
+            )
+            .containsEntry(
+                OrchestrationContextMetadataKeys.AUTH_MODE,
+                "TRUSTED_APPLICATION"
+            )
+            .containsEntry(
+                OrchestrationContextMetadataKeys.CALLER_TYPE,
+                "SERVICE"
+            )
+            .containsEntry(
+                OrchestrationContextMetadataKeys.DEPLOYMENT_ID,
+                "test"
+            )
+            .containsEntry(
+                OrchestrationContextMetadataKeys.TENANT_ID,
+                "tenant-1"
+            )
+            .containsEntry(
+                OrchestrationContextMetadataKeys.GRANTED_SCOPES,
+                List.copyOf(authorizedScopes())
+            );
     }
 
     @Test

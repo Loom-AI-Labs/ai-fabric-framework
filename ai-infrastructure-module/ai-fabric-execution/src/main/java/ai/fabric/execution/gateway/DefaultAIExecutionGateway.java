@@ -1,5 +1,6 @@
 package ai.fabric.execution.gateway;
 
+import ai.fabric.dto.AIAccessSubjectContext;
 import ai.fabric.evidence.AIEvidenceReference;
 import ai.fabric.execution.action.ActionProposalCoordinator;
 import ai.fabric.execution.action.ActionProposalPersistenceException;
@@ -29,7 +30,9 @@ import ai.fabric.execution.specialist.manifest.SpecialistSchemaDirection;
 import ai.fabric.execution.specialist.manifest.SpecialistManifestMetrics;
 import ai.fabric.intent.action.AIActionRegistry;
 import ai.fabric.intent.action.invocation.ActionProposalCandidate;
+import ai.fabric.intent.orchestration.OrchestrationAuthContextResolver;
 import ai.fabric.intent.orchestration.OrchestrationContext;
+import ai.fabric.intent.orchestration.OrchestrationContextMetadataKeys;
 import ai.fabric.intent.orchestration.OrchestrationResult;
 import ai.fabric.intent.orchestration.OrchestrationResultType;
 import ai.fabric.intent.orchestration.conversation.ApprovedConversationSnapshot;
@@ -66,6 +69,20 @@ public final class DefaultAIExecutionGateway
 
     private static final String EXECUTION_DEADLINE_DIAGNOSTIC =
         "executionDeadline";
+    private static final Set<String> VERIFIED_AUTH_METADATA_KEYS = Set.of(
+        OrchestrationContextMetadataKeys.SUBJECT_ID,
+        OrchestrationContextMetadataKeys.SUBJECT_TYPE,
+        OrchestrationContextMetadataKeys.AUTH_MODE,
+        OrchestrationContextMetadataKeys.CALLER_TYPE,
+        OrchestrationContextMetadataKeys.AUTH_ISSUER,
+        OrchestrationContextMetadataKeys.AUTH_AUDIENCES,
+        OrchestrationContextMetadataKeys.AUTH_EXPIRES_AT,
+        OrchestrationContextMetadataKeys.DEPLOYMENT_ID,
+        OrchestrationContextMetadataKeys.CUSTOMER_ID,
+        OrchestrationContextMetadataKeys.TENANT_ID,
+        OrchestrationContextMetadataKeys.GRANTED_SCOPES,
+        OrchestrationContextMetadataKeys.REQUESTED_SCOPES
+    );
     private static final Logger log =
         LoggerFactory.getLogger(DefaultAIExecutionGateway.class);
 
@@ -1746,6 +1763,7 @@ public final class DefaultAIExecutionGateway
             .sessionId(null)
             .userId(trustedIdentifier(trustedContext))
             .mode(definition.executionProfile().mode())
+            .metadata(bindTrustedMetadata(context, trustedContext))
             .specialistInstructions(definition.instructions().render());
         if (binding != null) {
             builder.userId(binding.userId())
@@ -1796,6 +1814,85 @@ public final class DefaultAIExecutionGateway
             }
         }
         return builder.build();
+    }
+
+    private Map<String, Object> bindTrustedMetadata(
+        OrchestrationContext context,
+        TrustedExecutionContext trustedContext
+    ) {
+        Map<String, Object> metadata = context.getMetadata() == null
+            ? new LinkedHashMap<>()
+            : new LinkedHashMap<>(context.getMetadata());
+        VERIFIED_AUTH_METADATA_KEYS.forEach(metadata::remove);
+
+        AIAccessSubjectContext trustedAuth =
+            OrchestrationAuthContextResolver.from(trustedContext);
+        putVerifiedMetadata(
+            metadata,
+            OrchestrationContextMetadataKeys.SUBJECT_ID,
+            trustedAuth.getSubjectId()
+        );
+        putVerifiedMetadata(
+            metadata,
+            OrchestrationContextMetadataKeys.SUBJECT_TYPE,
+            trustedAuth.getSubjectType()
+        );
+        putVerifiedMetadata(
+            metadata,
+            OrchestrationContextMetadataKeys.AUTH_MODE,
+            trustedAuth.getAuthMode()
+        );
+        putVerifiedMetadata(
+            metadata,
+            OrchestrationContextMetadataKeys.CALLER_TYPE,
+            trustedAuth.getCallerType()
+        );
+        putVerifiedMetadata(
+            metadata,
+            OrchestrationContextMetadataKeys.AUTH_ISSUER,
+            trustedAuth.getIssuer()
+        );
+        putVerifiedMetadata(
+            metadata,
+            OrchestrationContextMetadataKeys.AUTH_AUDIENCES,
+            trustedAuth.getAudiences()
+        );
+        putVerifiedMetadata(
+            metadata,
+            OrchestrationContextMetadataKeys.AUTH_EXPIRES_AT,
+            trustedAuth.getExpiresAt()
+        );
+        putVerifiedMetadata(
+            metadata,
+            OrchestrationContextMetadataKeys.DEPLOYMENT_ID,
+            trustedAuth.getDeploymentId()
+        );
+        putVerifiedMetadata(
+            metadata,
+            OrchestrationContextMetadataKeys.CUSTOMER_ID,
+            trustedAuth.getCustomerId()
+        );
+        putVerifiedMetadata(
+            metadata,
+            OrchestrationContextMetadataKeys.TENANT_ID,
+            trustedAuth.getTenantId()
+        );
+        putVerifiedMetadata(
+            metadata,
+            OrchestrationContextMetadataKeys.GRANTED_SCOPES,
+            trustedAuth.getGrantedScopes()
+        );
+        return metadata;
+    }
+
+    private void putVerifiedMetadata(
+        Map<String, Object> metadata,
+        String key,
+        Object value
+    ) {
+        if (value != null) {
+            metadata.put(key, value);
+        }
     }
 
     private String trustedIdentifier(TrustedExecutionContext trustedContext) {
