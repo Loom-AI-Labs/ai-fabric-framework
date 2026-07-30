@@ -439,6 +439,24 @@ ai:
         value: ${AI_RETRIEVAL_CONNECTOR_API_KEY:}
       hmac:
         secret: ${AI_RETRIEVAL_CONNECTOR_HMAC_SECRET:}
+      response-policy:
+        max-documents: 50
+        max-response-characters: 1000000
+        max-document-id-characters: 512
+        max-content-characters: 32000
+        max-context-characters: 128000
+        max-source-characters: 256
+        max-url-characters: 2048
+        max-vector-space-characters: 128
+        max-metadata-entries: 32
+        max-metadata-depth: 4
+        max-metadata-characters: 8192
+        max-message-characters: 512
+        max-error-code-characters: 64
+        allowed-url-schemes: [https]
+        allowed-url-host-suffixes: []
+        allowed-metadata-keys: []
+        unknown-metadata-policy: DROP
 ```
 
 | Property | Default | Description |
@@ -454,12 +472,31 @@ ai:
 | `ai.retrieval.connector.api-key.header` | `X-AIFABRIC-API-KEY` | Header name used when an API key value is configured. |
 | `ai.retrieval.connector.api-key.value` | unset | Optional static API key value. |
 | `ai.retrieval.connector.hmac.secret` | unset | Optional shared secret for HMAC request signing. |
+| `ai.retrieval.connector.response-policy.max-documents` | `50` | Maximum documents accepted, additionally bounded by effective request `topK`. |
+| `ai.retrieval.connector.response-policy.max-response-characters` | `1000000` | Maximum raw response-body characters before JSON parsing. |
+| `ai.retrieval.connector.response-policy.max-document-id-characters` | `512` | Maximum document ID length. |
+| `ai.retrieval.connector.response-policy.max-content-characters` | `32000` | Maximum content length per document. |
+| `ai.retrieval.connector.response-policy.max-context-characters` | `128000` | Maximum assembled RAG context length. |
+| `ai.retrieval.connector.response-policy.max-source-characters` | `256` | Maximum source-attribution length. |
+| `ai.retrieval.connector.response-policy.max-url-characters` | `2048` | Maximum citation URL length. |
+| `ai.retrieval.connector.response-policy.max-vector-space-characters` | `128` | Maximum requested/returned vector-space length. |
+| `ai.retrieval.connector.response-policy.max-metadata-entries` | `32` | Maximum traversed metadata entries/items per document. |
+| `ai.retrieval.connector.response-policy.max-metadata-depth` | `4` | Maximum metadata nesting depth. |
+| `ai.retrieval.connector.response-policy.max-metadata-characters` | `8192` | Maximum serialized approved metadata length. |
+| `ai.retrieval.connector.response-policy.max-message-characters` | `512` | Maximum connector message length. |
+| `ai.retrieval.connector.response-policy.max-error-code-characters` | `64` | Maximum connector error-code length. |
+| `ai.retrieval.connector.response-policy.allowed-url-schemes` | `[https]` | Allowed citation URL schemes. |
+| `ai.retrieval.connector.response-policy.allowed-url-host-suffixes` | `[]` | Optional exact/subdomain host suffix allowlist. Empty means any host under an allowed scheme. |
+| `ai.retrieval.connector.response-policy.allowed-metadata-keys` | `[]` | Exact dotted metadata paths allowed into evidence. |
+| `ai.retrieval.connector.response-policy.unknown-metadata-policy` | `DROP` | Drops unknown metadata by default; `REJECT` fails the response. |
 
 When enabled, the module provides a read-only `RAGProvider` that calls `POST /retrieval/search`.
 It backs off if the application already defines a `RAGProvider`, so custom retrieval providers stay
-authoritative. The connector validates successful responses as documents-only and fails closed when
-a response includes generated answers, prompts, tool instructions, malformed documents, or missing
-document arrays.
+authoritative. The connector validates successful responses as documents-only, verifies requested
+vector-space ownership, applies field/response/URL/metadata limits, and fails closed when a response
+includes generated answers, prompts, tool instructions, unsafe evidence, malformed documents, or
+missing document arrays. Ordered application `RetrievalDocumentSanitizer` beans may narrow approved
+evidence but cannot widen policy.
 
 ## Web Endpoints (`ai.web.*`)
 

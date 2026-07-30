@@ -60,6 +60,33 @@ class IndexingQueueServiceTest {
     }
 
     @Test
+    void registersRequiredModulesOnAPlainApplicationMapper() {
+        IndexingQueueRepository repository =
+            mock(IndexingQueueRepository.class);
+        when(repository.saveAndFlush(any())).thenAnswer(invocation -> {
+            IndexingQueueEntry entry = invocation.getArgument(0);
+            ReflectionTestUtils.setField(entry, "id", 42L);
+            return entry;
+        });
+        IndexingQueueService service = new IndexingQueueService(
+            repository,
+            new AIIndexingProperties(),
+            new ObjectMapper(),
+            CLOCK,
+            new IndexingMetrics(null)
+        );
+
+        IndexingQueueEntry entry = service.enqueue(
+            document(),
+            IndexingStrategy.ASYNC
+        );
+
+        assertThat(entry.getPayload())
+            .contains("\"occurredAt\"");
+        assertThat(service.readDocument(entry)).isEqualTo(document());
+    }
+
+    @Test
     void rejectsTamperedEnvelopeWithoutExposingPayload() {
         IndexingQueueService service = service(mock(IndexingQueueRepository.class));
         IndexingQueueEntry entry = new IndexingQueueEntry();

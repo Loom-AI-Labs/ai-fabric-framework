@@ -207,7 +207,8 @@ public class RAGResponse {
         private String type;
         
         /**
-         * Relevance score (0.0 to 1.0)
+         * Provider-defined relevance score. Consumers must not assume a
+         * shared scale across retrieval providers.
          */
         private Double score;
         

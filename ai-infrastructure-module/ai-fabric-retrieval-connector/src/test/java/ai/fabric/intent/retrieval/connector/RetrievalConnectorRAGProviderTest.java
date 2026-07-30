@@ -18,6 +18,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -68,6 +69,10 @@ class RetrievalConnectorRAGProviderTest {
         assertThat(response.getSuccess()).isTrue();
         assertThat(response.getDocuments()).hasSize(1);
         assertThat(response.getDocuments().get(0).getId()).isEqualTo("d1");
+        assertThat(response.getDocuments().get(0).getType())
+            .isEqualTo("policy");
+        assertThat(response.getDocuments().get(0).getMetadata())
+            .isEmpty();
         assertThat(response.getContext()).contains("Relevant Context:");
         assertThat(fake.lastRequestBody()).isNotBlank();
         Map<String, Object> request = readRequest(fake.lastRequestBody());
@@ -327,6 +332,338 @@ class RetrievalConnectorRAGProviderTest {
     }
 
     @Test
+    void performRag_shouldFailWholeResponseOnVectorSpaceMismatch() {
+        FakeHttpClient fake = new FakeHttpClient(List.of(
+            ResponseEntity.ok("""
+                {"success":true,"documents":[{"id":"d1","content":"private evidence","score":0.9,"vectorSpace":"private-policy"}],"count":1}
+                """.trim())
+        ));
+        RetrievalConnectorRAGProvider provider =
+            new RetrievalConnectorRAGProvider(
+                props("https://example", 1, Duration.ZERO),
+                factory(fake),
+                null,
+                fixedClock()
+            );
+
+        RAGResponse response = provider.performRag(
+            request("public-policy", 1)
+        );
+
+        assertThat(response.getSuccess()).isFalse();
+        assertThat(response.getDocuments()).isEmpty();
+        assertThat(response.getContext())
+            .isEqualTo("No relevant context found.");
+        assertThat(response.getMetadata()).containsEntry(
+            "errorCode",
+            RetrievalDocumentPolicyException.VECTOR_SPACE_MISMATCH
+        );
+        assertThat(response.getErrorMessage())
+            .doesNotContain("private evidence");
+    }
+
+    @Test
+    void performRag_shouldRejectDocumentCountAboveEffectiveTopK() {
+        FakeHttpClient fake = new FakeHttpClient(List.of(
+            ResponseEntity.ok("""
+                {"success":true,"documents":[{"id":"d1","content":"one","score":0.9},{"id":"d2","content":"two","score":0.8}],"count":2}
+                """.trim())
+        ));
+        RetrievalConnectorRAGProvider provider =
+            new RetrievalConnectorRAGProvider(
+                props("https://example", 1, Duration.ZERO),
+                factory(fake),
+                null,
+                fixedClock()
+            );
+
+        RAGResponse response = provider.performRag(request("policy", 1));
+
+        assertThat(response.getSuccess()).isFalse();
+        assertThat(response.getMetadata()).containsEntry(
+            "errorCode",
+            RetrievalDocumentPolicyException.RESPONSE_LIMIT_EXCEEDED
+        );
+    }
+
+    @Test
+    void performRag_shouldRejectOversizedResponseAndContext() {
+        AIRetrievalConnectorProperties bodyProperties =
+            props("https://example", 1, Duration.ZERO);
+        bodyProperties.getResponsePolicy()
+            .setMaxResponseCharacters(40);
+        RetrievalConnectorRAGProvider bodyProvider =
+            new RetrievalConnectorRAGProvider(
+                bodyProperties,
+                factory(new FakeHttpClient(List.of(
+                    successfulDocumentResponse()
+                ))),
+                null,
+                fixedClock()
+            );
+
+        RAGResponse bodyResponse = bodyProvider.performRag(
+            request("policy", 1)
+        );
+
+        assertThat(bodyResponse.getSuccess()).isFalse();
+        assertThat(bodyResponse.getMetadata()).containsEntry(
+            "errorCode",
+            RetrievalDocumentPolicyException.RESPONSE_LIMIT_EXCEEDED
+        );
+
+        AIRetrievalConnectorProperties contextProperties =
+            props("https://example", 1, Duration.ZERO);
+        contextProperties.getResponsePolicy().setMaxContextCharacters(20);
+        RetrievalConnectorRAGProvider contextProvider =
+            new RetrievalConnectorRAGProvider(
+                contextProperties,
+                factory(new FakeHttpClient(List.of(
+                    successfulDocumentResponse()
+                ))),
+                null,
+                fixedClock()
+            );
+
+        RAGResponse contextResponse = contextProvider.performRag(
+            request("policy", 1)
+        );
+
+        assertThat(contextResponse.getSuccess()).isFalse();
+        assertThat(contextResponse.getDocuments()).isEmpty();
+        assertThat(contextResponse.getMetadata()).containsEntry(
+            "errorCode",
+            RetrievalDocumentPolicyException.RESPONSE_LIMIT_EXCEEDED
+        );
+    }
+
+    @Test
+    void performRag_shouldProjectConfiguredMetadataOnly() {
+        AIRetrievalConnectorProperties properties =
+            props("https://example", 1, Duration.ZERO);
+        properties.getResponsePolicy().setAllowedMetadataKeys(
+            new LinkedHashSet<>(
+                List.of("locale", "citation.section")
+            )
+        );
+        FakeHttpClient fake = new FakeHttpClient(List.of(
+            ResponseEntity.ok("""
+                {"success":true,"documents":[{"id":"d1","content":"c1","score":0.9,"metadata":{"locale":"en_GB","tenantId":"private","citation":{"section":"returns","secret":"hidden"}}}],"count":1}
+                """.trim())
+        ));
+        RetrievalConnectorRAGProvider provider =
+            new RetrievalConnectorRAGProvider(
+                properties,
+                factory(fake),
+                null,
+                fixedClock()
+            );
+
+        RAGResponse response = provider.performRag(request("policy", 1));
+
+        assertThat(response.getSuccess()).isTrue();
+        assertThat(response.getDocuments().get(0).getMetadata())
+            .containsEntry("locale", "en_GB")
+            .doesNotContainKey("tenantId");
+        assertThat(response.getDocuments().get(0).getMetadata()
+            .get("citation"))
+            .isEqualTo(Map.of("section", "returns"));
+    }
+
+    @Test
+    void performRag_shouldApplyNarrowingApplicationSanitizer() {
+        AIRetrievalConnectorProperties properties =
+            props("https://example", 1, Duration.ZERO);
+        properties.getResponsePolicy().setAllowedMetadataKeys(
+            new LinkedHashSet<>(List.of("locale"))
+        );
+        FakeHttpClient fake = new FakeHttpClient(List.of(
+            ResponseEntity.ok("""
+                {"success":true,"documents":[{"id":"d1","content":"customer email is person@example.com","score":0.9,"source":"support","url":"https://docs.example/item","metadata":{"locale":"en_GB"}}],"count":1}
+                """.trim())
+        ));
+        RetrievalDocumentSanitizer sanitizer = (document, context) -> {
+            document.setContent("customer email is [REDACTED]");
+            document.setSource(null);
+            document.setUrl(null);
+            document.setMetadata(Map.of());
+            return document;
+        };
+        RetrievalConnectorRAGProvider provider =
+            new RetrievalConnectorRAGProvider(
+                properties,
+                factory(fake),
+                null,
+                fixedClock(),
+                List.of(sanitizer)
+            );
+
+        RAGResponse response = provider.performRag(request("policy", 1));
+
+        assertThat(response.getSuccess()).isTrue();
+        assertThat(response.getDocuments().get(0).getContent())
+            .isEqualTo("customer email is [REDACTED]");
+        assertThat(response.getDocuments().get(0).getSource()).isNull();
+        assertThat(response.getDocuments().get(0).getUrl()).isNull();
+        assertThat(response.getDocuments().get(0).getMetadata())
+            .isEmpty();
+    }
+
+    @Test
+    void performRag_shouldRejectApplicationSanitizerThatWidensPolicy() {
+        AIRetrievalConnectorProperties properties =
+            props("https://example", 1, Duration.ZERO);
+        properties.getResponsePolicy().setAllowedMetadataKeys(
+            new LinkedHashSet<>(List.of("locale"))
+        );
+        RetrievalDocumentSanitizer sanitizer = (document, context) -> {
+            document.setMetadata(Map.of("locale", "restored"));
+            return document;
+        };
+        RetrievalConnectorRAGProvider provider =
+            new RetrievalConnectorRAGProvider(
+                properties,
+                factory(new FakeHttpClient(List.of(
+                    successfulDocumentResponse()
+                ))),
+                null,
+                fixedClock(),
+                List.of(sanitizer)
+            );
+
+        RAGResponse response = provider.performRag(request("policy", 1));
+
+        assertThat(response.getSuccess()).isFalse();
+        assertThat(response.getDocuments()).isEmpty();
+        assertThat(response.getMetadata()).containsEntry(
+            "errorCode",
+            RetrievalDocumentPolicyException.SANITIZATION_FAILED
+        );
+    }
+
+    @Test
+    void performRag_shouldKeepSanitizerFailureVisibleWithoutLeakingCause() {
+        RetrievalDocumentSanitizer sanitizer = (document, context) -> {
+            throw new IllegalStateException(
+                "secret connector evidence should not escape"
+            );
+        };
+        RetrievalConnectorRAGProvider provider =
+            new RetrievalConnectorRAGProvider(
+                props("https://example", 1, Duration.ZERO),
+                factory(new FakeHttpClient(List.of(
+                    successfulDocumentResponse()
+                ))),
+                null,
+                fixedClock(),
+                List.of(sanitizer)
+            );
+
+        RAGResponse response = provider.performRag(request("policy", 1));
+
+        assertThat(response.getSuccess()).isFalse();
+        assertThat(response.getMetadata()).containsEntry(
+            "errorCode",
+            RetrievalDocumentPolicyException.SANITIZATION_FAILED
+        );
+        assertThat(response.getErrorMessage())
+            .doesNotContain("secret connector evidence");
+    }
+
+    @Test
+    void performRag_shouldRejectInvalidCountAndBoundConnectorMessage() {
+        FakeHttpClient invalidCount = new FakeHttpClient(List.of(
+            ResponseEntity.ok("""
+                {"success":true,"documents":[{"id":"d1","content":"c1","score":0.9}],"totalCount":"many"}
+                """.trim())
+        ));
+        RetrievalConnectorRAGProvider countProvider =
+            new RetrievalConnectorRAGProvider(
+                props("https://example", 1, Duration.ZERO),
+                factory(invalidCount),
+                null,
+                fixedClock()
+            );
+
+        RAGResponse countResponse = countProvider.performRag(
+            request("policy", 1)
+        );
+
+        assertThat(countResponse.getSuccess()).isFalse();
+        assertThat(countResponse.getMetadata())
+            .containsEntry("errorCode", "INVALID_RESPONSE");
+
+        AIRetrievalConnectorProperties messageProperties =
+            props("https://example", 1, Duration.ZERO);
+        messageProperties.getResponsePolicy().setMaxMessageCharacters(8);
+        FakeHttpClient oversizedMessage = new FakeHttpClient(List.of(
+            ResponseEntity.ok("""
+                {"success":false,"errorCode":"DENIED","message":"this external message is too long"}
+                """.trim())
+        ));
+        RetrievalConnectorRAGProvider messageProvider =
+            new RetrievalConnectorRAGProvider(
+                messageProperties,
+                factory(oversizedMessage),
+                null,
+                fixedClock()
+            );
+
+        RAGResponse messageResponse = messageProvider.performRag(
+            request("policy", 1)
+        );
+
+        assertThat(messageResponse.getSuccess()).isFalse();
+        assertThat(messageResponse.getMetadata()).containsEntry(
+            "errorCode",
+            RetrievalDocumentPolicyException.RESPONSE_LIMIT_EXCEEDED
+        );
+        assertThat(messageResponse.getErrorMessage())
+            .doesNotContain("external message");
+    }
+
+    @Test
+    void performRag_shouldRejectNullPayloadAndNumericStringScore() {
+        RetrievalConnectorRAGProvider nullProvider =
+            new RetrievalConnectorRAGProvider(
+                props("https://example", 1, Duration.ZERO),
+                factory(new FakeHttpClient(List.of(
+                    ResponseEntity.ok("null")
+                ))),
+                null,
+                fixedClock()
+            );
+
+        RAGResponse nullResponse = nullProvider.performRag(
+            request("policy", 1)
+        );
+
+        assertThat(nullResponse.getSuccess()).isFalse();
+        assertThat(nullResponse.getMetadata())
+            .containsEntry("errorCode", "INVALID_RESPONSE");
+
+        RetrievalConnectorRAGProvider scoreProvider =
+            new RetrievalConnectorRAGProvider(
+                props("https://example", 1, Duration.ZERO),
+                factory(new FakeHttpClient(List.of(
+                    ResponseEntity.ok("""
+                        {"success":true,"documents":[{"id":"d1","content":"c1","score":"0.9"}],"count":1}
+                        """.trim())
+                ))),
+                null,
+                fixedClock()
+            );
+
+        RAGResponse scoreResponse = scoreProvider.performRag(
+            request("policy", 1)
+        );
+
+        assertThat(scoreResponse.getSuccess()).isFalse();
+        assertThat(scoreResponse.getMetadata())
+            .containsEntry("errorCode", "INVALID_RESPONSE");
+    }
+
+    @Test
     void performRag_shouldRejectBlankQueryWithoutCallingConnector() {
         FakeHttpClient fake = new FakeHttpClient(List.of());
         RetrievalConnectorRAGProvider provider = new RetrievalConnectorRAGProvider(
@@ -385,6 +722,14 @@ class RetrievalConnectorRAGProviderTest {
 
     private static ResponseEntity<String> successfulDocumentResponse() {
         return ResponseEntity.ok("{\"success\":true,\"documents\":[{\"id\":\"d1\",\"content\":\"c1\",\"score\":0.9}],\"count\":1}");
+    }
+
+    private static RAGRequest request(String vectorSpace, int limit) {
+        return RAGRequest.builder()
+            .query("test query")
+            .entityType(vectorSpace)
+            .limit(limit)
+            .build();
     }
 
     private static AIHttpClientFactory factory(HttpClient client) {

@@ -20,6 +20,7 @@ The apps are intentionally scenario-focused:
 - `it-support-action-bot`: provider-only action orchestration path.
 - `mcp-operations-assistant`: governed MCP-style operations tool execution.
 - `provider-failover-lab`: provider routing/fallback diagnostics and transient-input policy evidence.
+- `retrieval-connector-boundary-lab`: packaged HTTP proof of accepted and rejected documents-only external retrieval.
 - `sub-management-hub-simple`: config-driven indexing setup using local deterministic embeddings by default.
 - `ai-fabric-account-resolver`: account-resolution demo using profile reads, policy RAG, chat memory, and governed resolver actions.
 - `tenant-knowledge-portal`: AI Fabric Tenant Guard demo for tenant-scoped search, catalog visibility, role-limited actions, and deletion.

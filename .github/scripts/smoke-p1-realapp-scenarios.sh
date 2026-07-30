@@ -195,7 +195,9 @@ PY
 smart_faq_smoke() {
   local port="${P1_SMART_FAQ_PORT:-19201}"
   local base="http://127.0.0.1:${port}"
+  local seed="${work_dir}/smart-faq-seed.json"
   local report="${work_dir}/smart-faq-quality.json"
+  local quality_ready=false
 
   echo "P1 smoke: Smart FAQ golden-answer quality"
   start_app smart-faq-assistant "${port}" \
@@ -204,7 +206,28 @@ smart_faq_smoke() {
     "--ai.vector-db.type=lucene" \
     "--ai.vector-db.lucene.index-path=${work_dir}/smart-faq-lucene"
 
-  http_json POST "${base}/api/demo/quality/seed-and-run" '{"limit":5,"threshold":0.01,"requireTopMatch":false,"springAiEvaluation":false}' "${report}"
+  http_json POST "${base}/api/demo/seed" '{}' "${seed}"
+  for _ in $(seq 1 "${poll_timeout}"); do
+    http_json POST "${base}/api/faq/quality/golden/run" \
+      '{"limit":5,"threshold":0.01,"requireTopMatch":false,"springAiEvaluation":false}' \
+      "${report}"
+    if python3 - "${report}" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], "r", encoding="utf-8") as handle:
+    payload = json.load(handle)
+raise SystemExit(0 if payload.get("pass") is True else 1)
+PY
+    then
+      quality_ready=true
+      break
+    fi
+    sleep 1
+  done
+  if [[ "${quality_ready}" != "true" ]]; then
+    fail "Smart FAQ evidence did not become searchable within ${poll_timeout}s"
+  fi
   assert_json "${report}" "Smart FAQ golden set passes" "payload.get('pass') is True and payload.get('failedQuestions') == 0 and payload.get('totalQuestions', 0) > 0"
 }
 
@@ -218,6 +241,7 @@ privacy_smoke() {
   local inventory_after="${work_dir}/privacy-inventory-after.json"
   local search_after="${work_dir}/privacy-search-after.json"
   local customer_id="p1-customer-${run_id}"
+  local indexed_ready=false
 
   echo "P1 smoke: Privacy masking and governance deletion"
   start_app privacy-first-customer-facing-support "${port}" \
@@ -230,9 +254,27 @@ privacy_smoke() {
   http_json POST "${base}/api/support/messages" \
     "{\"customerId\":\"${customer_id}\",\"channel\":\"webchat\",\"subject\":\"Billing email sara.p1@example.com\",\"message\":\"My phone is +1 (555) 123-4567 and I need refund help for duplicate billing.\"}" \
     "${create_body}"
-  assert_json "${create_body}" "Privacy app masks detected PII before response" "payload.get('piiDetected') is True and 'sara.p1@example.com' not in str(payload) and '555' not in str(payload)"
+  assert_json "${create_body}" "Privacy app masks detected PII before response" "payload.get('piiDetected') is True and payload.get('detectionsCount', 0) >= 2 and payload.get('processedSubject') == 'Billing email ***@***.***' and payload.get('processedMessage') == 'My phone is ***-***-**** and I need refund help for duplicate billing.'"
 
-  http_get "${base}/api/support/privacy/customers/${customer_id}/inventory" "${inventory_before}"
+  for _ in $(seq 1 "${poll_timeout}"); do
+    http_get "${base}/api/support/privacy/customers/${customer_id}/inventory" "${inventory_before}"
+    if python3 - "${inventory_before}" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], "r", encoding="utf-8") as handle:
+    payload = json.load(handle)
+raise SystemExit(0 if payload.get("indexedRecordCount", 0) >= 1 else 1)
+PY
+    then
+      indexed_ready=true
+      break
+    fi
+    sleep 1
+  done
+  if [[ "${indexed_ready}" != "true" ]]; then
+    fail "Privacy evidence did not become searchable within ${poll_timeout}s"
+  fi
   assert_json "${inventory_before}" "Privacy inventory sees indexed customer data" "payload.get('domainRecordCount') == 1 and payload.get('indexedRecordCount', 0) >= 1"
 
   http_get "${base}/api/support/privacy/search?q=duplicate%20billing&limit=5" "${search_before}"
@@ -309,6 +351,36 @@ behavior_smoke() {
 
   http_get "${base}/api/behavior/insights/user-1001/summary" "${summary_body}"
   assert_json "${summary_body}" "Behavior summary includes churn, sentiment, and trend evidence" "payload.get('userId') == 'user-1001' and payload.get('churnRisk', 0) > 0.5 and payload.get('sentimentLabel') and str(payload.get('trend', '')).endswith('DECLINING')"
+}
+
+retrieval_boundary_smoke() {
+  local port="${P1_RETRIEVAL_BOUNDARY_PORT:-19208}"
+  local base="http://127.0.0.1:${port}"
+  local valid_body="${work_dir}/retrieval-boundary-valid.json"
+  local rejected_body="${work_dir}/retrieval-boundary-rejected.json"
+
+  echo "P1 smoke: External retrieval documents-only boundary"
+  start_app retrieval-connector-boundary-lab "${port}" \
+    "--ai.retrieval.connector.base-url=${base}/fixture"
+
+  http_json POST "${base}/api/retrieval-boundary/run" \
+    '{"scenario":"VALID","question":"Can I return an opened laptop?"}' \
+    "${valid_body}"
+  assert_json "${valid_body}" "Accepted retrieval evidence reaches generation after projection" "payload.get('success') is True and payload.get('retrievalAccepted') is True and payload.get('generationInvoked') is True and len(payload.get('documents', [])) == 1 and payload.get('documents', [])[0].get('vectorSpace') == 'policy' and payload.get('documents', [])[0].get('metadata') == {'locale': 'en_GB'} and 'internalTenant' not in str(payload)"
+
+  for scenario_and_code in \
+    TENANT_DENIAL:ACCESS_DENIED \
+    GENERATED_ANSWER_INJECTION:INVALID_RESPONSE \
+    CROSS_VECTOR_SPACE:VECTOR_SPACE_MISMATCH \
+    UNSAFE_URL:URL_POLICY_VIOLATION \
+    RESERVED_METADATA:METADATA_POLICY_VIOLATION; do
+    local scenario="${scenario_and_code%%:*}"
+    local expected_code="${scenario_and_code#*:}"
+    http_json POST "${base}/api/retrieval-boundary/run" \
+      "{\"scenario\":\"${scenario}\",\"question\":\"Show the policy\"}" \
+      "${rejected_body}"
+    assert_json "${rejected_body}" "${scenario} is rejected before generation" "payload.get('success') is False and payload.get('retrievalAccepted') is False and payload.get('generationInvoked') is False and payload.get('documents') == [] and payload.get('answer') is None and payload.get('errorCode') == '${expected_code}'"
+  done
 }
 
 support_action_bot_smoke() {
@@ -601,6 +673,7 @@ smart_faq_smoke
 privacy_smoke
 crm_smoke
 behavior_smoke
+retrieval_boundary_smoke
 support_action_bot_smoke
 migration_smoke
 chat_action_smoke

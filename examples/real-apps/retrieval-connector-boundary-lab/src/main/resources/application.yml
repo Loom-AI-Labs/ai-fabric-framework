@@ -1,0 +1,69 @@
+server:
+  port: ${PORT:8105}
+
+spring:
+  application:
+    name: retrieval-connector-boundary-lab
+
+ai:
+  enabled: true
+  providers:
+    llm-provider: openai
+    embedding-provider: openai
+    openai:
+      enabled: ${OPENAI_ENABLED:false}
+      api-key: ${OPENAI_API_KEY:}
+      base-url: ${OPENAI_BASE_URL:https://api.openai.com/v1}
+      model: ${OPENAI_MODEL:gpt-4o-mini}
+      embedding-model: ${OPENAI_EMBEDDING_MODEL:text-embedding-3-small}
+      embedding-dimensions: ${OPENAI_EMBEDDING_DIMENSIONS:512}
+      timeout: 45
+  service:
+    features:
+      enable-generation: true
+      enable-embeddings: false
+      enable-search: false
+      enable-rag: true
+  retrieval:
+    connector:
+      enabled: true
+      base-url: ${RETRIEVAL_CONNECTOR_BASE_URL:http://127.0.0.1:8105/fixture}
+      search-path: /retrieval/search
+      max-attempts: 1
+      max-top-k: 10
+      response-policy:
+        max-documents: 10
+        max-response-characters: 64000
+        max-document-id-characters: 128
+        max-content-characters: 4000
+        max-context-characters: 12000
+        max-source-characters: 128
+        max-url-characters: 1024
+        max-vector-space-characters: 64
+        max-metadata-entries: 12
+        max-metadata-depth: 3
+        max-metadata-characters: 2048
+        max-message-characters: 256
+        max-error-code-characters: 64
+        allowed-url-schemes: [https]
+        allowed-url-host-suffixes: [customer.example]
+        allowed-metadata-keys: [locale]
+        unknown-metadata-policy: DROP
+
+app:
+  demo:
+    require-real-ai: ${APP_DEMO_REQUIRE_REAL_AI:false}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+logging:
+  level:
+    root: INFO
+    org.springframework.web.client: INFO
+    org.springframework.web.servlet: INFO
+    com.ai.fabric.realapps.retrievallab: INFO
+    ai.fabric.intent.retrieval.connector: INFO

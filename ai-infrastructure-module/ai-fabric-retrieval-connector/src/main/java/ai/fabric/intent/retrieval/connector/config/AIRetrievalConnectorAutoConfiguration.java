@@ -2,6 +2,7 @@ package ai.fabric.intent.retrieval.connector.config;
 
 import ai.fabric.config.AIInfrastructureAutoConfiguration;
 import ai.fabric.intent.retrieval.connector.AIRetrievalConnectorProperties;
+import ai.fabric.intent.retrieval.connector.RetrievalDocumentSanitizer;
 import ai.fabric.intent.retrieval.connector.RetrievalConnectorRAGProvider;
 import ai.fabric.http.AIHttpClientFactory;
 import ai.fabric.spi.RAGProvider;
@@ -37,8 +38,15 @@ public class AIRetrievalConnectorAutoConfiguration {
     public RetrievalConnectorRAGProvider retrievalConnectorRAGProvider(AIRetrievalConnectorProperties properties,
                                                                        AIHttpClientFactory httpClientFactory,
                                                                        ObjectProvider<ObjectMapper> objectMapperProvider,
-                                                                       ObjectProvider<Clock> clockProvider) {
+                                                                       ObjectProvider<Clock> clockProvider,
+                                                                       ObjectProvider<RetrievalDocumentSanitizer> sanitizerProvider) {
         Clock clock = clockProvider.getIfAvailable(Clock::systemUTC);
-        return new RetrievalConnectorRAGProvider(properties, httpClientFactory, objectMapperProvider, clock);
+        return new RetrievalConnectorRAGProvider(
+            properties,
+            httpClientFactory,
+            objectMapperProvider,
+            clock,
+            sanitizerProvider.orderedStream().toList()
+        );
     }
 }

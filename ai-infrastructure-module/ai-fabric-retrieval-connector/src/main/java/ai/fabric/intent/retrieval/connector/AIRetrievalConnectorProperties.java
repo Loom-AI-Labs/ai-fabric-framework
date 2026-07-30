@@ -5,6 +5,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.validation.annotation.Validated;
 
 import java.time.Duration;
+import java.util.LinkedHashSet;
+import java.util.Set;
 
 /**
  * Configuration for documents-only external retrieval via the Customer Connector API.
@@ -67,6 +69,13 @@ public class AIRetrievalConnectorProperties {
      */
     private HmacProperties hmac = new HmacProperties();
 
+    /**
+     * Mandatory policy applied to every external retrieval response before it
+     * can become RAG context or client-visible evidence.
+     */
+    private ResponsePolicyProperties responsePolicy =
+        new ResponsePolicyProperties();
+
     @Data
     public static class ApiKeyProperties {
         /**
@@ -102,5 +111,28 @@ public class AIRetrievalConnectorProperties {
          */
         private String signatureHeader = "X-AIFABRIC-SIGNATURE";
     }
-}
 
+    @Data
+    public static class ResponsePolicyProperties {
+
+        private int maxDocuments = 50;
+        private int maxResponseCharacters = 1_000_000;
+        private int maxDocumentIdCharacters = 512;
+        private int maxContentCharacters = 32_000;
+        private int maxContextCharacters = 128_000;
+        private int maxSourceCharacters = 256;
+        private int maxUrlCharacters = 2_048;
+        private int maxVectorSpaceCharacters = 128;
+        private int maxMetadataEntries = 32;
+        private int maxMetadataDepth = 4;
+        private int maxMetadataCharacters = 8_192;
+        private int maxMessageCharacters = 512;
+        private int maxErrorCodeCharacters = 64;
+        private Set<String> allowedUrlSchemes =
+            new LinkedHashSet<>(Set.of("https"));
+        private Set<String> allowedUrlHostSuffixes = new LinkedHashSet<>();
+        private Set<String> allowedMetadataKeys = new LinkedHashSet<>();
+        private RetrievalUnknownMetadataPolicy unknownMetadataPolicy =
+            RetrievalUnknownMetadataPolicy.DROP;
+    }
+}

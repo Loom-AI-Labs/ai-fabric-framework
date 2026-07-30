@@ -20,6 +20,7 @@ import org.springframework.util.StringUtils;
 
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
+import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Duration;
@@ -32,7 +33,9 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
+import java.util.regex.Pattern;
 
 /**
  * Documents-only external retrieval implementation of {@link RAGProvider}.
@@ -83,12 +86,17 @@ public class RetrievalConnectorRAGProvider implements RAGProvider {
     private static final String HEADER_HMAC_TIMESTAMP = "X-AIFABRIC-TIMESTAMP";
     private static final String HEADER_HMAC_NONCE = "X-AIFABRIC-NONCE";
     private static final String HEADER_HMAC_SIGNATURE = "X-AIFABRIC-SIGNATURE";
+    private static final Pattern CONNECTOR_ERROR_CODE =
+        Pattern.compile("[A-Z][A-Z0-9_]*");
 
     private final AIRetrievalConnectorProperties properties;
     private final AIHttpClientFactory httpClientFactory;
     private final ObjectMapper objectMapper;
     private final UlidGenerator ulidGenerator;
     private final Clock clock;
+    private final RetrievalResponsePolicy responsePolicy;
+    private final RetrievalDocumentSanitizer mandatorySanitizer;
+    private final List<RetrievalDocumentSanitizer> customSanitizers;
 
     private volatile HttpClient httpClient;
     private volatile boolean httpClientInitialized = false;
@@ -97,6 +105,22 @@ public class RetrievalConnectorRAGProvider implements RAGProvider {
                                          AIHttpClientFactory httpClientFactory,
                                          ObjectProvider<ObjectMapper> objectMapperProvider,
                                          Clock clock) {
+        this(
+            properties,
+            httpClientFactory,
+            objectMapperProvider,
+            clock,
+            List.of()
+        );
+    }
+
+    public RetrievalConnectorRAGProvider(
+        AIRetrievalConnectorProperties properties,
+        AIHttpClientFactory httpClientFactory,
+        ObjectProvider<ObjectMapper> objectMapperProvider,
+        Clock clock,
+        List<RetrievalDocumentSanitizer> customSanitizers
+    ) {
         if (properties == null) {
             throw new IllegalArgumentException("properties is required");
         }
@@ -114,6 +138,16 @@ public class RetrievalConnectorRAGProvider implements RAGProvider {
             : new ObjectMapper();
         this.clock = clock != null ? clock : Clock.systemUTC();
         this.ulidGenerator = new UlidGenerator(this.clock);
+        this.responsePolicy = RetrievalResponsePolicy.from(properties);
+        this.mandatorySanitizer = new DefaultRetrievalDocumentSanitizer(
+            responsePolicy,
+            objectMapper
+        );
+        this.customSanitizers = customSanitizers == null
+            ? List.of()
+            : customSanitizers.stream()
+                .filter(Objects::nonNull)
+                .toList();
     }
 
     @Override
@@ -142,6 +176,12 @@ public class RetrievalConnectorRAGProvider implements RAGProvider {
         out.put("provider", getProviderName());
         out.put("enabled", properties != null && properties.isEnabled());
         out.put("baseUrlConfigured", properties != null && StringUtils.hasText(properties.getBaseUrl()));
+        out.put("maxResponseDocuments", responsePolicy.maxDocuments());
+        out.put(
+            "unknownMetadataPolicy",
+            responsePolicy.unknownMetadataPolicy().name()
+        );
+        out.put("customSanitizerCount", customSanitizers.size());
         return Collections.unmodifiableMap(out);
     }
 
@@ -164,6 +204,16 @@ public class RetrievalConnectorRAGProvider implements RAGProvider {
         if (!StringUtils.hasText(vectorSpace)) {
             return failure("INVALID_REQUEST", "RAG request entityType must be set to the vectorSpace name.", start);
         }
+        vectorSpace = vectorSpace.trim();
+        if (vectorSpace.length()
+            > responsePolicy.maxVectorSpaceCharacters()) {
+            return failure(
+                "INVALID_REQUEST",
+                "RAG request entityType exceeds the configured vector-space"
+                    + " limit.",
+                start
+            );
+        }
 
         int topK = resolveTopK(request.getLimit());
         Map<String, Object> connectorFilters = request.getFilters() != null ? new LinkedHashMap<>(request.getFilters()) : null;
@@ -177,7 +227,7 @@ public class RetrievalConnectorRAGProvider implements RAGProvider {
 
         Map<String, Object> connectorRequest = new LinkedHashMap<>();
         connectorRequest.put(RetrievalConnectorProtocol.KEY_QUERY, query.trim());
-        connectorRequest.put(RetrievalConnectorProtocol.KEY_VECTOR_SPACE, vectorSpace.trim());
+        connectorRequest.put(RetrievalConnectorProtocol.KEY_VECTOR_SPACE, vectorSpace);
         connectorRequest.put(RetrievalConnectorProtocol.KEY_TOP_K, topK);
         if (connectorFilters != null && !connectorFilters.isEmpty()) {
             connectorRequest.put(RetrievalConnectorProtocol.KEY_FILTERS, Collections.unmodifiableMap(connectorFilters));
@@ -197,7 +247,11 @@ public class RetrievalConnectorRAGProvider implements RAGProvider {
         for (int attempt = 1; attempt <= maxAttempts; attempt++) {
             try {
                 ResponseEntity<String> response = httpClient().exchange(url, HttpMethod.POST, entity, String.class);
-                connectorResult = parseResponse(response);
+                connectorResult = parseResponse(
+                    response,
+                    vectorSpace,
+                    topK
+                );
 
                 if (shouldRetry(connectorResult) && attempt < maxAttempts) {
                     sleep(backoffForAttempt(backoff, attempt));
@@ -223,10 +277,21 @@ public class RetrievalConnectorRAGProvider implements RAGProvider {
         long processingTimeMs = System.currentTimeMillis() - start;
         List<RAGResponse.RAGDocument> docs = connectorResult.documents() != null ? connectorResult.documents() : List.of();
         String context = buildContextFromDocuments(docs);
+        if (connectorResult.success()
+            && context.length() > responsePolicy.maxContextCharacters()) {
+            connectorResult = ConnectorResult.failure(
+                RetrievalDocumentPolicyException.RESPONSE_LIMIT_EXCEEDED,
+                "Retrieval connector context exceeds the configured"
+                    + " character limit.",
+                connectorResult.warnings()
+            );
+            docs = List.of();
+            context = NO_CONTEXT_MESSAGE;
+        }
 
         Map<String, Object> meta = new LinkedHashMap<>();
         meta.put("provider", getProviderName());
-        meta.put("vectorSpace", vectorSpace.trim());
+        meta.put("vectorSpace", vectorSpace);
         if (StringUtils.hasText(connectorResult.errorCode())) {
             meta.put("errorCode", connectorResult.errorCode());
         }
@@ -241,7 +306,7 @@ public class RetrievalConnectorRAGProvider implements RAGProvider {
             .processingTimeMs(processingTimeMs)
             .requestId(request.getRequestId())
             .originalQuery(query)
-            .entityType(vectorSpace.trim())
+            .entityType(vectorSpace)
             .timestamp(LocalDateTime.now(clock))
             .metadata(Collections.unmodifiableMap(meta));
 
@@ -412,7 +477,11 @@ public class RetrievalConnectorRAGProvider implements RAGProvider {
         }
     }
 
-    private ConnectorResult parseResponse(ResponseEntity<String> response) {
+    private ConnectorResult parseResponse(
+        ResponseEntity<String> response,
+        String requestedVectorSpace,
+        int effectiveTopK
+    ) {
         if (response == null) {
             return ConnectorResult.failure(ERROR_SERVICE_UNAVAILABLE, "Retrieval connector returned no response.", List.of());
         }
@@ -425,16 +494,49 @@ public class RetrievalConnectorRAGProvider implements RAGProvider {
             }
             return ConnectorResult.failure(ERROR_SERVICE_UNAVAILABLE, "Retrieval connector returned an empty response.", List.of());
         }
+        if (body.length() > responsePolicy.maxResponseCharacters()) {
+            return ConnectorResult.failure(
+                RetrievalDocumentPolicyException.RESPONSE_LIMIT_EXCEEDED,
+                "Retrieval connector response exceeds the configured"
+                    + " character limit.",
+                List.of()
+            );
+        }
 
         Map<String, Object> parsed;
         try {
             parsed = objectMapper.readValue(body, new TypeReference<Map<String, Object>>() {});
         } catch (Exception ex) {
-            return ConnectorResult.failure(ERROR_SERVICE_UNAVAILABLE, "Retrieval connector returned invalid JSON.", List.of());
+            return ConnectorResult.failure(
+                ERROR_INVALID_RESPONSE,
+                "Retrieval connector returned invalid JSON.",
+                List.of()
+            );
+        }
+        if (parsed == null) {
+            return ConnectorResult.failure(
+                ERROR_INVALID_RESPONSE,
+                "Retrieval connector response must be a JSON object.",
+                List.of()
+            );
         }
 
-        String message = readString(parsed.get(RetrievalConnectorProtocol.KEY_MESSAGE));
-        String errorCode = readString(parsed.get(RetrievalConnectorProtocol.KEY_ERROR_CODE));
+        String message;
+        String errorCode;
+        try {
+            message = readConnectorMessage(
+                parsed.get(RetrievalConnectorProtocol.KEY_MESSAGE)
+            );
+            errorCode = readConnectorErrorCode(
+                parsed.get(RetrievalConnectorProtocol.KEY_ERROR_CODE)
+            );
+        } catch (RetrievalDocumentPolicyException ex) {
+            return ConnectorResult.failure(
+                ex.errorCode(),
+                ex.getMessage(),
+                List.of()
+            );
+        }
         if (!response.getStatusCode().is2xxSuccessful()) {
             int status = response.getStatusCode().value();
             String msg = StringUtils.hasText(message) ? message : "Retrieval connector returned HTTP " + status + ".";
@@ -459,7 +561,20 @@ public class RetrievalConnectorRAGProvider implements RAGProvider {
             );
         }
 
-        DocumentParseResult documentResult = parseDocuments(parsed.get(RetrievalConnectorProtocol.KEY_DOCUMENTS));
+        DocumentParseResult documentResult;
+        try {
+            documentResult = parseDocuments(
+                parsed.get(RetrievalConnectorProtocol.KEY_DOCUMENTS),
+                requestedVectorSpace,
+                effectiveTopK
+            );
+        } catch (RetrievalDocumentPolicyException ex) {
+            return ConnectorResult.failure(
+                ex.errorCode(),
+                ex.getMessage(),
+                List.of()
+            );
+        }
         if (documentResult.invalidResponse()) {
             return ConnectorResult.failure(ERROR_INVALID_RESPONSE, documentResult.message(), documentResult.warnings());
         }
@@ -469,10 +584,38 @@ public class RetrievalConnectorRAGProvider implements RAGProvider {
             warnings.add("Retrieval connector returned 0 documents.");
         }
 
-        Long totalCount = readLong(parsed.get(RetrievalConnectorProtocol.KEY_TOTAL_COUNT));
+        Object totalCountRaw = parsed.get(
+            RetrievalConnectorProtocol.KEY_TOTAL_COUNT
+        );
+        Long totalCount = readLong(totalCountRaw);
+        if (totalCountRaw != null && totalCount == null) {
+            return ConnectorResult.failure(
+                ERROR_INVALID_RESPONSE,
+                "Retrieval connector count fields must be integers.",
+                warnings
+            );
+        }
         if (totalCount == null) {
-            Long count = readLong(parsed.get(RetrievalConnectorProtocol.KEY_COUNT));
+            Object countRaw = parsed.get(
+                RetrievalConnectorProtocol.KEY_COUNT
+            );
+            Long count = readLong(countRaw);
+            if (countRaw != null && count == null) {
+                return ConnectorResult.failure(
+                    ERROR_INVALID_RESPONSE,
+                    "Retrieval connector count fields must be integers.",
+                    warnings
+                );
+            }
             totalCount = count != null ? count : (long) docs.size();
+        }
+        if (totalCount < 0 || totalCount > Integer.MAX_VALUE) {
+            return ConnectorResult.failure(
+                RetrievalDocumentPolicyException.RESPONSE_LIMIT_EXCEEDED,
+                "Retrieval connector total count is outside the supported"
+                    + " range.",
+                warnings
+            );
         }
 
         return new ConnectorResult(true, message, null, docs, warnings, totalCount);
@@ -489,10 +632,67 @@ public class RetrievalConnectorRAGProvider implements RAGProvider {
             }
             String normalized = key.trim().replace("_", "").replace("-", "").toLowerCase(Locale.ROOT);
             if (FORBIDDEN_DOCUMENTS_ONLY_RESPONSE_KEYS.contains(normalized)) {
-                out.add(key.trim());
+                String safeKey = key.trim();
+                out.add(
+                    safeKey.length() <= 64
+                        ? safeKey
+                        : "forbidden-field"
+                );
             }
         }
         return List.copyOf(out);
+    }
+
+    private String readConnectorMessage(Object raw) {
+        if (raw == null) {
+            return null;
+        }
+        if (!(raw instanceof String text)) {
+            throw invalidConnectorText("message");
+        }
+        String normalized = text.trim();
+        if (normalized.length() > responsePolicy.maxMessageCharacters()) {
+            throw new RetrievalDocumentPolicyException(
+                RetrievalDocumentPolicyException.RESPONSE_LIMIT_EXCEEDED,
+                "Retrieval connector message exceeds the configured"
+                    + " character limit."
+            );
+        }
+        if (RetrievalResponsePolicy.containsControlCharacter(normalized)) {
+            throw invalidConnectorText("message");
+        }
+        return StringUtils.hasText(normalized) ? normalized : null;
+    }
+
+    private String readConnectorErrorCode(Object raw) {
+        if (raw == null) {
+            return null;
+        }
+        if (!(raw instanceof String text)) {
+            throw invalidConnectorText("error code");
+        }
+        String normalized = text.trim().toUpperCase(Locale.ROOT);
+        if (normalized.length() > responsePolicy.maxErrorCodeCharacters()) {
+            throw new RetrievalDocumentPolicyException(
+                RetrievalDocumentPolicyException.RESPONSE_LIMIT_EXCEEDED,
+                "Retrieval connector error code exceeds the configured"
+                    + " character limit."
+            );
+        }
+        if (!StringUtils.hasText(normalized)
+            || !CONNECTOR_ERROR_CODE.matcher(normalized).matches()) {
+            throw invalidConnectorText("error code");
+        }
+        return normalized;
+    }
+
+    private RetrievalDocumentPolicyException invalidConnectorText(
+        String field
+    ) {
+        return new RetrievalDocumentPolicyException(
+            RetrievalDocumentPolicyException.DOCUMENT_POLICY_VIOLATION,
+            "Retrieval connector " + field + " is invalid."
+        );
     }
 
     private String errorCodeForStatus(int status) {
@@ -508,20 +708,41 @@ public class RetrievalConnectorRAGProvider implements RAGProvider {
         return ERROR_HTTP_ERROR;
     }
 
-    private DocumentParseResult parseDocuments(Object raw) {
+    private DocumentParseResult parseDocuments(
+        Object raw,
+        String requestedVectorSpace,
+        int effectiveTopK
+    ) {
         if (raw == null) {
             return DocumentParseResult.invalid("Retrieval connector response documents must be an array.", List.of());
         }
         if (!(raw instanceof List<?> list)) {
             return DocumentParseResult.invalid("Retrieval connector response documents must be an array.", List.of());
         }
+        int maximumDocuments = Math.min(
+            effectiveTopK,
+            responsePolicy.maxDocuments()
+        );
+        if (list.size() > maximumDocuments) {
+            throw new RetrievalDocumentPolicyException(
+                RetrievalDocumentPolicyException.RESPONSE_LIMIT_EXCEEDED,
+                "Retrieval connector returned more documents than permitted."
+            );
+        }
 
         List<RAGResponse.RAGDocument> out = new ArrayList<>();
         int invalidDocuments = 0;
-        for (Object item : list) {
+        for (int index = 0; index < list.size(); index++) {
+            Object item = list.get(index);
             RAGResponse.RAGDocument doc = parseDocument(item);
             if (doc != null) {
-                out.add(doc);
+                RetrievalDocumentSanitizationContext context =
+                    new RetrievalDocumentSanitizationContext(
+                        requestedVectorSpace,
+                        effectiveTopK,
+                        index
+                    );
+                out.add(sanitizeDocument(doc, context));
             } else {
                 invalidDocuments++;
             }
@@ -544,35 +765,38 @@ public class RetrievalConnectorRAGProvider implements RAGProvider {
             return null;
         }
 
-        String id = readString(map.get(DOC_ID));
-        String content = readString(map.get(DOC_CONTENT));
-        Double score = readDouble(map.get(DOC_SCORE));
+        String id = readDocumentString(map.get(DOC_ID));
+        String content = readDocumentString(map.get(DOC_CONTENT));
+        Double score = readDocumentScore(map.get(DOC_SCORE));
         if (!StringUtils.hasText(id) || !StringUtils.hasText(content) || score == null) {
             return null;
         }
 
-        String source = readString(map.get(DOC_SOURCE));
-        String url = readString(map.get(DOC_URL));
-        String vectorSpace = readString(map.get(DOC_VECTOR_SPACE));
+        String source = readDocumentString(map.get(DOC_SOURCE));
+        String url = readDocumentString(map.get(DOC_URL));
+        String vectorSpace = readDocumentString(
+            map.get(DOC_VECTOR_SPACE)
+        );
 
         Map<String, Object> metadata = new LinkedHashMap<>();
         Object metaRaw = map.get(DOC_METADATA);
         if (metaRaw instanceof Map<?, ?> metaMap) {
             for (Map.Entry<?, ?> entry : metaMap.entrySet()) {
-                if (entry.getKey() == null) {
-                    continue;
+                if (!(entry.getKey() instanceof String key)) {
+                    throw new RetrievalDocumentPolicyException(
+                        RetrievalDocumentPolicyException
+                            .METADATA_POLICY_VIOLATION,
+                        "Retrieval connector metadata keys must be strings."
+                    );
                 }
-                metadata.put(entry.getKey().toString(), entry.getValue());
+                metadata.put(key, entry.getValue());
             }
-        }
-        if (StringUtils.hasText(vectorSpace)) {
-            metadata.put(DOC_VECTOR_SPACE, vectorSpace.trim());
-        }
-        if (StringUtils.hasText(source)) {
-            metadata.put(DOC_SOURCE, source.trim());
-        }
-        if (StringUtils.hasText(url)) {
-            metadata.put(DOC_URL, url.trim());
+        } else if (metaRaw != null) {
+            throw new RetrievalDocumentPolicyException(
+                RetrievalDocumentPolicyException
+                    .METADATA_POLICY_VIOLATION,
+                "Retrieval connector document metadata must be an object."
+            );
         }
 
         return RAGResponse.RAGDocument.builder()
@@ -585,6 +809,166 @@ public class RetrievalConnectorRAGProvider implements RAGProvider {
             .url(url)
             .metadata(metadata.isEmpty() ? null : Collections.unmodifiableMap(metadata))
             .build();
+    }
+
+    private RAGResponse.RAGDocument sanitizeDocument(
+        RAGResponse.RAGDocument document,
+        RetrievalDocumentSanitizationContext context
+    ) {
+        RAGResponse.RAGDocument current = mandatorySanitizer.sanitize(
+            document,
+            context
+        );
+        for (RetrievalDocumentSanitizer customSanitizer
+            : customSanitizers) {
+            RAGResponse.RAGDocument before = mandatorySanitizer.sanitize(
+                current,
+                context
+            );
+            RAGResponse.RAGDocument customInput =
+                mandatorySanitizer.sanitize(current, context);
+            RAGResponse.RAGDocument candidate;
+            try {
+                candidate = customSanitizer.sanitize(
+                    customInput,
+                    context
+                );
+            } catch (RuntimeException ex) {
+                throw sanitizerFailure();
+            }
+            if (candidate == null) {
+                throw sanitizerFailure();
+            }
+            RAGResponse.RAGDocument approved;
+            try {
+                approved = mandatorySanitizer.sanitize(
+                    candidate,
+                    context
+                );
+            } catch (RuntimeException ex) {
+                throw sanitizerFailure();
+            }
+            if (!isNarrowingSanitization(before, approved)) {
+                throw sanitizerFailure();
+            }
+            current = approved;
+        }
+        return current;
+    }
+
+    private boolean isNarrowingSanitization(
+        RAGResponse.RAGDocument before,
+        RAGResponse.RAGDocument after
+    ) {
+        return Objects.equals(before.getId(), after.getId())
+            && Objects.equals(before.getType(), after.getType())
+            && Objects.equals(before.getScore(), after.getScore())
+            && textWasNarrowed(
+                before.getContent(),
+                after.getContent(),
+                false
+            )
+            && textWasNarrowed(
+                before.getSource(),
+                after.getSource(),
+                true
+            )
+            && textWasNarrowed(
+                before.getUrl(),
+                after.getUrl(),
+                true
+            )
+            && metadataWasNarrowed(
+                before.getMetadata(),
+                after.getMetadata()
+            );
+    }
+
+    private boolean textWasNarrowed(
+        String before,
+        String after,
+        boolean requireSameValue
+    ) {
+        if (after == null) {
+            return true;
+        }
+        if (before == null) {
+            return false;
+        }
+        if (requireSameValue) {
+            return before.equals(after);
+        }
+        return after.length() <= before.length();
+    }
+
+    private boolean metadataWasNarrowed(
+        Map<String, Object> before,
+        Map<String, Object> after
+    ) {
+        Map<String, Object> baseline =
+            before != null ? before : Map.of();
+        Map<String, Object> candidate =
+            after != null ? after : Map.of();
+        if (!baseline.keySet().containsAll(candidate.keySet())) {
+            return false;
+        }
+        for (Map.Entry<String, Object> entry : candidate.entrySet()) {
+            if (!metadataValueWasNarrowed(
+                baseline.get(entry.getKey()),
+                entry.getValue()
+            )) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private boolean metadataValueWasNarrowed(
+        Object before,
+        Object after
+    ) {
+        if (after == null) {
+            return true;
+        }
+        if (before instanceof Map<?, ?> beforeMap
+            && after instanceof Map<?, ?> afterMap) {
+            Map<String, Object> typedBefore = new LinkedHashMap<>();
+            Map<String, Object> typedAfter = new LinkedHashMap<>();
+            beforeMap.forEach((key, value) ->
+                typedBefore.put(String.valueOf(key), value)
+            );
+            afterMap.forEach((key, value) ->
+                typedAfter.put(String.valueOf(key), value)
+            );
+            return metadataWasNarrowed(typedBefore, typedAfter);
+        }
+        if (before instanceof List<?> beforeList
+            && after instanceof List<?> afterList) {
+            if (afterList.size() > beforeList.size()) {
+                return false;
+            }
+            for (int index = 0; index < afterList.size(); index++) {
+                if (!metadataValueWasNarrowed(
+                    beforeList.get(index),
+                    afterList.get(index)
+                )) {
+                    return false;
+                }
+            }
+            return true;
+        }
+        if (before instanceof String beforeText
+            && after instanceof String afterText) {
+            return afterText.length() <= beforeText.length();
+        }
+        return Objects.equals(before, after);
+    }
+
+    private RetrievalDocumentPolicyException sanitizerFailure() {
+        return new RetrievalDocumentPolicyException(
+            RetrievalDocumentPolicyException.SANITIZATION_FAILED,
+            "Application retrieval document sanitization failed."
+        );
     }
 
     private boolean shouldRetry(ConnectorResult result) {
@@ -683,38 +1067,27 @@ public class RetrievalConnectorRAGProvider implements RAGProvider {
         return defaultValue;
     }
 
-    private String readString(Object raw) {
-        if (raw == null) {
+    private String readDocumentString(Object raw) {
+        if (!(raw instanceof String text)) {
             return null;
         }
-        String s = raw.toString();
-        return StringUtils.hasText(s) ? s.trim() : null;
+        return StringUtils.hasText(text) ? text.trim() : null;
     }
 
     private Long readLong(Object raw) {
         if (raw instanceof Number n) {
-            return n.longValue();
-        }
-        if (raw instanceof String s && StringUtils.hasText(s)) {
             try {
-                return Long.parseLong(s.trim());
-            } catch (NumberFormatException ignored) {
+                return new BigDecimal(n.toString()).longValueExact();
+            } catch (ArithmeticException | NumberFormatException ignored) {
                 return null;
             }
         }
         return null;
     }
 
-    private Double readDouble(Object raw) {
+    private Double readDocumentScore(Object raw) {
         if (raw instanceof Number n) {
             return n.doubleValue();
-        }
-        if (raw instanceof String s && StringUtils.hasText(s)) {
-            try {
-                return Double.parseDouble(s.trim());
-            } catch (NumberFormatException ignored) {
-                return null;
-            }
         }
         return null;
     }

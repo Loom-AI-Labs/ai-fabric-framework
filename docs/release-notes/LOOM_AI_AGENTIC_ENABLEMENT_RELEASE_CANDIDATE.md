@@ -977,6 +977,55 @@ Evidence must remain within the effective vector profile. Missing or
 out-of-scope evidence fails the specialist rather than being silently dropped
 after generation.
 
+### External retrieval connector boundary
+
+The optional `ai-fabric-retrieval-connector` now treats every successful
+customer-connector response as untrusted input before it becomes RAG context
+or client-visible evidence.
+
+The mandatory response policy:
+
+- requires every returned document to match the requested vector space;
+- bounds response, document, context, message, error-code, and metadata sizes;
+- requires finite numeric relevance scores;
+- validates citation URL schemes and optional host suffixes;
+- drops connector metadata unless its dotted path is explicitly allowlisted;
+- rejects reserved `_aifabric*` metadata; and
+- reruns after every application `RetrievalDocumentSanitizer`.
+
+Application sanitizers may redact content or remove optional data. They cannot
+change document identity, vector space, score, source, or URL, restore removed
+metadata, or otherwise widen the mandatory policy.
+
+This does not change the write-side indexing contract. External connectors
+continue to return request-scoped `RAGResponse.RAGDocument` evidence, while
+`AIIndexDocument` remains the durable write/indexing payload.
+
+Existing connector consumers must review:
+
+1. `allowed-metadata-keys`, because the new default exposes no arbitrary
+   connector metadata;
+2. `allowed-url-schemes` and optional `allowed-url-host-suffixes`;
+3. document and response limits relative to the configured `topK`; and
+4. custom PII or domain sanitizers, which must only narrow approved evidence.
+
+Cross-space evidence, unsafe URLs, reserved metadata, generated-answer fields,
+and policy limit violations now fail visibly before generation. There is no
+fallback answer.
+
+### Durable indexing payload compatibility
+
+The indexing queue now serializes its versioned `AIIndexDocument` envelope
+through a private copy of the application `ObjectMapper` with discoverable
+datatype modules registered. This preserves application mapper configuration
+without depending on every host application to register Java time support
+itself.
+
+This is a compatibility hardening change, not a new payload format. Existing
+queue rows, schema version, descriptor hash, work ordering, retry behavior, and
+provider contracts are unchanged. Loom AI does not need a schema migration for
+this fix.
+
 ## 13. Configuration Baseline
 
 A Loom AI-enabled application will normally configure:
@@ -1119,6 +1168,12 @@ hardening, not a compatibility switch.
 Multi-turn action continuation is a core orchestration improvement and may
 cause a clear field-only response to continue an existing draft. Independent
 questions and different actions remain independently classified.
+
+External retrieval connector metadata is now deny-by-default. Applications
+using `ai-fabric-retrieval-connector` must explicitly allow every safe metadata
+path they expose. Exact vector-space matching, response bounds, URL policy,
+and mandatory post-sanitizer validation cannot be disabled. This is intentional
+trust-boundary hardening.
 
 Closed structured-generation specialists with no retrieval, grounding, or
 actions now use `STRUCTURED_OUTPUT_ONLY`. Their schema-bound finalizer remains
@@ -1853,6 +1908,26 @@ commit.
   invoked the same two specialists; this is a bounded measurement, not a
   general latency guarantee.
 
+### External retrieval and durable indexing hardening
+
+- The focused retrieval reactor passed 5 curated-default, 677 core, and 38
+  retrieval-connector tests with zero failures or skips.
+- The focused indexing reactor passed 5 curated-default, 677 core, and 66
+  indexing tests with zero failures or skips.
+- The packaged boundary lab passed 12 shared smoke-support tests, 2 HTTP
+  integration tests, and 1 focused service test.
+- Its real loopback connector accepted projected policy evidence and rejected
+  tenant denial, generated-answer injection, cross-vector-space evidence,
+  unsafe URLs, and reserved metadata before generation.
+- The deterministic P1 suite passed privacy redaction/index/delete, CRM,
+  behavior, retrieval boundary, governed action, migration, and confirmation
+  interceptor scenarios.
+- The packaged boot matrix started all 11 release-facing real apps.
+- A source-candidate Docker image passed health, accepted-evidence generation,
+  and generated-answer-injection rejection probes.
+- Framework release guards passed, including provider-registry, workflow-test,
+  release-documentation, vector-readiness, and no-production-stub validation.
+
 ### Standalone candidate consumer
 
 - `examples/agentic-execution-consumer` has no reactor parent or relative
@@ -1887,6 +1962,8 @@ Before Loom AI adopts a published artifact:
   scenarios.
 - [ ] Run keyed OpenAI sequential/parallel parity, overlap, atomic failure,
   deadline, and disabled-feature scenarios.
+- [x] Run deterministic external retrieval boundary, P1 product scenarios,
+  packaged boot matrix, and source-candidate Docker probes.
 - [ ] Run packaged Docker and JDBC restart/replay proof.
 - [x] Run standalone candidate consumer compile, context, and public execution
   runtime tests from installed JARs.

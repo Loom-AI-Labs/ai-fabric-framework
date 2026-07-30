@@ -19,6 +19,7 @@ apps=(
   it-support-action-bot
   migration-enabled-product-catalog
   privacy-first-customer-facing-support
+  retrieval-connector-boundary-lab
   relationship-query-crm-insights
   smart-faq-assistant
   sub-management-hub-simple

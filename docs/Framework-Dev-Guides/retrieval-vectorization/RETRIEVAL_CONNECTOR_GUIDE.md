@@ -17,10 +17,16 @@ Reference:
 
 ---
 
-## Status (as of 2026-06-19)
+## Status (as of 2026-07-30)
 
 - **Contract is documented** (OpenAPI + this guide).
 - **Implemented in code (opt-in module):** `ai-fabric-retrieval-connector` provides a read-only `RAGProvider` implementation that calls `/retrieval/search`.
+- **Response boundary is hardened:** vector-space ownership, document and
+  response limits, URL policy, finite scores, deny-by-default metadata, and
+  application sanitizers are enforced before context construction.
+- **Packaged proof exists:** `examples/real-apps/retrieval-connector-boundary-lab`
+  exercises accepted, denied, injected, cross-space, and unsafe responses over
+  HTTP.
 
 Opt-in:
 - Add dependency `io.github.loom-ai-labs:ai-fabric-retrieval-connector`
@@ -118,6 +124,11 @@ successful connector response omits `documents`, returns a non-array `documents`
 only invalid documents, AI Fabric fails closed with `errorCode=INVALID_RESPONSE`. Top-level
 generation, prompt, message, or tool-instruction fields are also rejected on successful responses.
 
+Each accepted document is assigned the requested vector space when the field is
+absent. A conflicting `vectorSpace` in either the document field or metadata
+fails the complete response with `VECTOR_SPACE_MISMATCH`. This authorization
+check cannot be disabled.
+
 Example (success):
 
 ```json
@@ -175,12 +186,88 @@ The connector defines its own score scale, but it MUST be:
 
 AI Fabric expects:
 - `documents` ordered by relevance (descending score)
+- finite numeric scores; `NaN` and positive or negative infinity fail closed
+
+AI Fabric does not force connector scores into `0..1`. A future
+score-normalization contract can address cross-provider comparison separately.
 
 ---
 
-## 5) Security + compliance (same “fail-closed” model)
+## 5) AI Fabric response policy
 
-### 5.1 Authenticate AI Fabric → connector
+Every connector response passes a typed response policy before it can become
+RAG context or client-visible evidence:
+
+```yaml
+ai:
+  retrieval:
+    connector:
+      response-policy:
+        max-documents: 50
+        max-response-characters: 1000000
+        max-document-id-characters: 512
+        max-content-characters: 32000
+        max-context-characters: 128000
+        max-source-characters: 256
+        max-url-characters: 2048
+        max-vector-space-characters: 128
+        max-metadata-entries: 32
+        max-metadata-depth: 4
+        max-metadata-characters: 8192
+        max-message-characters: 512
+        max-error-code-characters: 64
+        allowed-url-schemes: [https]
+        allowed-url-host-suffixes: []
+        allowed-metadata-keys: [locale, citation.section]
+        unknown-metadata-policy: DROP
+```
+
+The effective returned-document limit is the smallest of requested `topK`,
+`max-top-k`, and response-policy `max-documents`.
+
+`source`, validated `url`, and `vectorSpace` remain structural fields. They
+are not copied into the arbitrary metadata map.
+
+Metadata is deny-by-default:
+
+- only exact allowlisted dotted paths survive;
+- unknown paths are dropped by default;
+- set `unknown-metadata-policy: REJECT` for a stricter boundary;
+- reserved `_aifabric*` paths always fail;
+- nested values must be bounded JSON-compatible data.
+
+URLs are citation data only. AI Fabric does not fetch them. `https` is the
+default allowed scheme; optional host suffixes match the exact host or a
+subdomain.
+
+### 5.1 Application sanitizers
+
+Applications may register one or more ordered
+`RetrievalDocumentSanitizer` beans for domain-specific redaction:
+
+```java
+@Bean
+RetrievalDocumentSanitizer redactExternalEvidence() {
+    return (document, context) -> {
+        document.setContent(redact(document.getContent()));
+        document.setMetadata(Map.of());
+        return document;
+    };
+}
+```
+
+The mandatory framework policy runs before and after every application
+sanitizer. A custom sanitizer may remove attribution or metadata and may
+redact content. It cannot change document identity, score, or vector space,
+replace citation attribution, or add metadata that was not present in its
+approved input. A null result, exception, or widening attempt fails the whole
+response with `SANITIZATION_FAILED`.
+
+---
+
+## 6) Security + compliance (same “fail-closed” model)
+
+### 6.1 Authenticate AI Fabric -> connector
 
 Pick one:
 - API key header
@@ -207,7 +294,7 @@ ai:
 HMAC signing sends timestamp, nonce, and signature headers. Connector implementations should reject
 stale timestamps and reused nonces on their side.
 
-### 5.2 Re-authorize the user (defense in depth)
+### 6.2 Re-authorize the user (defense in depth)
 
 Use `trace.authContext` to enforce:
 - tenant boundaries
@@ -215,7 +302,7 @@ Use `trace.authContext` to enforce:
 
 Never rely solely on AI Fabric.
 
-### 5.3 Rate limiting + audit logs
+### 6.3 Rate limiting + audit logs
 
 Implement or enforce:
 - per-user limits
@@ -234,10 +321,39 @@ Do not log full `query` content if it can contain PII; if you must log, hash it 
 
 ---
 
-## 6) Testing checklist
+## 7) Migration checklist
+
+Connector owners upgrading from the original V1 boundary must verify:
+
+1. Every returned document either omits `vectorSpace` or returns the exact
+   requested value.
+2. Citation URLs use configured schemes and, when configured, allowed hosts.
+3. Metadata needed by the application is listed in
+   `allowed-metadata-keys`.
+4. No connector returns reserved `_aifabric*` metadata.
+5. Document, metadata, message, count, and overall response sizes fit the
+   configured limits.
+6. Scores are finite JSON numbers, not numeric strings.
+7. Connector error codes use bounded uppercase identifiers such as
+   `ACCESS_DENIED`.
+
+No migration to `AIIndexDocument` is required. `AIIndexDocument` remains the
+durable write/indexing work contract; `RAGResponse.RAGDocument` remains
+request-scoped retrieved evidence.
+
+---
+
+## 8) Testing checklist
 
 - Always returns **documents only** (no answer fields, no generation).
 - Forbidden generation/prompt/tool fields on a successful response fail closed with `INVALID_RESPONSE`.
+- Missing vector space is normalized; conflicting vector space fails the
+  complete response with `VECTOR_SPACE_MISMATCH`.
+- Metadata allowlist, `DROP`/`REJECT`, and reserved-key behavior are covered.
+- Unsafe URL schemes and disallowed hosts fail closed.
+- Document count, body, field, metadata, and context limits are exercised.
+- Non-finite scores and non-numeric score strings are rejected.
+- Custom sanitizers can redact but cannot widen approved evidence.
 - Unknown `vectorSpace` fails closed (`success=false`, `errorCode=NOT_FOUND` or standardized `VECTOR_SPACE_NOT_FOUND` if adopted).
 - `trace.authContext` drives user/tenant re-authorization; do not depend on top-level `trace.userId`.
 - Malformed success responses fail closed with `INVALID_RESPONSE`.
@@ -245,3 +361,10 @@ Do not log full `query` content if it can contain PII; if you must log, hash it 
 - Ordering is stable (highest score first).
 - Pagination via `cursor` works (when implemented).
 - PII-safe logs (no raw queries or sensitive content).
+
+Run the packaged boundary proof:
+
+```bash
+mvn -B --no-transfer-progress -f examples/real-apps/pom.xml \
+  -pl retrieval-connector-boundary-lab -am test
+```

@@ -2,6 +2,7 @@ package ai.fabric.intent.retrieval.connector.config;
 
 import ai.fabric.http.AIHttpClientFactory;
 import ai.fabric.intent.retrieval.connector.AIRetrievalConnectorProperties;
+import ai.fabric.intent.retrieval.connector.RetrievalDocumentSanitizer;
 import ai.fabric.intent.retrieval.connector.RetrievalConnectorRAGProvider;
 import ai.fabric.spi.RAGProvider;
 import org.junit.jupiter.api.Test;
@@ -83,5 +84,43 @@ class AIRetrievalConnectorAutoConfigurationTest {
             .run(context -> assertThat(context.getStartupFailure())
                 .hasRootCauseInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("ai.retrieval.connector.baseUrl is required"));
+    }
+
+    @Test
+    void injectsApplicationDocumentSanitizers() {
+        RetrievalDocumentSanitizer sanitizer =
+            (document, context) -> document;
+
+        contextRunner
+            .withBean(
+                AIHttpClientFactory.class,
+                () -> mock(AIHttpClientFactory.class)
+            )
+            .withBean(RetrievalDocumentSanitizer.class, () -> sanitizer)
+            .withPropertyValues(
+                "ai.retrieval.connector.enabled=true",
+                "ai.retrieval.connector.base-url=https://connector.example"
+            )
+            .run(context -> assertThat(
+                context.getBean(RetrievalConnectorRAGProvider.class)
+                    .getStatistics()
+            ).containsEntry("customSanitizerCount", 1));
+    }
+
+    @Test
+    void failsFastWhenResponsePolicyIsInvalid() {
+        contextRunner
+            .withBean(
+                AIHttpClientFactory.class,
+                () -> mock(AIHttpClientFactory.class)
+            )
+            .withPropertyValues(
+                "ai.retrieval.connector.enabled=true",
+                "ai.retrieval.connector.base-url=https://connector.example",
+                "ai.retrieval.connector.response-policy.max-documents=0"
+            )
+            .run(context -> assertThat(context.getStartupFailure())
+                .hasRootCauseInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("maxDocuments must be positive"));
     }
 }

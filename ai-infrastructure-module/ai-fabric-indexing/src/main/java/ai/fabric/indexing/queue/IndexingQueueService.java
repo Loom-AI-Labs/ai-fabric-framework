@@ -54,7 +54,10 @@ public class IndexingQueueService {
     ) {
         this.repository = Objects.requireNonNull(repository);
         this.properties = Objects.requireNonNull(properties);
-        this.objectMapper = Objects.requireNonNull(objectMapper);
+        // Durable payloads must not depend on an application's mapper setup.
+        this.objectMapper = Objects.requireNonNull(objectMapper)
+            .copy()
+            .findAndRegisterModules();
         this.clock = Objects.requireNonNull(clock);
         this.metrics = Objects.requireNonNull(metrics);
     }
