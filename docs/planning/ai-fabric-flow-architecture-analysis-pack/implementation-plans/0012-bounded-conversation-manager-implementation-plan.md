@@ -4,6 +4,7 @@
 - **Date:** 2026-07-29
 - **Framework baseline:** AI Fabric `0.4.0`
 - **Code reviewed at:** `83cda9a`
+- **Implementation commit:** `3fd0fa3`
 - **Prerequisite:** Plans `0001` through `0011`
 - **Target:** Optional agentic-enablement capability; version not assigned
 - **Reference proof:** `examples/real-apps/agentic-ai-action-resolver`
@@ -421,8 +422,8 @@ provider client, manager-authored worker payload, or manager WRITE path.
    endpoint, health diagnostics, and deterministic acceptance tests.
 5. [x] Run the full normal-test gate, clean package parity, and real OpenAI
    comparison.
-6. [ ] Commit the implementation, then pin its exact commit into this plan and
-   the Loom AI release-candidate notes.
+6. [x] Commit the implementation as `3fd0fa3`, then pin that exact commit into
+   this plan and the Loom AI release-candidate notes.
 
 ## 16. Explicit Next Boundary
 
