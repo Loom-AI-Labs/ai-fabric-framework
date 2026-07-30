@@ -6,7 +6,7 @@
 - **Compatibility baseline:** AI Fabric `0.4.0`
 - **Baseline tag:** `ai-fabric-framework-v0.4.0`
 - **Baseline commit:** `857619f`
-- **Candidate baseline commit:** `60d7949`
+- **Candidate baseline commit:** `d45f333`
 - **Prepared:** 2026-07-30
 - **Reference application:**
   [`agentic-ai-action-resolver`](../../examples/real-apps/agentic-ai-action-resolver)
@@ -157,6 +157,7 @@ The adoption boundary is:
 | `81dd7b0` | Backend-owned interactive dialogue, frozen authorized history, one active turn, typed manifest client support, and Account Resolver follow-up proof |
 | `3fd0fa3` | Bounded conversation managers, three typed directives, one closed read-only worker choice, shared turn exclusion, replay limits, and packaged OpenAI proof |
 | `60d7949` | Opt-in bounded read-only parallel plans, atomic `ALL_REQUIRED` fan-in, deterministic branch traces, and equivalent sequential/parallel Account Resolver proofs |
+| `d45f333` | Fail-closed external retrieval evidence policy, sanitizer SPI, packaged boundary lab, durable indexing mapper compatibility, and deterministic P1 proof |
 
 These commits build on the released `0.4.0` lifecycle, indexing, RAG, action,
 provider, and chat-session contracts.
