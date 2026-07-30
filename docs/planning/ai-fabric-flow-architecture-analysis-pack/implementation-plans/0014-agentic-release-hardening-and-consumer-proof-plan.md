@@ -1,9 +1,10 @@
 # Agentic Release Hardening And Consumer Proof Plan
 
-- **Status:** Implemented and verified; commit pin pending
+- **Status:** Implemented and verified
 - **Date:** 2026-07-30
 - **Framework baseline:** AI Fabric `0.4.0`
 - **Candidate baseline:** `006c57c`
+- **Implementation commit:** `c52b9628d892b6a1b053f3b4ded10dd84021a652`
 - **Prerequisites:** Plans `0001` through `0013`
 - **Target release:** AI Fabric `0.5.0`
 
@@ -140,7 +141,7 @@ This plan does not:
 6. [x] Existing minimal consumer and framework gates remain intact.
 7. [x] Documentation separates candidate, live-provider, and Central proof.
 8. [x] `git diff --check` and release guards pass.
-9. [ ] Implementation is committed and pinned.
+9. [x] Implementation is committed and pinned.
 10. [x] Post-publication Central and Loom AI consumer gates remain explicitly
     open until the release exists.
 

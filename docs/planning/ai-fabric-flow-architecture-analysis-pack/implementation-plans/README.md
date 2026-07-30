@@ -28,7 +28,7 @@ checklists here.
 | [0011 - Interactive dialogue ownership](./0011-interactive-dialogue-ownership-implementation-plan.md) | Implemented and verified; not released | Backend-frozen conversation projections, one explicit dialogue owner, one active turn, and an upgraded Account Resolver chat proof |
 | [0012 - Bounded conversation manager](./0012-bounded-conversation-manager-implementation-plan.md) | Implemented and verified; not released | One manager-owned frozen turn, three typed directives, one closed read-only worker choice, and exactly one external response |
 | [0013 - Bounded read-only parallel plan](./0013-bounded-read-only-parallel-plan-implementation-plan.md) | Implemented and verified | Opt-in synchronous READ-only fan-out/fan-in, `ALL_REQUIRED` validation, deterministic aggregation, and an equivalent sequential control |
-| [0014 - Agentic release hardening and consumer proof](./0014-agentic-release-hardening-and-consumer-proof-plan.md) | Implemented and verified; commit pin pending | Standalone Spring Boot consumer, packaged public-contract runtime proof, automatic CI gate, and explicit post-publication Central/Loom AI gates |
+| [0014 - Agentic release hardening and consumer proof](./0014-agentic-release-hardening-and-consumer-proof-plan.md) | Implemented and verified | Standalone Spring Boot consumer, packaged public-contract runtime proof, automatic CI gate, and explicit post-publication Central/Loom AI gates |
 
 ## Plan Rules
 
