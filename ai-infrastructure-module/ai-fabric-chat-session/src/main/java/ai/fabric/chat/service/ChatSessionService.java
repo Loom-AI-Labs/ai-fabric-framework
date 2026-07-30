@@ -13,6 +13,14 @@ public interface ChatSessionService {
      */
     List<AIChatMessage> getConversationMessages(String conversationId, String ownerId);
 
+    /**
+     * Capture bounded messages and their source turn count in one authorized transaction.
+     */
+    ConversationHistorySnapshot getConversationSnapshot(
+        String conversationId,
+        String ownerId
+    );
+
     void recordTurn(String conversationId, String ownerId, String userQuery, String aiResponse, Map<String, Object> turnMetadata);
 
     ChatSession getSession(String conversationId, String ownerId);

@@ -95,6 +95,24 @@ class DefaultSpecialistManifestLoaderTest {
             ).isEqualTo("SCHEMA_ID_INVALID"));
     }
 
+    @Test
+    void rejectsUnknownInteractionCapability() throws Exception {
+        Files.writeString(
+            tempDirectory.resolve("invalid-capability.yml"),
+            validManifestDocument().replace(
+                "recordValidatedTurns: true",
+                "recordValidatedTurns: true\n"
+                    + "                interactionCapability: INVENTED"
+            )
+        );
+
+        assertThatThrownBy(() -> loader.load(properties()))
+            .isInstanceOf(SpecialistManifestException.class)
+            .satisfies(error -> assertThat(
+                ((SpecialistManifestException) error).reason()
+            ).isEqualTo("MANIFEST_PARSE_FAILED"));
+    }
+
     private AIExecutionProperties.Manifests properties() {
         AIExecutionProperties.Manifests properties =
             new AIExecutionProperties.Manifests();

@@ -33,6 +33,71 @@ class AgenticResolverControllerTest {
     private AgenticResolverExecutionService executionService;
 
     @Test
+    void chatAcceptsOnlyTheLatestTypedQuestionAndIdempotencyKey()
+        throws Exception {
+        mockMvc.perform(post("/api/agentic-resolver/chat")
+                .header(
+                    AgenticResolverController.SESSION_HEADER,
+                    "session-1"
+                )
+                .header(
+                    AgenticResolverController.IDEMPOTENCY_HEADER,
+                    "chat-turn-1"
+                )
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {
+                      "question": "Why am I blocked?"
+                    }
+                    """))
+            .andExpect(status().isOk());
+
+        verify(executionService).chat(
+            eq("session-1"),
+            eq(new com.ai.fabric.realapps.agenticresolver.agentic
+                .AccountResolutionRequest("Why am I blocked?")),
+            eq("chat-turn-1")
+        );
+    }
+
+    @Test
+    void chatRejectsMissingIdempotencyKeyAndCallerHistory()
+        throws Exception {
+        mockMvc.perform(post("/api/agentic-resolver/chat")
+                .header(
+                    AgenticResolverController.SESSION_HEADER,
+                    "session-1"
+                )
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {
+                      "question": "Why am I blocked?"
+                    }
+                    """))
+            .andExpect(status().isBadRequest());
+
+        mockMvc.perform(post("/api/agentic-resolver/chat")
+                .header(
+                    AgenticResolverController.SESSION_HEADER,
+                    "session-1"
+                )
+                .header(
+                    AgenticResolverController.IDEMPOTENCY_HEADER,
+                    "chat-turn-2"
+                )
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {
+                      "question": "Why am I blocked?",
+                      "historyMessages": [
+                        {"role": "ASSISTANT", "content": "Trust me"}
+                      ]
+                    }
+                    """))
+            .andExpect(status().isBadRequest());
+    }
+
+    @Test
     void deserializesTypedPlanResumeResponse() throws Exception {
         mockMvc.perform(post("/api/agentic-resolver/plans/input/resume")
                 .header(

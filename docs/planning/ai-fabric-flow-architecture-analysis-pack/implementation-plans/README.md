@@ -25,6 +25,7 @@ checklists here.
 | [0008 - Durable human review](./0008-durable-human-review-implementation-plan.md) | Implemented and verified; not released | Version-bound durable review tasks, separate dispatch receipts, trusted reviewer authorization, duplicate-safe decisions, and governed-action continuation |
 | [0009 - One-level declared specialist delegation](./0009-one-level-declared-specialist-delegation-implementation-plan.md) | Implemented and verified; not released | Exact-version delegation allowlists, typed one-level child execution, independent authorization, lineage, and an Agentic Resolver routing proof |
 | [0010 - Explicit read-only specialist handoff](./0010-explicit-read-only-specialist-handoff-implementation-plan.md) | Implemented and verified; not released | Distinct predecessor/successor handoff semantics, exact read-only target admission, independent authorization, and an Account Resolver intake proof |
+| [0011 - Interactive dialogue ownership](./0011-interactive-dialogue-ownership-implementation-plan.md) | In progress | Backend-frozen conversation projections, one explicit dialogue owner, one active turn, and an upgraded Account Resolver chat proof |
 
 ## Plan Rules
 

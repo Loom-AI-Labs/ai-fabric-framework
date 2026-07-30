@@ -14,8 +14,11 @@ import ai.fabric.execution.context.ExecutionSource;
 import ai.fabric.execution.context.ExecutionSubjectRef;
 import ai.fabric.execution.context.TrustedExecutionContext;
 import ai.fabric.execution.gateway.AIExecutionGateway;
+import ai.fabric.execution.gateway.AIExecutionRequest;
 import ai.fabric.execution.gateway.AIExecutionResult;
 import ai.fabric.execution.gateway.AIExecutionStatus;
+import ai.fabric.execution.gateway.AIInteractiveExecutionGateway;
+import ai.fabric.execution.gateway.ConversationBinding;
 import ai.fabric.execution.gateway.ExecutionDurability;
 import ai.fabric.execution.gateway.ExecutionHandle;
 import ai.fabric.execution.gateway.ExecutionHandleStatus;
@@ -37,6 +40,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 
 class DefaultSpecialistClientFactoryTest {
 
@@ -85,6 +89,78 @@ class DefaultSpecialistClientFactoryTest {
 
         assertThat(result.output().answer())
             .isEqualTo("Use the approved recovery process.");
+    }
+
+    @Test
+    void convertsTypedDtosAcrossTheInteractiveGateway() {
+        var compiled = new DefaultSpecialistManifestCompiler()
+            .compile(
+                ManifestTestFixtures.manifest(),
+                ManifestTestFixtures.compilationContext()
+            )
+            .specialist();
+        var registry = new DefaultSpecialistRegistry(
+            List.of(compiled),
+            ManifestTestFixtures.definitionValidator()
+        );
+        AIInteractiveExecutionGateway interactiveGateway =
+            mock(AIInteractiveExecutionGateway.class);
+        ObjectNode rawOutput = ManifestTestFixtures.objectMapper()
+            .createObjectNode()
+            .put("answer", "Use the approved recovery process.");
+        when(interactiveGateway.execute(any())).thenReturn(
+            new AIExecutionResult<>(
+                "exec-interactive-1",
+                SpecialistId.of("support-knowledge", "1"),
+                AIExecutionStatus.SUCCEEDED,
+                rawOutput,
+                List.of(),
+                Map.of(),
+                null,
+                Instant.EPOCH,
+                Instant.EPOCH
+            )
+        );
+        SpecialistClientFactory factory = new DefaultSpecialistClientFactory(
+            registry,
+            mock(AIExecutionGateway.class),
+            ManifestTestFixtures.objectMapper()
+        );
+        SpecialistClient<Question, Answer> client = factory.bind(
+            SpecialistId.of("support-knowledge", "1"),
+            Question.class,
+            Answer.class
+        );
+        SpecialistInvocation<Question> invocation =
+            new SpecialistInvocation<>(
+                new Question("How do I reset MFA?"),
+                trustedContext(),
+                new ConversationBinding("user-1", "conversation-1"),
+                null,
+                "interactive-1"
+            );
+
+        AIExecutionResult<Answer> result = client.executeInteractive(
+            invocation,
+            interactiveGateway
+        );
+
+        assertThat(result.output().answer())
+            .isEqualTo("Use the approved recovery process.");
+        @SuppressWarnings("rawtypes")
+        ArgumentCaptor<AIExecutionRequest> request =
+            ArgumentCaptor.forClass(AIExecutionRequest.class);
+        verify(interactiveGateway).execute(request.capture());
+        assertThat(request.getValue().input())
+            .isInstanceOf(ObjectNode.class);
+        assertThat(
+            ((ObjectNode) request.getValue().input()).path("question")
+                .textValue()
+        ).isEqualTo("How do I reset MFA?");
+        assertThat(request.getValue().conversationBinding())
+            .isEqualTo(invocation.conversationBinding());
+        assertThat(request.getValue().idempotencyKey())
+            .isEqualTo("interactive-1");
     }
 
     @Test

@@ -103,6 +103,9 @@ class AccountResolverOrchestrationConfigurationTest {
             .contains("Do not ask the user for internal identifiers")
             .contains("Treat policy documents as human-readable guidance")
             .contains("For account-owned workflows, set requiresTargetResolution=false")
+            .contains("which requirement to resolve")
+            .contains("Re-retrieve approved policy evidence")
+            .contains("never treat prior assistant prose as evidence")
             .contains("ACCOUNT RESOLVER REFERENCE RESOLUTION")
             .contains("ok add it")
             .contains("Generic \"it/that\" target-resolution rules apply only to external attached or pinned records");
@@ -119,6 +122,9 @@ class AccountResolverOrchestrationConfigurationTest {
             .contains("Do not ask the user for internal identifiers")
             .contains("Treat policy documents as human-readable guidance")
             .contains("For account-owned workflows, set requiresTargetResolution=false")
+            .contains("which requirement to resolve")
+            .contains("Re-retrieve approved policy evidence")
+            .contains("never treat prior assistant prose as evidence")
             .contains("Account Resolver reference resolution")
             .contains("ok add it")
             .contains("Generic \"it/that\" target-resolution rules apply only to external attached or pinned records");

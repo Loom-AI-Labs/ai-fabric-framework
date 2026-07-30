@@ -6,6 +6,7 @@ import ai.fabric.chat.service.ChatSessionService;
 import ai.fabric.dto.AIChatMessage;
 import ai.fabric.intent.orchestration.OrchestrationContextMetadataKeys;
 import ai.fabric.intent.orchestration.OrchestrationResult;
+import ai.fabric.intent.orchestration.conversation.ApprovedConversationSnapshot;
 import ai.fabric.intent.orchestration.pipeline.PipelineContext;
 import ai.fabric.intent.orchestration.pipeline.PipelineStep;
 import ai.fabric.intent.orchestration.request.ConversationPersistencePolicy;
@@ -76,6 +77,18 @@ public class ConversationEnrichmentStep implements PipelineStep {
         }
 
         try {
+            ApprovedConversationSnapshot snapshot = context
+                .getOrchestrationContext()
+                .getApprovedConversationSnapshot();
+            if (snapshot != null) {
+                return enrichFromApprovedSnapshot(
+                    context,
+                    conversationId,
+                    ownerId,
+                    snapshot
+                );
+            }
+
             PipelineContext seeded = seedResolvedTargetsFromSession(context, conversationId, ownerId);
             if (seeded != null) {
                 context = seeded;
@@ -115,6 +128,45 @@ public class ConversationEnrichmentStep implements PipelineStep {
             log.warn("Failed to enrich conversation {}: {}", conversationId, ex.getMessage());
             return context;
         }
+    }
+
+    private PipelineContext enrichFromApprovedSnapshot(
+        PipelineContext context,
+        String conversationId,
+        String ownerId,
+        ApprovedConversationSnapshot snapshot
+    ) {
+        if (!conversationId.equals(snapshot.conversationId())
+            || !ownerId.equals(snapshot.ownerId())) {
+            throw new ChatSessionAccessDeniedException(
+                "Approved conversation snapshot does not match the bound conversation"
+            );
+        }
+
+        List<AIChatMessage> historyMessages = snapshot.historyMessages();
+        int historyChars = historyMessages.stream()
+            .map(AIChatMessage::getContent)
+            .filter(StringUtils::hasText)
+            .mapToInt(String::length)
+            .sum();
+
+        Map<String, Object> chatMeta = new LinkedHashMap<>();
+        chatMeta.put("conversationId", conversationId);
+        chatMeta.put("historyMessagesCount", historyMessages.size());
+        chatMeta.put("historyChars", historyChars);
+        chatMeta.put("memoryStrategy", "APPROVED_SNAPSHOT");
+        chatMeta.put("snapshotRevision", snapshot.revision());
+        chatMeta.put("sourceTurnCount", snapshot.sourceTurnCount());
+
+        return context.toBuilder()
+            .historyMessages(historyMessages)
+            .metadata(
+                mergeMetadata(
+                    context.getMetadata(),
+                    Map.of(METADATA_KEY_CHAT, chatMeta)
+                )
+            )
+            .build();
     }
 
     private PipelineContext seedResolvedTargetsFromSession(PipelineContext context, String conversationId, String ownerId) {

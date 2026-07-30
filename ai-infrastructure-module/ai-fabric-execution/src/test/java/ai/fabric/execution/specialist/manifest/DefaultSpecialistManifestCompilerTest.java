@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import ai.fabric.execution.specialist.JsonSchemaOutputContract;
+import ai.fabric.execution.specialist.RegisteredSpecialist;
 import ai.fabric.execution.specialist.SpecialistId;
 import ai.fabric.execution.specialist.SpecialistDefinitionSource;
 import ai.fabric.execution.specialist.SpecialistOutputMode;
@@ -37,6 +38,11 @@ class DefaultSpecialistManifestCompilerTest {
             .isEqualTo("support-knowledge@1");
         assertThat(result.specialist().definition().inputAdapter().inputType())
             .isEqualTo(JsonNode.class);
+        assertThat(result.specialist().definition().inputAdapter()
+            .interactionCapability())
+            .isEqualTo(
+                SpecialistInteractionCapability.NON_INTERACTIVE
+            );
         assertThat(result.specialist().definition().outputAdapter().outputMode())
             .isEqualTo(SpecialistOutputMode.STRUCTURED_GENERATION);
         assertThat(result.specialist().definition()
@@ -49,6 +55,69 @@ class DefaultSpecialistManifestCompilerTest {
         assertThat(result.specialist().definition().outputAdapter()
             .orchestrationIntentPolicy())
             .isEqualTo(OrchestrationIntentPolicy.MODEL_DIRECTED);
+    }
+
+    @Test
+    void compilesAnExplicitDialogueOwnerCapability() {
+        SpecialistCompilationResult result = compiler.compile(
+            withConversation(new SpecialistConversationSpec(
+                SpecialistConversationBinding.REQUIRED,
+                true,
+                SpecialistInteractionCapability.DIALOGUE_CAPABLE
+            )),
+            ManifestTestFixtures.compilationContext()
+        );
+
+        assertThat(result.specialist().definition().inputAdapter()
+            .interactionCapability())
+            .isEqualTo(
+                SpecialistInteractionCapability.DIALOGUE_CAPABLE
+            );
+        assertThat(result.specialist().definition().inputAdapter()
+            .conversationBinding())
+            .isEqualTo(SpecialistConversationBinding.REQUIRED);
+        assertThat(result.specialist().definition().inputAdapter()
+            .recordValidatedTurns()).isTrue();
+        SpecialistCompilationResult ordinary = compiler.compile(
+            ManifestTestFixtures.manifest(),
+            ManifestTestFixtures.compilationContext()
+        );
+        assertThat(RegisteredSpecialist.javaDefinition(
+            result.specialist().definition()
+        ).contentHash()).isNotEqualTo(
+            RegisteredSpecialist.javaDefinition(
+                ordinary.specialist().definition()
+            ).contentHash()
+        );
+    }
+
+    @Test
+    void rejectsDialogueCapabilityWithoutBindingAndRecording() {
+        assertThatThrownBy(() -> compiler.compile(
+            withConversation(new SpecialistConversationSpec(
+                SpecialistConversationBinding.DISABLED,
+                false,
+                SpecialistInteractionCapability.DIALOGUE_CAPABLE
+            )),
+            ManifestTestFixtures.compilationContext()
+        ))
+            .isInstanceOf(SpecialistManifestException.class)
+            .satisfies(error -> assertThat(
+                ((SpecialistManifestException) error).reason()
+            ).isEqualTo("DIALOGUE_CAPABILITY_INVALID"));
+
+        assertThatThrownBy(() -> compiler.compile(
+            withConversation(new SpecialistConversationSpec(
+                SpecialistConversationBinding.OPTIONAL,
+                false,
+                SpecialistInteractionCapability.DIALOGUE_CAPABLE
+            )),
+            ManifestTestFixtures.compilationContext()
+        ))
+            .isInstanceOf(SpecialistManifestException.class)
+            .satisfies(error -> assertThat(
+                ((SpecialistManifestException) error).reason()
+            ).isEqualTo("DIALOGUE_CAPABILITY_INVALID"));
     }
 
     @Test
@@ -472,6 +541,31 @@ class DefaultSpecialistManifestCompilerTest {
                 spec.output(),
                 spec.conversation(),
                 spec.limits()
+            )
+        );
+    }
+
+    private SpecialistManifest withConversation(
+        SpecialistConversationSpec conversation
+    ) {
+        SpecialistManifest manifest = ManifestTestFixtures.manifest();
+        SpecialistManifestSpec spec = manifest.spec();
+        return new SpecialistManifest(
+            manifest.apiVersion(),
+            manifest.kind(),
+            manifest.metadata(),
+            new SpecialistManifestSpec(
+                spec.mode(),
+                spec.instructions(),
+                spec.execution(),
+                spec.capabilities(),
+                spec.input(),
+                spec.grounding(),
+                spec.output(),
+                conversation,
+                spec.limits(),
+                spec.delegation(),
+                spec.handoff()
             )
         );
     }

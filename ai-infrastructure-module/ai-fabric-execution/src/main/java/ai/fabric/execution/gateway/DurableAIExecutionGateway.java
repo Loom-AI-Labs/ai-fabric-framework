@@ -1,5 +1,6 @@
 package ai.fabric.execution.gateway;
 
+import ai.fabric.execution.context.ExecutionSource;
 import ai.fabric.execution.context.TrustedExecutionContext;
 import ai.fabric.execution.specialist.RegisteredSpecialist;
 import ai.fabric.execution.specialist.SpecialistRegistry;
@@ -26,7 +27,10 @@ import org.springframework.core.task.AsyncTaskExecutor;
 import org.springframework.scheduling.annotation.Scheduled;
 
 /**
- * Durable asynchronous boundary over the existing single-invocation executor.
+ * Durable asynchronous boundary for machine-triggered submissions.
+ *
+ * <p>Interactive submissions remain ephemeral because their approved
+ * conversation snapshot is intentionally process-local and single-use.
  */
 public final class DurableAIExecutionGateway implements AIExecutionGateway {
 
@@ -113,6 +117,12 @@ public final class DurableAIExecutionGateway implements AIExecutionGateway {
     @Override
     public ExecutionHandle submit(AIExecutionRequest<?> request) {
         Objects.requireNonNull(request, "request is required");
+        if (
+            request.trustedExecutionContext().source()
+            == ExecutionSource.INTERACTIVE
+        ) {
+            return delegate.submit(request);
+        }
         String invocationId = invocationId();
         RegisteredSpecialist specialist;
         Instant deadline;

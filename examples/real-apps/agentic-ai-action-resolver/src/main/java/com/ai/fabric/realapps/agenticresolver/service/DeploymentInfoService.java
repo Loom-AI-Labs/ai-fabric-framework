@@ -3,6 +3,7 @@ package com.ai.fabric.realapps.agenticresolver.service;
 import ai.fabric.execution.action.ActionProposalReceiptRepository;
 import ai.fabric.execution.config.AIExecutionProperties;
 import ai.fabric.execution.gateway.AIExecutionGateway;
+import ai.fabric.execution.gateway.AIInteractiveExecutionGateway;
 import ai.fabric.execution.gateway.ExecutionDurability;
 import ai.fabric.execution.plan.AIExecutionCoordinator;
 import ai.fabric.execution.plan.ExecutionPlanRegistry;
@@ -40,6 +41,7 @@ public class DeploymentInfoService {
     private final Properties fileBuildProperties;
     private final List<AIProvider> providers;
     private final AIExecutionGateway executionGateway;
+    private final AIInteractiveExecutionGateway interactiveExecutionGateway;
     private final AIExecutionCoordinator executionCoordinator;
     private final ExecutionPlanRegistry executionPlanRegistry;
     private final SpecialistRegistry specialistRegistry;
@@ -52,6 +54,7 @@ public class DeploymentInfoService {
         Environment environment,
         List<AIProvider> providers,
         AIExecutionGateway executionGateway,
+        AIInteractiveExecutionGateway interactiveExecutionGateway,
         AIExecutionCoordinator executionCoordinator,
         ExecutionPlanRegistry executionPlanRegistry,
         SpecialistRegistry specialistRegistry,
@@ -66,6 +69,7 @@ public class DeploymentInfoService {
         this.fileBuildProperties = loadFileProperties(BUILD_INFO_FILE);
         this.providers = providers != null ? List.copyOf(providers) : List.of();
         this.executionGateway = executionGateway;
+        this.interactiveExecutionGateway = interactiveExecutionGateway;
         this.executionCoordinator = executionCoordinator;
         this.executionPlanRegistry = executionPlanRegistry;
         this.specialistRegistry = specialistRegistry;
@@ -138,6 +142,10 @@ public class DeploymentInfoService {
             : ExecutionDurability.EPHEMERAL.name();
         Map<String, Object> execution = new LinkedHashMap<>();
         execution.put("ready", executionGateway != null);
+        execution.put(
+            "interactiveDialogueGatewayReady",
+            interactiveExecutionGateway != null
+        );
         execution.put("planCoordinatorReady", executionCoordinator != null);
         execution.put(
             "planDurability",

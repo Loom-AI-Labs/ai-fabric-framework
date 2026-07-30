@@ -7,8 +7,10 @@ bounded specialist reads, durable read jobs, confirmation-gated writes, and a
 separately authorized durable human-review lifecycle. It now also proves
 one-level model-selected delegation across a closed set of exact-version,
 read-only specialists and an explicitly distinct one-level responsibility
-handoff. It was copied from Account Resolver to preserve the existing live
-demo while the new execution contracts are developed and verified.
+handoff. Its interactive route now also proves explicit dialogue ownership
+over one backend-frozen conversation snapshot. It was copied from Account
+Resolver to preserve the existing live demo while the new execution contracts
+are developed and verified.
 
 The copy has its own artifact, Java package, port, database, Lucene index,
 durable opaque demo sessions, Dockerfile, and tests. The tracked source under
@@ -39,6 +41,7 @@ Delegation coordinator: account-resolution-coordinator@1
 Delegation targets: account-resolver-read@1, billing-resolution-advisor@1
 Handoff intake: account-resolution-intake@1
 Handoff successors: account-resolver-read@1, billing-resolution-advisor@1
+Interactive dialogue owner: account-resolver@1
 ```
 
 `POST /api/agentic-resolver/evaluate` receives application authority and is
@@ -53,6 +56,25 @@ grounding requirements, and limits are loaded from
 only for authoritative account projection/validation and registered action
 behavior. Health diagnostics expose a canonical content hash for each
 manifest definition.
+
+## Interactive Dialogue Ownership
+
+```text
+latest typed question + stable idempotency key
+  -> backend-owned principal, account, tenant, scopes, and conversation
+  -> AIInteractiveExecutionGateway
+  -> exact DIALOGUE_CAPABLE account-resolver@1
+  -> one authorized bounded history snapshot
+  -> normal AIExecutionGateway submit/find execution
+  -> existing Mode, RAG, action, provider, and validation pipeline
+  -> at most one validated conversation append
+```
+
+The public request cannot submit history, a snapshot, a specialist, or an
+account identifier. One process-local turn may own a conversation at a time.
+Exact retries replay the original invocation and changed payloads under the
+same key fail as `IDEMPOTENCY_CONFLICT`. Delegation, handoff, event, and plan
+workers remain non-interactive and receive no conversation implicitly.
 
 ## One-Level Delegation
 
@@ -205,11 +227,11 @@ There is no success fallback. Typed failures cover:
 
 ## Verification
 
-- Final execution reactor: 970 tests with no failures or skips: 5
-  curated-default, 673 core, 56 chat-session, and 236 execution tests.
-- Final real-app reactor: 12 smoke-support tests and 117 copied-app tests.
-- Clean packaged app build: 117 copied-app tests. Its nested core and
-  execution JAR hashes matched the locally verified Maven artifacts.
+- Final execution reactor: 1,012 tests with no failures or skips: 5
+  curated-default, 675 core, 59 chat-session, and 273 execution tests.
+- Final real-app reactor: 12 smoke-support tests and 125 copied-app tests.
+- Clean packaged app build: 125 copied-app tests. Its nested execution JAR
+  SHA-256 digest matched the locally verified Maven artifact.
 - Original Account Resolver: 49 app tests and 12 smoke-support tests.
 - Manifest contract, compiler, registry, schema adapter, typed client,
   published example, metrics, and receipt-hash migration tests.
@@ -225,6 +247,11 @@ There is no success fallback. Typed failures cover:
   rejection, hostile instruction, malformed/extra parameters, idempotent
   replay, cross-session isolation, and a genuine support-credit proposal
   routed into durable human review.
+- Packaged real OpenAI dialogue: the first turn returned the verified-payment
+  blocker with four policy citations; the short follow-up used a frozen
+  two-message/one-turn backend snapshot; exact replay preserved invocation and
+  snapshot revision; changed input conflicted; and caller-supplied history was
+  rejected.
 - Packaged real OpenAI delegation: current-account and account-credit requests
   selected the two declared target families, each child succeeded with safe
   policy evidence, exact replay preserved all invocation identities, changed
@@ -234,5 +261,5 @@ There is no success fallback. Typed failures cover:
 - Privacy: synthetic address input and provider keys were absent from packaged
   logs; public action outcomes contained no address or internal account IDs.
 
-These checks completed on 2026-07-29 with zero test failures. Publication and
+These checks completed on 2026-07-30 with zero test failures. Publication and
 release version assignment remain explicit follow-up decisions.

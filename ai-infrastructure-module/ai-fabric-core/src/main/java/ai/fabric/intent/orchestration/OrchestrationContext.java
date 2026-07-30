@@ -6,6 +6,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import ai.fabric.dto.AIGenerationInputPart;
+import ai.fabric.intent.orchestration.conversation.ApprovedConversationSnapshot;
 import ai.fabric.intent.orchestration.attachment.NormalizedAttachment;
 import ai.fabric.intent.orchestration.attachment.OrchestrationAttachment;
 import com.fasterxml.jackson.annotation.JsonIgnore;
@@ -131,6 +132,15 @@ public class OrchestrationContext {
      */
     @JsonIgnore
     private String specialistInstructions;
+
+    /**
+     * Backend-frozen history projection for one explicitly owned interactive turn.
+     *
+     * <p>This cannot be populated from public request JSON. Conversation-aware
+     * pipeline steps use it instead of re-reading mutable live history.</p>
+     */
+    @JsonIgnore
+    private ApprovedConversationSnapshot approvedConversationSnapshot;
 
     /**
      * True if an authenticated userId was provided.

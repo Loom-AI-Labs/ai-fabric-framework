@@ -692,6 +692,17 @@ public final class DefaultSpecialistManifestCompiler
                 source
             );
         }
+        if (conversation.interactionCapability()
+                == SpecialistInteractionCapability.DIALOGUE_CAPABLE
+            && (conversation.binding()
+                    == SpecialistConversationBinding.DISABLED
+                || !conversation.recordValidatedTurns())) {
+            throw failure(
+                "DIALOGUE_CAPABILITY_INVALID",
+                "DIALOGUE_CAPABLE requires conversation binding and validated-turn recording.",
+                source
+            );
+        }
         if (conversation.recordValidatedTurns()
             && (input.conversationTextPointer() == null
                 || output.conversationTextPointer() == null)) {

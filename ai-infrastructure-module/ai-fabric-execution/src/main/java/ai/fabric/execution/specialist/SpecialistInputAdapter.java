@@ -3,6 +3,7 @@ package ai.fabric.execution.specialist;
 import ai.fabric.intent.orchestration.OrchestrationContext;
 import ai.fabric.execution.input.SpecialistInputContinuation;
 import ai.fabric.execution.specialist.manifest.SpecialistConversationBinding;
+import ai.fabric.execution.specialist.manifest.SpecialistInteractionCapability;
 import java.util.Optional;
 
 /**
@@ -36,6 +37,10 @@ public interface SpecialistInputAdapter<I> {
 
     default boolean recordValidatedTurns() {
         return true;
+    }
+
+    default SpecialistInteractionCapability interactionCapability() {
+        return SpecialistInteractionCapability.NON_INTERACTIVE;
     }
 
     /**

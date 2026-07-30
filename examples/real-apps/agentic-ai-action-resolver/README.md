@@ -112,6 +112,14 @@ the governed-action baseline.
   one durable terminal record, not exactly-once provider invocation.
 - Server-created, database-backed session state binds the opaque browser
   session to the trusted principal, tenant, and current account subject.
+- `account-resolver@1` is explicitly `DIALOGUE_CAPABLE`; ordinary workers and
+  read-only successors remain non-interactive.
+- The browser sends only the latest typed question. The interactive gateway
+  freezes one authorized, bounded backend-history snapshot for the turn.
+- A stable chat idempotency key replays the original invocation without
+  appending a duplicate turn; changed input under that key conflicts.
+- Only one process-local turn may own a conversation at a time, while
+  different conversations can proceed independently.
 - `account-resolver@1` requests one Mode, one READ action, one WRITE proposal,
   and one vector space.
 - Effective capabilities intersect specialist requests, Mode policy,
@@ -155,7 +163,8 @@ It defines:
 - `account-resolver-read@1`, `account-resolver@1`,
   `account-resolution-coordinator@1`, and `billing-resolution-advisor@1`;
 - Mode, execution strategy, requested vector/action capabilities, grounding
-  requirements, conversation policy, and bounded limits; and
+  requirements, explicit dialogue capability, conversation policy, and
+  bounded limits; and
 - stable references to approved application extensions.
 
 No Java specialist declaration remains in the app. AI Fabric loads and
@@ -484,9 +493,20 @@ HTTP request with question only
        -> SUCCEEDED | FAILED | OUTCOME_UNKNOWN
 ```
 
-Interactive calls additionally use `ai-fabric-chat-session`. The gateway reads
-recent turns before execution and records a new turn only after validated
-projection. The browser sends only the new question.
+Interactive calls additionally use `ai-fabric-chat-session`. The
+`AIInteractiveExecutionGateway` claims one turn, freezes recent authorized
+messages, and passes an opaque one-use approval to the normal execution
+gateway. The orchestration pipeline uses that frozen snapshot and records a
+new turn only after validated projection. The browser sends only the new
+question and cannot provide history or a snapshot. The application binds the
+manifest-backed DTO types through `SpecialistClientFactory` and calls
+`SpecialistClient.executeInteractive`, preserving typed input/output while the
+manifest runtime validates its JSON schemas.
+
+When the JDBC async repository is enabled, interactive submissions still use
+the bounded process-local gateway. JDBC execution durability applies to
+eligible machine-owned read jobs; conversation durability remains owned by
+`ai-fabric-chat-session`.
 
 ## Security Boundary
 
@@ -630,6 +650,11 @@ Content-Type: application/json
 {"question":"Update my billing address to 10 Downing Street, London, London, SW1A 2AA, GB."}
 ```
 
+`Idempotency-Key` is required for `/chat`, opaque, and limited to 200
+characters. Retrying the same question with the same key returns the original
+invocation and snapshot revision. Reusing that key with changed input returns
+`IDEMPOTENCY_CONFLICT`.
+
 Start a typed billing assessment:
 
 ```http
@@ -665,11 +690,10 @@ The public resume body cannot select a principal, subject, tenant, deployment,
 specialist, capability, or action. A request from a different session receives
 the same unavailable response as an unknown request.
 
-`Idempotency-Key` is optional for the initial chat and billing-assessment
-calls, opaque, and limited to 200 characters. Supply a stable value when
-retrying the same initial request. A write proposal persists only an
-identity-scoped HMAC of that value; reusing it for different proposal
-parameters fails closed.
+`Idempotency-Key` is optional for the initial billing-assessment call, opaque,
+and limited to 200 characters. Supply a stable value when retrying the same
+initial request. A write proposal persists only an identity-scoped HMAC of
+that value; reusing it for different proposal parameters fails closed.
 
 The resume endpoint requires its own stable `Idempotency-Key`. The bounded
 process-local wait state compares that key together with the canonical response
@@ -1137,6 +1161,19 @@ mvn -B -V --no-transfer-progress \
   -pl agentic-ai-action-resolver -am test
 ```
 
+Clean packaged app:
+
+```bash
+mvn -B -V --no-transfer-progress \
+  -f examples/real-apps/pom.xml \
+  -pl agentic-ai-action-resolver -am clean package
+```
+
+For release proof, compare the SHA-256 digest of
+`BOOT-INF/lib/ai-fabric-execution-<version>.jar` in the executable app with the
+verified artifact in the local Maven repository. A non-clean package is not
+sufficient evidence after changing framework dependencies.
+
 Regression proof for the unchanged baseline:
 
 ```bash
@@ -1153,6 +1190,7 @@ No verification command for this feature uses `-DskipTests`.
 - direct model-to-handler execution;
 - unrestricted model-authored planning or specialist discovery;
 - recursive delegation or handoff;
+- model-selected dialogue owners or a conversation manager;
 - dialogue-owner transfer or durable delegation/handoff state;
 - conditional, parallel, WRITE-capable, or durable plans;
 - event or scheduled write adapters;

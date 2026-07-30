@@ -174,6 +174,11 @@ public final class JsonSchemaSpecialistInputAdapter
     }
 
     @Override
+    public SpecialistInteractionCapability interactionCapability() {
+        return conversation.interactionCapability();
+    }
+
+    @Override
     public Optional<SpecialistInputContinuation<JsonNode>>
         inputContinuation() {
         return Optional.ofNullable(inputContinuation);

@@ -16,6 +16,7 @@ import ai.fabric.execution.gateway.AIExecutionStatus;
 import ai.fabric.execution.input.SpecialistInputRequirement;
 import ai.fabric.execution.specialist.manifest.MicrometerSpecialistManifestMetrics;
 import ai.fabric.execution.specialist.manifest.SpecialistManifestMetrics;
+import ai.fabric.execution.specialist.manifest.SpecialistInteractionCapability;
 import ai.fabric.intent.orchestration.OrchestrationResult;
 import ai.fabric.intent.orchestration.OrchestrationResultType;
 import ai.fabric.intent.orchestration.request.OrchestrationIntentPolicy;
@@ -110,6 +111,10 @@ class AccountResolverSpecialistManifestTest {
         assertThat(definition.executionProfile()
             .requestedCapabilities().requestedVectorSpaces())
             .containsExactly("account-resolution-policy");
+        assertThat(definition.inputAdapter().interactionCapability())
+            .isEqualTo(
+                SpecialistInteractionCapability.DIALOGUE_CAPABLE
+            );
     }
 
     @Test
@@ -120,6 +125,10 @@ class AccountResolverSpecialistManifestTest {
 
         assertThat(readDefinition.id().toString())
             .isEqualTo("account-resolver-read@1");
+        assertThat(readDefinition.inputAdapter().interactionCapability())
+            .isEqualTo(
+                SpecialistInteractionCapability.NON_INTERACTIVE
+            );
         assertThat(readDefinition.executionProfile().writeEnabled()).isFalse();
         assertThat(readDefinition.executionProfile()
             .requestedCapabilities().visibleActions())

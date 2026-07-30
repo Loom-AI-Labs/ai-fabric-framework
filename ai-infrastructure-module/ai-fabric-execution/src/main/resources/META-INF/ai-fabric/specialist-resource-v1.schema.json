@@ -559,6 +559,13 @@
         },
         "recordValidatedTurns": {
           "type": "boolean"
+        },
+        "interactionCapability": {
+          "enum": [
+            "NON_INTERACTIVE",
+            "DIALOGUE_CAPABLE"
+          ],
+          "default": "NON_INTERACTIVE"
         }
       }
     },

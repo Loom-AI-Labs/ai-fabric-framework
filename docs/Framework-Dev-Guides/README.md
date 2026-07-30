@@ -75,11 +75,12 @@ For specialist execution and manifest authoring:
 
 1. `application-patterns/AGENTIC_APP_GUIDE.md`
 2. `application-patterns/SPECIALIST_MANIFEST_AUTHORING_GUIDE.md`
-3. `application-patterns/ONE_LEVEL_SPECIALIST_DELEGATION.md`
-4. `application-patterns/EXPLICIT_SPECIALIST_HANDOFF.md`
-5. `actions-governance/GOVERNED_SPECIALIST_WRITES_AND_RECEIPTS.md`
-6. `security-auth/RUNTIME_AUTHORIZATION_AND_ACCESS_CONTROL_GUIDE.md`
-7. `testing-verification/VERIFICATION_PLAYBOOK.md`
+3. `application-patterns/INTERACTIVE_DIALOGUE_OWNERSHIP.md`
+4. `application-patterns/ONE_LEVEL_SPECIALIST_DELEGATION.md`
+5. `application-patterns/EXPLICIT_SPECIALIST_HANDOFF.md`
+6. `actions-governance/GOVERNED_SPECIALIST_WRITES_AND_RECEIPTS.md`
+7. `security-auth/RUNTIME_AUTHORIZATION_AND_ACCESS_CONTROL_GUIDE.md`
+8. `testing-verification/VERIFICATION_PLAYBOOK.md`
 
 For RAG, vector, and provider work:
 

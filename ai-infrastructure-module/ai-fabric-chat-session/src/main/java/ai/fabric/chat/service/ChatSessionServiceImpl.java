@@ -54,8 +54,17 @@ public class ChatSessionServiceImpl implements ChatSessionService {
     @Override
     @Transactional
     public List<AIChatMessage> getConversationMessages(String conversationId, String ownerId) {
+        return getConversationSnapshot(conversationId, ownerId).messages();
+    }
+
+    @Override
+    @Transactional
+    public ConversationHistorySnapshot getConversationSnapshot(
+        String conversationId,
+        String ownerId
+    ) {
         if (!StringUtils.hasText(conversationId)) {
-            return List.of();
+            return new ConversationHistorySnapshot(0L, List.of());
         }
         if (!StringUtils.hasText(ownerId)) {
             throw new IllegalArgumentException("ownerId cannot be blank when loading conversation messages");
@@ -73,24 +82,28 @@ public class ChatSessionServiceImpl implements ChatSessionService {
         }
 
         List<ChatTurn> history = session.getTurns() != null ? session.getTurns() : List.of();
+        long sourceTurnCount = history.size();
         if (history.isEmpty()) {
-            return List.of();
+            return new ConversationHistorySnapshot(sourceTurnCount, List.of());
         }
 
         int windowSize = properties != null ? properties.getWindowSize() : 10;
         List<ChatTurn> pruned = memoryStrategy.prune(history, windowSize);
         if (pruned == null || pruned.isEmpty()) {
-            return List.of();
+            return new ConversationHistorySnapshot(sourceTurnCount, List.of());
         }
 
         List<AIChatMessage> messages = memoryStrategy.toMessages(pruned);
         if (messages == null || messages.isEmpty()) {
-            return List.of();
+            return new ConversationHistorySnapshot(sourceTurnCount, List.of());
         }
 
         int maxChars = properties != null ? properties.getMaxContextChars() : 8_000;
         if (maxChars <= 0) {
-            return messages;
+            return new ConversationHistorySnapshot(
+                sourceTurnCount,
+                messages
+            );
         }
 
         // Bound by dropping oldest whole messages; never substring content.
@@ -101,7 +114,10 @@ public class ChatSessionServiceImpl implements ChatSessionService {
             .sum();
 
         if (totalChars <= maxChars) {
-            return messages;
+            return new ConversationHistorySnapshot(
+                sourceTurnCount,
+                messages
+            );
         }
 
         List<AIChatMessage> bounded = new ArrayList<>(messages);
@@ -112,7 +128,10 @@ public class ChatSessionServiceImpl implements ChatSessionService {
             }
         }
 
-        return bounded.isEmpty() ? List.of() : List.copyOf(bounded);
+        return new ConversationHistorySnapshot(
+            sourceTurnCount,
+            bounded
+        );
     }
 
     @Override

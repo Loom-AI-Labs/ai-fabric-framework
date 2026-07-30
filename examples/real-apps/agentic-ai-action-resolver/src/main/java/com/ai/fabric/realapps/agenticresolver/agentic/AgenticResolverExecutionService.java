@@ -16,6 +16,7 @@ import ai.fabric.execution.gateway.AIExecutionResumeResult;
 import ai.fabric.execution.gateway.AIExecutionFailure;
 import ai.fabric.execution.gateway.AIExecutionStatus;
 import ai.fabric.execution.gateway.ConversationBinding;
+import ai.fabric.execution.gateway.AIInteractiveExecutionGateway;
 import ai.fabric.execution.gateway.ExecutionHandle;
 import ai.fabric.execution.gateway.ExecutionHandleStatus;
 import ai.fabric.execution.handoff.SpecialistHandoffGateway;
@@ -96,11 +97,11 @@ public class AgenticResolverExecutionService {
     private final SpecialistClient<
         AccountResolutionRequest,
         AccountResolutionResult
-    > interactiveClient;
+    > readClient;
     private final SpecialistClient<
         AccountResolutionRequest,
         AccountResolutionResult
-    > readClient;
+    > dialogueClient;
     private final SpecialistClient<
         BillingResolutionAssessmentRequest,
         BillingResolutionAssessmentResult
@@ -115,6 +116,7 @@ public class AgenticResolverExecutionService {
     > handoffIntakeClient;
     private final SpecialistDelegationGateway delegationGateway;
     private final SpecialistHandoffGateway handoffGateway;
+    private final AIInteractiveExecutionGateway interactiveExecutionGateway;
     private final AIExecutionCoordinator executionCoordinator;
     private final ActionProposalCoordinator actionProposalCoordinator;
     private final AgenticResolverSessionService sessionService;
@@ -123,6 +125,7 @@ public class AgenticResolverExecutionService {
     @org.springframework.beans.factory.annotation.Autowired
     public AgenticResolverExecutionService(
         SpecialistClientFactory specialistClientFactory,
+        AIInteractiveExecutionGateway interactiveExecutionGateway,
         AIExecutionCoordinator executionCoordinator,
         ActionProposalCoordinator actionProposalCoordinator,
         AgenticResolverSessionService sessionService,
@@ -130,13 +133,13 @@ public class AgenticResolverExecutionService {
         SpecialistHandoffGateway handoffGateway,
         Clock clock
     ) {
-        this.interactiveClient = specialistClientFactory.bind(
-            AccountResolverSpecialists.SPECIALIST_ID,
+        this.readClient = specialistClientFactory.bind(
+            AccountResolverSpecialists.READ_SPECIALIST_ID,
             AccountResolutionRequest.class,
             AccountResolutionResult.class
         );
-        this.readClient = specialistClientFactory.bind(
-            AccountResolverSpecialists.READ_SPECIALIST_ID,
+        this.dialogueClient = specialistClientFactory.bind(
+            AccountResolverSpecialists.SPECIALIST_ID,
             AccountResolutionRequest.class,
             AccountResolutionResult.class
         );
@@ -157,6 +160,7 @@ public class AgenticResolverExecutionService {
         );
         this.delegationGateway = delegationGateway;
         this.handoffGateway = handoffGateway;
+        this.interactiveExecutionGateway = interactiveExecutionGateway;
         this.executionCoordinator = executionCoordinator;
         this.actionProposalCoordinator = actionProposalCoordinator;
         this.sessionService = sessionService;
@@ -165,6 +169,7 @@ public class AgenticResolverExecutionService {
 
     AgenticResolverExecutionService(
         SpecialistClientFactory specialistClientFactory,
+        AIInteractiveExecutionGateway interactiveExecutionGateway,
         AIExecutionCoordinator executionCoordinator,
         ActionProposalCoordinator actionProposalCoordinator,
         AgenticResolverSessionService sessionService,
@@ -173,6 +178,7 @@ public class AgenticResolverExecutionService {
     ) {
         this(
             specialistClientFactory,
+            interactiveExecutionGateway,
             executionCoordinator,
             actionProposalCoordinator,
             sessionService,
@@ -184,6 +190,7 @@ public class AgenticResolverExecutionService {
 
     AgenticResolverExecutionService(
         SpecialistClientFactory specialistClientFactory,
+        AIInteractiveExecutionGateway interactiveExecutionGateway,
         AIExecutionCoordinator executionCoordinator,
         ActionProposalCoordinator actionProposalCoordinator,
         AgenticResolverSessionService sessionService,
@@ -191,6 +198,7 @@ public class AgenticResolverExecutionService {
     ) {
         this(
             specialistClientFactory,
+            interactiveExecutionGateway,
             executionCoordinator,
             actionProposalCoordinator,
             sessionService,
@@ -225,28 +233,24 @@ public class AgenticResolverExecutionService {
 
     public AIExecutionResult<AccountResolutionResult> chat(
         String sessionId,
-        AccountResolutionRequest request
-    ) {
-        return chat(sessionId, request, null);
-    }
-
-    public AIExecutionResult<AccountResolutionResult> chat(
-        String sessionId,
         AccountResolutionRequest request,
         String idempotencyKey
     ) {
         AgenticResolverSessionService.ActiveSession session =
             sessionService.active(sessionId);
-        return interactiveClient.execute(new SpecialistInvocation<>(
-            request,
-            trustedContext(session, ExecutionSource.INTERACTIVE),
-            new ConversationBinding(
-                session.conversationOwnerId(),
-                session.conversationId()
+        return dialogueClient.executeInteractive(
+            new SpecialistInvocation<>(
+                request,
+                trustedContext(session, ExecutionSource.INTERACTIVE),
+                new ConversationBinding(
+                    session.conversationOwnerId(),
+                    session.conversationId()
+                ),
+                null,
+                requireIdempotencyKey(idempotencyKey)
             ),
-            null,
-            normalizeIdempotencyKey(idempotencyKey)
-        ));
+            interactiveExecutionGateway
+        );
     }
 
     public ActionProposalDecisionResult decide(

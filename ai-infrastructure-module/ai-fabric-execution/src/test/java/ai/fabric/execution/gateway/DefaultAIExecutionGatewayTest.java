@@ -16,6 +16,7 @@ import ai.fabric.execution.action.ActionProposalCoordinator;
 import ai.fabric.execution.action.ActionProposalPersistenceException;
 import ai.fabric.execution.action.ActionProposalReceiptStatus;
 import ai.fabric.execution.action.ActionProposalView;
+import ai.fabric.execution.config.AIExecutionProperties;
 import ai.fabric.execution.context.ExecutionPrincipal;
 import ai.fabric.execution.context.ExecutionPrincipalType;
 import ai.fabric.execution.context.ExecutionSource;
@@ -33,6 +34,12 @@ import ai.fabric.execution.specialist.SpecialistLimits;
 import ai.fabric.execution.specialist.SpecialistOutputAdapter;
 import ai.fabric.execution.specialist.SpecialistOutputMode;
 import ai.fabric.execution.specialist.SpecialistWritePolicy;
+import ai.fabric.execution.specialist.manifest.CanonicalJsonSupport;
+import ai.fabric.execution.specialist.manifest.SpecialistConversationBinding;
+import ai.fabric.execution.specialist.manifest.SpecialistInteractionCapability;
+import ai.fabric.execution.specialist.manifest.SpecialistJsonSchemaRegistry;
+import ai.fabric.execution.specialist.manifest.SpecialistJsonSchemaValidator;
+import ai.fabric.execution.specialist.manifest.SpecialistManifestMetrics;
 import ai.fabric.intent.action.AIActionMetaData;
 import ai.fabric.intent.action.AIActionRegistry;
 import ai.fabric.intent.action.ActionAccessMode;
@@ -43,12 +50,14 @@ import ai.fabric.intent.orchestration.OrchestrationResult;
 import ai.fabric.intent.orchestration.OrchestrationResultType;
 import ai.fabric.intent.orchestration.capability.DefaultEffectiveCapabilitiesResolver;
 import ai.fabric.intent.orchestration.capability.RequestedCapabilityProfile;
+import ai.fabric.intent.orchestration.conversation.ApprovedConversationSnapshot;
 import ai.fabric.intent.orchestration.pipeline.DefaultOrchestrationPipeline;
 import ai.fabric.intent.orchestration.pipeline.Pipeline;
 import ai.fabric.intent.orchestration.pipeline.PipelineContext;
 import ai.fabric.intent.orchestration.pipeline.PipelineStep;
 import ai.fabric.intent.orchestration.pipeline.steps.OrchestrationPolicyResolutionStep;
 import ai.fabric.intent.orchestration.request.ConversationPersistencePolicy;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -59,6 +68,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 import org.springframework.core.task.AsyncTaskExecutor;
 import org.springframework.core.task.support.TaskExecutorAdapter;
@@ -229,6 +239,116 @@ class DefaultAIExecutionGatewayTest {
                 .isEqualTo("account-resolver@1");
             assertThat(metadata.get("_validated")).isEqualTo(true);
         });
+    }
+
+    @Test
+    void interactiveReplayKeepsTheOriginalFrozenTurnAndRecordsOnce() {
+        AtomicReference<PipelineContext> observed = new AtomicReference<>();
+        AtomicInteger pipelineCalls = new AtomicInteger();
+        AtomicInteger records = new AtomicInteger();
+        PipelineStep step = new PipelineStep() {
+            @Override
+            public PipelineContext process(PipelineContext context) {
+                pipelineCalls.incrementAndGet();
+                observed.set(context);
+                return context.terminate(
+                    OrchestrationResult.builder()
+                        .type(OrchestrationResultType.INFORMATION_PROVIDED)
+                        .success(true)
+                        .message("Payment is missing.")
+                        .build()
+                );
+            }
+
+            @Override
+            public String getStepName() {
+                return "InteractiveResult";
+            }
+        };
+        EphemeralAIExecutionConversationSnapshotRegistry snapshotRegistry =
+            new EphemeralAIExecutionConversationSnapshotRegistry(
+                Clock.fixed(NOW, ZoneOffset.UTC),
+                Duration.ofMinutes(2)
+            );
+        DefaultAIExecutionGateway execution = dialogueGateway(
+            new DefaultOrchestrationPipeline(List.of(step)),
+            snapshotRegistry,
+            (binding, userInput, assistantOutput, metadata) ->
+                records.incrementAndGet()
+        );
+        AtomicInteger captures = new AtomicInteger();
+        DefaultAIInteractiveExecutionGateway interactive =
+            new DefaultAIInteractiveExecutionGateway(
+                execution,
+                specialistRegistry(dialogueDefinition()),
+                (binding, turnId, owner) -> {
+                    int capture = captures.getAndIncrement();
+                    return new ApprovedConversationSnapshot(
+                        turnId,
+                        binding.userId(),
+                        binding.conversationId(),
+                        owner.toString(),
+                        (capture == 0 ? "a" : "b").repeat(64),
+                        capture,
+                        List.of(),
+                        NOW
+                    );
+                },
+                snapshotRegistry,
+                canonicalJson(),
+                Clock.fixed(NOW, ZoneOffset.UTC),
+                Duration.ZERO,
+                Duration.ofMillis(1)
+            );
+        AIExecutionRequest<ResolverInput> request =
+            interactiveRequest(
+                new ResolverInput("Why am I blocked?"),
+                "browser-request-1"
+            );
+
+        AIExecutionResult<ResolverOutput> direct =
+            execution.execute(request);
+        AIExecutionResult<ResolverOutput> first =
+            interactive.execute(request);
+        AIExecutionResult<ResolverOutput> replay =
+            interactive.execute(request);
+        AIExecutionResult<ResolverOutput> conflict =
+            interactive.execute(interactiveRequest(
+                new ResolverInput("Use another account"),
+                "browser-request-1"
+            ));
+
+        assertThat(direct.status()).isEqualTo(AIExecutionStatus.INVALID);
+        assertThat(direct.failure().reason())
+            .isEqualTo("DIALOGUE_OWNER_GATEWAY_REQUIRED");
+        assertThat(first.succeeded()).isTrue();
+        assertThat(replay.succeeded()).isTrue();
+        assertThat(replay.invocationId()).isEqualTo(first.invocationId());
+        assertThat(replay.diagnostics())
+            .containsEntry("interactiveTurn", true)
+            .containsEntry("dialogueOwner", true)
+            .containsEntry(
+                "dialogueOwnerSpecialist",
+                "account-resolver@1"
+            )
+            .containsEntry(
+                "conversationSnapshotRevision",
+                "a".repeat(64)
+            );
+        assertThat(replay.diagnostics().keySet())
+            .noneMatch(key ->
+                key.toLowerCase().contains("token")
+                    || key.toLowerCase().contains("history")
+            );
+        assertThat(conflict.status())
+            .isEqualTo(AIExecutionStatus.INVALID);
+        assertThat(conflict.failure().reason())
+            .isEqualTo("IDEMPOTENCY_CONFLICT");
+        assertThat(pipelineCalls).hasValue(1);
+        assertThat(records).hasValue(1);
+        assertThat(observed.get().getOrchestrationContext()
+            .getApprovedConversationSnapshot()
+            .revision()).isEqualTo("a".repeat(64));
     }
 
     @Test
@@ -890,6 +1010,63 @@ class DefaultAIExecutionGatewayTest {
         );
     }
 
+    private DefaultAIExecutionGateway dialogueGateway(
+        Pipeline pipeline,
+        AIExecutionConversationSnapshotRegistry snapshotRegistry,
+        AIExecutionConversationRecorder conversationRecorder
+    ) {
+        AIActionRegistry actionRegistry = actionRegistry();
+        OrchestrationProperties properties = orchestrationProperties();
+        SpecialistJsonSchemaValidator schemaValidator =
+            new SpecialistJsonSchemaValidator();
+        return new DefaultAIExecutionGateway(
+            specialistRegistry(dialogueDefinition()),
+            pipeline,
+            new OrchestrationPolicyResolutionStep(properties),
+            new DefaultEffectiveCapabilitiesResolver(),
+            actionRegistry,
+            new StaticExecutionCapabilityInventory(
+                Set.of("account-policy"),
+                Set.of("inspect_account")
+            ),
+            new DefaultSpecialistAuthorityResolver(),
+            new OrchestrationEvidenceProjector(
+                new AIEvidenceReferenceMapper()
+            ),
+            mock(SpecialistOutputFinalizer.class),
+            conversationRecorder,
+            () -> null,
+            new TaskExecutorAdapter(Runnable::run),
+            Clock.fixed(NOW, ZoneOffset.UTC),
+            Duration.ofMinutes(5),
+            SpecialistManifestMetrics.noop(),
+            new SpecialistJsonSchemaRegistry(
+                List.of(),
+                schemaValidator
+            ),
+            schemaValidator,
+            canonicalJson(),
+            new AIExecutionProperties.InputWaits(),
+            snapshotRegistry
+        );
+    }
+
+    private DefaultSpecialistRegistry specialistRegistry(
+        SpecialistDefinition<ResolverInput, ResolverOutput> definition
+    ) {
+        return new DefaultSpecialistRegistry(
+            List.of(definition),
+            actionRegistry(),
+            orchestrationProperties().getModes().keySet()
+        );
+    }
+
+    private CanonicalJsonSupport canonicalJson() {
+        return new CanonicalJsonSupport(
+            new ObjectMapper().findAndRegisterModules()
+        );
+    }
+
     private DefaultAIExecutionGateway gateway(
         Pipeline pipeline,
         SpecialistDefinition<ResolverInput, ResolverOutput> definition,
@@ -1109,6 +1286,56 @@ class DefaultAIExecutionGatewayTest {
         return definition(
             invalidOutput,
             SpecialistOutputMode.DIRECT_PROJECTION
+        );
+    }
+
+    private SpecialistDefinition<ResolverInput, ResolverOutput>
+    dialogueDefinition() {
+        SpecialistDefinition<ResolverInput, ResolverOutput> base =
+            definition(false);
+        SpecialistInputAdapter<ResolverInput> baseInput =
+            base.inputAdapter();
+        return new SpecialistDefinition<>(
+            base.identity(),
+            base.instructions(),
+            base.executionProfile(),
+            base.limits(),
+            base.delegationPolicy(),
+            base.handoffPolicy(),
+            new SpecialistInputAdapter<>() {
+                @Override
+                public Class<ResolverInput> inputType() {
+                    return baseInput.inputType();
+                }
+
+                @Override
+                public void validate(ResolverInput input) {
+                    baseInput.validate(input);
+                }
+
+                @Override
+                public String renderModelInput(ResolverInput input) {
+                    return baseInput.renderModelInput(input);
+                }
+
+                @Override
+                public String conversationInput(ResolverInput input) {
+                    return baseInput.conversationInput(input);
+                }
+
+                @Override
+                public SpecialistConversationBinding
+                    conversationBinding() {
+                    return SpecialistConversationBinding.REQUIRED;
+                }
+
+                @Override
+                public SpecialistInteractionCapability
+                    interactionCapability() {
+                    return SpecialistInteractionCapability.DIALOGUE_CAPABLE;
+                }
+            },
+            base.outputAdapter()
         );
     }
 
@@ -1403,6 +1630,23 @@ class DefaultAIExecutionGatewayTest {
             authorizedScopes(),
             "correlation-chat",
             NOW
+        );
+    }
+
+    private AIExecutionRequest<ResolverInput> interactiveRequest(
+        ResolverInput input,
+        String idempotencyKey
+    ) {
+        return new AIExecutionRequest<>(
+            SPECIALIST_ID,
+            input,
+            interactiveContext(),
+            new ConversationBinding(
+                "user-42",
+                "conversation-7"
+            ),
+            null,
+            idempotencyKey
         );
     }
 

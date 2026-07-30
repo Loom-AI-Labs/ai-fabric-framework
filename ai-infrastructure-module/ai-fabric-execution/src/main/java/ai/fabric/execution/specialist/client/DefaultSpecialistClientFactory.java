@@ -5,6 +5,7 @@ import ai.fabric.execution.gateway.AIExecutionRequest;
 import ai.fabric.execution.gateway.AIExecutionResult;
 import ai.fabric.execution.gateway.AIExecutionResumeRequest;
 import ai.fabric.execution.gateway.AIExecutionResumeResult;
+import ai.fabric.execution.gateway.AIInteractiveExecutionGateway;
 import ai.fabric.execution.gateway.ExecutionHandle;
 import ai.fabric.execution.gateway.ExecutionSnapshot;
 import ai.fabric.execution.specialist.JsonSchemaOutputContract;
@@ -211,6 +212,22 @@ public final class DefaultSpecialistClientFactory
         ) {
             Objects.requireNonNull(invocation, "invocation is required");
             AIExecutionResult<?> raw = executionGateway.execute(
+                request(invocation)
+            );
+            return convertExecution(raw);
+        }
+
+        @Override
+        public AIExecutionResult<O> executeInteractive(
+            SpecialistInvocation<I> invocation,
+            AIInteractiveExecutionGateway interactiveGateway
+        ) {
+            Objects.requireNonNull(invocation, "invocation is required");
+            Objects.requireNonNull(
+                interactiveGateway,
+                "interactiveGateway is required"
+            );
+            AIExecutionResult<?> raw = interactiveGateway.execute(
                 request(invocation)
             );
             return convertExecution(raw);

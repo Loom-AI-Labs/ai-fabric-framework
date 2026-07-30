@@ -95,10 +95,7 @@ public class AgenticResolverController {
     @PostMapping("/chat")
     public AIExecutionResult<AccountResolutionResult> chat(
         @RequestHeader(SESSION_HEADER) String sessionId,
-        @RequestHeader(
-            name = IDEMPOTENCY_HEADER,
-            required = false
-        ) String idempotencyKey,
+        @RequestHeader(IDEMPOTENCY_HEADER) String idempotencyKey,
         @Valid @RequestBody AccountResolutionRequest request
     ) {
         return executionService.chat(sessionId, request, idempotencyKey);

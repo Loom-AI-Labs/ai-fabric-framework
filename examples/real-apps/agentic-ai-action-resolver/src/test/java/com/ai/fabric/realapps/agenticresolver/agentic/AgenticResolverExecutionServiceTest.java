@@ -14,6 +14,7 @@ import ai.fabric.execution.action.ActionProposalDecisionRequest;
 import ai.fabric.execution.context.ExecutionSource;
 import ai.fabric.execution.context.TrustedExecutionContext;
 import ai.fabric.execution.gateway.AIExecutionRequest;
+import ai.fabric.execution.gateway.AIInteractiveExecutionGateway;
 import ai.fabric.execution.gateway.AIExecutionResumeResult;
 import ai.fabric.execution.gateway.AIExecutionResult;
 import ai.fabric.execution.gateway.AIExecutionStatus;
@@ -258,6 +259,7 @@ class AgenticResolverExecutionServiceTest {
         AgenticResolverExecutionService service =
             new AgenticResolverExecutionService(
                 clientFactory,
+                mock(AIInteractiveExecutionGateway.class),
                 mock(AIExecutionCoordinator.class),
                 coordinator,
                 sessions,
@@ -292,6 +294,7 @@ class AgenticResolverExecutionServiceTest {
         AgenticResolverExecutionService service =
             new AgenticResolverExecutionService(
                 clientFactory(new AtomicReference<>()),
+                mock(AIInteractiveExecutionGateway.class),
                 coordinator,
                 mock(ActionProposalCoordinator.class),
                 sessions,
@@ -346,6 +349,7 @@ class AgenticResolverExecutionServiceTest {
         AgenticResolverExecutionService service =
             new AgenticResolverExecutionService(
                 clientFactory(new AtomicReference<>()),
+                mock(AIInteractiveExecutionGateway.class),
                 coordinator,
                 mock(ActionProposalCoordinator.class),
                 sessions,
@@ -417,11 +421,42 @@ class AgenticResolverExecutionServiceTest {
         );
         return new AgenticResolverExecutionService(
             clientFactory(observed, observedResume),
+            interactiveGateway(observed),
             mock(AIExecutionCoordinator.class),
             mock(ActionProposalCoordinator.class),
             sessions,
             Clock.fixed(NOW, ZoneOffset.UTC)
         );
+    }
+
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private AIInteractiveExecutionGateway interactiveGateway(
+        AtomicReference<AIExecutionRequest<?>> observed
+    ) {
+        AIInteractiveExecutionGateway gateway =
+            mock(AIInteractiveExecutionGateway.class);
+        when(gateway.execute(any(AIExecutionRequest.class)))
+            .thenAnswer(execution -> {
+                AIExecutionRequest<AccountResolutionRequest> request =
+                    execution.getArgument(0);
+                observed.set(request);
+                return new AIExecutionResult<>(
+                    "interactive-exec-1",
+                    request.specialistId(),
+                    AIExecutionStatus.SUCCEEDED,
+                    new AccountResolutionResult(
+                        AccountResolutionResult.Assessment.READY,
+                        "Ready",
+                        List.of()
+                    ),
+                    List.of(),
+                    Map.of(),
+                    null,
+                    NOW,
+                    NOW
+                );
+            });
+        return gateway;
     }
 
     @SuppressWarnings({"unchecked", "rawtypes"})
@@ -472,6 +507,36 @@ class AgenticResolverExecutionServiceTest {
                         NOW
                     );
                 });
+            when(client.executeInteractive(
+                any(SpecialistInvocation.class),
+                any(AIInteractiveExecutionGateway.class)
+            )).thenAnswer(execution -> {
+                SpecialistInvocation<AccountResolutionRequest> invocation =
+                    execution.getArgument(0);
+                observed.set(new AIExecutionRequest<>(
+                    specialistId,
+                    invocation.input(),
+                    invocation.trustedExecutionContext(),
+                    invocation.conversationBinding(),
+                    invocation.deadline(),
+                    invocation.idempotencyKey()
+                ));
+                return new AIExecutionResult<>(
+                    "interactive-exec-1",
+                    specialistId,
+                    AIExecutionStatus.SUCCEEDED,
+                    new AccountResolutionResult(
+                        AccountResolutionResult.Assessment.READY,
+                        "Ready",
+                        List.of()
+                    ),
+                    List.of(),
+                    Map.of(),
+                    null,
+                    NOW,
+                    NOW
+                );
+            });
             return client;
         });
         when(factory.bind(

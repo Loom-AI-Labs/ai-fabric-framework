@@ -83,6 +83,41 @@ class ChatSessionServiceImplTest {
     }
 
     @Test
+    void getConversationSnapshotCapturesBoundedMessagesAndFullTurnCount() {
+        InMemoryStorage storage = new InMemoryStorage();
+        ChatSession session = session("conv-1", "user-1");
+        session.getTurns().add(
+            ChatTurn.builder()
+                .userQuery("old question")
+                .aiResponse("old answer")
+                .build()
+        );
+        session.getTurns().add(
+            ChatTurn.builder()
+                .userQuery("new question")
+                .aiResponse("new answer")
+                .build()
+        );
+        storage.save(session);
+        ChatSessionProperties properties = properties();
+        properties.setWindowSize(1);
+        ChatSessionServiceImpl service = service(
+            storage,
+            allowAll(),
+            new SlidingWindowMemoryStrategy(),
+            properties
+        );
+
+        ConversationHistorySnapshot snapshot =
+            service.getConversationSnapshot("conv-1", "user-1");
+
+        assertThat(snapshot.sourceTurnCount()).isEqualTo(2);
+        assertThat(snapshot.messages())
+            .extracting(AIChatMessage::getContent)
+            .containsExactly("new question", "new answer");
+    }
+
+    @Test
     void getConversationMessagesShouldReturnEmptyWhenCustomStrategyReturnsNull() {
         InMemoryStorage storage = new InMemoryStorage();
         ChatSession session = session("conv-1", "user-1");

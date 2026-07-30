@@ -216,10 +216,11 @@ class DurableAIExecutionGatewayTest {
     }
 
     @Test
-    void rejectsInteractiveAndConversationBoundSubmissions() {
+    void routesInteractiveSubmissionsToTheEphemeralDelegate() {
         SpecialistRegistry registry = registry();
+        DefaultAIExecutionGateway runner = runner();
         DurableAIExecutionGateway gateway = gateway(
-            runner(),
+            runner,
             registry,
             new JdbcDurableExecutionRepository(dataSource(), true),
             security(),
@@ -247,13 +248,50 @@ class DurableAIExecutionGatewayTest {
                 DEADLINE,
                 "interactive-1"
             );
+        ExecutionHandle ephemeral = new ExecutionHandle(
+            "ephemeral-interactive-1",
+            ExecutionDurability.EPHEMERAL,
+            ExecutionHandleStatus.QUEUED,
+            DEADLINE,
+            DEADLINE.plusSeconds(30),
+            null
+        );
+        when(runner.submit(request)).thenReturn(ephemeral);
+
+        ExecutionHandle result = gateway.submit(request);
+
+        assertThat(result).isSameAs(ephemeral);
+        verify(runner).submit(request);
+    }
+
+    @Test
+    void stillRejectsConversationBoundMachineSubmissions() {
+        DurableAIExecutionGateway gateway = gateway(
+            runner(),
+            registry(),
+            new JdbcDurableExecutionRepository(dataSource(), true),
+            security(),
+            directExecutor()
+        );
+        AIExecutionRequest<ResolverInput> request =
+            new AIExecutionRequest<>(
+                SPECIALIST_ID,
+                new ResolverInput("Inspect this account"),
+                context("account-service", "account-42"),
+                new ConversationBinding(
+                    "account-service",
+                    "conversation-1"
+                ),
+                DEADLINE,
+                "application-conversation-1"
+            );
 
         ExecutionHandle result = gateway.submit(request);
 
         assertThat(result.status())
             .isEqualTo(ExecutionHandleStatus.REJECTED);
         assertThat(result.failureReason())
-            .isEqualTo("DURABLE_INTERACTIVE_UNSUPPORTED");
+            .isEqualTo("DURABLE_CONVERSATION_UNSUPPORTED");
     }
 
     @Test

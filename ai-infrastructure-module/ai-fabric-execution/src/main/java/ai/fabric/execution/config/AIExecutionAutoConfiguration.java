@@ -8,12 +8,14 @@ import ai.fabric.execution.delegation.DefaultSpecialistDelegationGateway;
 import ai.fabric.execution.delegation.DefaultSpecialistHandoffGateway;
 import ai.fabric.execution.delegation.SpecialistDelegationGateway;
 import ai.fabric.execution.gateway.AIExecutionConversationRecorder;
+import ai.fabric.execution.gateway.AIExecutionConversationSnapshotRegistry;
 import ai.fabric.execution.gateway.AIExecutionGateway;
 import ai.fabric.execution.gateway.DefaultAIExecutionCoordinator;
 import ai.fabric.execution.gateway.DefaultAIExecutionGateway;
 import ai.fabric.execution.gateway.DefaultSpecialistAuthorityResolver;
 import ai.fabric.execution.gateway.DefaultStructuredSpecialistOutputFinalizer;
 import ai.fabric.execution.gateway.DurableAIExecutionGateway;
+import ai.fabric.execution.gateway.EphemeralAIExecutionConversationSnapshotRegistry;
 import ai.fabric.execution.gateway.ExecutionCapabilityInventory;
 import ai.fabric.execution.gateway.OrchestrationEvidenceProjector;
 import ai.fabric.execution.gateway.SpecialistAuthorityResolver;
@@ -71,6 +73,7 @@ import ai.fabric.intent.orchestration.pipeline.steps.OrchestrationPolicyResoluti
 import ai.fabric.llm.structured.StructuredJsonCallExecutor;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Clock;
+import java.time.Duration;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -373,6 +376,16 @@ public class AIExecutionAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
+    public AIExecutionConversationSnapshotRegistry
+        aiExecutionConversationSnapshotRegistry(Clock clock) {
+        return new EphemeralAIExecutionConversationSnapshotRegistry(
+            clock,
+            Duration.ofMinutes(2)
+        );
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
     public SpecialistGroundingProjector specialistGroundingProjector() {
         return new SpecialistGroundingProjector();
     }
@@ -442,7 +455,8 @@ public class AIExecutionAutoConfiguration {
         CanonicalJsonSupport canonicalJson,
         ObjectMapper objectMapper,
         ObjectProvider<DurableExecutionRepository> durableRepository,
-        ObjectProvider<DurableExecutionSecurity> durableSecurity
+        ObjectProvider<DurableExecutionSecurity> durableSecurity,
+        AIExecutionConversationSnapshotRegistry conversationSnapshotRegistry
     ) {
         DefaultAIExecutionGateway gateway = new DefaultAIExecutionGateway(
             specialistRegistry,
@@ -463,7 +477,8 @@ public class AIExecutionAutoConfiguration {
             schemaRegistry,
             schemaValidator,
             canonicalJson,
-            properties.getInputWaits()
+            properties.getInputWaits(),
+            conversationSnapshotRegistry
         );
         if (properties.getAsync().getRepository()
             == AIExecutionProperties.AsyncRepository.IN_MEMORY) {

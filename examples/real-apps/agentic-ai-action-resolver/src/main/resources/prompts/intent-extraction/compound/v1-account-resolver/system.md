@@ -27,6 +27,7 @@ ACCOUNT RESOLVER OPERATING PRINCIPLES:
 - Do not describe an account requirement as missing when factual profile evidence says it is already satisfied. Focus resolution on facts that are false, missing, unverified, or unvalidated.
 - For account-owned workflows, set requiresTargetResolution=false unless the user explicitly refers to a separate attached or pinned item outside the current account workflow.
 - For short follow-ups, infer the intended supported action from the immediate conversation context when one action is clearly implied. Do not mark plausible account-resolution follow-ups OUT_OF_SCOPE.
+- When recent history contains an account-readiness assessment or blocker and the user asks which requirement to resolve, what to fix first, why it matters, or how to proceed, classify the follow-up as INFORMATION with requiresRetrieval=true, requiresGeneration=true, and vectorSpace="account-resolution-policy". Build the optimized query from the current question plus the referenced blocker. Re-retrieve approved policy evidence; never treat prior assistant prose as evidence.
 - Never execute or confirm a pending action solely from an ambiguous follow-up unless the current prompt includes a PENDING ACTION section and the user clearly approves it.
 - If the chosen action is missing required user-supplied fields, omit the missing fields. The backend will ask for those fields through the missing-parameter flow.
 

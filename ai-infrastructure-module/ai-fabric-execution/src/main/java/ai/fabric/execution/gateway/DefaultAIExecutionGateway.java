@@ -20,6 +20,7 @@ import ai.fabric.execution.specialist.SpecialistOutputAdapter;
 import ai.fabric.execution.specialist.SpecialistOutputMode;
 import ai.fabric.execution.specialist.SpecialistRegistry;
 import ai.fabric.execution.specialist.manifest.SpecialistConversationBinding;
+import ai.fabric.execution.specialist.manifest.SpecialistInteractionCapability;
 import ai.fabric.execution.specialist.manifest.CanonicalJsonSupport;
 import ai.fabric.execution.specialist.manifest.SpecialistJsonSchemaRegistry;
 import ai.fabric.execution.specialist.manifest.SpecialistJsonSchemaValidator;
@@ -31,6 +32,7 @@ import ai.fabric.intent.action.invocation.ActionProposalCandidate;
 import ai.fabric.intent.orchestration.OrchestrationContext;
 import ai.fabric.intent.orchestration.OrchestrationResult;
 import ai.fabric.intent.orchestration.OrchestrationResultType;
+import ai.fabric.intent.orchestration.conversation.ApprovedConversationSnapshot;
 import ai.fabric.intent.orchestration.capability.EffectiveCapabilitiesResolver;
 import ai.fabric.intent.orchestration.capability.EffectiveCapabilityPolicySupport;
 import ai.fabric.intent.orchestration.capability.EffectiveCapabilityProfile;
@@ -84,6 +86,8 @@ public final class DefaultAIExecutionGateway
     private final SpecialistJsonSchemaRegistry schemaRegistry;
     private final SpecialistJsonSchemaValidator schemaValidator;
     private final CanonicalJsonSupport canonicalJson;
+    private final AIExecutionConversationSnapshotRegistry
+        conversationSnapshotRegistry;
 
     public DefaultAIExecutionGateway(
         SpecialistRegistry specialistRegistry,
@@ -223,6 +227,53 @@ public final class DefaultAIExecutionGateway
         CanonicalJsonSupport canonicalJson,
         AIExecutionProperties.InputWaits inputWaitProperties
     ) {
+        this(
+            specialistRegistry,
+            pipeline,
+            policyResolutionStep,
+            capabilitiesResolver,
+            actionRegistry,
+            capabilityInventory,
+            authorityResolver,
+            evidenceProjector,
+            outputFinalizer,
+            conversationRecorder,
+            actionProposalCoordinator,
+            taskExecutor,
+            clock,
+            resultTtl,
+            specialistMetrics,
+            schemaRegistry,
+            schemaValidator,
+            canonicalJson,
+            inputWaitProperties,
+            null
+        );
+    }
+
+    public DefaultAIExecutionGateway(
+        SpecialistRegistry specialistRegistry,
+        Pipeline pipeline,
+        OrchestrationPolicyResolutionStep policyResolutionStep,
+        EffectiveCapabilitiesResolver capabilitiesResolver,
+        AIActionRegistry actionRegistry,
+        ExecutionCapabilityInventory capabilityInventory,
+        SpecialistAuthorityResolver authorityResolver,
+        OrchestrationEvidenceProjector evidenceProjector,
+        SpecialistOutputFinalizer outputFinalizer,
+        AIExecutionConversationRecorder conversationRecorder,
+        java.util.function.Supplier<ActionProposalCoordinator>
+            actionProposalCoordinator,
+        AsyncTaskExecutor taskExecutor,
+        Clock clock,
+        java.time.Duration resultTtl,
+        SpecialistManifestMetrics specialistMetrics,
+        SpecialistJsonSchemaRegistry schemaRegistry,
+        SpecialistJsonSchemaValidator schemaValidator,
+        CanonicalJsonSupport canonicalJson,
+        AIExecutionProperties.InputWaits inputWaitProperties,
+        AIExecutionConversationSnapshotRegistry conversationSnapshotRegistry
+    ) {
         this.specialistRegistry = java.util.Objects.requireNonNull(
             specialistRegistry,
             "specialistRegistry is required"
@@ -276,6 +327,7 @@ public final class DefaultAIExecutionGateway
             canonicalJson,
             "canonicalJson is required"
         );
+        this.conversationSnapshotRegistry = conversationSnapshotRegistry;
     }
 
     @Override
@@ -422,10 +474,16 @@ public final class DefaultAIExecutionGateway
     }
 
     private String submissionFingerprint(AIExecutionRequest<?> request) {
+        ConversationBinding binding = request.conversationBinding();
         return canonicalJson.hashValue(new SubmissionFingerprint(
             request.specialistId().toString(),
             request.input(),
-            request.conversationBinding()
+            binding == null
+                ? null
+                : new ConversationIdentity(
+                    binding.userId(),
+                    binding.conversationId()
+                )
         ));
     }
 
@@ -1003,13 +1061,15 @@ public final class DefaultAIExecutionGateway
             if (request.conversationBinding() != null
                 && inputAdapter.recordValidatedTurns()) {
                 recordValidatedConversationTurn(
+                    invocationId,
                     request.conversationBinding(),
                     conversationInput,
                     output,
                     orchestrationResult,
                     outputAdapter,
                     definition,
-                    effective
+                    effective,
+                    orchestrationContext
                 );
             }
 
@@ -1035,6 +1095,7 @@ public final class DefaultAIExecutionGateway
                     deadline.toString()
                 );
             }
+            addDialogueDiagnostics(diagnostics, orchestrationContext);
             log.info(
                 "AI execution {} specialist={} status=SUCCEEDED profileHash={} evidenceCount={}",
                 invocationId,
@@ -1683,18 +1744,64 @@ public final class DefaultAIExecutionGateway
         if (binding != null) {
             builder.userId(binding.userId())
                 .conversationId(binding.conversationId());
+            SpecialistInteractionCapability capability = definition
+                .inputAdapter()
+                .interactionCapability();
+            if (capability
+                    == SpecialistInteractionCapability.DIALOGUE_CAPABLE
+                && binding.approvedSnapshotToken() == null) {
+                throw new ContractValidationException(
+                    "DIALOGUE_OWNER_GATEWAY_REQUIRED",
+                    "Dialogue-capable conversation execution requires the interactive gateway."
+                );
+            }
+            if (binding.approvedSnapshotToken() != null) {
+                if (capability
+                    != SpecialistInteractionCapability.DIALOGUE_CAPABLE) {
+                    throw new ContractValidationException(
+                        "DIALOGUE_OWNER_INELIGIBLE",
+                        "The specialist is not eligible to own dialogue."
+                    );
+                }
+                if (conversationSnapshotRegistry == null) {
+                    throw new ContractValidationException(
+                        "CONVERSATION_SNAPSHOT_UNAVAILABLE",
+                        "Approved conversation snapshot support is unavailable."
+                    );
+                }
+                ApprovedConversationSnapshot snapshot;
+                try {
+                    snapshot = conversationSnapshotRegistry.consume(binding);
+                } catch (IllegalArgumentException ex) {
+                    throw new ContractValidationException(
+                        "CONVERSATION_SNAPSHOT_INVALID",
+                        "The approved conversation snapshot is invalid or expired."
+                    );
+                }
+                if (!definition.id().toString().equals(
+                    snapshot.dialogueOwnerSpecialist()
+                )) {
+                    throw new ContractValidationException(
+                        "DIALOGUE_OWNER_MISMATCH",
+                        "The approved dialogue owner does not match the specialist."
+                    );
+                }
+                builder.approvedConversationSnapshot(snapshot);
+            }
         }
         return builder.build();
     }
 
     private <O> void recordValidatedConversationTurn(
+        String invocationId,
         ConversationBinding binding,
         String conversationInput,
         O output,
         OrchestrationResult orchestrationResult,
         SpecialistOutputAdapter<O> outputAdapter,
         SpecialistDefinition<?, ?> definition,
-        EffectiveCapabilityProfile effective
+        EffectiveCapabilityProfile effective,
+        OrchestrationContext orchestrationContext
     ) {
         String assistantOutput = outputAdapter.conversationOutput(
             output,
@@ -1706,18 +1813,34 @@ public final class DefaultAIExecutionGateway
             );
         }
         try {
+            LinkedHashMap<String, Object> metadata = new LinkedHashMap<>();
+            metadata.put("_specialist", definition.id().toString());
+            metadata.put("_validated", true);
+            metadata.put(
+                "_effectiveProfileHash",
+                effective.profileHash()
+            );
+            metadata.put("_executionInvocationId", invocationId);
+            ApprovedConversationSnapshot snapshot =
+                orchestrationContext != null
+                    ? orchestrationContext.getApprovedConversationSnapshot()
+                    : null;
+            if (snapshot != null) {
+                metadata.put("_dialogueOwner", true);
+                metadata.put(
+                    "_interactionTurnId",
+                    snapshot.interactionTurnId()
+                );
+                metadata.put(
+                    "_conversationSnapshotRevision",
+                    snapshot.revision()
+                );
+            }
             conversationRecorder.record(
                 binding,
                 conversationInput,
                 assistantOutput,
-                Map.of(
-                    "_specialist",
-                    definition.id().toString(),
-                    "_validated",
-                    true,
-                    "_effectiveProfileHash",
-                    effective.profileHash()
-                )
+                Map.copyOf(metadata)
             );
         } catch (Exception ex) {
             throw new ConversationRecordingException(
@@ -1725,6 +1848,38 @@ public final class DefaultAIExecutionGateway
                 ex
             );
         }
+    }
+
+    private void addDialogueDiagnostics(
+        Map<String, Object> diagnostics,
+        OrchestrationContext orchestrationContext
+    ) {
+        ApprovedConversationSnapshot snapshot =
+            orchestrationContext != null
+                ? orchestrationContext.getApprovedConversationSnapshot()
+                : null;
+        if (snapshot == null) {
+            return;
+        }
+        diagnostics.put("interactiveTurn", true);
+        diagnostics.put("interactionTurnId", snapshot.interactionTurnId());
+        diagnostics.put("dialogueOwner", true);
+        diagnostics.put(
+            "dialogueOwnerSpecialist",
+            snapshot.dialogueOwnerSpecialist()
+        );
+        diagnostics.put(
+            "conversationSnapshotRevision",
+            snapshot.revision()
+        );
+        diagnostics.put(
+            "conversationSnapshotMessageCount",
+            snapshot.historyMessages().size()
+        );
+        diagnostics.put(
+            "conversationSnapshotTurnCount",
+            snapshot.sourceTurnCount()
+        );
     }
 
     @SuppressWarnings("unchecked")
@@ -1895,7 +2050,12 @@ public final class DefaultAIExecutionGateway
     private record SubmissionFingerprint(
         String specialistId,
         Object input,
-        ConversationBinding conversationBinding
+        ConversationIdentity conversation
+    ) {}
+
+    private record ConversationIdentity(
+        String userId,
+        String conversationId
     ) {}
 
     private record ResumeConstraints(

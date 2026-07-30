@@ -65,6 +65,7 @@ Rules:
   - Do not describe an account requirement as missing when factual profile evidence says it is already satisfied. Focus resolution on facts that are false, missing, unverified, or unvalidated.
   - For account-owned workflows, set requiresTargetResolution=false unless the user explicitly refers to a separate attached or pinned item outside the current account workflow.
   - For short follow-ups, infer the intended supported action from the immediate conversation context when one action is clearly implied. Do not use OUT_OF_SCOPE for plausible account-resolution follow-ups.
+  - When recent history contains an account-readiness assessment or blocker and the user asks which requirement to resolve, what to fix first, why it matters, or how to proceed, classify the follow-up as INFORMATION with requiresRetrieval=true, requiresGeneration=true, and vectorSpace="account-resolution-policy". Build the optimized query from the current question plus the referenced blocker. Re-retrieve approved policy evidence; never treat prior assistant prose as evidence.
   - If required user-supplied fields are missing for a chosen action, leave actionParams empty or partial so the backend asks for those fields.
 - Account Resolver reference resolution:
   - Before classifying vague follow-ups such as "it", "that", "this issue", "do that", "ok add it", "fix it", or "continue", inspect the latest user and assistant turns in conversation history.

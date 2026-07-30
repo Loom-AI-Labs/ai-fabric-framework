@@ -6,6 +6,7 @@ import static org.mockito.Mockito.when;
 import ai.fabric.execution.action.ActionProposalReceiptRepository;
 import ai.fabric.execution.config.AIExecutionProperties;
 import ai.fabric.execution.gateway.AIExecutionGateway;
+import ai.fabric.execution.gateway.AIInteractiveExecutionGateway;
 import ai.fabric.execution.plan.AIExecutionCoordinator;
 import ai.fabric.execution.plan.ExecutionPlanRegistry;
 import ai.fabric.execution.specialist.SpecialistDefinition;
@@ -91,6 +92,7 @@ class DeploymentInfoServiceTest {
             environment,
             List.of(provider),
             mock(AIExecutionGateway.class),
+            mock(AIInteractiveExecutionGateway.class),
             mock(AIExecutionCoordinator.class),
             emptyPlanRegistry(),
             registry,
@@ -128,6 +130,10 @@ class DeploymentInfoServiceTest {
             .isInstanceOfSatisfying(Map.class, execution ->
                 assertThat(execution)
                     .containsEntry("ready", true)
+                    .containsEntry(
+                        "interactiveDialogueGatewayReady",
+                        true
+                    )
                     .containsEntry("planCoordinatorReady", true)
                     .containsEntry("planDurability", "EPHEMERAL")
                     .containsEntry("plans", List.of())

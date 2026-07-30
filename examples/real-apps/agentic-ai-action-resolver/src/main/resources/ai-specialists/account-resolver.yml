@@ -182,6 +182,7 @@ spec:
   conversation:
     binding: OPTIONAL
     recordValidatedTurns: true
+    interactionCapability: DIALOGUE_CAPABLE
   limits:
     maxDuration: PT45S
     maxInputCharacters: 10000

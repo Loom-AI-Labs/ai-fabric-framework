@@ -14,6 +14,7 @@ import ai.fabric.execution.action.ActionProposalCoordinator;
 import ai.fabric.execution.delegation.SpecialistDelegationGateway;
 import ai.fabric.execution.gateway.AIExecutionFailure;
 import ai.fabric.execution.gateway.AIExecutionResult;
+import ai.fabric.execution.gateway.AIInteractiveExecutionGateway;
 import ai.fabric.execution.gateway.AIExecutionStatus;
 import ai.fabric.execution.gateway.ExecutionDurability;
 import ai.fabric.execution.gateway.ExecutionHandle;
@@ -96,6 +97,7 @@ class AgenticResolverHandoffServiceTest {
 
         service = new AgenticResolverExecutionService(
             clientFactory,
+            mock(AIInteractiveExecutionGateway.class),
             mock(AIExecutionCoordinator.class),
             mock(ActionProposalCoordinator.class),
             sessions,

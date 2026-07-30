@@ -114,6 +114,7 @@ Content-Type: application/json
 ### Interactive call: backend reads and records validated conversation turns
 POST {{baseUrl}}/api/agentic-resolver/chat
 X-AI-Fabric-Demo-Session: {{sessionId}}
+Idempotency-Key: chat-turn-1
 Content-Type: application/json
 
 {
@@ -123,6 +124,7 @@ Content-Type: application/json
 ### Follow-up: the client sends only the new question
 POST {{baseUrl}}/api/agentic-resolver/chat
 X-AI-Fabric-Demo-Session: {{sessionId}}
+Idempotency-Key: chat-turn-2
 Content-Type: application/json
 
 {

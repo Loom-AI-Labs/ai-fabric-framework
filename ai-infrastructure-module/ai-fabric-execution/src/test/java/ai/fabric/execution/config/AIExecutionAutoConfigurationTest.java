@@ -8,7 +8,10 @@ import ai.fabric.chat.service.ChatSessionService;
 import ai.fabric.config.OrchestrationProperties;
 import ai.fabric.core.AICoreService;
 import ai.fabric.execution.gateway.AIExecutionConversationRecorder;
+import ai.fabric.execution.gateway.AIExecutionConversationSnapshotProvider;
+import ai.fabric.execution.gateway.AIExecutionConversationSnapshotRegistry;
 import ai.fabric.execution.gateway.AIExecutionGateway;
+import ai.fabric.execution.gateway.AIInteractiveExecutionGateway;
 import ai.fabric.execution.gateway.DurableAIExecutionGateway;
 import ai.fabric.execution.gateway.ExecutionCapabilityInventory;
 import ai.fabric.execution.delegation.SpecialistDelegationGateway;
@@ -166,6 +169,33 @@ class AIExecutionAutoConfigurationTest {
                 assertThat(context)
                     .hasSingleBean(AIExecutionConversationRecorder.class)
             );
+    }
+
+    @Test
+    void configuresInteractiveDialogueBoundaryWithFullRuntime() {
+        new ApplicationContextRunner()
+            .withConfiguration(AutoConfigurations.of(
+                AIExecutionAutoConfiguration.class,
+                AIExecutionChatSessionAutoConfiguration.class
+            ))
+            .withUserConfiguration(InfrastructureConfiguration.class)
+            .withBean(
+                ChatSessionService.class,
+                () -> mock(ChatSessionService.class)
+            )
+            .run(context -> {
+                assertThat(context).hasNotFailed();
+                assertThat(context)
+                    .hasSingleBean(AIExecutionConversationRecorder.class);
+                assertThat(context).hasSingleBean(
+                    AIExecutionConversationSnapshotProvider.class
+                );
+                assertThat(context).hasSingleBean(
+                    AIExecutionConversationSnapshotRegistry.class
+                );
+                assertThat(context)
+                    .hasSingleBean(AIInteractiveExecutionGateway.class);
+            });
     }
 
     @Test

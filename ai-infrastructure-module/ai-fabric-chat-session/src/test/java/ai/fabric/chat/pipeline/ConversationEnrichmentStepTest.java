@@ -13,6 +13,7 @@ import ai.fabric.chat.service.ChatSessionService;
 import ai.fabric.intent.orchestration.OrchestrationContext;
 import ai.fabric.intent.orchestration.OrchestrationContextMetadataKeys;
 import ai.fabric.intent.orchestration.OrchestrationResultType;
+import ai.fabric.intent.orchestration.conversation.ApprovedConversationSnapshot;
 import ai.fabric.intent.orchestration.pipeline.PipelineContext;
 import ai.fabric.intent.orchestration.request.ConversationPersistencePolicy;
 import ai.fabric.intent.orchestration.request.OrchestrationRequest;
@@ -22,6 +23,7 @@ import org.junit.jupiter.api.Test;
 import java.util.Map;
 import java.util.List;
 import java.util.Set;
+import java.time.Instant;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -153,6 +155,99 @@ class ConversationEnrichmentStepTest {
                 "Why am I blocked?",
                 "{\"assessment\":\"BLOCKED\"}"
             );
+    }
+
+    @Test
+    void shouldUseOnlyTheApprovedFrozenSnapshotForInteractiveExecution() {
+        ChatSessionService service = mock(ChatSessionService.class);
+        ChatSessionProperties properties = new ChatSessionProperties();
+        properties.setEnabled(true);
+        properties.setPinnedTargetReuseWindowTurns(3);
+        ApprovedConversationSnapshot snapshot =
+            new ApprovedConversationSnapshot(
+                "turn-1",
+                "user-1",
+                "conversation-1",
+                "account-resolver@1",
+                "a".repeat(64),
+                4,
+                List.of(
+                    AIChatMessage.user("Why am I blocked?"),
+                    AIChatMessage.assistant("A payment method is missing.")
+                ),
+                Instant.parse("2026-07-29T12:00:00Z")
+            );
+        PipelineContext context = PipelineContext.from(
+            new OrchestrationRequest(
+                "Add my card",
+                OrchestrationContext.builder()
+                    .userId("user-1")
+                    .conversationId("conversation-1")
+                    .approvedConversationSnapshot(snapshot)
+                    .build(),
+                null,
+                ConversationPersistencePolicy.READ_ONLY
+            )
+        );
+
+        PipelineContext updated =
+            new ConversationEnrichmentStep(service, properties)
+                .process(context);
+
+        assertThat(updated.getHistoryMessages())
+            .extracting(AIChatMessage::getContent)
+            .containsExactly(
+                "Why am I blocked?",
+                "A payment method is missing."
+            );
+        assertThat(updated.getMetadata().get("chat"))
+            .isInstanceOfSatisfying(Map.class, metadata ->
+                assertThat(metadata)
+                    .containsEntry("memoryStrategy", "APPROVED_SNAPSHOT")
+                    .containsEntry("snapshotRevision", "a".repeat(64))
+                    .containsEntry("sourceTurnCount", 4L)
+            );
+        assertThat(updated.getResolvedTargets()).isEmpty();
+        verifyNoInteractions(service);
+    }
+
+    @Test
+    void shouldDenyAnApprovedSnapshotBoundToAnotherOwner() {
+        ChatSessionService service = mock(ChatSessionService.class);
+        ChatSessionProperties properties = new ChatSessionProperties();
+        properties.setEnabled(true);
+        ApprovedConversationSnapshot snapshot =
+            new ApprovedConversationSnapshot(
+                "turn-1",
+                "other-user",
+                "conversation-1",
+                "account-resolver@1",
+                "a".repeat(64),
+                0,
+                List.of(),
+                Instant.parse("2026-07-29T12:00:00Z")
+            );
+        PipelineContext context = PipelineContext.from(
+            new OrchestrationRequest(
+                "Inspect",
+                OrchestrationContext.builder()
+                    .userId("user-1")
+                    .conversationId("conversation-1")
+                    .approvedConversationSnapshot(snapshot)
+                    .build(),
+                null,
+                ConversationPersistencePolicy.READ_ONLY
+            )
+        );
+
+        PipelineContext updated =
+            new ConversationEnrichmentStep(service, properties)
+                .process(context);
+
+        assertThat(updated.isShouldTerminate()).isTrue();
+        assertThat(updated.getEarlyTerminationResult().getErrorCode())
+            .isEqualTo("ACCESS_DENIED");
+        verifyNoInteractions(service);
     }
 
     @Test
