@@ -13,6 +13,7 @@ import ai.fabric.core.AIEmbeddingService;
 import ai.fabric.indexing.DefaultAIEntityIndexingGateway;
 import ai.fabric.indexing.api.AIEntityIndexingGateway;
 import ai.fabric.indexing.api.AIIndexAnalysisHandler;
+import ai.fabric.indexing.api.IndexingWorkQuery;
 import ai.fabric.indexing.descriptor.AIEntityDescriptorInitializer;
 import ai.fabric.indexing.descriptor.AIEntityDescriptorRegistry;
 import ai.fabric.indexing.document.springai.SpringAiDocumentIndexingAdapter;
@@ -21,6 +22,7 @@ import ai.fabric.indexing.observability.AIEntityIndexingEndpoint;
 import ai.fabric.indexing.observability.IndexingMetrics;
 import ai.fabric.indexing.projection.AIEntityProjectionService;
 import ai.fabric.indexing.projection.AIConfiguredEntityProjectionService;
+import ai.fabric.indexing.query.DefaultIndexingWorkQuery;
 import ai.fabric.indexing.queue.IndexingQueueService;
 import ai.fabric.indexing.worker.AsyncIndexingWorker;
 import ai.fabric.indexing.worker.BatchIndexingWorker;
@@ -82,6 +84,14 @@ public class AIIndexingAutoConfiguration {
             clock,
             metrics
         );
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    public IndexingWorkQuery indexingWorkQuery(
+        IndexingQueueRepository repository
+    ) {
+        return new DefaultIndexingWorkQuery(repository);
     }
 
     @Bean

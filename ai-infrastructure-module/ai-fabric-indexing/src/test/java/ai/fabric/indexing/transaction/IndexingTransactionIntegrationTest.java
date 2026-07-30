@@ -8,9 +8,13 @@ import ai.fabric.indexing.IndexingStatus;
 import ai.fabric.indexing.api.AIIndexWorkType;
 import ai.fabric.indexing.api.AIProcessOperation;
 import ai.fabric.indexing.api.IndexingStrategy;
+import ai.fabric.indexing.api.IndexingWorkQuery;
+import ai.fabric.indexing.api.IndexingWorkState;
+import ai.fabric.indexing.api.IndexingWorkStatus;
 import ai.fabric.indexing.descriptor.AIEntityDescriptorRegistry;
 import ai.fabric.indexing.model.AIIndexDocument;
 import ai.fabric.indexing.projection.AIEntityProjectionService;
+import ai.fabric.indexing.query.DefaultIndexingWorkQuery;
 import ai.fabric.indexing.queue.IndexingQueueService;
 import ai.fabric.indexing.worker.IndexingExecutionException;
 import ai.fabric.indexing.worker.IndexingOperationExecutor;
@@ -87,6 +91,9 @@ class IndexingTransactionIntegrationTest {
     private IndexingWorkProcessor workProcessor;
 
     @org.springframework.beans.factory.annotation.Autowired
+    private IndexingWorkQuery workQuery;
+
+    @org.springframework.beans.factory.annotation.Autowired
     private PlatformTransactionManager transactionManager;
 
     @PersistenceContext
@@ -126,6 +133,30 @@ class IndexingTransactionIntegrationTest {
         assertThat(work.getStatus()).isEqualTo(IndexingStatus.COMPLETED);
         assertThat(vectors).containsEntry("product:p-1", "title: Product");
         verify(operationExecutor).execute(any(AIIndexDocument.class), anyLong());
+    }
+
+    @Test
+    void publicWorkQueryTracksDurableStateThroughRealPersistence() {
+        IndexingQueueEntry entry = queueService.enqueue(
+            upsertDocument("query-state", "Initial", 1L),
+            IndexingStrategy.ASYNC
+        );
+
+        IndexingWorkStatus pending = workQuery.findByWorkId(
+            String.valueOf(entry.getId())
+        ).orElseThrow();
+        assertThat(pending.status()).isEqualTo(IndexingWorkState.PENDING);
+        assertThat(pending.isInProgress()).isTrue();
+        assertThat(pending.entityType()).isEqualTo("product");
+        assertThat(pending.entityId()).isEqualTo("query-state");
+
+        queueService.markCompleted(entry.getId(), "private-result-payload");
+
+        IndexingWorkStatus completed = workQuery.findByWorkId(
+            String.valueOf(entry.getId())
+        ).orElseThrow();
+        assertThat(completed.status()).isEqualTo(IndexingWorkState.COMPLETED);
+        assertThat(completed.isSuccessfulTerminal()).isTrue();
     }
 
     @Test
@@ -695,6 +726,13 @@ class IndexingTransactionIntegrationTest {
                 objectMapper,
                 clock
             );
+        }
+
+        @Bean
+        IndexingWorkQuery indexingWorkQuery(
+            IndexingQueueRepository queueRepository
+        ) {
+            return new DefaultIndexingWorkQuery(queueRepository);
         }
 
         @Bean

@@ -318,6 +318,44 @@ fail-closed policy boundary.
 Provider failures are not converted into success. The response includes bounded outcome metadata and
 the durable queue retains retry/dead-letter evidence.
 
+### Reconcile durable indexing work
+
+An `INDEXING_RETRYABLE` response means the source operation was accepted and the indexing work is
+durable. It does not mean the vector mutation failed permanently, and callers must not blindly submit
+the same source mutation again.
+
+Read `metadata.indexingWorkId` from the operation response and query the work through the in-process
+`IndexingWorkQuery` contract:
+
+```java
+IndexingWorkStatus work = indexingWorkQuery
+    .findByWorkId(indexingWorkId)
+    .orElseThrow(() -> new IllegalStateException(
+        "Indexing work no longer exists: " + indexingWorkId
+    ));
+
+if (work.isInProgress()) {
+    // Keep the application operation pending and poll again with a bounded delay.
+} else if (work.isSuccessfulTerminal()) {
+    // COMPLETED applied this work. SUPERSEDED means newer work owns the entity state.
+} else if (work.requiresOperatorReview()) {
+    // DEAD_LETTER: expose a safe failure and route it to application operations.
+}
+```
+
+The query returns the public lifecycle state, entity identity, work type, source operation, strategy,
+retry counters, bounded failure codes, correlation ID, and lifecycle timestamps. It intentionally
+does not expose the serialized source payload, provider result payload, persistence entity, or worker
+node.
+
+`IndexingWorkQuery` is a framework Java contract, not a public framework HTTP endpoint. An application
+or platform may expose a private status route, but it must authenticate the caller and authorize the
+work item before returning entity identity or diagnostics. For a shared or tenant-facing route, derive
+tenant scope from trusted backend identity; never trust tenant identity supplied by the browser.
+
+Vector existence is not a replacement for this query. Existence cannot prove that an update reached
+the expected revision, that a delete completed, or that the observed vector belongs to this work item.
+
 ---
 
 ## 7) Configuration

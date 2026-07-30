@@ -6,7 +6,7 @@
 
     <groupId>com.ai.fabric.examples</groupId>
     <artifactId>minimal-spring-boot</artifactId>
-    <version>0.5.0</version>
+    <version>0.5.1</version>
     <packaging>jar</packaging>
 
     <name>AI Fabric Minimal Spring Boot Example</name>
@@ -16,7 +16,7 @@
         <maven.compiler.source>${java.version}</maven.compiler.source>
         <maven.compiler.target>${java.version}</maven.compiler.target>
         <spring-boot.version>4.1.0</spring-boot.version>
-        <ai-fabric.version>0.5.0</ai-fabric.version>
+        <ai-fabric.version>0.5.1</ai-fabric.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     </properties>
 

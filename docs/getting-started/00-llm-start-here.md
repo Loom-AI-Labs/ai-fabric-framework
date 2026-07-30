@@ -4,7 +4,7 @@ Use this file as the first context block for any coding assistant session that t
 
 ## Current Baseline
 
-- AI Fabric contract: `0.5.0`
+- AI Fabric contract: `0.5.1`
 - Java: `21`
 - Spring Boot: `4.1.x`
 - Maven group: `io.github.loom-ai-labs`

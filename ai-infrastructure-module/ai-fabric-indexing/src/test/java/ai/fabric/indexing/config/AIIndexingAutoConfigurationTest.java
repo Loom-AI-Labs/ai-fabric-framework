@@ -1,8 +1,11 @@
 package ai.fabric.indexing.config;
 
 import ai.fabric.config.AIEntityConfigurationLoader;
+import ai.fabric.indexing.api.IndexingWorkQuery;
 import ai.fabric.indexing.document.springai.SpringAiDocumentIndexingAdapter;
 import ai.fabric.indexing.document.springai.SpringAiDocumentReaderFactory;
+import ai.fabric.indexing.query.DefaultIndexingWorkQuery;
+import ai.fabric.repository.IndexingQueueRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
@@ -12,6 +15,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 
 class AIIndexingAutoConfigurationTest {
+
+    @Test
+    void createsThePublicWorkQueryFromTheInternalRepository() {
+        IndexingWorkQuery query = new AIIndexingAutoConfiguration()
+            .indexingWorkQuery(mock(IndexingQueueRepository.class));
+
+        assertThat(query).isInstanceOf(DefaultIndexingWorkQuery.class);
+    }
 
     @Test
     void providerOnlyApplicationDoesNotActivateDocumentIndexing() {
