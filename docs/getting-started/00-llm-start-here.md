@@ -4,7 +4,7 @@ Use this file as the first context block for any coding assistant session that t
 
 ## Current Baseline
 
-- AI Fabric contract: `0.4.0`
+- AI Fabric contract: `0.5.0`
 - Java: `21`
 - Spring Boot: `4.1.x`
 - Maven group: `io.github.loom-ai-labs`
@@ -38,6 +38,7 @@ Read only the smallest set of files needed:
 | Search/indexing | `03-first-semantic-search.md`, `09-vector-storage-lucene.md` |
 | RAG answers | `04-first-rag-chat.md`, `10-security-access-policy.md` |
 | Actions/confirmations | `05-first-governed-action.md`, `06-chat-session-memory.md` |
+| Bounded specialists | `../Framework-Dev-Guides/application-patterns/AGENTIC_APP_GUIDE.md` |
 | Provider config | `07-real-provider-openai.md`, `08-local-onnx-embeddings.md` |
 | Release readiness | `11-testing-and-verification.md`, `13-production-checklist.md` |
 | Real examples | `12-real-apps-map.md` |

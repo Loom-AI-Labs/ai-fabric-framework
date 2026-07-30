@@ -3,13 +3,90 @@ ai-entities:
     indexing:
       enabled: true
       max-characters: 8000
+    searchable-fields:
+      - name: sku
+        priority: 80
+        destinations: [SEMANTIC_SEARCH, RAG_CONTEXT]
+      - name: name
+        priority: 100
+        destinations: [SEMANTIC_SEARCH, RAG_CONTEXT]
+      - name: description
+        priority: 90
+        max-length: 20000
+        destinations: [SEMANTIC_SEARCH, RAG_CONTEXT]
+      - name: category
+        priority: 70
+        destinations: [SEMANTIC_SEARCH, RAG_CONTEXT]
+      - name: tags
+        priority: 60
+        destinations: [SEMANTIC_SEARCH, RAG_CONTEXT]
+      - name: price
+        priority: 60
+        destinations: [SEMANTIC_SEARCH, RAG_CONTEXT]
+      - name: currency
+        priority: 40
+        destinations: [SEMANTIC_SEARCH, RAG_CONTEXT]
+      - name: inStockQty
+        priority: 30
+        destinations: [SEMANTIC_SEARCH, RAG_CONTEXT]
+    metadata-fields:
+      - name: sku
+        data-type: ID
+        description: Product SKU
+        destinations: [VECTOR_METADATA, LLM_CONTEXT, API_RESPONSE]
+      - name: category
+        data-type: STRING
+        description: Product category
+        destinations: [VECTOR_METADATA, LLM_CONTEXT, API_RESPONSE]
+      - name: tags
+        data-type: STRING
+        description: Comma-separated product tags
+        destinations: [VECTOR_METADATA, LLM_CONTEXT, API_RESPONSE]
+      - name: imageUrl
+        data-type: STRING
+        description: Public product image URL
+        destinations: [VECTOR_METADATA, LLM_CONTEXT, API_RESPONSE]
 
   policy:
     indexing:
       enabled: true
       max-characters: 8000
+    searchable-fields:
+      - name: title
+        priority: 100
+        destinations: [SEMANTIC_SEARCH, RAG_CONTEXT]
+      - name: text
+        priority: 90
+        max-length: 20000
+        destinations: [SEMANTIC_SEARCH, RAG_CONTEXT]
+      - name: classification
+        priority: 70
+        destinations: [SEMANTIC_SEARCH, RAG_CONTEXT]
+    metadata-fields:
+      - name: classification
+        data-type: STRING
+        description: Policy classification
+        destinations: [VECTOR_METADATA, LLM_CONTEXT, API_RESPONSE]
 
   review:
     indexing:
       enabled: true
       max-characters: 8000
+    searchable-fields:
+      - name: text
+        priority: 100
+        max-length: 20000
+        destinations: [SEMANTIC_SEARCH, RAG_CONTEXT]
+    metadata-fields:
+      - name: userId
+        data-type: ID
+        description: User who wrote the review
+        destinations: [VECTOR_METADATA, LLM_CONTEXT, API_RESPONSE]
+      - name: productId
+        data-type: ID
+        description: Reviewed product identifier
+        destinations: [VECTOR_METADATA, LLM_CONTEXT, API_RESPONSE]
+      - name: sku
+        data-type: ID
+        description: Reviewed product SKU
+        destinations: [VECTOR_METADATA, LLM_CONTEXT, API_RESPONSE]

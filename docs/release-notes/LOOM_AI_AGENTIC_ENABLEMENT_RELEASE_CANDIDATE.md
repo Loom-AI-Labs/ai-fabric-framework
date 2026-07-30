@@ -1948,32 +1948,60 @@ commit.
   artifacts are installed. Maven Central and Loom AI platform consumption
   remain separate post-publication gates.
 
+### Final `0.5.0` source-candidate gate
+
+- The final 31-module release-profile reactor passed with tests enabled and
+  generated the publishable source and Javadoc artifacts.
+- All five integration-suite test trees compiled against the final API.
+- The focused execution reactor passed 312 tests; the Agentic AI Action
+  Resolver passed 138 tests; the complete 23-project real-app reactor passed.
+- Both standalone consumers passed, and all 11 packaged smoke applications
+  started.
+- The final Data Sync P0 lifecycle and full deterministic P1 scenario suite
+  passed.
+- Eight native container contracts passed across Qdrant REST, Qdrant gRPC,
+  Weaviate, and Milvus.
+- Real OpenAI verification covered grounded account reads, typed input waits,
+  resume/replay/conflict, delegation, handoff, manager follow-up using one
+  backend-owned prior turn, equivalent sequential/parallel output, and
+  confirmation-gated writes.
+- A Docker/JDBC proposal survived restart, executed after confirmation, and
+  replayed the identical terminal receipt after a second restart.
+- A durable event read survived restart with the same invocation ID and
+  rejected changed event facts.
+- A durable review task survived restart, executed one approved account-credit
+  mutation, and produced a byte-stable terminal replay after another restart.
+- The review proof exposed and fixed nondeterministic public
+  `allowedDecisions` ordering; a framework regression test now preserves
+  stable enum order.
+- The reference app now configures an explicit, overridable OpenAI timeout.
+
 ## 22. Release Gate Still Required
 
 Before Loom AI adopts a published artifact:
 
-- [ ] Assign the release version.
-- [ ] Update framework, BOM, examples, and documentation consistently.
-- [ ] Run the complete clean release gate with tests enabled.
-- [ ] Run keyed OpenAI execution and action-continuation scenarios.
-- [ ] Run keyed OpenAI dialogue-owner first-turn, follow-up, replay, conflict,
+- [x] Assign the release version.
+- [x] Update framework, BOM, examples, and documentation consistently.
+- [x] Run the complete clean release gate with tests enabled.
+- [x] Run keyed OpenAI execution and action-continuation scenarios.
+- [x] Run keyed OpenAI dialogue-owner first-turn, follow-up, replay, conflict,
   and caller-history rejection scenarios.
-- [ ] Run keyed OpenAI manager account-read, billing, clarification,
+- [x] Run keyed OpenAI manager account-read, billing, clarification,
   unsupported completion, backend-history follow-up, replay, and conflict
   scenarios.
-- [ ] Run keyed OpenAI sequential/parallel parity, overlap, atomic failure,
+- [x] Run keyed OpenAI sequential/parallel parity, overlap, atomic failure,
   deadline, and disabled-feature scenarios.
 - [x] Run deterministic external retrieval boundary, P1 product scenarios,
   packaged boot matrix, and source-candidate Docker probes.
-- [ ] Run packaged Docker and JDBC restart/replay proof.
+- [x] Run packaged Docker and JDBC restart/replay proof.
 - [x] Run standalone candidate consumer compile, context, and public execution
   runtime tests from installed JARs.
 - [ ] Verify Maven Central consumer resolution.
-- [ ] Publish release notes and migration guidance.
+- [x] Publish release notes and migration guidance in the release source.
 - [ ] Deploy the independent Agentic AI Action Resolver.
 - [ ] Verify its health reports the released version and candidate commit.
 - [ ] Run Loom AI consumer compilation and runtime smoke tests.
-- [ ] Obtain explicit release approval.
+- [x] Obtain explicit release approval.
 
 Until those items pass, Loom AI should treat the candidate commit named at the
 top of this document as a verified framework candidate, not a published

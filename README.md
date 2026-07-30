@@ -33,7 +33,7 @@
   ·
   <a href="docs/llm-context/README.md"><strong>Coding-Assistant Context</strong></a>
   ·
-  <a href="docs/release-notes/0.4.0.md"><strong>0.4.0 Release Notes</strong></a>
+  <a href="docs/release-notes/0.5.0.md"><strong>0.5.0 Release Notes</strong></a>
 </p>
 
 ---
@@ -69,6 +69,7 @@ it may see and what it may change.**
 | Tenant-safe and role-aware retrieval | Access policy hooks plus a metadata-filtering vector provider | [Security and Access Policy](docs/getting-started/10-security-access-policy.md) |
 | PII detection and sanitized evidence | `ai-fabric-pii`, optional `ai-fabric-governance` | [Privacy Shield app](examples/real-apps/privacy-first-customer-facing-support/README.md) |
 | Behavior insight and agentic UI planning | `ai-fabric-behavior` | [Behavior Signals app](examples/real-apps/behavior-churn-signals/README.md) |
+| Bounded, versioned AI specialists | Optional `ai-fabric-execution` plus the capabilities each specialist uses | [Bounded Agentic Enablement](docs/Framework-Dev-Guides/application-patterns/AGENTIC_APP_GUIDE.md) |
 | Purpose-specific LLM and embedding routing | `ai-fabric-provider-spring-ai` or `ai-fabric-onnx-starter` | [Provider Routing](docs/course/production/01-provider-routing/lesson.md) |
 
 Use [Choose Your Path](docs/getting-started/01-choose-your-path.md) to install only the modules your
@@ -99,7 +100,7 @@ flowchart LR
 See [Public Architecture](docs/architecture/AI_FABRIC_PUBLIC_ARCHITECTURE.md) for the complete
 ownership model and module map.
 
-## Start With `0.4.0`
+## Start With `0.5.0`
 
 ### Requirements
 
@@ -114,7 +115,7 @@ required.
 
 ```xml
 <properties>
-  <ai-fabric.version>0.4.0</ai-fabric.version>
+  <ai-fabric.version>0.5.0</ai-fabric.version>
 </properties>
 
 <dependencyManagement>
@@ -240,7 +241,7 @@ public SupportArticle update(SupportArticle article) {
 }
 ```
 
-AI Fabric `0.4.0` projects annotation-backed entity content and metadata, commits durable indexing
+Since `0.4.0`, AI Fabric projects annotation-backed entity content and metadata, commits durable indexing
 work with the source transaction, and applies create/update/delete changes to the configured vector
 provider. Follow the complete [semantic-search lifecycle](docs/getting-started/03-first-semantic-search.md)
 before exposing retrieval to users.
@@ -258,6 +259,7 @@ before exposing retrieval to users.
 - `ai-fabric-pii` and `ai-fabric-governance`: privacy and governance controls.
 - `ai-fabric-behavior`: event-backed behavior insight.
 - `ai-fabric-migration-core`: bounded, resumable data backfill.
+- `ai-fabric-execution`: optional bounded, versioned specialist execution and governed composition.
 
 ### Providers and storage
 
@@ -293,7 +295,7 @@ readiness, and relationship queries.
 - [Interactive course](https://ai-fabric.dev/course): guided lessons, videos, checks, and real-app case studies.
 - [Course source](docs/course/AI_FABRIC_EXTERNAL_USER_COURSE.md): versioned curriculum and lab contracts.
 - [Architecture](docs/architecture/AI_FABRIC_PUBLIC_ARCHITECTURE.md): request flow and ownership boundaries.
-- [Release notes](docs/release-notes/0.4.0.md): current behavior and migration considerations.
+- [Release notes](docs/release-notes/0.5.0.md): current behavior and migration considerations.
 - [Production checklist](docs/getting-started/13-production-checklist.md): release and deployment gate.
 
 ## Build With A Coding Assistant
@@ -364,9 +366,10 @@ The project favors focused, well-tested changes with real-app proof over broad r
 
 ## Release Policy
 
-The current release is **`0.4.0`**. AI Fabric remains on a `0.x` release line, so review release
+The current release is **`0.5.0`**. AI Fabric remains on a `0.x` release line, so review release
 notes and migration guidance before upgrading:
 
+- [AI Fabric 0.5.0 release notes](docs/release-notes/0.5.0.md)
 - [AI Fabric 0.4.0 release notes](docs/release-notes/0.4.0.md)
 - [Annotation lifecycle 0.4 migration guide](docs/Framework-Dev-Guides/retrieval-vectorization/ANNOTATION_LIFECYCLE_0_4_MIGRATION_GUIDE.md)
 

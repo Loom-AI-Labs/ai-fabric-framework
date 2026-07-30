@@ -129,6 +129,7 @@ ai:
       api-key: ${OPENAI_API_KEY:}
       base-url: https://api.openai.com/v1
       model: ${OPENAI_MODEL:gpt-4o-mini}
+      timeout: ${OPENAI_TIMEOUT:60}
 
   vector-db:
     type: lucene

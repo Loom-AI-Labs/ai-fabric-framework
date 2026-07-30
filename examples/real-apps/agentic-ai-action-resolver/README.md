@@ -1021,6 +1021,7 @@ export AI_EXECUTION_ASYNC_FINGERPRINT_SECRET="<fourth-stable-secret-of-at-least-
 OPENAI_ENABLED=true \
 OPENAI_API_KEY="$OPENAI_API_KEY" \
 OPENAI_MODEL=gpt-4o-mini \
+OPENAI_TIMEOUT=60 \
 PORT=8105 \
 java -jar \
   examples/real-apps/agentic-ai-action-resolver/target/agentic-ai-action-resolver-1.0.0-SNAPSHOT.jar
@@ -1189,7 +1190,7 @@ stages:
 ```bash
 docker build \
   -f examples/real-apps/agentic-ai-action-resolver/Dockerfile \
-  --build-arg AI_FABRIC_VERSION=0.4.0 \
+  --build-arg AI_FABRIC_VERSION=0.5.0 \
   --build-arg BUILD_COMMIT="$(git rev-parse HEAD)" \
   --build-arg BUILD_BRANCH="$(git branch --show-current)" \
   --build-arg BUILD_TIME="$(date -u +%Y-%m-%dT%H:%M:%SZ)" \

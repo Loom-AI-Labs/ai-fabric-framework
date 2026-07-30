@@ -1,6 +1,6 @@
 # Installation
 
-AI Fabric `0.4.0` is distributed on Maven Central under `io.github.loom-ai-labs`.
+AI Fabric `0.5.0` is distributed on Maven Central under `io.github.loom-ai-labs`.
 
 ## Requirements
 
@@ -16,7 +16,7 @@ AI Fabric `0.4.0` is distributed on Maven Central under `io.github.loom-ai-labs`
     <dependency>
       <groupId>io.github.loom-ai-labs</groupId>
       <artifactId>ai-fabric-bom</artifactId>
-      <version>0.4.0</version>
+      <version>0.5.0</version>
       <type>pom</type>
       <scope>import</scope>
     </dependency>
@@ -62,6 +62,7 @@ AI Fabric `0.4.0` is distributed on Maven Central under `io.github.loom-ai-labs`
 | `ai-fabric-relationship-query` | NL to relationship/query planning and action surface. |
 | `ai-fabric-behavior` | LLM-backed behavior insight generation. |
 | `ai-fabric-migration` | Backfill/migration jobs for existing app data. |
+| `ai-fabric-execution` | Optional bounded, versioned specialist execution and governed composition. |
 | `ai-fabric-onnx-starter` | Local ONNX embeddings. |
 | `ai-fabric-vector-memory` | In-memory vector store for smoke/dev tests. |
 | `ai-fabric-vector-qdrant` | Qdrant vector provider. |

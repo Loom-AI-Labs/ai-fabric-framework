@@ -1758,6 +1758,6 @@ ai:
 **End of Multi-Agent Patterns Guide**
 
 For more information, see:
-- [Agentic Application Guide](/AGENTIC_APP_GUIDE.md)
-- [Framework Compliance Analysis](/AGENTIC_FRAMEWORK_COMPLIANCE_ANALYSIS.md)
-- [Orchestrator User Guide](/../architecture/orchestration/Orchestrator_User_Guide.md)
+- [Bounded Agentic Enablement](AGENTIC_APP_GUIDE.md)
+- [Framework Compliance Analysis](../architecture/framework/AGENTIC_FRAMEWORK_COMPLIANCE_ANALYSIS.md)
+- [Orchestrator User Guide](../architecture/orchestration/Orchestrator_User_Guide.md)

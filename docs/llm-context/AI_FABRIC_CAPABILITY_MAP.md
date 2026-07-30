@@ -19,6 +19,7 @@
 | Behavior insights | `ai-fabric-behavior` | behavior analysis over raw events |
 | Migration/backfill | `ai-fabric-migration` | migration jobs and entity backfill |
 | Data sync | `ai-fabric-data-sync` | data ingestion/sync endpoints |
+| Bounded specialist execution | `ai-fabric-execution` | versioned manifests, typed execution, trusted context, bounded plans, governed write proposals |
 | Web endpoints | `ai-fabric-web` | admin/profile/security/RAG web controllers |
 | Curated modes | `ai-fabric-curated-*` | prompt/mode bundles and overlays |
 

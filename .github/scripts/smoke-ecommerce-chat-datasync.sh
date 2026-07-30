@@ -250,7 +250,20 @@ print(json.dumps(payload, separators=(",", ":")))
 ' "${sku}" "${name}" "${description}" "${category}" "${tags}" "${price}" "${currency}" "${quantity}"
 )"
 
-indexed_content="${product_payload}"
+# The smoke embedding provider is deterministic rather than semantic. Query the
+# receiver-owned canonical projection exactly so this verifies the hardened
+# Data Sync projection contract instead of relying on the legacy raw JSON body.
+indexed_content="$(
+  printf 'name: %s\ndescription: %s\nsku: %s\ncategory: %s\ntags: %s\nprice: %s\ncurrency: %s\ninStockQty: %s' \
+    "${name}" \
+    "${description}" \
+    "${sku}" \
+    "${category}" \
+    "${tags}" \
+    "${price}" \
+    "${currency}" \
+    "${quantity}"
+)"
 
 echo "P0 ecommerce -> chat data-sync smoke"
 echo "  chat runtime: ${chat_base}"

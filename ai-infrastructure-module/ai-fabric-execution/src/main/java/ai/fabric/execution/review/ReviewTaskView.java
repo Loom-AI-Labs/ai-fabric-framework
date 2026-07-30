@@ -4,6 +4,8 @@ import ai.fabric.execution.review.decision.ReviewDecisionType;
 import ai.fabric.execution.review.policy.ReviewPolicyId;
 import ai.fabric.execution.review.policy.ReviewType;
 import java.time.Instant;
+import java.util.Collections;
+import java.util.EnumSet;
 import java.util.Set;
 
 /**
@@ -30,8 +32,11 @@ public record ReviewTaskView(
         title = requireText(title, "title", 160);
         summary = requireText(summary, "summary", 1000);
         allowedDecisions = allowedDecisions == null
+            || allowedDecisions.isEmpty()
             ? Set.of()
-            : Set.copyOf(allowedDecisions);
+            : Collections.unmodifiableSet(
+                EnumSet.copyOf(allowedDecisions)
+            );
         java.util.Objects.requireNonNull(status, "status is required");
         java.util.Objects.requireNonNull(createdAt, "createdAt is required");
         java.util.Objects.requireNonNull(expiresAt, "expiresAt is required");

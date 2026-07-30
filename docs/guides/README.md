@@ -15,7 +15,7 @@ It is shorter, task-oriented, and includes an [LLM Start Here](../getting-starte
 page for coding assistant sessions. Keep this `docs/guides` section as the deeper legacy guide set.
 
 If you are building training material for external users, start from
-[Build Production-Oriented AI Workflows with Java and Spring Boot](../course/AI_FABRIC_EXTERNAL_USER_COURSE.md).
+[Build AI-Enabled Applications with Java and Spring Boot](../course/AI_FABRIC_EXTERNAL_USER_COURSE.md).
 
 | # | Guide | What you'll get |
 |---|-------|-----------------|
@@ -30,7 +30,7 @@ If you are building training material for external users, start from
 ## At a glance
 
 - **Coordinates:** group `io.github.loom-ai-labs`, BOM `ai-fabric-bom`, modules `ai-fabric-*`.
-- **Latest version:** `0.4.0`.
+- **Latest version:** `0.5.0`.
 - **Java packages:** `ai.fabric.*`.
 - **Requirements:** Java 21, Maven 3.9+, Spring Boot 4.1.x.
 - **Entry point:** annotate a Spring Boot app with `@EnableAIInfrastructure` and add the starter.
