@@ -17,6 +17,8 @@ public class AIExecutionProperties {
     private final Manifests manifests = new Manifests();
     private final InputWaits inputWaits = new InputWaits();
     private final Plans plans = new Plans();
+    private final ConversationManagers conversationManagers =
+        new ConversationManagers();
 
     public Async getAsync() {
         return async;
@@ -44,6 +46,63 @@ public class AIExecutionProperties {
 
     public Plans getPlans() {
         return plans;
+    }
+
+    public ConversationManagers getConversationManagers() {
+        return conversationManagers;
+    }
+
+    public static class ConversationManagers {
+        private boolean enabled = true;
+        private Duration maxDuration = Duration.ofMinutes(1);
+        private int maxActive = 1_000;
+        private Duration resultTtl = Duration.ofMinutes(15);
+
+        public boolean isEnabled() {
+            return enabled;
+        }
+
+        public void setEnabled(boolean enabled) {
+            this.enabled = enabled;
+        }
+
+        public Duration getMaxDuration() {
+            return maxDuration;
+        }
+
+        public void setMaxDuration(Duration maxDuration) {
+            this.maxDuration = positive(maxDuration, "maxDuration");
+        }
+
+        public int getMaxActive() {
+            return maxActive;
+        }
+
+        public void setMaxActive(int maxActive) {
+            if (maxActive <= 0) {
+                throw new IllegalArgumentException(
+                    "maxActive must be positive"
+                );
+            }
+            this.maxActive = maxActive;
+        }
+
+        public Duration getResultTtl() {
+            return resultTtl;
+        }
+
+        public void setResultTtl(Duration resultTtl) {
+            this.resultTtl = positive(resultTtl, "resultTtl");
+        }
+
+        private Duration positive(Duration value, String field) {
+            if (value == null || value.isZero() || value.isNegative()) {
+                throw new IllegalArgumentException(
+                    field + " must be positive"
+                );
+            }
+            return value;
+        }
     }
 
     public static class Plans {

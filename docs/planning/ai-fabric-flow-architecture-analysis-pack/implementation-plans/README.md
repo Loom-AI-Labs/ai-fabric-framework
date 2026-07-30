@@ -26,6 +26,7 @@ checklists here.
 | [0009 - One-level declared specialist delegation](./0009-one-level-declared-specialist-delegation-implementation-plan.md) | Implemented and verified; not released | Exact-version delegation allowlists, typed one-level child execution, independent authorization, lineage, and an Agentic Resolver routing proof |
 | [0010 - Explicit read-only specialist handoff](./0010-explicit-read-only-specialist-handoff-implementation-plan.md) | Implemented and verified; not released | Distinct predecessor/successor handoff semantics, exact read-only target admission, independent authorization, and an Account Resolver intake proof |
 | [0011 - Interactive dialogue ownership](./0011-interactive-dialogue-ownership-implementation-plan.md) | Implemented and verified; not released | Backend-frozen conversation projections, one explicit dialogue owner, one active turn, and an upgraded Account Resolver chat proof |
+| [0012 - Bounded conversation manager](./0012-bounded-conversation-manager-implementation-plan.md) | Implemented and verified; not released | One manager-owned frozen turn, three typed directives, one closed read-only worker choice, and exactly one external response |
 
 ## Plan Rules
 

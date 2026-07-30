@@ -14,8 +14,11 @@ import ai.fabric.execution.gateway.AIExecutionGateway;
 import ai.fabric.execution.gateway.AIInteractiveExecutionGateway;
 import ai.fabric.execution.gateway.DurableAIExecutionGateway;
 import ai.fabric.execution.gateway.ExecutionCapabilityInventory;
+import ai.fabric.execution.gateway.SharedInteractiveTurnCoordinator;
 import ai.fabric.execution.delegation.SpecialistDelegationGateway;
 import ai.fabric.execution.handoff.SpecialistHandoffGateway;
+import ai.fabric.execution.manager.ConversationManagerGateway;
+import ai.fabric.execution.manager.ConversationManagerRegistry;
 import ai.fabric.execution.plan.AIExecutionCoordinator;
 import ai.fabric.execution.plan.ExecutionPlanRegistry;
 import ai.fabric.execution.plan.PlanComponentRegistry;
@@ -68,6 +71,11 @@ class AIExecutionAutoConfigurationTest {
                     .hasSingleBean(SpecialistDelegationGateway.class);
                 assertThat(context)
                     .hasSingleBean(SpecialistHandoffGateway.class);
+                assertThat(context)
+                    .hasSingleBean(ConversationManagerRegistry.class);
+                assertThat(context.getBean(
+                    ConversationManagerRegistry.class
+                ).list()).isEmpty();
                 assertThat(context)
                     .hasSingleBean(AIExecutionCoordinator.class);
                 assertThat(context)
@@ -123,6 +131,19 @@ class AIExecutionAutoConfigurationTest {
                     .hasSingleBean(ExecutionPlanRegistry.class);
                 assertThat(context)
                     .doesNotHaveBean(AIExecutionCoordinator.class);
+            });
+    }
+
+    @Test
+    void canDisableConversationManagersWithoutDisablingSpecialists() {
+        contextRunner
+            .withPropertyValues(
+                "ai.execution.conversation-managers.enabled=false"
+            )
+            .run(context -> {
+                assertThat(context).hasSingleBean(AIExecutionGateway.class);
+                assertThat(context)
+                    .doesNotHaveBean(ConversationManagerRegistry.class);
             });
     }
 
@@ -195,6 +216,11 @@ class AIExecutionAutoConfigurationTest {
                 );
                 assertThat(context)
                     .hasSingleBean(AIInteractiveExecutionGateway.class);
+                assertThat(context).hasSingleBean(
+                    SharedInteractiveTurnCoordinator.class
+                );
+                assertThat(context)
+                    .hasSingleBean(ConversationManagerGateway.class);
             });
     }
 

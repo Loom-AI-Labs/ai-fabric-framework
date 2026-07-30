@@ -1,22 +1,15 @@
 package ai.fabric.execution.gateway;
 
-import ai.fabric.execution.context.ExecutionSource;
 import ai.fabric.execution.specialist.SpecialistDefinition;
 import ai.fabric.execution.specialist.SpecialistId;
 import ai.fabric.execution.specialist.SpecialistRegistry;
 import ai.fabric.execution.specialist.manifest.CanonicalJsonSupport;
-import ai.fabric.execution.specialist.manifest.SpecialistConversationBinding;
-import ai.fabric.execution.specialist.manifest.SpecialistInteractionCapability;
-import ai.fabric.intent.orchestration.conversation.ApprovedConversationSnapshot;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.locks.LockSupport;
 
 /**
@@ -26,15 +19,10 @@ public final class DefaultAIInteractiveExecutionGateway
     implements AIInteractiveExecutionGateway {
 
     private final AIExecutionGateway executionGateway;
-    private final SpecialistRegistry specialistRegistry;
-    private final AIExecutionConversationSnapshotProvider snapshotProvider;
-    private final AIExecutionConversationSnapshotRegistry snapshotRegistry;
-    private final CanonicalJsonSupport canonicalJson;
+    private final SharedInteractiveTurnCoordinator turnCoordinator;
     private final Clock clock;
     private final Duration waitPadding;
     private final long pollNanos;
-    private final ConcurrentMap<String, String> activeTurns =
-        new ConcurrentHashMap<>();
 
     public DefaultAIInteractiveExecutionGateway(
         AIExecutionGateway executionGateway,
@@ -46,10 +34,26 @@ public final class DefaultAIInteractiveExecutionGateway
     ) {
         this(
             executionGateway,
-            specialistRegistry,
-            snapshotProvider,
-            snapshotRegistry,
-            canonicalJson,
+            new SharedInteractiveTurnCoordinator(
+                specialistRegistry,
+                snapshotProvider,
+                snapshotRegistry,
+                canonicalJson
+            ),
+            clock,
+            Duration.ofSeconds(5),
+            Duration.ofMillis(10)
+        );
+    }
+
+    public DefaultAIInteractiveExecutionGateway(
+        AIExecutionGateway executionGateway,
+        SharedInteractiveTurnCoordinator turnCoordinator,
+        Clock clock
+    ) {
+        this(
+            executionGateway,
+            turnCoordinator,
             clock,
             Duration.ofSeconds(5),
             Duration.ofMillis(10)
@@ -66,25 +70,34 @@ public final class DefaultAIInteractiveExecutionGateway
         Duration waitPadding,
         Duration pollInterval
     ) {
+        this(
+            executionGateway,
+            new SharedInteractiveTurnCoordinator(
+                specialistRegistry,
+                snapshotProvider,
+                snapshotRegistry,
+                canonicalJson
+            ),
+            clock,
+            waitPadding,
+            pollInterval
+        );
+    }
+
+    DefaultAIInteractiveExecutionGateway(
+        AIExecutionGateway executionGateway,
+        SharedInteractiveTurnCoordinator turnCoordinator,
+        Clock clock,
+        Duration waitPadding,
+        Duration pollInterval
+    ) {
         this.executionGateway = Objects.requireNonNull(
             executionGateway,
             "executionGateway is required"
         );
-        this.specialistRegistry = Objects.requireNonNull(
-            specialistRegistry,
-            "specialistRegistry is required"
-        );
-        this.snapshotProvider = Objects.requireNonNull(
-            snapshotProvider,
-            "snapshotProvider is required"
-        );
-        this.snapshotRegistry = Objects.requireNonNull(
-            snapshotRegistry,
-            "snapshotRegistry is required"
-        );
-        this.canonicalJson = Objects.requireNonNull(
-            canonicalJson,
-            "canonicalJson is required"
+        this.turnCoordinator = Objects.requireNonNull(
+            turnCoordinator,
+            "turnCoordinator is required"
         );
         this.clock = Objects.requireNonNull(clock, "clock is required");
         if (waitPadding == null || waitPadding.isNegative()) {
@@ -110,102 +123,36 @@ public final class DefaultAIInteractiveExecutionGateway
         Objects.requireNonNull(request, "request is required");
         Instant startedAt = clock.instant();
         SpecialistId specialistId = request.specialistId();
-
-        AIExecutionFailure validationFailure = validate(request);
-        if (validationFailure != null) {
-            return failure(
-                specialistId,
-                validationFailure,
-                startedAt,
-                false
-            );
-        }
-
-        SpecialistDefinition<?, ?> definition;
-        try {
-            definition = specialistRegistry.require(specialistId);
-        } catch (RuntimeException ex) {
-            return failure(
-                specialistId,
-                new AIExecutionFailure(
-                    "SPECIALIST_NOT_FOUND",
-                    "The requested dialogue owner is not registered.",
-                    false
-                ),
-                startedAt,
-                false
-            );
-        }
-        AIExecutionFailure eligibilityFailure = validateEligibility(
-            definition
-        );
-        if (eligibilityFailure != null) {
-            return failure(
-                specialistId,
-                eligibilityFailure,
-                startedAt,
-                false
-            );
-        }
-
-        ConversationBinding binding = request.conversationBinding();
-        String conversationKey = conversationKey(request);
-        String turnId = turnId(request);
-        String active = activeTurns.putIfAbsent(conversationKey, turnId);
-        if (active != null) {
-            return failure(
-                specialistId,
-                new AIExecutionFailure(
-                    "CONVERSATION_BUSY",
-                    "Another interactive turn is active for this conversation.",
-                    true
-                ),
-                startedAt,
-                true
-            );
-        }
-
-        ConversationBinding approvedBinding = null;
-        try {
-            try {
-                ApprovedConversationSnapshot snapshot =
-                    snapshotProvider.capture(
-                        binding,
-                        turnId,
-                        specialistId
-                    );
-                approvedBinding = snapshotRegistry.approve(
-                    binding,
-                    snapshot
-                );
-            } catch (RuntimeException ex) {
-                return failure(
-                    specialistId,
-                    new AIExecutionFailure(
-                        "CONVERSATION_SNAPSHOT_FAILED",
-                        "The approved conversation snapshot could not be prepared.",
-                        false
-                    ),
-                    startedAt,
-                    false
-                );
-            }
-            return submitAndAwait(
+        SharedInteractiveTurnCoordinator.CoordinatedTurn<
+            AIExecutionResult<O>
+        > coordinated = turnCoordinator.coordinate(
+            specialistId,
+            request.trustedExecutionContext(),
+            request.conversationBinding(),
+            request.idempotencyKey(),
+            SharedInteractiveTurnCoordinator.RecordingPolicy.DIRECT,
+            turn -> submitAndAwait(
                 new AIExecutionRequest<>(
                     specialistId,
                     request.input(),
                     request.trustedExecutionContext(),
-                    approvedBinding,
+                    turn.approvedBinding(),
                     request.deadline(),
                     request.idempotencyKey()
                 ),
-                definition,
+                turn.definition(),
                 startedAt
+            )
+        );
+        if (!coordinated.succeeded()) {
+            return failure(
+                specialistId,
+                coordinated.failure(),
+                startedAt,
+                coordinated.activeTurn()
             );
-        } finally {
-            snapshotRegistry.release(approvedBinding);
-            activeTurns.remove(conversationKey, turnId);
         }
+        return coordinated.value();
     }
 
     private <I, O> AIExecutionResult<O> submitAndAwait(
@@ -385,92 +332,6 @@ public final class DefaultAIInteractiveExecutionGateway
             return "The idempotency key was already used for another request.";
         }
         return "The interactive turn ended without an execution result.";
-    }
-
-    private AIExecutionFailure validate(AIExecutionRequest<?> request) {
-        if (request.trustedExecutionContext().source()
-            != ExecutionSource.INTERACTIVE) {
-            return new AIExecutionFailure(
-                "INTERACTIVE_SOURCE_REQUIRED",
-                "Interactive execution requires an authenticated user turn.",
-                false
-            );
-        }
-        if (request.conversationBinding() == null) {
-            return new AIExecutionFailure(
-                "CONVERSATION_BINDING_REQUIRED",
-                "Interactive execution requires a backend conversation binding.",
-                false
-            );
-        }
-        if (request.conversationBinding().approvedSnapshotToken() != null) {
-            return new AIExecutionFailure(
-                "SNAPSHOT_TOKEN_NOT_ACCEPTED",
-                "Conversation snapshot approval is owned by the backend gateway.",
-                false
-            );
-        }
-        if (request.idempotencyKey() == null) {
-            return new AIExecutionFailure(
-                "INTERACTIVE_IDEMPOTENCY_KEY_REQUIRED",
-                "Interactive execution requires an idempotency key.",
-                false
-            );
-        }
-        return null;
-    }
-
-    private AIExecutionFailure validateEligibility(
-        SpecialistDefinition<?, ?> definition
-    ) {
-        var input = definition.inputAdapter();
-        if (input.interactionCapability()
-            != SpecialistInteractionCapability.DIALOGUE_CAPABLE) {
-            return new AIExecutionFailure(
-                "DIALOGUE_OWNER_INELIGIBLE",
-                "The requested specialist is not eligible to own dialogue.",
-                false
-            );
-        }
-        if (input.conversationBinding()
-                == SpecialistConversationBinding.DISABLED
-            || !input.recordValidatedTurns()) {
-            return new AIExecutionFailure(
-                "DIALOGUE_OWNER_CONVERSATION_INVALID",
-                "The dialogue owner must accept and record validated conversation turns.",
-                false
-            );
-        }
-        if (input.inputContinuation().isPresent()) {
-            return new AIExecutionFailure(
-                "INTERACTIVE_INPUT_WAIT_UNSUPPORTED",
-                "Interactive input continuation is not supported by this execution boundary.",
-                false
-            );
-        }
-        return null;
-    }
-
-    private String conversationKey(AIExecutionRequest<?> request) {
-        LinkedHashMap<String, Object> value = new LinkedHashMap<>();
-        value.put(
-            "access",
-            ExecutionAccessBinding.from(request.trustedExecutionContext())
-        );
-        value.put("userId", request.conversationBinding().userId());
-        value.put(
-            "conversationId",
-            request.conversationBinding().conversationId()
-        );
-        return canonicalJson.hashValue(value);
-    }
-
-    private String turnId(AIExecutionRequest<?> request) {
-        LinkedHashMap<String, Object> value = new LinkedHashMap<>();
-        value.put("conversationKey", conversationKey(request));
-        value.put("specialist", request.specialistId().toString());
-        value.put("idempotencyKey", request.idempotencyKey());
-        return "turn-" + canonicalJson.hashValue(value).substring(0, 32);
     }
 
     private <O> AIExecutionResult<O> failure(

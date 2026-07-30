@@ -23,6 +23,9 @@ import ai.fabric.execution.gateway.SpecialistCapabilityResolver;
 import ai.fabric.execution.gateway.SpecialistGroundingProjector;
 import ai.fabric.execution.gateway.SpecialistOutputFinalizer;
 import ai.fabric.execution.handoff.SpecialistHandoffGateway;
+import ai.fabric.execution.manager.ConversationManagerDefinition;
+import ai.fabric.execution.manager.ConversationManagerRegistry;
+import ai.fabric.execution.manager.DefaultConversationManagerRegistry;
 import ai.fabric.execution.specialist.DefaultSpecialistRegistry;
 import ai.fabric.execution.specialist.SpecialistDefinition;
 import ai.fabric.execution.specialist.SpecialistDefinitionValidator;
@@ -567,6 +570,31 @@ public class AIExecutionAutoConfiguration {
             canonicalJson,
             clock,
             properties.getAsync().getResultTtl()
+        );
+    }
+
+    @Bean
+    @ConditionalOnBean(SpecialistClientFactory.class)
+    @ConditionalOnProperty(
+        prefix = "ai.execution.conversation-managers",
+        name = "enabled",
+        havingValue = "true",
+        matchIfMissing = true
+    )
+    @ConditionalOnMissingBean
+    public ConversationManagerRegistry conversationManagerRegistry(
+        List<ConversationManagerDefinition<?>> definitions,
+        SpecialistRegistry specialistRegistry,
+        SpecialistClientFactory specialistClientFactory,
+        CanonicalJsonSupport canonicalJson,
+        AIExecutionProperties properties
+    ) {
+        return new DefaultConversationManagerRegistry(
+            definitions,
+            specialistRegistry,
+            specialistClientFactory,
+            canonicalJson,
+            properties.getConversationManagers().getMaxDuration()
         );
     }
 

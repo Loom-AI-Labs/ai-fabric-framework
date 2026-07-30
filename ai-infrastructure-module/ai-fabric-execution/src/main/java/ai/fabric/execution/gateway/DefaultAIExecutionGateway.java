@@ -762,7 +762,8 @@ public final class DefaultAIExecutionGateway
             orchestrationContext = bindContext(
                 orchestrationContext,
                 definition,
-                request.conversationBinding()
+                request.conversationBinding(),
+                request.trustedExecutionContext()
             );
             ConversationPersistencePolicy persistence =
                 request.conversationBinding() == null
@@ -1295,7 +1296,8 @@ public final class DefaultAIExecutionGateway
         orchestrationContext = bindContext(
             orchestrationContext,
             definition,
-            request.conversationBinding()
+            request.conversationBinding(),
+            request.trustedExecutionContext()
         );
         String preflightInput =
             "Specialist input requirement: " + requirement.purposeCode();
@@ -1736,9 +1738,13 @@ public final class DefaultAIExecutionGateway
     private OrchestrationContext bindContext(
         OrchestrationContext context,
         SpecialistDefinition<?, ?> definition,
-        ConversationBinding binding
+        ConversationBinding binding,
+        TrustedExecutionContext trustedContext
     ) {
         OrchestrationContext.OrchestrationContextBuilder builder = context.toBuilder()
+            .userId(null)
+            .sessionId(null)
+            .userId(trustedIdentifier(trustedContext))
             .mode(definition.executionProfile().mode())
             .specialistInstructions(definition.instructions().render());
         if (binding != null) {
@@ -1790,6 +1796,13 @@ public final class DefaultAIExecutionGateway
             }
         }
         return builder.build();
+    }
+
+    private String trustedIdentifier(TrustedExecutionContext trustedContext) {
+        var subject = trustedContext.subject();
+        return subject != null
+            ? subject.subjectId()
+            : trustedContext.initiator().principalId();
     }
 
     private <O> void recordValidatedConversationTurn(

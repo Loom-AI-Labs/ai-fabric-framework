@@ -46,6 +46,15 @@ snapshot, enforces one active turn per conversation, and records only a
 validated result. Snapshot approval is opaque and process-local. Provider,
 retrieval, grounding, validation, and persistence failures remain visible.
 
+For genuinely ambiguous supported requests, an application may now register
+one exact-version bounded conversation manager. The manager receives one
+backend-approved frozen turn and a closed target catalogue, then returns only
+`ASK_USER`, `INVOKE_SPECIALIST`, or `COMPLETE`. It can invoke at most one
+independently authorized, exact-version, read-only worker. Application code
+owns typed worker input and safe result projection, and the manager gateway
+records exactly one validated external response. There is no loop, dynamic
+discovery, manager-authored worker payload, or manager WRITE authority.
+
 Trusted application event adapters can now submit those same typed specialists
 as bounded asynchronous work. The first proof maps a raw payment-verification
 failure to a read-only Account Resolver execution under a service principal
@@ -115,6 +124,7 @@ The adoption boundary is:
 | Exact-version one-level delegation validation, typed child binding, independent child authorization, lineage, and process-local replay | Root selection, closed target schema, trusted child-input mapping, public UX, and deciding whether delegation is appropriate |
 | Exact-version read-only handoff validation, predecessor/successor lineage, independent successor authorization, and process-local replay | Intake selection, closed target schema, trusted successor-input mapping, public UX, and deciding whether responsibility should transfer |
 | Exact-version interactive dialogue ownership, approved frozen conversation snapshots, active-turn exclusion, and validated turn recording | Authentication, server-owned conversation/subject resolution, stable request idempotency, public chat UX, and instance affinity where required |
+| Exact-version bounded manager definitions, three typed directives, shared turn exclusion, closed worker validation, safe lineage, and process-local replay | Manager selection, closed target descriptions, typed worker-input mappers, safe result projectors, public UX, and deciding whether model-assisted routing adds value |
 | Manifest and execution diagnostics | Deployment, monitoring, support, and rollback |
 
 ## 3. Included Change Set
@@ -176,7 +186,9 @@ Use it when an application needs:
 - one-level model-selected routing among a closed set of read-only
   specialists; or
 - one exact-version dialogue-capable specialist answering authenticated
-  follow-up turns from backend-owned memory.
+  follow-up turns from backend-owned memory; or
+- one exact-version bounded conversation manager selecting zero or one
+  independently authorized read-only worker from a closed set.
 
 ## 5. Specialist Execution Contract
 
@@ -849,6 +861,43 @@ configured chat-session provider.
 Detailed adoption guidance is in
 [`INTERACTIVE_DIALOGUE_OWNERSHIP.md`](../Framework-Dev-Guides/application-patterns/INTERACTIVE_DIALOGUE_OWNERSHIP.md).
 
+### 11.9 Bounded conversation manager
+
+A manager is a registered exact-version specialist plus an immutable
+application-owned definition:
+
+```text
+latest typed request
+  -> trusted context and backend conversation binding
+  -> one shared active-turn lease and frozen approved snapshot
+  -> exact manager with STRUCTURED_OUTPUT_ONLY policy
+  -> ASK_USER | COMPLETE | INVOKE_SPECIALIST
+  -> zero or one closed exact-version read-only worker
+  -> registered safe result projector
+  -> exactly one validated external append
+```
+
+`STRUCTURED_OUTPUT_ONLY` keeps trusted-context, access, capability,
+validation, sanitization, and schema enforcement, but skips the ordinary
+intent-extraction and intent-handling model paths. The manager therefore makes
+one structured-output model call. A selected worker independently traverses
+its own normal specialist pipeline.
+
+The model cannot provide identity, authority, provider, Mode, action,
+conversation binding, arbitrary worker payload, or an undeclared target.
+Application code maps the validated public input to each typed worker input
+and projects the typed worker result to one bounded external message.
+
+The first boundary is synchronous, process-local, one-turn, and read-only. It
+supports no loop, second manager synthesis, dynamic discovery, input-waiting
+worker, dialogue transfer, parallelism, or WRITE worker. Exact replay returns
+the original result without another model call, worker call, or append.
+Changed work under the same scoped key fails visibly.
+
+The reference Account Resolver manager uses a closed semantic prompt profile,
+two exact worker targets, and application-owned stable worker tasks. This
+prevents ambiguous follow-up wording from widening the selected capability.
+
 ## 12. Evidence And Indexing Boundary
 
 Specialist results return `AIEvidenceReference`.
@@ -944,6 +993,11 @@ ai:
       max-duration: PT2M
       max-active: 1000
       result-ttl: PT15M
+    conversation-managers:
+      enabled: true
+      max-duration: PT1M
+      max-active: 1000
+      result-ttl: PT15M
 ```
 
 The application must separately configure:
@@ -971,6 +1025,7 @@ The application must separately configure:
 | Specialist input wait | Bounded execution-module process memory | `EPHEMERAL`; lost on restart |
 | Fixed-plan checkpoints and terminal result | Bounded execution-module process memory | `EPHEMERAL`; lost on restart |
 | Interactive active-turn claim and approved snapshot token | Bounded execution-module process memory | `EPHEMERAL`; lost on restart |
+| Bounded manager replay result | Bounded execution-module process memory | `EPHEMERAL`; lost after TTL or restart |
 | Eligible proactive read execution, result, and replay binding | JDBC `ai_specialist_execution` | Durable across restart with at-least-once read execution |
 | Vector evidence | Existing AI Fabric vector provider | Provider lifecycle |
 | Domain entity and authoritative action result | Host application system of record | Application lifecycle |
@@ -1008,6 +1063,12 @@ hardening, not a compatibility switch.
 Multi-turn action continuation is a core orchestration improvement and may
 cause a clear field-only response to continue an existing draft. Independent
 questions and different actions remain independently classified.
+
+Closed structured-generation specialists with no retrieval, grounding, or
+actions now use `STRUCTURED_OUTPUT_ONLY`. Their schema-bound finalizer remains
+the model intelligence stage, while the redundant ordinary intent model call
+is skipped. Applications with pre-release tests that asserted two provider
+calls for this exact closed shape must update those tests to expect one.
 
 ### Java specialist compatibility
 
@@ -1096,8 +1157,10 @@ For current adoption use, in order:
 13. the
     [Interactive Dialogue Ownership Guide](../Framework-Dev-Guides/application-patterns/INTERACTIVE_DIALOGUE_OWNERSHIP.md);
 14. the
-    [interactive-dialogue implementation plan](../planning/ai-fabric-flow-architecture-analysis-pack/implementation-plans/0011-interactive-dialogue-ownership-implementation-plan.md); and
+    [interactive-dialogue implementation plan](../planning/ai-fabric-flow-architecture-analysis-pack/implementation-plans/0011-interactive-dialogue-ownership-implementation-plan.md);
 15. the
+    [bounded conversation-manager implementation plan](../planning/ai-fabric-flow-architecture-analysis-pack/implementation-plans/0012-bounded-conversation-manager-implementation-plan.md); and
+16. the
    [`agentic-ai-action-resolver`](../../examples/real-apps/agentic-ai-action-resolver)
    reference application.
 
@@ -1209,6 +1272,26 @@ For current adoption use, in order:
 - [ ] Route one conversation consistently in a multi-replica deployment until
   distributed active-turn leasing is available.
 
+### Phase 1.9: Bounded conversation-manager proof
+
+- [ ] Choose a genuinely ambiguous interactive route where model-assisted
+  selection adds value over direct application routing.
+- [ ] Register one exact-version manager and a small closed set of
+  exact-version read-only, non-interactive workers.
+- [ ] Keep target input mapping and safe result projection in application
+  code. Do not accept model-authored worker payloads.
+- [ ] Accept only the latest typed public message; resolve trusted context and
+  conversation binding in the authenticated backend.
+- [ ] Prove `ASK_USER`, `COMPLETE`, and each approved worker route.
+- [ ] Prove an invented target, missing authority, provider failure, mapping
+  failure, projection failure, and persistence failure all remain visible.
+- [ ] Prove exact replay performs no second model/worker call or append and
+  changed work returns `MANAGER_IDEMPOTENCY_CONFLICT`.
+- [ ] Measure route correctness, clarification usefulness, total latency, and
+  manager/worker model-call count against the direct route.
+- [ ] Keep the first manager read-only and one-turn. Do not add loops, dynamic
+  discovery, dialogue transfer, or a second synthesis call.
+
 ### Phase 2: Governed write proof
 
 - [ ] Choose one low-risk, confirmation-required registered WRITE.
@@ -1299,6 +1382,14 @@ For current adoption use, in order:
   results, logs, and diagnostics.
 - [ ] One conversation cannot run two supported interactive turns
   concurrently in the same process.
+- [ ] A manager receives only one approved snapshot and a closed bounded
+  target catalogue.
+- [ ] Every manager worker is exact-version, read-only, non-interactive,
+  conversation-isolated, and independently authorized.
+- [ ] Manager output cannot supply worker input, identity, authority, provider,
+  action, Mode, or an undeclared target.
+- [ ] A manager route records one validated external response and never stores
+  its internal directive as assistant prose.
 - [ ] Idempotency replay compares canonical payload and trusted access scope.
 - [ ] Provider and validation failures remain visible.
 - [ ] Logs and diagnostics exclude prompts, raw receipt payloads, keys, and PII.
@@ -1333,6 +1424,8 @@ Health may expose:
 - specialist content hash;
 - registry content hash;
 - interactive dialogue gateway readiness; and
+- conversation-manager registry readiness, exact IDs, content hashes, and
+  bounded target IDs; and
 - safe readiness/diagnostic reason codes.
 
 Do not expose:
@@ -1361,7 +1454,10 @@ Alert on:
 - plan registration failure, wait expiry, resume denial, or deadline growth;
   and
 - dialogue snapshot failure, conversation-busy growth, interactive wait
-  timeout, or validated-turn persistence failure.
+  timeout, or validated-turn persistence failure; and
+- manager registration failure, directive rejection, target denial,
+  mapper/projector failure, replay conflict, or manager-turn persistence
+  failure.
 
 ## 20. Rollback
 
@@ -1551,8 +1647,8 @@ commit.
 - Real OpenAI routed current-account and account-credit requests to the two
   approved target families. Both child executions succeeded with safe policy
   evidence.
-- The closed coordinator exposed its derived `GENERATION_ONLY` intent policy;
-  grounded specialists retained their normal model-directed behavior.
+- The closed coordinator exposed its derived `STRUCTURED_OUTPUT_ONLY` intent
+  policy; grounded specialists retained their normal model-directed behavior.
 - Exact replay returned the original coordinator, delegation, and child
   invocation IDs. Changed work returned visible `IDEMPOTENCY_CONFLICT`.
 - A real unsupported marketing request returned `COMPLETE` without starting a
@@ -1607,6 +1703,38 @@ commit.
   input returned `IDEMPOTENCY_CONFLICT`; caller-supplied history returned HTTP
   400.
 
+### Bounded conversation manager
+
+- The final framework execution reactor passed 1,044 tests with no failures
+  or skips: 5 curated-default, 677 core, 59 chat-session, and 303 execution
+  tests.
+- The clean packaged reference app passed 12 shared smoke-support tests and
+  135 Agentic AI Action Resolver tests.
+- The packaged and locally verified core JARs shared SHA-256
+  `b2543edcc887209513060e4ec0d4246fcfa2ecc524296bc4e79dd319ffd0c9a4`;
+  the execution JARs shared
+  `82271608dc71598365a2c8b56d5e8fa3697d58bf965b3d2fc8bf31067d47d6a1`.
+- Deterministic tests cover directive invariants, strict startup compilation,
+  exact target/type checks, shared direct/manager turn exclusion, independent
+  conversations, authorization, mapping/projection failures, provider
+  failures, one append, replay, conflict, deadline, cleanup, and safe
+  diagnostics.
+- Packaged health loaded the manager definition with exact two-target
+  allowlist and content hash
+  `ba12bfe8c82d2dedd588960f9ec5790b13bae04da28bb2a6a6b7a6c982a62a8f`.
+- Real OpenAI selected the account-read and billing workers for their
+  supported cases. Missing billing type and amount produced focused
+  questions, and an unsupported poem completed without a worker.
+- Real OpenAI follow-up consumed one committed backend-owned turn. The selected
+  account worker received the application-owned narrow readiness task rather
+  than ambiguous user prose.
+- Exact replay preserved manager and worker invocation lineage with no second
+  append. Changed input returned `MANAGER_IDEMPOTENCY_CONFLICT`.
+- Recorded wall times were 9.91 seconds for account readiness, 9.39 seconds for
+  billing, 1.42 seconds for clarification, and 1.51 seconds for unsupported
+  completion. Worker routes used one manager plus one worker invocation;
+  manager-only responses used one manager invocation.
+
 ## 22. Release Gate Still Required
 
 Before Loom AI adopts a published artifact:
@@ -1617,6 +1745,9 @@ Before Loom AI adopts a published artifact:
 - [ ] Run keyed OpenAI execution and action-continuation scenarios.
 - [ ] Run keyed OpenAI dialogue-owner first-turn, follow-up, replay, conflict,
   and caller-history rejection scenarios.
+- [ ] Run keyed OpenAI manager account-read, billing, clarification,
+  unsupported completion, backend-history follow-up, replay, and conflict
+  scenarios.
 - [ ] Run packaged Docker and JDBC restart/replay proof.
 - [ ] Verify Maven Central consumer resolution.
 - [ ] Publish release notes and migration guidance.
@@ -1637,7 +1768,8 @@ This release does not provide:
 - conditional or parallel specialist branches;
 - recursive specialist delegation, handoff chains, or interactive
   dialogue-owner transfer;
-- interactive plan dialogue ownership;
+- interactive plan dialogue ownership, manager loops, second manager
+  synthesis, manager-selected writes, or manager-owned worker payloads;
 - WRITE-capable composed plans;
 - model-selected unrestricted specialist discovery;
 - durable WRITE-capable specialist jobs, input waits, ordinary chat
@@ -1686,7 +1818,10 @@ For Loom AI:
 10. use interactive dialogue ownership only for an exact-version specialist
     that needs backend-owned memory, with latest-message-only public requests
     and conversation affinity for the current process-local lease; and
-11. defer unrestricted planning, recursive transitions, WRITE composition,
+11. use a bounded conversation manager only where a closed read-only worker
+    choice measurably improves ambiguous interactive requests, with typed
+    application mapping and safe projection; and
+12. defer unrestricted planning, recursive transitions, WRITE composition,
     dialogue-owner transfer, and durable plan execution until bounded
     contracts have production usage evidence.
 

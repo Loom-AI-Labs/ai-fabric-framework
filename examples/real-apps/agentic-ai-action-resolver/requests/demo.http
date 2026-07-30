@@ -5,6 +5,7 @@
 @reviewTaskId = replace-with-review-task-id
 @delegationKey = account-delegation-1
 @handoffKey = account-handoff-1
+@managerKey = account-manager-1
 
 ### Deployment and specialist health
 GET {{baseUrl}}/api/demo/health
@@ -129,6 +130,69 @@ Content-Type: application/json
 
 {
   "question": "Which requirement should I resolve first?"
+}
+
+### Bounded conversation manager: account-readiness worker
+POST {{baseUrl}}/api/agentic-resolver/manager/chat
+X-AI-Fabric-Demo-Session: {{sessionId}}
+Idempotency-Key: {{managerKey}}
+Content-Type: application/json
+
+{
+  "question": "Why can I not place an order?"
+}
+
+### Exact manager replay: no second model call or conversation append
+POST {{baseUrl}}/api/agentic-resolver/manager/chat
+X-AI-Fabric-Demo-Session: {{sessionId}}
+Idempotency-Key: {{managerKey}}
+Content-Type: application/json
+
+{
+  "question": "Why can I not place an order?"
+}
+
+### Manager conflict: changed payload under the retained key
+POST {{baseUrl}}/api/agentic-resolver/manager/chat
+X-AI-Fabric-Demo-Session: {{sessionId}}
+Idempotency-Key: {{managerKey}}
+Content-Type: application/json
+
+{
+  "question": "Is my account ready now?"
+}
+
+### Bounded manager: complete billing facts select the billing worker
+POST {{baseUrl}}/api/agentic-resolver/manager/chat
+X-AI-Fabric-Demo-Session: {{sessionId}}
+Idempotency-Key: billing-manager-1
+Content-Type: application/json
+
+{
+  "question": "What path would this account credit take?",
+  "resolutionType": "ACCOUNT_CREDIT",
+  "amount": 25
+}
+
+### Bounded manager: missing amount produces one ASK_USER question
+POST {{baseUrl}}/api/agentic-resolver/manager/chat
+X-AI-Fabric-Demo-Session: {{sessionId}}
+Idempotency-Key: incomplete-billing-manager-1
+Content-Type: application/json
+
+{
+  "question": "What path would this refund take?",
+  "resolutionType": "REFUND"
+}
+
+### Bounded manager: unsupported work completes without a worker
+POST {{baseUrl}}/api/agentic-resolver/manager/chat
+X-AI-Fabric-Demo-Session: {{sessionId}}
+Idempotency-Key: unsupported-manager-1
+Content-Type: application/json
+
+{
+  "question": "Write a marketing campaign for this account."
 }
 
 ### Untrusted target text cannot change the server-bound subject

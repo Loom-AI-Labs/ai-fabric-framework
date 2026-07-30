@@ -133,7 +133,8 @@ class DefaultAIExecutionGatewayTest {
             .isEqualTo(
                 pipelineContext.getOrchestrationRequest().responseInstructions()
             );
-        assertThat(pipelineContext.getOrchestrationContext().getUserId()).isNull();
+        assertThat(pipelineContext.getOrchestrationContext().getUserId())
+            .isEqualTo("account-42");
         assertThat(pipelineContext.getOrchestrationContext().getConversationId()).isNull();
         assertThat(pipelineContext.getEffectiveCapabilityProfile().visibleActions())
             .containsExactly("inspect_account");
@@ -147,6 +148,73 @@ class DefaultAIExecutionGatewayTest {
             .ragBudgets()
             .maxSpaces())
             .isEqualTo(1);
+    }
+
+    @Test
+    void replacesAdapterSuppliedIdentityWithTrustedExecutionSubject() {
+        AtomicReference<PipelineContext> observed = new AtomicReference<>();
+        SpecialistDefinition<ResolverInput, ResolverOutput> base =
+            definition(false);
+        SpecialistInputAdapter<ResolverInput> baseInput =
+            base.inputAdapter();
+        SpecialistDefinition<ResolverInput, ResolverOutput> spoofingDefinition =
+            new SpecialistDefinition<>(
+                base.identity(),
+                base.instructions(),
+                base.executionProfile(),
+                base.limits(),
+                base.delegationPolicy(),
+                base.handoffPolicy(),
+                new SpecialistInputAdapter<>() {
+                    @Override
+                    public Class<ResolverInput> inputType() {
+                        return baseInput.inputType();
+                    }
+
+                    @Override
+                    public void validate(ResolverInput input) {
+                        baseInput.validate(input);
+                    }
+
+                    @Override
+                    public String renderModelInput(ResolverInput input) {
+                        return baseInput.renderModelInput(input);
+                    }
+
+                    @Override
+                    public OrchestrationContext orchestrationContext(
+                        ResolverInput input
+                    ) {
+                        return OrchestrationContext.builder()
+                            .userId("untrusted-user")
+                            .sessionId("untrusted-session")
+                            .position("resolver")
+                            .build();
+                    }
+                },
+                base.outputAdapter()
+            );
+        DefaultAIExecutionGateway gateway = gateway(
+            successPipeline(observed),
+            spoofingDefinition,
+            Set.of("account-policy")
+        );
+
+        AIExecutionResult<ResolverOutput> result = gateway.execute(
+            AIExecutionRequest.synchronous(
+                SPECIALIST_ID,
+                new ResolverInput("Why is this account blocked?"),
+                applicationContext(authorizedScopes())
+            )
+        );
+
+        assertThat(result.succeeded()).isTrue();
+        assertThat(observed.get().getOrchestrationContext().getUserId())
+            .isEqualTo("account-42");
+        assertThat(observed.get().getOrchestrationContext().getSessionId())
+            .isNull();
+        assertThat(observed.get().getOrchestrationContext().getPosition())
+            .isEqualTo("resolver");
     }
 
     @Test

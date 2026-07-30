@@ -10,6 +10,9 @@ manifest specialists:
   account-resolution-coordinator@1
   account-resolution-intake@1
   billing-resolution-advisor@1
+  account-conversation-manager@1
+  account-resolver-manager-read@1
+  billing-resolution-manager-advisor@1
   support-credit-proposer@1
 read actions: get_account_profile, assess_billing_resolution
 write proposals: update_address, request_refund
@@ -93,6 +96,14 @@ the governed-action baseline.
   model context; successor diagnostics use predecessor/successor lineage.
 - Identical scoped handoff replays in process; changed work conflicts.
   Handoff state is not durable across restart.
+- The bounded conversation-manager route gives one exact-version manager one
+  frozen, backend-approved turn and only `ASK_USER`, `INVOKE_SPECIALIST`, or
+  `COMPLETE`.
+- It may select at most one of `account-resolver-manager-read@1` or
+  `billing-resolution-manager-advisor@1`. Both workers are exact-version,
+  read-only, conversation-isolated, and unable to wait for more input.
+- The manager directive remains internal. The application records exactly one
+  validated external question, completion, or projected worker result.
 - Each plan step receives an independent effective-capability evaluation and
   no shared worker conversation.
 - Completed plan steps are retained in a bounded `EPHEMERAL` checkpoint store;
@@ -114,6 +125,22 @@ the governed-action baseline.
   session to the trusted principal, tenant, and current account subject.
 - `account-resolver@1` is explicitly `DIALOGUE_CAPABLE`; ordinary workers and
   read-only successors remain non-interactive.
+- `account-conversation-manager@1` is a dialogue-capable coordinator that
+  defers recording; the manager gateway owns its one final conversation
+  append.
+- Manager input contains only the current typed question, bounded
+  application-approved scalar context, and the closed target descriptions.
+  The browser cannot supply history, target identity, authority, prompt,
+  provider, Mode, or snapshot.
+- The manager has no retrieval or action capabilities. A selected worker is
+  independently authorized through the normal one-level delegation boundary.
+- Dedicated manager workers are read-only, non-interactive,
+  conversation-disabled, and unable to request input continuation.
+- Exact manager replay returns the original external result without another
+  model call, worker call, or chat append; changed payload under the same key
+  fails with `MANAGER_IDEMPOTENCY_CONFLICT`.
+- Direct interactive dialogue and manager dialogue share one active-turn
+  lease, so they cannot append competing responses to one conversation.
 - The browser sends only the latest typed question. The interactive gateway
   freezes one authorized, bounded backend-history snapshot for the turn.
 - A stable chat idempotency key replays the original invocation without
@@ -183,6 +210,53 @@ Java remains only where the application owns real domain behavior:
 
 The manifest cannot choose a user, account, tenant, scope, credential,
 provider endpoint, action implementation, or confirmation result.
+
+The manager bundle is
+[`src/main/resources/ai-specialists/account-conversation-manager.yml`](src/main/resources/ai-specialists/account-conversation-manager.yml).
+It pins the manager input/directive schemas, manager prompt profile, closed
+delegation targets, and two isolated worker variants. Application Java owns
+the typed manager definition, safe context adapter, worker input mappers, and
+external result projectors.
+
+## Bounded Conversation Manager
+
+Create a demo session, then send only the newest typed message:
+
+```http
+POST /api/agentic-resolver/manager/chat
+X-AI-Fabric-Demo-Session: <server-created-session>
+Idempotency-Key: manager-turn-1
+Content-Type: application/json
+
+{
+  "question": "Why can I not place an order?"
+}
+```
+
+For a complete informational billing assessment, the application may also
+accept its existing typed fields:
+
+```json
+{
+  "question": "What path would a 25 dollar account credit take?",
+  "resolutionType": "ACCOUNT_CREDIT",
+  "amount": 25
+}
+```
+
+The public response exposes a safe status, message, selected exact target when
+one ran, invocation lineage, snapshot revision, replay marker, and a safe
+failure when applicable. It never exposes the model's internal directive,
+prompt, raw provider response, trusted context, or transcript.
+
+The manager manifest uses prompt profile version 4 and a closed semantic
+category set: account state, billing assessment, supported follow-up, or
+outside scope. Its `STRUCTURED_OUTPUT_ONLY` policy runs exactly one manager
+structured-output model stage while retaining access, capability, validation,
+and sanitization controls. It does not run a second ordinary intent model
+call. If the manager selects the account reader, application code maps the
+request to the worker's narrow current-account readiness task rather than
+forwarding ambiguous conversation prose.
 
 ## Specialist Contract
 
@@ -929,6 +1003,22 @@ action receipts. It checkpoints only the original typed input, validated step
 outputs, safe evidence references, status, timing, and access binding needed
 for same-process continuation.
 
+The bounded manager uses its own process-local replay retention:
+
+```yaml
+ai:
+  execution:
+    conversation-managers:
+      enabled: true
+      max-duration: PT1M
+      max-active: 500
+      result-ttl: PT15M
+```
+
+Its active-turn lease and approved history snapshot are shared with direct
+interactive dialogue. Its retained replay result is separate from chat turns
+and is lost after its TTL or process restart.
+
 ## Durable Async Configuration
 
 The proactive event path uses the framework's separate durable read-job
@@ -1184,14 +1274,28 @@ mvn -B -V --no-transfer-progress \
 
 No verification command for this feature uses `-DskipTests`.
 
+The final manager gate passed:
+
+- 1,044 framework tests: 5 curated-default, 677 core, 59 chat-session, and 303
+  execution tests;
+- 12 shared smoke tests and 135 app tests in a clean package;
+- packaged/local core SHA-256
+  `b2543edcc887209513060e4ec0d4246fcfa2ecc524296bc4e79dd319ffd0c9a4`;
+- packaged/local execution SHA-256
+  `82271608dc71598365a2c8b56d5e8fa3697d58bf965b3d2fc8bf31067d47d6a1`;
+- real OpenAI account-read, billing, clarification, unsupported completion,
+  backend-history follow-up, exact replay, and changed-payload conflict
+  scenarios; and
+- visible provider/validation failures with no deterministic success fallback.
+
 ## Intentionally Out Of Scope
 
 - automatic LLM confirmation;
 - direct model-to-handler execution;
 - unrestricted model-authored planning or specialist discovery;
 - recursive delegation or handoff;
-- model-selected dialogue owners or a conversation manager;
-- dialogue-owner transfer or durable delegation/handoff state;
+- dialogue-owner transfer, manager loops, manager-selected writes, a second
+  manager synthesis call, or durable manager/delegation/handoff state;
 - conditional, parallel, WRITE-capable, or durable plans;
 - event or scheduled write adapters;
 - framework-owned event-broker consumption or scheduler ownership;

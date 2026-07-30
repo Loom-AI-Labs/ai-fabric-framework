@@ -20,9 +20,11 @@ public interface SpecialistOutputAdapter<O> {
     }
 
     /**
-     * Constrains orchestration flags when required by this output contract.
+     * Selects how the orchestration stage prepares this output contract.
      *
-     * <p>The default leaves semantic and capability decisions model-directed.</p>
+     * <p>The default leaves semantic and capability decisions model-directed.
+     * Closed structured-generation contracts may make their finalizer the only
+     * model stage.</p>
      */
     default OrchestrationIntentPolicy orchestrationIntentPolicy() {
         return OrchestrationIntentPolicy.MODEL_DIRECTED;

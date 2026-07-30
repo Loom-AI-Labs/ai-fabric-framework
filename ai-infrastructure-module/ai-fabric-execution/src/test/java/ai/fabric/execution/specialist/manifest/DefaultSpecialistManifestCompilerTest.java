@@ -92,7 +92,7 @@ class DefaultSpecialistManifestCompilerTest {
     }
 
     @Test
-    void rejectsDialogueCapabilityWithoutBindingAndRecording() {
+    void rejectsDialogueCapabilityWithoutBinding() {
         assertThatThrownBy(() -> compiler.compile(
             withConversation(new SpecialistConversationSpec(
                 SpecialistConversationBinding.DISABLED,
@@ -105,23 +105,33 @@ class DefaultSpecialistManifestCompilerTest {
             .satisfies(error -> assertThat(
                 ((SpecialistManifestException) error).reason()
             ).isEqualTo("DIALOGUE_CAPABILITY_INVALID"));
+    }
 
-        assertThatThrownBy(() -> compiler.compile(
+    @Test
+    void compilesDialogueCapabilityThatDefersConversationRecording() {
+        SpecialistCompilationResult result = compiler.compile(
             withConversation(new SpecialistConversationSpec(
                 SpecialistConversationBinding.OPTIONAL,
                 false,
                 SpecialistInteractionCapability.DIALOGUE_CAPABLE
             )),
             ManifestTestFixtures.compilationContext()
-        ))
-            .isInstanceOf(SpecialistManifestException.class)
-            .satisfies(error -> assertThat(
-                ((SpecialistManifestException) error).reason()
-            ).isEqualTo("DIALOGUE_CAPABILITY_INVALID"));
+        );
+
+        assertThat(result.specialist().definition().inputAdapter()
+            .interactionCapability())
+            .isEqualTo(
+                SpecialistInteractionCapability.DIALOGUE_CAPABLE
+            );
+        assertThat(result.specialist().definition().inputAdapter()
+            .conversationBinding())
+            .isEqualTo(SpecialistConversationBinding.OPTIONAL);
+        assertThat(result.specialist().definition().inputAdapter()
+            .recordValidatedTurns()).isFalse();
     }
 
     @Test
-    void derivesGenerationOnlyIntentPolicyFromClosedManifestContract() {
+    void derivesStructuredOutputOnlyIntentPolicyFromClosedManifestContract() {
         SpecialistManifest valid = ManifestTestFixtures.manifest();
         SpecialistManifestSpec spec = valid.spec();
         SpecialistManifest generationOnly = new SpecialistManifest(
@@ -161,7 +171,7 @@ class DefaultSpecialistManifestCompilerTest {
 
         assertThat(result.specialist().definition().outputAdapter()
             .orchestrationIntentPolicy())
-            .isEqualTo(OrchestrationIntentPolicy.GENERATION_ONLY);
+            .isEqualTo(OrchestrationIntentPolicy.STRUCTURED_OUTPUT_ONLY);
     }
 
     @Test

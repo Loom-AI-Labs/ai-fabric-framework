@@ -18,6 +18,10 @@ import ai.fabric.intent.orchestration.OrchestrationContext;
 import ai.fabric.intent.orchestration.OrchestrationResult;
 import ai.fabric.intent.orchestration.OrchestrationResultType;
 import ai.fabric.intent.orchestration.pipeline.PipelineContext;
+import ai.fabric.intent.orchestration.request.ConversationPersistencePolicy;
+import ai.fabric.intent.orchestration.request.OrchestrationIntentPolicy;
+import ai.fabric.intent.orchestration.request.OrchestrationRequest;
+import ai.fabric.intent.orchestration.request.OrchestrationRequestPurpose;
 import ai.fabric.intent.vectorspace.RankBasedMerger;
 import ai.fabric.prompt.ClasspathPromptTemplateStore;
 import ai.fabric.prompt.PromptRenderer;
@@ -36,33 +40,72 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 class IntentHandlingStepDirectAnswerTest {
+
+    @Test
+    void structuredOutputOnlyPolicySkipsOrdinaryIntentHandlingAndGeneration() {
+        RAGProvider ragProvider = mock(RAGProvider.class);
+        AICoreService aiCoreService = mock(AICoreService.class);
+        AIActionRegistry actionRegistry = mock(AIActionRegistry.class);
+        IntentHandlingStep step = step(
+            actionRegistry,
+            ragProvider,
+            aiCoreService
+        );
+
+        Intent actionLikeIntent = Intent.builder()
+            .type(IntentType.ACTION)
+            .intent("request_refund")
+            .action("request_refund")
+            .build();
+        OrchestrationRequest request = new OrchestrationRequest(
+            "Would a $75 refund be approved?",
+            OrchestrationContext.forUser("user"),
+            null,
+            ConversationPersistencePolicy.NEVER,
+            null,
+            null,
+            null,
+            OrchestrationRequestPurpose.SPECIALIST,
+            OrchestrationIntentPolicy.STRUCTURED_OUTPUT_ONLY
+        );
+        PipelineContext context = PipelineContext.from(request)
+            .toBuilder()
+            .intentResponse(
+                MultiIntentResponse.builder()
+                    .intents(List.of(actionLikeIntent))
+                    .build()
+            )
+            .build();
+
+        OrchestrationResult result = step.process(context).getIntentResult();
+
+        assertThat(result.getType())
+            .isEqualTo(OrchestrationResultType.INFORMATION_PROVIDED);
+        assertThat(result.isSuccess()).isTrue();
+        assertThat(result.getData())
+            .containsEntry("structuredOutputOnly", true);
+        assertThat(result.getMetadata())
+            .containsEntry("intentPolicy", "STRUCTURED_OUTPUT_ONLY")
+            .containsEntry("ordinaryIntentHandlingSkipped", true);
+        verifyNoInteractions(actionRegistry);
+        verify(ragProvider, never()).performRag(any());
+        verify(ragProvider, never()).performRAGQuery(any());
+        verify(aiCoreService, never()).generateTextResponse(anyString(), any());
+    }
 
     @Test
     void shouldReturnDirectAnswerWithoutCallingRagOrGeneration() {
         RAGProvider ragProvider = mock(RAGProvider.class);
         AICoreService aiCoreService = mock(AICoreService.class);
 
-        IntentHandlingStep step = new IntentHandlingStep(
+        IntentHandlingStep step = step(
             mock(AIActionRegistry.class),
-            providerOf(ragProvider),
-            aiCoreService,
-            mock(AIServiceConfig.class),
-            providerOf((AdvancedRAGProvider) null),
-            new VectorSpaceRoutingProperties(),
-            new RankBasedMerger(),
-            new RelationshipQueryPostActionGenerationProperties(),
-            new PostActionGenerationProperties(),
-            providerOf(new ObjectMapper()),
-            new OrchestrationProperties(),
-            providerOf((KnowledgeBaseOverviewService) null),
-            null,
-            new InMemoryPendingActionStore(),
-            new InMemoryActionDraftStore(),
-            promptTemplateResolver(),
-            new PromptRenderer()
+            ragProvider,
+            aiCoreService
         );
 
         Intent intent = Intent.builder()
@@ -88,6 +131,32 @@ class IntentHandlingStepDirectAnswerTest {
         verify(ragProvider, never()).performRag(any());
         verify(ragProvider, never()).performRAGQuery(any());
         verify(aiCoreService, never()).generateTextResponse(anyString(), any());
+    }
+
+    private IntentHandlingStep step(
+        AIActionRegistry actionRegistry,
+        RAGProvider ragProvider,
+        AICoreService aiCoreService
+    ) {
+        return new IntentHandlingStep(
+            actionRegistry,
+            providerOf(ragProvider),
+            aiCoreService,
+            mock(AIServiceConfig.class),
+            providerOf((AdvancedRAGProvider) null),
+            new VectorSpaceRoutingProperties(),
+            new RankBasedMerger(),
+            new RelationshipQueryPostActionGenerationProperties(),
+            new PostActionGenerationProperties(),
+            providerOf(new ObjectMapper()),
+            new OrchestrationProperties(),
+            providerOf((KnowledgeBaseOverviewService) null),
+            null,
+            new InMemoryPendingActionStore(),
+            new InMemoryActionDraftStore(),
+            promptTemplateResolver(),
+            new PromptRenderer()
+        );
     }
 
     private <T> ObjectProvider<T> providerOf(T value) {

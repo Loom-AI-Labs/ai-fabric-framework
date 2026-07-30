@@ -96,14 +96,14 @@ public final class JsonSchemaSpecialistOutputAdapter
         boolean noActions = capabilities.visibleActions().isEmpty()
             && capabilities.requestableReadActions().isEmpty()
             && capabilities.proposableWriteActions().isEmpty();
-        boolean generationOnly =
+        boolean structuredOutputOnly =
             specification.mode() == SpecialistOutputMode.STRUCTURED_GENERATION
                 && grounding.requirement()
                     == SpecialistGroundingRequirement.NONE
                 && !capabilities.retrievalEnabled()
                 && noActions;
-        return generationOnly
-            ? OrchestrationIntentPolicy.GENERATION_ONLY
+        return structuredOutputOnly
+            ? OrchestrationIntentPolicy.STRUCTURED_OUTPUT_ONLY
             : OrchestrationIntentPolicy.MODEL_DIRECTED;
     }
 

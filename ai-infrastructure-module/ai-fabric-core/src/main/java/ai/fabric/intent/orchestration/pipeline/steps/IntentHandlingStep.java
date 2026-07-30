@@ -36,6 +36,7 @@ import ai.fabric.intent.orchestration.OrchestrationResult;
 import ai.fabric.intent.orchestration.OrchestrationResultType;
 import ai.fabric.intent.orchestration.information.ReadActionResolutionService;
 import ai.fabric.intent.orchestration.pipeline.PipelineContext;
+import ai.fabric.intent.orchestration.request.OrchestrationIntentPolicy;
 import ai.fabric.intent.orchestration.request.OrchestrationRequestPurpose;
 import ai.fabric.intent.orchestration.pipeline.PipelineStep;
 import ai.fabric.intent.orchestration.pipeline.steps.ActionEvidenceSupport.EvidenceBundle;
@@ -280,6 +281,12 @@ public class IntentHandlingStep implements PipelineStep {
     public PipelineContext process(PipelineContext context) {
         log.debug("Handling intent for request {}", context.getRequestId());
 
+        if (isStructuredOutputOnly(context)) {
+            return context.toBuilder()
+                .intentResult(structuredOutputPreparationResult())
+                .build();
+        }
+
         MultiIntentResponse intentResponse = context.getIntentResponse();
         OrchestrationContext orchContext = context.getOrchestrationContext();
 
@@ -297,6 +304,28 @@ public class IntentHandlingStep implements PipelineStep {
         
         return context.toBuilder()
             .intentResult(result)
+            .build();
+    }
+
+    private boolean isStructuredOutputOnly(PipelineContext context) {
+        return context != null
+            && context.getOrchestrationRequest() != null
+            && context.getOrchestrationRequest().intentPolicy()
+                == OrchestrationIntentPolicy.STRUCTURED_OUTPUT_ONLY;
+    }
+
+    private OrchestrationResult structuredOutputPreparationResult() {
+        return OrchestrationResult.builder()
+            .type(OrchestrationResultType.INFORMATION_PROVIDED)
+            .success(true)
+            .message("Structured specialist finalization is ready.")
+            .data(Map.of("structuredOutputOnly", true))
+            .metadata(Map.of(
+                "intentPolicy",
+                "STRUCTURED_OUTPUT_ONLY",
+                "ordinaryIntentHandlingSkipped",
+                true
+            ))
             .build();
     }
     

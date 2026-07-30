@@ -5,6 +5,8 @@ import ai.fabric.execution.config.AIExecutionProperties;
 import ai.fabric.execution.gateway.AIExecutionGateway;
 import ai.fabric.execution.gateway.AIInteractiveExecutionGateway;
 import ai.fabric.execution.gateway.ExecutionDurability;
+import ai.fabric.execution.manager.ConversationManagerGateway;
+import ai.fabric.execution.manager.ConversationManagerRegistry;
 import ai.fabric.execution.plan.AIExecutionCoordinator;
 import ai.fabric.execution.plan.ExecutionPlanRegistry;
 import ai.fabric.execution.specialist.RegisteredSpecialist;
@@ -12,6 +14,7 @@ import ai.fabric.execution.specialist.SpecialistRegistry;
 import ai.fabric.execution.specialist.manifest.SpecialistManifestRuntimeStatus;
 import ai.fabric.execution.state.DurableExecutionRepository;
 import ai.fabric.provider.AIProvider;
+import com.ai.fabric.realapps.agenticresolver.agentic.AccountConversationManagers;
 import com.ai.fabric.realapps.agenticresolver.agentic.AccountResolverSpecialists;
 import java.io.IOException;
 import java.io.InputStream;
@@ -44,6 +47,8 @@ public class DeploymentInfoService {
     private final AIInteractiveExecutionGateway interactiveExecutionGateway;
     private final AIExecutionCoordinator executionCoordinator;
     private final ExecutionPlanRegistry executionPlanRegistry;
+    private final ConversationManagerGateway conversationManagerGateway;
+    private final ConversationManagerRegistry conversationManagerRegistry;
     private final SpecialistRegistry specialistRegistry;
     private final ActionProposalReceiptRepository receiptRepository;
     private final DurableExecutionRepository durableExecutionRepository;
@@ -57,6 +62,8 @@ public class DeploymentInfoService {
         AIInteractiveExecutionGateway interactiveExecutionGateway,
         AIExecutionCoordinator executionCoordinator,
         ExecutionPlanRegistry executionPlanRegistry,
+        ConversationManagerGateway conversationManagerGateway,
+        ConversationManagerRegistry conversationManagerRegistry,
         SpecialistRegistry specialistRegistry,
         ActionProposalReceiptRepository receiptRepository,
         Optional<DurableExecutionRepository> durableExecutionRepository,
@@ -72,6 +79,8 @@ public class DeploymentInfoService {
         this.interactiveExecutionGateway = interactiveExecutionGateway;
         this.executionCoordinator = executionCoordinator;
         this.executionPlanRegistry = executionPlanRegistry;
+        this.conversationManagerGateway = conversationManagerGateway;
+        this.conversationManagerRegistry = conversationManagerRegistry;
         this.specialistRegistry = specialistRegistry;
         this.receiptRepository = receiptRepository;
         this.durableExecutionRepository =
@@ -148,6 +157,28 @@ public class DeploymentInfoService {
         );
         execution.put("planCoordinatorReady", executionCoordinator != null);
         execution.put(
+            "conversationManagerReady",
+            conversationManagerGateway != null
+        );
+        execution.put(
+            "conversationManagers",
+            conversationManagerRegistry.list().stream()
+                .map(manager -> Map.of(
+                    "id", manager.id().toString(),
+                    "contentHash", manager.contentHash(),
+                    "managerSpecialist",
+                        manager.definition().managerSpecialistId()
+                            .toString(),
+                    "targets",
+                        manager.definition().targets().stream()
+                            .map(target ->
+                                target.specialistId().toString()
+                            )
+                            .toList()
+                ))
+                .toList()
+        );
+        execution.put(
             "planDurability",
             "EPHEMERAL"
         );
@@ -217,6 +248,15 @@ public class DeploymentInfoService {
             specialists.contains(
                 AccountResolverSpecialists.HANDOFF_INTAKE_ID.toString()
             )
+        );
+        execution.put(
+            "accountConversationManagerRegistered",
+            specialists.contains(
+                AccountResolverSpecialists.CONVERSATION_MANAGER_ID
+                    .toString()
+            ) && conversationManagerRegistry.find(
+                AccountConversationManagers.ACCOUNT_RESOLUTION
+            ).isPresent()
         );
         execution.put("proactiveEventExecution", Map.of(
             "ready",

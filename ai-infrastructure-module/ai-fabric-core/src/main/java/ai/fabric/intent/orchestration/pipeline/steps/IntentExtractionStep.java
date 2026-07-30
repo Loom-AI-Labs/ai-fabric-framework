@@ -113,6 +113,10 @@ public class IntentExtractionStep implements PipelineStep {
     @Override
     public PipelineContext process(PipelineContext context) {
         log.debug("Extracting intent for request {}", context.getRequestId());
+
+        if (intentPolicy(context) == OrchestrationIntentPolicy.STRUCTURED_OUTPUT_ONLY) {
+            return prepareStructuredOutputOnlyIntent(context);
+        }
         
         String userQuery = context.getEffectiveQuery();
         String currentUserMessage = buildCurrentUserMessage(context.getPinnedTargetsContext(), userQuery);
@@ -295,11 +299,7 @@ public class IntentExtractionStep implements PipelineStep {
         MultiIntentResponse response,
         PipelineContext context
     ) {
-        OrchestrationIntentPolicy policy =
-            context != null
-                && context.getOrchestrationRequest() != null
-                ? context.getOrchestrationRequest().intentPolicy()
-                : OrchestrationIntentPolicy.MODEL_DIRECTED;
+        OrchestrationIntentPolicy policy = intentPolicy(context);
         if (policy != OrchestrationIntentPolicy.GENERATION_ONLY
             || response == null
             || response.getIntents() == null) {
@@ -321,6 +321,70 @@ public class IntentExtractionStep implements PipelineStep {
             }
         }
         return new IntentPolicyAdjustment(policy, adjusted, true);
+    }
+
+    private PipelineContext prepareStructuredOutputOnlyIntent(
+        PipelineContext context
+    ) {
+        Intent intent = Intent.builder()
+            .type(IntentType.INFORMATION)
+            .intent("structured_output_finalization")
+            .confidence(1.0d)
+            .requiresRetrieval(false)
+            .requiresGeneration(false)
+            .build();
+        MultiIntentResponse response = MultiIntentResponse.builder()
+            .intents(List.of(intent))
+            .orchestrationStrategy("STRUCTURED_OUTPUT_ONLY")
+            .metadata(Map.of("intentPolicy", "STRUCTURED_OUTPUT_ONLY"))
+            .build();
+
+        Map<String, Object> prompting = new LinkedHashMap<>();
+        prompting.put("standard", "STRUCTURED_OUTPUT_ONLY");
+        prompting.put("historyMessagesCount", context.getHistoryMessages() != null
+            ? context.getHistoryMessages().size()
+            : 0);
+        prompting.put("currentUserMessageChars", context.getEffectiveQuery() != null
+            ? context.getEffectiveQuery().length()
+            : 0);
+
+        return context
+            .withMetadata(
+                "llmPrompting",
+                Map.copyOf(prompting)
+            )
+            .withMetadata(
+                EXTRACTION_DIAGNOSTICS_KEY,
+                Map.of(
+                    "extractionPath",
+                    "structured_output_only",
+                    "extractionAttempts",
+                    0,
+                    "llmCalls",
+                    0
+                )
+            )
+            .withMetadata(
+                "intentPolicy",
+                Map.of(
+                    "policy",
+                    "STRUCTURED_OUTPUT_ONLY",
+                    "syntheticIntent",
+                    true,
+                    "semanticIntentExtractionSkipped",
+                    true
+                )
+            )
+            .toBuilder()
+            .intentResponse(response)
+            .build();
+    }
+
+    private OrchestrationIntentPolicy intentPolicy(PipelineContext context) {
+        return context != null
+                && context.getOrchestrationRequest() != null
+            ? context.getOrchestrationRequest().intentPolicy()
+            : OrchestrationIntentPolicy.MODEL_DIRECTED;
     }
 
     private boolean isSpecialistRequest(PipelineContext context) {

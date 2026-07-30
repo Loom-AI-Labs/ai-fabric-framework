@@ -8,9 +8,12 @@ separately authorized durable human-review lifecycle. It now also proves
 one-level model-selected delegation across a closed set of exact-version,
 read-only specialists and an explicitly distinct one-level responsibility
 handoff. Its interactive route now also proves explicit dialogue ownership
-over one backend-frozen conversation snapshot. It was copied from Account
-Resolver to preserve the existing live demo while the new execution contracts
-are developed and verified.
+over one backend-frozen conversation snapshot. A separate bounded manager
+route now proves one model-selected choice from two exact-version read-only
+workers, one focused clarification, or one terminal completion, with exactly
+one external conversation append. It was copied from Account Resolver to
+preserve the existing live demo while the new execution contracts are
+developed and verified.
 
 The copy has its own artifact, Java package, port, database, Lucene index,
 durable opaque demo sessions, Dockerfile, and tests. The tracked source under
@@ -42,6 +45,8 @@ Delegation targets: account-resolver-read@1, billing-resolution-advisor@1
 Handoff intake: account-resolution-intake@1
 Handoff successors: account-resolver-read@1, billing-resolution-advisor@1
 Interactive dialogue owner: account-resolver@1
+Conversation manager: account-conversation-manager@1
+Manager workers: account-resolver-manager-read@1, billing-resolution-manager-advisor@1
 ```
 
 `POST /api/agentic-resolver/evaluate` receives application authority and is
@@ -76,6 +81,39 @@ Exact retries replay the original invocation and changed payloads under the
 same key fail as `IDEMPOTENCY_CONFLICT`. Delegation, handoff, event, and plan
 workers remain non-interactive and receive no conversation implicitly.
 
+## Bounded Conversation Manager
+
+```text
+latest typed question + stable idempotency key
+  -> backend-owned principal, account, tenant, scopes, and conversation
+  -> one frozen authorized conversation snapshot
+  -> exact account-conversation-manager@1
+  -> STRUCTURED_OUTPUT_ONLY manager stage
+  -> ASK_USER | COMPLETE | INVOKE_SPECIALIST
+  -> zero or one exact read-only worker
+  -> registered safe worker-result projector
+  -> exactly one validated external append
+```
+
+The browser cannot submit history, a target, authority, provider, prompt,
+Mode, or snapshot. The manager sees only a bounded approved target catalogue
+and cannot author worker payloads. Application mappers construct typed worker
+input, and the selected worker is independently authorized through the normal
+execution gateway with no conversation.
+
+The manager prompt profile uses closed semantic categories so only supported
+account-state and billing-assessment work can select a worker. The account
+worker receives a stable current-account readiness task instead of ambiguous
+follow-up prose. This preserves model-assisted route selection while keeping
+the selected capability narrow.
+
+Manager and direct dialogue share one active-turn coordinator. Exact replay
+returns the original result without another manager call, worker call, or
+append. Changed input under a retained scoped key returns
+`MANAGER_IDEMPOTENCY_CONFLICT`. Provider, directive, mapping, worker,
+projection, and persistence failures remain visible; there is no deterministic
+success fallback.
+
 ## One-Level Delegation
 
 ```text
@@ -97,9 +135,10 @@ actions, arbitrary child parameters, or another specialist.
 
 Because this coordinator is structured generation with no retrieval,
 grounding, or actions, its manifest adapter derives the server-owned
-`GENERATION_ONLY` intent policy. Semantic intent extraction still belongs to
-the model, while an inconsistent model-produced retrieval flag cannot bypass
-the coordinator's closed capability contract.
+`STRUCTURED_OUTPUT_ONLY` intent policy. The coordinator's structured-output
+stage remains model intelligence, while the ordinary intent-extraction model
+call is skipped and an inconsistent retrieval flag cannot bypass the
+coordinator's closed capability contract.
 
 The child receives the backend-created trusted context but no conversation.
 It is independently authorized and grounded through the normal specialist
@@ -222,16 +261,23 @@ There is no success fallback. Typed failures cover:
 - undeclared, stale, recursive, WRITE-capable, or type-incompatible
   delegation;
 - malformed or expired parent deadline;
-- unsupported child input wait or confirmation; and
-- failure to cancel an unsupported child input wait.
+- unsupported child input wait or confirmation;
+- failure to cancel an unsupported child input wait;
+- malformed, undeclared, or stale manager directives;
+- manager target mapping or safe projection failure;
+- manager/worker authorization, provider, or persistence failure; and
+- manager replay conflict or a busy shared conversation.
 
 ## Verification
 
-- Final execution reactor: 1,012 tests with no failures or skips: 5
-  curated-default, 675 core, 59 chat-session, and 273 execution tests.
-- Final real-app reactor: 12 smoke-support tests and 125 copied-app tests.
-- Clean packaged app build: 125 copied-app tests. Its nested execution JAR
-  SHA-256 digest matched the locally verified Maven artifact.
+- Final execution reactor: 1,044 tests with no failures or skips: 5
+  curated-default, 677 core, 59 chat-session, and 303 execution tests.
+- Final clean real-app package: 12 smoke-support tests and 135 copied-app
+  tests.
+- Packaged/local core SHA-256:
+  `b2543edcc887209513060e4ec0d4246fcfa2ecc524296bc4e79dd319ffd0c9a4`.
+- Packaged/local execution SHA-256:
+  `82271608dc71598365a2c8b56d5e8fa3697d58bf965b3d2fc8bf31067d47d6a1`.
 - Original Account Resolver: 49 app tests and 12 smoke-support tests.
 - Manifest contract, compiler, registry, schema adapter, typed client,
   published example, metrics, and receipt-hash migration tests.
@@ -252,6 +298,16 @@ There is no success fallback. Typed failures cover:
   two-message/one-turn backend snapshot; exact replay preserved invocation and
   snapshot revision; changed input conflicted; and caller-supplied history was
   rejected.
+- Packaged real OpenAI manager: account readiness and complete account-credit
+  requests selected the two exact worker families; incomplete billing facts
+  produced focused questions; an unsupported poem completed without a worker;
+  a follow-up consumed one backend-owned prior turn; exact replay preserved
+  manager/worker lineage; and changed input returned
+  `MANAGER_IDEMPOTENCY_CONFLICT`.
+- Recorded real-manager wall times were 9.91 seconds for account readiness,
+  9.39 seconds for billing, 1.42 seconds for clarification, and 1.51 seconds
+  for unsupported completion. Worker routes used one manager plus one worker
+  invocation; direct manager responses used one manager invocation.
 - Packaged real OpenAI delegation: current-account and account-credit requests
   selected the two declared target families, each child succeeded with safe
   policy evidence, exact replay preserved all invocation identities, changed

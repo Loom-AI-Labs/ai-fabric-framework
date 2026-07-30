@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 @RestControllerAdvice(assignableTypes = {
     AgenticResolverController.class,
+    AgenticResolverManagerController.class,
     ProactiveAccountEventController.class
 })
 public class AgenticResolverErrorHandler {

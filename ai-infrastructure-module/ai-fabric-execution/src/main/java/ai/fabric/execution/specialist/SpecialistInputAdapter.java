@@ -27,6 +27,13 @@ public interface SpecialistInputAdapter<I> {
         return null;
     }
 
+    /**
+     * Returns application-owned request hints such as position or attachments.
+     *
+     * <p>The execution gateway replaces user and session identity with the
+     * server-owned trusted execution subject. Implementations must not treat
+     * public input as an identity source.</p>
+     */
     default OrchestrationContext orchestrationContext(I input) {
         return OrchestrationContext.builder().build();
     }

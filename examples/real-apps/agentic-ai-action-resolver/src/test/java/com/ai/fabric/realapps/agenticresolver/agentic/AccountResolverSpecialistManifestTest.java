@@ -14,6 +14,10 @@ import ai.fabric.execution.specialist.SpecialistRegistry;
 import ai.fabric.execution.gateway.AIExecutionResult;
 import ai.fabric.execution.gateway.AIExecutionStatus;
 import ai.fabric.execution.input.SpecialistInputRequirement;
+import ai.fabric.execution.manager.ConversationManagerContextValue;
+import ai.fabric.execution.manager.ConversationManagerInput;
+import ai.fabric.execution.manager.ConversationManagerRegistry;
+import ai.fabric.execution.manager.ConversationManagerTargetView;
 import ai.fabric.execution.specialist.manifest.MicrometerSpecialistManifestMetrics;
 import ai.fabric.execution.specialist.manifest.SpecialistManifestMetrics;
 import ai.fabric.execution.specialist.manifest.SpecialistInteractionCapability;
@@ -44,6 +48,9 @@ class AccountResolverSpecialistManifestTest {
 
     @Autowired
     private SpecialistRegistry specialistRegistry;
+
+    @Autowired
+    private ConversationManagerRegistry conversationManagerRegistry;
 
     @Autowired
     private ObjectMapper objectMapper;
@@ -212,6 +219,127 @@ class AccountResolverSpecialistManifestTest {
     }
 
     @Test
+    void declaresBoundedConversationManagerAndClosedWorkers() {
+        var manager = conversationManagerRegistry.require(
+            AccountConversationManagers.ACCOUNT_RESOLUTION
+        );
+        SpecialistDefinition<JsonNode, JsonNode> managerSpecialist =
+            definition(
+                AccountResolverSpecialists.CONVERSATION_MANAGER_ID
+            );
+        SpecialistDefinition<JsonNode, JsonNode> billingWorker =
+            definition(
+                AccountResolverSpecialists.MANAGER_BILLING_ADVISOR_ID
+            );
+        SpecialistDefinition<JsonNode, JsonNode> accountWorker =
+            definition(
+                AccountResolverSpecialists.MANAGER_READ_SPECIALIST_ID
+            );
+
+        assertThat(manager.contentHash()).matches("[a-f0-9]{64}");
+        assertThat(manager.definition().managerSpecialistId())
+            .isEqualTo(AccountResolverSpecialists.CONVERSATION_MANAGER_ID);
+        assertThat(manager.definition().targets())
+            .extracting(target -> target.specialistId())
+            .containsExactly(
+                AccountResolverSpecialists.MANAGER_READ_SPECIALIST_ID,
+                AccountResolverSpecialists.MANAGER_BILLING_ADVISOR_ID
+            );
+        assertThat(managerSpecialist.inputAdapter()
+            .interactionCapability())
+            .isEqualTo(
+                SpecialistInteractionCapability.DIALOGUE_CAPABLE
+            );
+        assertThat(managerSpecialist.inputAdapter()
+            .recordValidatedTurns()).isFalse();
+        assertThat(managerSpecialist.executionProfile()
+            .requestedCapabilities().visibleActions()).isEmpty();
+        assertThat(managerSpecialist.instructions().render())
+            .contains("billingInputState")
+            .contains("authoritative completeness fact")
+            .contains("not an intent")
+            .contains("exactly one category")
+            .contains("Missing billing fields must never turn")
+            .contains("RESOLUTION_TYPE_MISSING")
+            .contains("Do not invoke a worker for any state except COMPLETE")
+            .contains("poem or marketing campaign are OUTSIDE")
+            .contains("Do not use product, cart, catalog");
+        assertThat(managerSpecialist.delegationPolicy().allowedTargets())
+            .containsExactlyInAnyOrder(
+                AccountResolverSpecialists.MANAGER_READ_SPECIALIST_ID,
+                AccountResolverSpecialists.MANAGER_BILLING_ADVISOR_ID
+            );
+        assertThat(billingWorker.inputAdapter().inputContinuation())
+            .isEmpty();
+        assertThat(billingWorker.inputAdapter()
+            .interactionCapability())
+            .isEqualTo(
+                SpecialistInteractionCapability.NON_INTERACTIVE
+            );
+        assertThat(accountWorker.inputAdapter().conversationBinding())
+            .isEqualTo(
+                ai.fabric.execution.specialist.manifest
+                    .SpecialistConversationBinding.DISABLED
+            );
+        assertThat(accountWorker.inputAdapter().recordValidatedTurns())
+            .isFalse();
+        assertThat(accountWorker.inputAdapter().interactionCapability())
+            .isEqualTo(
+                SpecialistInteractionCapability.NON_INTERACTIVE
+            );
+
+        JsonNode managerInput = objectMapper.valueToTree(
+            new ConversationManagerInput(
+                "Assess this refund.",
+                List.of(
+                    new ConversationManagerContextValue(
+                        "resolutionType",
+                        "REFUND"
+                    ),
+                    new ConversationManagerContextValue("amount", "25")
+                ),
+                List.of(
+                    new ConversationManagerTargetView(
+                        AccountResolverSpecialists.MANAGER_READ_SPECIALIST_ID
+                            .toString(),
+                        "Read current account state."
+                    ),
+                    new ConversationManagerTargetView(
+                        AccountResolverSpecialists
+                            .MANAGER_BILLING_ADVISOR_ID.toString(),
+                        "Assess complete billing facts."
+                    )
+                )
+            )
+        );
+        managerSpecialist.inputAdapter().validate(managerInput);
+        assertThat(managerSpecialist.inputAdapter()
+            .renderModelInput(managerInput))
+            .contains("Assess this refund.")
+            .contains("billing-resolution-manager-advisor@1")
+            .doesNotContain("userId", "subscriptionId", "tenantId");
+
+        var validDirective = objectMapper.createObjectNode();
+        validDirective.put("type", "INVOKE_SPECIALIST");
+        validDirective.put(
+            "targetSpecialist",
+            "billing-resolution-manager-advisor@1"
+        );
+        validDirective.putNull("message");
+        validDirective.put("reason", "Complete billing facts are present.");
+        managerSpecialist.outputAdapter().validate(validDirective);
+
+        var inventedDirective = validDirective.deepCopy();
+        inventedDirective.put(
+            "targetSpecialist",
+            "invented-worker@1"
+        );
+        assertThatThrownBy(() ->
+            managerSpecialist.outputAdapter().validate(inventedDirective)
+        ).isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
     void declaresClosedReadOnlyAccountResolutionDelegation() {
         SpecialistDefinition<JsonNode, JsonNode> definition = definition(
             AccountResolverSpecialists.DELEGATION_COORDINATOR_ID
@@ -238,7 +366,7 @@ class AccountResolverSpecialistManifestTest {
         assertThat(definition.executionProfile()
             .requestedCapabilities().requestedVectorSpaces()).isEmpty();
         assertThat(definition.outputAdapter().orchestrationIntentPolicy())
-            .isEqualTo(OrchestrationIntentPolicy.GENERATION_ONLY);
+            .isEqualTo(OrchestrationIntentPolicy.STRUCTURED_OUTPUT_ONLY);
         assertThat(definition.delegationPolicy().allowedTargets())
             .containsExactlyInAnyOrder(
                 AccountResolverSpecialists.READ_SPECIALIST_ID,
@@ -304,7 +432,7 @@ class AccountResolverSpecialistManifestTest {
         assertThat(definition.executionProfile()
             .requestedCapabilities().requestedVectorSpaces()).isEmpty();
         assertThat(definition.outputAdapter().orchestrationIntentPolicy())
-            .isEqualTo(OrchestrationIntentPolicy.GENERATION_ONLY);
+            .isEqualTo(OrchestrationIntentPolicy.STRUCTURED_OUTPUT_ONLY);
         assertThat(definition.delegationPolicy().enabled()).isFalse();
         assertThat(definition.handoffPolicy().allowedTargets())
             .containsExactlyInAnyOrder(

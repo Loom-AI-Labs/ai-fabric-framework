@@ -75,6 +75,11 @@ ai:
       max-duration: PT1M
       max-active: ${AI_EXECUTION_PLAN_MAX_ACTIVE:500}
       result-ttl: PT15M
+    conversation-managers:
+      enabled: true
+      max-duration: ${AI_EXECUTION_MANAGER_MAX_DURATION:PT1M}
+      max-active: ${AI_EXECUTION_MANAGER_MAX_ACTIVE:500}
+      result-ttl: ${AI_EXECUTION_MANAGER_RESULT_TTL:PT15M}
     receipts:
       enabled: true
       repository: JDBC

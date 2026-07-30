@@ -16,6 +16,12 @@ public final class AccountResolverSpecialists {
         SpecialistId.of("account-resolution-coordinator", "1");
     public static final SpecialistId HANDOFF_INTAKE_ID =
         SpecialistId.of("account-resolution-intake", "1");
+    public static final SpecialistId CONVERSATION_MANAGER_ID =
+        SpecialistId.of("account-conversation-manager", "1");
+    public static final SpecialistId MANAGER_BILLING_ADVISOR_ID =
+        SpecialistId.of("billing-resolution-manager-advisor", "1");
+    public static final SpecialistId MANAGER_READ_SPECIALIST_ID =
+        SpecialistId.of("account-resolver-manager-read", "1");
     public static final String PROFILE_ACTION = "get_account_profile";
     public static final String BILLING_ASSESSMENT_ACTION =
         "assess_billing_resolution";

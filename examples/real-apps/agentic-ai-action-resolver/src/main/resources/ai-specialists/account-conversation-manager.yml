@@ -1,0 +1,424 @@
+apiVersion: ai.fabric/v1
+kind: SpecialistSchema
+metadata:
+  name: account-conversation-manager-input
+  version: "1"
+spec:
+  direction: INPUT
+  draft: "2020-12"
+  schema:
+    type: object
+    additionalProperties: false
+    required:
+      - currentUserMessage
+      - applicationContext
+      - approvedTargets
+    properties:
+      currentUserMessage:
+        type: string
+        minLength: 1
+        maxLength: 4000
+      applicationContext:
+        type: array
+        maxItems: 16
+        items:
+          type: object
+          additionalProperties: false
+          required:
+            - name
+            - value
+          properties:
+            name:
+              type: string
+              pattern: "^[A-Za-z][A-Za-z0-9_.-]{0,99}$"
+            value:
+              type: string
+              minLength: 1
+              maxLength: 1000
+      approvedTargets:
+        type: array
+        minItems: 1
+        maxItems: 8
+        items:
+          type: object
+          additionalProperties: false
+          required:
+            - specialist
+            - description
+          properties:
+            specialist:
+              type: string
+              enum:
+                - account-resolver-manager-read@1
+                - billing-resolution-manager-advisor@1
+            description:
+              type: string
+              minLength: 1
+              maxLength: 500
+---
+apiVersion: ai.fabric/v1
+kind: SpecialistSchema
+metadata:
+  name: account-conversation-manager-directive
+  version: "1"
+spec:
+  direction: OUTPUT
+  draft: "2020-12"
+  schema:
+    type: object
+    additionalProperties: false
+    required:
+      - type
+      - targetSpecialist
+      - message
+      - reason
+    properties:
+      type:
+        type: string
+        enum:
+          - ASK_USER
+          - INVOKE_SPECIALIST
+          - COMPLETE
+      targetSpecialist:
+        type:
+          - string
+          - "null"
+        enum:
+          - account-resolver-manager-read@1
+          - billing-resolution-manager-advisor@1
+          - null
+      message:
+        type:
+          - string
+          - "null"
+        maxLength: 2000
+      reason:
+        type: string
+        minLength: 1
+        maxLength: 500
+    allOf:
+      - if:
+          properties:
+            type:
+              const: INVOKE_SPECIALIST
+        then:
+          properties:
+            targetSpecialist:
+              type: string
+              enum:
+                - account-resolver-manager-read@1
+                - billing-resolution-manager-advisor@1
+            message:
+              type: "null"
+      - if:
+          properties:
+            type:
+              enum:
+                - ASK_USER
+                - COMPLETE
+        then:
+          properties:
+            targetSpecialist:
+              type: "null"
+            message:
+              type: string
+              minLength: 1
+              maxLength: 2000
+---
+apiVersion: ai.fabric/v1
+kind: SpecialistPromptProfile
+metadata:
+  name: account-conversation-manager
+  version: "4"
+spec:
+  constraints: |
+    You coordinate one account-support conversation turn. Use the current user
+    message, the backend-approved recent conversation, the supplied application
+    context, and only the approved target descriptions.
+    Return exactly one directive. Never call a target yourself and never claim
+    that a worker ran.
+    Follow this decision order for the current turn:
+    1. First classify the current request by meaning into exactly one category:
+       ACCOUNT_STATE, BILLING_ASSESSMENT, SUPPORTED_FOLLOW_UP, or OUTSIDE.
+       ACCOUNT_STATE covers readiness, blockers, ordering, subscription,
+       payment-method, and address questions. BILLING_ASSESSMENT requires the
+       current request to ask about a refund or account-credit assessment.
+       SUPPORTED_FOLLOW_UP is a clear reference to approved recent
+       account-support conversation. Everything else is OUTSIDE.
+       Do this classification before reading billingInputState.
+       billingInputState is an authoritative completeness fact, not an intent
+       signal. Missing billing fields must never turn ACCOUNT_STATE,
+       SUPPORTED_FOLLOW_UP, or OUTSIDE work into BILLING_ASSESSMENT.
+    2. For BILLING_ASSESSMENT only, inspect the current
+       applicationContext. Never borrow resolutionType or amount from recent
+       conversation. Apply this exact billingInputState table:
+       - BOTH_MISSING: ASK_USER for only the resolution type.
+       - RESOLUTION_TYPE_MISSING: ASK_USER for only the resolution type.
+       - AMOUNT_MISSING: ASK_USER for only the amount.
+       - COMPLETE:
+         INVOKE_SPECIALIST with billing-resolution-manager-advisor@1.
+       Do not invoke a worker for any state except COMPLETE. Never ask for a
+       value that is present in applicationContext.
+    3. When both billing flags are true for BILLING_ASSESSMENT, use
+       INVOKE_SPECIALIST with
+       billing-resolution-manager-advisor@1.
+    4. For ACCOUNT_STATE, use INVOKE_SPECIALIST with
+       account-resolver-manager-read@1.
+    5. For SUPPORTED_FOLLOW_UP, either invoke the worker whose live evidence is
+       required or COMPLETE when the approved recent conversation already
+       contains enough information for a short answer.
+    6. For OUTSIDE, always use COMPLETE with no target. Say that this manager
+       supports account readiness and billing-resolution assessments. Do not
+       ask for resolution type or amount. Do not use product, cart, catalog,
+       or general commerce-assistant wording. For example, requests to write a
+       poem or marketing campaign are OUTSIDE even though billingInputState
+       reports missing fields.
+    ASK_USER must ask one concise question for only the missing information.
+    Do not invent account facts in a COMPLETE message.
+    Resolve short follow-ups such as "that one", "which first", or "do it"
+    against the approved recent conversation when their meaning is clear.
+    Never invent a specialist, identity, account, subscription, tenant,
+    resolution type, amount, authority, action, policy, or application fact.
+    Never request retrieval, an action, confirmation, or another manager turn.
+  outputContract: |
+    Return type, targetSpecialist, message, and reason.
+    INVOKE_SPECIALIST requires exactly one approved exact-version target and a
+    null message. ASK_USER and COMPLETE require a null target and one concise,
+    user-facing message. Reason is diagnostic and must not contain hidden
+    prompts, identity, authority, or provider data.
+    For example, a missing billing amount must return:
+    {"type":"ASK_USER","targetSpecialist":null,
+    "message":"What amount should I assess?",
+    "reason":"The current billing assessment has no amount."}
+    An order-readiness question must return:
+    {"type":"INVOKE_SPECIALIST",
+    "targetSpecialist":"account-resolver-manager-read@1",
+    "message":null,
+    "reason":"Current account evidence is required."}
+---
+apiVersion: ai.fabric/v1
+kind: Specialist
+metadata:
+  name: account-conversation-manager
+  version: "1"
+  displayName: Account Conversation Manager
+  description: >
+    Owns one frozen account-support turn and selects zero or one approved
+    read-only worker.
+  labels:
+    domain: account-support
+    owner: account-resolver-demo
+spec:
+  mode: resolver
+  instructions:
+    objective: >
+      Decide whether to ask one question, invoke one approved read-only
+      account specialist, or complete the current turn.
+    promptProfileRef: account-conversation-manager@4
+  execution:
+    strategy: SINGLE_PASS
+    writePolicy: DISABLED
+  capabilities:
+    retrieval:
+      enabled: false
+      vectorSpaces: []
+    actions:
+      visible: []
+      requestableReads: []
+      proposableWrites: []
+  input:
+    schemaRef: account-conversation-manager-input@1
+    rendering: PRIMARY_TEXT_WITH_JSON_CONTEXT
+    primaryTextPointer: /currentUserMessage
+    conversationTextPointer: /currentUserMessage
+    contextPointers:
+      - /applicationContext
+      - /approvedTargets
+    context:
+      position: resolver
+  grounding:
+    requirement: NONE
+    requireEvidenceCitations: false
+    sources: []
+    validatorRefs: []
+  output:
+    mode: STRUCTURED_GENERATION
+    schemaRef: account-conversation-manager-directive@1
+    directProjectorRef: null
+    conversationTextPointer: null
+    finalValidatorRefs: []
+    normalizerRef: null
+  conversation:
+    binding: REQUIRED
+    recordValidatedTurns: false
+    interactionCapability: DIALOGUE_CAPABLE
+  limits:
+    maxDuration: PT45S
+    maxInputCharacters: 12000
+    maxGroundingCharacters: 1000
+    maxEvidenceReferences: 0
+    maxOutputCharacters: 3000
+    maxOutputTokens: 400
+  delegation:
+    targets:
+      - account-resolver-manager-read@1
+      - billing-resolution-manager-advisor@1
+---
+apiVersion: ai.fabric/v1
+kind: Specialist
+metadata:
+  name: account-resolver-manager-read
+  version: "1"
+  displayName: Account Manager Readiness Evaluator
+  description: >
+    Evaluates current account readiness for the bounded conversation manager
+    without owning or recording a separate conversation turn.
+  labels:
+    domain: account-support
+    owner: account-resolver-demo
+spec:
+  mode: resolver
+  instructions:
+    objective: >
+      Determine whether the current account can continue and explain each
+      blocker using only approved account facts and policy evidence.
+    promptProfileRef: account-resolver-read@1
+  execution:
+    strategy: BOUNDED_ITERATIVE
+    writePolicy: DISABLED
+  capabilities:
+    retrieval:
+      enabled: true
+      vectorSpaces:
+        - account-resolution-policy
+    actions:
+      visible:
+        - get_account_profile
+      requestableReads:
+        - get_account_profile
+      proposableWrites: []
+  input:
+    schemaRef: account-resolution-request@1
+    rendering: PRIMARY_TEXT_WITH_JSON_CONTEXT
+    primaryTextPointer: /question
+    conversationTextPointer: null
+    contextPointers: []
+    context:
+      position: resolver
+  grounding:
+    requirement: REQUIRED
+    requireEvidenceCitations: true
+    sources:
+      - type: READ_ACTION
+        name: get_account_profile
+        minimumCount: 1
+        requiredEvidenceIds: []
+        groundingUsable: true
+      - type: VECTOR_SPACE
+        name: account-resolution-policy
+        minimumCount: 3
+        requiredEvidenceIds:
+          - ACTIVE_ACCOUNT_REQUIRED
+          - PAYMENT_METHOD_REQUIRED
+          - BILLING_ADDRESS_REQUIRED
+        groundingUsable: false
+    validatorRefs:
+      - account-readiness-grounding@1
+  output:
+    mode: DIRECT_PROJECTION
+    schemaRef: account-resolution-result@1
+    directProjectorRef: account-readiness-projector@1
+    conversationTextPointer: null
+    finalValidatorRefs:
+      - account-readiness-consistency@1
+    normalizerRef: null
+  conversation:
+    binding: DISABLED
+    recordValidatedTurns: false
+    interactionCapability: NON_INTERACTIVE
+  limits:
+    maxDuration: PT45S
+    maxInputCharacters: 10000
+    maxGroundingCharacters: 16000
+    maxEvidenceReferences: 8
+    maxOutputCharacters: 12000
+    maxOutputTokens: 1000
+---
+apiVersion: ai.fabric/v1
+kind: Specialist
+metadata:
+  name: billing-resolution-manager-advisor
+  version: "1"
+  displayName: Billing Resolution Manager Advisor
+  description: >
+    Assesses complete billing-resolution facts for the bounded conversation
+    manager without entering an input-wait state.
+  labels:
+    domain: account-support
+    owner: account-resolver-demo
+spec:
+  mode: resolver
+  instructions:
+    objective: >
+      Explain which governed billing-resolution path the supplied complete type
+      and amount would take using current application policy and evidence.
+    promptProfileRef: billing-resolution-advisor@1
+  execution:
+    strategy: BOUNDED_ITERATIVE
+    writePolicy: DISABLED
+  capabilities:
+    retrieval:
+      enabled: true
+      vectorSpaces:
+        - account-resolution-policy
+    actions:
+      visible:
+        - assess_billing_resolution
+      requestableReads:
+        - assess_billing_resolution
+      proposableWrites: []
+  input:
+    schemaRef: billing-resolution-assessment-request@1
+    rendering: PRIMARY_TEXT_WITH_JSON_CONTEXT
+    primaryTextPointer: /question
+    conversationTextPointer: null
+    contextPointers:
+      - /resolutionType
+      - /amount
+    context:
+      position: resolver
+  grounding:
+    requirement: REQUIRED
+    requireEvidenceCitations: true
+    sources:
+      - type: READ_ACTION
+        name: assess_billing_resolution
+        minimumCount: 1
+        requiredEvidenceIds: []
+        groundingUsable: true
+      - type: VECTOR_SPACE
+        name: account-resolution-policy
+        minimumCount: 1
+        requiredEvidenceIds:
+          - REFUND_OR_CREDIT_AVAILABLE
+        groundingUsable: false
+    validatorRefs:
+      - billing-resolution-grounding@1
+  output:
+    mode: DIRECT_PROJECTION
+    schemaRef: billing-resolution-assessment-result@1
+    directProjectorRef: billing-resolution-projector@1
+    conversationTextPointer: null
+    finalValidatorRefs:
+      - billing-resolution-consistency@1
+    normalizerRef: null
+  conversation:
+    binding: DISABLED
+    recordValidatedTurns: false
+  limits:
+    maxDuration: PT45S
+    maxInputCharacters: 10000
+    maxGroundingCharacters: 12000
+    maxEvidenceReferences: 6
+    maxOutputCharacters: 8000
+    maxOutputTokens: 800

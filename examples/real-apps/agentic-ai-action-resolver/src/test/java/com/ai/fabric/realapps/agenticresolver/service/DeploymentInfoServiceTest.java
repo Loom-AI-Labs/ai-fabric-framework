@@ -1,5 +1,6 @@
 package com.ai.fabric.realapps.agenticresolver.service;
 
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -7,6 +8,8 @@ import ai.fabric.execution.action.ActionProposalReceiptRepository;
 import ai.fabric.execution.config.AIExecutionProperties;
 import ai.fabric.execution.gateway.AIExecutionGateway;
 import ai.fabric.execution.gateway.AIInteractiveExecutionGateway;
+import ai.fabric.execution.manager.ConversationManagerGateway;
+import ai.fabric.execution.manager.ConversationManagerRegistry;
 import ai.fabric.execution.plan.AIExecutionCoordinator;
 import ai.fabric.execution.plan.ExecutionPlanRegistry;
 import ai.fabric.execution.specialist.SpecialistDefinition;
@@ -95,6 +98,8 @@ class DeploymentInfoServiceTest {
             mock(AIInteractiveExecutionGateway.class),
             mock(AIExecutionCoordinator.class),
             emptyPlanRegistry(),
+            mock(ConversationManagerGateway.class),
+            emptyManagerRegistry(),
             registry,
             mock(ActionProposalReceiptRepository.class),
             Optional.of(mock(DurableExecutionRepository.class)),
@@ -135,6 +140,8 @@ class DeploymentInfoServiceTest {
                         true
                     )
                     .containsEntry("planCoordinatorReady", true)
+                    .containsEntry("conversationManagerReady", true)
+                    .containsEntry("conversationManagers", List.of())
                     .containsEntry("planDurability", "EPHEMERAL")
                     .containsEntry("plans", List.of())
                     .containsEntry("asyncDurability", "DURABLE")
@@ -169,6 +176,15 @@ class DeploymentInfoServiceTest {
     private ExecutionPlanRegistry emptyPlanRegistry() {
         ExecutionPlanRegistry registry = mock(ExecutionPlanRegistry.class);
         when(registry.list()).thenReturn(List.of());
+        return registry;
+    }
+
+    private ConversationManagerRegistry emptyManagerRegistry() {
+        ConversationManagerRegistry registry =
+            mock(ConversationManagerRegistry.class);
+        when(registry.list()).thenReturn(List.of());
+        when(registry.find(any()))
+            .thenReturn(Optional.empty());
         return registry;
     }
 

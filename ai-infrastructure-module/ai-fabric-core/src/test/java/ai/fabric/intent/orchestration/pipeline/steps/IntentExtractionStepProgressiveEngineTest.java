@@ -30,9 +30,70 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 class IntentExtractionStepProgressiveEngineTest {
+
+    @Test
+    void structuredOutputOnlyPolicySkipsSemanticIntentModelCall() {
+        IntentQueryExtractor extractor = mock(IntentQueryExtractor.class);
+        ProgressiveIntentExtractionEngine engine =
+            mock(ProgressiveIntentExtractionEngine.class);
+        @SuppressWarnings("unchecked")
+        ObjectProvider<ProgressiveIntentExtractionEngine> provider =
+            mock(ObjectProvider.class);
+
+        OrchestrationRequest request = new OrchestrationRequest(
+            "Would a $75 refund be approved?",
+            OrchestrationContext.forUser("user-1"),
+            null,
+            ConversationPersistencePolicy.NEVER,
+            null,
+            null,
+            null,
+            OrchestrationRequestPurpose.SPECIALIST,
+            OrchestrationIntentPolicy.STRUCTURED_OUTPUT_ONLY
+        );
+
+        PipelineContext updated = new IntentExtractionStep(
+            extractor,
+            provider
+        ).process(PipelineContext.from(request));
+
+        Intent synthetic = updated.getIntentResponse()
+            .getIntents()
+            .getFirst();
+        assertThat(synthetic.getType()).isEqualTo(IntentType.INFORMATION);
+        assertThat(synthetic.getIntent())
+            .isEqualTo("structured_output_finalization");
+        assertThat(synthetic.getRequiresRetrieval()).isFalse();
+        assertThat(synthetic.getRequiresGeneration()).isFalse();
+        assertThat(updated.getMetadata())
+            .containsEntry(
+                "extractionDiagnostics",
+                Map.of(
+                    "extractionPath",
+                    "structured_output_only",
+                    "extractionAttempts",
+                    0,
+                    "llmCalls",
+                    0
+                )
+            )
+            .containsEntry(
+                "intentPolicy",
+                Map.of(
+                    "policy",
+                    "STRUCTURED_OUTPUT_ONLY",
+                    "syntheticIntent",
+                    true,
+                    "semanticIntentExtractionSkipped",
+                    true
+                )
+            );
+        verifyNoInteractions(extractor, engine, provider);
+    }
 
     @Test
     void generationOnlyPolicyConstrainsExecutionFlagsWithoutChangingSemantics() {
