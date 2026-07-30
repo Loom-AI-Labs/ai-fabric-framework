@@ -1,9 +1,10 @@
 # Interactive Dialogue Ownership Implementation Plan
 
-- **Status:** In progress
+- **Status:** Implemented and verified; not released
 - **Date:** 2026-07-29
 - **Framework baseline:** AI Fabric `0.4.0`
 - **Code reviewed at:** `069b96d`
+- **Implementation commit:** `81dd7b0`
 - **Prerequisite:** Plans `0001` through `0010`
 - **Target:** Conversation-manager prerequisite; version not assigned
 - **Reference proof:** `examples/real-apps/agentic-ai-action-resolver`
@@ -208,18 +209,42 @@ The proof must show:
 
 ## 10. Verification Gate
 
-The plan is complete only when:
+The plan is complete because:
 
-1. all core, chat-session, and execution tests pass normally;
-2. all Agentic Resolver tests pass normally;
-3. a clean packaged app loads the strict manifests;
-4. packaged framework JARs match verified local artifacts;
-5. real OpenAI proves first-turn, follow-up, replay, and conflict behavior;
-6. deterministic tests prove concurrency and fail-closed snapshot behavior;
+1. all core, chat-session, and execution tests passed normally;
+2. all Agentic Resolver tests passed normally;
+3. a clean packaged app loaded the strict manifests;
+4. the packaged execution JAR matched the verified local artifact;
+5. real OpenAI proved first-turn, follow-up, replay, and conflict behavior;
+6. deterministic tests proved concurrency and fail-closed snapshot behavior;
 7. no placeholder, disabled test, hidden fallback, or second chat store exists;
-8. `git diff --check` passes; and
-9. the guide clearly distinguishes dialogue ownership from authority,
+8. `git diff --check` passed; and
+9. the guide distinguishes dialogue ownership from authority,
    delegation, handoff, and the later conversation manager.
+
+### 10.1 Recorded Evidence
+
+- The final framework execution reactor passed `1,012` tests with no failures
+  or skips: 5 curated-default, 675 core, 59 chat-session, and 273 execution
+  tests.
+- The final real-app reactor passed 12 smoke-support tests and 125 Agentic AI
+  Action Resolver tests.
+- A clean packaged application passed all 125 application tests.
+- The packaged `ai-fabric-execution` JAR and the locally verified Maven
+  artifact both had SHA-256
+  `c38749bf905ed385b51d9ed469dcd7e847dc6a93ab31a04c1c37a9f94cf707f7`.
+- The packaged smoke profile exposed its intentional provider failure instead
+  of fabricating a result. Exact replay returned one invocation, changed
+  payload returned `IDEMPOTENCY_CONFLICT`, and caller-supplied history returned
+  HTTP 400.
+- Packaged real OpenAI produced a grounded `BLOCKED` assessment with
+  `VERIFIED_PAYMENT_METHOD` and four policy evidence references. The short
+  follow-up used a frozen two-message, one-turn backend snapshot and produced
+  the same grounded blocker.
+- Exact real-provider replay retained invocation
+  `exec-6fa72ef8-a51e-4acb-98dd-91dad0b8072b` and snapshot revision
+  `a763597b3451d9ab9841b8a22f9c9f33aa9b2f18a5937424d333c7248616bcdc`.
+  Changed input under that key failed with `IDEMPOTENCY_CONFLICT`.
 
 ## 11. Next Step
 

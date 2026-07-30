@@ -6,7 +6,7 @@
 - **Compatibility baseline:** AI Fabric `0.4.0`
 - **Baseline tag:** `ai-fabric-framework-v0.4.0`
 - **Baseline commit:** `857619f`
-- **Candidate baseline commit:** `28e726d`
+- **Candidate baseline commit:** `81dd7b0`
 - **Prepared:** 2026-07-29
 - **Reference application:**
   [`agentic-ai-action-resolver`](../../examples/real-apps/agentic-ai-action-resolver)
@@ -38,6 +38,13 @@ successor, and returns the successor result as the handoff outcome. This first
 boundary is synchronous, depth-one, process-local, and conversation-free. It
 does not transfer dialogue ownership, pending actions, receipts, or hidden
 working state.
+
+An explicitly dialogue-capable specialist may now own one authenticated
+interactive turn. The browser sends only the latest message; the backend
+selects the exact specialist, freezes one authorized bounded conversation
+snapshot, enforces one active turn per conversation, and records only a
+validated result. Snapshot approval is opaque and process-local. Provider,
+retrieval, grounding, validation, and persistence failures remain visible.
 
 Trusted application event adapters can now submit those same typed specialists
 as bounded asynchronous work. The first proof maps a raw payment-verification
@@ -107,6 +114,7 @@ The adoption boundary is:
 | Durable review gateway, encrypted task/decision state, optimistic transitions, recovery, and safe review projections | Application-selected review policies, trusted reviewer authentication/authorization, dispatcher integration, production migrations, and reviewer experience |
 | Exact-version one-level delegation validation, typed child binding, independent child authorization, lineage, and process-local replay | Root selection, closed target schema, trusted child-input mapping, public UX, and deciding whether delegation is appropriate |
 | Exact-version read-only handoff validation, predecessor/successor lineage, independent successor authorization, and process-local replay | Intake selection, closed target schema, trusted successor-input mapping, public UX, and deciding whether responsibility should transfer |
+| Exact-version interactive dialogue ownership, approved frozen conversation snapshots, active-turn exclusion, and validated turn recording | Authentication, server-owned conversation/subject resolution, stable request idempotency, public chat UX, and instance affinity where required |
 | Manifest and execution diagnostics | Deployment, monitoring, support, and rollback |
 
 ## 3. Included Change Set
@@ -126,6 +134,7 @@ The adoption boundary is:
 | `e415a52` | Durable human-review policies, encrypted JDBC tasks and dispatch receipts, trusted reviewer decisions, continuation/recovery, and an OpenAI-backed support-credit proof |
 | `8690964` | Closed, exact-version, one-level read-only specialist delegation and Account Resolver proof |
 | `28e726d` | Explicit, exact-version, one-level read-only specialist handoff and Account Resolver intake proof |
+| `81dd7b0` | Backend-owned interactive dialogue, frozen authorized history, one active turn, typed manifest client support, and Account Resolver follow-up proof |
 
 These commits build on the released `0.4.0` lifecycle, indexing, RAG, action,
 provider, and chat-session contracts.
@@ -165,7 +174,9 @@ Use it when an application needs:
 - separately authorized, restart-safe human review around a governed action
   proposal; or
 - one-level model-selected routing among a closed set of read-only
-  specialists.
+  specialists; or
+- one exact-version dialogue-capable specialist answering authenticated
+  follow-up turns from backend-owned memory.
 
 ## 5. Specialist Execution Contract
 
@@ -297,7 +308,8 @@ A V1 manifest may compose:
 - visible and requestable READ actions;
 - confirmation-gated proposable WRITE actions;
 - grounding requirements;
-- conversation eligibility;
+- conversation eligibility and explicit `NON_INTERACTIVE` or
+  `DIALOGUE_CAPABLE` interaction capability;
 - execution limits; and
 - references to application-registered extensions.
 
@@ -782,6 +794,61 @@ schema, validation, subject/tenant resolution, and redelivery policy. AI
 Fabric owns the bounded specialist execution, encrypted JDBC state, worker
 lease, restart recovery, and scoped replay contract.
 
+### 11.8 Interactive dialogue ownership
+
+Dialogue ownership is explicit and opt-in:
+
+```yaml
+spec:
+  conversation:
+    binding: REQUIRED
+    recordValidatedTurns: true
+    interactionCapability: DIALOGUE_CAPABLE
+```
+
+An eligible specialist must use an exact registered version, require a
+conversation, record validated turns, and have no specialist input-wait
+contract. The manifest compiler rejects invalid combinations at startup.
+
+The authenticated backend calls typed
+`SpecialistClient.executeInteractive(...)` with:
+
+- only the latest typed user message and domain fields;
+- a backend-created `TrustedExecutionContext`;
+- a backend-created `ConversationBinding`; and
+- a required stable idempotency key.
+
+`AIInteractiveExecutionGateway` claims one process-local active turn for that
+conversation, captures one authorized bounded snapshot from
+`ai-fabric-chat-session`, and binds it to an opaque one-use approval token.
+The normal execution gateway and orchestration pipeline remain the only
+intelligence path. `ConversationEnrichmentStep` consumes the frozen snapshot
+instead of reloading mutable history while the turn is running.
+
+Successful diagnostics may expose only safe lineage:
+
+```text
+interactiveTurn
+interactionTurnId
+dialogueOwner
+dialogueOwnerSpecialist
+conversationSnapshotRevision
+conversationSnapshotMessageCount
+conversationSnapshotTurnCount
+```
+
+They never expose transcript content, user or conversation identity, snapshot
+tokens, prompts, trusted context, or provider-native payloads.
+
+This first boundary is synchronous and process-local. Active-turn claims and
+snapshot tokens do not survive restart and are not distributed leases. Use
+conversation affinity in a multi-replica deployment until a distributed
+active-turn lease exists. Chat turns themselves retain the durability of the
+configured chat-session provider.
+
+Detailed adoption guidance is in
+[`INTERACTIVE_DIALOGUE_OWNERSHIP.md`](../Framework-Dev-Guides/application-patterns/INTERACTIVE_DIALOGUE_OWNERSHIP.md).
+
 ## 12. Evidence And Indexing Boundary
 
 Specialist results return `AIEvidenceReference`.
@@ -903,6 +970,7 @@ The application must separately configure:
 | Review delivery attempt | JDBC `ai_review_dispatch` | Separate persist-before-delivery audit record |
 | Specialist input wait | Bounded execution-module process memory | `EPHEMERAL`; lost on restart |
 | Fixed-plan checkpoints and terminal result | Bounded execution-module process memory | `EPHEMERAL`; lost on restart |
+| Interactive active-turn claim and approved snapshot token | Bounded execution-module process memory | `EPHEMERAL`; lost on restart |
 | Eligible proactive read execution, result, and replay binding | JDBC `ai_specialist_execution` | Durable across restart with at-least-once read execution |
 | Vector evidence | Existing AI Fabric vector provider | Provider lifecycle |
 | Domain entity and authoritative action result | Host application system of record | Application lifecycle |
@@ -975,6 +1043,19 @@ there are no known external implementations. Any pre-release custom
 implementation must add typed `submit`, `find`, and `cancel` methods or switch
 to `SpecialistClientFactory`.
 
+`SpecialistClient.executeInteractive(...)` is additive and has a typed default
+implementation. Existing specialist clients continue to compile. A specialist
+remains `NON_INTERACTIVE` unless its manifest explicitly opts into
+`DIALOGUE_CAPABLE`; therefore existing manifests and non-chat execution paths
+retain their current behavior.
+
+Interactive callers must migrate to latest-message-only input. Do not add a
+history field to the public DTO. Resolve the authenticated conversation in the
+backend, construct `ConversationBinding` there, require a stable
+`Idempotency-Key`, and call the interactive gateway. If JDBC asynchronous
+execution is configured, `INTERACTIVE` calls still use the bounded synchronous
+path; JDBC durability remains limited to eligible machine-owned read jobs.
+
 ## 16. Earlier Documentation Superseded
 
 The following earlier P0/P1 guidance remains useful for read-only architecture
@@ -1011,8 +1092,12 @@ For current adoption use, in order:
 11. the
     [Explicit Specialist Handoff Guide](../Framework-Dev-Guides/application-patterns/EXPLICIT_SPECIALIST_HANDOFF.md);
 12. the
-    [handoff implementation plan](../planning/ai-fabric-flow-architecture-analysis-pack/implementation-plans/0010-explicit-read-only-specialist-handoff-implementation-plan.md); and
+    [handoff implementation plan](../planning/ai-fabric-flow-architecture-analysis-pack/implementation-plans/0010-explicit-read-only-specialist-handoff-implementation-plan.md);
 13. the
+    [Interactive Dialogue Ownership Guide](../Framework-Dev-Guides/application-patterns/INTERACTIVE_DIALOGUE_OWNERSHIP.md);
+14. the
+    [interactive-dialogue implementation plan](../planning/ai-fabric-flow-architecture-analysis-pack/implementation-plans/0011-interactive-dialogue-ownership-implementation-plan.md); and
+15. the
    [`agentic-ai-action-resolver`](../../examples/real-apps/agentic-ai-action-resolver)
    reference application.
 
@@ -1103,6 +1188,27 @@ For current adoption use, in order:
 - [ ] Treat a recovered provider call as at-least-once read execution; do not
   use this job path for writes.
 
+### Phase 1.8: Interactive dialogue-owner proof
+
+- [ ] Choose one exact-version specialist that genuinely needs authenticated
+  backend conversation memory.
+- [ ] Mark only that specialist `DIALOGUE_CAPABLE`; leave workers, events,
+  plans, delegated children, and handoff successors non-interactive.
+- [ ] Accept only the latest typed message and a stable idempotency key at the
+  public endpoint.
+- [ ] Resolve identity, subject, tenant, authority, and conversation from
+  authenticated backend state.
+- [ ] Call `SpecialistClient.executeInteractive(...)` through
+  `AIInteractiveExecutionGateway`.
+- [ ] Verify first-turn grounding and a short follow-up that depends on the
+  backend-frozen history.
+- [ ] Verify exact replay does not append another turn and changed input under
+  the same key returns `IDEMPOTENCY_CONFLICT`.
+- [ ] Verify caller-supplied history is rejected and provider, retrieval,
+  snapshot, and persistence failures remain visible.
+- [ ] Route one conversation consistently in a multi-replica deployment until
+  distributed active-turn leasing is available.
+
 ### Phase 2: Governed write proof
 
 - [ ] Choose one low-risk, confirmation-required registered WRITE.
@@ -1184,6 +1290,15 @@ For current adoption use, in order:
   conversation.
 - [ ] Event specialists have the minimum required READ scopes and no automatic
   mutation authority.
+- [ ] Public interactive payload contains only the latest typed message and
+  application-owned public fields, never conversation history.
+- [ ] The backend selects the exact dialogue owner and constructs trusted
+  context and conversation binding after authentication.
+- [ ] Only explicitly `DIALOGUE_CAPABLE` specialists can own a turn.
+- [ ] Snapshot tokens are opaque, one-use, bounded, and absent from public
+  results, logs, and diagnostics.
+- [ ] One conversation cannot run two supported interactive turns
+  concurrently in the same process.
 - [ ] Idempotency replay compares canonical payload and trusted access scope.
 - [ ] Provider and validation failures remain visible.
 - [ ] Logs and diagnostics exclude prompts, raw receipt payloads, keys, and PII.
@@ -1216,7 +1331,8 @@ Health may expose:
 - loaded, manifest, and Java definition counts;
 - specialist source, ID, and version;
 - specialist content hash;
-- registry content hash; and
+- registry content hash;
+- interactive dialogue gateway readiness; and
 - safe readiness/diagnostic reason codes.
 
 Do not expose:
@@ -1242,7 +1358,10 @@ Alert on:
 - repeated cross-context confirmation denial; and
 - review dispatch exhaustion, stuck `DECIDING` leases, authorization-denial
   spikes, correction/escalation loops, or retained terminal-task growth; and
-- plan registration failure, wait expiry, resume denial, or deadline growth.
+- plan registration failure, wait expiry, resume denial, or deadline growth;
+  and
+- dialogue snapshot failure, conversation-busy growth, interactive wait
+  timeout, or validated-turn persistence failure.
 
 ## 20. Rollback
 
@@ -1461,6 +1580,33 @@ commit.
 - Real incomplete billing and unsupported marketing requests returned
   `COMPLETE` without starting a successor.
 
+### Interactive dialogue ownership
+
+- The final framework execution reactor passed `1,012` tests with no failures
+  or skips: 5 curated-default, 675 core, 59 chat-session, and 273 execution
+  tests.
+- The final real-app reactor passed 12 smoke-support tests and 125 Agentic AI
+  Action Resolver tests. A clean packaged application also passed all 125
+  application tests.
+- The packaged `ai-fabric-execution` JAR and verified local Maven artifact
+  shared SHA-256
+  `c38749bf905ed385b51d9ed469dcd7e847dc6a93ab31a04c1c37a9f94cf707f7`.
+- Deterministic tests cover manifest eligibility, immutable snapshot bounds,
+  owner/conversation mismatch, token absence/expiry/reuse, active-turn
+  exclusion, independent conversations, exact replay, changed-payload
+  conflict, frozen-history pipeline use, and claim release on every terminal
+  path.
+- The packaged smoke profile preserved a visible intentional provider failure.
+  It did not fabricate an answer or create a second history store.
+- Packaged real OpenAI produced a grounded `BLOCKED` assessment with
+  `VERIFIED_PAYMENT_METHOD` and four policy evidence references.
+- A short follow-up used a frozen backend snapshot containing two messages and
+  one completed turn, retrieved policy evidence again, and returned the same
+  grounded blocker.
+- Exact replay returned the original invocation and snapshot revision; changed
+  input returned `IDEMPOTENCY_CONFLICT`; caller-supplied history returned HTTP
+  400.
+
 ## 22. Release Gate Still Required
 
 Before Loom AI adopts a published artifact:
@@ -1469,6 +1615,8 @@ Before Loom AI adopts a published artifact:
 - [ ] Update framework, BOM, examples, and documentation consistently.
 - [ ] Run the complete clean release gate with tests enabled.
 - [ ] Run keyed OpenAI execution and action-continuation scenarios.
+- [ ] Run keyed OpenAI dialogue-owner first-turn, follow-up, replay, conflict,
+  and caller-history rejection scenarios.
 - [ ] Run packaged Docker and JDBC restart/replay proof.
 - [ ] Verify Maven Central consumer resolution.
 - [ ] Publish release notes and migration guidance.
@@ -1534,8 +1682,11 @@ For Loom AI:
    model selection and the application can map typed child input safely;
 9. use explicit handoff only when responsibility genuinely transfers to one
    closed, read-only successor and no dialogue or pending-action state needs
-   migration; and
-10. defer unrestricted planning, recursive transitions, WRITE composition,
+   migration;
+10. use interactive dialogue ownership only for an exact-version specialist
+    that needs backend-owned memory, with latest-message-only public requests
+    and conversation affinity for the current process-local lease; and
+11. defer unrestricted planning, recursive transitions, WRITE composition,
     dialogue-owner transfer, and durable plan execution until bounded
     contracts have production usage evidence.
 
