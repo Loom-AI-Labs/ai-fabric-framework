@@ -38,6 +38,13 @@ the billing advisor, passing only the validated typed account result through a
 registered mapper. Missing billing amount pauses step two; resume does not
 rerun step one.
 
+The app also compares two equivalent independent-read plans.
+`account-billing-independent-sequential@1` invokes the account and billing
+specialists in order. `account-billing-independent-parallel@1` invokes the
+same exact-version, read-only specialists concurrently and atomically joins
+them with `ALL_REQUIRED`. Both use the same typed request, branch mappers, and
+deterministic Java aggregator.
+
 It also proves one-level model-selected delegation without exposing an open
 specialist catalogue. `account-resolution-coordinator@1` may select only
 `account-resolver-read@1` or `billing-resolution-advisor@1` from a closed
@@ -430,6 +437,40 @@ sources. Interactive plan execution and WRITE-capable plan steps fail closed
 until dialogue ownership and durable composed-action continuation have
 separate contracts.
 
+## Bounded Read-Only Parallel Plan
+
+The application explicitly opts into one narrow parallel shape:
+
+```text
+account-billing-independent-sequential@1
+  account-state -> account-resolver-read@1
+  billing-path  -> billing-resolution-advisor@1
+
+account-billing-independent-parallel@1
+  independent-readers [ALL_REQUIRED, maximumConcurrency=2]
+    account-state -> account-resolver-read@1
+    billing-path  -> billing-resolution-advisor@1
+```
+
+The two branch mappers depend only on the immutable plan request, not sibling
+output. Startup validation rejects unknown or WRITE-capable specialists,
+incompatible mapper types, sibling dependencies, duplicate IDs, disabled
+parallel plans, and branch counts above the deployment ceiling.
+
+AI Fabric pre-maps every branch before submission, uses its existing bounded
+execution executor, applies the plan deadline, cancels outstanding siblings
+after any failure, and commits branch checkpoints only after every branch
+succeeds. There is no partial fan-in, retry under a different strategy, or
+hidden sequential fallback.
+
+Successful traces remain in declaration order even when completion order
+differs. Each trace identifies its exact specialist and invocation, the
+parallel group, and the shared source revision. The plan remains synchronous
+and process-local; it is not a durable graph runtime.
+
+The full framework adoption guide is
+[`BOUNDED_READ_ONLY_PARALLEL_PLANS.md`](../../../docs/Framework-Dev-Guides/application-patterns/BOUNDED_READ_ONLY_PARALLEL_PLANS.md).
+
 ## One-Level Declared Delegation
 
 The configuration-defined `account-resolution-coordinator@1` returns a
@@ -800,6 +841,39 @@ Content-Type: application/json
 }
 ```
 
+Compare equivalent independent sequential and parallel plans:
+
+```http
+POST /api/agentic-resolver/plans/account-billing-independent-sequential
+X-AI-Fabric-Demo-Session: {sessionId}
+Idempotency-Key: {unique-sequential-key}
+Content-Type: application/json
+
+{
+  "question":"Assess whether a 25 dollar account credit is appropriate.",
+  "resolutionType":"ACCOUNT_CREDIT",
+  "amount":25
+}
+```
+
+```http
+POST /api/agentic-resolver/plans/account-billing-independent-parallel
+X-AI-Fabric-Demo-Session: {sessionId}
+Idempotency-Key: {unique-parallel-key}
+Content-Type: application/json
+
+{
+  "question":"Assess whether a 25 dollar account credit is appropriate.",
+  "resolutionType":"ACCOUNT_CREDIT",
+  "amount":25
+}
+```
+
+Use the same session and complete input when comparing them. The output policy
+fields should be equivalent. Parallel traces should share
+`parallelGroupId=independent-readers` and one source revision, while their
+time intervals overlap.
+
 Omit `amount` to receive a plan-level `WAITING_FOR_INPUT`. Resume it without
 selecting a specialist:
 
@@ -992,6 +1066,8 @@ ai:
   execution:
     plans:
       enabled: true
+      parallel-enabled: true
+      max-parallel-branches: 2
       max-steps: 4
       max-duration: PT1M
       max-active: 500
@@ -1288,6 +1364,21 @@ The final manager gate passed:
   scenarios; and
 - visible provider/validation failures with no deterministic success fallback.
 
+The bounded parallel-plan gate then passed:
+
+- 1,052 framework tests: 5 curated-default, 677 core, 59 chat-session, and 311
+  execution tests;
+- 12 shared smoke-support tests and 138 app tests in a clean package;
+- packaged/local core SHA-256
+  `b2543edcc887209513060e4ec0d4246fcfa2ecc524296bc4e79dd319ffd0c9a4`;
+- packaged/local execution SHA-256
+  `feb2c49dad6a404aab57ca92903a6d97090da69012c2e4f99decc48fc68870b0`;
+- packaged health proof for the enabled two-branch `ALL_REQUIRED` topology;
+- three real OpenAI runs per strategy with identical typed policy output,
+  stable declaration-order traces, and a common source revision; and
+- measured averages of 15.511 seconds sequentially and 6.699 seconds in
+  parallel for the documented complete account-credit request.
+
 ## Intentionally Out Of Scope
 
 - automatic LLM confirmation;
@@ -1296,7 +1387,7 @@ The final manager gate passed:
 - recursive delegation or handoff;
 - dialogue-owner transfer, manager loops, manager-selected writes, a second
   manager synthesis call, or durable manager/delegation/handoff state;
-- conditional, parallel, WRITE-capable, or durable plans;
+- conditional, nested/dynamic, WRITE-capable, or durable parallel plans;
 - event or scheduled write adapters;
 - framework-owned event-broker consumption or scheduler ownership;
 - durable WRITE-capable specialist jobs;

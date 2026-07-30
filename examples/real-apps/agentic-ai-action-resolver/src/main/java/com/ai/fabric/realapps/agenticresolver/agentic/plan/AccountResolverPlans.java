@@ -9,6 +9,18 @@ public final class AccountResolverPlans {
         ExecutionPlanId.of("account-readiness", "1");
     public static final ExecutionPlanId ACCOUNT_BILLING_RESOLUTION =
         ExecutionPlanId.of("account-billing-resolution", "1");
+    public static final ExecutionPlanId
+        ACCOUNT_BILLING_INDEPENDENT_SEQUENTIAL =
+            ExecutionPlanId.of(
+                "account-billing-independent-sequential",
+                "1"
+            );
+    public static final ExecutionPlanId
+        ACCOUNT_BILLING_INDEPENDENT_PARALLEL =
+            ExecutionPlanId.of(
+                "account-billing-independent-parallel",
+                "1"
+            );
 
     static final PlanComponentId READINESS_INPUT =
         PlanComponentId.of("account-readiness-input", "1");
@@ -18,11 +30,17 @@ public final class AccountResolverPlans {
         PlanComponentId.of("account-billing-account-input", "1");
     static final PlanComponentId BILLING_ASSESSMENT_INPUT =
         PlanComponentId.of("account-billing-assessment-input", "1");
+    static final PlanComponentId BILLING_INDEPENDENT_ASSESSMENT_INPUT =
+        PlanComponentId.of(
+            "account-billing-independent-assessment-input",
+            "1"
+        );
     static final PlanComponentId BILLING_RESULT =
         PlanComponentId.of("account-billing-result", "1");
 
     static final String ACCOUNT_STATE_STEP = "account-state";
     static final String BILLING_PATH_STEP = "billing-path";
+    static final String INDEPENDENT_READERS_STAGE = "independent-readers";
 
     private AccountResolverPlans() {}
 }

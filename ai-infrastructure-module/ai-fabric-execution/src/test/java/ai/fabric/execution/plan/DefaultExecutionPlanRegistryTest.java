@@ -209,6 +209,155 @@ class DefaultExecutionPlanRegistryTest {
     }
 
     @Test
+    void validatesOptInIndependentParallelBranchesAndHashesTopology() {
+        SpecialistRegistry specialists = registry(
+            definition(FIRST, String.class, Integer.class, false),
+            definition(SECOND, Long.class, Boolean.class, false)
+        );
+        PlanStepInputMapper<String, String> firstMapper = mapper(
+            PlanComponentId.of("first-input", "1"),
+            String.class,
+            Map.of(),
+            (input, outputs) -> input
+        );
+        PlanStepInputMapper<String, Long> secondMapper = mapper(
+            PlanComponentId.of("second-input", "1"),
+            Long.class,
+            Map.of(),
+            (input, outputs) -> 1L
+        );
+        PlanResultAggregator<String, String> aggregator = aggregator(
+            PlanComponentId.of("result", "1"),
+            Map.of("first", Integer.class, "second", Boolean.class)
+        );
+        ExecutionPlanDefinition<String, String> twoWorkers = parallelPlan(
+            firstMapper.id(),
+            secondMapper.id(),
+            aggregator.id(),
+            2
+        );
+        ExecutionPlanDefinition<String, String> threeSlots = parallelPlan(
+            firstMapper.id(),
+            secondMapper.id(),
+            aggregator.id(),
+            3
+        );
+        PlanComponentRegistry components = new PlanComponentRegistry(
+            List.of(firstMapper, secondMapper),
+            List.of(aggregator)
+        );
+
+        assertThatThrownBy(() -> new DefaultExecutionPlanRegistry(
+            List.of(twoWorkers),
+            specialists,
+            clientFactory(specialists),
+            components,
+            4,
+            Duration.ofMinutes(1)
+        ))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("parallel plans are disabled");
+
+        DefaultExecutionPlanRegistry twoWorkerRegistry =
+            new DefaultExecutionPlanRegistry(
+                List.of(twoWorkers),
+                specialists,
+                clientFactory(specialists),
+                components,
+                4,
+                Duration.ofMinutes(1),
+                true,
+                4
+            );
+        DefaultExecutionPlanRegistry threeSlotRegistry =
+            new DefaultExecutionPlanRegistry(
+                List.of(threeSlots),
+                specialists,
+                clientFactory(specialists),
+                components,
+                4,
+                Duration.ofMinutes(1),
+                true,
+                4
+            );
+
+        assertThat(twoWorkerRegistry.require(twoWorkers.id()).contentHash())
+            .hasSize(64)
+            .isNotEqualTo(
+                threeSlotRegistry.require(threeSlots.id()).contentHash()
+            );
+    }
+
+    @Test
+    void rejectsParallelSiblingDependenciesAndBranchCeiling() {
+        SpecialistRegistry specialists = registry(
+            definition(FIRST, String.class, Integer.class, false),
+            definition(SECOND, Long.class, Boolean.class, false)
+        );
+        PlanStepInputMapper<String, String> firstMapper = mapper(
+            PlanComponentId.of("first-input", "1"),
+            String.class,
+            Map.of(),
+            (input, outputs) -> input
+        );
+        PlanStepInputMapper<String, Long> dependentSecond = mapper(
+            PlanComponentId.of("second-input", "1"),
+            Long.class,
+            Map.of("first", Integer.class),
+            (input, outputs) -> 1L
+        );
+        PlanResultAggregator<String, String> aggregator = aggregator(
+            PlanComponentId.of("result", "1"),
+            Map.of("first", Integer.class, "second", Boolean.class)
+        );
+        ExecutionPlanDefinition<String, String> plan = parallelPlan(
+            firstMapper.id(),
+            dependentSecond.id(),
+            aggregator.id(),
+            2
+        );
+        PlanComponentRegistry components = new PlanComponentRegistry(
+            List.of(firstMapper, dependentSecond),
+            List.of(aggregator)
+        );
+
+        assertThatThrownBy(() -> new DefaultExecutionPlanRegistry(
+            List.of(plan),
+            specialists,
+            clientFactory(specialists),
+            components,
+            4,
+            Duration.ofMinutes(1),
+            true,
+            4
+        ))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("references unavailable step output first");
+
+        PlanStepInputMapper<String, Long> independentSecond = mapper(
+            dependentSecond.id(),
+            Long.class,
+            Map.of(),
+            (input, outputs) -> 1L
+        );
+        assertThatThrownBy(() -> new DefaultExecutionPlanRegistry(
+            List.of(plan),
+            specialists,
+            clientFactory(specialists),
+            new PlanComponentRegistry(
+                List.of(firstMapper, independentSecond),
+                List.of(aggregator)
+            ),
+            4,
+            Duration.ofMinutes(1),
+            true,
+            1
+        ))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("branch ceiling of 1");
+    }
+
+    @Test
     void rejectsDuplicateStepsAndDeploymentLimitViolations() {
         SpecialistRegistry specialists = registry(
             definition(FIRST, String.class, Integer.class, false)
@@ -315,6 +464,42 @@ class DefaultExecutionPlanRegistryTest {
                     secondMapper
                 )
             ),
+            aggregator,
+            Duration.ofSeconds(30)
+        );
+    }
+
+    private ExecutionPlanDefinition<String, String> parallelPlan(
+        PlanComponentId firstMapper,
+        PlanComponentId secondMapper,
+        PlanComponentId aggregator,
+        int maximumConcurrency
+    ) {
+        return new ExecutionPlanDefinition<>(
+            ExecutionPlanId.of("parallel-proof", "1"),
+            String.class,
+            String.class,
+            List.<PlanStage>of(new ParallelPlanStep(
+                "independent-readers",
+                List.of(
+                    new SpecialistPlanStep(
+                        "first",
+                        FIRST,
+                        String.class,
+                        Integer.class,
+                        firstMapper
+                    ),
+                    new SpecialistPlanStep(
+                        "second",
+                        SECOND,
+                        Long.class,
+                        Boolean.class,
+                        secondMapper
+                    )
+                ),
+                FanInPolicy.ALL_REQUIRED,
+                maximumConcurrency
+            )),
             aggregator,
             Duration.ofSeconds(30)
         );

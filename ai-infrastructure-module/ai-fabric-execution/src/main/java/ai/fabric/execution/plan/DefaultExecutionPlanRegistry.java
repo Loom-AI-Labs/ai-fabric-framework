@@ -17,7 +17,7 @@ import java.util.Set;
 import java.util.TreeMap;
 
 /**
- * Startup-validating registry for fixed sequential plans.
+ * Startup-validating registry for fixed specialist plans.
  */
 public final class DefaultExecutionPlanRegistry
     implements ExecutionPlanRegistry {
@@ -31,6 +31,28 @@ public final class DefaultExecutionPlanRegistry
         PlanComponentRegistry componentRegistry,
         int maxSteps,
         Duration maxDuration
+    ) {
+        this(
+            definitions,
+            specialistRegistry,
+            specialistClientFactory,
+            componentRegistry,
+            maxSteps,
+            maxDuration,
+            false,
+            4
+        );
+    }
+
+    public DefaultExecutionPlanRegistry(
+        List<ExecutionPlanDefinition<?, ?>> definitions,
+        SpecialistRegistry specialistRegistry,
+        SpecialistClientFactory specialistClientFactory,
+        PlanComponentRegistry componentRegistry,
+        int maxSteps,
+        Duration maxDuration,
+        boolean parallelEnabled,
+        int maxParallelBranches
     ) {
         Objects.requireNonNull(
             specialistRegistry,
@@ -52,6 +74,11 @@ public final class DefaultExecutionPlanRegistry
             || maxDuration.isNegative()) {
             throw new IllegalArgumentException("maxDuration must be positive");
         }
+        if (maxParallelBranches < 1) {
+            throw new IllegalArgumentException(
+                "maxParallelBranches must be positive"
+            );
+        }
         Map<ExecutionPlanId, RegisteredExecutionPlan> validated =
             new LinkedHashMap<>();
         if (definitions != null) {
@@ -65,7 +92,9 @@ public final class DefaultExecutionPlanRegistry
                     specialistClientFactory,
                     componentRegistry,
                     maxSteps,
-                    maxDuration
+                    maxDuration,
+                    parallelEnabled,
+                    maxParallelBranches
                 );
                 if (validated.putIfAbsent(
                         registered.id(),
@@ -98,12 +127,15 @@ public final class DefaultExecutionPlanRegistry
         SpecialistClientFactory specialistClientFactory,
         PlanComponentRegistry componentRegistry,
         int maxSteps,
-        Duration maxDuration
+        Duration maxDuration,
+        boolean parallelEnabled,
+        int maxParallelBranches
     ) {
         if (definition.steps().isEmpty()) {
             throw invalid(definition, "must declare at least one step");
         }
-        if (definition.steps().size() > maxSteps) {
+        int specialistStepCount = specialistStepCount(definition);
+        if (specialistStepCount > maxSteps) {
             throw invalid(
                 definition,
                 "exceeds the deployment maximum of " + maxSteps + " steps"
@@ -116,92 +148,74 @@ public final class DefaultExecutionPlanRegistry
             );
         }
 
-        Set<String> stepIds = new HashSet<>();
+        Set<String> stageAndStepIds = new HashSet<>();
         Map<String, Class<?>> precedingOutputs = new LinkedHashMap<>();
         List<String> fingerprintSteps = new ArrayList<>();
-        for (SpecialistPlanStep step : definition.steps()) {
-            if (!stepIds.add(step.id())) {
+        for (PlanStage stage : definition.steps()) {
+            if (!stageAndStepIds.add(stage.id())) {
                 throw invalid(
                     definition,
-                    "declares duplicate step " + step.id()
+                    stage instanceof SpecialistPlanStep
+                        ? "declares duplicate step " + stage.id()
+                        : "declares duplicate parallel stage " + stage.id()
                 );
             }
-            SpecialistDefinition<?, ?> specialist;
-            try {
-                specialist = specialistRegistry.require(step.specialistId());
-            } catch (RuntimeException ex) {
+            if (stage instanceof SpecialistPlanStep step) {
+                fingerprintSteps.add(validateSpecialistStep(
+                    definition,
+                    step,
+                    precedingOutputs,
+                    specialistRegistry,
+                    specialistClientFactory,
+                    componentRegistry
+                ));
+                precedingOutputs.put(step.id(), step.outputType());
+                continue;
+            }
+            ParallelPlanStep parallel = (ParallelPlanStep) stage;
+            if (!parallelEnabled) {
                 throw invalid(
                     definition,
-                    "references unknown specialist " + step.specialistId()
+                    "declares parallel stage " + parallel.id()
+                        + " while parallel plans are disabled"
                 );
             }
-            if (specialist.executionProfile().writeEnabled()) {
+            if (parallel.branches().size() > maxParallelBranches
+                || parallel.maximumConcurrency() > maxParallelBranches) {
                 throw invalid(
                     definition,
-                    "references WRITE-capable specialist "
-                        + step.specialistId()
+                    "parallel stage " + parallel.id()
+                        + " exceeds the deployment branch ceiling of "
+                        + maxParallelBranches
                 );
             }
-            PlanStepInputMapper<?, ?> mapper;
-            try {
-                mapper = componentRegistry.requireMapper(
-                    step.inputMapperId()
-                );
-            } catch (RuntimeException ex) {
-                throw invalid(
+            List<String> branchDeclarations = new ArrayList<>();
+            Map<String, Class<?>> branchOutputs = new LinkedHashMap<>();
+            for (SpecialistPlanStep branch : parallel.branches()) {
+                if (!stageAndStepIds.add(branch.id())) {
+                    throw invalid(
+                        definition,
+                        "declares duplicate stage or step " + branch.id()
+                    );
+                }
+                branchDeclarations.add(validateSpecialistStep(
                     definition,
-                    "references unknown input mapper " + step.inputMapperId()
-                );
+                    branch,
+                    precedingOutputs,
+                    specialistRegistry,
+                    specialistClientFactory,
+                    componentRegistry
+                ));
+                branchOutputs.put(branch.id(), branch.outputType());
             }
-            requireSameType(
-                definition,
-                "mapper " + mapper.id() + " plan input",
-                definition.inputType(),
-                mapper.planInputType()
-            );
-            requireSameType(
-                definition,
-                "mapper " + mapper.id() + " specialist input",
-                step.inputType(),
-                mapper.stepInputType()
-            );
-            try {
-                bindStep(specialistClientFactory, step);
-            } catch (RuntimeException ex) {
-                throw invalid(
-                    definition,
-                    "step " + step.id()
-                        + " has an incompatible typed specialist binding: "
-                        + ex.getMessage()
-                );
-            }
-            Map<String, Class<?>> dependencies = normalizedDependencies(
-                definition,
-                "mapper " + mapper.id(),
-                mapper.requiredStepOutputs()
-            );
-            validateDependencies(
-                definition,
-                "mapper " + mapper.id(),
-                dependencies,
-                precedingOutputs
-            );
-            Class<?> outputType = step.outputType();
-            precedingOutputs.put(step.id(), outputType);
+            precedingOutputs.putAll(branchOutputs);
             fingerprintSteps.add(String.join(
                 "|",
-                step.id(),
-                step.specialistId().toString(),
-                specialistRegistry.requireRegistered(
-                    step.specialistId()
-                ).contentHash(),
-                mapper.id().toString(),
-                mapper.getClass().getName(),
-                mapper.planInputType().getName(),
-                mapper.stepInputType().getName(),
-                dependencyDeclaration(dependencies),
-                step.inputType().getName(),
-                outputType.getName()
+                "parallel",
+                parallel.id(),
+                parallel.fanInPolicy().name(),
+                Integer.toString(parallel.maximumConcurrency()),
+                String.join(";", branchDeclarations)
             ));
         }
 
@@ -255,6 +269,100 @@ public final class DefaultExecutionPlanRegistry
         return new RegisteredExecutionPlan(
             definition,
             CanonicalJsonSupport.sha256(declaration)
+        );
+    }
+
+    private int specialistStepCount(
+        ExecutionPlanDefinition<?, ?> definition
+    ) {
+        int count = 0;
+        for (PlanStage stage : definition.steps()) {
+            count += stage instanceof SpecialistPlanStep
+                ? 1
+                : ((ParallelPlanStep) stage).branches().size();
+        }
+        return count;
+    }
+
+    private String validateSpecialistStep(
+        ExecutionPlanDefinition<?, ?> definition,
+        SpecialistPlanStep step,
+        Map<String, Class<?>> availableOutputs,
+        SpecialistRegistry specialistRegistry,
+        SpecialistClientFactory specialistClientFactory,
+        PlanComponentRegistry componentRegistry
+    ) {
+        SpecialistDefinition<?, ?> specialist;
+        try {
+            specialist = specialistRegistry.require(step.specialistId());
+        } catch (RuntimeException ex) {
+            throw invalid(
+                definition,
+                "references unknown specialist " + step.specialistId()
+            );
+        }
+        if (specialist.executionProfile().writeEnabled()) {
+            throw invalid(
+                definition,
+                "references WRITE-capable specialist " + step.specialistId()
+            );
+        }
+        PlanStepInputMapper<?, ?> mapper;
+        try {
+            mapper = componentRegistry.requireMapper(step.inputMapperId());
+        } catch (RuntimeException ex) {
+            throw invalid(
+                definition,
+                "references unknown input mapper " + step.inputMapperId()
+            );
+        }
+        requireSameType(
+            definition,
+            "mapper " + mapper.id() + " plan input",
+            definition.inputType(),
+            mapper.planInputType()
+        );
+        requireSameType(
+            definition,
+            "mapper " + mapper.id() + " specialist input",
+            step.inputType(),
+            mapper.stepInputType()
+        );
+        try {
+            bindStep(specialistClientFactory, step);
+        } catch (RuntimeException ex) {
+            throw invalid(
+                definition,
+                "step " + step.id()
+                    + " has an incompatible typed specialist binding: "
+                    + ex.getMessage()
+            );
+        }
+        Map<String, Class<?>> dependencies = normalizedDependencies(
+            definition,
+            "mapper " + mapper.id(),
+            mapper.requiredStepOutputs()
+        );
+        validateDependencies(
+            definition,
+            "mapper " + mapper.id(),
+            dependencies,
+            availableOutputs
+        );
+        return String.join(
+            "|",
+            step.id(),
+            step.specialistId().toString(),
+            specialistRegistry.requireRegistered(
+                step.specialistId()
+            ).contentHash(),
+            mapper.id().toString(),
+            mapper.getClass().getName(),
+            mapper.planInputType().getName(),
+            mapper.stepInputType().getName(),
+            dependencyDeclaration(dependencies),
+            step.inputType().getName(),
+            step.outputType().getName()
         );
     }
 

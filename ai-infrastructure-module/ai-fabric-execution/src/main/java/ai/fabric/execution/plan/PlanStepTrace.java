@@ -12,6 +12,8 @@ import java.util.Objects;
  */
 public record PlanStepTrace(
     String stepId,
+    String parallelGroupId,
+    String sourceRevision,
     SpecialistId specialistId,
     String invocationId,
     AIExecutionStatus status,
@@ -21,12 +23,36 @@ public record PlanStepTrace(
 ) {
     public PlanStepTrace {
         stepId = requireText(stepId, "stepId");
+        parallelGroupId = normalizeOptional(parallelGroupId);
+        sourceRevision = normalizeOptional(sourceRevision);
         Objects.requireNonNull(specialistId, "specialistId is required");
         invocationId = requireText(invocationId, "invocationId");
         Objects.requireNonNull(status, "status is required");
         evidence = evidence == null ? List.of() : List.copyOf(evidence);
         Objects.requireNonNull(startedAt, "startedAt is required");
         Objects.requireNonNull(completedAt, "completedAt is required");
+    }
+
+    public PlanStepTrace(
+        String stepId,
+        SpecialistId specialistId,
+        String invocationId,
+        AIExecutionStatus status,
+        List<AIEvidenceReference> evidence,
+        Instant startedAt,
+        Instant completedAt
+    ) {
+        this(
+            stepId,
+            null,
+            null,
+            specialistId,
+            invocationId,
+            status,
+            evidence,
+            startedAt,
+            completedAt
+        );
     }
 
     private static String requireText(String value, String field) {
@@ -38,5 +64,13 @@ public record PlanStepTrace(
             throw new IllegalArgumentException(field + " is required");
         }
         return normalized;
+    }
+
+    private static String normalizeOptional(String value) {
+        if (value == null) {
+            return null;
+        }
+        String normalized = value.trim();
+        return normalized.isEmpty() ? null : normalized;
     }
 }

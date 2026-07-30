@@ -55,6 +55,15 @@ owns typed worker input and safe result projection, and the manager gateway
 records exactly one validated external response. There is no loop, dynamic
 discovery, manager-authored worker payload, or manager WRITE authority.
 
+For independent read assessments, an application may also opt into one
+bounded parallel plan stage. AI Fabric validates exact read-only specialists,
+typed branch mappers, sibling independence, branch and deployment ceilings,
+and `ALL_REQUIRED` fan-in at startup. Runtime uses the existing bounded
+executor, applies one plan deadline, cancels outstanding siblings after a
+failure, and atomically commits all branch outputs or none. Aggregation remains
+registered deterministic Java code; no model creates the topology or resolves
+fan-in.
+
 Trusted application event adapters can now submit those same typed specialists
 as bounded asynchronous work. The first proof maps a raw payment-verification
 failure to a read-only Account Resolver execution under a service principal
@@ -125,6 +134,7 @@ The adoption boundary is:
 | Exact-version read-only handoff validation, predecessor/successor lineage, independent successor authorization, and process-local replay | Intake selection, closed target schema, trusted successor-input mapping, public UX, and deciding whether responsibility should transfer |
 | Exact-version interactive dialogue ownership, approved frozen conversation snapshots, active-turn exclusion, and validated turn recording | Authentication, server-owned conversation/subject resolution, stable request idempotency, public chat UX, and instance affinity where required |
 | Exact-version bounded manager definitions, three typed directives, shared turn exclusion, closed worker validation, safe lineage, and process-local replay | Manager selection, closed target descriptions, typed worker-input mappers, safe result projectors, public UX, and deciding whether model-assisted routing adds value |
+| Opt-in bounded read-only parallel stages, topology validation, shared deadline, sibling cancellation, atomic `ALL_REQUIRED` fan-in, and deterministic traces | Selecting genuinely independent work, registering typed mappers and aggregators, sizing provider/executor concurrency, and proving latency value against a sequential control |
 | Manifest and execution diagnostics | Deployment, monitoring, support, and rollback |
 
 ## 3. Included Change Set
@@ -146,6 +156,7 @@ The adoption boundary is:
 | `28e726d` | Explicit, exact-version, one-level read-only specialist handoff and Account Resolver intake proof |
 | `81dd7b0` | Backend-owned interactive dialogue, frozen authorized history, one active turn, typed manifest client support, and Account Resolver follow-up proof |
 | `3fd0fa3` | Bounded conversation managers, three typed directives, one closed read-only worker choice, shared turn exclusion, replay limits, and packaged OpenAI proof |
+| Pending commit pin | Opt-in bounded read-only parallel plans, atomic `ALL_REQUIRED` fan-in, deterministic branch traces, and equivalent sequential/parallel Account Resolver proofs |
 
 These commits build on the released `0.4.0` lifecycle, indexing, RAG, action,
 provider, and chat-session contracts.
@@ -899,6 +910,48 @@ The reference Account Resolver manager uses a closed semantic prompt profile,
 two exact worker targets, and application-owned stable worker tasks. This
 prevents ambiguous follow-up wording from widening the selected capability.
 
+### 11.10 Bounded read-only parallel plans
+
+An application may declare one-level parallel stages inside an exact,
+application-selected execution plan:
+
+```text
+typed plan input
+  -> pre-map every branch from one immutable source revision
+  -> bounded concurrent exact-version READ specialists
+  -> independently authorize and validate every branch
+  -> ALL_REQUIRED atomic checkpoint
+  -> registered deterministic Java aggregator
+  -> one typed plan result
+```
+
+The first public contract contains `PlanStage`, sequential
+`SpecialistPlanStep`, `ParallelPlanStep`, and only
+`FanInPolicy.ALL_REQUIRED`. A parallel group has at least two branches and an
+explicit concurrency bound. Startup rejects the plan unless parallel execution
+is enabled and every branch is known, type-compatible, read-only, independent
+of its siblings, and within deployment ceilings.
+
+Inputs are mapped before any branch is submitted. Branches reuse
+`aiFabricExecutionTaskExecutor`; the runtime does not create unbounded threads
+or call a provider directly. A branch failure, deadline, cancellation,
+executor rejection, unsupported input wait, or unexpected write proposal is
+visible. Outstanding siblings are cancelled and no branch checkpoint reaches
+the aggregator. There is no sequential fallback.
+
+Successful traces preserve declaration order and expose exact specialist and
+invocation IDs, the parallel group ID, one common source revision, safe
+evidence, and branch timing. This allows an operator to prove real overlap
+without exposing prompts, trusted context, or provider payloads.
+
+The first boundary is synchronous and process-local. It does not support
+nested or model-generated graphs, sibling dependencies, input-wait
+consolidation, interactive owners, WRITE branches, partial success, model
+fan-in, restart recovery, or distributed cancellation.
+
+Detailed adoption guidance is in
+[`BOUNDED_READ_ONLY_PARALLEL_PLANS.md`](../Framework-Dev-Guides/application-patterns/BOUNDED_READ_ONLY_PARALLEL_PLANS.md).
+
 ## 12. Evidence And Indexing Boundary
 
 Specialist results return `AIEvidenceReference`.
@@ -990,6 +1043,8 @@ ai:
       result-ttl: PT15M
     plans:
       enabled: true
+      parallel-enabled: false
+      max-parallel-branches: 4
       max-steps: 8
       max-duration: PT2M
       max-active: 1000
@@ -1092,6 +1147,15 @@ Fixed plans are also additive. Existing direct specialist callers keep their
 current behavior. A plan must be selected explicitly by trusted application
 code and cannot be inferred or activated by a model response.
 
+Parallel plan stages are disabled by default. Existing sequential
+`SpecialistPlanStep` declarations remain valid, and the
+`ExecutionPlanDefinition` collection constructor preserves source
+compatibility for lists of sequential steps. `PlanStepTrace` adds nullable
+parallel-group and source-revision fields while retaining its original
+constructor. Applications receive no concurrent plan behavior until they
+explicitly set `ai.execution.plans.parallel-enabled=true` and register a
+parallel stage.
+
 Typed asynchronous methods are additive to `SpecialistClient`. Existing bound
 client calls continue to compile. The general `submit` behavior is hardened:
 an identical retained idempotent request now returns its original handle
@@ -1160,10 +1224,14 @@ For current adoption use, in order:
 14. the
     [interactive-dialogue implementation plan](../planning/ai-fabric-flow-architecture-analysis-pack/implementation-plans/0011-interactive-dialogue-ownership-implementation-plan.md);
 15. the
-    [bounded conversation-manager implementation plan](../planning/ai-fabric-flow-architecture-analysis-pack/implementation-plans/0012-bounded-conversation-manager-implementation-plan.md); and
+    [bounded conversation-manager implementation plan](../planning/ai-fabric-flow-architecture-analysis-pack/implementation-plans/0012-bounded-conversation-manager-implementation-plan.md);
 16. the
-   [`agentic-ai-action-resolver`](../../examples/real-apps/agentic-ai-action-resolver)
-   reference application.
+    [bounded read-only parallel-plan implementation plan](../planning/ai-fabric-flow-architecture-analysis-pack/implementation-plans/0013-bounded-read-only-parallel-plan-implementation-plan.md);
+17. the
+    [Bounded Read-Only Parallel Plans Guide](../Framework-Dev-Guides/application-patterns/BOUNDED_READ_ONLY_PARALLEL_PLANS.md); and
+18. the
+    [`agentic-ai-action-resolver`](../../examples/real-apps/agentic-ai-action-resolver)
+    reference application.
 
 ## 17. Loom AI Adoption Plan
 
@@ -1292,6 +1360,26 @@ For current adoption use, in order:
   manager/worker model-call count against the direct route.
 - [ ] Keep the first manager read-only and one-turn. Do not add loops, dynamic
   discovery, dialogue transfer, or a second synthesis call.
+
+### Phase 1.95: Bounded read-only parallel-plan proof
+
+- [ ] Start from a fixed sequential plan whose branches are genuinely
+  independent and already produce acceptable typed results.
+- [ ] Register an equivalent parallel plan using the same exact-version
+  specialists, typed input mappers, and deterministic Java aggregator.
+- [ ] Enable parallel plans explicitly and set a deployment branch ceiling
+  that fits both the bounded executor and provider concurrency limits.
+- [ ] Keep every branch read-only, non-interactive, unable to request input,
+  and independent of sibling output.
+- [ ] Prove startup rejection for disabled, oversized, dependent, unknown,
+  type-incompatible, and WRITE-capable branches.
+- [ ] Prove one failed or timed-out branch cancels outstanding work, commits no
+  partial checkpoint, skips aggregation, and never falls back sequentially.
+- [ ] Compare at least three warm runs per strategy for typed policy
+  equivalence, branch timing, invocation lineage, provider failures, and total
+  latency.
+- [ ] Adopt parallel execution only when the measured latency improvement
+  justifies simultaneous provider work.
 
 ### Phase 2: Governed write proof
 
@@ -1736,6 +1824,35 @@ commit.
   completion. Worker routes used one manager plus one worker invocation;
   manager-only responses used one manager invocation.
 
+### Bounded read-only parallel plans
+
+- The framework reactor passed 1,052 tests with no failures or skips: 5
+  curated-default, 677 core, 59 chat-session, and 311 execution tests.
+- The clean real-app reactor passed 12 shared smoke-support tests and 138
+  Agentic AI Action Resolver tests.
+- The packaged and locally verified core JARs shared SHA-256
+  `b2543edcc887209513060e4ec0d4246fcfa2ecc524296bc4e79dd319ffd0c9a4`;
+  the execution JARs shared
+  `feb2c49dad6a404aab57ca92903a6d97090da69012c2e4f99decc48fc68870b0`.
+- Deterministic tests cover feature gating, branch and flattened-step
+  ceilings, exact types, sibling independence, WRITE rejection, overlap,
+  declaration-order traces, atomic checkpointing, failure cancellation,
+  deadline cancellation, unsupported waits and write proposals, executor
+  rejection, and all existing sequential behavior.
+- The packaged application health endpoint exposed both equivalent plans,
+  exact topology, content hashes, `ALL_REQUIRED`, concurrency 2, and the
+  enabled deployment ceiling.
+- Three real OpenAI runs per strategy all returned `SUCCEEDED` and the same
+  byte-identical typed outcome: `BLOCKED`, `AUTO_APPROVED`, `APPROVED`, and an
+  automatic limit of 100.
+- Sequential branches did not overlap in any run. Parallel branches overlapped
+  in every run, retained declaration order, used distinct invocation IDs, and
+  shared one source revision.
+- Average measured wall time was 15.511 seconds sequentially and 6.699 seconds
+  in parallel for the documented complete account-credit request. Both plans
+  invoked the same two specialists; this is a bounded measurement, not a
+  general latency guarantee.
+
 ## 22. Release Gate Still Required
 
 Before Loom AI adopts a published artifact:
@@ -1749,6 +1866,8 @@ Before Loom AI adopts a published artifact:
 - [ ] Run keyed OpenAI manager account-read, billing, clarification,
   unsupported completion, backend-history follow-up, replay, and conflict
   scenarios.
+- [ ] Run keyed OpenAI sequential/parallel parity, overlap, atomic failure,
+  deadline, and disabled-feature scenarios.
 - [ ] Run packaged Docker and JDBC restart/replay proof.
 - [ ] Verify Maven Central consumer resolution.
 - [ ] Publish release notes and migration guidance.
@@ -1766,7 +1885,10 @@ dependency.
 This release does not provide:
 
 - model-generated or dynamic multi-specialist planning;
-- conditional or parallel specialist branches;
+- conditional branches, nested parallel groups, or dynamic parallel
+  topology;
+- parallel input waits, interactive owners, WRITE branches, partial-success
+  fan-in, or durable parallel execution;
 - recursive specialist delegation, handoff chains, or interactive
   dialogue-owner transfer;
 - interactive plan dialogue ownership, manager loops, second manager
@@ -1822,7 +1944,9 @@ For Loom AI:
 11. use a bounded conversation manager only where a closed read-only worker
     choice measurably improves ambiguous interactive requests, with typed
     application mapping and safe projection; and
-12. defer unrestricted planning, recursive transitions, WRITE composition,
+12. use bounded parallel plans only for proven-independent read work after an
+    equivalent sequential control shows a material latency benefit; and
+13. defer unrestricted planning, recursive transitions, WRITE composition,
     dialogue-owner transfer, and durable plan execution until bounded
     contracts have production usage evidence.
 

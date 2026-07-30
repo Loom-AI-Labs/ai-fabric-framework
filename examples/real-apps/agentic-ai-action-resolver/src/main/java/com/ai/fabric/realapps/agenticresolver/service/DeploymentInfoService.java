@@ -9,6 +9,10 @@ import ai.fabric.execution.manager.ConversationManagerGateway;
 import ai.fabric.execution.manager.ConversationManagerRegistry;
 import ai.fabric.execution.plan.AIExecutionCoordinator;
 import ai.fabric.execution.plan.ExecutionPlanRegistry;
+import ai.fabric.execution.plan.ParallelPlanStep;
+import ai.fabric.execution.plan.PlanStage;
+import ai.fabric.execution.plan.RegisteredExecutionPlan;
+import ai.fabric.execution.plan.SpecialistPlanStep;
 import ai.fabric.execution.specialist.RegisteredSpecialist;
 import ai.fabric.execution.specialist.SpecialistRegistry;
 import ai.fabric.execution.specialist.manifest.SpecialistManifestRuntimeStatus;
@@ -183,13 +187,17 @@ public class DeploymentInfoService {
             "EPHEMERAL"
         );
         execution.put(
+            "parallelPlansEnabled",
+            executionProperties.getPlans().isParallelEnabled()
+        );
+        execution.put(
+            "maxParallelBranches",
+            executionProperties.getPlans().getMaxParallelBranches()
+        );
+        execution.put(
             "plans",
             executionPlanRegistry.list().stream()
-                .map(plan -> Map.of(
-                    "id", plan.id().toString(),
-                    "contentHash", plan.contentHash(),
-                    "steps", plan.definition().steps().size()
-                ))
+                .map(this::planDefinition)
                 .toList()
         );
         execution.put("asyncDurability", asyncDurability);
@@ -273,6 +281,49 @@ public class DeploymentInfoService {
         health.put("startedAt", startedAt.toString());
         health.put("checkedAt", Instant.now().toString());
         return health;
+    }
+
+    private Map<String, Object> planDefinition(
+        RegisteredExecutionPlan plan
+    ) {
+        List<Map<String, Object>> stages = plan.definition().steps().stream()
+            .map(this::stageDefinition)
+            .toList();
+        int specialistSteps = plan.definition().steps().stream()
+            .mapToInt(stage -> stage instanceof SpecialistPlanStep
+                ? 1
+                : ((ParallelPlanStep) stage).branches().size())
+            .sum();
+        Map<String, Object> definition = new LinkedHashMap<>();
+        definition.put("id", plan.id().toString());
+        definition.put("contentHash", plan.contentHash());
+        definition.put("steps", plan.definition().steps().size());
+        definition.put("specialistSteps", specialistSteps);
+        definition.put("stages", stages);
+        return Map.copyOf(definition);
+    }
+
+    private Map<String, Object> stageDefinition(PlanStage stage) {
+        if (stage instanceof SpecialistPlanStep specialist) {
+            return Map.of(
+                "id", specialist.id(),
+                "type", "SEQUENTIAL",
+                "specialist", specialist.specialistId().toString()
+            );
+        }
+        ParallelPlanStep parallel = (ParallelPlanStep) stage;
+        return Map.of(
+            "id", parallel.id(),
+            "type", "PARALLEL",
+            "fanIn", parallel.fanInPolicy().name(),
+            "maximumConcurrency", parallel.maximumConcurrency(),
+            "branches", parallel.branches().stream()
+                .map(branch -> Map.of(
+                    "id", branch.id(),
+                    "specialist", branch.specialistId().toString()
+                ))
+                .toList()
+        );
     }
 
     private Map<String, Object> specialistDefinition(

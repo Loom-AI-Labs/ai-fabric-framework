@@ -91,6 +91,8 @@ class DeploymentInfoServiceTest {
         executionProperties.getAsync().setRepository(
             AIExecutionProperties.AsyncRepository.JDBC
         );
+        executionProperties.getPlans().setParallelEnabled(true);
+        executionProperties.getPlans().setMaxParallelBranches(2);
         Map<String, Object> health = new DeploymentInfoService(
             environment,
             List.of(provider),
@@ -143,6 +145,8 @@ class DeploymentInfoServiceTest {
                     .containsEntry("conversationManagerReady", true)
                     .containsEntry("conversationManagers", List.of())
                     .containsEntry("planDurability", "EPHEMERAL")
+                    .containsEntry("parallelPlansEnabled", true)
+                    .containsEntry("maxParallelBranches", 2)
                     .containsEntry("plans", List.of())
                     .containsEntry("asyncDurability", "DURABLE")
                     .containsEntry("durableAsyncStateReady", true)

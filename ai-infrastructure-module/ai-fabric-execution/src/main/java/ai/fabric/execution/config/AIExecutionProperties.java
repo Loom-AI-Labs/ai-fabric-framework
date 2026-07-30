@@ -107,7 +107,9 @@ public class AIExecutionProperties {
 
     public static class Plans {
         private boolean enabled = true;
+        private boolean parallelEnabled;
         private int maxSteps = 8;
+        private int maxParallelBranches = 4;
         private Duration maxDuration = Duration.ofMinutes(2);
         private int maxActive = 1_000;
         private Duration resultTtl = Duration.ofMinutes(15);
@@ -120,12 +122,31 @@ public class AIExecutionProperties {
             this.enabled = enabled;
         }
 
+        public boolean isParallelEnabled() {
+            return parallelEnabled;
+        }
+
+        public void setParallelEnabled(boolean parallelEnabled) {
+            this.parallelEnabled = parallelEnabled;
+        }
+
         public int getMaxSteps() {
             return maxSteps;
         }
 
         public void setMaxSteps(int maxSteps) {
             this.maxSteps = positive(maxSteps, "maxSteps");
+        }
+
+        public int getMaxParallelBranches() {
+            return maxParallelBranches;
+        }
+
+        public void setMaxParallelBranches(int maxParallelBranches) {
+            this.maxParallelBranches = positive(
+                maxParallelBranches,
+                "maxParallelBranches"
+            );
         }
 
         public Duration getMaxDuration() {

@@ -55,6 +55,7 @@ import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.core.task.support.TaskExecutorAdapter;
 
 class DefaultAIExecutionCoordinatorTest {
 
@@ -102,6 +103,7 @@ class DefaultAIExecutionCoordinatorTest {
             components,
             gateway,
             forwardingClientFactory(gateway),
+            new TaskExecutorAdapter(Runnable::run),
             new CanonicalJsonSupport(new ObjectMapper()),
             Clock.fixed(NOW, ZoneOffset.UTC),
             properties

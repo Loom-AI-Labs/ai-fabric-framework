@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -334,6 +335,78 @@ class AgenticResolverExecutionServiceTest {
             )
             .noneMatch(scope -> scope.startsWith("action:update_"))
             .noneMatch(scope -> scope.startsWith("action:request_"));
+    }
+
+    @Test
+    void independentControlAndParallelRoutesUseTheSameTrustedInput() {
+        UUID selectedSubject = UUID.randomUUID();
+        AIExecutionCoordinator coordinator =
+            mock(AIExecutionCoordinator.class);
+        AgenticResolverSessionService sessions =
+            mock(AgenticResolverSessionService.class);
+        when(sessions.active("session-1")).thenReturn(activeSession(
+            selectedSubject
+        ));
+        AgenticResolverExecutionService service =
+            new AgenticResolverExecutionService(
+                clientFactory(new AtomicReference<>()),
+                mock(AIInteractiveExecutionGateway.class),
+                coordinator,
+                mock(ActionProposalCoordinator.class),
+                sessions,
+                Clock.fixed(NOW, ZoneOffset.UTC)
+            );
+        AccountBillingResolutionPlanRequest request =
+            new AccountBillingResolutionPlanRequest(
+                "Assess this account credit.",
+                RefundRequest.ResolutionType.ACCOUNT_CREDIT,
+                new BigDecimal("25.00")
+            );
+
+        service.executeIndependentSequentialBillingPlan(
+            "session-1",
+            request,
+            "sequential-1"
+        );
+        service.executeIndependentParallelBillingPlan(
+            "session-1",
+            request,
+            "parallel-1"
+        );
+
+        ArgumentCaptor<PlanExecutionRequest<?>> captured =
+            planRequestCaptor();
+        verify(coordinator, times(2)).execute(captured.capture());
+        assertThat(captured.getAllValues())
+            .extracting(PlanExecutionRequest::planId)
+            .containsExactly(
+                AccountResolverPlans
+                    .ACCOUNT_BILLING_INDEPENDENT_SEQUENTIAL,
+                AccountResolverPlans
+                    .ACCOUNT_BILLING_INDEPENDENT_PARALLEL
+            );
+        assertThat(captured.getAllValues())
+            .extracting(PlanExecutionRequest::input)
+            .allSatisfy(input -> assertThat(input).isEqualTo(request));
+        assertThat(captured.getAllValues())
+            .extracting(PlanExecutionRequest::idempotencyKey)
+            .containsExactly("sequential-1", "parallel-1");
+        assertThat(captured.getAllValues())
+            .allSatisfy(invocation -> {
+                assertThat(
+                    invocation.trustedExecutionContext()
+                        .subject().subjectId()
+                ).isEqualTo(selectedSubject.toString());
+                assertThat(
+                    invocation.trustedExecutionContext().grantedScopes()
+                ).containsExactlyInAnyOrder(
+                    "specialist:account-resolver-read@1",
+                    "specialist:billing-resolution-advisor@1",
+                    "action:get_account_profile",
+                    "action:assess_billing_resolution",
+                    "vector:account-resolution-policy"
+                );
+            });
     }
 
     @Test

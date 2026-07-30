@@ -15,7 +15,9 @@ import ai.fabric.execution.plan.PlanExecutionResumeStatus;
 import ai.fabric.execution.plan.PlanExecutionSnapshot;
 import ai.fabric.execution.plan.PlanExecutionStatus;
 import ai.fabric.execution.plan.PlanNeedsUserInput;
+import ai.fabric.execution.plan.ParallelPlanStep;
 import ai.fabric.execution.plan.PlanResultAggregator;
+import ai.fabric.execution.plan.PlanStage;
 import ai.fabric.execution.plan.PlanStepInputMapper;
 import ai.fabric.execution.plan.PlanStepOutputs;
 import ai.fabric.execution.plan.PlanStepTrace;
@@ -36,11 +38,22 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.CancellationException;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorCompletionService;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.core.task.AsyncTaskExecutor;
 
 /**
- * Deterministic coordinator for fixed sequential, non-interactive plans.
+ * Deterministic coordinator for fixed non-interactive specialist plans.
+ *
+ * <p>Plans execute sequentially unless an explicitly registered and enabled
+ * read-only parallel stage is encountered.</p>
  */
 public final class DefaultAIExecutionCoordinator
     implements AIExecutionCoordinator {
@@ -52,15 +65,19 @@ public final class DefaultAIExecutionCoordinator
     private final PlanComponentRegistry componentRegistry;
     private final AIExecutionGateway executionGateway;
     private final SpecialistClientFactory specialistClientFactory;
+    private final AsyncTaskExecutor parallelExecutor;
     private final CanonicalJsonSupport canonicalJson;
     private final Clock clock;
     private final EphemeralPlanExecutionStore store;
+    private final ConcurrentMap<String, ActiveParallelExecution>
+        activeParallelExecutions = new ConcurrentHashMap<>();
 
     public DefaultAIExecutionCoordinator(
         ExecutionPlanRegistry planRegistry,
         PlanComponentRegistry componentRegistry,
         AIExecutionGateway executionGateway,
         SpecialistClientFactory specialistClientFactory,
+        AsyncTaskExecutor parallelExecutor,
         CanonicalJsonSupport canonicalJson,
         Clock clock,
         AIExecutionProperties.Plans properties
@@ -80,6 +97,10 @@ public final class DefaultAIExecutionCoordinator
         this.specialistClientFactory = Objects.requireNonNull(
             specialistClientFactory,
             "specialistClientFactory is required"
+        );
+        this.parallelExecutor = Objects.requireNonNull(
+            parallelExecutor,
+            "parallelExecutor is required"
         );
         this.canonicalJson = Objects.requireNonNull(
             canonicalJson,
@@ -281,11 +302,18 @@ public final class DefaultAIExecutionCoordinator
         EphemeralPlanExecutionStore.Entry entry = found.get();
         String childInvocationId = entry.activeInvocationId();
         boolean cancelled = store.cancel(entry);
-        if (cancelled && childInvocationId != null) {
-            executionGateway.cancel(
-                childInvocationId,
-                trustedExecutionContext
-            );
+        if (cancelled) {
+            ActiveParallelExecution parallel =
+                activeParallelExecutions.get(executionId);
+            if (parallel != null) {
+                parallel.cancel();
+            }
+            if (childInvocationId != null) {
+                executionGateway.cancel(
+                    childInvocationId,
+                    trustedExecutionContext
+                );
+            }
         }
         return cancelled;
     }
@@ -356,7 +384,25 @@ public final class DefaultAIExecutionCoordinator
             );
             return PlanExecutionResumeResult.resumed(failure);
         }
-        SpecialistPlanStep step = plan.definition().steps().get(stepIndex);
+        PlanStage stage = plan.definition().steps().get(stepIndex);
+        if (!(stage instanceof SpecialistPlanStep step)) {
+            PlanExecutionResult<O> failure = completeFailure(
+                entry,
+                PlanExecutionStatus.FAILED,
+                "PLAN_CHECKPOINT_INVALID",
+                "Parallel plan stages cannot enter an input-wait checkpoint.",
+                false,
+                stage.id()
+            );
+            store.recordResume(
+                entry,
+                request.requestId(),
+                request.idempotencyKey(),
+                responseHash,
+                failure
+            );
+            return PlanExecutionResumeResult.resumed(failure);
+        }
         if (!step.id().equals(entry.activeStepId())
             || !step.specialistId().equals(entry.activeSpecialistId())
             || entry.activeInvocationId() == null) {
@@ -477,7 +523,17 @@ public final class DefaultAIExecutionCoordinator
                 );
             }
             int stepIndex = entry.nextStepIndex();
-            SpecialistPlanStep step = definition.steps().get(stepIndex);
+            PlanStage stage = definition.steps().get(stepIndex);
+            if (stage instanceof ParallelPlanStep parallel) {
+                return executeParallelStage(
+                    entry,
+                    plan,
+                    stepIndex,
+                    parallel,
+                    trustedContext
+                );
+            }
+            SpecialistPlanStep step = (SpecialistPlanStep) stage;
             Object stepInput;
             try {
                 stepInput = mapStepInput(
@@ -569,7 +625,7 @@ public final class DefaultAIExecutionCoordinator
             null,
             output,
             entry.traces(),
-            diagnostics(entry, definition.steps().size()),
+            diagnostics(entry, specialistStepCount(definition)),
             null,
             null,
             entry.startedAt(),
@@ -585,6 +641,343 @@ public final class DefaultAIExecutionCoordinator
             entry.traces().size()
         );
         return result;
+    }
+
+    @SuppressWarnings("unchecked")
+    private <O> PlanExecutionResult<O> executeParallelStage(
+        EphemeralPlanExecutionStore.Entry entry,
+        RegisteredExecutionPlan plan,
+        int stageIndex,
+        ParallelPlanStep parallel,
+        TrustedExecutionContext trustedContext
+    ) {
+        ExecutionPlanDefinition<Object, O> definition =
+            (ExecutionPlanDefinition<Object, O>) plan.definition();
+        List<MappedParallelBranch> mappedBranches = new ArrayList<>();
+        for (SpecialistPlanStep branch : parallel.branches()) {
+            try {
+                mappedBranches.add(new MappedParallelBranch(
+                    branch,
+                    mapStepInput(
+                        definition,
+                        branch,
+                        entry.planInput(),
+                        entry.completedOutputs()
+                    )
+                ));
+            } catch (RuntimeException ex) {
+                log.warn(
+                    "Plan execution {} parallelGroup={} branch={} input mapping failed: {}",
+                    entry.executionId(),
+                    parallel.id(),
+                    branch.id(),
+                    ex.getClass().getSimpleName()
+                );
+                return completeFailure(
+                    entry,
+                    PlanExecutionStatus.FAILED,
+                    "PLAN_PARALLEL_BRANCH_MAPPING_FAILED",
+                    "A registered parallel branch input mapping failed.",
+                    false,
+                    branch.id()
+                );
+            }
+        }
+        if (!store.beginParallel(entry, stageIndex, parallel)) {
+            return castResult(entry.result());
+        }
+
+        ActiveParallelExecution active = new ActiveParallelExecution();
+        ActiveParallelExecution existing = activeParallelExecutions.putIfAbsent(
+            entry.executionId(),
+            active
+        );
+        if (existing != null) {
+            return completeFailure(
+                entry,
+                PlanExecutionStatus.FAILED,
+                "PLAN_PARALLEL_STATE_CONFLICT",
+                "Parallel plan state could not be acquired safely.",
+                true,
+                parallel.id()
+            );
+        }
+
+        ExecutorCompletionService<ParallelBranchCompletion> completion =
+            new ExecutorCompletionService<>(parallelExecutor);
+        Map<String, AIExecutionResult<?>> results = new LinkedHashMap<>();
+        boolean completedSuccessfully = false;
+        try {
+            for (MappedParallelBranch mapped : mappedBranches) {
+                if (!entry.runnable()) {
+                    return castResult(entry.result());
+                }
+                Future<ParallelBranchCompletion> future;
+                try {
+                    future = completion.submit(() ->
+                        invokeParallelBranch(
+                            entry,
+                            mapped,
+                            trustedContext
+                        )
+                    );
+                } catch (RuntimeException ex) {
+                    log.warn(
+                        "Plan execution {} parallelGroup={} branch submission failed: {}",
+                        entry.executionId(),
+                        parallel.id(),
+                        ex.getClass().getSimpleName()
+                    );
+                    active.cancel();
+                    return completeFailure(
+                        entry,
+                        PlanExecutionStatus.FAILED,
+                        "PLAN_PARALLEL_CAPACITY_REJECTED",
+                        "Parallel branch capacity is temporarily unavailable.",
+                        true,
+                        parallel.id(),
+                        parallelTraces(entry, parallel, results)
+                    );
+                }
+                active.add(future);
+            }
+
+            while (results.size() < parallel.branches().size()) {
+                if (!entry.runnable()) {
+                    active.cancel();
+                    return castResult(entry.result());
+                }
+                long remainingNanos = java.time.Duration.between(
+                    clock.instant(),
+                    entry.deadline()
+                ).toNanos();
+                if (remainingNanos <= 0) {
+                    active.cancel();
+                    return completeFailure(
+                        entry,
+                        PlanExecutionStatus.DEADLINE_EXCEEDED,
+                        "PLAN_DEADLINE_EXCEEDED",
+                        "The execution plan deadline elapsed during parallel work.",
+                        true,
+                        parallel.id(),
+                        parallelTraces(entry, parallel, results)
+                    );
+                }
+                Future<ParallelBranchCompletion> completedFuture =
+                    completion.poll(remainingNanos, TimeUnit.NANOSECONDS);
+                if (completedFuture == null) {
+                    active.cancel();
+                    return completeFailure(
+                        entry,
+                        PlanExecutionStatus.DEADLINE_EXCEEDED,
+                        "PLAN_DEADLINE_EXCEEDED",
+                        "The execution plan deadline elapsed during parallel work.",
+                        true,
+                        parallel.id(),
+                        parallelTraces(entry, parallel, results)
+                    );
+                }
+                ParallelBranchCompletion branchCompletion;
+                try {
+                    branchCompletion = completedFuture.get();
+                } catch (CancellationException ex) {
+                    active.cancel();
+                    if (!entry.runnable()) {
+                        return castResult(entry.result());
+                    }
+                    return completeFailure(
+                        entry,
+                        PlanExecutionStatus.CANCELLED,
+                        "PLAN_CANCELLED",
+                        "Parallel plan work was cancelled.",
+                        false,
+                        parallel.id(),
+                        parallelTraces(entry, parallel, results)
+                    );
+                } catch (ExecutionException ex) {
+                    active.cancel();
+                    return completeFailure(
+                        entry,
+                        PlanExecutionStatus.FAILED,
+                        "PLAN_PARALLEL_BRANCH_INVOCATION_FAILED",
+                        "A parallel specialist branch could not be invoked safely.",
+                        false,
+                        parallel.id(),
+                        parallelTraces(entry, parallel, results)
+                    );
+                }
+                if (branchCompletion.failureType() != null) {
+                    active.cancel();
+                    return completeFailure(
+                        entry,
+                        PlanExecutionStatus.FAILED,
+                        "PLAN_PARALLEL_BRANCH_INVOCATION_FAILED",
+                        "A parallel specialist branch could not be invoked safely.",
+                        false,
+                        branchCompletion.step().id(),
+                        parallelTraces(entry, parallel, results)
+                    );
+                }
+                SpecialistPlanStep branch = branchCompletion.step();
+                AIExecutionResult<?> child = branchCompletion.result();
+                results.put(branch.id(), child);
+                PlanExecutionResult<O> failure = validateParallelBranch(
+                    entry,
+                    parallel,
+                    branch,
+                    child,
+                    results
+                );
+                if (failure != null) {
+                    active.cancel();
+                    return failure;
+                }
+            }
+            if (!store.checkpointParallel(
+                    entry,
+                    stageIndex,
+                    parallel,
+                    results
+                )) {
+                return castResult(entry.result());
+            }
+            completedSuccessfully = true;
+            return continueExecution(entry, plan, trustedContext);
+        } catch (InterruptedException ex) {
+            active.cancel();
+            Thread.currentThread().interrupt();
+            return completeFailure(
+                entry,
+                PlanExecutionStatus.CANCELLED,
+                "PLAN_CANCELLED",
+                "Parallel plan execution was interrupted.",
+                false,
+                parallel.id(),
+                parallelTraces(entry, parallel, results)
+            );
+        } finally {
+            if (!completedSuccessfully) {
+                active.cancel();
+            }
+            activeParallelExecutions.remove(entry.executionId(), active);
+        }
+    }
+
+    private ParallelBranchCompletion invokeParallelBranch(
+        EphemeralPlanExecutionStore.Entry entry,
+        MappedParallelBranch mapped,
+        TrustedExecutionContext trustedContext
+    ) {
+        try {
+            AIExecutionResult<?> child = bindStep(mapped.step()).execute(
+                new SpecialistInvocation<>(
+                    mapped.input(),
+                    trustedContext,
+                    null,
+                    entry.deadline(),
+                    childIdempotencyKey(
+                        entry.executionId(),
+                        mapped.step().id()
+                    )
+                )
+            );
+            return ParallelBranchCompletion.succeeded(
+                mapped.step(),
+                child
+            );
+        } catch (RuntimeException ex) {
+            log.warn(
+                "Plan execution {} parallel branch={} invocation failed: {}",
+                entry.executionId(),
+                mapped.step().id(),
+                ex.getClass().getSimpleName()
+            );
+            return ParallelBranchCompletion.failed(
+                mapped.step(),
+                ex.getClass().getSimpleName()
+            );
+        }
+    }
+
+    private <O> PlanExecutionResult<O> validateParallelBranch(
+        EphemeralPlanExecutionStore.Entry entry,
+        ParallelPlanStep parallel,
+        SpecialistPlanStep branch,
+        AIExecutionResult<?> child,
+        Map<String, AIExecutionResult<?>> results
+    ) {
+        List<PlanStepTrace> traces = parallelTraces(
+            entry,
+            parallel,
+            results
+        );
+        if (!branch.specialistId().equals(child.specialistId())) {
+            return completeFailure(
+                entry,
+                PlanExecutionStatus.FAILED,
+                "PLAN_STEP_SPECIALIST_MISMATCH",
+                "A parallel branch returned under an unexpected identity.",
+                false,
+                branch.id(),
+                traces
+            );
+        }
+        if (child.succeeded()) {
+            if (child.output() == null
+                || !branch.outputType().isInstance(child.output())) {
+                return completeFailure(
+                    entry,
+                    PlanExecutionStatus.FAILED,
+                    "PLAN_STEP_OUTPUT_TYPE_INVALID",
+                    "A parallel branch returned an invalid typed output.",
+                    false,
+                    branch.id(),
+                    traces
+                );
+            }
+            return null;
+        }
+        if (child.waitingForInput()) {
+            return completeFailure(
+                entry,
+                PlanExecutionStatus.FAILED,
+                "PLAN_PARALLEL_INPUT_WAIT_UNSUPPORTED",
+                "Parallel branches cannot request user input in this runtime.",
+                false,
+                branch.id(),
+                traces
+            );
+        }
+        if (child.status() == AIExecutionStatus.CONFIRMATION_REQUIRED) {
+            return completeFailure(
+                entry,
+                PlanExecutionStatus.FAILED,
+                "PLAN_PARALLEL_WRITE_PROPOSAL_UNSUPPORTED",
+                "Parallel branches cannot propose WRITE actions in this runtime.",
+                false,
+                branch.id(),
+                traces
+            );
+        }
+        PlanExecutionFailure childFailure = child.failure() != null
+            ? new PlanExecutionFailure(
+                child.failure().reason(),
+                child.failure().publicMessage(),
+                child.failure().retryable(),
+                branch.id()
+            )
+            : new PlanExecutionFailure(
+                "PLAN_CHILD_EXECUTION_FAILED",
+                "A parallel specialist branch failed.",
+                false,
+                branch.id()
+            );
+        return completeFailure(
+            entry,
+            mapStatus(child.status()),
+            childFailure,
+            traces
+        );
     }
 
     private <O> PlanExecutionResult<O> processChildResult(
@@ -606,7 +999,7 @@ public final class DefaultAIExecutionCoordinator
                 "A specialist plan step returned under an unexpected identity.",
                 false,
                 step.id(),
-                withTrace(entry.traces(), step, child)
+                withTrace(entry, entry.traces(), step, child)
             );
         }
         if (child.succeeded()) {
@@ -619,7 +1012,7 @@ public final class DefaultAIExecutionCoordinator
                     "A specialist plan step returned an invalid typed output.",
                     false,
                     step.id(),
-                    withTrace(entry.traces(), step, child)
+                    withTrace(entry, entry.traces(), step, child)
                 );
             }
             if (!store.checkpoint(entry, stepIndex, step, child)) {
@@ -635,8 +1028,11 @@ public final class DefaultAIExecutionCoordinator
                 PlanExecutionStatus.WAITING_FOR_INPUT,
                 step.id(),
                 null,
-                withTrace(entry.traces(), step, child),
-                diagnostics(entry, plan.definition().steps().size()),
+                withTrace(entry, entry.traces(), step, child),
+                diagnostics(
+                    entry,
+                    specialistStepCount(plan.definition())
+                ),
                 null,
                 new PlanNeedsUserInput(
                     entry.executionId(),
@@ -672,7 +1068,7 @@ public final class DefaultAIExecutionCoordinator
                 "This plan runtime does not support composed WRITE proposals.",
                 false,
                 step.id(),
-                withTrace(entry.traces(), step, child)
+                withTrace(entry, entry.traces(), step, child)
             );
         }
         PlanExecutionFailure childFailure = child.failure() != null
@@ -692,7 +1088,7 @@ public final class DefaultAIExecutionCoordinator
             entry,
             mapStatus(child.status()),
             childFailure,
-            withTrace(entry.traces(), step, child)
+            withTrace(entry, entry.traces(), step, child)
         );
     }
 
@@ -891,6 +1287,7 @@ public final class DefaultAIExecutionCoordinator
     }
 
     private List<PlanStepTrace> withTrace(
+        EphemeralPlanExecutionStore.Entry entry,
         List<PlanStepTrace> traces,
         SpecialistPlanStep step,
         AIExecutionResult<?> child
@@ -898,6 +1295,8 @@ public final class DefaultAIExecutionCoordinator
         List<PlanStepTrace> combined = new ArrayList<>(traces);
         combined.add(new PlanStepTrace(
             step.id(),
+            null,
+            entry.inputHash(),
             child.specialistId(),
             child.invocationId(),
             child.status(),
@@ -906,6 +1305,44 @@ public final class DefaultAIExecutionCoordinator
             child.completedAt()
         ));
         return List.copyOf(combined);
+    }
+
+    private List<PlanStepTrace> parallelTraces(
+        EphemeralPlanExecutionStore.Entry entry,
+        ParallelPlanStep parallel,
+        Map<String, AIExecutionResult<?>> results
+    ) {
+        List<PlanStepTrace> combined = new ArrayList<>(entry.traces());
+        for (SpecialistPlanStep branch : parallel.branches()) {
+            AIExecutionResult<?> result = results.get(branch.id());
+            if (result == null) {
+                continue;
+            }
+            combined.add(new PlanStepTrace(
+                branch.id(),
+                parallel.id(),
+                entry.inputHash(),
+                result.specialistId(),
+                result.invocationId(),
+                result.status(),
+                result.evidence(),
+                result.startedAt(),
+                result.completedAt()
+            ));
+        }
+        return List.copyOf(combined);
+    }
+
+    private int specialistStepCount(
+        ExecutionPlanDefinition<?, ?> definition
+    ) {
+        int count = 0;
+        for (PlanStage stage : definition.steps()) {
+            count += stage instanceof SpecialistPlanStep
+                ? 1
+                : ((ParallelPlanStep) stage).branches().size();
+        }
+        return count;
     }
 
     private Map<String, Object> diagnostics(
@@ -1020,5 +1457,64 @@ public final class DefaultAIExecutionCoordinator
 
     private String executionId() {
         return "plan-execution-" + UUID.randomUUID();
+    }
+
+    private record MappedParallelBranch(
+        SpecialistPlanStep step,
+        Object input
+    ) {}
+
+    private record ParallelBranchCompletion(
+        SpecialistPlanStep step,
+        AIExecutionResult<?> result,
+        String failureType
+    ) {
+        private static ParallelBranchCompletion succeeded(
+            SpecialistPlanStep step,
+            AIExecutionResult<?> result
+        ) {
+            return new ParallelBranchCompletion(
+                Objects.requireNonNull(step, "step is required"),
+                Objects.requireNonNull(result, "result is required"),
+                null
+            );
+        }
+
+        private static ParallelBranchCompletion failed(
+            SpecialistPlanStep step,
+            String failureType
+        ) {
+            return new ParallelBranchCompletion(
+                Objects.requireNonNull(step, "step is required"),
+                null,
+                Objects.requireNonNull(
+                    failureType,
+                    "failureType is required"
+                )
+            );
+        }
+    }
+
+    private static final class ActiveParallelExecution {
+
+        private final List<Future<?>> futures = new ArrayList<>();
+        private boolean cancelled;
+
+        private synchronized void add(Future<?> future) {
+            Future<?> required = Objects.requireNonNull(
+                future,
+                "future is required"
+            );
+            if (cancelled) {
+                required.cancel(true);
+                return;
+            }
+            futures.add(required);
+        }
+
+        private synchronized void cancel() {
+            cancelled = true;
+            futures.forEach(future -> future.cancel(true));
+        }
     }
 }

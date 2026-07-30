@@ -3,7 +3,10 @@ package com.ai.fabric.realapps.agenticresolver.agentic.plan;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import ai.fabric.execution.plan.ExecutionPlanDefinition;
+import ai.fabric.execution.plan.FanInPolicy;
+import ai.fabric.execution.plan.ParallelPlanStep;
 import ai.fabric.execution.plan.PlanStepOutputs;
+import ai.fabric.execution.plan.SpecialistPlanStep;
 import com.ai.fabric.realapps.agenticresolver.agentic.AccountResolutionRequest;
 import com.ai.fabric.realapps.agenticresolver.agentic.AccountResolutionResult;
 import com.ai.fabric.realapps.agenticresolver.agentic.BillingResolutionAssessmentRequest;
@@ -17,7 +20,7 @@ import org.junit.jupiter.api.Test;
 class AccountResolverPlanConfigurationTest {
 
     @Test
-    void declaresOneStepParityAndTwoStepBillingPlansWithTypedBindings() {
+    void declaresExistingAndEquivalentIndependentPlanTopologies() {
         AccountResolverPlanConfiguration configuration =
             new AccountResolverPlanConfiguration();
 
@@ -25,24 +28,58 @@ class AccountResolverPlanConfigurationTest {
             configuration.accountReadinessPlan();
         ExecutionPlanDefinition<?, ?> billing =
             configuration.accountBillingResolutionPlan();
+        ExecutionPlanDefinition<?, ?> sequential =
+            configuration.accountBillingIndependentSequentialPlan();
+        ExecutionPlanDefinition<?, ?> parallel =
+            configuration.accountBillingIndependentParallelPlan();
 
         assertThat(readiness.id())
             .isEqualTo(AccountResolverPlans.ACCOUNT_READINESS);
-        assertThat(readiness.steps()).singleElement().satisfies(step -> {
-            assertThat(step.id()).isEqualTo("account-state");
-            assertThat(step.inputType())
-                .isEqualTo(AccountResolutionRequest.class);
-            assertThat(step.outputType())
-                .isEqualTo(AccountResolutionResult.class);
-        });
+        assertThat(readiness.steps()).singleElement()
+            .isInstanceOfSatisfying(
+                SpecialistPlanStep.class,
+                step -> {
+                    assertThat(step.id()).isEqualTo("account-state");
+                    assertThat(step.inputType())
+                        .isEqualTo(AccountResolutionRequest.class);
+                    assertThat(step.outputType())
+                        .isEqualTo(AccountResolutionResult.class);
+                }
+            );
         assertThat(billing.id())
             .isEqualTo(AccountResolverPlans.ACCOUNT_BILLING_RESOLUTION);
         assertThat(billing.steps()).extracting("id")
             .containsExactly("account-state", "billing-path");
-        assertThat(billing.steps().get(1).inputType())
+        SpecialistPlanStep billingStep =
+            (SpecialistPlanStep) billing.steps().get(1);
+        assertThat(billingStep.inputType())
             .isEqualTo(BillingResolutionAssessmentRequest.class);
-        assertThat(billing.steps().get(1).outputType())
+        assertThat(billingStep.outputType())
             .isEqualTo(BillingResolutionAssessmentResult.class);
+
+        assertThat(sequential.id()).isEqualTo(
+            AccountResolverPlans.ACCOUNT_BILLING_INDEPENDENT_SEQUENTIAL
+        );
+        assertThat(sequential.steps())
+            .allMatch(SpecialistPlanStep.class::isInstance)
+            .extracting("id")
+            .containsExactly("account-state", "billing-path");
+        assertThat(parallel.id()).isEqualTo(
+            AccountResolverPlans.ACCOUNT_BILLING_INDEPENDENT_PARALLEL
+        );
+        assertThat(parallel.steps()).singleElement()
+            .isInstanceOfSatisfying(
+                ParallelPlanStep.class,
+                stage -> {
+                    assertThat(stage.id())
+                        .isEqualTo("independent-readers");
+                    assertThat(stage.fanInPolicy())
+                        .isEqualTo(FanInPolicy.ALL_REQUIRED);
+                    assertThat(stage.maximumConcurrency()).isEqualTo(2);
+                    assertThat(stage.branches()).extracting("id")
+                        .containsExactly("account-state", "billing-path");
+                }
+            );
     }
 
     @Test
@@ -72,6 +109,30 @@ class AccountResolverPlanConfigurationTest {
                 "Validated blocker requirements: VERIFIED_PAYMENT_METHOD"
             )
             .doesNotContain("tenantId", "subscriptionId", "userId");
+    }
+
+    @Test
+    void mapsIndependentBillingInputWithoutSiblingOutput() {
+        IndependentBillingAssessmentInputMapper mapper =
+            new IndependentBillingAssessmentInputMapper();
+        AccountBillingResolutionPlanRequest request =
+            new AccountBillingResolutionPlanRequest(
+                "Assess this account credit.",
+                RefundRequest.ResolutionType.ACCOUNT_CREDIT,
+                new BigDecimal("25.00")
+            );
+
+        BillingResolutionAssessmentRequest mapped = mapper.map(
+            request,
+            new PlanStepOutputs(Map.of())
+        );
+
+        assertThat(mapper.requiredStepOutputs()).isEmpty();
+        assertThat(mapped.question())
+            .isEqualTo("Assess this account credit.");
+        assertThat(mapped.resolutionType())
+            .isEqualTo(RefundRequest.ResolutionType.ACCOUNT_CREDIT);
+        assertThat(mapped.amount()).isEqualByComparingTo("25.00");
     }
 
     @Test

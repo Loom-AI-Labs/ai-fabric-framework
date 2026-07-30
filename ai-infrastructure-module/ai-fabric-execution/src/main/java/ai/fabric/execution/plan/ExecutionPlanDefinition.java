@@ -1,6 +1,7 @@
 package ai.fabric.execution.plan;
 
 import java.time.Duration;
+import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
 
@@ -11,7 +12,7 @@ public record ExecutionPlanDefinition<I, O>(
     ExecutionPlanId id,
     Class<I> inputType,
     Class<O> outputType,
-    List<SpecialistPlanStep> steps,
+    List<PlanStage> steps,
     PlanComponentId aggregatorId,
     Duration maximumDuration
 ) {
@@ -28,5 +29,23 @@ public record ExecutionPlanDefinition<I, O>(
                 "maximumDuration must be positive"
             );
         }
+    }
+
+    public ExecutionPlanDefinition(
+        ExecutionPlanId id,
+        Class<I> inputType,
+        Class<O> outputType,
+        Collection<? extends PlanStage> steps,
+        PlanComponentId aggregatorId,
+        Duration maximumDuration
+    ) {
+        this(
+            id,
+            inputType,
+            outputType,
+            steps == null ? null : List.copyOf(steps),
+            aggregatorId,
+            maximumDuration
+        );
     }
 }

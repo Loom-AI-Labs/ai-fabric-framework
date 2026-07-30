@@ -622,7 +622,9 @@ public class AIExecutionAutoConfiguration {
             specialistClientFactory,
             componentRegistry,
             properties.getPlans().getMaxSteps(),
-            properties.getPlans().getMaxDuration()
+            properties.getPlans().getMaxDuration(),
+            properties.getPlans().isParallelEnabled(),
+            properties.getPlans().getMaxParallelBranches()
         );
     }
 
@@ -640,6 +642,8 @@ public class AIExecutionAutoConfiguration {
         PlanComponentRegistry componentRegistry,
         AIExecutionGateway executionGateway,
         SpecialistClientFactory specialistClientFactory,
+        @Qualifier("aiFabricExecutionTaskExecutor")
+        AsyncTaskExecutor taskExecutor,
         CanonicalJsonSupport canonicalJson,
         Clock clock,
         AIExecutionProperties properties
@@ -649,6 +653,7 @@ public class AIExecutionAutoConfiguration {
             componentRegistry,
             executionGateway,
             specialistClientFactory,
+            taskExecutor,
             canonicalJson,
             clock,
             properties.getPlans()

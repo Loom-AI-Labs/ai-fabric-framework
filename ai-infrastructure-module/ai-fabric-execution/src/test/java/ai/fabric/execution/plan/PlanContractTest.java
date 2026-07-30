@@ -83,6 +83,61 @@ class PlanContractTest {
             .hasMessageContaining("Duplicate plan input mapper");
     }
 
+    @Test
+    void copiesAndValidatesBoundedParallelStages() {
+        SpecialistPlanStep first = step("first");
+        SpecialistPlanStep second = step("second");
+        List<SpecialistPlanStep> branches =
+            new java.util.ArrayList<>(List.of(first, second));
+
+        ParallelPlanStep parallel = new ParallelPlanStep(
+            "independent-readers",
+            branches,
+            FanInPolicy.ALL_REQUIRED,
+            2
+        );
+        branches.clear();
+
+        assertThat(parallel.branches())
+            .containsExactly(first, second);
+        assertThat(parallel.fanInPolicy())
+            .isEqualTo(FanInPolicy.ALL_REQUIRED);
+        assertThatThrownBy(() -> new ParallelPlanStep(
+            "one-branch",
+            List.of(first),
+            FanInPolicy.ALL_REQUIRED,
+            1
+        ))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("at least two branches");
+        assertThatThrownBy(() -> new ParallelPlanStep(
+            "duplicate",
+            List.of(first, first),
+            FanInPolicy.ALL_REQUIRED,
+            2
+        ))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("duplicate branch first");
+        assertThatThrownBy(() -> new ParallelPlanStep(
+            "under-provisioned",
+            List.of(first, second),
+            FanInPolicy.ALL_REQUIRED,
+            1
+        ))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("cover every declared branch");
+    }
+
+    private SpecialistPlanStep step(String id) {
+        return new SpecialistPlanStep(
+            id,
+            ai.fabric.execution.specialist.SpecialistId.of(id, "1"),
+            String.class,
+            String.class,
+            PlanComponentId.of(id + "-input", "1")
+        );
+    }
+
     private <I> PlanStepInputMapper<String, I> mapper(
         PlanComponentId id,
         Class<I> outputType,

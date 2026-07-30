@@ -336,10 +336,53 @@ public class AgenticResolverExecutionService {
         AccountBillingResolutionPlanRequest request,
         String idempotencyKey
     ) {
+        return executeAccountBillingPlan(
+            AccountResolverPlans.ACCOUNT_BILLING_RESOLUTION,
+            sessionId,
+            request,
+            idempotencyKey
+        );
+    }
+
+    public PlanExecutionResult<AccountBillingResolutionPlanResult>
+    executeIndependentSequentialBillingPlan(
+        String sessionId,
+        AccountBillingResolutionPlanRequest request,
+        String idempotencyKey
+    ) {
+        return executeAccountBillingPlan(
+            AccountResolverPlans.ACCOUNT_BILLING_INDEPENDENT_SEQUENTIAL,
+            sessionId,
+            request,
+            idempotencyKey
+        );
+    }
+
+    public PlanExecutionResult<AccountBillingResolutionPlanResult>
+    executeIndependentParallelBillingPlan(
+        String sessionId,
+        AccountBillingResolutionPlanRequest request,
+        String idempotencyKey
+    ) {
+        return executeAccountBillingPlan(
+            AccountResolverPlans.ACCOUNT_BILLING_INDEPENDENT_PARALLEL,
+            sessionId,
+            request,
+            idempotencyKey
+        );
+    }
+
+    private PlanExecutionResult<AccountBillingResolutionPlanResult>
+    executeAccountBillingPlan(
+        ai.fabric.execution.plan.ExecutionPlanId planId,
+        String sessionId,
+        AccountBillingResolutionPlanRequest request,
+        String idempotencyKey
+    ) {
         AgenticResolverSessionService.ActiveSession session =
             sessionService.active(sessionId);
         return executionCoordinator.execute(new PlanExecutionRequest<>(
-            AccountResolverPlans.ACCOUNT_BILLING_RESOLUTION,
+            planId,
             request,
             trustedContext(
                 session,

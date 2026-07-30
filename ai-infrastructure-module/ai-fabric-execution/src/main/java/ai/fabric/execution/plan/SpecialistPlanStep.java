@@ -4,7 +4,7 @@ import ai.fabric.execution.specialist.SpecialistId;
 import java.util.Objects;
 
 /**
- * One fixed specialist invocation in an immutable sequential plan.
+ * One fixed specialist invocation in an immutable plan.
  */
 public record SpecialistPlanStep(
     String id,
@@ -12,7 +12,7 @@ public record SpecialistPlanStep(
     Class<?> inputType,
     Class<?> outputType,
     PlanComponentId inputMapperId
-) {
+) implements PlanStage {
     public SpecialistPlanStep {
         id = requireText(id, "id");
         Objects.requireNonNull(specialistId, "specialistId is required");

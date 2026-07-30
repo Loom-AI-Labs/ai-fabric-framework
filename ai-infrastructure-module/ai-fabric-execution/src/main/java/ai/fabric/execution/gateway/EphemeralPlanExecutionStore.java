@@ -10,6 +10,7 @@ import ai.fabric.execution.plan.PlanExecutionResumeRequest;
 import ai.fabric.execution.plan.PlanExecutionSnapshot;
 import ai.fabric.execution.plan.PlanExecutionStatus;
 import ai.fabric.execution.plan.PlanStepTrace;
+import ai.fabric.execution.plan.ParallelPlanStep;
 import ai.fabric.execution.plan.RegisteredExecutionPlan;
 import ai.fabric.execution.plan.SpecialistPlanStep;
 import ai.fabric.execution.specialist.SpecialistId;
@@ -24,7 +25,7 @@ import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Bounded process-local state for fixed sequential plan checkpoints.
+ * Bounded process-local state for fixed plan checkpoints.
  */
 final class EphemeralPlanExecutionStore {
 
@@ -253,17 +254,76 @@ final class EphemeralPlanExecutionStore {
                 new CompletedStep(
                     step,
                     result.output(),
-                    new PlanStepTrace(
-                        step.id(),
-                        result.specialistId(),
-                        result.invocationId(),
-                        result.status(),
-                        result.evidence(),
-                        result.startedAt(),
-                        result.completedAt()
-                    )
+                    trace(entry, null, step, result)
                 )
             );
+            entry.nextStepIndex++;
+            entry.activeStepId = null;
+            entry.activeSpecialistId = null;
+            entry.activeInvocationId = null;
+            entry.activeInputRequestId = null;
+            entry.status = PlanExecutionStatus.RUNNING;
+            return true;
+        }
+    }
+
+    boolean beginParallel(
+        Entry entry,
+        int stageIndex,
+        ParallelPlanStep step
+    ) {
+        synchronized (entry) {
+            if (entry.terminal()
+                || entry.status == PlanExecutionStatus.CANCELLED
+                || stageIndex != entry.nextStepIndex
+                || entry.activeStepId != null) {
+                return false;
+            }
+            entry.activeStepId = step.id();
+            entry.activeSpecialistId = null;
+            entry.activeInvocationId = null;
+            entry.activeInputRequestId = null;
+            return true;
+        }
+    }
+
+    boolean checkpointParallel(
+        Entry entry,
+        int stageIndex,
+        ParallelPlanStep parallel,
+        Map<String, AIExecutionResult<?>> results
+    ) {
+        synchronized (entry) {
+            if (entry.terminal()
+                || entry.status == PlanExecutionStatus.CANCELLED
+                || stageIndex != entry.nextStepIndex
+                || !parallel.id().equals(entry.activeStepId)
+                || results == null
+                || results.size() != parallel.branches().size()) {
+                return false;
+            }
+            for (SpecialistPlanStep branch : parallel.branches()) {
+                AIExecutionResult<?> result = results.get(branch.id());
+                if (result == null
+                    || !result.succeeded()
+                    || !branch.specialistId().equals(result.specialistId())
+                    || result.output() == null
+                    || !branch.outputType().isInstance(result.output())
+                    || entry.completed.containsKey(branch.id())) {
+                    return false;
+                }
+            }
+            for (SpecialistPlanStep branch : parallel.branches()) {
+                AIExecutionResult<?> result = results.get(branch.id());
+                entry.completed.put(
+                    branch.id(),
+                    new CompletedStep(
+                        branch,
+                        result.output(),
+                        trace(entry, parallel.id(), branch, result)
+                    )
+                );
+            }
             entry.nextStepIndex++;
             entry.activeStepId = null;
             entry.activeSpecialistId = null;
@@ -421,6 +481,25 @@ final class EphemeralPlanExecutionStore {
             return first;
         }
         return second;
+    }
+
+    private PlanStepTrace trace(
+        Entry entry,
+        String parallelGroupId,
+        SpecialistPlanStep step,
+        AIExecutionResult<?> result
+    ) {
+        return new PlanStepTrace(
+            step.id(),
+            parallelGroupId,
+            entry.inputHash,
+            result.specialistId(),
+            result.invocationId(),
+            result.status(),
+            result.evidence(),
+            result.startedAt(),
+            result.completedAt()
+        );
     }
 
     private String requireText(String value, String field) {

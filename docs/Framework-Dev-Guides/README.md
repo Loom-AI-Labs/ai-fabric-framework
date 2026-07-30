@@ -78,9 +78,10 @@ For specialist execution and manifest authoring:
 3. `application-patterns/INTERACTIVE_DIALOGUE_OWNERSHIP.md`
 4. `application-patterns/ONE_LEVEL_SPECIALIST_DELEGATION.md`
 5. `application-patterns/EXPLICIT_SPECIALIST_HANDOFF.md`
-6. `actions-governance/GOVERNED_SPECIALIST_WRITES_AND_RECEIPTS.md`
-7. `security-auth/RUNTIME_AUTHORIZATION_AND_ACCESS_CONTROL_GUIDE.md`
-8. `testing-verification/VERIFICATION_PLAYBOOK.md`
+6. `application-patterns/BOUNDED_READ_ONLY_PARALLEL_PLANS.md`
+7. `actions-governance/GOVERNED_SPECIALIST_WRITES_AND_RECEIPTS.md`
+8. `security-auth/RUNTIME_AUTHORIZATION_AND_ACCESS_CONTROL_GUIDE.md`
+9. `testing-verification/VERIFICATION_PLAYBOOK.md`
 
 For RAG, vector, and provider work:
 

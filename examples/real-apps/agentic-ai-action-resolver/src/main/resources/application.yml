@@ -71,6 +71,8 @@ ai:
       result-ttl: PT15M
     plans:
       enabled: true
+      parallel-enabled: true
+      max-parallel-branches: 2
       max-steps: 4
       max-duration: PT1M
       max-active: ${AI_EXECUTION_PLAN_MAX_ACTIVE:500}

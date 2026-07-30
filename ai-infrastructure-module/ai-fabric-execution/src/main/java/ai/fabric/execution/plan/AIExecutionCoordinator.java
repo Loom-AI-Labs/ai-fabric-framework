@@ -4,7 +4,7 @@ import ai.fabric.execution.context.TrustedExecutionContext;
 import java.util.Optional;
 
 /**
- * Deterministic coordinator for registered fixed sequential specialist plans.
+ * Deterministic coordinator for registered fixed specialist plans.
  */
 public interface AIExecutionCoordinator {
 

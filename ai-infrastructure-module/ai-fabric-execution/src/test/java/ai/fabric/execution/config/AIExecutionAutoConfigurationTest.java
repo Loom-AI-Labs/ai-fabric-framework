@@ -63,7 +63,9 @@ class AIExecutionAutoConfigurationTest {
                 "ai.execution.capabilities.allowed-actions=inspect_account",
                 "ai.execution.async.core-pool-size=1",
                 "ai.execution.async.max-pool-size=2",
-                "ai.execution.async.queue-capacity=3"
+                "ai.execution.async.queue-capacity=3",
+                "ai.execution.plans.parallel-enabled=true",
+                "ai.execution.plans.max-parallel-branches=2"
             )
             .run(context -> {
                 assertThat(context).hasSingleBean(AIExecutionGateway.class);
@@ -85,6 +87,14 @@ class AIExecutionAutoConfigurationTest {
                 assertThat(context.getBean(
                     ExecutionPlanRegistry.class
                 ).list()).isEmpty();
+                assertThat(context.getBean(AIExecutionProperties.class))
+                    .satisfies(properties -> {
+                        assertThat(properties.getPlans().isParallelEnabled())
+                            .isTrue();
+                        assertThat(
+                            properties.getPlans().getMaxParallelBranches()
+                        ).isEqualTo(2);
+                    });
                 assertThat(context).hasSingleBean(SpecialistRegistry.class);
                 assertThat(context)
                     .hasSingleBean(SpecialistAuthoringCatalogProvider.class);

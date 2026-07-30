@@ -200,6 +200,40 @@ public class AgenticResolverController {
         );
     }
 
+    @PostMapping("/plans/account-billing-independent-sequential")
+    public PlanExecutionResult<AccountBillingResolutionPlanResult>
+    executeIndependentSequentialBillingPlan(
+        @RequestHeader(SESSION_HEADER) String sessionId,
+        @RequestHeader(
+            name = IDEMPOTENCY_HEADER,
+            required = false
+        ) String idempotencyKey,
+        @Valid @RequestBody AccountBillingResolutionPlanRequest request
+    ) {
+        return executionService.executeIndependentSequentialBillingPlan(
+            sessionId,
+            request,
+            idempotencyKey
+        );
+    }
+
+    @PostMapping("/plans/account-billing-independent-parallel")
+    public PlanExecutionResult<AccountBillingResolutionPlanResult>
+    executeIndependentParallelBillingPlan(
+        @RequestHeader(SESSION_HEADER) String sessionId,
+        @RequestHeader(
+            name = IDEMPOTENCY_HEADER,
+            required = false
+        ) String idempotencyKey,
+        @Valid @RequestBody AccountBillingResolutionPlanRequest request
+    ) {
+        return executionService.executeIndependentParallelBillingPlan(
+            sessionId,
+            request,
+            idempotencyKey
+        );
+    }
+
     @PostMapping("/plans/input/resume")
     public PlanExecutionResumeResult<AccountBillingResolutionPlanResult>
     resumeAccountBillingPlan(

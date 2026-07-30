@@ -10,6 +10,7 @@ import com.ai.fabric.realapps.agenticresolver.agentic.AgenticResolverExecutionSe
 import com.ai.fabric.realapps.agenticresolver.agentic.AgenticResolverSessionService;
 import com.ai.fabric.realapps.agenticresolver.agentic.AccountDelegationCoordinatorRequest;
 import com.ai.fabric.realapps.agenticresolver.agentic.AccountHandoffIntakeRequest;
+import com.ai.fabric.realapps.agenticresolver.agentic.plan.AccountBillingResolutionPlanRequest;
 import com.ai.fabric.realapps.agenticresolver.agentic.plan.PlanInputResumeRequest;
 import java.math.BigDecimal;
 import org.junit.jupiter.api.Test;
@@ -203,5 +204,67 @@ class AgenticResolverControllerTest {
             .isEqualTo("ACCOUNT_CREDIT");
         assertThat(request.getValue().amount())
             .isEqualByComparingTo(new BigDecimal("25"));
+    }
+
+    @Test
+    void exposesEquivalentIndependentSequentialAndParallelPlanRoutes()
+        throws Exception {
+        String body = """
+            {
+              "question": "Assess this account credit.",
+              "resolutionType": "ACCOUNT_CREDIT",
+              "amount": 25
+            }
+            """;
+
+        mockMvc.perform(post(
+                "/api/agentic-resolver/plans/"
+                    + "account-billing-independent-sequential"
+            )
+                .header(
+                    AgenticResolverController.SESSION_HEADER,
+                    "session-1"
+                )
+                .header(
+                    AgenticResolverController.IDEMPOTENCY_HEADER,
+                    "sequential-1"
+                )
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(body))
+            .andExpect(status().isOk());
+        mockMvc.perform(post(
+                "/api/agentic-resolver/plans/"
+                    + "account-billing-independent-parallel"
+            )
+                .header(
+                    AgenticResolverController.SESSION_HEADER,
+                    "session-1"
+                )
+                .header(
+                    AgenticResolverController.IDEMPOTENCY_HEADER,
+                    "parallel-1"
+                )
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(body))
+            .andExpect(status().isOk());
+
+        ArgumentCaptor<AccountBillingResolutionPlanRequest> request =
+            ArgumentCaptor.forClass(
+                AccountBillingResolutionPlanRequest.class
+            );
+        verify(executionService).executeIndependentSequentialBillingPlan(
+            eq("session-1"),
+            request.capture(),
+            eq("sequential-1")
+        );
+        verify(executionService).executeIndependentParallelBillingPlan(
+            eq("session-1"),
+            eq(request.getValue()),
+            eq("parallel-1")
+        );
+        assertThat(request.getValue().resolutionType().name())
+            .isEqualTo("ACCOUNT_CREDIT");
+        assertThat(request.getValue().amount())
+            .isEqualByComparingTo("25");
     }
 }
