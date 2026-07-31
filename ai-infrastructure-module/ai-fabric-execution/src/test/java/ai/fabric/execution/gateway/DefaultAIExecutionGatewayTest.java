@@ -190,21 +190,56 @@ class DefaultAIExecutionGatewayTest {
                             .userId("untrusted-user")
                             .sessionId("untrusted-session")
                             .position("resolver")
-                            .metadata(Map.of(
-                                OrchestrationContextMetadataKeys.SUBJECT_ID,
-                                "untrusted-subject",
-                                OrchestrationContextMetadataKeys.SUBJECT_TYPE,
-                                "untrusted-subject-type",
-                                OrchestrationContextMetadataKeys.AUTH_MODE,
-                                "UNTRUSTED",
-                                OrchestrationContextMetadataKeys.CALLER_TYPE,
-                                "UNTRUSTED",
-                                OrchestrationContextMetadataKeys.DEPLOYMENT_ID,
-                                "untrusted-deployment",
-                                OrchestrationContextMetadataKeys.TENANT_ID,
-                                "untrusted-tenant",
-                                OrchestrationContextMetadataKeys.GRANTED_SCOPES,
-                                List.of("untrusted:scope")
+                            .metadata(Map.ofEntries(
+                                Map.entry(
+                                    OrchestrationContextMetadataKeys.SUBJECT_ID,
+                                    "untrusted-subject"
+                                ),
+                                Map.entry(
+                                    OrchestrationContextMetadataKeys.SUBJECT_TYPE,
+                                    "untrusted-subject-type"
+                                ),
+                                Map.entry(
+                                    OrchestrationContextMetadataKeys.AUTH_MODE,
+                                    "UNTRUSTED"
+                                ),
+                                Map.entry(
+                                    OrchestrationContextMetadataKeys.CALLER_TYPE,
+                                    "UNTRUSTED"
+                                ),
+                                Map.entry(
+                                    OrchestrationContextMetadataKeys.AUTH_ISSUER,
+                                    "untrusted-issuer"
+                                ),
+                                Map.entry(
+                                    OrchestrationContextMetadataKeys.AUTH_AUDIENCES,
+                                    List.of("untrusted-audience")
+                                ),
+                                Map.entry(
+                                    OrchestrationContextMetadataKeys.AUTH_EXPIRES_AT,
+                                    "2099-01-01T00:00:00Z"
+                                ),
+                                Map.entry(
+                                    OrchestrationContextMetadataKeys.DEPLOYMENT_ID,
+                                    "untrusted-deployment"
+                                ),
+                                Map.entry(
+                                    OrchestrationContextMetadataKeys.CUSTOMER_ID,
+                                    "untrusted-customer"
+                                ),
+                                Map.entry(
+                                    OrchestrationContextMetadataKeys.TENANT_ID,
+                                    "untrusted-tenant"
+                                ),
+                                Map.entry(
+                                    OrchestrationContextMetadataKeys.GRANTED_SCOPES,
+                                    List.of("untrusted:scope")
+                                ),
+                                Map.entry(
+                                    OrchestrationContextMetadataKeys.REQUESTED_SCOPES,
+                                    List.of("untrusted:requested")
+                                ),
+                                Map.entry("businessContext", "preserve-me")
                             ))
                             .build();
                     }
@@ -260,6 +295,14 @@ class DefaultAIExecutionGatewayTest {
             .containsEntry(
                 OrchestrationContextMetadataKeys.GRANTED_SCOPES,
                 List.copyOf(authorizedScopes())
+            )
+            .containsEntry("businessContext", "preserve-me")
+            .doesNotContainKeys(
+                OrchestrationContextMetadataKeys.AUTH_ISSUER,
+                OrchestrationContextMetadataKeys.AUTH_AUDIENCES,
+                OrchestrationContextMetadataKeys.AUTH_EXPIRES_AT,
+                OrchestrationContextMetadataKeys.CUSTOMER_ID,
+                OrchestrationContextMetadataKeys.REQUESTED_SCOPES
             );
     }
 

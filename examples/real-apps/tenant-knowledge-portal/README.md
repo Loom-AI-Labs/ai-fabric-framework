@@ -182,11 +182,11 @@ Build from the repo root:
 
 ```bash
 docker build -f examples/real-apps/tenant-knowledge-portal/Dockerfile \
-  --build-arg AI_FABRIC_VERSION=0.5.1 \
+  --build-arg AI_FABRIC_VERSION=0.5.2 \
   --build-arg BUILD_COMMIT="$(git rev-parse --short HEAD)" \
   --build-arg BUILD_BRANCH="$(git rev-parse --abbrev-ref HEAD)" \
   --build-arg BUILD_TIME="$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-  -t ai-fabric-tenant-guard:0.5.1 \
+  -t ai-fabric-tenant-guard:0.5.2 \
   examples/real-apps
 ```
 
@@ -196,7 +196,7 @@ Run the image:
 docker run --rm -p 8101:8101 \
   -e PORT=8101 \
   -e CORS_ALLOWED_ORIGINS=https://ai-fabric.dev \
-  ai-fabric-tenant-guard:0.5.1
+  ai-fabric-tenant-guard:0.5.2
 ```
 
 Suggested deployment values:

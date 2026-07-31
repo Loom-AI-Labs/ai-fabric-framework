@@ -193,8 +193,8 @@ Build context must be `examples/real-apps`:
 ```bash
 docker build \
   -f ai-fabric-live-data-sync/Dockerfile \
-  --build-arg AI_FABRIC_VERSION=0.5.1 \
-  -t ai-fabric-live-data-sync:0.5.1 .
+  --build-arg AI_FABRIC_VERSION=0.5.2 \
+  -t ai-fabric-live-data-sync:0.5.2 .
 ```
 
 Framework contributors can also build the tested local JAR and exercise the same runtime image
@@ -209,10 +209,10 @@ docker build \
   --build-context \
     release-candidate-artifact=./ai-fabric-live-data-sync/target \
   -f ai-fabric-live-data-sync/Dockerfile \
-  --build-arg AI_FABRIC_VERSION=0.5.1 \
+  --build-arg AI_FABRIC_VERSION=0.5.2 \
   --build-arg SOURCE_COMMIT="$(git rev-parse HEAD)" \
   --build-arg SOURCE_BRANCH="$(git branch --show-current)" \
-  -t ai-fabric-live-data-sync:0.5.1-rc .
+  -t ai-fabric-live-data-sync:0.5.2-rc .
 ```
 
 The `release-candidate` target is retained as a source-artifact verification path. The default

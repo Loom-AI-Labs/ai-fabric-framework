@@ -38,7 +38,7 @@ not compile against framework source directories.
 
 ## Published Maven Central Verification
 
-AI Fabric `0.5.1` is published. To prove source-independent consumption, use a
+AI Fabric `0.5.2` is published. To prove source-independent consumption, use a
 fresh local Maven repository and do not install the framework reactor first:
 
 ```bash
@@ -46,11 +46,11 @@ MAVEN_REPO="$(mktemp -d)"
 
 mvn -B -V --no-transfer-progress \
   -Dmaven.repo.local="$MAVEN_REPO" \
-  -Dai-fabric.version=0.5.1 \
+  -Dai-fabric.version=0.5.2 \
   -f examples/agentic-execution-consumer/pom.xml \
   clean test
 ```
 
 That command proves Maven Central metadata and transitive artifact
-completeness. The `0.5.1` release gate ran the same proof from a copy of this
+completeness. The `0.5.2` release gate ran the same proof from a copy of this
 project outside the framework checkout and passed both tests.
