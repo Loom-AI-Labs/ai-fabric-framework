@@ -1190,7 +1190,7 @@ stages:
 ```bash
 docker build \
   -f examples/real-apps/agentic-ai-action-resolver/Dockerfile \
-  --build-arg AI_FABRIC_VERSION=0.5.2 \
+  --build-arg AI_FABRIC_VERSION=0.5.3 \
   --build-arg BUILD_COMMIT="$(git rev-parse HEAD)" \
   --build-arg BUILD_BRANCH="$(git branch --show-current)" \
   --build-arg BUILD_TIME="$(date -u +%Y-%m-%dT%H:%M:%SZ)" \

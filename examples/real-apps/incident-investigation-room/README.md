@@ -96,5 +96,5 @@ JAVA_OPTS=-Xms256m -Xmx768m
 
 Mount `/app/data` on persistent storage when backend chat history must survive
 restart. Plans, delegation, and handoff are intentionally bounded and
-ephemeral in AI Fabric `0.5.2`; the UI and health endpoint label that behavior
+ephemeral in AI Fabric `0.5.3`; the UI and health endpoint label that behavior
 instead of claiming durable plan execution.

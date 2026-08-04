@@ -6,7 +6,7 @@
 # is published, the release image can resolve the immutable Maven Central
 # version instead.
 
-ARG AI_FABRIC_VERSION=0.5.2
+ARG AI_FABRIC_VERSION=0.5.3
 ARG APP_VERSION=1.0.0-SNAPSHOT
 ARG SOURCE_COMMIT=
 ARG SOURCE_BRANCH=

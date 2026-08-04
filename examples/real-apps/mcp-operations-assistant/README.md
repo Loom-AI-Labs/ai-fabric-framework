@@ -128,7 +128,7 @@ revision:
 ```bash
 docker build \
   -f examples/real-apps/mcp-operations-assistant/Dockerfile \
-  --build-arg AI_FABRIC_VERSION=0.5.2 \
+  --build-arg AI_FABRIC_VERSION=0.5.3 \
   --build-arg SOURCE_COMMIT="$(git rev-parse HEAD)" \
   --build-arg SOURCE_BRANCH="$(git branch --show-current)" \
   -t ai-fabric-mcp-operations-assistant:source-candidate \
