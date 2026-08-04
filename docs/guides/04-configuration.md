@@ -50,6 +50,38 @@ ai:
 | `ai.providers.<p>.base-url` | API base URL (override for proxies/compatible endpoints). |
 | `ai.providers.<p>.model` | Default model id. |
 
+#### OpenAI settings (`ai.providers.openai.*`)
+
+OpenAI can provide generation, embeddings, or both. Select `openai` for the applicable provider
+role and keep credentials in environment variables rather than configuration files:
+
+```yaml
+ai:
+  providers:
+    llm-provider: openai
+    embedding-provider: openai
+    openai:
+      enabled: ${OPENAI_ENABLED:false}
+      api-key: ${OPENAI_API_KEY:}
+      base-url: ${OPENAI_BASE_URL:https://api.openai.com/v1}
+      model: ${OPENAI_MODEL:gpt-4o-mini}
+      embedding-model: ${OPENAI_EMBEDDING_MODEL:text-embedding-3-small}
+      embedding-dimensions: ${OPENAI_EMBEDDING_DIMENSIONS:512}
+      timeout: 45
+```
+
+| Property | Description |
+|----------|-------------|
+| `ai.providers.openai.max-tokens` | Optional maximum output tokens for generation requests. |
+| `ai.providers.openai.temperature` | Optional sampling temperature for generation requests. |
+| `ai.providers.openai.timeout` | Optional request timeout. |
+| `ai.providers.openai.priority` | Optional provider-selection priority when fallback is enabled. |
+| `ai.providers.openai.embedding-model` | Model id for embedding requests. |
+| `ai.providers.openai.embedding-dimensions` | Optional output dimension for supported `text-embedding-3` models. |
+| `ai.providers.openai.embedding-base-url` | Optional API base URL used only for embeddings. |
+| `ai.providers.openai.embedding-api-key` | Optional credential used only for embeddings. |
+| `ai.providers.openai.validate-on-startup` | When `true`, probes the provider at startup. Defaults to `false` to avoid external calls during tests. |
+
 Cohere is not active in the Spring AI execution path for this release. Add it back only when AI
 Fabric adopts a supported Spring AI Cohere path or an explicit provider-specific exception.
 
@@ -76,7 +108,17 @@ ai:
       tokenizer-path: ${AI_FABRIC_ONNX_TOKENIZER_PATH:./models/embeddings/tokenizer.json}
       max-sequence-length: 512
       use-gpu: false
+      model-alias: all-MiniLM-L6-v2
 ```
+
+| Property | Default | Description |
+|----------|---------|-------------|
+| `ai.providers.onnx.enabled` | `true` | Enables the native ONNX embedding provider. |
+| `ai.providers.onnx.model-path` | unset | Path to the ONNX model file. |
+| `ai.providers.onnx.tokenizer-path` | unset | Path to the tokenizer JSON file. |
+| `ai.providers.onnx.max-sequence-length` | `512` | Maximum tokens accepted by the local model. |
+| `ai.providers.onnx.use-gpu` | `false` | Requests GPU inference when the runtime supports it. |
+| `ai.providers.onnx.model-alias` | unset | Optional logical model name used in embedding diagnostics. |
 
 Native `onnx` remains the default local embedding path. To use Spring AI's bundled
 transformer ONNX path instead, select `spring-ai-onnx`:
@@ -96,6 +138,18 @@ ai:
       gpu-device-id: -1
       dimensions: 384
 ```
+
+| Property | Default | Description |
+|----------|---------|-------------|
+| `ai.providers.spring-ai-onnx.enabled` | `true` | Enables the Spring AI ONNX embedding provider. |
+| `ai.providers.spring-ai-onnx.model-uri` | unset | URI for the ONNX model. |
+| `ai.providers.spring-ai-onnx.tokenizer-uri` | unset | URI for the tokenizer resource. |
+| `ai.providers.spring-ai-onnx.cache-enabled` | `true` | Enables caching for model resources. |
+| `ai.providers.spring-ai-onnx.cache-directory` | unset | Optional directory for cached model resources. |
+| `ai.providers.spring-ai-onnx.gpu-device-id` | `-1` | GPU device id; `-1` uses the runtime default. |
+| `ai.providers.spring-ai-onnx.model-output-name` | unset | Optional name of the embedding output tensor. |
+| `ai.providers.spring-ai-onnx.model-alias` | `all-MiniLM-L6-v2` | Logical model name used in embedding diagnostics. |
+| `ai.providers.spring-ai-onnx.dimensions` | `384` | Expected embedding vector dimension. |
 
 ## Vector store (`ai.vector-db.*`)
 
@@ -551,6 +605,19 @@ ai:
 ```
 
 Activate with `--spring.profiles.active=smoke`. See [Example Applications](06-example-apps.md).
+
+## Test configuration and external credentials
+
+The `test` and `mock-test` profiles keep OpenAI disabled unless `OPENAI_ENABLED=true`, so their
+ordinary test runs do not require an OpenAI key. The `smoke` profile is also fully local: it uses
+in-process deterministic providers and the memory vector store, without API keys or ONNX assets.
+
+Profiles named `real-api-test` run provider integrations only when the corresponding provider is
+enabled and supplied with its credentials. For OpenAI, set `OPENAI_ENABLED=true` and provide
+`OPENAI_API_KEY` through the environment; do not place keys in YAML or commit them. The manually
+triggered provider-matrix workflow similarly builds its live test matrix only from the API keys it
+receives. See [Testing And Verification](../getting-started/11-testing-and-verification.md) for
+commands and the distinction between no-key and real-provider checks.
 
 ## Next
 
