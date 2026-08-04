@@ -1,0 +1,96 @@
+server:
+  port: ${PORT:8106}
+  forward-headers-strategy: framework
+
+spring:
+  application:
+    name: deployment-knowledge-guard
+
+ai:
+  enabled: true
+  fabric:
+    examples:
+      demo-health:
+        enabled: false
+  execution:
+    enabled: true
+    manifests:
+      enabled: true
+      fail-fast: true
+    capabilities:
+      registered-vector-spaces:
+        - deployment-knowledge
+      allowed-actions: []
+    receipts:
+      enabled: false
+    reviews:
+      enabled: false
+  providers:
+    llm-provider: openai
+    embedding-provider: openai
+    openai:
+      enabled: ${OPENAI_ENABLED:false}
+      api-key: ${OPENAI_API_KEY:}
+      base-url: ${OPENAI_BASE_URL:https://api.openai.com/v1}
+      model: ${OPENAI_MODEL:gpt-4o-mini}
+      embedding-model: ${OPENAI_EMBEDDING_MODEL:text-embedding-3-small}
+      embedding-dimensions: ${OPENAI_EMBEDDING_DIMENSIONS:512}
+      timeout: ${OPENAI_TIMEOUT:60}
+  vector-db:
+    type: lucene
+    lucene:
+      index-path: ./data/deployment-guard-lucene-${OPENAI_EMBEDDING_DIMENSIONS:512}
+      similarity-threshold: 0.0
+  orchestration:
+    default-mode: resolver
+    strict-mode-routing: true
+    modes:
+      resolver:
+        actions-enabled: false
+        actions-preferred: false
+        retrieval-enabled: true
+        retrieval-allowlist-required: true
+        vector-space-selection-required: false
+        information-mode: DETERMINISTIC_RAG_GENERATE
+        rag:
+          fanout-enabled: false
+          max-spaces: 1
+          top-k-per-space: 5
+          similarity-threshold: 0.0
+          max-documents-returned-to-client: 5
+          max-documents-used-for-context: 5
+          max-context-chars: 7000
+          retrieval-vector-spaces-allowlist:
+            - deployment-knowledge
+  service:
+    features:
+      enable-generation: true
+      enable-embeddings: true
+      enable-search: true
+      enable-rag: true
+  behavior:
+    enabled: false
+  pii-detection:
+    enabled: false
+
+app:
+  deployment-guard:
+    sessions:
+      ttl: ${APP_DEMO_SESSION_TTL:PT4H}
+      max-active: ${APP_DEMO_MAX_SESSIONS:500}
+      cleanup-cron: ${APP_DEMO_SESSION_CLEANUP_CRON:0 */15 * * * *}
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:}
+    allowed-origin-patterns: ${CORS_ALLOWED_ORIGIN_PATTERNS:}
+    allow-credentials: ${CORS_ALLOW_CREDENTIALS:false}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+logging:
+  level:
+    com.ai.fabric.realapps.deploymentguard: INFO
+    ai.fabric: INFO

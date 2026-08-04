@@ -134,6 +134,62 @@ final class PostActionGenerationSupport {
         return new ResolvedPostActionGeneration(requested, instructions, forceReadActionGeneration);
     }
 
+    Optional<Map<String, Object>> buildReadActionGroundingObservation(
+        String actionName,
+        AIActionHandler handler,
+        ActionResult actionResult,
+        ActionContext actionContext
+    ) {
+        if (!StringUtils.hasText(actionName)
+            || handler == null
+            || actionResult == null
+            || !actionResult.isSuccess()) {
+            return Optional.empty();
+        }
+
+        Map<String, Object> facts = Map.of();
+        try {
+            Optional<Map<String, Object>> projected =
+                handler.buildPostActionLlmFacts(actionResult, actionContext);
+            if (projected != null && projected.isPresent()
+                && projected.get() != null) {
+                facts = projected.get();
+            }
+        } catch (Exception ex) {
+            log.warn(
+                "Action handler {} failed to build grounding facts for '{}': {}",
+                handler.getClass().getName(),
+                actionName,
+                ex.getMessage()
+            );
+        }
+
+        Map<String, Object> groundedFacts =
+            includeActionResultDataForForcedReadGeneration(facts, actionResult);
+        if (!hasAnswerablePostActionFacts(groundedFacts)) {
+            return Optional.empty();
+        }
+
+        int configuredMax = postActionGenerationProperties != null
+            ? postActionGenerationProperties.getMaxChars()
+            : 4_000;
+        FactsPayload payload = buildFactsPayload(
+            groundedFacts,
+            Math.max(1, configuredMax)
+        );
+        if (!StringUtils.hasText(payload.payload())) {
+            return Optional.empty();
+        }
+
+        Map<String, Object> observation = new LinkedHashMap<>();
+        observation.put("action", actionName.trim());
+        observation.put("success", true);
+        observation.put("groundingUsable", true);
+        observation.put("evidenceSummary", payload.payload());
+        observation.put("truncated", payload.truncated());
+        return Optional.of(Collections.unmodifiableMap(observation));
+    }
+
     PostActionGenerationOutcome maybeGeneratePostActionSummary(String actionName,
                                                                AIActionHandler handler,
                                                                Intent intent,

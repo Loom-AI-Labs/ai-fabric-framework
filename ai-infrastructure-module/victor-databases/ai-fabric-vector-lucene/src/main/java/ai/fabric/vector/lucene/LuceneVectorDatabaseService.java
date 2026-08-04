@@ -113,8 +113,8 @@ public class LuceneVectorDatabaseService implements VectorDatabaseService {
 
     private Directory directory;
     private IndexWriter indexWriter;
-    private IndexReader indexReader;
-    private IndexSearcher indexSearcher;
+    private volatile IndexReader indexReader;
+    private volatile IndexSearcher indexSearcher;
     private StandardAnalyzer analyzer;
     private SharedIndex sharedIndex;
     private Path resolvedIndexPath;
@@ -169,14 +169,17 @@ public class LuceneVectorDatabaseService implements VectorDatabaseService {
     }
     
     @PreDestroy
-    public void cleanup() {
+    public synchronized void cleanup() {
         try {
             log.debug("Closing Lucene Vector Database");
 
             boolean removedFromCache = false;
+            IndexReader readerToClose = indexReader;
+            indexSearcher = null;
+            indexReader = null;
             if (indexWriter != null) {
-                if (indexReader != null) {
-                    indexReader.close();
+                if (readerToClose != null) {
+                    readerToClose.close();
                 }
                 if (resolvedIndexPath != null) {
                     SharedIndex indexToClose = null;
@@ -194,8 +197,8 @@ public class LuceneVectorDatabaseService implements VectorDatabaseService {
                         directory = null;
                     }
                 }
-            } else if (indexReader != null) {
-                indexReader.close();
+            } else if (readerToClose != null) {
+                readerToClose.close();
             }
             if (analyzer != null) {
                 analyzer.close();
@@ -272,63 +275,34 @@ public class LuceneVectorDatabaseService implements VectorDatabaseService {
                 : new KnnVectorQuery(VECTOR_FIELD, queryVectorArray, k);
 
             // Perform k-NN search (Lucene handles similarity internally)
-            TopDocs topDocs;
-            try {
-                topDocs = indexSearcher.search(vectorQuery, k);
-            } catch (org.apache.lucene.store.AlreadyClosedException e) {
-                // IndexReader was closed during search (concurrency issue) - refresh and retry once
-                log.debug("IndexReader closed during search, refreshing and retrying");
-                synchronized (this) {
-                    refreshReader();
-                    if (indexSearcher == null) {
-                        throw new AIServiceException("IndexSearcher not available after refresh");
-                    }
-                    topDocs = indexSearcher.search(vectorQuery, k);
-                }
-            }
-            
-            ScoreDoc[] hits = topDocs.scoreDocs;
-            
-            // Process results - Lucene has already calculated similarity scores
             List<Map<String, Object>> results = new ArrayList<>();
-            for (ScoreDoc hit : hits) {
-                Document doc;
-                try {
-                    doc = indexSearcher.doc(hit.doc);
-                } catch (org.apache.lucene.store.AlreadyClosedException e) {
-                    // IndexReader was closed during doc retrieval - refresh and retry once
-                    log.debug("IndexReader closed during doc retrieval, refreshing and retrying");
-                    synchronized (this) {
-                        refreshReader();
-                        if (indexSearcher == null) {
-                            continue; // Skip this result if searcher unavailable
+            try (SearcherLease lease = acquireSearcher()) {
+                IndexSearcher searcher = lease.searcher();
+                TopDocs topDocs = searcher.search(vectorQuery, k);
+
+                // Process results using the same leased reader that produced the doc IDs.
+                for (ScoreDoc hit : topDocs.scoreDocs) {
+                    Document doc = searcher.doc(hit.doc);
+
+                    // Lucene's k-NN search already provides similarity scores.
+                    double similarity = hit.score;
+
+                    if (similarity >= threshold) {
+                        Map<String, Object> result = new HashMap<>();
+                        result.put("id", doc.get(ENTITY_ID_FIELD));
+                        result.put("vectorId", doc.get(VECTOR_ID_FIELD));
+                        result.put("content", doc.get("content"));
+                        result.put("entityType", doc.get(ENTITY_TYPE_FIELD));
+                        result.put("vectorSpace", doc.get(ENTITY_TYPE_FIELD));
+                        result.put("metadata", doc.get("metadata"));
+                        result.put("score", similarity);
+                        result.put("similarity", similarity);
+
+                        results.add(result);
+
+                        if (results.size() >= limit) {
+                            break;
                         }
-                        doc = indexSearcher.doc(hit.doc);
-                    }
-                }
-                
-                // Lucene's k-NN search already provides similarity scores
-                // The score from Lucene is the cosine similarity
-                // Normalize to [0, 1] range if needed (Lucene scores are typically already normalized)
-                double similarity = hit.score;
-                
-                // Apply threshold filter
-                if (similarity >= threshold) {
-                    Map<String, Object> result = new HashMap<>();
-                    result.put("id", doc.get(ENTITY_ID_FIELD));
-                    result.put("vectorId", doc.get(VECTOR_ID_FIELD));
-                    result.put("content", doc.get("content"));
-                    result.put("entityType", doc.get(ENTITY_TYPE_FIELD));
-                    result.put("vectorSpace", doc.get(ENTITY_TYPE_FIELD));
-                    result.put("metadata", doc.get("metadata"));
-                    result.put("score", similarity);
-                    result.put("similarity", similarity);
-                    
-                    results.add(result);
-                    
-                    // Stop once we have enough results
-                    if (results.size() >= limit) {
-                        break;
                     }
                 }
             }
@@ -366,7 +340,10 @@ public class LuceneVectorDatabaseService implements VectorDatabaseService {
             deleteQuery.add(new TermQuery(new Term(ENTITY_ID_FIELD, entityId)), BooleanClause.Occur.MUST);
             Query query = deleteQuery.build();
 
-            long matchingDocuments = indexSearcher != null ? indexSearcher.count(query) : 0;
+            long matchingDocuments;
+            try (SearcherLease lease = acquireSearcher()) {
+                matchingDocuments = lease.searcher().count(query);
+            }
             if (matchingDocuments == 0) {
                 log.debug("No Lucene vector found for entity {} of type {}", entityId, entityType);
                 return false;
@@ -394,21 +371,23 @@ public class LuceneVectorDatabaseService implements VectorDatabaseService {
         try {
             Map<String, Object> stats = new HashMap<>();
             
-            if (indexReader != null) {
-                stats.put("totalVectors", indexReader.numDocs());
-                stats.put("indexPath", indexPath);
-                stats.put("similarityThreshold", similarityThreshold);
-                stats.put("maxResults", maxResults);
-                
-                // Get entity type counts
-                Map<String, Integer> entityTypeCounts = new HashMap<>();
-                for (int i = 0; i < indexReader.numDocs(); i++) {
-                    Document doc = indexReader.document(i);
-                    String entityType = doc.get("entityType");
-                    entityTypeCounts.merge(entityType, 1, Integer::sum);
+            if (indexSearcher != null) {
+                try (SearcherLease lease = acquireSearcher()) {
+                    IndexReader reader = lease.searcher().getIndexReader();
+                    stats.put("totalVectors", reader.numDocs());
+                    stats.put("indexPath", indexPath);
+                    stats.put("similarityThreshold", similarityThreshold);
+                    stats.put("maxResults", maxResults);
+
+                    Map<String, Integer> entityTypeCounts = new HashMap<>();
+                    for (int i = 0; i < reader.maxDoc(); i++) {
+                        Document doc = reader.document(i);
+                        String entityType = doc.get("entityType");
+                        entityTypeCounts.merge(entityType, 1, Integer::sum);
+                    }
+                    stats.put("entityTypeCounts", entityTypeCounts);
+                    stats.put("entityTypes", entityTypeCounts.keySet());
                 }
-                stats.put("entityTypeCounts", entityTypeCounts);
-                stats.put("entityTypes", entityTypeCounts.keySet());
             }
             
             return stats;
@@ -428,7 +407,12 @@ public class LuceneVectorDatabaseService implements VectorDatabaseService {
                 return 0;
             }
             
-            long countBefore = indexReader != null ? indexReader.numDocs() : 0;
+            long countBefore = 0;
+            if (indexSearcher != null) {
+                try (SearcherLease lease = acquireSearcher()) {
+                    countBefore = lease.searcher().getIndexReader().numDocs();
+                }
+            }
             indexWriter.deleteAll();
             indexWriter.commit();
             refreshReader();
@@ -584,13 +568,16 @@ public class LuceneVectorDatabaseService implements VectorDatabaseService {
             Query filterQuery = buildFilterQuery(request.getEntityType(), request.getMetadataEquals())
                 .orElseGet(() -> new TermQuery(new Term(ENTITY_TYPE_FIELD, request.getEntityType())));
 
-            TopDocs topDocs = indexSearcher.search(filterQuery, Integer.MAX_VALUE);
             List<VectorRecord> records = new ArrayList<>();
-            for (ScoreDoc hit : topDocs.scoreDocs) {
-                Document doc = indexSearcher.doc(hit.doc);
-                convertDocumentToVectorRecord(doc)
-                    .map(record -> applyScanProjection(record, request))
-                    .ifPresent(records::add);
+            try (SearcherLease lease = acquireSearcher()) {
+                IndexSearcher searcher = lease.searcher();
+                TopDocs topDocs = searcher.search(filterQuery, Integer.MAX_VALUE);
+                for (ScoreDoc hit : topDocs.scoreDocs) {
+                    Document doc = searcher.doc(hit.doc);
+                    convertDocumentToVectorRecord(doc)
+                        .map(record -> applyScanProjection(record, request))
+                        .ifPresent(records::add);
+                }
             }
 
             records.sort(Comparator
@@ -806,17 +793,20 @@ public class LuceneVectorDatabaseService implements VectorDatabaseService {
             Term term = new Term(VECTOR_ID_FIELD, vectorId);
             Query query = new TermQuery(term);
 
-            TopDocs topDocs = indexSearcher.search(query, 1);
-            if (topDocs.totalHits.value <= 0) {
-                return Optional.empty();
-            }
+            try (SearcherLease lease = acquireSearcher()) {
+                IndexSearcher searcher = lease.searcher();
+                TopDocs topDocs = searcher.search(query, 1);
+                if (topDocs.totalHits.value <= 0) {
+                    return Optional.empty();
+                }
 
-            Document doc = indexSearcher.doc(topDocs.scoreDocs[0].doc);
-            String raw = doc.get(CREATED_AT_FIELD);
-            if (raw == null || raw.isBlank()) {
-                return Optional.empty();
+                Document doc = searcher.doc(topDocs.scoreDocs[0].doc);
+                String raw = doc.get(CREATED_AT_FIELD);
+                if (raw == null || raw.isBlank()) {
+                    return Optional.empty();
+                }
+                return Optional.of(Long.parseLong(raw));
             }
-            return Optional.of(Long.parseLong(raw));
         } catch (Exception ex) {
             return Optional.empty();
         }
@@ -830,10 +820,13 @@ public class LuceneVectorDatabaseService implements VectorDatabaseService {
             Term term = new Term(VECTOR_ID_FIELD, vectorId);
             Query query = new TermQuery(term);
 
-            TopDocs topDocs = indexSearcher.search(query, 1);
-            if (topDocs.totalHits.value > 0) {
-                Document doc = indexSearcher.doc(topDocs.scoreDocs[0].doc);
-                return convertDocumentToVectorRecord(doc);
+            try (SearcherLease lease = acquireSearcher()) {
+                IndexSearcher searcher = lease.searcher();
+                TopDocs topDocs = searcher.search(query, 1);
+                if (topDocs.totalHits.value > 0) {
+                    Document doc = searcher.doc(topDocs.scoreDocs[0].doc);
+                    return convertDocumentToVectorRecord(doc);
+                }
             }
             
             return Optional.empty();
@@ -856,10 +849,13 @@ public class LuceneVectorDatabaseService implements VectorDatabaseService {
             builder.add(new TermQuery(new Term(ENTITY_TYPE_FIELD, entityType)), BooleanClause.Occur.MUST);
             builder.add(new TermQuery(new Term(ENTITY_ID_FIELD, entityId)), BooleanClause.Occur.MUST);
 
-            TopDocs topDocs = indexSearcher.search(builder.build(), 1);
-            if (topDocs.totalHits.value > 0) {
-                Document doc = indexSearcher.doc(topDocs.scoreDocs[0].doc);
-                return convertDocumentToVectorRecord(doc);
+            try (SearcherLease lease = acquireSearcher()) {
+                IndexSearcher searcher = lease.searcher();
+                TopDocs topDocs = searcher.search(builder.build(), 1);
+                if (topDocs.totalHits.value > 0) {
+                    Document doc = searcher.doc(topDocs.scoreDocs[0].doc);
+                    return convertDocumentToVectorRecord(doc);
+                }
             }
             
             return Optional.empty();
@@ -890,7 +886,10 @@ public class LuceneVectorDatabaseService implements VectorDatabaseService {
             
             Term term = new Term(VECTOR_ID_FIELD, vectorId);
             Query query = new TermQuery(term);
-            long matchingDocuments = indexSearcher != null ? indexSearcher.count(query) : 0;
+            long matchingDocuments;
+            try (SearcherLease lease = acquireSearcher()) {
+                matchingDocuments = lease.searcher().count(query);
+            }
             if (matchingDocuments == 0) {
                 log.debug("No Lucene vector found for vectorId {}", vectorId);
                 return false;
@@ -1000,12 +999,15 @@ public class LuceneVectorDatabaseService implements VectorDatabaseService {
             
             Query query = new TermQuery(new Term(ENTITY_TYPE_FIELD, entityType));
 
-            TopDocs topDocs = indexSearcher.search(query, Integer.MAX_VALUE);
             List<VectorRecord> vectors = new ArrayList<>();
-            
-            for (ScoreDoc hit : topDocs.scoreDocs) {
-                Document doc = indexSearcher.doc(hit.doc);
-                convertDocumentToVectorRecord(doc).ifPresent(vectors::add);
+
+            try (SearcherLease lease = acquireSearcher()) {
+                IndexSearcher searcher = lease.searcher();
+                TopDocs topDocs = searcher.search(query, Integer.MAX_VALUE);
+                for (ScoreDoc hit : topDocs.scoreDocs) {
+                    Document doc = searcher.doc(hit.doc);
+                    convertDocumentToVectorRecord(doc).ifPresent(vectors::add);
+                }
             }
             
             log.debug("Found {} vectors for entity type {} in Lucene", vectors.size(), entityType);
@@ -1030,19 +1032,8 @@ public class LuceneVectorDatabaseService implements VectorDatabaseService {
                 return 0;
             }
 
-            try {
-                // Lucene provides a dedicated count() API; using search(query, 0) can return 0 hits.
-                return (long) indexSearcher.count(query);
-            } catch (org.apache.lucene.store.AlreadyClosedException e) {
-                // IndexReader was closed during count (concurrency issue) - refresh and retry once
-                log.debug("IndexReader closed during count, refreshing and retrying for entity type {}", entityType);
-                synchronized (this) {
-                    refreshReader();
-                    if (indexSearcher == null) {
-                        return 0;
-                    }
-                    return (long) indexSearcher.count(query);
-                }
+            try (SearcherLease lease = acquireSearcher()) {
+                return (long) lease.searcher().count(query);
             }
             
         } catch (Exception e) {
@@ -1065,20 +1056,9 @@ public class LuceneVectorDatabaseService implements VectorDatabaseService {
             builder.add(new TermQuery(new Term(ENTITY_TYPE_FIELD, entityType)), BooleanClause.Occur.MUST);
             builder.add(new TermQuery(new Term(ENTITY_ID_FIELD, entityId)), BooleanClause.Occur.MUST);
 
-            try {
-                TopDocs topDocs = indexSearcher.search(builder.build(), 1);
+            try (SearcherLease lease = acquireSearcher()) {
+                TopDocs topDocs = lease.searcher().search(builder.build(), 1);
                 return topDocs.totalHits.value > 0;
-            } catch (org.apache.lucene.store.AlreadyClosedException e) {
-                // IndexReader was closed during search (concurrency issue) - refresh and retry once
-                log.debug("IndexReader closed during search, refreshing and retrying for entity {} of type {}", entityId, entityType);
-                synchronized (this) {
-                    refreshReader();
-                    if (indexSearcher == null) {
-                        return false;
-                    }
-                    TopDocs topDocs = indexSearcher.search(builder.build(), 1);
-                    return topDocs.totalHits.value > 0;
-                }
             }
             
         } catch (Exception e) {
@@ -1101,7 +1081,10 @@ public class LuceneVectorDatabaseService implements VectorDatabaseService {
             
             Query query = new TermQuery(new Term(ENTITY_TYPE_FIELD, entityType));
 
-            long countBefore = indexSearcher.count(query);
+            long countBefore;
+            try (SearcherLease lease = acquireSearcher()) {
+                countBefore = lease.searcher().count(query);
+            }
             indexWriter.deleteDocuments(new Term(ENTITY_TYPE_FIELD, entityType));
             indexWriter.commit();
             refreshReader();
@@ -1201,19 +1184,21 @@ public class LuceneVectorDatabaseService implements VectorDatabaseService {
     private synchronized void refreshReader() {
         try {
             IndexReader oldReader = indexReader;
-            
+            IndexReader newReader;
+
             // Check if index exists before trying to open it
             if (DirectoryReader.indexExists(directory)) {
-                indexReader = DirectoryReader.open(directory);
+                newReader = DirectoryReader.open(directory);
             } else if (indexWriter != null) {
                 indexWriter.commit();
-                indexReader = DirectoryReader.open(indexWriter);
+                newReader = DirectoryReader.open(indexWriter);
             } else {
-                indexReader = DirectoryReader.open(directory);
+                newReader = DirectoryReader.open(directory);
             }
-            indexSearcher = new IndexSearcher(indexReader);
-            
-            // Close old reader after new one is created to minimize race conditions
+            indexReader = newReader;
+            indexSearcher = new IndexSearcher(newReader);
+
+            // Leased readers remain valid until their final caller releases them.
             if (oldReader != null) {
                 try {
                     oldReader.close();
@@ -1225,6 +1210,21 @@ public class LuceneVectorDatabaseService implements VectorDatabaseService {
         } catch (Exception e) {
             log.error("Error refreshing Lucene reader", e);
             throw new AIServiceException("Failed to refresh Lucene reader", e);
+        }
+    }
+
+    private SearcherLease acquireSearcher() {
+        while (true) {
+            IndexSearcher currentSearcher = indexSearcher;
+            if (currentSearcher == null) {
+                throw new AIServiceException("Lucene IndexSearcher is not available");
+            }
+
+            IndexReader currentReader = currentSearcher.getIndexReader();
+            if (currentReader.tryIncRef()) {
+                return new SearcherLease(currentSearcher, currentReader);
+            }
+            Thread.onSpinWait();
         }
     }
 
@@ -1300,6 +1300,29 @@ public class LuceneVectorDatabaseService implements VectorDatabaseService {
 
         private boolean release() {
             return refCount.decrementAndGet() == 0;
+        }
+    }
+
+    private static final class SearcherLease implements AutoCloseable {
+        private final IndexSearcher searcher;
+        private final IndexReader reader;
+
+        private SearcherLease(IndexSearcher searcher, IndexReader reader) {
+            this.searcher = searcher;
+            this.reader = reader;
+        }
+
+        private IndexSearcher searcher() {
+            return searcher;
+        }
+
+        @Override
+        public void close() {
+            try {
+                reader.decRef();
+            } catch (IOException e) {
+                throw new UncheckedIOException(e);
+            }
         }
     }
 

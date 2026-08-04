@@ -1,0 +1,53 @@
+server:
+  port: ${PORT:8106}
+  forward-headers-strategy: framework
+
+spring:
+  application:
+    name: mcp-operations-reference-server
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:h2:file:./data/mcp-reference-server.db}
+    driver-class-name: ${SPRING_DATASOURCE_DRIVER_CLASS_NAME:org.h2.Driver}
+    username: ${SPRING_DATASOURCE_USERNAME:sa}
+    password: ${SPRING_DATASOURCE_PASSWORD:}
+  jpa:
+    hibernate:
+      ddl-auto: ${SPRING_JPA_HIBERNATE_DDL_AUTO:update}
+    open-in-view: false
+  ai:
+    mcp:
+      server:
+        protocol: STREAMABLE
+        name: ai-fabric-operations-reference
+        version: 1.0.0
+        type: SYNC
+        instructions: >
+          Narrow sandbox operations tools. Identity and confirmation are owned
+          by the calling AI Fabric application.
+        capabilities:
+          resource: false
+          prompt: false
+          completion: false
+          tool: true
+        streamable-http:
+          mcp-endpoint: /mcp
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+ai:
+  enabled: false
+
+app:
+  mcp:
+    api-key: ${MCP_SERVER_API_KEY:}
+  sandbox:
+    ttl: ${APP_SANDBOX_TTL:PT6H}
+    cleanup-cron: ${APP_SANDBOX_CLEANUP_CRON:0 41 * * * *}
+
+logging:
+  level:
+    com.ai.fabric.realapps.mcpserver: INFO

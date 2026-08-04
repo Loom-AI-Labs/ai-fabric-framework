@@ -1,0 +1,5 @@
+ai:
+  execution:
+    async:
+      encryption-secret: smoke-behavior-async-encryption-key-local-only-0001
+      fingerprint-secret: smoke-behavior-async-fingerprint-key-local-only-0002

@@ -13,6 +13,8 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -20,6 +22,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.HexFormat;
+import java.util.TreeMap;
 
 @Service
 @RequiredArgsConstructor
@@ -99,7 +103,7 @@ public class BehaviorDemoScenarioService {
         String sessionId = request != null && StringUtils.hasText(request.sessionId())
             ? normalizeSessionId(request.sessionId())
             : "behavior-session-" + UUID.randomUUID();
-        boolean analyze = request == null || request.analyze() == null || Boolean.TRUE.equals(request.analyze());
+        boolean analyze = request != null && Boolean.TRUE.equals(request.analyze());
         List<DemoScenarioDefinition> scenarios = seedSessionScenarios(sessionId);
         if (analyze) {
             scenarios.forEach(scenario -> behaviorAnalysisService.analyzeUser(scenario.userId()));
@@ -155,8 +159,30 @@ public class BehaviorDemoScenarioService {
         DemoScenarioDefinition scenario = requireScenario(userId);
         RecordBehaviorSignalRequest effective = request != null ? request : new RecordBehaviorSignalRequest(null, null, null);
 
+        String externalEventId = normalizeExternalEventId(effective.eventId());
+        String payloadFingerprint = eventFingerprint(
+            StringUtils.hasText(effective.eventType()) ? effective.eventType() : scenario.defaultSignalType(),
+            effective.eventData() != null && !effective.eventData().isEmpty()
+                ? effective.eventData()
+                : defaultEventData(scenario),
+            StringUtils.hasText(effective.source()) ? effective.source() : "demo-ui"
+        );
+        if (externalEventId != null) {
+            Optional<AppBehaviorEvent> replay = eventRepository.findByUserIdAndExternalEventId(userId, externalEventId);
+            if (replay.isPresent()) {
+                if (!payloadFingerprint.equals(replay.get().getPayloadFingerprint())) {
+                    throw new BehaviorEventConflictException(
+                        "Event " + externalEventId + " was already recorded with different facts"
+                    );
+                }
+                return BehaviorEventSummary.from(replay.get(), true);
+            }
+        }
+
         AppBehaviorEvent event = new AppBehaviorEvent();
         event.setUserId(userId);
+        event.setExternalEventId(externalEventId);
+        event.setPayloadFingerprint(payloadFingerprint);
         event.setEventType(StringUtils.hasText(effective.eventType()) ? effective.eventType() : scenario.defaultSignalType());
         event.setEventTimestamp(LocalDateTime.now());
         event.setEventData(toJson(effective.eventData() != null && !effective.eventData().isEmpty()
@@ -164,12 +190,21 @@ public class BehaviorDemoScenarioService {
             : defaultEventData(scenario)));
         event.setSource(StringUtils.hasText(effective.source()) ? effective.source() : "demo-ui");
         AppBehaviorEvent saved = eventRepository.save(event);
-        return BehaviorEventSummary.from(saved != null ? saved : event);
+        return BehaviorEventSummary.from(saved != null ? saved : event, false);
     }
 
     @Transactional
     public BehaviorScenarioResult recordPositiveRecovery(String userId) {
         DemoScenarioDefinition scenario = requireScenario(userId);
+        recordPositiveRecoveryEvents(userId);
+
+        BehaviorInsights insight = behaviorAnalysisService.analyzeUser(userId);
+        return resultFor(scenario, insight);
+    }
+
+    @Transactional
+    public BehaviorEventPackResult recordPositiveRecoveryEvents(String userId) {
+        requireScenario(userId);
         List<RecordBehaviorSignalRequest> recoveryEvents = List.of(
             new RecordBehaviorSignalRequest("PAYMENT_SUCCEEDED", Map.of(
                 "invoiceStatus", "paid",
@@ -193,15 +228,25 @@ public class BehaviorDemoScenarioService {
             ), "customer-success")
         );
 
-        saveEventSequence(userId, recoveryEvents);
+        return new BehaviorEventPackResult(
+            userId,
+            "POSITIVE_RECOVERY",
+            saveEventSequence(userId, recoveryEvents)
+        );
+    }
+
+    @Transactional
+    public BehaviorScenarioResult recordNegativeChurnSignals(String userId) {
+        DemoScenarioDefinition scenario = requireScenario(userId);
+        recordNegativeChurnEvents(userId);
 
         BehaviorInsights insight = behaviorAnalysisService.analyzeUser(userId);
         return resultFor(scenario, insight);
     }
 
     @Transactional
-    public BehaviorScenarioResult recordNegativeChurnSignals(String userId) {
-        DemoScenarioDefinition scenario = requireScenario(userId);
+    public BehaviorEventPackResult recordNegativeChurnEvents(String userId) {
+        requireScenario(userId);
         List<RecordBehaviorSignalRequest> churnEvents = List.of(
             new RecordBehaviorSignalRequest("PAYMENT_FAILED", Map.of(
                 "invoiceStatus", "past_due",
@@ -236,14 +281,19 @@ public class BehaviorDemoScenarioService {
             ), "support-inbox")
         );
 
-        saveEventSequence(userId, churnEvents);
-
-        BehaviorInsights insight = behaviorAnalysisService.analyzeUser(userId);
-        return resultFor(scenario, insight);
+        return new BehaviorEventPackResult(
+            userId,
+            "NEGATIVE_CHURN_RISK",
+            saveEventSequence(userId, churnEvents)
+        );
     }
 
-    private void saveEventSequence(String userId, List<RecordBehaviorSignalRequest> requests) {
+    private List<BehaviorEventSummary> saveEventSequence(
+        String userId,
+        List<RecordBehaviorSignalRequest> requests
+    ) {
         LocalDateTime endTimestamp = LocalDateTime.now();
+        List<BehaviorEventSummary> recorded = new java.util.ArrayList<>();
         for (int i = 0; i < requests.size(); i++) {
             RecordBehaviorSignalRequest request = requests.get(i);
             AppBehaviorEvent event = new AppBehaviorEvent();
@@ -252,8 +302,10 @@ public class BehaviorDemoScenarioService {
             event.setEventTimestamp(endTimestamp.minusSeconds((long) requests.size() - 1 - i));
             event.setEventData(toJson(request.eventData()));
             event.setSource(request.source());
-            eventRepository.save(event);
+            AppBehaviorEvent saved = eventRepository.save(event);
+            recorded.add(BehaviorEventSummary.from(saved != null ? saved : event));
         }
+        return recorded.reversed();
     }
 
     @Transactional
@@ -412,6 +464,56 @@ public class BehaviorDemoScenarioService {
             return objectMapper.writeValueAsString(data);
         } catch (JsonProcessingException ex) {
             return "{\"message\":\"" + String.valueOf(data).replace("\"", "'") + "\"}";
+        }
+    }
+
+    public void requireSessionUser(String sessionId, String userId) {
+        if (!StringUtils.hasText(sessionId)) {
+            throw new IllegalArgumentException("X-Demo-Session-Id is required");
+        }
+        boolean owned = scenariosForSession(sessionId).stream()
+            .anyMatch(scenario -> scenario.userId().equals(userId));
+        if (!owned) {
+            throw new IllegalArgumentException("Behavior user does not belong to this demo session");
+        }
+    }
+
+    public BehaviorScenarioResult projectInsight(String userId, BehaviorInsights insight) {
+        return resultFor(requireScenario(userId), insight);
+    }
+
+    @Transactional(readOnly = true)
+    public BehaviorScenarioResult currentResult(String userId) {
+        BehaviorInsights insight = insightsRepository.findByUserId(userId)
+            .orElseThrow(() -> new IllegalStateException(
+                "Run user behavior analysis before composing the user home page"
+            ));
+        return resultFor(requireScenario(userId), insight);
+    }
+
+    private String normalizeExternalEventId(String value) {
+        if (!StringUtils.hasText(value)) {
+            return null;
+        }
+        String normalized = value.trim();
+        if (normalized.length() > 160) {
+            throw new IllegalArgumentException("eventId must not exceed 160 characters");
+        }
+        return normalized;
+    }
+
+    private String eventFingerprint(String eventType, Map<String, Object> data, String source) {
+        try {
+            Map<String, Object> canonical = new TreeMap<>();
+            canonical.put("eventType", eventType);
+            canonical.put("eventData", data != null ? new TreeMap<>(data) : Map.of());
+            canonical.put("source", source);
+            byte[] digest = MessageDigest.getInstance("SHA-256").digest(
+                objectMapper.writeValueAsString(canonical).getBytes(StandardCharsets.UTF_8)
+            );
+            return HexFormat.of().formatHex(digest);
+        } catch (Exception ex) {
+            throw new IllegalStateException("Could not fingerprint behavior event", ex);
         }
     }
 
@@ -674,28 +776,68 @@ public class BehaviorDemoScenarioService {
     public record BehaviorEventSummary(
         Long id,
         String userId,
+        String eventId,
         String eventType,
         LocalDateTime eventTimestamp,
         String eventData,
-        String source
+        String source,
+        boolean replayed
     ) {
+        public BehaviorEventSummary(
+            Long id,
+            String userId,
+            String eventType,
+            LocalDateTime eventTimestamp,
+            String eventData,
+            String source
+        ) {
+            this(id, userId, null, eventType, eventTimestamp, eventData, source, false);
+        }
+
         static BehaviorEventSummary from(AppBehaviorEvent event) {
+            return from(event, false);
+        }
+
+        static BehaviorEventSummary from(AppBehaviorEvent event, boolean replayed) {
             return new BehaviorEventSummary(
                 event.getId(),
                 event.getUserId(),
+                event.getExternalEventId(),
                 event.getEventType(),
                 event.getEventTimestamp(),
                 event.getEventData(),
-                event.getSource()
+                event.getSource(),
+                replayed
             );
         }
     }
 
+    public record BehaviorEventPackResult(
+        String userId,
+        String pack,
+        List<BehaviorEventSummary> events
+    ) {}
+
     public record RecordBehaviorSignalRequest(
         String eventType,
         Map<String, Object> eventData,
-        String source
-    ) {}
+        String source,
+        String eventId
+    ) {
+        public RecordBehaviorSignalRequest(
+            String eventType,
+            Map<String, Object> eventData,
+            String source
+        ) {
+            this(eventType, eventData, source, null);
+        }
+    }
+
+    public static class BehaviorEventConflictException extends RuntimeException {
+        public BehaviorEventConflictException(String message) {
+            super(message);
+        }
+    }
 
     public record RetentionOfferDemoRequest(
         Integer discountPercent,

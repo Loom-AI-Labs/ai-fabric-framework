@@ -2,8 +2,9 @@
 
 ## Scenario
 
-This app demonstrates behavior analytics, churn/sentiment insight generation, and governed operator
-actions using AI Fabric's behavior module. The public-demo scenario is a SaaS behavior command center:
+This app demonstrates behavior analytics and churn/sentiment insight generation through a
+manifest-defined, durable, read-only AI Fabric specialist. The public-demo scenario is a SaaS
+behavior command center:
 operators review real account behavior signals, analyze churn/upside/product-risk signals, record a
 raw application event, and inspect AI-selected operator recommendations without showing customer-facing
 offer execution controls.
@@ -19,18 +20,23 @@ action-family analysis.
 
 - `ai.behavior.enabled=true` activates the behavior module.
 - Application events can be exposed through the `ExternalEventProvider` SPI.
-- `BehaviorAnalysisService` produces persisted `BehaviorInsights` per user.
+- `behavior-risk-analyst@1` receives the previous approved insight plus only the new raw events.
+- `DurableAIExecutionGateway` provides queued execution, leases, retry/recovery, cancellation,
+  expiration, and idempotent replay.
+- Successful typed specialist output is projected once into persisted `BehaviorInsights` per user.
 - Built-in behavior analytics endpoints can query trend and rapid-decline signals.
 - Retention workflow can combine behavior evidence, plan evidence, policy explanations, and separate policy-gated actions.
 - Product-shaped `/api/behavior-demo` endpoints expose repeatable real-world scenarios for UI demos.
 - Agentic UI planning can ask the configured AI Fabric LLM provider for an allowlisted structured component plan.
 - Customer-safe recommendation output can cite stable evidence ids rather than raw internal state.
 - Public demo sessions can isolate each visitor's seeded users, injected signals, and generated insights.
-- `/api/behavior-demo/health` exposes build metadata, provider posture, behavior mode, and demo readiness counts.
+- `/api/demo/health` exposes build metadata, specialist hash, provider posture, JDBC readiness,
+  durable execution, and the explicit no-fallback/no-automatic-write policy.
 
 ## Framework Surfaces
 
 - `ai-fabric-behavior`
+- `ai-fabric-execution`
 - `ai-fabric-provider-starter`
 - `ai-fabric-provider-spring-ai` for live external LLM runs
 - deterministic local LLM provider
@@ -93,7 +99,7 @@ behavior insight, events, and retention review data.
 The public UI is intentionally evidence-first. It displays the active provider posture, deployed
 commit/build metadata, behavior pipeline steps, scenario queue, model used for each insight, and
 governed action state. It should never present deterministic output as live AI; check
-`GET /api/behavior-demo/health` before claiming live LLM behavior.
+`GET /api/demo/health` before claiming live LLM behavior.
 
 ## Demo Backend App Architecture
 
@@ -104,8 +110,8 @@ structured LLM output, governed analytics recommendations, and agentic UI planni
 Backend dependencies:
 
 - Spring Boot Web, Data JPA, Validation, Actuator, H2, and Lombok.
-- AI Fabric modules: `ai-fabric-provider-starter`, `ai-fabric-provider-spring-ai`, and
-  `ai-fabric-behavior`.
+- AI Fabric modules: `ai-fabric-provider-starter`, `ai-fabric-provider-spring-ai`,
+  `ai-fabric-behavior`, and `ai-fabric-execution`.
 - `smoke-support` for shared health/build metadata.
 
 AI-enabled domain model:
@@ -114,7 +120,8 @@ AI-enabled domain model:
   AI Fabric's behavior SPI rather than entity annotations.
 - `AppBehaviorEvent` stores raw app events, and `DbExternalEventProvider` exposes them through
   `ExternalEventProvider`.
-- `BehaviorAnalysisService` from the behavior module produces persisted `BehaviorInsights`.
+- `DurableBehaviorAnalysisService` binds the manifest specialist, submits durable execution, and
+  applies a successful typed result once through the behavior persistence service.
 - `AgenticUiComposerService` uses the shared structured JSON path to ask the configured LLM for an
   allowlisted component-name plan; backend code fills the trusted props.
 
@@ -123,20 +130,26 @@ Providers and storage:
 - Local runs use the deterministic `behavior-local` LLM provider by default.
 - Live public deployments use OpenAI via `ai-fabric-provider-spring-ai`.
 - No vector database is configured; `ai.vector-db.type=false` and search/embedding features are off.
-- H2 stores behavior events and persisted insights for each session-scoped demo user.
+- H2 stores behavior events, persisted insights, application job bindings, and encrypted durable
+  specialist execution state for each session-scoped demo user.
+- `BehaviorInsights.aiModelUsed` records the immutable specialist contract id
+  (`behavior-risk-analyst@1`). Provider selection is proved independently by `/api/demo/health`;
+  agentic UI plans also report the concrete provider model used for that structured call.
 
 Request and data flow:
 
 1. The UI creates or restores a browser session through `/api/behavior-demo/sessions`.
 2. The backend clones seeded demo users and raw behavior events into that session namespace.
-3. The UI triggers `BehaviorAnalysisService` through `/api/behavior-demo/scenarios/{userId}/analyze`
-   or records a new raw event through `/signals`.
-4. AI Fabric summarizes sentiment, churn risk, trend, recommendation, action family, and evidence.
-5. The analytics page shows AI-selected recommendation families, not frontend heuristics or offer execution controls.
-6. The agentic UI route calls `/agentic-ui`; the LLM receives a small component catalog and returns
+3. The UI records event facts through `/events`, then submits the exact
+   `behavior-risk-analyst@1` specialist through `/analyses` with a stable idempotency key.
+4. The UI polls the opaque invocation ID while AI Fabric leases and executes the durable job.
+5. AI Fabric validates structured sentiment, churn risk, trend, recommendation, action family, and
+   evidence, then the application projects the result once into the current approved insight.
+6. The analytics page shows AI-selected recommendation families, not frontend heuristics or offer execution controls.
+7. The agentic UI route calls `/agentic-ui`; the LLM receives a small component catalog and returns
    component names plus reasons. The backend validates names and renders trusted, domain-specific
    module props for the UI.
-7. Session cleanup removes old public-demo users and their generated events/insights after the
+8. Session cleanup removes old public-demo users, events, insights, and app-owned job bindings after the
    configured TTL.
 
 ## Run Locally
@@ -160,21 +173,40 @@ From the repository root:
 
    ```bash
    curl -fsS http://localhost:8097/actuator/health
-   curl -fsS http://localhost:8097/api/behavior-demo/health | jq
+   curl -fsS http://localhost:8097/api/demo/health | jq
    ```
 
-4. Create an isolated demo session and analyze all scenarios:
+4. Create an isolated demo session without running analysis implicitly:
 
    ```bash
-   curl -fsS -X POST http://localhost:8097/api/behavior-demo/sessions \
+   created=$(curl -fsS -X POST http://localhost:8097/api/behavior-demo/sessions \
      -H 'Content-Type: application/json' \
-     -d '{"sessionId":"local-browser-1","analyze":true}' | jq
+     -d '{"sessionId":"local-browser-1","analyze":false}')
+   session_id=$(printf '%s' "$created" | jq -r '.sessionId')
+   user_id=$(printf '%s' "$created" | jq -r '.scenarios[0].userId')
+   printf '%s' "$created" | jq
    ```
 
-5. Record a raw app event for the session's high-risk account:
+5. Submit one durable analysis and retain the opaque invocation ID:
 
    ```bash
-   curl -fsS -X POST http://localhost:8097/api/behavior-demo/scenarios/behavior-demo-user-local-browser-1-user-1001/signals \
+   submitted=$(curl -fsS -X POST \
+     "http://localhost:8097/api/behavior-demo/scenarios/${user_id}/analyses" \
+     -H "X-Demo-Session-Id: ${session_id}" \
+     -H 'Idempotency-Key: local-analysis-1')
+   invocation_id=$(printf '%s' "$submitted" | jq -r '.invocationId')
+   printf '%s' "$submitted" | jq
+
+   curl -fsS \
+     "http://localhost:8097/api/behavior-demo/analyses/${invocation_id}" \
+     -H "X-Demo-Session-Id: ${session_id}" | jq
+   ```
+
+6. Record a raw app event for the session user without triggering analysis implicitly:
+
+   ```bash
+   curl -fsS -X POST \
+     "http://localhost:8097/api/behavior-demo/scenarios/${user_id}/events" \
      -H 'Content-Type: application/json' \
      -d '{
        "eventType": "PAYMENT_FAILED",
@@ -188,33 +220,33 @@ From the repository root:
      }' | jq
    ```
 
-6. Optional API-only check: preview the confirmation-gated retention offer endpoint:
+7. Optional API-only check: preview the confirmation-gated retention offer endpoint:
 
    ```bash
-   curl -fsS -X POST http://localhost:8097/api/behavior-demo/scenarios/behavior-demo-user-local-browser-1-user-1001/retention-offer \
+   curl -fsS -X POST "http://localhost:8097/api/behavior-demo/scenarios/${user_id}/retention-offer" \
      -H 'Content-Type: application/json' \
      -d '{"discountPercent":25,"confirmed":false}' | jq
    ```
 
-7. Optional API-only check: confirm the retention action endpoint:
+8. Optional API-only check: confirm the retention action endpoint:
 
    ```bash
-   curl -fsS -X POST http://localhost:8097/api/behavior-demo/scenarios/behavior-demo-user-local-browser-1-user-1001/retention-offer \
+   curl -fsS -X POST "http://localhost:8097/api/behavior-demo/scenarios/${user_id}/retention-offer" \
      -H 'Content-Type: application/json' \
      -d '{"discountPercent":25,"confirmed":true}' | jq
    ```
 
-8. Compose an agentic UI component plan for the same analyzed user:
+9. Compose an agentic UI component plan for the same analyzed user:
 
    ```bash
-   curl -fsS -X POST http://localhost:8097/api/behavior-demo/scenarios/behavior-demo-user-local-browser-1-user-1001/agentic-ui \
+   curl -fsS -X POST "http://localhost:8097/api/behavior-demo/scenarios/${user_id}/agentic-ui" \
      -H 'Content-Type: application/json' | jq
    ```
 
-9. Add positive recovery events to the churning account and rerun analysis:
+10. Add positive recovery events to the churning account and rerun analysis:
 
    ```bash
-   curl -fsS -X POST http://localhost:8097/api/behavior-demo/scenarios/behavior-demo-user-local-browser-1-user-1001/positive-recovery \
+   curl -fsS -X POST "http://localhost:8097/api/behavior-demo/scenarios/${user_id}/positive-recovery-events" \
      -H 'Content-Type: application/json' | jq
    ```
 
@@ -232,9 +264,11 @@ Use `requests/demo.http` to run the product scenario.
 
 For a live browser smoke against the public deployment, verify:
 
-1. `GET /api/behavior-demo/health` reports `provider=openai` and `providerMode=live-external`.
+1. `GET /api/demo/health` reports `provider.generation=openai`,
+   `provider.realProviderRequired=true`, the exact specialist hash, and durable storage readiness.
 2. The UI shows `API connected`, `Live LLM provider`, and the expected commit.
-3. Each seeded scenario returns a non-fallback model such as `gpt-4o-mini-2024-07-18`.
+3. Each durable analysis succeeds under the exact `behavior-risk-analyst@1` manifest; provider
+   truth comes from `/api/demo/health`, not from the insight's specialist-contract field.
 4. Recording a typed app event re-runs behavior analysis and increases the session event count.
 5. The recommendation panel shows an AI-selected `action_family`; if LLM analysis fails, the UI shows the failure instead of substituting a fallback recommendation.
 6. Agentic UI planning returns only allowlisted component types with backend-populated props; invalid LLM layout output fails visibly.
@@ -245,7 +279,7 @@ For a live browser smoke against the public deployment, verify:
 
 1. Create or restore a browser session.
 2. Seed session-scoped users and behavior events.
-3. Analyze all seeded accounts or a selected account through AI Fabric `BehaviorAnalysisService`.
+3. Submit selected accounts through the exact `behavior-risk-analyst@1` durable specialist.
 4. Review persisted behavior insight summaries, trend distribution, and immediate-action signals.
 5. Record a new raw account behavior event and re-run analysis.
 6. Review behavior evidence, policy explanation, and AI-selected recommended action family.
@@ -266,12 +300,18 @@ For a live browser smoke against the public deployment, verify:
 - `GET /api/behavior-demo/dashboard`
 - `GET /api/behavior-demo/scenarios`
 - `GET /api/behavior-demo/health`
+- `GET /api/demo/health`
 - `POST /api/behavior-demo/sessions`
 - `POST /api/behavior-demo/seed`
 - `POST /api/behavior-demo/seed-and-analyze`
 - `POST /api/behavior-demo/reset`
 - `POST /api/behavior-demo/scenarios/{userId}/analyze`
+- `POST /api/behavior-demo/scenarios/{userId}/analyses`
+- `GET /api/behavior-demo/analyses/{invocationId}`
+- `GET /api/behavior-demo/analyses`
+- `DELETE /api/behavior-demo/analyses/{invocationId}`
 - `POST /api/behavior-demo/scenarios/{userId}/signals`
+- `POST /api/behavior-demo/scenarios/{userId}/events`
 - `POST /api/behavior-demo/scenarios/{userId}/positive-recovery`
 - `POST /api/behavior-demo/scenarios/{userId}/agentic-ui`
 - `POST /api/behavior-demo/scenarios/{userId}/retention-offer`
@@ -315,7 +355,7 @@ Then verify the running container:
 
 ```bash
 curl -fsS http://localhost:8097/actuator/health
-curl -fsS http://localhost:8097/api/behavior-demo/health | jq
+curl -fsS http://localhost:8097/api/demo/health | jq
 curl -fsS -X POST http://localhost:8097/api/behavior-demo/sessions \
   -H 'Content-Type: application/json' \
   -d '{"sessionId":"local-docker-1","analyze":true}' | jq
@@ -330,6 +370,7 @@ Suggested deployment values:
 - `CORS_ALLOWED_ORIGINS=https://ai-fabric.dev`
 - `AI_LLM_PROVIDER=behavior-local` for deterministic no-key mode, or `openai` for live LLM mode.
 - `OPENAI_ENABLED=true`, `OPENAI_API_KEY=<secret>`, `OPENAI_MODEL=gpt-4o-mini` when using OpenAI.
+- `APP_BEHAVIOR_DEMO_REQUIRE_REAL_AI=true` for the public live-provider deployment health gate.
 - `APP_BEHAVIOR_DEMO_CLEANUP_TTL=PT6H`
 - `JAVA_OPTS=-Xms256m -Xmx768m`
 - `git_repository=Loom-AI-Labs/ai-fabric-framework.git`

@@ -486,7 +486,7 @@ class IntentHandlingStepRequiredParamsPlaceholderTest {
         OrchestrationResult result = updated.getIntentResult();
 
         assertThat(result.getType()).isEqualTo(OrchestrationResultType.CLARIFICATION_REQUIRED);
-        assertThat(result.getMessage()).contains("storefront session context");
+        assertThat(result.getMessage()).contains("trusted application context");
         assertThat(result.toString()).doesNotContain("shopperSessionId");
         assertThat(result.getData()).containsEntry("missingRequiredParameters", List.of());
         verify(handler, org.mockito.Mockito.never()).executeAction(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any());

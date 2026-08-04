@@ -26,6 +26,8 @@ import com.ai.fabric.realapps.agenticresolver.agentic.AgenticResolverSessionServ
 import com.ai.fabric.realapps.agenticresolver.agentic.SupportCreditProposalOutput;
 import com.ai.fabric.realapps.agenticresolver.agentic.SupportCreditReviewRequest;
 import com.ai.fabric.realapps.agenticresolver.agentic.SupportCreditReviewSubmissionResult;
+import com.ai.fabric.realapps.agenticresolver.entity.DemoReviewTaskBinding;
+import com.ai.fabric.realapps.agenticresolver.repository.DemoReviewTaskBindingRepository;
 import java.time.Clock;
 import java.util.List;
 import java.util.Optional;
@@ -53,12 +55,14 @@ public class SupportCreditReviewService {
     > proposalClient;
     private final ReviewDecisionGateway reviews;
     private final AgenticResolverSessionService sessions;
+    private final DemoReviewTaskBindingRepository taskBindings;
     private final Clock clock;
 
     public SupportCreditReviewService(
         SpecialistClientFactory clients,
         ReviewDecisionGateway reviews,
         AgenticResolverSessionService sessions,
+        DemoReviewTaskBindingRepository taskBindings,
         Clock clock
     ) {
         this.proposalClient = clients.bind(
@@ -68,6 +72,7 @@ public class SupportCreditReviewService {
         );
         this.reviews = reviews;
         this.sessions = sessions;
+        this.taskBindings = taskBindings;
         this.clock = clock;
     }
 
@@ -117,6 +122,9 @@ public class SupportCreditReviewService {
             ),
             sourceContext
         );
+        if (review.task() != null) {
+            bindTask(sessionId, review.task().taskId());
+        }
         return new SupportCreditReviewSubmissionResult(
             proposal.invocationId(),
             proposal.status(),
@@ -187,6 +195,24 @@ public class SupportCreditReviewService {
             + request.amount().toPlainString()
             + ". Reason: "
             + request.reason().trim();
+    }
+
+    private void bindTask(String sessionId, String taskId) {
+        DemoReviewTaskBinding existing = taskBindings.findById(taskId)
+            .orElse(null);
+        if (existing == null) {
+            taskBindings.save(new DemoReviewTaskBinding(
+                taskId,
+                sessionId,
+                clock.instant()
+            ));
+            return;
+        }
+        if (!existing.demoSessionId().equals(sessionId)) {
+            throw new IllegalStateException(
+                "Review task is already bound to another demo session"
+            );
+        }
     }
 
     private String requireIdempotencyKey(String value) {

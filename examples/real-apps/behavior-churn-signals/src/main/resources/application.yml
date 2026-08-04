@@ -5,7 +5,7 @@ spring:
   application:
     name: behavior-churn-signals
   datasource:
-    url: jdbc:h2:mem:behavior_signals;MODE=PostgreSQL;DATABASE_TO_UPPER=false;DEFAULT_NULL_ORDERING=HIGH;DB_CLOSE_DELAY=-1
+    url: ${APP_DATABASE_URL:jdbc:h2:file:./data/behavior_signals;MODE=PostgreSQL;DATABASE_TO_UPPER=false;DEFAULT_NULL_ORDERING=HIGH;AUTO_SERVER=TRUE}
     driverClassName: org.h2.Driver
     username: sa
     password:
@@ -21,6 +21,34 @@ spring:
       mode: always
 
 ai:
+  enabled: true
+  execution:
+    enabled: true
+    manifests:
+      enabled: true
+      fail-fast: true
+    capabilities:
+      registered-vector-spaces: []
+      allowed-actions: []
+    async:
+      repository: JDBC
+      initialize-schema: false
+      core-pool-size: 2
+      max-pool-size: 4
+      queue-capacity: 24
+      result-ttl: PT20M
+      lease-duration: ${AI_EXECUTION_ASYNC_LEASE_DURATION:PT2M}
+      recovery-interval: ${AI_EXECUTION_ASYNC_RECOVERY_INTERVAL:PT20S}
+      recovery-batch-size: 50
+      max-attempts: ${AI_EXECUTION_ASYNC_MAX_ATTEMPTS:3}
+      cleanup-enabled: true
+      retention: ${AI_EXECUTION_ASYNC_RETENTION:P7D}
+      encryption-secret: ${AI_EXECUTION_ASYNC_ENCRYPTION_SECRET:}
+      fingerprint-secret: ${AI_EXECUTION_ASYNC_FINGERPRINT_SECRET:}
+    receipts:
+      enabled: false
+    reviews:
+      enabled: false
   prompts:
     bundle:
       overlays:
@@ -40,6 +68,15 @@ ai:
       base-url: ${OPENAI_BASE_URL:https://api.openai.com/v1}
       model: ${OPENAI_MODEL:gpt-4o-mini}
       timeout: 45
+  orchestration:
+    default-mode: resolver
+    strict-mode-routing: true
+    modes:
+      resolver:
+        actions-enabled: false
+        actions-preferred: false
+        retrieval-enabled: false
+        information-mode: LLM_DRIVEN
   behavior:
     enabled: true
     mode: LIGHT
@@ -61,6 +98,9 @@ app:
   build-info:
     path: ${APP_BUILD_INFO_PATH:file:/app/build-info.properties}
   behavior-demo:
+    analysis:
+      specialist-id: behavior-risk-analyst@1
+      require-real-ai: ${APP_BEHAVIOR_DEMO_REQUIRE_REAL_AI:false}
     cleanup:
       enabled: ${APP_BEHAVIOR_DEMO_CLEANUP_ENABLED:true}
       ttl: ${APP_BEHAVIOR_DEMO_CLEANUP_TTL:PT6H}

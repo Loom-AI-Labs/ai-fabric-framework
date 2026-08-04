@@ -112,6 +112,87 @@ class ActionContextParamResolutionSupportTest {
     }
 
     @Test
+    void shouldTrustRuntimeParamsWhenReadActionResolvesInternalRevision() {
+        AIActionRegistry registry = mock(AIActionRegistry.class);
+        AIActionHandler handler = mock(AIActionHandler.class);
+        AIActionMetaData readMeta = AIActionMetaData.builder()
+            .name("get_service_status")
+            .accessMode(ActionAccessMode.READ)
+            .readActionResolutionEligible(true)
+            .groundingEligible(true)
+            .requiredParameters(java.util.Set.of("sandboxId", "serviceName"))
+            .parameterSchemas(Map.of(
+                "sandboxId",
+                internalSchema(Map.of(
+                    "source", "RUNTIME_CONTEXT",
+                    "field", "userId"
+                )),
+                "serviceName",
+                internalSchema(Map.of(
+                    "source", "RUNTIME_CONTEXT",
+                    "field", "serviceName"
+                ))
+            ))
+            .build();
+        AIActionMetaData restartMeta = AIActionMetaData.builder()
+            .parameterSchemas(Map.of(
+                "expectedRevision",
+                internalSchema(Map.of(
+                    "source", "READ_ACTION",
+                    "actionName", "get_service_status",
+                    "resultPath", "revision"
+                ))
+            ))
+            .build();
+        when(registry.findMetadata("get_service_status"))
+            .thenReturn(Optional.of(readMeta));
+        when(registry.findHandler("get_service_status"))
+            .thenReturn(Optional.of(handler));
+        when(handler.validateActionAllowed(any(ActionContext.class)))
+            .thenReturn(true);
+        when(handler.executeAction(any(), any())).thenReturn(
+            ActionResult.builder()
+                .success(true)
+                .data(ActionPayload.object(Map.of("revision", 7)))
+                .build()
+        );
+
+        OrchestrationContext context = OrchestrationContext.builder()
+            .userId("sandbox-123")
+            .build();
+        PipelineContext pipelineContext = PipelineContext.from(
+                "Restart checkout",
+                context
+            )
+            .toBuilder()
+            .metadata(Map.of("serviceName", "checkout"))
+            .orchestrationPolicy(policy("get_service_status"))
+            .build();
+
+        ActionContextParamResolutionSupport.ResolvedActionParams resolved =
+            new ActionContextParamResolutionSupport(registry)
+                .resolveContextActionParams(
+                    restartMeta,
+                    Map.of(),
+                    context,
+                    pipelineContext
+                );
+
+        assertThat(resolved.params()).containsEntry("expectedRevision", 7);
+        assertThat(resolved.resolvedParameters())
+            .containsExactly("expectedRevision");
+        ArgumentCaptor<Map<String, Object>> paramsCaptor =
+            ArgumentCaptor.forClass(Map.class);
+        verify(handler).executeAction(
+            paramsCaptor.capture(),
+            any(ActionContext.class)
+        );
+        assertThat(paramsCaptor.getValue())
+            .containsEntry("sandboxId", "sandbox-123")
+            .containsEntry("serviceName", "checkout");
+    }
+
+    @Test
     void shouldSurfaceBlockingReadActionResultWhenDependencyFails() {
         AIActionRegistry registry = mock(AIActionRegistry.class);
         AIActionHandler handler = mock(AIActionHandler.class);
@@ -157,6 +238,16 @@ class ActionContextParamResolutionSupportTest {
             .build();
     }
 
+    private AIActionParamSchema internalSchema(
+        Map<String, Object> resolveFrom
+    ) {
+        return AIActionParamSchema.builder()
+            .visibility("INTERNAL")
+            .askUser(false)
+            .resolveFrom(resolveFrom)
+            .build();
+    }
+
     private AIActionMetaData readMeta(String name) {
         return AIActionMetaData.builder()
             .name(name)
@@ -167,6 +258,10 @@ class ActionContextParamResolutionSupportTest {
     }
 
     private OrchestrationPolicy policy() {
+        return policy("lookup_product");
+    }
+
+    private OrchestrationPolicy policy(String allowedReadAction) {
         return new OrchestrationPolicy(
             OrchestrationProfile.DEFAULT,
             "navigator",
@@ -176,7 +271,7 @@ class ActionContextParamResolutionSupportTest {
             new OrchestrationPolicy.ReadActionResolutionPolicy(
                 true,
                 OrchestrationProperties.ReadActionResolutionPlanningMode.SINGLE_PASS,
-                List.of("lookup_product"),
+                List.of(allowedReadAction),
                 true,
                 1,
                 2,

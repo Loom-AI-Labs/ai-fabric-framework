@@ -1,6 +1,7 @@
 package com.ai.fabric.realapps.agenticresolver.config;
 
 import ai.fabric.spi.RAGProvider;
+import ai.fabric.intent.orchestration.OrchestrationContextMetadataKeys;
 import com.ai.fabric.realapps.agenticresolver.service.AccountResolutionService;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -51,7 +52,15 @@ class ResolverPolicyRagIndexerTest {
         assertThat(metadata.getValue())
             .containsEntry("code", "PAYMENT_METHOD_REQUIRED")
             .containsEntry("actionName", "update_payment_method")
-            .containsEntry("confirmationRequired", true);
+            .containsEntry("confirmationRequired", true)
+            .containsEntry(
+                OrchestrationContextMetadataKeys.TENANT_ID,
+                AgenticResolverTrustBoundary.TENANT_ID
+            )
+            .containsEntry(
+                OrchestrationContextMetadataKeys.DEPLOYMENT_ID,
+                AgenticResolverTrustBoundary.DEPLOYMENT_ID
+            );
     }
 
     @Test

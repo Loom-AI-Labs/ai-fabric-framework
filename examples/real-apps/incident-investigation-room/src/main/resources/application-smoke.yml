@@ -1,0 +1,6 @@
+ai:
+  providers:
+    llm-provider: incident-smoke
+  execution:
+    async:
+      repository: IN_MEMORY

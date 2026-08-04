@@ -205,6 +205,8 @@ app:
     reviews:
       reviewer-api-key: ${APP_REVIEWER_API_KEY:}
       senior-reviewer-api-key: ${APP_SENIOR_REVIEWER_API_KEY:}
+      demo-session-ttl: ${APP_DEMO_REVIEWER_SESSION_TTL:PT30M}
+      demo-cleanup-cron: ${APP_DEMO_REVIEWER_CLEANUP_CRON:0 */15 * * * *}
   demo:
     cleanup:
       enabled: ${APP_DEMO_CLEANUP_ENABLED:true}

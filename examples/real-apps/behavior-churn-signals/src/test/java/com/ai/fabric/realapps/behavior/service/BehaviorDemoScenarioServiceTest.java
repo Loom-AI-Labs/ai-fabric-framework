@@ -192,6 +192,18 @@ class BehaviorDemoScenarioServiceTest {
     }
 
     @Test
+    void recoveryEventPackRecordsEventsWithoutRunningAnalysis() {
+        BehaviorDemoScenarioService.BehaviorEventPackResult result =
+            service.recordPositiveRecoveryEvents("user-1001");
+
+        verify(eventRepository, times(5)).save(any(AppBehaviorEvent.class));
+        verify(behaviorAnalysisService, never()).analyzeUser(anyString());
+        assertThat(result.pack()).isEqualTo("POSITIVE_RECOVERY");
+        assertThat(result.events()).hasSize(5);
+        assertThat(result.events().getFirst().eventType()).isEqualTo("POSITIVE_FEEDBACK");
+    }
+
+    @Test
     void recordNegativeChurnSignalsAddsRiskEventsAndReanalyzesOnce() {
         when(behaviorAnalysisService.analyzeUser("user-1002")).thenReturn(insight("user-1002", "RETENTION_OFFER"));
         when(eventRepository.findByUserIdOrderByEventTimestampAsc("user-1002")).thenReturn(List.of());

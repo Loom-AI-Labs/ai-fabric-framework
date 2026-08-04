@@ -11,14 +11,18 @@ The apps are intentionally scenario-focused:
 - `migration-enabled-product-catalog`: migration/backfill indexing with local H2, hash embeddings, and Lucene.
 - `privacy-first-customer-facing-support`: PII detection and redaction workflow.
 - `relationship-query-crm-insights`: natural language relationship query with an offline deterministic LLM.
-- `behavior-churn-signals`: behavior analytics and churn/sentiment insight flow with deterministic local or live OpenAI-backed LLM analysis.
+- `behavior-churn-signals`: behavior analytics with manifest-defined, durable specialist execution, previous-insight plus new-event analysis, and local or live OpenAI providers.
 - `chat-capabilities-demo`: chat-session storage, conversation-aware orchestration, staged RAG readiness, and the AI Shopping Experience demo.
 - `ai-fabric-live-data-sync`: annotation-driven JPA create/update/delete synchronization with vector revision and live RAG proof.
 - `customer-runtime-demo`: customer-owned domain fixture with data-sync, tenant-scoped retrieval, and governed actions.
 - `db-action-registry-lab`: DB-backed connector action registration, approval, discovery, execution, and deregistration.
 - `document-ingestion-workbench`: trusted document upload, preview, indexing, reindex, and delete lifecycle.
 - `it-support-action-bot`: provider-only action orchestration path.
-- `mcp-operations-assistant`: governed MCP-style operations tool execution.
+- `agentic-ai-action-resolver`: manifest-defined account specialists, typed waits, fixed plans, durable reads, governed write receipts, and human review.
+- `deployment-knowledge-guard`: exact-version, read-only specialist proof for trusted tenant/deployment retrieval boundaries.
+- `incident-investigation-room`: fixed sequential/parallel plans, one-level delegation and handoff, and backend-owned incident conversations.
+- `mcp-operations-assistant`: governed, receipt-backed remote MCP tool execution with exact server/tool binding.
+- `mcp-operations-reference-server`: authenticated Streamable HTTP MCP server exposing three narrow sandbox operations tools.
 - `provider-failover-lab`: provider routing/fallback diagnostics and transient-input policy evidence.
 - `retrieval-connector-boundary-lab`: packaged HTTP proof of accepted and rejected documents-only external retrieval.
 - `sub-management-hub-simple`: config-driven indexing setup using local deterministic embeddings by default.
@@ -39,11 +43,24 @@ Live UI-backed backend apps:
 | --- | --- | --- | --- |
 | `https://ai-fabric.dev/demos/ai-shopping-experience` and legacy `/demos/ai-fabric-framework` | `chat-capabilities-demo` | `https://ai-fabric-chat-capabilities-demo.46.224.145.148.sslip.io` | Commerce chat, staged RAG readiness, actions, confirmations, chat memory, data sync, and Lucene retrieval |
 | `https://ai-fabric.dev/demos/ai-fabric-account-resolver` | `ai-fabric-account-resolver` | `https://ai-fabric-account-resolver.46.224.145.148.sslip.io` | Current-account resolver mode, policy RAG, read-action grounding, governed writes, and chat memory |
-| `https://ai-fabric.dev/demos/ai-fabric-behavior-signals` | `behavior-churn-signals` | `https://behavior-churn-signals.46.224.145.148.sslip.io` | Behavior insights, session-scoped events, governed retention actions, and provider-posture proof |
+| `https://ai-fabric.dev/demos/ai-fabric-behavior-signals` | `behavior-churn-signals` | `https://behavior-churn-signals.46.224.145.148.sslip.io` | Behavior insights, session-scoped raw events, durable specialist execution, replay visibility, and provider-posture proof |
 | `https://ai-fabric.dev/demos/ai-fabric-behavior-signals/agentic-ui` | `behavior-churn-signals` | `https://behavior-churn-signals.46.224.145.148.sslip.io` | LLM-selected allowlisted home modules with backend-populated trusted props |
 | `https://ai-fabric.dev/demos/ai-fabric-tenant-guard` | `tenant-knowledge-portal` | `https://ai-fabric-tenant-guard.46.224.145.148.sslip.io` | Tenant-scoped retrieval, role-aware catalog visibility, governed actions, and deletion evidence |
 | `https://ai-fabric.dev/demos/ai-fabric-privacy-shield` | `privacy-first-customer-facing-support` | `https://ai-fabric-privacy-shield.46.224.145.148.sslip.io` | PII detection, redacted persistence, safe indexing, and sanitized retrieval |
-| `https://ai-fabric.dev/demos/ai-fabric-live-data-sync` | `ai-fabric-live-data-sync` | `https://ai-fabric-live-data-sync.46.224.145.148.sslip.io` | Annotation-driven create/update/delete indexing, independent database/vector revision proof, and evidence-grounded chat |
+| `https://ai-fabric.dev/demos/ai-fabric-live-data-sync` | `ai-fabric-live-data-sync` | `https://ai-fabric-live-data-sync.46.224.145.148.sslip.io` | Annotation-driven create/update/delete indexing, authoritative indexing-work lifecycle, independent database/vector revision proof, and evidence-grounded chat |
+
+Implemented deployment candidates whose public routes and backends must be deployed together:
+
+| `aifabric` route | Backend app | Deployment shape | What it proves |
+| --- | --- | --- | --- |
+| `/demos/ai-fabric-agentic-action-resolver` | `agentic-ai-action-resolver` | One new backend | Typed waits, manifest specialists, fixed plans, durable reads, governed writes, receipt replay, and backend conversation |
+| `/demos/ai-fabric-agentic-action-resolver/review` | `agentic-ai-action-resolver` | Same resolver backend | Durable human-review tasks, authority-aware decisions, immutable timeline, and linked action receipt |
+| `/demos/ai-fabric-deployment-knowledge-guard` | `deployment-knowledge-guard` | One new backend | Trusted tenant/deployment retrieval, effective capabilities, evidence lineage, and fail-closed security canaries |
+| `/demos/ai-fabric-incident-investigation` | `incident-investigation-room` | One new backend | Sequential/parallel plan parity, all-required failure, one-level delegation/handoff, and bounded conversation management |
+| `/demos/ai-fabric-mcp-operations` | `mcp-operations-assistant` plus `mcp-operations-reference-server` | Two authenticated services | Real remote MCP reads, confirmed write, exact server binding, durable receipt replay, and explicit outage/authentication failures |
+
+The implementation and verification status for this portfolio is tracked in
+[`0019-ai-fabric-0-5-live-demo-verification-plan.md`](../../docs/planning/0019-ai-fabric-0-5-live-demo-verification-plan.md).
 
 UI pages that exist on `aifabric` but are not live backend clients yet:
 

@@ -25,6 +25,7 @@ public class DemoWorkspaceService {
     private final SyncGuideService guideService;
     private final DemoSeedService seedService;
     private final SyncAuditService auditService;
+    private final ControlledIndexAnalysisHandler analysisHandler;
 
     @Value("${app.demo.workspace.ttl:PT6H}")
     private Duration workspaceTtl;
@@ -47,6 +48,7 @@ public class DemoWorkspaceService {
         requireWorkspace(workspaceId);
         deleteWorkspaceEntities(workspaceId);
         auditService.clear(workspaceId);
+        analysisHandler.clearWorkspace(workspaceId);
         seedService.seed(workspaceId);
         touch(workspaceId);
     }
@@ -82,6 +84,7 @@ public class DemoWorkspaceService {
             deleteWorkspaceEntities(workspace.getId());
             workspaceRepository.delete(workspace);
             auditService.clear(workspace.getId());
+            analysisHandler.clearWorkspace(workspace.getId());
         }
     }
 

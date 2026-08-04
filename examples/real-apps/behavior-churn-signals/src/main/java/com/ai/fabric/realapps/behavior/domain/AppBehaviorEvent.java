@@ -24,6 +24,12 @@ public class AppBehaviorEvent {
     @Column(name = "user_id", nullable = false, length = 255)
     private String userId;
 
+    @Column(name = "external_event_id", length = 160)
+    private String externalEventId;
+
+    @Column(name = "payload_fingerprint", length = 64)
+    private String payloadFingerprint;
+
     @Column(name = "event_type", nullable = false, length = 120)
     private String eventType;
 

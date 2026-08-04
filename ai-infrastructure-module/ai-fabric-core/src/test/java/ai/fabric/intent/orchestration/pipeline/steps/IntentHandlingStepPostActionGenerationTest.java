@@ -320,9 +320,92 @@ class IntentHandlingStepPostActionGenerationTest {
         assertThat(result.getMessage()).contains("Liquid is available");
         assertThat(result.getMessage()).doesNotContain("Action executed");
         assertThat(result.getData()).containsKey("postActionGeneration");
+        assertThat(result.getData()).containsKey("readActionResolution");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> readActionResolution =
+            (Map<String, Object>) result.getData().get("readActionResolution");
+        assertThat((List<?>) readActionResolution.get("executedActions"))
+            .singleElement()
+            .satisfies(rawObservation -> {
+                @SuppressWarnings("unchecked")
+                Map<String, Object> observation =
+                    (Map<String, Object>) rawObservation;
+                assertThat(observation)
+                    .containsEntry("action", "search_products")
+                    .containsEntry("groundingUsable", true);
+                assertThat(observation.get("evidenceSummary").toString())
+                    .contains("Liquid")
+                    .contains("Oxygen");
+            });
 
         verify(handler).executeAction(any(), any());
         verify(aiCoreService).generateContent(any(AIGenerationRequest.class), eq(LlmPurpose.GENERATION));
+    }
+
+    @Test
+    void shouldNotExposeWriteActionAsReadGroundingObservation() {
+        AIActionRegistry registry = mock(AIActionRegistry.class);
+        AIActionHandler handler = mock(AIActionHandler.class);
+        AIActionMetaData metadata = AIActionMetaData.builder()
+            .name("update_catalog")
+            .accessMode(ActionAccessMode.WRITE_ONLY)
+            .groundingEligible(true)
+            .anonymousAllowed(true)
+            .build();
+        when(registry.findHandler("update_catalog"))
+            .thenReturn(Optional.of(handler));
+        when(registry.findMetadata("update_catalog"))
+            .thenReturn(Optional.of(metadata));
+        when(handler.validateActionAllowed(any())).thenReturn(true);
+        when(handler.executeAction(any(), any())).thenReturn(
+            ActionResult.builder()
+                .success(true)
+                .message("Updated")
+                .data(ActionResultContracts.object(Map.of("revision", 2)))
+                .build()
+        );
+
+        IntentHandlingStep step = new IntentHandlingStep(
+            registry,
+            providerOf((RAGProvider) null),
+            mock(AICoreService.class),
+            mock(AIServiceConfig.class),
+            providerOf((AdvancedRAGProvider) null),
+            new VectorSpaceRoutingProperties(),
+            new RankBasedMerger(),
+            new RelationshipQueryPostActionGenerationProperties(),
+            new PostActionGenerationProperties(),
+            providerOf(new ObjectMapper()),
+            new OrchestrationProperties(),
+            providerOf((KnowledgeBaseOverviewService) null),
+            null,
+            new InMemoryPendingActionStore(),
+            new InMemoryActionDraftStore(),
+            promptTemplateResolver(),
+            new PromptRenderer()
+        );
+
+        Intent intent = Intent.builder()
+            .type(IntentType.ACTION)
+            .action("update_catalog")
+            .actionParams(Map.of())
+            .build();
+        PipelineContext context = PipelineContext.from(
+                "Update the catalog",
+                OrchestrationContext.forUser("user-1")
+            )
+            .toBuilder()
+            .intentResponse(MultiIntentResponse.builder()
+                .intents(List.of(intent))
+                .build())
+            .build();
+
+        OrchestrationResult result = step.process(context).getIntentResult();
+
+        assertThat(result.getType())
+            .isEqualTo(OrchestrationResultType.ACTION_EXECUTED);
+        assertThat(result.getData())
+            .doesNotContainKey("readActionResolution");
     }
 
     @Test

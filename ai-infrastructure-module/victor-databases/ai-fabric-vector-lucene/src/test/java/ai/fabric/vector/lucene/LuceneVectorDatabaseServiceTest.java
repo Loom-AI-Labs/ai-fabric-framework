@@ -17,6 +17,11 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -261,6 +266,46 @@ class LuceneVectorDatabaseServiceTest {
         assertThat(record.getContent()).isNull();
         assertThat(record.getEmbedding()).isNull();
         assertThat(record.getMetadata()).isNull();
+    }
+
+    @Test
+    void keepsEntityReadsStableWhileConcurrentWritesRefreshTheSearcher() throws Exception {
+        service = createService();
+        service.storeVector("policy", "stable-policy", "Stable policy",
+            vector(1.0, 0.0, 0.0), Map.of("scope", "stable"));
+
+        ExecutorService executor = Executors.newFixedThreadPool(3);
+        CountDownLatch start = new CountDownLatch(1);
+        Future<Void> writer = executor.submit(() -> {
+            start.await();
+            for (int i = 0; i < 120; i++) {
+                service.storeVector("policy", "policy-" + i, "Policy " + i,
+                    vector(0.0, 1.0, 0.0), Map.of("sequence", i));
+            }
+            return null;
+        });
+        Future<Void> firstReader = executor.submit(() -> readStablePolicyDuringRefresh(start));
+        Future<Void> secondReader = executor.submit(() -> readStablePolicyDuringRefresh(start));
+
+        start.countDown();
+        try {
+            writer.get(60, TimeUnit.SECONDS);
+            firstReader.get(60, TimeUnit.SECONDS);
+            secondReader.get(60, TimeUnit.SECONDS);
+        } finally {
+            executor.shutdownNow();
+            assertThat(executor.awaitTermination(10, TimeUnit.SECONDS)).isTrue();
+        }
+    }
+
+    private Void readStablePolicyDuringRefresh(CountDownLatch start) throws InterruptedException {
+        start.await();
+        for (int i = 0; i < 2_000; i++) {
+            VectorRecord record = service.getVectorByEntity("policy", "stable-policy")
+                .orElseThrow(() -> new AssertionError("Stable policy disappeared during reader refresh"));
+            assertThat(record.getContent()).isEqualTo("Stable policy");
+        }
+        return null;
     }
 
     private LuceneVectorDatabaseService createService() {

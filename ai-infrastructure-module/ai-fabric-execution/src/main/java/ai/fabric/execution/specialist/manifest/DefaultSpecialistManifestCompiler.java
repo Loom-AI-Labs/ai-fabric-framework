@@ -594,6 +594,29 @@ public final class DefaultSpecialistManifestCompiler
                         );
                     }
                 }
+                case ANY_REQUESTABLE_READ_ACTION -> {
+                    if (item.name() != null && !item.name().isBlank()) {
+                        throw failure(
+                            "GROUNDING_SOURCE_NAME_UNUSED",
+                            "ANY_REQUESTABLE_READ_ACTION does not accept a name.",
+                            source
+                        );
+                    }
+                    if (capabilities.requestableReadActions().isEmpty()) {
+                        throw failure(
+                            "GROUNDING_READ_ACTION_REQUIRED",
+                            "ANY_REQUESTABLE_READ_ACTION requires at least one requestable read action.",
+                            source
+                        );
+                    }
+                    if (!item.requiredEvidenceIds().isEmpty()) {
+                        throw failure(
+                            "GROUNDING_EVIDENCE_IDS_INVALID",
+                            "Required evidence IDs apply only to vector sources.",
+                            source
+                        );
+                    }
+                }
                 case VECTOR_SPACE -> {
                     String name = requireText(
                         item.name(),

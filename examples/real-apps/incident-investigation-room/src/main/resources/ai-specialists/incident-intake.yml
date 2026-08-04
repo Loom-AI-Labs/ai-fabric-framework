@@ -1,0 +1,122 @@
+apiVersion: ai.fabric/v1
+kind: SpecialistSchema
+metadata:
+  name: incident-routing-request
+  version: "1"
+spec:
+  direction: INPUT
+  draft: "2020-12"
+  schema:
+    type: object
+    additionalProperties: false
+    required: [question, requestedTransition, incident]
+    properties:
+      question: {type: string, minLength: 1, maxLength: 2000}
+      requestedTransition:
+        type: string
+        enum: [DELEGATION, HANDOFF]
+      incident:
+        type: object
+        additionalProperties: true
+        required: [incidentId, deploymentId, sourceRevision]
+---
+apiVersion: ai.fabric/v1
+kind: SpecialistSchema
+metadata:
+  name: incident-routing-decision
+  version: "1"
+spec:
+  direction: OUTPUT
+  draft: "2020-12"
+  schema:
+    type: object
+    additionalProperties: false
+    required: [decision, targetSpecialist, reason]
+    properties:
+      decision: {type: string, enum: [ROUTE, COMPLETE]}
+      targetSpecialist:
+        type: [string, "null"]
+        enum: [service-health-reader@1, change-risk-reader@1, null]
+      reason: {type: string, minLength: 1, maxLength: 500}
+    allOf:
+      - if:
+          properties: {decision: {const: ROUTE}}
+        then:
+          properties:
+            targetSpecialist:
+              type: string
+              enum: [service-health-reader@1, change-risk-reader@1]
+      - if:
+          properties: {decision: {const: COMPLETE}}
+        then:
+          properties: {targetSpecialist: {type: "null"}}
+---
+apiVersion: ai.fabric/v1
+kind: SpecialistPromptProfile
+metadata:
+  name: incident-intake
+  version: "1"
+spec:
+  constraints: |
+    Select zero or one exact approved read-only incident specialist. Route
+    service health, latency, errors, saturation, and availability questions to
+    service-health-reader@1. Route release, deployment change, rollback,
+    runbook, and change-risk questions to change-risk-reader@1. When the request
+    genuinely requires both branches, return COMPLETE because topology is owned
+    by the registered investigation plans. Never invent another target. Never
+    execute a target or claim that routing already happened.
+  outputContract: |
+    Return decision, targetSpecialist, and reason. ROUTE requires one approved
+    exact-version target. COMPLETE requires a null target.
+---
+apiVersion: ai.fabric/v1
+kind: Specialist
+metadata:
+  name: incident-intake
+  version: "1"
+  displayName: Incident Intake
+  description: Selects one closed read-only incident specialist.
+  labels: {domain: incident-operations, owner: incident-investigation-demo}
+spec:
+  mode: resolver
+  instructions:
+    objective: Select zero or one approved incident specialist.
+    promptProfileRef: incident-intake@1
+  execution: {strategy: SINGLE_PASS, writePolicy: DISABLED}
+  capabilities:
+    retrieval: {enabled: false, vectorSpaces: []}
+    actions: {visible: [], requestableReads: [], proposableWrites: []}
+  input:
+    schemaRef: incident-routing-request@1
+    rendering: PRIMARY_TEXT_WITH_JSON_CONTEXT
+    primaryTextPointer: /question
+    conversationTextPointer: null
+    contextPointers: [/requestedTransition, /incident/incidentId, /incident/deploymentId, /incident/sourceRevision]
+    context: {position: resolver}
+  grounding:
+    requirement: NONE
+    requireEvidenceCitations: false
+    sources: []
+    validatorRefs: []
+  output:
+    mode: STRUCTURED_GENERATION
+    schemaRef: incident-routing-decision@1
+    directProjectorRef: null
+    conversationTextPointer: null
+    finalValidatorRefs: []
+    normalizerRef: null
+  conversation:
+    binding: DISABLED
+    recordValidatedTurns: false
+    interactionCapability: NON_INTERACTIVE
+  limits:
+    maxDuration: PT30S
+    maxInputCharacters: 10000
+    maxGroundingCharacters: 1000
+    maxEvidenceReferences: 1
+    maxOutputCharacters: 1500
+    maxOutputTokens: 220
+  delegation:
+    targets: [service-health-reader@1, change-risk-reader@1]
+  handoff:
+    targets: [service-health-reader@1, change-risk-reader@1]

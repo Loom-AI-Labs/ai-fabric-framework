@@ -38,8 +38,15 @@ ai:
       similarity-threshold: 0.0
   indexing:
     enabled: true
+    queue:
+      max-retries: ${AI_INDEXING_MAX_RETRIES:3}
+    sync-retry-worker:
+      enabled: true
+      fixed-delay: PT0.5S
     async-worker:
-      enabled: false
+      enabled: true
+      fixed-delay: PT0.5S
+      batch-size: 20
   service:
     features:
       enable-generation: ${OPENAI_ENABLED:false}

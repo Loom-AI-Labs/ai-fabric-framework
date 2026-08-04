@@ -126,4 +126,5 @@ class ConnectorActionsRegistryContributorTest {
             return ActionResult.builder().success(true).build();
         }
     }
+
 }

@@ -1,13 +1,141 @@
 server:
   port: ${PORT:8100}
+  forward-headers-strategy: framework
 
 spring:
   application:
     name: mcp-operations-assistant
+  jackson:
+    deserialization:
+      fail-on-unknown-properties: true
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:h2:file:./data/mcp-operations-assistant.db}
+    driver-class-name: ${SPRING_DATASOURCE_DRIVER_CLASS_NAME:org.h2.Driver}
+    username: ${SPRING_DATASOURCE_USERNAME:sa}
+    password: ${SPRING_DATASOURCE_PASSWORD:}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: ${SPRING_JPA_HIBERNATE_DDL_AUTO:update}
+  ai:
+    mcp:
+      client:
+        enabled: ${MCP_CLIENT_ENABLED:true}
+        initialized: false
+        type: SYNC
+        request-timeout: ${MCP_CLIENT_REQUEST_TIMEOUT:PT8S}
+        streamable-http:
+          connections:
+            operations:
+              url: ${MCP_OPERATIONS_SERVER_URL:http://localhost:8106}
+              endpoint: ${MCP_OPERATIONS_SERVER_ENDPOINT:/mcp}
 
 ai:
+  actions:
+    sources:
+      - type: FILE
+        path: classpath:ai-actions.yml
+
+  execution:
+    enabled: true
+    manifests:
+      enabled: true
+      fail-fast: true
+    capabilities:
+      allowed-actions:
+        - get_sandbox_service_status
+        - list_recent_sandbox_incidents
+        - restart_sandbox_service
+    receipts:
+      enabled: true
+      repository: JDBC
+      initialize-schema: ${AI_EXECUTION_RECEIPT_INITIALIZE_SCHEMA:true}
+      ttl: ${AI_EXECUTION_RECEIPT_TTL:P1D}
+      stale-executing-after: PT1M
+      recovery-interval: PT30S
+      recovery-batch-size: 50
+      cleanup-enabled: true
+      retention: P7D
+      encryption-secret: ${AI_EXECUTION_RECEIPT_ENCRYPTION_SECRET:}
+      fingerprint-secret: ${AI_EXECUTION_RECEIPT_FINGERPRINT_SECRET:}
+    reviews:
+      enabled: false
+
+  chat:
+    enabled: true
+    auto-create-sessions: true
+    window-size: 8
+    max-context-chars: 4000
+    pinned-target-reuse-window-turns: 3
+
   providers:
-    llm-provider: ${AI_LLM_PROVIDER:smoke}
-    embedding-provider: ${AI_EMBEDDING_PROVIDER:smoke}
+    llm-provider: openai
+    embedding-provider: simple
+    openai:
+      enabled: ${OPENAI_ENABLED:false}
+      api-key: ${OPENAI_API_KEY:}
+      base-url: ${OPENAI_BASE_URL:https://api.openai.com/v1}
+      model: ${OPENAI_MODEL:gpt-4o-mini}
+      timeout: ${OPENAI_TIMEOUT:60}
+
   vector-db:
-    type: ${AI_VECTOR_DB_TYPE:memory}
+    type: memory
+
+  service:
+    features:
+      enable-generation: true
+      enable-embeddings: false
+      enable-search: false
+      enable-rag: false
+
+  orchestration:
+    action-param-provenance-mode: BLOCK
+    default-mode: resolver
+    strict-mode-routing: true
+    modes:
+      resolver:
+        actions-enabled: true
+        actions-preferred: true
+        retrieval-enabled: false
+        information-mode: LLM_DRIVEN
+        read-action-resolution:
+          enabled: true
+          planning-mode: ITERATIVE
+          require-allowlist: true
+          allowed-read-actions:
+            - get_sandbox_service_status
+            - list_recent_sandbox_incidents
+          max-iterations: 2
+          max-actions-per-iteration: 1
+          max-total-actions: 2
+          max-parallel-actions: 1
+          max-planner-context-chars: 3000
+          max-action-evidence-chars-per-action: 1600
+          require-grounding-eligible: true
+
+  behavior:
+    enabled: false
+  pii-detection:
+    enabled: false
+
+app:
+  mcp-operations:
+    executor: ${APP_MCP_OPERATIONS_EXECUTOR:remote}
+    remote:
+      api-key: ${MCP_OPERATIONS_SERVER_API_KEY:}
+    sessions:
+      ttl: ${APP_MCP_DEMO_SESSION_TTL:PT6H}
+      cleanup-cron: ${APP_MCP_DEMO_CLEANUP_CRON:0 */15 * * * *}
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+logging:
+  level:
+    ai.fabric: INFO
+    com.ai.fabric.realapps.mcpops: INFO

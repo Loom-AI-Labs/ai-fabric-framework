@@ -20,10 +20,13 @@
         <module>cloud-qdrant-openai-vector-search</module>
         <module>customer-runtime-demo</module>
         <module>db-action-registry-lab</module>
+        <module>deployment-knowledge-guard</module>
         <module>document-ingestion-workbench</module>
         <module>ecommerce-store</module>
+        <module>incident-investigation-room</module>
         <module>it-support-action-bot</module>
         <module>mcp-operations-assistant</module>
+        <module>mcp-operations-reference-server</module>
         <module>migration-enabled-product-catalog</module>
         <module>privacy-first-customer-facing-support</module>
         <module>provider-failover-lab</module>

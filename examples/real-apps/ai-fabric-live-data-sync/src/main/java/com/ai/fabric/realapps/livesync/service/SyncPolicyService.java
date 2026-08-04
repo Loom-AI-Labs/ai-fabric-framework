@@ -2,6 +2,7 @@ package com.ai.fabric.realapps.livesync.service;
 
 import ai.fabric.annotation.AIProcess;
 import ai.fabric.indexing.api.AIProcessOperation;
+import ai.fabric.indexing.api.AIEntityIndexingGateway;
 import ai.fabric.indexing.api.IndexingStrategy;
 import com.ai.fabric.realapps.livesync.domain.SyncPolicy;
 import com.ai.fabric.realapps.livesync.repository.SyncPolicyRepository;
@@ -18,6 +19,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class SyncPolicyService {
 
     private final SyncPolicyRepository repository;
+    private final AIEntityIndexingGateway indexingGateway;
 
     @Transactional
     @AIProcess(
@@ -67,6 +69,51 @@ public class SyncPolicyService {
     }
 
     @Transactional
+    public TrackedEntityMutation<SyncPolicy> createPolicyTracked(
+        String workspaceId,
+        String recordKey,
+        String title,
+        String guidance,
+        String audience,
+        String status,
+        LocalDate effectiveDate
+    ) {
+        SyncPolicy policy = new SyncPolicy();
+        policy.setWorkspaceId(SyncEntitySupport.requireText(workspaceId, "workspaceId"));
+        policy.setRecordKey(SyncEntitySupport.requireRecordKey(recordKey));
+        policy.setId(SyncEntitySupport.entityId(workspaceId, recordKey));
+        apply(policy, title, guidance, audience, status, effectiveDate);
+        policy.setRevision(1);
+        policy.setUpdatedAt(LocalDateTime.now(ZoneOffset.UTC));
+        SyncPolicy saved = repository.saveAndFlush(policy);
+        return new TrackedEntityMutation<>(
+            saved,
+            indexingGateway.upsert(saved, AIProcessOperation.CREATE, IndexingStrategy.SYNC)
+        );
+    }
+
+    @Transactional
+    public TrackedEntityMutation<SyncPolicy> updatePolicyTracked(
+        String workspaceId,
+        String recordKey,
+        String title,
+        String guidance,
+        String audience,
+        String status,
+        LocalDate effectiveDate
+    ) {
+        SyncPolicy policy = require(workspaceId, recordKey);
+        apply(policy, title, guidance, audience, status, effectiveDate);
+        policy.setRevision(policy.getRevision() + 1);
+        policy.setUpdatedAt(LocalDateTime.now(ZoneOffset.UTC));
+        SyncPolicy saved = repository.saveAndFlush(policy);
+        return new TrackedEntityMutation<>(
+            saved,
+            indexingGateway.upsert(saved, AIProcessOperation.UPDATE, IndexingStrategy.SYNC)
+        );
+    }
+
+    @Transactional
     @AIProcess(
         entityType = SyncPolicy.ENTITY_TYPE,
         operation = AIProcessOperation.DELETE,
@@ -77,6 +124,20 @@ public class SyncPolicyService {
         repository.delete(policy);
         repository.flush();
         return policy;
+    }
+
+    @Transactional
+    public TrackedEntityMutation<SyncPolicy> deletePolicyTracked(
+        String workspaceId,
+        String recordKey
+    ) {
+        SyncPolicy policy = require(workspaceId, recordKey);
+        repository.delete(policy);
+        repository.flush();
+        return new TrackedEntityMutation<>(
+            policy,
+            indexingGateway.delete(policy, IndexingStrategy.SYNC)
+        );
     }
 
     public List<SyncPolicy> findAll(String workspaceId) {

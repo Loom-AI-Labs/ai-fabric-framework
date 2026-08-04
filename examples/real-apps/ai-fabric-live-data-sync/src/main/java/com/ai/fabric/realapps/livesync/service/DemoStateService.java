@@ -31,6 +31,7 @@ public class DemoStateService {
     private final SyncGuideService guideService;
     private final VectorManagementService vectorManagementService;
     private final SyncAuditService auditService;
+    private final IndexingWorkProjectionService indexingWorkProjectionService;
 
     public DemoState state(String workspaceId) {
         List<EntityRecord> entities = new ArrayList<>();
@@ -49,6 +50,8 @@ public class DemoStateService {
 
         int vectorTotal = vectorCounts.values().stream().mapToInt(Integer::intValue).sum();
         int synchronizedTotal = (int) entities.stream().filter(entity -> entity.vector().inSync()).count();
+        List<com.ai.fabric.realapps.livesync.web.DemoModels.SyncEvent> events =
+            auditService.events(workspaceId);
         return new DemoState(
             workspaceId,
             Map.copyOf(sourceCounts),
@@ -57,7 +60,8 @@ public class DemoStateService {
             vectorTotal,
             synchronizedTotal,
             List.copyOf(entities),
-            auditService.events(workspaceId),
+            events,
+            indexingWorkProjectionService.views(workspaceId, events),
             annotationCoverage(),
             Instant.now()
         );
@@ -69,7 +73,7 @@ public class DemoStateService {
             return VectorProof.missing("No vector exists for this database entity");
         }
         VectorRecord record = vector.get();
-        Integer vectorRevision = integerValue(record.getMetadata().get("revision"));
+        Integer vectorRevision = integerValue(record.getMetadata().get("version"));
         boolean inSync = sourceRevision != null && Objects.equals(sourceRevision, vectorRevision);
         String message = inSync
             ? "Database revision and vector revision match"
@@ -218,8 +222,8 @@ public class DemoStateService {
                 ),
                 new AnnotationUse(
                     "@AIContext",
-                    "Workspace, key, status, revision, and domain metadata",
-                    "Stores structured metadata beside vector content and enables workspace filtering."
+                    "Workspace, key, status, source version, and domain metadata",
+                    "Stores structured metadata beside vector content, enables workspace filtering, and protects against stale work."
                 ),
                 new AnnotationUse(
                     "@AIProcess",

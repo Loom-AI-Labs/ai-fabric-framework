@@ -1,0 +1,7 @@
+ai:
+  providers:
+    llm-provider: mock
+    embedding-provider: simple
+  vector-db:
+    lucene:
+      index-path: ./target/deployment-guard-smoke-lucene

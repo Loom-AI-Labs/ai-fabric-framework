@@ -214,12 +214,24 @@ final class ActionContextParamResolutionSupport {
                 }
             }
         }
-        readParams = resolveContextActionParams(readMeta, readParams, context, pipelineContext, depth + 1).params();
+        ResolvedActionParams resolvedReadParams = resolveContextActionParams(
+            readMeta,
+            readParams,
+            context,
+            pipelineContext,
+            depth + 1
+        );
+        readParams = resolvedReadParams.params();
         ActionContext readContext = new ActionContext(context, pipelineContext, readParams);
         if (!readHandler.validateActionAllowed(readContext)) {
             return null;
         }
-        ActionParamValidation validation = validateRequiredActionParams(readMeta, readParams, pipelineContext);
+        ActionParamValidation validation = validateRequiredActionParams(
+            readMeta,
+            readParams,
+            pipelineContext,
+            resolvedReadParams.resolvedParameters()
+        );
         if (validation != null && validation.missingRequired() != null && !validation.missingRequired().isEmpty()) {
             return null;
         }

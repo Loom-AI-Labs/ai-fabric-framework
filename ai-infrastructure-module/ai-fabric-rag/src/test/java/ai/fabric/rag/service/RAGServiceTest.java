@@ -3,7 +3,9 @@ package ai.fabric.rag.service;
 import ai.fabric.config.AIProviderConfig;
 import ai.fabric.core.AIEmbeddingService;
 import ai.fabric.core.AISearchService;
+import ai.fabric.dto.AIAccessSubjectContext;
 import ai.fabric.dto.AIEmbeddingResponse;
+import ai.fabric.dto.AISearchRequest;
 import ai.fabric.dto.AISearchResponse;
 import ai.fabric.dto.RAGRequest;
 import ai.fabric.dto.RAGResponse;
@@ -15,6 +17,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
+import org.mockito.ArgumentCaptor;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
@@ -27,6 +30,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.verify;
 
 /**
  * Unit tests for RAGService.
@@ -236,6 +240,46 @@ class RAGServiceTest {
         assertThat(response.getContext())
             .contains("Refund requests can be opened")
             .doesNotContain("Password resets");
+    }
+
+    @Test
+    @DisplayName("performRAGQuery enforces trusted tenant and deployment vector filters")
+    void performRAGQueryEnforcesTrustedAccessBoundaryFilters() {
+        when(vectorDatabaseService.hybridSearch(any(), anyString(), any())).thenReturn(
+            AISearchResponse.builder()
+                .results(Collections.emptyList())
+                .totalResults(0)
+                .build()
+        );
+
+        RAGResponse response = ragService.performRAGQuery(RAGRequest.builder()
+            .query("deployment status")
+            .entityType("deployment-knowledge")
+            .enableHybridSearch(true)
+            .filters(Map.of(
+                "sourceType", "runbook",
+                "tenantId", "spoofed-tenant",
+                "deploymentId", "spoofed-deployment"
+            ))
+            .authContext(AIAccessSubjectContext.builder()
+                .subjectId("operator-1")
+                .tenantId("trusted-tenant")
+                .deploymentId("trusted-deployment")
+                .build())
+            .build());
+
+        assertThat(response.getSuccess()).isTrue();
+        ArgumentCaptor<AISearchRequest> requestCaptor =
+            ArgumentCaptor.forClass(AISearchRequest.class);
+        verify(vectorDatabaseService).hybridSearch(
+            any(),
+            anyString(),
+            requestCaptor.capture()
+        );
+        assertThat(requestCaptor.getValue().getMetadata())
+            .containsEntry("sourceType", "runbook")
+            .containsEntry("tenantId", "trusted-tenant")
+            .containsEntry("deploymentId", "trusted-deployment");
     }
     
     @Test

@@ -1,21 +1,23 @@
 package com.ai.fabric.realapps.livesync.service;
 
+import ai.fabric.indexing.api.IndexingOutcome;
+import com.ai.fabric.realapps.livesync.domain.SyncAuditEntry;
+import com.ai.fabric.realapps.livesync.repository.SyncAuditEntryRepository;
 import com.ai.fabric.realapps.livesync.web.DemoModels.SyncEvent;
 import java.time.Instant;
-import java.util.ArrayList;
-import java.util.Deque;
 import java.util.List;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentLinkedDeque;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
+@RequiredArgsConstructor
 public class SyncAuditService {
 
-    private static final int MAX_EVENTS = 30;
-    private final ConcurrentHashMap<String, Deque<SyncEvent>> events = new ConcurrentHashMap<>();
+    private final SyncAuditEntryRepository repository;
 
+    @Transactional
     public SyncEvent record(
         String workspaceId,
         String operation,
@@ -27,36 +29,64 @@ public class SyncAuditService {
         boolean vectorPresent,
         boolean inSync,
         long elapsedMs,
+        IndexingOutcome indexing,
         String message
     ) {
-        SyncEvent event = new SyncEvent(
-            UUID.randomUUID().toString(),
-            operation,
-            kind.name(),
-            kind.entityType(),
-            recordKey,
-            title,
-            revision,
-            sourcePresent,
-            vectorPresent,
-            inSync,
-            elapsedMs,
-            message,
-            Instant.now()
+        SyncAuditEntry entry = new SyncAuditEntry();
+        entry.setId(UUID.randomUUID().toString());
+        entry.setWorkspaceId(workspaceId);
+        entry.setOperation(operation);
+        entry.setKind(kind.name());
+        entry.setEntityType(kind.entityType());
+        entry.setRecordKey(recordKey);
+        entry.setTitle(title);
+        entry.setRevision(revision);
+        entry.setSourcePresent(sourcePresent);
+        entry.setVectorPresent(vectorPresent);
+        entry.setInSync(inSync);
+        entry.setElapsedMs(elapsedMs);
+        entry.setIndexingWorkId(
+            indexing != null ? indexing.workId() : null
         );
-        Deque<SyncEvent> workspaceEvents = events.computeIfAbsent(workspaceId, ignored -> new ConcurrentLinkedDeque<>());
-        workspaceEvents.addFirst(event);
-        while (workspaceEvents.size() > MAX_EVENTS) {
-            workspaceEvents.pollLast();
-        }
-        return event;
+        entry.setIndexingDispatchStatus(
+            indexing != null ? indexing.status().name() : null
+        );
+        entry.setMessage(message);
+        entry.setOccurredAt(Instant.now());
+        return toEvent(repository.save(entry));
     }
 
+    @Transactional(readOnly = true)
     public List<SyncEvent> events(String workspaceId) {
-        return List.copyOf(new ArrayList<>(events.getOrDefault(workspaceId, new ConcurrentLinkedDeque<>())));
+        return repository
+            .findTop30ByWorkspaceIdOrderByOccurredAtDesc(workspaceId)
+            .stream()
+            .map(this::toEvent)
+            .toList();
     }
 
+    @Transactional
     public void clear(String workspaceId) {
-        events.remove(workspaceId);
+        repository.deleteByWorkspaceId(workspaceId);
+    }
+
+    private SyncEvent toEvent(SyncAuditEntry entry) {
+        return new SyncEvent(
+            entry.getId(),
+            entry.getOperation(),
+            entry.getKind(),
+            entry.getEntityType(),
+            entry.getRecordKey(),
+            entry.getTitle(),
+            entry.getRevision(),
+            entry.isSourcePresent(),
+            entry.isVectorPresent(),
+            entry.isInSync(),
+            entry.getElapsedMs(),
+            entry.getIndexingWorkId(),
+            entry.getIndexingDispatchStatus(),
+            entry.getMessage(),
+            entry.getOccurredAt()
+        );
     }
 }

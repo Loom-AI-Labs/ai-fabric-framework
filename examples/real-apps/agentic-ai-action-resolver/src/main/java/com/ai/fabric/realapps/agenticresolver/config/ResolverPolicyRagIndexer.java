@@ -1,6 +1,7 @@
 package com.ai.fabric.realapps.agenticresolver.config;
 
 import ai.fabric.spi.RAGProvider;
+import ai.fabric.intent.orchestration.OrchestrationContextMetadataKeys;
 import com.ai.fabric.realapps.agenticresolver.service.AccountResolutionService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -72,6 +73,14 @@ public class ResolverPolicyRagIndexer implements CommandLineRunner {
         metadata.put("title", policy.title());
         metadata.put("actionName", policy.actionName());
         metadata.put("confirmationRequired", policy.confirmationRequired());
+        metadata.put(
+            OrchestrationContextMetadataKeys.TENANT_ID,
+            AgenticResolverTrustBoundary.TENANT_ID
+        );
+        metadata.put(
+            OrchestrationContextMetadataKeys.DEPLOYMENT_ID,
+            AgenticResolverTrustBoundary.DEPLOYMENT_ID
+        );
         return metadata;
     }
 }

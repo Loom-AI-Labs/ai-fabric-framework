@@ -68,6 +68,11 @@
             <artifactId>ai-fabric-behavior</artifactId>
             <version>${ai-fabric.version}</version>
         </dependency>
+        <dependency>
+            <groupId>io.github.loom-ai-labs</groupId>
+            <artifactId>ai-fabric-execution</artifactId>
+            <version>${ai-fabric.version}</version>
+        </dependency>
 
         <!-- Database -->
         <dependency>

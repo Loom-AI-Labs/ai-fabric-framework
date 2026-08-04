@@ -27,6 +27,7 @@ public final class DemoModels {
         int synchronizedTotal,
         List<EntityRecord> entities,
         List<SyncEvent> events,
+        List<IndexingWorkView> indexingWork,
         AnnotationCoverage annotationCoverage,
         Instant checkedAt
     ) {
@@ -69,6 +70,8 @@ public final class DemoModels {
         boolean vectorPresent,
         boolean inSync,
         long elapsedMs,
+        String indexingWorkId,
+        String indexingDispatchStatus,
         String message,
         Instant occurredAt
     ) {
@@ -108,6 +111,49 @@ public final class DemoModels {
 
     public record MutationResponse(
         SyncEvent mutation,
+        DemoState state,
+        Map<String, Object> metadata,
+        IndexingWorkView indexingWork
+    ) {
+    }
+
+    public record EntityCreateRequest(
+        String recordKey,
+        EntityUpdateRequest entity
+    ) {
+    }
+
+    public record IndexingWorkView(
+        String workId,
+        String entityType,
+        String entityId,
+        String workType,
+        String sourceOperation,
+        String strategy,
+        String status,
+        int retryCount,
+        int maxRetries,
+        String errorCode,
+        String deadLetterReason,
+        String correlationId,
+        boolean terminal,
+        boolean successfulTerminal,
+        boolean inProgress,
+        boolean requiresOperatorReview,
+        java.time.LocalDateTime requestedAt,
+        java.time.LocalDateTime scheduledFor,
+        java.time.LocalDateTime startedAt,
+        java.time.LocalDateTime completedAt,
+        java.time.LocalDateTime lastErrorAt,
+        java.time.LocalDateTime updatedAt
+    ) {
+    }
+
+    public record LifecycleWorkResponse(
+        String scenario,
+        String guidance,
+        Map<String, Object> metadata,
+        IndexingWorkView indexingWork,
         DemoState state
     ) {
     }

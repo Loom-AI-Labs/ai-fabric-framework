@@ -1,8 +1,11 @@
 # AI Fabric Live Data Sync
 
 This real app proves that ordinary Spring Boot/JPA entity changes can remain synchronized with the
-vector evidence used by retrieval and an LLM. The application code saves or deletes domain rows;
-AI Fabric annotations own the indexing lifecycle.
+vector evidence used by retrieval and an LLM. It demonstrates both supported application shapes:
+
+- transparent `@AIProcess` lifecycle processing when a business method does not need a receipt;
+- explicit `AIEntityIndexingGateway` submission when an API promises an opaque durable work ID and
+  public `IndexingWorkStatus` reconciliation.
 
 No action capability is enabled. The scope is deliberately limited to:
 
@@ -10,7 +13,8 @@ No action capability is enabled. The scope is deliberately limited to:
 - create, update, and delete synchronization;
 - metadata-filtered retrieval;
 - evidence-grounded generation;
-- database/vector consistency proof.
+- database/vector consistency proof; and
+- durable completion, supersession, retry recovery, and dead-letter visibility.
 
 ## What The Demo Proves
 
@@ -22,13 +26,15 @@ The demo creates an isolated browser workspace with two records for each of thre
 | `sync-policy` | Opened-electronics return window |
 | `sync-guide` | Amber SyncLight recovery steps |
 
-The public UI can edit or delete any row. After each normal service call, it independently reads the
+The public UI can create, edit, or delete rows. After each normal service call, it independently reads the
 database state and vector state to prove:
 
 - updated searchable text replaces the previous vector content;
-- `@AIContext` metadata contains the workspace and current entity revision;
+- `@AIContext` metadata contains the workspace and monotonic source `version`;
 - deleted rows no longer have vectors;
-- RAG and the LLM see only vectors in the current browser workspace.
+- RAG and the LLM see only vectors in the current browser workspace;
+- stale work finishes as `SUPERSEDED` without restoring old content; and
+- retry and dead-letter transitions retain the original durable work ID.
 
 The live chat uses the independently published
 [`@loom-ai-labs/ai-fabric-chat-ui`](https://github.com/Loom-AI-Labs/ai-fabric-chat-ui)
@@ -43,7 +49,7 @@ answer when the live provider fails.
 | `@AICapable` | Declares each stable entity type, its default and per-operation indexing strategy, and its migration repository. |
 | `@AIIdentity` | Marks the stable entity identity used for vector upsert and idempotent delete. |
 | `@AISearchable` | Selects priority-ordered, preprocessed text embedded into each vector. |
-| `@AIContext` | Adds identifiers, workspace scope, status, dates, prices, and revision metadata without embedding those fields. |
+| `@AIContext` | Adds identifiers, workspace scope, status, dates, prices, and the reserved `version` source-revision metadata without embedding those fields. |
 | `@AIProcess` | Observes create, update, and delete service results and routes them through AI Fabric indexing. |
 
 Runtime `ai-entity-config.yml` policy enables indexing and sets the projection budget; configuration
@@ -62,16 +68,16 @@ declare an `AIProcessTargetResolver`.
 ```text
 React demo / reusable Chat UI
         |
-        | normal PUT or DELETE
+        | seed/reset lifecycle          | receipt-required edit
         v
 Spring MVC controller
         |
-        v
-JPA domain service + H2 source row
-        |
-        | returned entity observed by @AIProcess
-        v
-AIProcessAspect -> AIEntityIndexingGateway
+        +-> annotated domain method -> AIProcessAspect --+
+        |                                             |
+        +-> tracked domain method -> AIEntityIndexingGateway
+                                                      |
+                                                      v
+                                  durable indexing work + H2 source row
         |
         | @AISearchable content + @AIContext metadata
         v
@@ -82,8 +88,9 @@ Lucene vector store
 AI Fabric retrieval -> Spring AI OpenAI generation
 ```
 
-The controllers never call an indexing endpoint. `DemoStateService` reads H2 and Lucene separately
-only to display lifecycle proof.
+The controller delegates to application services only. It never sees queue entities or stored
+payloads. `DemoMutationService` uses the public gateway because its response contract includes a
+receipt; `DemoStateService` reads H2 and Lucene separately only to display lifecycle proof.
 
 ## API
 
@@ -98,15 +105,19 @@ X-Demo-Workspace-ID: sync-demo-...
 | `POST` | `/api/live-sync/workspaces` | Create and seed an isolated six-hour workspace. |
 | `POST` | `/api/live-sync/reset` | Delete vectors/rows through annotated methods and recreate the seed set. |
 | `GET` | `/api/live-sync/state` | Return independent database/vector state and revision proof. |
+| `POST` | `/api/live-sync/entities/{products|policies|guides}` | Create a source entity and return its durable indexing receipt. |
 | `PUT` | `/api/live-sync/entities/{products|policies|guides}/{recordKey}` | Update a normal JPA entity and synchronize its vector. |
 | `DELETE` | `/api/live-sync/entities/{products|policies|guides}/{recordKey}` | Delete the source entity and its vector. |
+| `GET` | `/api/live-sync/indexing-work/{workId}` | Read the safe workspace-bound `IndexingWorkStatus` projection. |
+| `POST` | `/api/live-sync/lifecycle/{superseded|retry-recovery|dead-letter}/{entityType}/{recordKey}` | Run a controlled indexing infrastructure canary. |
 | `POST` | `/api/live-sync/search` | Search all three vector spaces with workspace filtering. |
 | `POST` | `/api/live-sync/chat` | Retrieve synchronized evidence and generate a typed chat result. |
 | `GET` | `/api/live-sync/manifest` | Describe the demo contract and confirm actions are disabled. |
 | `GET` | `/api/demo/health` | Report runtime and deployed build identity. |
 
-Expired workspaces are removed by a scheduled cleanup that calls the same annotated delete
-services, preventing stale demo vectors.
+Indexing work and the workspace-to-work audit link are stored in JDBC and survive application
+restart. Expired workspaces are removed by a scheduled cleanup that calls the same annotated delete
+services, preventing stale demo vectors and clearing only that workspace's demo audit state.
 
 ## Run Without A Provider Key
 
@@ -163,6 +174,13 @@ curl -fsS -X PUT "$base/api/live-sync/entities/products/novabook-air" \
 
 curl -fsS -X DELETE "$base/api/live-sync/entities/policies/opened-electronics-return" \
   -H "X-Demo-Workspace-ID: $workspace" | jq '{sourceTotal: .state.sourceTotal, vectorTotal: .state.vectorTotal}'
+
+work=$(curl -fsS -X POST \
+  "$base/api/live-sync/lifecycle/retry-recovery/guides/amber-synclight" \
+  -H "X-Demo-Workspace-ID: $workspace" | jq -r .indexingWork.workId)
+
+curl -fsS "$base/api/live-sync/indexing-work/$work" \
+  -H "X-Demo-Workspace-ID: $workspace" | jq '{workId, status, retryCount}'
 ```
 
 Expected progression:
@@ -171,6 +189,7 @@ Expected progression:
 2. Product revision becomes `2`; vector content contains `26 hours` and not `18 hours`.
 3. Policy deletion leaves `5` rows and `5` vectors.
 4. A follow-up chat answer can use only the current five vectors.
+5. The retry canary keeps one work ID, records one retry, and reaches `COMPLETED`.
 
 ## Tests
 
@@ -183,6 +202,9 @@ The test suite preserves:
 - annotation presence and lifecycle configuration on all entity types;
 - seed, update, delete, and independent database/vector revision behavior;
 - browser-workspace isolation;
+- workspace-bound indexing work status authorization;
+- source-version supersession, same-ID retry recovery, and exhausted dead-letter behavior;
+- durable app-side work references;
 - the reusable chat UI response shape;
 - visible provider failure with no fake fallback.
 

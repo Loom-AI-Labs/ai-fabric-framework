@@ -1,0 +1,23 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:mcp-operations-smoke;DB_CLOSE_DELAY=-1
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+  ai:
+    mcp:
+      client:
+        enabled: false
+
+ai:
+  providers:
+    llm-provider: smoke
+    embedding-provider: smoke
+  execution:
+    receipts:
+      encryption-secret: smoke-mcp-receipt-encryption-key-local-only-0001
+      fingerprint-secret: smoke-mcp-receipt-fingerprint-key-local-only-0002
+
+app:
+  mcp-operations:
+    executor: local-smoke

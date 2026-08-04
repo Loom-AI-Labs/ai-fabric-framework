@@ -1,0 +1,111 @@
+server:
+  port: ${PORT:8107}
+  forward-headers-strategy: framework
+
+spring:
+  application:
+    name: incident-investigation-room
+  datasource:
+    url: jdbc:h2:file:./data/incident-investigation
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: update
+
+ai:
+  enabled: true
+  fabric:
+    examples:
+      demo-health:
+        enabled: false
+  execution:
+    enabled: true
+    manifests:
+      enabled: true
+      fail-fast: true
+    capabilities:
+      registered-vector-spaces: []
+      allowed-actions: []
+    async:
+      repository: IN_MEMORY
+      core-pool-size: 4
+      max-pool-size: 8
+      queue-capacity: 32
+      result-ttl: PT15M
+    input-waits:
+      enabled: false
+    plans:
+      enabled: true
+      parallel-enabled: true
+      max-parallel-branches: 2
+      max-steps: 3
+      max-duration: PT1M
+      max-active: 500
+      result-ttl: PT15M
+    conversation-managers:
+      enabled: true
+      max-duration: PT1M
+      max-active: 500
+      result-ttl: PT15M
+    receipts:
+      enabled: false
+    reviews:
+      enabled: false
+  chat:
+    enabled: true
+    auto-create-sessions: true
+    window-size: 8
+    max-context-chars: 5000
+  providers:
+    llm-provider: openai
+    embedding-provider: simple
+    openai:
+      enabled: ${OPENAI_ENABLED:false}
+      api-key: ${OPENAI_API_KEY:}
+      base-url: ${OPENAI_BASE_URL:https://api.openai.com/v1}
+      model: ${OPENAI_MODEL:gpt-4o-mini}
+      timeout: ${OPENAI_TIMEOUT:60}
+  service:
+    features:
+      enable-generation: true
+      enable-embeddings: false
+      enable-search: false
+      enable-rag: false
+  orchestration:
+    default-mode: resolver
+    strict-mode-routing: true
+    modes:
+      resolver:
+        actions-enabled: false
+        actions-preferred: false
+        retrieval-enabled: false
+        information-mode: LLM_DRIVEN
+  behavior:
+    enabled: false
+  pii-detection:
+    enabled: false
+
+app:
+  incident:
+    sessions:
+      ttl: ${APP_DEMO_SESSION_TTL:PT4H}
+      max-active: ${APP_DEMO_MAX_SESSIONS:500}
+      cleanup-cron: ${APP_DEMO_SESSION_CLEANUP_CRON:0 */15 * * * *}
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:}
+    allowed-origin-patterns: ${CORS_ALLOWED_ORIGIN_PATTERNS:}
+    allow-credentials: ${CORS_ALLOW_CREDENTIALS:false}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+logging:
+  level:
+    com.ai.fabric.realapps.incident: INFO
+    ai.fabric: INFO

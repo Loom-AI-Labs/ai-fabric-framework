@@ -38,6 +38,7 @@ import com.ai.fabric.realapps.agenticresolver.agentic.plan.AccountBillingResolut
 import com.ai.fabric.realapps.agenticresolver.agentic.plan.AccountBillingResolutionPlanResult;
 import com.ai.fabric.realapps.agenticresolver.agentic.plan.AccountResolverPlans;
 import com.ai.fabric.realapps.agenticresolver.agentic.plan.PlanInputResumeRequest;
+import com.ai.fabric.realapps.agenticresolver.config.AgenticResolverTrustBoundary;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -777,8 +778,8 @@ public class AgenticResolverExecutionService {
                 session.subjectUserId().toString()
             ),
             source,
-            "public-demo",
-            "agentic-ai-action-resolver",
+            AgenticResolverTrustBoundary.TENANT_ID,
+            AgenticResolverTrustBoundary.DEPLOYMENT_ID,
             scopes,
             null,
             clock.instant()

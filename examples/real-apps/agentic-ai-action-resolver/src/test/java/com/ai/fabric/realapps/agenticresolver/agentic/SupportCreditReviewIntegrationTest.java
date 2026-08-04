@@ -30,6 +30,7 @@ import ai.fabric.intent.orchestration.request.ConversationPersistencePolicy;
 import ai.fabric.intent.orchestration.request.OrchestrationRequest;
 import ai.fabric.intent.orchestration.request.OrchestrationRequestPurpose;
 import com.ai.fabric.realapps.agenticresolver.agentic.review.SupportCreditReviewPolicies;
+import com.ai.fabric.realapps.agenticresolver.agentic.review.DemoReviewerSessionService;
 import com.ai.fabric.realapps.agenticresolver.controller.AgenticResolverController;
 import com.ai.fabric.realapps.agenticresolver.controller.SupportCreditReviewController;
 import com.ai.fabric.realapps.agenticresolver.entity.RefundRequest;
@@ -103,6 +104,79 @@ class SupportCreditReviewIntegrationTest {
 
     @Autowired
     private Clock clock;
+
+    @Autowired
+    private DemoReviewerSessionService demoReviewSessions;
+
+    @Test
+    void publicReviewerCredentialIsShortLivedAndDemoSessionBound()
+        throws Exception {
+        TestReview review = createReview(
+            new BigDecimal("25.00"),
+            RefundRequest.ResolutionType.ACCOUNT_CREDIT
+        );
+        demoReviewSessions.bindTask(
+            review.sessionId(),
+            review.task().task().taskId()
+        );
+
+        String reviewer = issueDemoReviewer(review.sessionId(), "REGULAR");
+        mockMvc.perform(get("/api/agentic-resolver/demo-reviews")
+                .header(
+                    AgenticResolverController.SESSION_HEADER,
+                    review.sessionId()
+                )
+                .header(
+                    DemoReviewerSessionService.REVIEW_SESSION_HEADER,
+                    reviewer
+                ))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$[0].taskId")
+                .value(review.task().task().taskId()));
+
+        AgenticResolverSessionService.SessionView other = sessions.create();
+        String otherReviewer = issueDemoReviewer(
+            other.sessionId(),
+            "REGULAR"
+        );
+        mockMvc.perform(get(
+                "/api/agentic-resolver/demo-reviews/{taskId}",
+                review.task().task().taskId()
+            )
+                .header(
+                    AgenticResolverController.SESSION_HEADER,
+                    other.sessionId()
+                )
+                .header(
+                    DemoReviewerSessionService.REVIEW_SESSION_HEADER,
+                    otherReviewer
+                ))
+            .andExpect(status().isNotFound());
+
+        long before = refunds.count();
+        mockMvc.perform(post(
+                "/api/agentic-resolver/demo-reviews/{taskId}/decision",
+                review.task().task().taskId()
+            )
+                .header(
+                    AgenticResolverController.SESSION_HEADER,
+                    review.sessionId()
+                )
+                .header(
+                    DemoReviewerSessionService.REVIEW_SESSION_HEADER,
+                    reviewer
+                )
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(decisionBody(
+                    "public-review-approve-1",
+                    "APPROVE",
+                    review.task().task().version(),
+                    null
+                )))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.task.status").value("APPROVED"));
+        assertThat(refunds.count()).isEqualTo(before + 1);
+    }
 
     @Test
     void reviewerApprovalExecutesExactlyOneGovernedBillingAction()
@@ -545,6 +619,25 @@ class SupportCreditReviewIntegrationTest {
             body.set("response", objectMapper.valueToTree(response));
         }
         return objectMapper.writeValueAsString(body);
+    }
+
+    private String issueDemoReviewer(String sessionId, String role)
+        throws Exception {
+        String response = mockMvc.perform(post(
+                "/api/agentic-resolver/demo-reviews/sessions"
+            )
+                .header(
+                    AgenticResolverController.SESSION_HEADER,
+                    sessionId
+                )
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"role\":\"" + role + "\"}"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.role").value(role))
+            .andReturn()
+            .getResponse()
+            .getContentAsString();
+        return objectMapper.readTree(response).path("token").asText();
     }
 
     private record TestReview(

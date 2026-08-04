@@ -33,6 +33,10 @@ public class SpringAiMcpActionExecutor implements McpActionExecutor {
     private static final String ERROR_INVALID_CONFIGURATION = "INVALID_CONFIGURATION";
     private static final String ERROR_SERVICE_UNAVAILABLE = "SERVICE_UNAVAILABLE";
     private static final String ERROR_MCP_TOOL_EXECUTION_FAILED = "MCP_TOOL_EXECUTION_FAILED";
+    private static final String ERROR_MCP_RESULT_TOO_LARGE = "MCP_RESULT_TOO_LARGE";
+    private static final int DEFAULT_MAX_RESULT_CHARACTERS = 32_768;
+    private static final int MIN_MAX_RESULT_CHARACTERS = 1_024;
+    private static final int MAX_MAX_RESULT_CHARACTERS = 262_144;
     private static final Pattern TEMPLATE_PLACEHOLDER = Pattern.compile("\\{\\{\\s*([^{}]+?)\\s*}}");
 
     private final Supplier<List<McpSyncClient>> clientsSupplier;
@@ -54,7 +58,12 @@ public class SpringAiMcpActionExecutor implements McpActionExecutor {
                                 Map<String, Object> params,
                                 ActionContext context,
                                 Map<String, Object> actionConfig) {
-        McpActionSpec spec = McpActionSpec.from(actionConfig);
+        McpActionSpec spec;
+        try {
+            spec = McpActionSpec.from(actionConfig);
+        } catch (IllegalArgumentException ex) {
+            return failure(ERROR_INVALID_CONFIGURATION, ex.getMessage());
+        }
         if (!StringUtils.hasText(spec.toolName())) {
             return failure(ERROR_INVALID_CONFIGURATION, "MCP tool action is missing execution.mcp.toolName.");
         }
@@ -108,11 +117,11 @@ public class SpringAiMcpActionExecutor implements McpActionExecutor {
     private Optional<McpSyncClient> findClient(List<McpSyncClient> clients, String serverRef, String toolName) {
         List<McpSyncClient> candidates = clients;
         if (StringUtils.hasText(serverRef)) {
-            List<McpSyncClient> byServerRef = clients.stream()
+            candidates = clients.stream()
                 .filter(client -> matchesServerRef(client, serverRef))
                 .toList();
-            if (!byServerRef.isEmpty()) {
-                candidates = byServerRef;
+            if (candidates.isEmpty()) {
+                return Optional.empty();
             }
         }
 
@@ -129,11 +138,12 @@ public class SpringAiMcpActionExecutor implements McpActionExecutor {
             return false;
         }
         try {
-            McpSchema.Implementation clientInfo = client.getClientInfo();
-            return matchesText(clientInfo != null ? clientInfo.name() : null, serverRef)
-                || matchesText(clientInfo != null ? clientInfo.title() : null, serverRef);
+            initializeIfRequired(client);
+            McpSchema.Implementation serverInfo = client.getServerInfo();
+            return matchesText(serverInfo != null ? serverInfo.name() : null, serverRef)
+                || matchesText(serverInfo != null ? serverInfo.title() : null, serverRef);
         } catch (Exception ex) {
-            log.debug("Failed to inspect Spring AI MCP client info: {}", ex.getMessage());
+            log.debug("Failed to inspect Spring AI MCP server info: {}", ex.getMessage());
             return false;
         }
     }
@@ -143,6 +153,7 @@ public class SpringAiMcpActionExecutor implements McpActionExecutor {
             return false;
         }
         try {
+            initializeIfRequired(client);
             McpSchema.ListToolsResult toolsResult = client.listTools();
             if (toolsResult == null || toolsResult.tools() == null) {
                 return false;
@@ -156,6 +167,12 @@ public class SpringAiMcpActionExecutor implements McpActionExecutor {
             log.debug("Failed to list Spring AI MCP tools: {}", ex.getMessage());
         }
         return false;
+    }
+
+    private void initializeIfRequired(McpSyncClient client) {
+        if (client != null && !client.isInitialized()) {
+            client.initialize();
+        }
     }
 
     private boolean matchesText(String candidate, String expected) {
@@ -334,6 +351,12 @@ public class SpringAiMcpActionExecutor implements McpActionExecutor {
 
         Map<String, Object> rawResult = rawResult(mcpResult);
         Object selected = selectResult(rawResult, spec.resultPath());
+        if (resultCharacters(selected) > spec.maxResultCharacters()) {
+            return failure(
+                ERROR_MCP_RESULT_TOO_LARGE,
+                "MCP tool result exceeded the configured safe response limit."
+            );
+        }
         ActionPayload payload;
         try {
             payload = toPayload(selected);
@@ -345,6 +368,17 @@ public class SpringAiMcpActionExecutor implements McpActionExecutor {
             .message("MCP tool executed.")
             .data(payload)
             .build();
+    }
+
+    private int resultCharacters(Object selected) {
+        if (selected == null) {
+            return 0;
+        }
+        try {
+            return objectMapper.writeValueAsString(selected).length();
+        } catch (Exception ex) {
+            return selected.toString().length();
+        }
     }
 
     private Map<String, Object> rawResult(McpSchema.CallToolResult result) {
@@ -444,7 +478,8 @@ public class SpringAiMcpActionExecutor implements McpActionExecutor {
         String serverRef,
         String toolName,
         Object argumentTemplate,
-        String resultPath
+        String resultPath,
+        int maxResultCharacters
     ) {
         @SuppressWarnings("unchecked")
         static McpActionSpec from(Map<String, Object> actionConfig) {
@@ -455,8 +490,34 @@ public class SpringAiMcpActionExecutor implements McpActionExecutor {
                 textValue(mcp.get("serverRef")),
                 textValue(mcp.get("toolName")),
                 mcp.get("argumentTemplate"),
-                textValue(responseMapping.get("resultPath"))
+                textValue(responseMapping.get("resultPath")),
+                maxResultCharacters(responseMapping.get("maxCharacters"))
             );
+        }
+
+        private static int maxResultCharacters(Object value) {
+            if (value == null) {
+                return DEFAULT_MAX_RESULT_CHARACTERS;
+            }
+            int parsed;
+            try {
+                parsed = value instanceof Number number
+                    ? number.intValue()
+                    : Integer.parseInt(value.toString().trim());
+            } catch (RuntimeException ex) {
+                throw new IllegalArgumentException(
+                    "execution.mcp.responseMapping.maxCharacters must be an integer."
+                );
+            }
+            if (parsed < MIN_MAX_RESULT_CHARACTERS
+                || parsed > MAX_MAX_RESULT_CHARACTERS) {
+                throw new IllegalArgumentException(
+                    "execution.mcp.responseMapping.maxCharacters must be between "
+                        + MIN_MAX_RESULT_CHARACTERS + " and "
+                        + MAX_MAX_RESULT_CHARACTERS + "."
+                );
+            }
+            return parsed;
         }
 
         private static Map<String, Object> mapValue(Object value) {

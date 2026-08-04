@@ -7,6 +7,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
 import org.springframework.context.annotation.Bean;
 import org.springframework.core.env.Environment;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.web.bind.annotation.RestController;
 
 @AutoConfiguration
@@ -23,7 +24,13 @@ public class DemoHealthAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
-    public DemoHealthController demoHealthController(DemoDeploymentInfoService deploymentInfoService) {
-        return new DemoHealthController(deploymentInfoService);
+    public DemoHealthController demoHealthController(
+        DemoDeploymentInfoService deploymentInfoService,
+        ObjectProvider<DemoHealthContributor> contributors
+    ) {
+        return new DemoHealthController(
+            deploymentInfoService,
+            contributors.orderedStream().toList()
+        );
     }
 }

@@ -5,12 +5,14 @@ import ai.fabric.core.AIEmbeddingService;
 import ai.fabric.core.AISearchService;
 import ai.fabric.dto.AIEmbeddingRequest;
 import ai.fabric.dto.AIEmbeddingResponse;
+import ai.fabric.dto.AIAccessSubjectContext;
 import ai.fabric.dto.AISearchRequest;
 import ai.fabric.dto.AISearchResponse;
 import ai.fabric.dto.RAGRequest;
 import ai.fabric.dto.RAGResponse;
 import ai.fabric.dto.VectorRecord;
 import ai.fabric.exception.AIServiceException;
+import ai.fabric.intent.orchestration.OrchestrationContextMetadataKeys;
 import ai.fabric.rag.VectorDatabaseService;
 import ai.fabric.rag.config.RAGProperties;
 import ai.fabric.rag.source.SearchSourceRegistry;
@@ -365,11 +367,14 @@ public class RAGService implements RAGProvider {
             .limit(effectiveLimit(request))
             .threshold(effectiveThreshold(request));
 
-        if (includeContextAndMetadata) {
+        if (request.getFilters() != null && !request.getFilters().isEmpty()) {
             builder
-                .context(request.getContext() != null ? request.getContext().toString() : null)
-                .filters(request.getFilters() != null ? request.getFilters().toString() : null)
+                .filters(request.getFilters().toString())
                 .metadata(request.getFilters());
+        }
+
+        if (includeContextAndMetadata) {
+            builder.context(request.getContext() != null ? request.getContext().toString() : null);
         }
 
         return builder.build();
@@ -512,7 +517,7 @@ public class RAGService implements RAGProvider {
             .limit(effectiveLimit(request))
             .threshold(effectiveThreshold(request))
             .context(request.getContext())
-            .filters(request.getFilters())
+            .filters(accessBoundaryFilters(request))
             .metadata(request.getMetadata())
             .authContext(request.getAuthContext())
             .includeEmbeddings(request.getIncludeEmbeddings())
@@ -537,6 +542,38 @@ public class RAGService implements RAGProvider {
                 : defaultContextualSearch)
             .categories(request.getCategories())
             .build();
+    }
+
+    private Map<String, Object> accessBoundaryFilters(RAGRequest request) {
+        Map<String, Object> filters = request.getFilters() == null
+            ? new HashMap<>()
+            : new HashMap<>(request.getFilters());
+        AIAccessSubjectContext authContext = request.getAuthContext();
+        if (authContext == null) {
+            return filters;
+        }
+
+        putBoundaryFilter(
+            filters,
+            OrchestrationContextMetadataKeys.TENANT_ID,
+            authContext.getTenantId()
+        );
+        putBoundaryFilter(
+            filters,
+            OrchestrationContextMetadataKeys.DEPLOYMENT_ID,
+            authContext.getDeploymentId()
+        );
+        return filters;
+    }
+
+    private void putBoundaryFilter(
+        Map<String, Object> filters,
+        String key,
+        String trustedValue
+    ) {
+        if (StringUtils.hasText(trustedValue)) {
+            filters.put(key, trustedValue.trim());
+        }
     }
 
     private String truncateIndexContent(String content) {

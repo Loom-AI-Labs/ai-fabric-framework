@@ -2,6 +2,7 @@ package com.ai.fabric.realapps.livesync.service;
 
 import ai.fabric.annotation.AIProcess;
 import ai.fabric.indexing.api.AIProcessOperation;
+import ai.fabric.indexing.api.AIEntityIndexingGateway;
 import ai.fabric.indexing.api.IndexingStrategy;
 import com.ai.fabric.realapps.livesync.domain.SyncGuide;
 import com.ai.fabric.realapps.livesync.repository.SyncGuideRepository;
@@ -17,6 +18,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class SyncGuideService {
 
     private final SyncGuideRepository repository;
+    private final AIEntityIndexingGateway indexingGateway;
 
     @Transactional
     @AIProcess(
@@ -66,6 +68,51 @@ public class SyncGuideService {
     }
 
     @Transactional
+    public TrackedEntityMutation<SyncGuide> createGuideTracked(
+        String workspaceId,
+        String recordKey,
+        String title,
+        String symptoms,
+        String resolution,
+        String productArea,
+        String severity
+    ) {
+        SyncGuide guide = new SyncGuide();
+        guide.setWorkspaceId(SyncEntitySupport.requireText(workspaceId, "workspaceId"));
+        guide.setRecordKey(SyncEntitySupport.requireRecordKey(recordKey));
+        guide.setId(SyncEntitySupport.entityId(workspaceId, recordKey));
+        apply(guide, title, symptoms, resolution, productArea, severity);
+        guide.setRevision(1);
+        guide.setUpdatedAt(LocalDateTime.now(ZoneOffset.UTC));
+        SyncGuide saved = repository.saveAndFlush(guide);
+        return new TrackedEntityMutation<>(
+            saved,
+            indexingGateway.upsert(saved, AIProcessOperation.CREATE, IndexingStrategy.SYNC)
+        );
+    }
+
+    @Transactional
+    public TrackedEntityMutation<SyncGuide> updateGuideTracked(
+        String workspaceId,
+        String recordKey,
+        String title,
+        String symptoms,
+        String resolution,
+        String productArea,
+        String severity
+    ) {
+        SyncGuide guide = require(workspaceId, recordKey);
+        apply(guide, title, symptoms, resolution, productArea, severity);
+        guide.setRevision(guide.getRevision() + 1);
+        guide.setUpdatedAt(LocalDateTime.now(ZoneOffset.UTC));
+        SyncGuide saved = repository.saveAndFlush(guide);
+        return new TrackedEntityMutation<>(
+            saved,
+            indexingGateway.upsert(saved, AIProcessOperation.UPDATE, IndexingStrategy.SYNC)
+        );
+    }
+
+    @Transactional
     @AIProcess(
         entityType = SyncGuide.ENTITY_TYPE,
         operation = AIProcessOperation.DELETE,
@@ -76,6 +123,20 @@ public class SyncGuideService {
         repository.delete(guide);
         repository.flush();
         return guide;
+    }
+
+    @Transactional
+    public TrackedEntityMutation<SyncGuide> deleteGuideTracked(
+        String workspaceId,
+        String recordKey
+    ) {
+        SyncGuide guide = require(workspaceId, recordKey);
+        repository.delete(guide);
+        repository.flush();
+        return new TrackedEntityMutation<>(
+            guide,
+            indexingGateway.delete(guide, IndexingStrategy.SYNC)
+        );
     }
 
     public List<SyncGuide> findAll(String workspaceId) {

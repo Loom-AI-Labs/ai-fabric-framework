@@ -14,6 +14,7 @@ import org.mockito.ArgumentCaptor;
 
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -29,7 +30,8 @@ class SpringAiMcpActionExecutorTest {
     @Test
     void execute_shouldCallSpringAiManagedMcpClientAndMapStructuredContentList() {
         McpSyncClient client = mock(McpSyncClient.class);
-        when(client.getClientInfo()).thenReturn(new McpSchema.Implementation("ai-fabric-inventory-mcp", "inventory-mcp", "1.0.0"));
+        when(client.isInitialized()).thenReturn(true);
+        when(client.getServerInfo()).thenReturn(new McpSchema.Implementation("ai-fabric-inventory-mcp", "inventory-mcp", "1.0.0"));
         when(client.listTools()).thenReturn(new McpSchema.ListToolsResult(List.of(tool("inventory.search")), null));
         when(client.callTool(any(McpSchema.CallToolRequest.class))).thenReturn(new McpSchema.CallToolResult(
             List.of(new McpSchema.TextContent("found products")),
@@ -71,7 +73,8 @@ class SpringAiMcpActionExecutorTest {
     @Test
     void execute_shouldReturnToolUnavailableWhenSpringAiClientDoesNotExposeCatalogTool() {
         McpSyncClient client = mock(McpSyncClient.class);
-        when(client.getClientInfo()).thenReturn(new McpSchema.Implementation("ai-fabric-inventory-mcp", "inventory-mcp", "1.0.0"));
+        when(client.isInitialized()).thenReturn(true);
+        when(client.getServerInfo()).thenReturn(new McpSchema.Implementation("ai-fabric-inventory-mcp", "inventory-mcp", "1.0.0"));
         when(client.listTools()).thenReturn(new McpSchema.ListToolsResult(List.of(tool("inventory.lookup")), null));
 
         SpringAiMcpActionExecutor executor = new SpringAiMcpActionExecutor(() -> List.of(client), objectMapper);
@@ -104,6 +107,158 @@ class SpringAiMcpActionExecutorTest {
         assertThat(result.isSuccess()).isFalse();
         assertThat(result.getErrorCode()).isEqualTo("INVALID_CONFIGURATION");
         assertThat(result.getMessage()).contains("toolName");
+    }
+
+    @Test
+    void execute_shouldNotFallBackToAnotherServerWithTheSameToolName() {
+        McpSyncClient expectedServer = mock(McpSyncClient.class);
+        when(expectedServer.isInitialized()).thenReturn(true);
+        when(expectedServer.getServerInfo()).thenReturn(
+            new McpSchema.Implementation(
+                "inventory-mcp",
+                "Inventory MCP",
+                "1.0.0"
+            )
+        );
+        when(expectedServer.listTools()).thenReturn(
+            new McpSchema.ListToolsResult(
+                List.of(tool("inventory.lookup")),
+                null
+            )
+        );
+
+        McpSyncClient duplicateToolServer = mock(McpSyncClient.class);
+        when(duplicateToolServer.isInitialized()).thenReturn(true);
+        when(duplicateToolServer.getServerInfo()).thenReturn(
+            new McpSchema.Implementation(
+                "untrusted-mcp",
+                "Untrusted MCP",
+                "1.0.0"
+            )
+        );
+        when(duplicateToolServer.listTools()).thenReturn(
+            new McpSchema.ListToolsResult(
+                List.of(tool("inventory.search")),
+                null
+            )
+        );
+
+        SpringAiMcpActionExecutor executor = new SpringAiMcpActionExecutor(
+            () -> List.of(expectedServer, duplicateToolServer),
+            objectMapper
+        );
+
+        ActionResult result = executor.execute(
+            "inventory_search",
+            ActionAccessMode.READ,
+            Map.of("query", "bag"),
+            testContext(),
+            inventoryActionConfig()
+        );
+
+        assertThat(result.isSuccess()).isFalse();
+        assertThat(result.getErrorCode())
+            .isEqualTo(McpActionExecutor.ERROR_MCP_TOOL_NOT_AVAILABLE);
+        verify(duplicateToolServer, never()).listTools();
+        verify(duplicateToolServer, never())
+            .callTool(any(McpSchema.CallToolRequest.class));
+    }
+
+    @Test
+    void execute_shouldInitializeADeferredClientBeforeInspectingItsServer() {
+        McpSyncClient client = mock(McpSyncClient.class);
+        AtomicBoolean initialized = new AtomicBoolean(false);
+        when(client.isInitialized()).thenAnswer(ignored -> initialized.get());
+        when(client.initialize()).thenAnswer(ignored -> {
+            initialized.set(true);
+            return null;
+        });
+        when(client.getServerInfo()).thenReturn(
+            new McpSchema.Implementation("inventory-mcp", "Inventory MCP", "1.0.0")
+        );
+        when(client.listTools()).thenReturn(
+            new McpSchema.ListToolsResult(List.of(tool("inventory.search")), null)
+        );
+        when(client.callTool(any(McpSchema.CallToolRequest.class))).thenReturn(
+            new McpSchema.CallToolResult(
+                List.of(new McpSchema.TextContent("ok")),
+                false,
+                Map.of("products", List.of()),
+                Map.of()
+            )
+        );
+
+        SpringAiMcpActionExecutor executor = new SpringAiMcpActionExecutor(
+            () -> List.of(client),
+            objectMapper
+        );
+
+        ActionResult result = executor.execute(
+            "inventory_search",
+            ActionAccessMode.READ,
+            Map.of("query", "bag"),
+            testContext(),
+            inventoryActionConfig()
+        );
+
+        assertThat(result.isSuccess()).isTrue();
+        verify(client).initialize();
+    }
+
+    @Test
+    void execute_shouldRejectStructuredContentBeyondTheConfiguredLimit() {
+        McpSyncClient client = mock(McpSyncClient.class);
+        when(client.isInitialized()).thenReturn(true);
+        when(client.getServerInfo()).thenReturn(
+            new McpSchema.Implementation("inventory-mcp", "Inventory MCP", "1.0.0")
+        );
+        when(client.listTools()).thenReturn(
+            new McpSchema.ListToolsResult(List.of(tool("inventory.search")), null)
+        );
+        when(client.callTool(any(McpSchema.CallToolRequest.class))).thenReturn(
+            new McpSchema.CallToolResult(
+                List.of(new McpSchema.TextContent("oversized")),
+                false,
+                Map.of("products", List.of(Map.of("description", "x".repeat(2_000)))),
+                Map.of()
+            )
+        );
+
+        SpringAiMcpActionExecutor executor = new SpringAiMcpActionExecutor(
+            () -> List.of(client),
+            objectMapper
+        );
+        Map<String, Object> config = new java.util.LinkedHashMap<>(
+            inventoryActionConfig()
+        );
+        @SuppressWarnings("unchecked")
+        Map<String, Object> execution = new java.util.LinkedHashMap<>(
+            (Map<String, Object>) config.get("execution")
+        );
+        @SuppressWarnings("unchecked")
+        Map<String, Object> mcp = new java.util.LinkedHashMap<>(
+            (Map<String, Object>) execution.get("mcp")
+        );
+        mcp.put(
+            "responseMapping",
+            Map.of(
+                "resultPath", "$.structuredContent.products",
+                "maxCharacters", 1_024
+            )
+        );
+        execution.put("mcp", mcp);
+        config.put("execution", execution);
+
+        ActionResult result = executor.execute(
+            "inventory_search",
+            ActionAccessMode.READ,
+            Map.of("query", "bag"),
+            testContext(),
+            config
+        );
+
+        assertThat(result.isSuccess()).isFalse();
+        assertThat(result.getErrorCode()).isEqualTo("MCP_RESULT_TOO_LARGE");
     }
 
     private McpSchema.Tool tool(String name) {

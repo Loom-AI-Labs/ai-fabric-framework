@@ -5,8 +5,13 @@ import com.ai.fabric.realapps.livesync.service.DemoStateService;
 import com.ai.fabric.realapps.livesync.service.DemoWorkspaceService;
 import com.ai.fabric.realapps.livesync.service.EntityKind;
 import com.ai.fabric.realapps.livesync.service.LiveSyncSearchService;
+import com.ai.fabric.realapps.livesync.service.IndexingLifecycleLabService;
+import com.ai.fabric.realapps.livesync.service.IndexingWorkProjectionService;
 import com.ai.fabric.realapps.livesync.web.DemoModels.DemoState;
 import com.ai.fabric.realapps.livesync.web.DemoModels.EntityUpdateRequest;
+import com.ai.fabric.realapps.livesync.web.DemoModels.EntityCreateRequest;
+import com.ai.fabric.realapps.livesync.web.DemoModels.IndexingWorkView;
+import com.ai.fabric.realapps.livesync.web.DemoModels.LifecycleWorkResponse;
 import com.ai.fabric.realapps.livesync.web.DemoModels.MutationResponse;
 import com.ai.fabric.realapps.livesync.web.DemoModels.SearchRequest;
 import com.ai.fabric.realapps.livesync.web.DemoModels.SearchResponse;
@@ -32,6 +37,8 @@ public class LiveSyncDemoController {
     private final DemoStateService stateService;
     private final DemoMutationService mutationService;
     private final LiveSyncSearchService searchService;
+    private final IndexingWorkProjectionService indexingWorkProjectionService;
+    private final IndexingLifecycleLabService indexingLifecycleLabService;
 
     @PostMapping("/workspaces")
     public WorkspaceResponse createWorkspace() {
@@ -73,6 +80,23 @@ public class LiveSyncDemoController {
         return mutationService.update(workspaceId, EntityKind.fromPath(entityType), recordKey, request);
     }
 
+    @PostMapping("/entities/{entityType}")
+    public MutationResponse create(
+        @RequestHeader(DemoWorkspaceService.HEADER) String workspaceId,
+        @PathVariable String entityType,
+        @RequestBody EntityCreateRequest request
+    ) {
+        if (request == null || request.entity() == null) {
+            throw new IllegalArgumentException("entity is required");
+        }
+        return mutationService.create(
+            workspaceId,
+            EntityKind.fromPath(entityType),
+            request.recordKey(),
+            request.entity()
+        );
+    }
+
     @DeleteMapping("/entities/{entityType}/{recordKey}")
     public MutationResponse delete(
         @RequestHeader(DemoWorkspaceService.HEADER) String workspaceId,
@@ -100,6 +124,33 @@ public class LiveSyncDemoController {
             "actionsEnabled", false,
             "syncMode", "annotation-driven synchronous create/update/delete",
             "chatContract", "AI Fabric Chat UI v0.3"
+        );
+    }
+
+    @GetMapping("/indexing-work/{workId}")
+    public IndexingWorkView indexingWork(
+        @RequestHeader(DemoWorkspaceService.HEADER) String workspaceId,
+        @PathVariable String workId
+    ) {
+        workspaceService.requireWorkspace(workspaceId);
+        return indexingWorkProjectionService.requireForWorkspace(
+            workspaceId,
+            workId
+        );
+    }
+
+    @PostMapping("/lifecycle/{scenario}/{entityType}/{recordKey}")
+    public LifecycleWorkResponse lifecycle(
+        @RequestHeader(DemoWorkspaceService.HEADER) String workspaceId,
+        @PathVariable String scenario,
+        @PathVariable String entityType,
+        @PathVariable String recordKey
+    ) {
+        return indexingLifecycleLabService.start(
+            workspaceId,
+            scenario,
+            EntityKind.fromPath(entityType),
+            recordKey
         );
     }
 }

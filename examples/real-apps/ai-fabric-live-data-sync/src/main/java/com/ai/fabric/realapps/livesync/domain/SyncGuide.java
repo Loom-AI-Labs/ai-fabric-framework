@@ -74,7 +74,13 @@ public class SyncGuide {
     private String severity;
 
     @Column(nullable = false)
-    @AIContext(key = "revision", dataType = AIContextDataType.NUMBER, priority = 100, required = true)
+    @AIContext(
+        key = "version",
+        dataType = AIContextDataType.NUMBER,
+        description = "Monotonic source revision used for stale-work protection",
+        priority = 100,
+        required = true
+    )
     private Integer revision;
 
     @Column(nullable = false)

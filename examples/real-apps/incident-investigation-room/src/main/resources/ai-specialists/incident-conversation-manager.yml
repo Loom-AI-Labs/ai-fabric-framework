@@ -1,0 +1,147 @@
+apiVersion: ai.fabric/v1
+kind: SpecialistSchema
+metadata:
+  name: incident-conversation-manager-input
+  version: "1"
+spec:
+  direction: INPUT
+  draft: "2020-12"
+  schema:
+    type: object
+    additionalProperties: false
+    required: [currentUserMessage, applicationContext, approvedTargets]
+    properties:
+      currentUserMessage: {type: string, minLength: 1, maxLength: 4000}
+      applicationContext:
+        type: array
+        maxItems: 12
+        items:
+          type: object
+          additionalProperties: false
+          required: [name, value]
+          properties:
+            name: {type: string, pattern: "^[A-Za-z][A-Za-z0-9_.-]{0,99}$"}
+            value: {type: string, minLength: 1, maxLength: 1000}
+      approvedTargets:
+        type: array
+        minItems: 1
+        maxItems: 2
+        items:
+          type: object
+          additionalProperties: false
+          required: [specialist, description]
+          properties:
+            specialist:
+              type: string
+              enum: [service-health-reader@1, change-risk-reader@1]
+            description: {type: string, minLength: 1, maxLength: 500}
+---
+apiVersion: ai.fabric/v1
+kind: SpecialistSchema
+metadata:
+  name: incident-conversation-manager-directive
+  version: "1"
+spec:
+  direction: OUTPUT
+  draft: "2020-12"
+  schema:
+    type: object
+    additionalProperties: false
+    required: [type, targetSpecialist, message, reason]
+    properties:
+      type: {type: string, enum: [ASK_USER, INVOKE_SPECIALIST, COMPLETE]}
+      targetSpecialist:
+        type: [string, "null"]
+        enum: [service-health-reader@1, change-risk-reader@1, null]
+      message: {type: [string, "null"], maxLength: 2000}
+      reason: {type: string, minLength: 1, maxLength: 500}
+    allOf:
+      - if:
+          properties: {type: {const: INVOKE_SPECIALIST}}
+        then:
+          properties:
+            targetSpecialist:
+              type: string
+              enum: [service-health-reader@1, change-risk-reader@1]
+            message: {type: "null"}
+      - if:
+          properties: {type: {enum: [ASK_USER, COMPLETE]}}
+        then:
+          properties:
+            targetSpecialist: {type: "null"}
+            message: {type: string, minLength: 1, maxLength: 2000}
+---
+apiVersion: ai.fabric/v1
+kind: SpecialistPromptProfile
+metadata:
+  name: incident-conversation-manager
+  version: "1"
+spec:
+  constraints: |
+    Own one incident-investigation conversation turn. Use the current message,
+    backend-approved recent turns, immutable application context, and only the
+    two approved target descriptions. Return exactly one directive.
+    Use service-health-reader@1 for health, latency, errors, saturation, and
+    availability. Use change-risk-reader@1 for releases, deployments, recent
+    changes, rollback, and runbooks. If the request needs both independent
+    branches, COMPLETE with a concise instruction to run the registered full
+    investigation plan. ASK_USER only when the user's incident question is
+    genuinely ambiguous. Resolve short follow-ups against approved recent
+    conversation. Never invoke more than one worker, invent a target, claim a
+    worker ran, request an action, alter sourceRevision, or create topology.
+  outputContract: |
+    Return type, targetSpecialist, message, and reason. INVOKE_SPECIALIST has one
+    exact approved target and null message. ASK_USER or COMPLETE has null target
+    and one concise user-facing message.
+---
+apiVersion: ai.fabric/v1
+kind: Specialist
+metadata:
+  name: incident-conversation-manager
+  version: "1"
+  displayName: Incident Conversation Manager
+  description: Owns one bounded incident turn and selects zero or one worker.
+  labels: {domain: incident-operations, owner: incident-investigation-demo}
+spec:
+  mode: resolver
+  instructions:
+    objective: Ask one question, invoke one approved reader, or complete the turn.
+    promptProfileRef: incident-conversation-manager@1
+  execution: {strategy: SINGLE_PASS, writePolicy: DISABLED}
+  capabilities:
+    retrieval: {enabled: false, vectorSpaces: []}
+    actions: {visible: [], requestableReads: [], proposableWrites: []}
+  input:
+    schemaRef: incident-conversation-manager-input@1
+    rendering: PRIMARY_TEXT_WITH_JSON_CONTEXT
+    primaryTextPointer: /currentUserMessage
+    conversationTextPointer: /currentUserMessage
+    contextPointers: [/applicationContext, /approvedTargets]
+    context: {position: resolver}
+  grounding:
+    requirement: NONE
+    requireEvidenceCitations: false
+    sources: []
+    validatorRefs: []
+  output:
+    mode: STRUCTURED_GENERATION
+    schemaRef: incident-conversation-manager-directive@1
+    directProjectorRef: null
+    conversationTextPointer: null
+    finalValidatorRefs: []
+    normalizerRef: null
+  conversation:
+    binding: REQUIRED
+    recordValidatedTurns: false
+    interactionCapability: DIALOGUE_CAPABLE
+  limits:
+    maxDuration: PT40S
+    maxInputCharacters: 12000
+    maxGroundingCharacters: 1000
+    maxEvidenceReferences: 1
+    maxOutputCharacters: 2500
+    maxOutputTokens: 350
+  delegation:
+    targets: [service-health-reader@1, change-risk-reader@1]
+  handoff:
+    targets: []

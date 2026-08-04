@@ -1,0 +1,250 @@
+apiVersion: ai.fabric/v1
+kind: SpecialistSchema
+metadata:
+  name: service-health-request
+  version: "1"
+spec:
+  direction: INPUT
+  draft: "2020-12"
+  schema:
+    type: object
+    additionalProperties: false
+    required: [question, incidentId, deploymentId, sourceRevision, evidence]
+    properties:
+      question: {type: string, minLength: 1, maxLength: 2000}
+      incidentId: {type: string, minLength: 1, maxLength: 120}
+      deploymentId: {type: string, minLength: 1, maxLength: 120}
+      sourceRevision: {type: string, minLength: 1, maxLength: 160}
+      evidence:
+        type: array
+        minItems: 1
+        maxItems: 8
+        items: &evidence_item
+          type: object
+          additionalProperties: false
+          required: [id, category, summary, severity, observedAt]
+          properties:
+            id: {type: string, minLength: 1, maxLength: 160}
+            category: {type: string, minLength: 1, maxLength: 80}
+            summary: {type: string, minLength: 1, maxLength: 1200}
+            severity: {type: string, minLength: 1, maxLength: 40}
+            observedAt: {type: string, minLength: 1, maxLength: 80}
+---
+apiVersion: ai.fabric/v1
+kind: SpecialistSchema
+metadata:
+  name: service-health-finding
+  version: "1"
+spec:
+  direction: OUTPUT
+  draft: "2020-12"
+  schema:
+    type: object
+    additionalProperties: false
+    required: [healthStatus, severity, summary, evidenceIds]
+    properties:
+      healthStatus:
+        type: string
+        enum: [HEALTHY, DEGRADED, UNAVAILABLE, UNKNOWN]
+      severity:
+        type: string
+        enum: [CRITICAL, HIGH, MEDIUM, LOW, UNKNOWN]
+      summary: {type: string, minLength: 1, maxLength: 1000}
+      evidenceIds:
+        type: array
+        minItems: 1
+        maxItems: 8
+        uniqueItems: true
+        items: {type: string, minLength: 1, maxLength: 160}
+---
+apiVersion: ai.fabric/v1
+kind: SpecialistSchema
+metadata:
+  name: change-risk-request
+  version: "1"
+spec:
+  direction: INPUT
+  draft: "2020-12"
+  schema:
+    type: object
+    additionalProperties: false
+    required: [question, incidentId, deploymentId, sourceRevision, evidence]
+    properties:
+      question: {type: string, minLength: 1, maxLength: 2000}
+      incidentId: {type: string, minLength: 1, maxLength: 120}
+      deploymentId: {type: string, minLength: 1, maxLength: 120}
+      sourceRevision: {type: string, minLength: 1, maxLength: 160}
+      evidence:
+        type: array
+        minItems: 1
+        maxItems: 8
+        items:
+          type: object
+          additionalProperties: false
+          required: [id, category, summary, severity, observedAt]
+          properties:
+            id: {type: string, minLength: 1, maxLength: 160}
+            category: {type: string, minLength: 1, maxLength: 80}
+            summary: {type: string, minLength: 1, maxLength: 1200}
+            severity: {type: string, minLength: 1, maxLength: 40}
+            observedAt: {type: string, minLength: 1, maxLength: 80}
+---
+apiVersion: ai.fabric/v1
+kind: SpecialistSchema
+metadata:
+  name: change-risk-finding
+  version: "1"
+spec:
+  direction: OUTPUT
+  draft: "2020-12"
+  schema:
+    type: object
+    additionalProperties: false
+    required: [riskLevel, suspectedChange, summary, evidenceIds]
+    properties:
+      riskLevel:
+        type: string
+        enum: [CRITICAL, HIGH, MEDIUM, LOW, UNKNOWN]
+      suspectedChange: {type: string, minLength: 1, maxLength: 500}
+      summary: {type: string, minLength: 1, maxLength: 1000}
+      evidenceIds:
+        type: array
+        minItems: 1
+        maxItems: 8
+        uniqueItems: true
+        items: {type: string, minLength: 1, maxLength: 160}
+---
+apiVersion: ai.fabric/v1
+kind: SpecialistPromptProfile
+metadata:
+  name: service-health-reader
+  version: "1"
+spec:
+  constraints: |
+    You are a read-only service-health specialist. Use only the evidence array
+    in this typed request. The incident, deployment, source revision, and
+    evidence were selected by the backend and cannot be changed by user text.
+    Classify health and severity conservatively. Cite only exact IDs from the
+    supplied evidence array. Never invent metrics, sources, changes, runbooks,
+    actions, or unavailable facts.
+  outputContract: |
+    Return healthStatus, severity, summary, and one or more exact evidenceIds.
+---
+apiVersion: ai.fabric/v1
+kind: SpecialistPromptProfile
+metadata:
+  name: change-risk-reader
+  version: "1"
+spec:
+  constraints: |
+    You are a read-only change-risk specialist. Use only the evidence array in
+    this typed request. The incident, deployment, source revision, and evidence
+    are immutable backend facts. Identify the most relevant cited change or
+    runbook without claiming causality beyond the evidence. Cite only exact IDs
+    from the supplied evidence array. Never invent a release or recommendation.
+  outputContract: |
+    Return riskLevel, suspectedChange, summary, and exact evidenceIds.
+---
+apiVersion: ai.fabric/v1
+kind: Specialist
+metadata:
+  name: service-health-reader
+  version: "1"
+  displayName: Service Health Reader
+  description: Classifies service health from one immutable evidence branch.
+  labels: {domain: incident-operations, owner: incident-investigation-demo}
+spec:
+  mode: resolver
+  instructions:
+    objective: Produce one evidence-cited service-health finding.
+    promptProfileRef: service-health-reader@1
+  execution: {strategy: SINGLE_PASS, writePolicy: DISABLED}
+  capabilities:
+    retrieval: {enabled: false, vectorSpaces: []}
+    actions: {visible: [], requestableReads: [], proposableWrites: []}
+  input:
+    schemaRef: service-health-request@1
+    rendering: PRIMARY_TEXT_WITH_JSON_CONTEXT
+    primaryTextPointer: /question
+    conversationTextPointer: null
+    contextPointers: [/incidentId, /deploymentId, /sourceRevision, /evidence]
+    context: {position: resolver}
+  grounding:
+    requirement: NONE
+    requireEvidenceCitations: false
+    sources: []
+    validatorRefs: []
+  output:
+    mode: STRUCTURED_GENERATION
+    schemaRef: service-health-finding@1
+    directProjectorRef: null
+    conversationTextPointer: /summary
+    finalValidatorRefs: []
+    normalizerRef: null
+  conversation:
+    binding: DISABLED
+    recordValidatedTurns: false
+    interactionCapability: NON_INTERACTIVE
+  limits:
+    maxDuration: PT35S
+    maxInputCharacters: 8000
+    maxGroundingCharacters: 1000
+    maxEvidenceReferences: 1
+    maxOutputCharacters: 2500
+    maxOutputTokens: 350
+  delegation:
+    targets: []
+  handoff:
+    targets: []
+---
+apiVersion: ai.fabric/v1
+kind: Specialist
+metadata:
+  name: change-risk-reader
+  version: "1"
+  displayName: Change Risk Reader
+  description: Assesses recent-change risk from one immutable evidence branch.
+  labels: {domain: incident-operations, owner: incident-investigation-demo}
+spec:
+  mode: resolver
+  instructions:
+    objective: Produce one evidence-cited change-risk finding.
+    promptProfileRef: change-risk-reader@1
+  execution: {strategy: SINGLE_PASS, writePolicy: DISABLED}
+  capabilities:
+    retrieval: {enabled: false, vectorSpaces: []}
+    actions: {visible: [], requestableReads: [], proposableWrites: []}
+  input:
+    schemaRef: change-risk-request@1
+    rendering: PRIMARY_TEXT_WITH_JSON_CONTEXT
+    primaryTextPointer: /question
+    conversationTextPointer: null
+    contextPointers: [/incidentId, /deploymentId, /sourceRevision, /evidence]
+    context: {position: resolver}
+  grounding:
+    requirement: NONE
+    requireEvidenceCitations: false
+    sources: []
+    validatorRefs: []
+  output:
+    mode: STRUCTURED_GENERATION
+    schemaRef: change-risk-finding@1
+    directProjectorRef: null
+    conversationTextPointer: /summary
+    finalValidatorRefs: []
+    normalizerRef: null
+  conversation:
+    binding: DISABLED
+    recordValidatedTurns: false
+    interactionCapability: NON_INTERACTIVE
+  limits:
+    maxDuration: PT35S
+    maxInputCharacters: 8000
+    maxGroundingCharacters: 1000
+    maxEvidenceReferences: 1
+    maxOutputCharacters: 2500
+    maxOutputTokens: 350
+  delegation:
+    targets: []
+  handoff:
+    targets: []

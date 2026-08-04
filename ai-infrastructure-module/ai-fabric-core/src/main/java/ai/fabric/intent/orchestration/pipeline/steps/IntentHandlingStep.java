@@ -500,7 +500,7 @@ public class IntentHandlingStep implements PipelineStep {
             data.put(DATA_KEY_PROVIDED_PARAMETERS, publicProvidedParameters(meta, effectiveParams));
 
             String message = userMissingRequired.isEmpty()
-                ? "This action needs storefront session context before it can proceed. Please reopen the assistant and try again."
+                ? "This action needs trusted application context before it can proceed. Please refresh the application context and try again."
                 : "To proceed, please provide: " + String.join(", ", userMissingRequired) + ".";
             List<NextStepRecommendation> nextSteps = new ArrayList<>(extractNextSteps(intent));
             if (!userMissingRequired.isEmpty()) {
@@ -787,6 +787,22 @@ public class IntentHandlingStep implements PipelineStep {
             data.put(DATA_KEY_METADATA, publicActionMetadata(getMetadataForAction(actionName)));
             if (actionResult != null) {
                 data.put(DATA_KEY_ACTION_RESULT, actionResult);
+            }
+
+            if (success
+                && meta != null
+                && meta.getAccessMode() != null
+                && meta.getAccessMode().isReadOnly()
+                && meta.isGroundingEligible()) {
+                postActionGenerationSupport.buildReadActionGroundingObservation(
+                    actionName,
+                    handler,
+                    actionResult,
+                    actionContext
+                ).ifPresent(observation -> data.put(
+                    "readActionResolution",
+                    Map.of("executedActions", List.of(observation))
+                ));
             }
 
             OrchestrationResult readFallback = maybeFallbackReadActionToRag(intent, meta, actionResult, context, pipelineContext);

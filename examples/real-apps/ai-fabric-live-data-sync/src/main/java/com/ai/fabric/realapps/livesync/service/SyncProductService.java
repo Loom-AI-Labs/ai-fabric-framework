@@ -2,6 +2,7 @@ package com.ai.fabric.realapps.livesync.service;
 
 import ai.fabric.annotation.AIProcess;
 import ai.fabric.indexing.api.AIProcessOperation;
+import ai.fabric.indexing.api.AIEntityIndexingGateway;
 import ai.fabric.indexing.api.IndexingStrategy;
 import com.ai.fabric.realapps.livesync.domain.SyncProduct;
 import com.ai.fabric.realapps.livesync.repository.SyncProductRepository;
@@ -18,6 +19,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class SyncProductService {
 
     private final SyncProductRepository repository;
+    private final AIEntityIndexingGateway indexingGateway;
 
     @Transactional
     @AIProcess(
@@ -69,6 +71,53 @@ public class SyncProductService {
     }
 
     @Transactional
+    public TrackedEntityMutation<SyncProduct> createProductTracked(
+        String workspaceId,
+        String recordKey,
+        String title,
+        String summary,
+        String specification,
+        String category,
+        BigDecimal price,
+        String status
+    ) {
+        SyncProduct product = new SyncProduct();
+        product.setWorkspaceId(SyncEntitySupport.requireText(workspaceId, "workspaceId"));
+        product.setRecordKey(SyncEntitySupport.requireRecordKey(recordKey));
+        product.setId(SyncEntitySupport.entityId(workspaceId, recordKey));
+        apply(product, title, summary, specification, category, price, status);
+        product.setRevision(1);
+        product.setUpdatedAt(LocalDateTime.now(ZoneOffset.UTC));
+        SyncProduct saved = repository.saveAndFlush(product);
+        return new TrackedEntityMutation<>(
+            saved,
+            indexingGateway.upsert(saved, AIProcessOperation.CREATE, IndexingStrategy.SYNC)
+        );
+    }
+
+    @Transactional
+    public TrackedEntityMutation<SyncProduct> updateProductTracked(
+        String workspaceId,
+        String recordKey,
+        String title,
+        String summary,
+        String specification,
+        String category,
+        BigDecimal price,
+        String status
+    ) {
+        SyncProduct product = require(workspaceId, recordKey);
+        apply(product, title, summary, specification, category, price, status);
+        product.setRevision(product.getRevision() + 1);
+        product.setUpdatedAt(LocalDateTime.now(ZoneOffset.UTC));
+        SyncProduct saved = repository.saveAndFlush(product);
+        return new TrackedEntityMutation<>(
+            saved,
+            indexingGateway.upsert(saved, AIProcessOperation.UPDATE, IndexingStrategy.SYNC)
+        );
+    }
+
+    @Transactional
     @AIProcess(
         entityType = SyncProduct.ENTITY_TYPE,
         operation = AIProcessOperation.DELETE,
@@ -79,6 +128,20 @@ public class SyncProductService {
         repository.delete(product);
         repository.flush();
         return product;
+    }
+
+    @Transactional
+    public TrackedEntityMutation<SyncProduct> deleteProductTracked(
+        String workspaceId,
+        String recordKey
+    ) {
+        SyncProduct product = require(workspaceId, recordKey);
+        repository.delete(product);
+        repository.flush();
+        return new TrackedEntityMutation<>(
+            product,
+            indexingGateway.delete(product, IndexingStrategy.SYNC)
+        );
     }
 
     public List<SyncProduct> findAll(String workspaceId) {

@@ -64,6 +64,11 @@ public final class DefaultManifestGroundingValidator {
                 source.name(),
                 source.groundingUsable()
             );
+            case ANY_REQUESTABLE_READ_ACTION -> readActionObservations(
+                context.result(),
+                context.capabilities().requestableReadActions(),
+                source.groundingUsable()
+            );
         };
         if (actual < source.minimumCount()) {
             throw new IllegalArgumentException(
@@ -119,6 +124,26 @@ public final class DefaultManifestGroundingValidator {
         );
         return (int) actions.stream()
             .filter(action -> actionName.equals(action.get("action")))
+            .filter(action ->
+                !requireGroundingUsable
+                    || Boolean.TRUE.equals(action.get("groundingUsable"))
+            )
+            .count();
+    }
+
+    private int readActionObservations(
+        OrchestrationResult result,
+        Set<String> actionNames,
+        boolean requireGroundingUsable
+    ) {
+        List<Map<?, ?>> actions = new ArrayList<>();
+        collectReadActions(
+            result,
+            actions,
+            Collections.newSetFromMap(new IdentityHashMap<>())
+        );
+        return (int) actions.stream()
+            .filter(action -> actionNames.contains(action.get("action")))
             .filter(action ->
                 !requireGroundingUsable
                     || Boolean.TRUE.equals(action.get("groundingUsable"))

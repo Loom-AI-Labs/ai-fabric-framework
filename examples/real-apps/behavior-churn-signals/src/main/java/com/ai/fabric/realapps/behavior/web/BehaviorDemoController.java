@@ -1,7 +1,9 @@
 package com.ai.fabric.realapps.behavior.web;
 
+import ai.fabric.execution.specialist.SpecialistRegistry;
 import com.ai.fabric.realapps.behavior.service.AgenticUiComposerService;
 import com.ai.fabric.realapps.behavior.service.BehaviorDemoScenarioService;
+import com.ai.fabric.realapps.behavior.service.DurableBehaviorAnalysisService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.env.Environment;
@@ -9,11 +11,13 @@ import org.springframework.core.io.Resource;
 import org.springframework.core.io.ResourceLoader;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.io.InputStream;
@@ -29,6 +33,8 @@ public class BehaviorDemoController {
 
     private final BehaviorDemoScenarioService service;
     private final AgenticUiComposerService agenticUiComposerService;
+    private final DurableBehaviorAnalysisService durableAnalysisService;
+    private final SpecialistRegistry specialistRegistry;
     private final Environment environment;
     private final ResourceLoader resourceLoader;
 
@@ -64,6 +70,21 @@ public class BehaviorDemoController {
         out.put("totalEvents", dashboard.totalEvents());
         out.put("insights", dashboard.insights().size());
         out.put("scenarios", dashboard.scenarios().size());
+        var specialist = specialistRegistry.findRegistered(
+            DurableBehaviorAnalysisService.SPECIALIST_ID
+        );
+        out.put("specialists", specialist
+            .<Object>map(registered -> java.util.List.of(Map.of(
+                "id", registered.id().toString(),
+                "contentHash", registered.contentHash(),
+                "ready", true
+            )))
+            .orElseGet(java.util.List::of));
+        out.put("storage", Map.of(
+            "domain", "UP",
+            "vector", "DISABLED",
+            "execution", specialist.isPresent() ? "UP" : "DOWN"
+        ));
         out.put("checkedAt", Instant.now().toString());
         return out;
     }
@@ -99,12 +120,48 @@ public class BehaviorDemoController {
     public BehaviorDemoScenarioService.ResetResult reset(
         @RequestBody(required = false) BehaviorDemoScenarioService.ResetRequest request
     ) {
-        return service.reset(request);
+        BehaviorDemoScenarioService.ResetResult result = service.reset(request);
+        if (result.success() && request != null && StringUtils.hasText(request.sessionId())) {
+            durableAnalysisService.deleteSessionJobs(request.sessionId());
+        }
+        return result;
     }
 
     @PostMapping("/scenarios/{userId}/analyze")
     public BehaviorDemoScenarioService.BehaviorScenarioResult analyze(@PathVariable String userId) {
         return service.analyze(userId);
+    }
+
+    @PostMapping("/scenarios/{userId}/analyses")
+    public DurableBehaviorAnalysisService.AnalysisView submitAnalysis(
+        @PathVariable String userId,
+        @RequestHeader("X-Demo-Session-Id") String sessionId,
+        @RequestHeader("Idempotency-Key") String idempotencyKey
+    ) {
+        return durableAnalysisService.submit(sessionId, userId, idempotencyKey);
+    }
+
+    @GetMapping("/analyses/{invocationId}")
+    public DurableBehaviorAnalysisService.AnalysisView analysis(
+        @PathVariable String invocationId,
+        @RequestHeader("X-Demo-Session-Id") String sessionId
+    ) {
+        return durableAnalysisService.find(sessionId, invocationId);
+    }
+
+    @GetMapping("/analyses")
+    public java.util.List<DurableBehaviorAnalysisService.AnalysisView> analyses(
+        @RequestHeader("X-Demo-Session-Id") String sessionId
+    ) {
+        return durableAnalysisService.list(sessionId);
+    }
+
+    @DeleteMapping("/analyses/{invocationId}")
+    public DurableBehaviorAnalysisService.AnalysisView cancelAnalysis(
+        @PathVariable String invocationId,
+        @RequestHeader("X-Demo-Session-Id") String sessionId
+    ) {
+        return durableAnalysisService.cancel(sessionId, invocationId);
     }
 
     @PostMapping("/scenarios/{userId}/signals")
@@ -128,14 +185,28 @@ public class BehaviorDemoController {
         return service.recordPositiveRecovery(userId);
     }
 
+    @PostMapping("/scenarios/{userId}/positive-recovery-events")
+    public BehaviorDemoScenarioService.BehaviorEventPackResult recordPositiveRecoveryEvents(
+        @PathVariable String userId
+    ) {
+        return service.recordPositiveRecoveryEvents(userId);
+    }
+
     @PostMapping("/scenarios/{userId}/negative-churn")
     public BehaviorDemoScenarioService.BehaviorScenarioResult recordNegativeChurnSignals(@PathVariable String userId) {
         return service.recordNegativeChurnSignals(userId);
     }
 
+    @PostMapping("/scenarios/{userId}/negative-churn-events")
+    public BehaviorDemoScenarioService.BehaviorEventPackResult recordNegativeChurnEvents(
+        @PathVariable String userId
+    ) {
+        return service.recordNegativeChurnEvents(userId);
+    }
+
     @PostMapping("/scenarios/{userId}/agentic-ui")
     public AgenticUiComposerService.AgenticUiResponse agenticUi(@PathVariable String userId) {
-        return agenticUiComposerService.compose(service.analyze(userId));
+        return agenticUiComposerService.compose(service.currentResult(userId));
     }
 
     @PostMapping("/scenarios/{userId}/retention-offer")

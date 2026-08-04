@@ -13,7 +13,9 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 @RestControllerAdvice(assignableTypes = {
     AgenticResolverController.class,
     AgenticResolverManagerController.class,
-    ProactiveAccountEventController.class
+    ProactiveAccountEventController.class,
+    SupportCreditReviewController.class,
+    DemoReviewController.class
 })
 public class AgenticResolverErrorHandler {
 

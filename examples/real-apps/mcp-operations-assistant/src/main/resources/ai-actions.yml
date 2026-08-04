@@ -1,0 +1,156 @@
+actions:
+  - name: get_sandbox_service_status
+    displayName: Get sandbox service status
+    description: Read the current status and revision of the backend-selected sandbox service.
+    category: sandbox-operations
+    adapterType: mcp-tool
+    accessMode: READ
+    requiresConfirmation: false
+    anonymousAllowed: false
+    groundingEligible: true
+    readActionResolutionEligible: true
+    resultPresentationHint: STATUS
+    execution:
+      adapterType: mcp-tool
+      mcp:
+        serverRef: ai-fabric-operations-reference
+        toolName: get_sandbox_service_status
+        argumentTemplate:
+          sandboxId: "{{params.sandboxId}}"
+          serviceName: "{{params.serviceName}}"
+        responseMapping:
+          resultPath: $.structuredContent
+          maxCharacters: 8192
+    llmFacts:
+      copyFields:
+        - serviceName
+        - status
+        - currentVersion
+        - openIncidents
+        - revision
+        - restartCount
+        - lastRestartAt
+    params:
+      - name: sandboxId
+        type: STRING
+        required: true
+        visibility: INTERNAL
+        askUser: false
+        resolveFrom:
+          source: RUNTIME_CONTEXT
+          field: userId
+      - name: serviceName
+        type: STRING
+        required: true
+        visibility: INTERNAL
+        askUser: false
+        allowedValues: [catalog, checkout, payments]
+        resolveFrom:
+          source: RUNTIME_CONTEXT
+          field: serviceName
+
+  - name: list_recent_sandbox_incidents
+    displayName: List recent sandbox incidents
+    description: Read recent incidents for the backend-selected sandbox service.
+    category: sandbox-operations
+    adapterType: mcp-tool
+    accessMode: READ
+    requiresConfirmation: false
+    anonymousAllowed: false
+    groundingEligible: true
+    readActionResolutionEligible: true
+    resultPresentationHint: LIST
+    execution:
+      adapterType: mcp-tool
+      mcp:
+        serverRef: ai-fabric-operations-reference
+        toolName: list_recent_sandbox_incidents
+        argumentTemplate:
+          sandboxId: "{{params.sandboxId}}"
+          serviceName: "{{params.serviceName}}"
+        responseMapping:
+          resultPath: $.structuredContent
+          maxCharacters: 8192
+    llmFacts:
+      copyFields:
+        - serviceName
+        - revision
+      lists:
+        - sourcePath: incidents
+          target: incidents
+          maxItems: 10
+          includeFields:
+            - incidentId
+            - severity
+            - summary
+            - observedAt
+    params:
+      - name: sandboxId
+        type: STRING
+        required: true
+        visibility: INTERNAL
+        askUser: false
+        resolveFrom:
+          source: RUNTIME_CONTEXT
+          field: userId
+      - name: serviceName
+        type: STRING
+        required: true
+        visibility: INTERNAL
+        askUser: false
+        allowedValues: [catalog, checkout, payments]
+        resolveFrom:
+          source: RUNTIME_CONTEXT
+          field: serviceName
+
+  - name: restart_sandbox_service
+    displayName: Restart sandbox service
+    description: Restart only the backend-selected isolated sandbox service.
+    category: sandbox-operations
+    adapterType: mcp-tool
+    accessMode: WRITE_ONLY
+    requiresConfirmation: true
+    anonymousAllowed: false
+    groundingEligible: false
+    resultPresentationHint: STATUS
+    confirmationMessage: Restart the selected {{serviceName}} sandbox service?
+    execution:
+      adapterType: mcp-tool
+      mcp:
+        serverRef: ai-fabric-operations-reference
+        toolName: restart_sandbox_service
+        argumentTemplate:
+          sandboxId: "{{params.sandboxId}}"
+          serviceName: "{{params.serviceName}}"
+          expectedRevision: "{{params.expectedRevision}}"
+        responseMapping:
+          resultPath: $.structuredContent
+          maxCharacters: 8192
+    params:
+      - name: sandboxId
+        type: STRING
+        required: true
+        visibility: INTERNAL
+        askUser: false
+        resolveFrom:
+          source: RUNTIME_CONTEXT
+          field: userId
+      - name: serviceName
+        type: STRING
+        required: true
+        visibility: INTERNAL
+        askUser: false
+        allowedValues: [catalog, checkout, payments]
+        resolveFrom:
+          source: RUNTIME_CONTEXT
+          field: serviceName
+      - name: expectedRevision
+        type: INTEGER
+        required: true
+        visibility: INTERNAL
+        askUser: false
+        min: 1
+        resolveFrom:
+          source: READ_ACTION
+          actionName: get_sandbox_service_status
+          resultPath: revision
