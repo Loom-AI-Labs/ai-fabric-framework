@@ -382,3 +382,8 @@ operations, or commercial application code.
 ## License
 
 Licensed under the [Apache License 2.0](LICENSE).
+
+
+## Add a chat-session memory quickstart
+
+Documentation reference and guidelines for #23.
