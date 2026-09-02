@@ -9,7 +9,8 @@ ARG BUILD_TIME=
 FROM maven:3.9-eclipse-temurin-21 AS build
 WORKDIR /workspace
 COPY . .
-RUN mvn -B -V --no-transfer-progress \
+RUN --mount=type=cache,target=/root/.m2 \
+    mvn -B -V --no-transfer-progress \
     -pl mcp-operations-reference-server -am package
 
 FROM eclipse-temurin:21-jre-alpine AS runtime

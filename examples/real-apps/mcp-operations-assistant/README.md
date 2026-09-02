@@ -121,9 +121,9 @@ hosted durability should use PostgreSQL.
 
 ## Docker
 
-Until the connector hardening in this change set is published as an immutable framework patch,
-build the source-candidate image from the repository root so the app and connector use the same
-revision:
+AI Fabric `0.5.3` contains the exact-binding connector hardening. Build the
+assistant from the repository root; the image resolves that immutable release
+from Maven Central and packages the application source:
 
 ```bash
 docker build \
@@ -131,7 +131,7 @@ docker build \
   --build-arg AI_FABRIC_VERSION=0.5.3 \
   --build-arg SOURCE_COMMIT="$(git rev-parse HEAD)" \
   --build-arg SOURCE_BRANCH="$(git branch --show-current)" \
-  -t ai-fabric-mcp-operations-assistant:source-candidate \
+  -t ai-fabric-mcp-operations-assistant:0.5.3 \
   .
 ```
 
@@ -140,12 +140,9 @@ Build the reference server separately with the real-app reactor as its context:
 ```bash
 docker build \
   -f examples/real-apps/mcp-operations-reference-server/Dockerfile \
-  -t ai-fabric-mcp-operations-reference-server:source-candidate \
+  -t ai-fabric-mcp-operations-reference-server:0.5.3 \
   examples/real-apps
 ```
-
-After the next framework patch is published, switch the assistant deployment image back to an
-immutable Maven Central consumer before claiming release proof.
 
 ## Public API
 

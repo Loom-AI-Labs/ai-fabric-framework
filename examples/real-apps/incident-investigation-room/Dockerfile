@@ -12,13 +12,6 @@ FROM maven:3.9-eclipse-temurin-21 AS build
 ARG AI_FABRIC_VERSION
 WORKDIR /workspace
 
-COPY ai-infrastructure-module ./ai-infrastructure-module
-RUN --mount=type=cache,target=/root/.m2 \
-    mvn -B -V --no-transfer-progress \
-    -f ai-infrastructure-module/pom.xml \
-    -pl ai-fabric-starter,ai-fabric-execution,ai-fabric-chat-session,providers/ai-fabric-provider-spring-ai \
-    -am install
-
 COPY examples/real-apps ./examples/real-apps
 RUN --mount=type=cache,target=/root/.m2 \
     mvn -B -V --no-transfer-progress \

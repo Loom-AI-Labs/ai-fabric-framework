@@ -80,8 +80,12 @@ Build from the repository root:
 ```bash
 docker build \
   -f examples/real-apps/incident-investigation-room/Dockerfile \
-  -t ai-fabric-incident-investigation-room:source .
+  --build-arg AI_FABRIC_VERSION=0.5.3 \
+  -t ai-fabric-incident-investigation-room:0.5.3 .
 ```
+
+The image resolves the immutable AI Fabric release from Maven Central; it does
+not rebuild framework modules from the checkout.
 
 Live environment:
 

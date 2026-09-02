@@ -1184,8 +1184,9 @@ are never removed by retention cleanup.
 
 ## Docker
 
-Build from the repository root. Tests run in both framework and app build
-stages:
+Build from the repository root. The image resolves the immutable AI Fabric
+`0.5.3` artifacts from Maven Central and runs the real-app reactor tests while
+packaging the app:
 
 ```bash
 docker build \
@@ -1194,7 +1195,7 @@ docker build \
   --build-arg BUILD_COMMIT="$(git rev-parse HEAD)" \
   --build-arg BUILD_BRANCH="$(git branch --show-current)" \
   --build-arg BUILD_TIME="$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-  -t agentic-ai-action-resolver:source \
+  -t agentic-ai-action-resolver:0.5.3 \
   .
 ```
 
@@ -1223,10 +1224,10 @@ docker run --rm -p 8105:8105 \
   -e APP_REVIEWER_API_KEY="$APP_REVIEWER_API_KEY" \
   -e APP_SENIOR_REVIEWER_API_KEY="$APP_SENIOR_REVIEWER_API_KEY" \
   -e CORS_ALLOWED_ORIGINS=https://ai-fabric.dev \
-  agentic-ai-action-resolver:source
+  agentic-ai-action-resolver:0.5.3
 ```
 
-For Coolify source deployment:
+For Coolify deployment:
 
 - repository: `Loom-AI-Labs/ai-fabric-framework.git`
 - branch: `main`

@@ -1,10 +1,9 @@
 # syntax=docker/dockerfile:1.7
 # Build context: repository root.
 #
-# This source-candidate image installs the connector and execution modules from
-# the same revision before packaging the app. Once the exact-binding hardening
-# is published, the release image can resolve the immutable Maven Central
-# version instead.
+# The connector and execution hardening is published in AI Fabric 0.5.3. This
+# image therefore resolves the immutable framework release from Maven Central
+# and packages only the reference application from this source revision.
 
 ARG AI_FABRIC_VERSION=0.5.3
 ARG APP_VERSION=1.0.0-SNAPSHOT
@@ -17,13 +16,6 @@ ARG BUILD_TIME=
 FROM maven:3.9-eclipse-temurin-21 AS build
 ARG AI_FABRIC_VERSION
 WORKDIR /workspace
-
-COPY ai-infrastructure-module ./ai-infrastructure-module
-RUN --mount=type=cache,target=/root/.m2 \
-    mvn -B -V --no-transfer-progress \
-    -f ai-infrastructure-module/pom.xml \
-    -pl ai-fabric-actions-connector,ai-fabric-starter,ai-fabric-execution,ai-fabric-chat-session,providers/ai-fabric-provider-spring-ai,victor-databases/ai-fabric-vector-memory \
-    -am install
 
 COPY examples/real-apps ./examples/real-apps
 RUN --mount=type=cache,target=/root/.m2 \

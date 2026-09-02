@@ -1,13 +1,13 @@
 # syntax=docker/dockerfile:1.7
 #
-# Build from the repository root. This reference app exercises contracts that
-# are introduced by the same source revision, so the image first verifies and
-# installs the required framework modules before packaging the app.
+# Build from the repository root. The framework release is resolved from Maven
+# Central; the image packages only the reference application from this source
+# revision.
 #
 # From repo root:
 # docker build -f examples/real-apps/agentic-ai-action-resolver/Dockerfile \
 #   --build-arg AI_FABRIC_VERSION=0.5.3 \
-#   -t agentic-ai-action-resolver:source .
+#   -t agentic-ai-action-resolver:0.5.3 .
 
 ARG AI_FABRIC_VERSION=0.5.3
 ARG APP_VERSION=1.0.0-SNAPSHOT
@@ -20,14 +20,6 @@ ARG BUILD_TIME=
 FROM maven:3.9-eclipse-temurin-21 AS build
 ARG AI_FABRIC_VERSION
 WORKDIR /workspace
-
-COPY ai-infrastructure-module ./ai-infrastructure-module
-
-RUN --mount=type=cache,target=/root/.m2 \
-    mvn -B -V --no-transfer-progress \
-    -f ai-infrastructure-module/pom.xml \
-    -pl ai-fabric-starter,ai-fabric-behavior,victor-databases/ai-fabric-vector-lucene,providers/ai-fabric-provider-spring-ai,ai-fabric-rag,ai-fabric-chat-session,ai-fabric-execution,ai-fabric-relationship-query \
-    -am install
 
 COPY examples/real-apps ./examples/real-apps
 
