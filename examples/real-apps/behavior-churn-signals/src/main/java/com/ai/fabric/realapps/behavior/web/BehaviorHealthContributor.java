@@ -92,7 +92,9 @@ public class BehaviorHealthContributor implements DemoHealthContributor {
         out.put("execution", Map.of(
             "durability", "DURABLE",
             "automaticWrites", false,
-            "inputBoundary", "SERVER_OWNED_USER_AND_RAW_EVENTS"
+            "inputBoundary", "SERVER_OWNED_USER_AND_RAW_EVENTS",
+            "sources", List.of("APPLICATION", "SCHEDULED"),
+            "scheduledPrincipal", "SYSTEM"
         ));
         out.put("liveFallbackEnabled", false);
         return Map.copyOf(out);

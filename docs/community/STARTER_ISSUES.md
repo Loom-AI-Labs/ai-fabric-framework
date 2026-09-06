@@ -43,7 +43,7 @@ Labels: `documentation`, `help wanted`
 Each deployed demo should have a short diagram showing browser, demo backend, AI Fabric modules, provider, and storage flow.
 
 Acceptance criteria:
-- Cover the five deployed demos.
+- Cover the ten deployed demos.
 - Keep diagrams text-based or Mermaid so they remain reviewable.
 - Link each README to its live demo and Dockerfile.
 

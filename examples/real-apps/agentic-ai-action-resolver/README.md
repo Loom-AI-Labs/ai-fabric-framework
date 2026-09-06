@@ -74,6 +74,25 @@ cannot choose or impersonate the reviewer.
 The original `ai-fabric-account-resolver` remains unchanged and deployable as
 the governed-action baseline.
 
+## Public Demo Experience
+
+- Resolver UI: `https://ai-fabric.dev/demos/ai-fabric-agentic-action-resolver`
+- Human Review Operations Desk:
+  `https://ai-fabric.dev/demos/ai-fabric-agentic-action-resolver/review`
+- Backend: `https://ai-fabric-agentic-action-resolver.46.224.145.148.sslip.io`
+
+The resolver UI includes a guided proactive-event proof. It sends payment
+failure facts only, then polls the durable `EVENT` execution and displays the
+backend-owned `SERVICE` principal, source, invocation, status, and typed
+result. It never turns the event into a fabricated chat message or supplies
+identity/authority from the browser.
+
+The Review Desk exposes guided journeys for every supported decision:
+`APPROVE`, `REJECT`, `CORRECT`, `REQUEST_INFORMATION`, and `ESCALATE`.
+Requested information is supplied through the original source session rather
+than reviewer credentials. Every refresh reloads authoritative task and
+receipt state from the backend.
+
 ## What This Proves
 
 - A typed `AccountResolutionRequest` enters through a schema-bound
@@ -741,7 +760,7 @@ Content-Type: application/json
 }
 ```
 
-Read or cancel its process-local execution:
+Read or cancel its durable execution:
 
 ```http
 GET /api/agentic-resolver/events/executions/{invocationId}

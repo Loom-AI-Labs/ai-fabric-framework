@@ -65,6 +65,10 @@ class BehaviorDemoControllerTest {
         assertThat(health).containsEntry("behaviorMode", "FULL");
         assertThat(health).containsEntry("totalEvents", 33L);
         assertThat(health).containsEntry("scenarios", 0);
+        assertThat(health).containsEntry(
+            "executionSources",
+            List.of("APPLICATION", "SCHEDULED")
+        );
     }
 
     @Test
@@ -91,5 +95,28 @@ class BehaviorDemoControllerTest {
         assertThat(response).isSameAs(agenticResponse);
         verify(service).currentResult("user-1001");
         verify(agenticUiComposerService).compose(scenarioResult);
+    }
+
+    @Test
+    void scheduledAnalysisUsesTheServerOwnedScheduledAdapter() {
+        DurableBehaviorAnalysisService.AnalysisView expected = mock(
+            DurableBehaviorAnalysisService.AnalysisView.class
+        );
+        when(durableAnalysisService.submitScheduled("session-1", "user-1"))
+            .thenReturn(expected);
+
+        BehaviorDemoController controller = new BehaviorDemoController(
+            service,
+            agenticUiComposerService,
+            durableAnalysisService,
+            specialistRegistry,
+            new MockEnvironment(),
+            new DefaultResourceLoader()
+        );
+
+        assertThat(
+            controller.submitScheduledAnalysis("user-1", "session-1")
+        ).isSameAs(expected);
+        verify(durableAnalysisService).submitScheduled("session-1", "user-1");
     }
 }

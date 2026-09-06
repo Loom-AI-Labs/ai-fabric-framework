@@ -23,6 +23,10 @@ action-family analysis.
 - `behavior-risk-analyst@1` receives the previous approved insight plus only the new raw events.
 - `DurableAIExecutionGateway` provides queued execution, leases, retry/recovery, cancellation,
   expiration, and idempotent replay.
+- The same typed specialist supports an app-requested `APPLICATION` source under a `SERVICE`
+  principal and a host-owned `SCHEDULED` source under a `SYSTEM` principal.
+- Scheduled replay keys are derived by the backend from the exact typed request; the browser cannot
+  supply scheduler identity or idempotency authority.
 - Successful typed specialist output is projected once into persisted `BehaviorInsights` per user.
 - Built-in behavior analytics endpoints can query trend and rapid-decline signals.
 - Retention workflow can combine behavior evidence, plan evidence, policy explanations, and separate policy-gated actions.
@@ -86,9 +90,11 @@ The demo shows an operator workflow for a SaaS behavior team:
 2. Analyze five seeded behavior scenarios.
 3. Review churn, sentiment, trend, recommendation, and action-family evidence.
 4. Record a typed raw app event such as `PAYMENT_FAILED`, `FEATURE_ERROR`, `HELP_CENTER_SEARCH`, or `NO_LOGIN_14D`.
-5. Review the AI-selected action family with backend policy validation.
-6. Compose a behavior-driven home preview where the LLM selects safe user-facing home modules and the backend fills trusted module props.
-7. Add positive recovery events to a churning user and observe how churn, sentiment, trend, and component selection react.
+5. Run user behavior analysis explicitly as an application request, or run one host-scheduled risk
+   sweep and inspect its distinct trusted source and principal.
+6. Review the AI-selected action family with backend policy validation.
+7. Compose a behavior-driven home preview where the LLM selects safe user-facing home modules and the backend fills trusted module props.
+8. Add positive recovery events to a churning user and observe how churn, sentiment, trend, and component selection react.
 
 Agentic UI planning deliberately keeps the LLM contract small. The backend sends a component catalog
 with each component name, description, and recommended use case. The LLM returns a short ordered list
@@ -121,7 +127,8 @@ AI-enabled domain model:
 - `AppBehaviorEvent` stores raw app events, and `DbExternalEventProvider` exposes them through
   `ExternalEventProvider`.
 - `DurableBehaviorAnalysisService` binds the manifest specialist, submits durable execution, and
-  applies a successful typed result once through the behavior persistence service.
+  applies a successful typed result once through the behavior persistence service. Its app job
+  stores the exact event batch, previous insight, invocation binding, and execution source.
 - `AgenticUiComposerService` uses the shared structured JSON path to ask the configured LLM for an
   allowlisted component-name plan; backend code fills the trusted props.
 
@@ -140,16 +147,18 @@ Request and data flow:
 
 1. The UI creates or restores a browser session through `/api/behavior-demo/sessions`.
 2. The backend clones seeded demo users and raw behavior events into that session namespace.
-3. The UI records event facts through `/events`, then submits the exact
-   `behavior-risk-analyst@1` specialist through `/analyses` with a stable idempotency key.
-4. The UI polls the opaque invocation ID while AI Fabric leases and executes the durable job.
-5. AI Fabric validates structured sentiment, churn risk, trend, recommendation, action family, and
+3. The UI records event facts through `/events`; recording facts never invokes analysis implicitly.
+4. The UI submits the exact `behavior-risk-analyst@1` specialist through `/analyses` with an
+   application idempotency key, or invokes `/scheduled-analyses`, where the backend supplies the
+   `SYSTEM` identity and derives the replay key from the exact event batch.
+5. The UI polls the opaque invocation ID while AI Fabric leases and executes the durable job.
+6. AI Fabric validates structured sentiment, churn risk, trend, recommendation, action family, and
    evidence, then the application projects the result once into the current approved insight.
-6. The analytics page shows AI-selected recommendation families, not frontend heuristics or offer execution controls.
-7. The agentic UI route calls `/agentic-ui`; the LLM receives a small component catalog and returns
+7. The analytics page shows AI-selected recommendation families, not frontend heuristics or offer execution controls.
+8. The agentic UI route calls `/agentic-ui`; the LLM receives a small component catalog and returns
    component names plus reasons. The backend validates names and renders trusted, domain-specific
    module props for the UI.
-8. Session cleanup removes old public-demo users, events, insights, and app-owned job bindings after the
+9. Session cleanup removes old public-demo users, events, insights, and app-owned job bindings after the
    configured TTL.
 
 ## Run Locally
@@ -220,7 +229,22 @@ From the repository root:
      }' | jq
    ```
 
-7. Optional API-only check: preview the confirmation-gated retention offer endpoint:
+7. Submit the newly recorded facts through the host-scheduled adapter. This endpoint takes no
+   browser idempotency key or principal fields:
+
+   ```bash
+   scheduled=$(curl -fsS -X POST \
+     "http://localhost:8097/api/behavior-demo/scenarios/${user_id}/scheduled-analyses" \
+     -H "X-Demo-Session-Id: ${session_id}")
+   printf '%s' "$scheduled" | jq '{invocationId,executionSource,principalType,durability,replayed}'
+   ```
+
+   Redelivering this request while the same event batch is still outstanding must return the same
+   `invocationId` with `replayed=true`. The response must report `executionSource=SCHEDULED` and
+   `principalType=SYSTEM`. After the result is projected, a later scheduled run requires at least one
+   new event.
+
+8. Optional API-only check: preview the confirmation-gated retention offer endpoint:
 
    ```bash
    curl -fsS -X POST "http://localhost:8097/api/behavior-demo/scenarios/${user_id}/retention-offer" \
@@ -228,7 +252,7 @@ From the repository root:
      -d '{"discountPercent":25,"confirmed":false}' | jq
    ```
 
-8. Optional API-only check: confirm the retention action endpoint:
+9. Optional API-only check: confirm the retention action endpoint:
 
    ```bash
    curl -fsS -X POST "http://localhost:8097/api/behavior-demo/scenarios/${user_id}/retention-offer" \
@@ -236,14 +260,14 @@ From the repository root:
      -d '{"discountPercent":25,"confirmed":true}' | jq
    ```
 
-9. Compose an agentic UI component plan for the same analyzed user:
+10. Compose an agentic UI component plan for the same analyzed user:
 
    ```bash
    curl -fsS -X POST "http://localhost:8097/api/behavior-demo/scenarios/${user_id}/agentic-ui" \
      -H 'Content-Type: application/json' | jq
    ```
 
-10. Add positive recovery events to the churning account and rerun analysis:
+11. Add positive recovery events to the churning account and rerun analysis:
 
    ```bash
    curl -fsS -X POST "http://localhost:8097/api/behavior-demo/scenarios/${user_id}/positive-recovery-events" \
@@ -269,17 +293,22 @@ For a live browser smoke against the public deployment, verify:
 2. The UI shows `API connected`, `Live LLM provider`, and the expected commit.
 3. Each durable analysis succeeds under the exact `behavior-risk-analyst@1` manifest; provider
    truth comes from `/api/demo/health`, not from the insight's specialist-contract field.
-4. Recording a typed app event re-runs behavior analysis and increases the session event count.
-5. The recommendation panel shows an AI-selected `action_family`; if LLM analysis fails, the UI shows the failure instead of substituting a fallback recommendation.
-6. Agentic UI planning returns only allowlisted component types with backend-populated props; invalid LLM layout output fails visibly.
-7. Positive recovery events are visible as raw event evidence and cause a fresh behavior analysis.
-8. Reset the session and confirm health returns to zero public-demo events/insights for that session.
+4. Recording a typed app event only increases the session event count. Insight changes appear only
+   after the user explicitly starts application analysis or the host-scheduled path runs.
+5. Application analysis reports `APPLICATION`/`SERVICE`; scheduled analysis reports
+   `SCHEDULED`/`SYSTEM`, and duplicate delivery of the same outstanding scheduled batch replays its
+   original invocation.
+6. The recommendation panel shows an AI-selected `action_family`; if LLM analysis fails, the UI shows the failure instead of substituting a fallback recommendation.
+7. Agentic UI planning returns only allowlisted component types with backend-populated props; invalid LLM layout output fails visibly.
+8. Positive recovery events are visible as raw event evidence and cause a fresh behavior analysis only after an explicit trigger.
+9. Reset the session and confirm health returns to zero public-demo events/insights for that session.
 
 ## Demo Flow
 
 1. Create or restore a browser session.
 2. Seed session-scoped users and behavior events.
-3. Submit selected accounts through the exact `behavior-risk-analyst@1` durable specialist.
+3. Submit selected accounts through the exact `behavior-risk-analyst@1` durable specialist using
+   either the application or host-scheduled trigger.
 4. Review persisted behavior insight summaries, trend distribution, and immediate-action signals.
 5. Record a new raw account behavior event and re-run analysis.
 6. Review behavior evidence, policy explanation, and AI-selected recommended action family.
@@ -307,12 +336,15 @@ For a live browser smoke against the public deployment, verify:
 - `POST /api/behavior-demo/reset`
 - `POST /api/behavior-demo/scenarios/{userId}/analyze`
 - `POST /api/behavior-demo/scenarios/{userId}/analyses`
+- `POST /api/behavior-demo/scenarios/{userId}/scheduled-analyses`
 - `GET /api/behavior-demo/analyses/{invocationId}`
 - `GET /api/behavior-demo/analyses`
 - `DELETE /api/behavior-demo/analyses/{invocationId}`
 - `POST /api/behavior-demo/scenarios/{userId}/signals`
 - `POST /api/behavior-demo/scenarios/{userId}/events`
 - `POST /api/behavior-demo/scenarios/{userId}/positive-recovery`
+- `POST /api/behavior-demo/scenarios/{userId}/positive-recovery-events`
+- `POST /api/behavior-demo/scenarios/{userId}/negative-churn-events`
 - `POST /api/behavior-demo/scenarios/{userId}/agentic-ui`
 - `POST /api/behavior-demo/scenarios/{userId}/retention-offer`
 
@@ -328,6 +360,22 @@ Seeded scenarios:
 
 Session users are cloned as `behavior-demo-user-<sessionId>-user-100X`. A scheduled cleanup job removes
 old session users after `app.behavior-demo.cleanup.ttl` (default `PT6H`).
+
+## Durability And Scheduling Boundary
+
+- The application database stores raw events, approved insights, app-owned analysis jobs, and AI
+  Fabric durable execution records. Restart recovery requires that database and the async
+  encryption/fingerprint secrets to remain stable.
+- The app job preserves the previous insight, exact new-event batch, invocation ID, and execution
+  source used for a run. A successful result is projected once for that job.
+- Duplicate delivery of an outstanding scheduled batch resolves to the same retained invocation.
+  Once that result is projected, the next scheduled run requires new event facts and receives a new
+  backend-derived request key.
+- AI Fabric provides the `SCHEDULED` execution source; this demo endpoint represents a host-owned
+  scheduler adapter. AI Fabric does not run the business schedule or accept scheduler identity from
+  the browser.
+- Durable read execution is at least once. A crash during a provider call may repeat that read after
+  lease recovery; this app does not claim exactly-once provider invocation.
 
 ## Docker
 

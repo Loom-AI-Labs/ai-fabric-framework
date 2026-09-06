@@ -28,20 +28,23 @@ Content-Type: application/json
 
 {
   "sessionId": "local-browser-1",
-  "analyze": true
+  "analyze": false
 }
 
 ### 9) Session dashboard
 GET http://localhost:8097/api/behavior-demo/dashboard?sessionId=local-browser-1
 
-### 10) Analyze one public demo scenario
-POST http://localhost:8097/api/behavior-demo/scenarios/behavior-demo-user-local-browser-1-user-1001/analyze
+### 10) Submit one application-triggered durable analysis
+POST http://localhost:8097/api/behavior-demo/scenarios/behavior-demo-user-local-browser-1-user-1001/analyses
+X-Demo-Session-Id: local-browser-1
+Idempotency-Key: local-application-analysis-1
 
-### 11) Record a raw app behavior event and re-analyze
-POST http://localhost:8097/api/behavior-demo/scenarios/behavior-demo-user-local-browser-1-user-1001/signals
+### 11) Record a raw app behavior event without invoking AI
+POST http://localhost:8097/api/behavior-demo/scenarios/behavior-demo-user-local-browser-1-user-1001/events
 Content-Type: application/json
 
 {
+  "eventId": "local-payment-failed-1",
   "eventType": "PAYMENT_FAILED",
   "eventData": {
     "reason": "card_declined",
@@ -52,7 +55,11 @@ Content-Type: application/json
   "source": "billing-service"
 }
 
-### 12) Preview confirmation-gated retention offer
+### 12) Submit fresh facts through the host-scheduled adapter
+POST http://localhost:8097/api/behavior-demo/scenarios/behavior-demo-user-local-browser-1-user-1001/scheduled-analyses
+X-Demo-Session-Id: local-browser-1
+
+### 13) Preview confirmation-gated retention offer
 POST http://localhost:8097/api/behavior-demo/scenarios/behavior-demo-user-local-browser-1-user-1001/retention-offer
 Content-Type: application/json
 
@@ -61,7 +68,7 @@ Content-Type: application/json
   "confirmed": false
 }
 
-### 13) Confirm retention offer
+### 14) Confirm retention offer
 POST http://localhost:8097/api/behavior-demo/scenarios/behavior-demo-user-local-browser-1-user-1001/retention-offer
 Content-Type: application/json
 
@@ -70,19 +77,19 @@ Content-Type: application/json
   "confirmed": true
 }
 
-### 14) Compose an agentic UI component plan
+### 15) Compose an agentic UI component plan
 POST http://localhost:8097/api/behavior-demo/scenarios/behavior-demo-user-local-browser-1-user-1001/agentic-ui
 Content-Type: application/json
 
 {}
 
-### 15) Add positive recovery events to the churning account
-POST http://localhost:8097/api/behavior-demo/scenarios/behavior-demo-user-local-browser-1-user-1001/positive-recovery
+### 16) Add positive recovery events without invoking AI
+POST http://localhost:8097/api/behavior-demo/scenarios/behavior-demo-user-local-browser-1-user-1001/positive-recovery-events
 Content-Type: application/json
 
 {}
 
-### 16) Reset only this public demo session
+### 17) Reset only this public demo session
 POST http://localhost:8097/api/behavior-demo/reset
 Content-Type: application/json
 

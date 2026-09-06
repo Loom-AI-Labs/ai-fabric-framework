@@ -447,20 +447,26 @@ for configuration, migrations, recovery, metrics, and rollback guidance.
 ## Current Boundary
 
 The implemented scope supports bounded single-specialist execution, optional
-confirmation-gated writes, fixed sequential read-only plans, and opt-in
-durable terminal read-only jobs. Sequential-plan checkpoints, specialist
-input waits, and confirmation continuation remain explicitly ephemeral.
-Durable read jobs and durable write receipts are separate state machines and
-do not turn AI Fabric into an unrestricted workflow engine.
+confirmation-gated writes, fixed sequential and bounded-parallel read-only
+plans, one-level allowlisted delegation and handoff, durable human review,
+and opt-in durable terminal read-only jobs. It also accepts application-owned
+`EVENT` and `SCHEDULED` execution contexts; AI Fabric does not own the event
+consumer or scheduler that creates those trusted calls.
+
+Plan checkpoints, specialist input waits, interactive confirmation
+continuation, delegation, and handoff remain explicitly ephemeral. Durable
+read jobs, durable human-review tasks, and durable write receipts are separate
+state machines and do not turn AI Fabric into an unrestricted workflow
+engine.
 
 The following remain deferred:
 
-- conditional, parallel, dynamic, or WRITE-capable plans;
-- delegation and model-selected specialist routing;
-- durable WRITE-capable specialist jobs, input waits, confirmations, or plans;
-- durable human review;
+- conditional, nested, dynamic/model-authored, or WRITE-capable plans;
+- recursive delegation or handoff and unrestricted model-selected specialist discovery;
+- durable WRITE-capable specialist jobs, input waits, interactive confirmations, plans,
+  delegation, or handoff;
 - framework-owned scheduler or event-broker consumers; and
-- unrestricted model-selected specialist discovery.
+- exactly-once provider calls or blind retries of unknown write outcomes.
 
 See the independent reference app:
 

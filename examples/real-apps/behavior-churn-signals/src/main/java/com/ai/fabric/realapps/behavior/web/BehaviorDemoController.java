@@ -85,6 +85,7 @@ public class BehaviorDemoController {
             "vector", "DISABLED",
             "execution", specialist.isPresent() ? "UP" : "DOWN"
         ));
+        out.put("executionSources", java.util.List.of("APPLICATION", "SCHEDULED"));
         out.put("checkedAt", Instant.now().toString());
         return out;
     }
@@ -139,6 +140,14 @@ public class BehaviorDemoController {
         @RequestHeader("Idempotency-Key") String idempotencyKey
     ) {
         return durableAnalysisService.submit(sessionId, userId, idempotencyKey);
+    }
+
+    @PostMapping("/scenarios/{userId}/scheduled-analyses")
+    public DurableBehaviorAnalysisService.AnalysisView submitScheduledAnalysis(
+        @PathVariable String userId,
+        @RequestHeader("X-Demo-Session-Id") String sessionId
+    ) {
+        return durableAnalysisService.submitScheduled(sessionId, userId);
     }
 
     @GetMapping("/analyses/{invocationId}")

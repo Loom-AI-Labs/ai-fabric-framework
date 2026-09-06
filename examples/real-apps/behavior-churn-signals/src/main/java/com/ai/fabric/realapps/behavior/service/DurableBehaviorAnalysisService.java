@@ -16,6 +16,7 @@ import ai.fabric.execution.specialist.client.SpecialistClient;
 import ai.fabric.execution.specialist.client.SpecialistClientFactory;
 import ai.fabric.execution.specialist.client.SpecialistExecutionSnapshot;
 import ai.fabric.execution.specialist.client.SpecialistInvocation;
+import ai.fabric.execution.specialist.manifest.CanonicalJsonSupport;
 import com.ai.fabric.realapps.behavior.domain.AppBehaviorEvent;
 import com.ai.fabric.realapps.behavior.domain.BehaviorAnalysisJob;
 import com.ai.fabric.realapps.behavior.repo.AppBehaviorEventRepository;
@@ -54,6 +55,7 @@ public class DurableBehaviorAnalysisService {
     private final BehaviorInsightPersistenceService persistenceService;
     private final BehaviorAnalysisJobRepository jobRepository;
     private final ObjectMapper objectMapper;
+    private final CanonicalJsonSupport canonicalJson;
     private final Clock clock;
 
     @org.springframework.beans.factory.annotation.Autowired
@@ -64,7 +66,8 @@ public class DurableBehaviorAnalysisService {
         BehaviorInsightsRepository insightRepository,
         BehaviorInsightPersistenceService persistenceService,
         BehaviorAnalysisJobRepository jobRepository,
-        ObjectMapper objectMapper
+        ObjectMapper objectMapper,
+        CanonicalJsonSupport canonicalJson
     ) {
         this(
             clientFactory.bind(
@@ -78,6 +81,7 @@ public class DurableBehaviorAnalysisService {
             persistenceService,
             jobRepository,
             objectMapper,
+            canonicalJson,
             Clock.systemUTC()
         );
     }
@@ -90,6 +94,7 @@ public class DurableBehaviorAnalysisService {
         BehaviorInsightPersistenceService persistenceService,
         BehaviorAnalysisJobRepository jobRepository,
         ObjectMapper objectMapper,
+        CanonicalJsonSupport canonicalJson,
         Clock clock
     ) {
         this.client = client;
@@ -99,11 +104,30 @@ public class DurableBehaviorAnalysisService {
         this.persistenceService = persistenceService;
         this.jobRepository = jobRepository;
         this.objectMapper = objectMapper;
+        this.canonicalJson = canonicalJson;
         this.clock = clock;
     }
 
     public AnalysisView submit(String sessionId, String userId, String idempotencyKey) {
         requireIdempotencyKey(idempotencyKey);
+        return submit(
+            sessionId,
+            userId,
+            idempotencyKey.trim(),
+            ExecutionSource.APPLICATION
+        );
+    }
+
+    public AnalysisView submitScheduled(String sessionId, String userId) {
+        return submit(sessionId, userId, null, ExecutionSource.SCHEDULED);
+    }
+
+    private AnalysisView submit(
+        String sessionId,
+        String userId,
+        String requestedIdempotencyKey,
+        ExecutionSource executionSource
+    ) {
         scenarioService.requireSessionUser(sessionId, userId);
 
         Optional<BehaviorInsights> previous = insightRepository.findByUserId(userId);
@@ -115,18 +139,27 @@ public class DurableBehaviorAnalysisService {
         }
 
         BehaviorRiskAnalysisRequest input = request(userId, previous.orElse(null), events);
+        String idempotencyKey = executionSource == ExecutionSource.SCHEDULED
+            ? scheduledIdempotencyKey(userId, input)
+            : requestedIdempotencyKey;
         ExecutionHandle handle = client.submit(
             new SpecialistInvocation<>(
                 input,
-                trustedContext(sessionId, userId),
+                trustedContext(sessionId, userId, executionSource),
                 null,
                 null,
-                idempotencyKey.trim()
+                idempotencyKey
             )
         );
 
         if (handle.failureReason() != null) {
-            return rejected(handle, previous.orElse(null), events);
+            return rejected(
+                handle,
+                userId,
+                executionSource,
+                previous.orElse(null),
+                events
+            );
         }
 
         Optional<BehaviorAnalysisJob> existing = jobRepository.findByInvocationId(handle.invocationId());
@@ -136,7 +169,8 @@ public class DurableBehaviorAnalysisService {
                 handle.invocationId(),
                 sessionId,
                 userId,
-                idempotencyKey.trim(),
+                idempotencyKey,
+                executionSource.name(),
                 json(previous.map(this::previousInsight).orElse(null)),
                 json(events.stream().map(this::eventFact).toList()),
                 events.size(),
@@ -151,7 +185,11 @@ public class DurableBehaviorAnalysisService {
         BehaviorAnalysisJob job = requireOwnedJob(sessionId, invocationId);
         SpecialistExecutionSnapshot<BehaviorRiskAnalysisResult> snapshot = client.find(
             invocationId,
-            trustedContext(sessionId, job.getUserId())
+            trustedContext(
+                sessionId,
+                job.getUserId(),
+                executionSource(job)
+            )
         ).orElseThrow(() -> new IllegalArgumentException("Analysis invocation was not found"));
 
         BehaviorDemoScenarioService.BehaviorScenarioResult result = null;
@@ -170,7 +208,11 @@ public class DurableBehaviorAnalysisService {
         return jobRepository.findBySessionIdOrderBySubmittedAtDesc(sessionId).stream()
             .map(job -> client.find(
                 job.getInvocationId(),
-                trustedContext(sessionId, job.getUserId())
+                trustedContext(
+                    sessionId,
+                    job.getUserId(),
+                    executionSource(job)
+                )
             ).map(snapshot -> view(job, snapshot.handle(), null, false, null))
                 .orElseGet(() -> missing(job)))
             .toList();
@@ -181,7 +223,11 @@ public class DurableBehaviorAnalysisService {
         BehaviorAnalysisJob job = requireOwnedJob(sessionId, invocationId);
         client.cancel(
             invocationId,
-            trustedContext(sessionId, job.getUserId())
+            trustedContext(
+                sessionId,
+                job.getUserId(),
+                executionSource(job)
+            )
         );
         return find(sessionId, invocationId);
     }
@@ -261,6 +307,8 @@ public class DurableBehaviorAnalysisService {
             job.getUserId(),
             handle.durability().name(),
             handle.status().name(),
+            executionSource(job).name(),
+            principalType(executionSource(job)).name(),
             replayed,
             job.getSubmittedAt(),
             handle.deadline(),
@@ -278,14 +326,18 @@ public class DurableBehaviorAnalysisService {
 
     private AnalysisView rejected(
         ExecutionHandle handle,
+        String userId,
+        ExecutionSource executionSource,
         BehaviorInsights previous,
         List<AppBehaviorEvent> events
     ) {
         return new AnalysisView(
             handle.invocationId(),
-            null,
+            userId,
             handle.durability().name(),
             handle.status().name(),
+            executionSource.name(),
+            principalType(executionSource).name(),
             false,
             clock.instant(),
             handle.deadline(),
@@ -305,6 +357,8 @@ public class DurableBehaviorAnalysisService {
             job.getUserId(),
             "DURABLE",
             "EXPIRED",
+            executionSource(job).name(),
+            principalType(executionSource(job)).name(),
             false,
             job.getSubmittedAt(),
             null,
@@ -400,17 +454,56 @@ public class DurableBehaviorAnalysisService {
         return job;
     }
 
-    private TrustedExecutionContext trustedContext(String sessionId, String userId) {
+    private TrustedExecutionContext trustedContext(
+        String sessionId,
+        String userId,
+        ExecutionSource source
+    ) {
         return new TrustedExecutionContext(
-            new ExecutionPrincipal("behavior-signals-demo", ExecutionPrincipalType.SERVICE),
+            new ExecutionPrincipal(
+                source == ExecutionSource.SCHEDULED
+                    ? "behavior-signals-scheduler"
+                    : "behavior-signals-demo",
+                principalType(source)
+            ),
             new ExecutionSubjectRef("behavior-user", userId),
-            ExecutionSource.APPLICATION,
+            source,
             "behavior-demo",
             sessionId,
             SCOPES,
             sessionId,
             clock.instant()
         );
+    }
+
+    private ExecutionPrincipalType principalType(ExecutionSource source) {
+        return source == ExecutionSource.SCHEDULED
+            ? ExecutionPrincipalType.SYSTEM
+            : ExecutionPrincipalType.SERVICE;
+    }
+
+    private ExecutionSource executionSource(BehaviorAnalysisJob job) {
+        if (!StringUtils.hasText(job.getExecutionSource())) {
+            return ExecutionSource.APPLICATION;
+        }
+        try {
+            return ExecutionSource.valueOf(job.getExecutionSource());
+        } catch (IllegalArgumentException exception) {
+            throw new IllegalStateException(
+                "Stored behavior analysis execution source is invalid",
+                exception
+            );
+        }
+    }
+
+    private String scheduledIdempotencyKey(
+        String userId,
+        BehaviorRiskAnalysisRequest input
+    ) {
+        return "behavior-scheduled:v1:"
+            + userId
+            + ":"
+            + canonicalJson.hashValue(input).substring(0, 24);
     }
 
     private void requireSessionId(String sessionId) {
@@ -480,6 +573,8 @@ public class DurableBehaviorAnalysisService {
         String userId,
         String durability,
         String status,
+        String executionSource,
+        String principalType,
         boolean replayed,
         Instant submittedAt,
         Instant deadline,

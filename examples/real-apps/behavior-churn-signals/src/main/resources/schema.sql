@@ -41,12 +41,16 @@ CREATE TABLE IF NOT EXISTS app_behavior_analysis_job (
   session_id VARCHAR(180) NOT NULL,
   user_id VARCHAR(255) NOT NULL,
   idempotency_key VARCHAR(200) NOT NULL,
+  execution_source VARCHAR(24) DEFAULT 'APPLICATION' NOT NULL,
   previous_insight_json CLOB,
   considered_events_json CLOB NOT NULL,
   considered_event_count INTEGER NOT NULL,
   submitted_at TIMESTAMP NOT NULL,
   applied_at TIMESTAMP
 );
+
+ALTER TABLE app_behavior_analysis_job
+  ADD COLUMN IF NOT EXISTS execution_source VARCHAR(24) DEFAULT 'APPLICATION' NOT NULL;
 
 CREATE INDEX IF NOT EXISTS idx_behavior_analysis_job_session ON app_behavior_analysis_job(session_id, submitted_at);
 CREATE INDEX IF NOT EXISTS idx_behavior_analysis_job_user ON app_behavior_analysis_job(user_id, submitted_at);

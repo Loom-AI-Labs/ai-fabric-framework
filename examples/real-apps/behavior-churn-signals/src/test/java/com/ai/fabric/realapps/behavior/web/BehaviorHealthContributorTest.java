@@ -82,7 +82,11 @@ class BehaviorHealthContributorTest {
             "automaticWrites",
             false,
             "inputBoundary",
-            "SERVER_OWNED_USER_AND_RAW_EVENTS"
+            "SERVER_OWNED_USER_AND_RAW_EVENTS",
+            "sources",
+            List.of("APPLICATION", "SCHEDULED"),
+            "scheduledPrincipal",
+            "SYSTEM"
         ));
         assertThat(details).doesNotContainKeys(
             "prompt",

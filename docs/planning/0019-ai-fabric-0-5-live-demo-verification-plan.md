@@ -1,16 +1,18 @@
 # AI Fabric `0.5.x` Live Demo Verification Plan
 
-- **Status:** Source implementation and verification complete; hosted deployment gate pending
-- **Date:** 2026-08-04
-- **Framework baseline:** AI Fabric `0.5.2`
+- **Status:** AI Fabric `0.5.3` portfolio deployed and verified; post-release execution-source UI hardening ready for redeployment
+- **Date:** 2026-08-04; audited and extended 2026-09-06
+- **Framework baseline:** AI Fabric `0.5.3`
 - **Primary release evidence:** [`0.5.0`](../release-notes/0.5.0.md),
-  [`0.5.1`](../release-notes/0.5.1.md), and [`0.5.2`](../release-notes/0.5.2.md)
+  [`0.5.1`](../release-notes/0.5.1.md), [`0.5.2`](../release-notes/0.5.2.md), and
+  [`0.5.3`](../release-notes/0.5.3.md)
 - **Related product proposal:**
   [LoomAI AI Enablement Product And Deployment Template Proposal](0018-loomai-ai-enablement-product-and-deployment-template-proposal.md)
 - **Backend repository:** `Loom-AI-Labs/ai-fabric-framework`
 - **Public UI repository:** `Loom-AI-Labs/aifabric`
-- **Release requirement:** the shared framework hardening in this implementation must be published
-  as the next immutable patch after `0.5.2` before Maven Central-only deployment images are used.
+- **Release result:** immutable `0.5.3` artifacts are published and the portfolio consumes them
+  through Maven Central-only deployment images. The 2026-09-06 additions change demo apps and UI,
+  not the published framework API.
 
 ## 1. Purpose
 
@@ -70,9 +72,11 @@ Implementation also added the shared framework behavior required by those applic
 - preservation of backend-resolved trusted parameters through required-parameter validation; and
 - trusted tenant and deployment filters in the RAG search request boundary.
 
-The source implementation is not described as publicly live yet. The new backends and UI bundle
-must be committed, released where framework artifacts changed, deployed, and then exercised at
-their hosted URLs before the remaining live checkboxes in Section 16 can be closed.
+The `0.5.3` backends and UI routes are publicly deployed and were exercised against their hosted
+URLs. The 2026-09-06 hardening makes the existing `EVENT` path, a host-owned `SCHEDULED` path, and
+all supported human-review decisions easier to inspect. Those additions remain source-only until
+the Agentic Resolver, Behavior Signals, and public UI deployments report the resulting source
+commits.
 
 ## 2. Non-Negotiable Demo Rules
 
@@ -107,13 +111,13 @@ Every implementation in this plan must follow these rules:
 
 | Experience | Backend decision | UI decision | Current status |
 | --- | --- | --- | --- |
-| Agentic AI Action Resolver | Promote and harden the existing source app | Create a new UI | Exact-source image, real OpenAI, replay, and restart verified; deployment pending |
+| Agentic AI Action Resolver | Promote and harden the existing source app | Create a new UI | Live on `0.5.3`; event-source guided proof added in source |
 | Human Review Operations Desk | Reuse Agentic Resolver backend | Create a separate reviewer UI route | Real OpenAI, durable review, approval, replay, and restart verified on the same image |
-| Deployment Knowledge Guard | Create a new real app, borrowing only safe patterns from Tenant Guard | Create a new UI | Exact-source image, real OpenAI, scoped retrieval, and security canaries verified; deployment pending |
-| Proactive Behavior And Risk Analyst | Upgrade existing Behavior Signals backend | Upgrade existing UI with durable execution views | Real OpenAI durable analysis and structured agentic UI verified; redeployment pending |
-| Incident Investigation Room | Create a new real app | Create a new UI | Real OpenAI composition, delegation, handoff, replay, and branch-failure paths verified; deployment pending |
-| Live Data Sync Operations | Upgrade existing Live Data Sync backend | Upgrade existing UI with indexing lifecycle | Exact-source image, real OpenAI, lifecycle, concurrency, and restart verified; redeployment pending |
-| Live MCP Operations Assistant | Upgrade existing source app and add a real remote MCP server app | Create a new UI | Real OpenAI plus authenticated remote MCP, replay, restart, and outage paths verified; two-service deployment pending |
+| Deployment Knowledge Guard | Create a new real app, borrowing only safe patterns from Tenant Guard | Create a new UI | Live on `0.5.3`; scoped retrieval and security canaries verified |
+| Proactive Behavior And Risk Analyst | Upgrade existing Behavior Signals backend | Upgrade existing UI with durable execution views | Live on `0.5.3`; explicit `APPLICATION`/`SCHEDULED` proof added in source |
+| Incident Investigation Room | Create a new real app | Create a new UI | Live on `0.5.3`; composition, delegation, handoff, replay, and failure paths verified |
+| Live Data Sync Operations | Upgrade existing Live Data Sync backend | Upgrade existing UI with indexing lifecycle | Live on `0.5.3`; lifecycle, concurrency, and restart behavior verified |
+| Live MCP Operations Assistant | Upgrade existing source app and add a real remote MCP server app | Create a new UI | Live on `0.5.3` with authenticated remote MCP, replay, restart, and outage paths |
 
 ### 3.2 Existing public demos kept unchanged
 
@@ -153,8 +157,10 @@ framework stories while making the new specialist runtime independently testable
 | Governed write proposal | Agentic AI Action Resolver | MCP Operations Assistant |
 | Durable action receipt and replay | Agentic AI Action Resolver | Human Review Operations Desk |
 | Durable human review | Human Review Operations Desk | None required |
-| Event-triggered specialist | Proactive Behavior And Risk Analyst | Agentic Resolver event canary |
-| Durable read job and lease recovery | Proactive Behavior And Risk Analyst | Controlled restart canary |
+| Event-triggered specialist | Agentic AI Action Resolver | Proactive event API and guided UI proof |
+| Application-triggered durable read | Proactive Behavior And Risk Analyst | `SERVICE` principal and stored `APPLICATION` source |
+| Host-scheduled durable read | Proactive Behavior And Risk Analyst | `SYSTEM` principal and backend-derived exact-batch replay key |
+| Durable read job and lease recovery | Proactive Behavior And Risk Analyst | Agentic Resolver event canary |
 | Fixed sequential plan | Incident Investigation Room | Agentic Resolver plan lab |
 | Bounded parallel plan | Incident Investigation Room | Agentic Resolver plan lab |
 | One-level delegation and handoff | Incident Investigation Room | Agentic Resolver API canary |
@@ -165,7 +171,7 @@ framework stories while making the new specialist runtime independently testable
 
 No demo should claim dynamic model-generated graphs, recursive delegation, unrestricted tool
 selection, exactly-once provider calls, durable input waits, or durable composed plans. Those are
-not AI Fabric `0.5.2` capabilities.
+not AI Fabric `0.5.3` capabilities.
 
 ## 5. Demo 1: Agentic AI Action Resolver
 
@@ -229,7 +235,7 @@ Create `/demos/ai-fabric-agentic-action-resolver` with:
 - add session-scoped reset and cleanup for domain rows, chat sessions, pending waits, and terminal
   demo state where safe;
 - keep unresolved receipts and review obligations auditable rather than deleting them blindly; and
-- run the app using released Maven Central `0.5.2` artifacts in the source-candidate Docker build.
+- run the app using released Maven Central `0.5.3` artifacts.
 
 ### 5.6 Acceptance gate
 
@@ -334,7 +340,7 @@ constructed from `TrustedExecutionContext` and verified after retrieval.
 - a security canary panel for cross-tenant, cross-deployment, spoofed-metadata, and missing-scope
   attempts;
 - provider and retrieval failure cards; and
-- health proof for AI Fabric `0.5.2`, specialist hash, provider, and vector readiness.
+- health proof for AI Fabric `0.5.3`, specialist hash, provider, and vector readiness.
 
 The attack panel submits test intent, not alternate trusted identity. The backend constructs the
 hostile adapter metadata internally and proves that verified context replaces or removes it.
@@ -363,12 +369,14 @@ scenarios, and allowlisted agentic UI composition.
 
 ### 8.2 New runtime behavior
 
-Replace or supplement the synchronous analysis path with an application-owned raw event adapter
-that submits a read-only specialist through `DurableAIExecutionGateway`.
+Keep raw-event recording separate from intelligence, then let either an application request or a
+host-owned schedule submit the same read-only specialist through `DurableAIExecutionGateway`.
 
 ```text
 raw application event
-  -> server-owned user/tenant mapping
+  -> persisted application fact
+  -> application or scheduled trigger
+  -> server-owned user/tenant/principal mapping
   -> previous approved insight + events since that insight
   -> exact behavior-risk-analyst@1 specialist
   -> encrypted durable read job
@@ -379,13 +387,17 @@ raw application event
 
 The event body contains event facts only. It cannot select a user, specialist, provider, tenant,
 scope, prompt, or action. Analysis remains read-only and never applies a retention offer
-automatically.
+automatically. The scheduled endpoint likewise accepts no principal or idempotency authority from
+the browser: the backend uses a `SYSTEM` principal, `SCHEDULED` source, and a key derived from the
+exact typed event batch.
 
 ### 8.3 Required UI upgrade
 
 - keep the raw event timeline with newest events first;
 - show an explicit `Run user behavior analysis` action;
 - display durable invocation ID and lifecycle status;
+- display the stored execution source and trusted principal type;
+- provide one explicit host-scheduled cycle without implying that the browser is the scheduler;
 - distinguish previous insight, newly considered events, and resulting insight;
 - show replay versus new execution;
 - show queued, leased/processing, completed, failed, cancelled, and expired states;
@@ -396,7 +408,8 @@ automatically.
 ### 8.4 Required scenarios
 
 1. Raw negative events produce one durable analysis without an automatic write.
-2. Exact event redelivery returns the original invocation and result.
+2. Exact event redelivery is idempotent, and resubmitting the same scheduled batch returns the
+   original invocation and result.
 3. Changed facts under the same event ID return `IDEMPOTENCY_CONFLICT`.
 4. Positive events submitted after a prior insight are analysed as previous insight plus new events.
 5. The resulting component plan changes only when the new typed insight supports it.
@@ -627,7 +640,7 @@ Every backend exposes `/api/demo/health` with safe fields equivalent to:
   "applicationVersion": "...",
   "sourceCommit": "...",
   "buildTime": "...",
-  "aiFabricVersion": "0.5.2",
+  "aiFabricVersion": "0.5.3",
   "provider": {
     "generation": "openai",
     "embeddings": "openai",
@@ -748,7 +761,7 @@ This phase provides the highest coverage because the backend already exists.
 ### Phase 2: Trusted retrieval security
 
 1. Build Deployment Knowledge Guard.
-2. Prove tenant/deployment/scope propagation on `0.5.2`.
+2. Prove tenant/deployment/scope propagation on `0.5.3`.
 3. Publish cross-boundary live canary results.
 
 ### Phase 3: Upgrade existing public demos
@@ -906,29 +919,42 @@ overflow. The remaining browser work is the post-deployment live suite against h
 - [x] Provider, MCP, validation, and retrieval failures remain visible in source and test profiles.
 - [x] Existing Shopping, Account Resolver, Tenant Guard, and Privacy Shield regressions remain green.
 
-### 16.2 Hosted release gate still required
+### 16.2 Hosted `0.5.3` release gate complete
 
-- [ ] Publish the shared framework hardening as the next immutable patch after `0.5.2`.
-- [ ] Deploy Agentic AI Action Resolver separately from Account Resolver.
-- [ ] Deploy Deployment Knowledge Guard and Incident Investigation Room.
-- [ ] Redeploy the upgraded Behavior Signals and Live Data Sync applications.
-- [ ] Deploy MCP Operations Assistant and its authenticated reference server as two services.
-- [ ] Deploy the public UI bundle with the new routes and backend URLs.
-- [ ] Repeat typed wait/resume, review, retrieval-boundary, indexing, composition, and MCP canaries
+- [x] Publish the shared framework hardening as immutable `0.5.3` Maven Central artifacts.
+- [x] Deploy Agentic AI Action Resolver separately from Account Resolver.
+- [x] Deploy Deployment Knowledge Guard and Incident Investigation Room.
+- [x] Redeploy the upgraded Behavior Signals and Live Data Sync applications.
+- [x] Deploy MCP Operations Assistant and its authenticated reference server as two services.
+- [x] Deploy the public UI bundle with the new routes and backend URLs.
+- [x] Repeat typed wait/resume, review, retrieval-boundary, indexing, composition, and MCP canaries
   against hosted URLs with real provider configuration and no fallback.
-- [ ] Run controlled hosted restart proof for every public durability claim, including review and
-  queued behavior execution, and attach evidence to the release record.
-- [ ] Add the hosted canary commands and protected dependency list to CI and release documentation.
+- [x] Preserve controlled restart evidence for receipt, review, MCP, Live Data Sync, and durable
+  read-job claims in the implementation record above.
+
+### 16.3 Post-release visibility hardening
+
+- [x] Add a guided `EVENT` execution to Agentic Resolver source without changing its browser trust
+  boundary.
+- [x] Add a host-owned `SCHEDULED` Behavior analysis path with persisted source, `SYSTEM` identity,
+  exact-batch replay, strict access-policy pairing, and integration tests.
+- [x] Add guided UI coverage for approve, reject, correct, request-information, and escalate review
+  decisions.
+- [x] Publish a specialist/execution coverage map on the demos page.
+- [ ] Redeploy Agentic Resolver, Behavior Signals, and the public UI, then verify their reported
+  source commits before describing these specific additions as live.
+- [ ] Add reusable hosted canary commands and the protected dependency list to CI and release
+  documentation.
 
 ## 17. Final Recommendation
 
-Start with the existing Agentic AI Action Resolver backend and expose it through two focused UI
-experiences: customer resolution and human review. It offers the fastest credible proof of the
-largest `0.5.x` capability set.
+Keep the current portfolio rather than adding another broad demo. Agentic Resolver and its Review
+Desk prove the deepest specialist and governed-write journey; Behavior Signals proves durable
+application and scheduled reads; Incident Investigation proves bounded composition; Deployment
+Guard proves trusted retrieval; MCP Operations proves a real remote tool boundary; and Live Data
+Sync proves indexing lifecycle.
 
-Next build Deployment Knowledge Guard because it validates the security-sensitive `0.5.2` trusted
-retrieval correction. Then upgrade Behavior Signals and Live Data Sync, build the focused incident
-composition proof, and finish with a genuinely remote MCP deployment.
-
-This sequence proves product value and framework correctness together while avoiding duplicate
-backends, overloaded demo pages, and claims for functionality AI Fabric does not currently support.
+The next value comes from maintaining these guided paths, restart canaries, version proof, and
+failure visibility while real users adopt them. Add a new demo only when a released capability
+cannot be shown clearly in this portfolio, and never imply dynamic graphs, recursive agents,
+durable plans/input waits, or exactly-once provider calls before those contracts exist.

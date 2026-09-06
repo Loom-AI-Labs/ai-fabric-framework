@@ -27,6 +27,17 @@ class BehaviorAccessControlConfigurationTest {
             "resourceId", "rag:intent",
             "operationType", "READ"
         ))).isTrue();
+        AIAccessSubjectContext scheduled = AIAccessSubjectContext.builder()
+            .subjectId("behavior-user-1")
+            .authMode("TRUSTED_SCHEDULED")
+            .callerType("SYSTEM")
+            .tenantId("behavior-demo")
+            .grantedScopes(List.of("specialist:behavior-risk-analyst@1"))
+            .build();
+        assertThat(policy.canAccess(scheduled, Map.of(
+            "resourceId", "rag:intent",
+            "operationType", "READ"
+        ))).isTrue();
         assertThat(policy.canAccess(trusted, Map.of(
             "resourceId", "rag:intent",
             "operationType", "WRITE"
@@ -49,9 +60,17 @@ class BehaviorAccessControlConfigurationTest {
             .tenantId("behavior-demo")
             .grantedScopes(List.of("specialist:behavior-risk-analyst@1"))
             .build();
+        AIAccessSubjectContext mismatchedMachineTrust = AIAccessSubjectContext.builder()
+            .subjectId("behavior-user-1")
+            .authMode("TRUSTED_APPLICATION")
+            .callerType("SYSTEM")
+            .tenantId("behavior-demo")
+            .grantedScopes(List.of("specialist:behavior-risk-analyst@1"))
+            .build();
 
         Map<String, Object> read = Map.of("resourceId", "rag:intent", "operationType", "READ");
         assertThat(policy.canAccess(missingScope, read)).isFalse();
         assertThat(policy.canAccess(interactive, read)).isFalse();
+        assertThat(policy.canAccess(mismatchedMachineTrust, read)).isFalse();
     }
 }

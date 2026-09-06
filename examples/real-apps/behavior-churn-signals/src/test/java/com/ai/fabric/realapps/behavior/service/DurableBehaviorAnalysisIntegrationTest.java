@@ -70,6 +70,8 @@ class DurableBehaviorAnalysisIntegrationTest {
         var replay = durableService.submit(sessionId, userId, key);
 
         assertThat(first.durability()).isEqualTo("DURABLE");
+        assertThat(first.executionSource()).isEqualTo("APPLICATION");
+        assertThat(first.principalType()).isEqualTo("SERVICE");
         assertThat(replay.invocationId()).isEqualTo(first.invocationId());
         assertThat(replay.replayed()).isTrue();
 
@@ -87,7 +89,9 @@ class DurableBehaviorAnalysisIntegrationTest {
         assertThat(conflict.failure().reason()).isEqualTo("IDEMPOTENCY_CONFLICT");
 
         var completed = awaitTerminal(sessionId, first.invocationId());
-        assertThat(completed.status()).isEqualTo("SUCCEEDED");
+        assertThat(completed.status())
+            .withFailMessage("Application analysis failed: %s", completed.failure())
+            .isEqualTo("SUCCEEDED");
         assertThat(completed.projectionStatus()).isEqualTo("APPLIED");
         assertThat(completed.result()).isNotNull();
         assertThat(completed.result().insight()).isNotNull();
@@ -98,6 +102,43 @@ class DurableBehaviorAnalysisIntegrationTest {
         assertThatThrownBy(() -> durableService.find("another-session", first.invocationId()))
             .isInstanceOf(IllegalArgumentException.class)
             .hasMessageContaining("does not belong");
+    }
+
+    @Test
+    void scheduledAnalysisOwnsIdentityAndReplaysTheExactEventBatch()
+        throws Exception {
+        String requestedSession = "scheduled-it-" + UUID.randomUUID();
+        var session = scenarioService.createSession(
+            new CreateDemoSessionRequest(requestedSession, false)
+        );
+        String sessionId = session.sessionId();
+        String userId = session.scenarios().getFirst().userId();
+        scenarioService.recordEvent(
+            userId,
+            new RecordBehaviorSignalRequest(
+                "PLAN_DOWNGRADED",
+                Map.of("from", "PRO", "to", "BASIC"),
+                "subscription-service",
+                "scheduled-event-" + UUID.randomUUID()
+            )
+        );
+
+        var first = durableService.submitScheduled(sessionId, userId);
+        var replay = durableService.submitScheduled(sessionId, userId);
+
+        assertThat(first.executionSource()).isEqualTo("SCHEDULED");
+        assertThat(first.principalType()).isEqualTo("SYSTEM");
+        assertThat(first.durability()).isEqualTo("DURABLE");
+        assertThat(replay.invocationId()).isEqualTo(first.invocationId());
+        assertThat(replay.replayed()).isTrue();
+
+        var completed = awaitTerminal(sessionId, first.invocationId());
+        assertThat(completed.status())
+            .withFailMessage("Scheduled analysis failed: %s", completed.failure())
+            .isEqualTo("SUCCEEDED");
+        assertThat(completed.executionSource()).isEqualTo("SCHEDULED");
+        assertThat(completed.principalType()).isEqualTo("SYSTEM");
+        assertThat(completed.projectionStatus()).isEqualTo("APPLIED");
     }
 
     private DurableBehaviorAnalysisService.AnalysisView awaitTerminal(

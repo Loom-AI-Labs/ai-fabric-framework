@@ -26,6 +26,9 @@ public class BehaviorAnalysisJob {
     @Column(name = "idempotency_key", nullable = false, length = 200)
     private String idempotencyKey;
 
+    @Column(name = "execution_source", nullable = false, length = 24)
+    private String executionSource;
+
     @Column(name = "previous_insight_json", columnDefinition = "CLOB")
     private String previousInsightJson;
 
@@ -48,6 +51,7 @@ public class BehaviorAnalysisJob {
         String sessionId,
         String userId,
         String idempotencyKey,
+        String executionSource,
         String previousInsightJson,
         String consideredEventsJson,
         int consideredEventCount,
@@ -58,6 +62,7 @@ public class BehaviorAnalysisJob {
         this.sessionId = sessionId;
         this.userId = userId;
         this.idempotencyKey = idempotencyKey;
+        this.executionSource = executionSource;
         this.previousInsightJson = previousInsightJson;
         this.consideredEventsJson = consideredEventsJson;
         this.consideredEventCount = consideredEventCount;
@@ -69,6 +74,7 @@ public class BehaviorAnalysisJob {
     public String getSessionId() { return sessionId; }
     public String getUserId() { return userId; }
     public String getIdempotencyKey() { return idempotencyKey; }
+    public String getExecutionSource() { return executionSource; }
     public String getPreviousInsightJson() { return previousInsightJson; }
     public String getConsideredEventsJson() { return consideredEventsJson; }
     public int getConsideredEventCount() { return consideredEventCount; }

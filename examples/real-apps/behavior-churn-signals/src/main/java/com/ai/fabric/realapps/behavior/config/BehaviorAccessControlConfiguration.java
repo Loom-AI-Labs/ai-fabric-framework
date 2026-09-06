@@ -23,8 +23,19 @@ public class BehaviorAccessControlConfiguration {
     private static boolean hasTrustedSubject(AIAccessSubjectContext authContext) {
         return authContext != null
             && StringUtils.hasText(authContext.getSubjectId())
-            && "TRUSTED_APPLICATION".equals(authContext.getAuthMode())
-            && "SERVICE".equals(authContext.getCallerType());
+            && (
+                trustedPair(authContext, "SERVICE", "TRUSTED_APPLICATION")
+                    || trustedPair(authContext, "SYSTEM", "TRUSTED_SCHEDULED")
+            );
+    }
+
+    private static boolean trustedPair(
+        AIAccessSubjectContext authContext,
+        String callerType,
+        String authMode
+    ) {
+        return callerType.equals(authContext.getCallerType())
+            && authMode.equals(authContext.getAuthMode());
     }
 
     private static String value(Map<String, Object> entity, String key) {
