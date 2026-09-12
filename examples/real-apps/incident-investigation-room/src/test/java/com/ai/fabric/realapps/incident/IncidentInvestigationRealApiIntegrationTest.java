@@ -186,6 +186,17 @@ class IncidentInvestigationRealApiIntegrationTest {
             .doesNotContain("other-tenant-critical-error")
             .doesNotContain("wrong-revision-release")
             .doesNotContain("runbook-private-tenant");
+        JsonNode result = objectMapper.readTree(body);
+        assertThat(result.at("/output/changeRisk").asText())
+            .isIn("MEDIUM", "HIGH");
+        assertThat(result.at(
+            "/output/changeRiskFinding/suspectedChange"
+        ).asText()).isNotEqualTo(
+            "No material recent change is supported by the authorized evidence."
+        );
+        assertThat(result.at("/output/changeRiskFinding/evidenceIds"))
+            .anySatisfy(id -> assertThat(id.asText())
+                .isEqualTo("change-payment-client-284"));
     }
 
     @Test
