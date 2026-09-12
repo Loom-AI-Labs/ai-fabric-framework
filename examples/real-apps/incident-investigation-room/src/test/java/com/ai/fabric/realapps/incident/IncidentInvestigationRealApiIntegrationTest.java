@@ -208,6 +208,48 @@ class IncidentInvestigationRealApiIntegrationTest {
         assertAllowedSources(followUp.path("decisionTrace"), CHANGE_ACTIONS);
     }
 
+    @Test
+    void liveOpenAiKeepsNoMaterialChangeSeparateFromLikelyCause()
+        throws Exception {
+        String sessionId = createSession("no-material-change");
+        String body = mockMvc.perform(post(
+                "/api/incidents/sessions/{id}/plans/sequential",
+                sessionId
+            )
+                .header(SESSION_HEADER, sessionId)
+                .header("Idempotency-Key", "real-no-material-change-1")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(question(
+                    "Investigate service impact and determine whether a "
+                        + "recent change explains it."
+                )))
+            .andExpect(status().isOk())
+            .andReturn().getResponse().getContentAsString();
+        JsonNode result = objectMapper.readTree(body);
+
+        assertThat(result.path("status").asText())
+            .withFailMessage(
+                "No-material-change investigation failed:%n%s",
+                result.toPrettyString()
+            )
+            .isEqualTo("SUCCEEDED");
+        JsonNode output = result.path("output");
+        assertThat(output.path("changeRisk").asText()).isEqualTo("LOW");
+        assertThat(output.path("likelyCause").asText()).isEqualTo(
+            output.at("/serviceHealth/summary").asText()
+        );
+        assertThat(output.at(
+            "/changeRiskFinding/suspectedChange"
+        ).asText()).isEqualTo(
+            "No material recent change is supported by the authorized evidence."
+        );
+        assertThat(output.at(
+            "/changeRiskFinding/runbookEvidenceIds"
+        )).anySatisfy(id -> assertThat(id.asText())
+            .isEqualTo("runbook-search-dependency"));
+        assertThat(body).doesNotContain("runbook-private-tenant");
+    }
+
     private JsonNode postQuestion(
         String sessionId,
         String endpoint,

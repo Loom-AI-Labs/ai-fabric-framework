@@ -251,6 +251,11 @@ class IncidentInvestigationIntegrationTest {
             .andExpect(jsonPath("$.status").value("SUCCEEDED"))
             .andExpect(jsonPath("$.output.changeRisk").value("LOW"))
             .andExpect(jsonPath("$.output.likelyCause")
+                .value(
+                    "Approved live evidence shows the current service "
+                        + "condition without using unrelated events."
+                ))
+            .andExpect(jsonPath("$.output.changeRiskFinding.suspectedChange")
                 .value("no material recent runtime change"))
             .andExpect(jsonPath("$.output.changeRiskFinding.evidenceIds[0]")
                 .value("approval-search-none"));

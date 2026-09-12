@@ -227,3 +227,9 @@ directory. Event fixtures are immutable application data and are rebuilt
 identically at startup. Plan, delegation, and handoff executions remain
 explicitly ephemeral in AI Fabric `0.5.3`; health and the UI label that behavior
 instead of implying durable plan recovery.
+
+The persistent H2 database and Lucene index are single-process stores. A rolling
+deployment must not start the replacement container while the previous container
+still owns `/app/data`. For Coolify, stop the running application and then start
+the new deployment. Keep the volume intact. Use PostgreSQL and an independently
+managed vector store before introducing overlapping replicas.

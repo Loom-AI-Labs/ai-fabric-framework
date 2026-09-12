@@ -1,6 +1,6 @@
 # ADR 0020 - Incident Investigation Room Capability Expansion Plan
 
-- **Status:** Implemented and locally verified; deployment refresh and replacement videos pending
+- **Status:** Implemented, deployed, and live verified; replacement videos pending
 - **Date:** 2026-09-12
 - **Framework baseline:** AI Fabric `0.5.3`
 - **Backend:** `examples/real-apps/incident-investigation-room`
@@ -955,8 +955,8 @@ The following gates passed on 2026-09-12:
 
 | Gate | Result |
 | --- | --- |
-| Clean real-app Maven reactor | 13 smoke-support tests and 29 deterministic app tests passed; six key-gated real-provider tests skipped in the ordinary gate. |
-| Real OpenAI suite | Six tests passed: scoped direct/generated RAG, health routing, change routing, required parallel plan, and history-backed follow-up. |
+| Clean real-app Maven reactor | 13 smoke-support tests and 31 deterministic app tests passed; seven key-gated real-provider tests skipped in the ordinary gate. |
+| Real OpenAI suite | Seven tests passed: scoped direct/generated RAG, health routing, change routing, required parallel plan, history-backed follow-up, and low-risk separation of service cause from change causality. |
 | Docker build | Image built from immutable AI Fabric `0.5.3` Maven artifacts; build-time tests passed. |
 | Packaged restart proof | Chat rows and the app-owned demo-session binding survived restart; follow-up used one stored prior turn. |
 | Replay proof | Reusing the same idempotency key returned the same manager turn with `replayed: true` and did not invoke the workflow again. |
@@ -976,17 +976,14 @@ citation subsets.
 No shared AI Fabric module or public framework API changed. This work is an application, test,
 documentation, and public-UI upgrade and does not require a new framework version.
 
-Code implementation and local verification are complete. The following operational work remains
-before changing this ADR to `Deployed and live verified`:
+The backend was rebuilt from the committed source and the matching `aifabric` UI was exercised
+against it. Public verification covered plan composition, specialist delegation, backend-owned
+conversation memory, idempotent replay, cross-boundary evidence rejection, required-source
+failure, and the no-material-change case. `/api/demo/health` identifies the deployed source and
+reports AI Fabric `0.5.3`, OpenAI readiness, eight specialists, four plans, four READ actions, six
+runbooks, and 49 events.
 
-1. Commit and push the backend/example/documentation changes.
-2. Rebuild the Incident Investigation Room deployment from that exact source commit.
-3. Confirm `/api/demo/health` reports the deployed commit, AI Fabric `0.5.3`, OpenAI readiness,
-   eight specialists, four plans, four actions, six runbooks, and 49 events.
-4. Deploy the matching `aifabric` UI revision and run the public plan, transition, memory, replay,
-   cross-boundary, and required-source-failure scenarios.
-5. Replace the existing specialist-plan and routing/memory recordings with v2 videos that show
-   pointer highlights, concise step captions, action selection, evidence selection, validation,
-   follow-up memory, and replay.
-
-These are deployment and media gates, not missing implementation or hidden fallback work.
+The only remaining deliverable is replacement v2 media. Record the specialist-plan and
+routing/memory videos with pointer highlights, concise step captions, action selection, evidence
+selection, validation, follow-up memory, and replay. This is a media gate, not missing runtime
+implementation or hidden fallback work.

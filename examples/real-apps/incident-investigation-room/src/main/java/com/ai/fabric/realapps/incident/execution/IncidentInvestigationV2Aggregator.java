@@ -78,7 +78,7 @@ public class IncidentInvestigationV2Aggregator
             severity,
             health.healthStatus(),
             change.riskLevel(),
-            change.suspectedChange(),
+            likelyCause(health, change),
             recommendation(change),
             List.copyOf(citations),
             health,
@@ -88,9 +88,27 @@ public class IncidentInvestigationV2Aggregator
         );
     }
 
+    private String likelyCause(
+        ServiceHealthInvestigationFinding health,
+        ChangeRiskInvestigationFinding change
+    ) {
+        return materialChangeRisk(change.riskLevel())
+            ? change.suspectedChange()
+            : health.summary();
+    }
+
     private String recommendation(ChangeRiskInvestigationFinding change) {
+        if (!materialChangeRisk(change.riskLevel())) {
+            return "No material recent change is supported. Continue investigating "
+                + "the cited service-health signals and follow the cited runbook "
+                + "before taking change action.";
+        }
         return "Validate " + change.suspectedChange()
-            + " against the cited live signals, then follow only the cited approved runbook.";
+            + " against the cited operational signals, then follow only the cited runbook.";
+    }
+
+    private boolean materialChangeRisk(String riskLevel) {
+        return rank(normalized(riskLevel)) >= rank("MEDIUM");
     }
 
     private String higher(String first, String second) {
