@@ -1,20 +1,24 @@
 package com.ai.fabric.realapps.incident.web;
 
-import ai.fabric.execution.manager.ConversationManagerTurnResult;
-import ai.fabric.execution.plan.PlanExecutionResult;
-import com.ai.fabric.realapps.incident.domain.IncidentAssessment;
-import com.ai.fabric.realapps.incident.domain.IncidentPlanComparison;
+import com.ai.fabric.realapps.incident.domain.AuthorizedIncidentScope;
+import com.ai.fabric.realapps.incident.domain.IncidentEvent;
+import com.ai.fabric.realapps.incident.domain.IncidentInvestigationPlanComparison;
+import com.ai.fabric.realapps.incident.domain.IncidentManagerTurnView;
+import com.ai.fabric.realapps.incident.domain.IncidentPlanRunView;
 import com.ai.fabric.realapps.incident.domain.IncidentScenario;
 import com.ai.fabric.realapps.incident.domain.IncidentTransitionResponse;
 import com.ai.fabric.realapps.incident.execution.IncidentPlans;
 import com.ai.fabric.realapps.incident.execution.IncidentSpecialists;
 import com.ai.fabric.realapps.incident.service.IncidentConversationService;
 import com.ai.fabric.realapps.incident.service.IncidentExecutionService;
+import com.ai.fabric.realapps.incident.service.IncidentEventRepository;
+import com.ai.fabric.realapps.incident.service.IncidentRunbookIndexService;
 import com.ai.fabric.realapps.incident.service.IncidentScenarioCatalog;
 import com.ai.fabric.realapps.incident.service.IncidentSessionService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import java.util.List;
+import java.util.Map;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -34,17 +38,23 @@ public class IncidentController {
     private final IncidentSessionService sessions;
     private final IncidentExecutionService execution;
     private final IncidentConversationService conversations;
+    private final IncidentEventRepository events;
+    private final IncidentRunbookIndexService runbooks;
 
     public IncidentController(
         IncidentScenarioCatalog catalog,
         IncidentSessionService sessions,
         IncidentExecutionService execution,
-        IncidentConversationService conversations
+        IncidentConversationService conversations,
+        IncidentEventRepository events,
+        IncidentRunbookIndexService runbooks
     ) {
         this.catalog = catalog;
         this.sessions = sessions;
         this.execution = execution;
         this.conversations = conversations;
+        this.events = events;
+        this.runbooks = runbooks;
     }
 
     @GetMapping("/scenarios")
@@ -57,7 +67,7 @@ public class IncidentController {
     public SessionView createSession(
         @Valid @RequestBody CreateSessionRequest request
     ) {
-        return SessionView.from(sessions.create(request.scenarioId()));
+        return sessionView(sessions.create(request.scenarioId()));
     }
 
     @GetMapping("/sessions/{sessionId}")
@@ -66,7 +76,7 @@ public class IncidentController {
         @RequestHeader("X-AI-Fabric-Demo-Session") String sessionToken
     ) {
         requireSessionToken(sessionId, sessionToken);
-        return SessionView.from(sessions.active(sessionId));
+        return sessionView(sessions.active(sessionId));
     }
 
     @PostMapping("/sessions/{sessionId}/reset")
@@ -75,7 +85,7 @@ public class IncidentController {
         @RequestHeader("X-AI-Fabric-Demo-Session") String sessionToken
     ) {
         requireSessionToken(sessionId, sessionToken);
-        return SessionView.from(sessions.reset(sessionId));
+        return sessionView(sessions.reset(sessionId));
     }
 
     @DeleteMapping("/sessions/{sessionId}")
@@ -89,7 +99,7 @@ public class IncidentController {
     }
 
     @PostMapping("/sessions/{sessionId}/plans/{mode}")
-    public PlanExecutionResult<IncidentAssessment> executePlan(
+    public IncidentPlanRunView executePlan(
         @PathVariable String sessionId,
         @PathVariable String mode,
         @RequestHeader("X-AI-Fabric-Demo-Session") String sessionToken,
@@ -112,7 +122,7 @@ public class IncidentController {
     }
 
     @PostMapping("/sessions/{sessionId}/compare")
-    public IncidentPlanComparison compare(
+    public IncidentInvestigationPlanComparison compare(
         @PathVariable String sessionId,
         @RequestHeader("X-AI-Fabric-Demo-Session") String sessionToken,
         @RequestHeader("Idempotency-Key") String idempotencyKey,
@@ -157,7 +167,7 @@ public class IncidentController {
     }
 
     @PostMapping("/sessions/{sessionId}/manager/turns")
-    public ConversationManagerTurnResult managerTurn(
+    public IncidentManagerTurnView managerTurn(
         @PathVariable String sessionId,
         @RequestHeader("X-AI-Fabric-Demo-Session") String sessionToken,
         @RequestHeader("Idempotency-Key") String idempotencyKey,
@@ -192,16 +202,46 @@ public class IncidentController {
     public record SessionView(
         String sessionId,
         IncidentScenario scenario,
+        IncidentWorkspaceView workspace,
         java.time.Instant createdAt,
         java.time.Instant expiresAt
+    ) {}
+
+    public record IncidentWorkspaceView(
+        List<IncidentEvent> candidateEvents,
+        int excludedBoundaryEventCount,
+        Map<String, String> dataSources,
+        IncidentRunbookIndexService.IndexStatus runbooks
+    ) {}
+
+    private SessionView sessionView(
+        IncidentSessionService.ActiveSession session
     ) {
-        static SessionView from(IncidentSessionService.ActiveSession session) {
-            return new SessionView(
-                session.sessionId(),
-                session.scenario(),
-                session.createdAt(),
-                session.expiresAt()
-            );
-        }
+        AuthorizedIncidentScope scope = new AuthorizedIncidentScope(
+            "public-demo",
+            session.scenario().id(),
+            session.scenario().deploymentId(),
+            session.scenario().sourceRevision()
+        );
+        String changeState = "branch-failure".equals(session.scenario().id())
+            ? "UNAVAILABLE"
+            : "READY";
+        return new SessionView(
+            session.sessionId(),
+            session.scenario(),
+            new IncidentWorkspaceView(
+                events.previewAuthorized(scope),
+                events.countOutsideBoundary(scope),
+                Map.of(
+                    "read_service_metrics", "READY",
+                    "read_incident_alerts", "READY",
+                    "read_recent_deployments", changeState,
+                    "read_change_approvals", changeState
+                ),
+                runbooks.status()
+            ),
+            session.createdAt(),
+            session.expiresAt()
+        );
     }
 }

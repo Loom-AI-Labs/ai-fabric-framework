@@ -20,7 +20,7 @@ The apps are intentionally scenario-focused:
 - `it-support-action-bot`: provider-only action orchestration path.
 - `agentic-ai-action-resolver`: manifest-defined account specialists, typed waits, fixed plans, durable reads, governed write receipts, and human review.
 - `deployment-knowledge-guard`: exact-version, read-only specialist proof for trusted tenant/deployment retrieval boundaries.
-- `incident-investigation-room`: fixed sequential/parallel plans, one-level delegation and handoff, and backend-owned incident conversations.
+- `incident-investigation-room`: exact-version specialist routing, specialist-selected operational READ actions, scoped runbook RAG, validated citations, fixed plans, bounded transitions, and backend-owned incident conversations.
 - `mcp-operations-assistant`: governed, receipt-backed remote MCP tool execution with exact server/tool binding.
 - `mcp-operations-reference-server`: authenticated Streamable HTTP MCP server exposing three narrow sandbox operations tools.
 - `provider-failover-lab`: provider routing/fallback diagnostics and transient-input policy evidence.
@@ -56,7 +56,7 @@ Implemented deployment candidates whose public routes and backends must be deplo
 | `/demos/ai-fabric-agentic-action-resolver` | `agentic-ai-action-resolver` | One new backend | Typed waits, manifest specialists, fixed plans, durable reads, governed writes, receipt replay, and backend conversation |
 | `/demos/ai-fabric-agentic-action-resolver/review` | `agentic-ai-action-resolver` | Same resolver backend | Durable human-review tasks, authority-aware decisions, immutable timeline, and linked action receipt |
 | `/demos/ai-fabric-deployment-knowledge-guard` | `deployment-knowledge-guard` | One new backend | Trusted tenant/deployment retrieval, effective capabilities, evidence lineage, and fail-closed security canaries |
-| `/demos/ai-fabric-incident-investigation` | `incident-investigation-room` | One new backend | Sequential/parallel plan parity, all-required failure, one-level delegation/handoff, and bounded conversation management |
+| `/demos/ai-fabric-incident-investigation` | `incident-investigation-room` | Upgraded backend | Model-selected specialists, specialist-selected READ actions and evidence, scoped runbook RAG, validated decision traces, plan parity, bounded transitions, and backend conversation memory |
 | `/demos/ai-fabric-mcp-operations` | `mcp-operations-assistant` plus `mcp-operations-reference-server` | Two authenticated services | Real remote MCP reads, confirmed write, exact server binding, durable receipt replay, and explicit outage/authentication failures |
 
 The implementation and verification status for this portfolio is tracked in

@@ -1,39 +1,40 @@
 package com.ai.fabric.realapps.incident.service;
 
 import ai.fabric.chat.service.ChatSessionService;
+import com.ai.fabric.realapps.incident.domain.IncidentDemoSession;
 import com.ai.fabric.realapps.incident.domain.IncidentPlanRequest;
 import com.ai.fabric.realapps.incident.domain.IncidentScenario;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.Comparator;
-import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
+@Transactional
 public class IncidentSessionService {
 
     private final IncidentScenarioCatalog catalog;
     private final ChatSessionService chatSessions;
+    private final IncidentDemoSessionRepository repository;
     private final Clock clock;
     private final Duration ttl;
     private final int maxActive;
-    private final Map<String, ActiveSession> sessions =
-        new ConcurrentHashMap<>();
 
     public IncidentSessionService(
         IncidentScenarioCatalog catalog,
         ChatSessionService chatSessions,
+        IncidentDemoSessionRepository repository,
         Clock clock,
         @Value("${app.incident.sessions.ttl:PT4H}") Duration ttl,
         @Value("${app.incident.sessions.max-active:500}") int maxActive
     ) {
         this.catalog = catalog;
         this.chatSessions = chatSessions;
+        this.repository = repository;
         this.clock = clock;
         this.ttl = ttl;
         this.maxActive = maxActive;
@@ -41,52 +42,50 @@ public class IncidentSessionService {
 
     public ActiveSession create(String scenarioId) {
         removeExpired();
-        if (sessions.size() >= maxActive) {
+        Instant now = clock.instant();
+        if (repository.countByExpiresAtAfter(now) >= maxActive) {
             throw new IllegalStateException(
                 "The public incident demo has reached its active-session limit"
             );
         }
         IncidentScenario scenario = catalog.require(scenarioId);
-        Instant now = clock.instant();
-        String sessionId = "incident-session-" + UUID.randomUUID();
-        ActiveSession session = new ActiveSession(
-            sessionId,
+        IncidentDemoSession stored = new IncidentDemoSession(
+            "incident-session-" + UUID.randomUUID(),
             "incident-owner-" + UUID.randomUUID(),
             "incident-conversation-" + UUID.randomUUID(),
-            scenario,
+            scenario.id(),
             now,
             now.plus(ttl)
         );
-        sessions.put(sessionId, session);
-        return session;
+        return toActive(repository.save(stored));
     }
 
     public ActiveSession active(String sessionId) {
         if (sessionId == null || sessionId.isBlank()) {
             throw new IllegalArgumentException("Demo session ID is required");
         }
-        ActiveSession session = sessions.get(sessionId.trim());
-        if (session == null || !session.expiresAt().isAfter(clock.instant())) {
-            sessions.remove(sessionId.trim());
+        IncidentDemoSession stored = repository.findById(sessionId.trim())
+            .orElse(null);
+        if (stored == null || !stored.getExpiresAt().isAfter(clock.instant())) {
+            if (stored != null) {
+                remove(stored);
+            }
             throw new IllegalArgumentException(
                 "Incident demo session is missing or expired"
             );
         }
-        return session;
+        return toActive(stored);
     }
 
     public ActiveSession reset(String sessionId) {
         ActiveSession current = active(sessionId);
-        remove(current);
+        delete(current.sessionId());
         return create(current.scenario().id());
     }
 
     public void delete(String sessionId) {
         if (sessionId != null && !sessionId.isBlank()) {
-            ActiveSession current = sessions.get(sessionId.trim());
-            if (current != null) {
-                remove(current);
-            }
+            repository.findById(sessionId.trim()).ifPresent(this::remove);
         }
     }
 
@@ -109,21 +108,26 @@ public class IncidentSessionService {
     @Scheduled(cron = "${app.incident.sessions.cleanup-cron:0 */15 * * * *}")
     void removeExpired() {
         Instant now = clock.instant();
-        sessions.values().stream()
-            .filter(session -> !session.expiresAt().isAfter(now))
-            .map(ActiveSession::sessionId)
-            .sorted(Comparator.naturalOrder())
-            .map(sessions::get)
-            .filter(java.util.Objects::nonNull)
-            .forEach(this::remove);
+        repository.findByExpiresAtLessThanEqual(now).forEach(this::remove);
     }
 
-    private void remove(ActiveSession session) {
+    private void remove(IncidentDemoSession session) {
         chatSessions.deleteConversation(
-            session.conversationId(),
-            session.ownerId()
+            session.getConversationId(),
+            session.getOwnerId()
         );
-        sessions.remove(session.sessionId(), session);
+        repository.delete(session);
+    }
+
+    private ActiveSession toActive(IncidentDemoSession stored) {
+        return new ActiveSession(
+            stored.getSessionId(),
+            stored.getOwnerId(),
+            stored.getConversationId(),
+            catalog.require(stored.getScenarioId()),
+            stored.getCreatedAt(),
+            stored.getExpiresAt()
+        );
     }
 
     public record ActiveSession(

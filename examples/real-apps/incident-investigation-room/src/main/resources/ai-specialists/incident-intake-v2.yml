@@ -1,0 +1,107 @@
+apiVersion: ai.fabric/v1
+kind: SpecialistSchema
+metadata:
+  name: incident-routing-request
+  version: "2"
+spec:
+  direction: INPUT
+  draft: "2020-12"
+  schema:
+    type: object
+    additionalProperties: false
+    required: [question, requestedTransition, incident]
+    properties:
+      question: {type: string, minLength: 1, maxLength: 2000}
+      requestedTransition: {type: string, enum: [DELEGATION, HANDOFF]}
+      incident:
+        type: object
+        additionalProperties: true
+        required: [incidentId, deploymentId, sourceRevision]
+---
+apiVersion: ai.fabric/v1
+kind: SpecialistSchema
+metadata:
+  name: incident-routing-decision
+  version: "2"
+spec:
+  direction: OUTPUT
+  draft: "2020-12"
+  schema:
+    type: object
+    additionalProperties: false
+    required: [decision, targetSpecialist, reason]
+    properties:
+      decision: {type: string, enum: [ROUTE, COMPLETE]}
+      targetSpecialist:
+        type: [string, "null"]
+        enum: [service-health-reader@2, change-risk-reader@2, null]
+      reason: {type: string, minLength: 1, maxLength: 500}
+    allOf:
+      - if: {properties: {decision: {const: ROUTE}}}
+        then:
+          properties:
+            targetSpecialist: {type: string, enum: [service-health-reader@2, change-risk-reader@2]}
+      - if: {properties: {decision: {const: COMPLETE}}}
+        then: {properties: {targetSpecialist: {type: "null"}}}
+---
+apiVersion: ai.fabric/v1
+kind: SpecialistPromptProfile
+metadata:
+  name: incident-intake
+  version: "2"
+spec:
+  constraints: |
+    Classify only the user's question and select zero or one exact approved
+    read-only investigator. Incident identifiers are boundary context, not a
+    reason to infer another investigation branch. Route health, latency,
+    errors, alerts, saturation, and availability to service-health-reader@2.
+    Route releases, deployments, changes, approvals, rollback, and runbooks to
+    change-risk-reader@2. Return COMPLETE only when the user's question
+    explicitly asks to investigate both current health and recent changes, or
+    when it does not request either approved investigation. Do not return
+    COMPLETE merely because an incident can have both health and change data.
+    Never invent topology, a target, evidence, or completed work.
+  outputContract: Return decision, exact targetSpecialist, and one concise routing reason.
+---
+apiVersion: ai.fabric/v1
+kind: Specialist
+metadata:
+  name: incident-intake
+  version: "2"
+  displayName: Incident Intake Router
+  description: Uses the LLM to select one exact approved investigator.
+  labels: {domain: incident-operations, owner: incident-investigation-demo}
+spec:
+  mode: resolver
+  instructions:
+    objective: Select zero or one approved incident investigator.
+    promptProfileRef: incident-intake@2
+  execution: {strategy: SINGLE_PASS, writePolicy: DISABLED}
+  capabilities:
+    retrieval: {enabled: false, vectorSpaces: []}
+    actions: {visible: [], requestableReads: [], proposableWrites: []}
+  input:
+    schemaRef: incident-routing-request@2
+    rendering: PRIMARY_TEXT_WITH_JSON_CONTEXT
+    primaryTextPointer: /question
+    conversationTextPointer: null
+    contextPointers: [/requestedTransition, /incident/incidentId, /incident/deploymentId, /incident/sourceRevision]
+    context: {position: resolver}
+  grounding: {requirement: NONE, requireEvidenceCitations: false, sources: [], validatorRefs: []}
+  output:
+    mode: STRUCTURED_GENERATION
+    schemaRef: incident-routing-decision@2
+    directProjectorRef: null
+    conversationTextPointer: null
+    finalValidatorRefs: []
+    normalizerRef: null
+  conversation: {binding: DISABLED, recordValidatedTurns: false, interactionCapability: NON_INTERACTIVE}
+  limits:
+    maxDuration: PT30S
+    maxInputCharacters: 6000
+    maxGroundingCharacters: 1000
+    maxEvidenceReferences: 1
+    maxOutputCharacters: 1500
+    maxOutputTokens: 220
+  delegation: {targets: [service-health-reader@2, change-risk-reader@2]}
+  handoff: {targets: [service-health-reader@2, change-risk-reader@2]}

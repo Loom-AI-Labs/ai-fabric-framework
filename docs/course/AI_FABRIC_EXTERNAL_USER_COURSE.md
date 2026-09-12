@@ -1951,6 +1951,55 @@ Deployed failure postmortem:
   new revision and no old text, delete a policy or guide, and prove source state, vector search, and
   chat all stop exposing it.
 
+### CASE-07: Incident Investigation Room
+
+Reference: `examples/real-apps/incident-investigation-room`
+
+**NotebookLM pre-lesson theory:**
+
+- The difference between application-declared plan topology, model-selected specialists, and
+  specialist-selected data-source actions.
+- How a manifest requests READ capabilities while trusted application policy grants the effective
+  subset and supplies tenant, deployment, incident, subject, scope, and source revision.
+- Why operational facts arrive through bounded READ actions while unstructured guidance arrives
+  through separately scoped runbook RAG.
+- How typed output, action provenance, event and runbook citations, and source-revision validation
+  prevent a plausible investigation narrative from becoming accepted unsupported evidence.
+- How fixed sequential/parallel plans, one-hop delegation and handoff, and backend-owned
+  conversation memory compose intelligence without allowing the model to invent topology.
+
+Teach:
+
+- Exact-version intake and worker specialist manifests.
+- Bounded iterative selection of operational READ actions.
+- Relevant-event selection from authorized candidates containing realistic distractors.
+- Hybrid action and runbook grounding with validated citations.
+- `ALL_REQUIRED` plan fan-in, bounded transitions, newest-message-only turns, and replay.
+
+Implementation lesson:
+
+- Keep deterministic incident fixtures as application-owned source data; do not present them as a
+  live monitoring integration.
+- Give intake only safe boundary identifiers. Let the selected worker acquire evidence through its
+  own allowlisted actions.
+- Disable ordinary action-intent handling for worker purposes while retaining specialist
+  `read-action-resolution`; enable only the change worker's scoped runbook vector space.
+- Persist both AI Fabric chat rows and the app-owned mapping from opaque demo session to
+  conversation/scenario when conversation state must survive restart.
+
+Deployed failure postmortem:
+
+- **What was weak:** the original workers received complete pre-divided evidence branches, so the
+  demo proved reasoning over supplied data but not specialist-owned data-source choice.
+- **Why:** fixed plan composition, specialist routing, and citation validation existed before the
+  operational READ-action boundary was modeled.
+- **Corrected design:** retain fixed topology, add exact v2 specialists with separate READ-action
+  catalogs, resolve every scope value in the backend, add realistic candidate and boundary records,
+  and validate model-selected action and RAG citations before projection.
+- **Proof learners inspect:** ask a health question and a change question, compare their selected
+  actions and evidence, run sequential and parallel plans, trigger a required-source failure, test
+  a denied second transition, then prove a history-backed follow-up and idempotent replay.
+
 Each case-study page must include:
 
 - Business problem.

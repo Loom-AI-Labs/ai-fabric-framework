@@ -1,5 +1,6 @@
 package com.ai.fabric.realapps.incident.config;
 
+import com.ai.fabric.realapps.incident.service.IncidentInvocationMetrics;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
@@ -9,7 +10,9 @@ import org.springframework.context.annotation.Profile;
 public class IncidentSmokeProviderConfiguration {
 
     @Bean
-    IncidentSmokeAiProvider incidentSmokeAiProvider() {
-        return new IncidentSmokeAiProvider();
+    IncidentSmokeAiProvider incidentSmokeAiProvider(
+        IncidentInvocationMetrics metrics
+    ) {
+        return new IncidentSmokeAiProvider(metrics);
     }
 }

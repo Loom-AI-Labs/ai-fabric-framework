@@ -61,6 +61,16 @@
         </dependency>
         <dependency>
             <groupId>io.github.loom-ai-labs</groupId>
+            <artifactId>ai-fabric-rag</artifactId>
+            <version>${ai-fabric.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>io.github.loom-ai-labs</groupId>
+            <artifactId>ai-fabric-vector-lucene</artifactId>
+            <version>${ai-fabric.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>io.github.loom-ai-labs</groupId>
             <artifactId>ai-fabric-provider-spring-ai</artifactId>
             <version>${ai-fabric.version}</version>
         </dependency>

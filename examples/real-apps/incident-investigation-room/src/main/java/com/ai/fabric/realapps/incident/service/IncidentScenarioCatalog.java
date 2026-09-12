@@ -96,6 +96,59 @@ public class IncidentScenarioCatalog {
             ),
             null
         ));
+        configured.put("no-material-change", new IncidentScenario(
+            "no-material-change",
+            "Degraded health without a material change",
+            "search-api-prod",
+            "incident-rev-search-11",
+            "Search is degraded by an external dependency, while the approved change feed contains no supported runtime cause.",
+            List.of(
+                new IncidentEvidence(
+                    "health-search-errors",
+                    "SERVICE_HEALTH",
+                    "Search error rate is elevated to 3.2 percent.",
+                    "MEDIUM",
+                    base.plusSeconds(3000)
+                ),
+                new IncidentEvidence(
+                    "dependency-search-provider",
+                    "DEPENDENCY_SIGNAL",
+                    "The external search provider is intermittently timing out.",
+                    "HIGH",
+                    base.plusSeconds(2970)
+                )
+            ),
+            List.of(new IncidentEvidence(
+                "approval-search-none",
+                "CHANGE_APPROVAL",
+                "No material runtime change is approved or recorded in the incident window.",
+                "LOW",
+                base.plusSeconds(2050)
+            )),
+            null
+        ));
+        configured.put("ambiguous-symptom", new IncidentScenario(
+            "ambiguous-symptom",
+            "Ambiguous orders latency",
+            "orders-api-prod",
+            "incident-rev-orders-4",
+            "The first report says only that orders are slow, allowing the conversation manager to clarify or route a specific follow-up.",
+            List.of(new IncidentEvidence(
+                "health-orders-latency",
+                "SERVICE_HEALTH",
+                "Orders p95 latency is elevated while throughput remains stable.",
+                "MEDIUM",
+                base.plusSeconds(3600)
+            )),
+            List.of(new IncidentEvidence(
+                "change-orders-pool-44",
+                "CONFIGURATION_CHANGE",
+                "Connection-pool sizing changed 25 minutes before the latency warning.",
+                "MEDIUM",
+                base.plusSeconds(3300)
+            )),
+            null
+        ));
         configured.put("branch-failure", new IncidentScenario(
             "branch-failure",
             "Change evidence unavailable",

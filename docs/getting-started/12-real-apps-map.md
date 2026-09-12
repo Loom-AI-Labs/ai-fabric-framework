@@ -14,7 +14,7 @@ Use real apps as templates. They are the best evidence of how AI Fabric modules 
 | AI Fabric Live Data Sync | `examples/real-apps/ai-fabric-live-data-sync` | Annotation-driven create, update, and delete synchronization from entities to vector evidence. |
 | Agentic AI Action Resolver | `examples/real-apps/agentic-ai-action-resolver` | Typed specialists, input waits, event execution, governed receipts, replay, and human review. |
 | Deployment Knowledge Guard | `examples/real-apps/deployment-knowledge-guard` | Trusted tenant/deployment context, scoped RAG evidence, and boundary canaries. |
-| Incident Investigation Room | `examples/real-apps/incident-investigation-room` | Sequential and parallel specialist plans, delegation, handoff, and branch-failure visibility. |
+| Incident Investigation Room | `examples/real-apps/incident-investigation-room` | Model-selected specialists, specialist-selected READ actions and evidence, scoped runbook RAG, validated citations, fixed plans, bounded transitions, and backend conversation memory. |
 | MCP Operations Assistant | `examples/real-apps/mcp-operations-assistant` | Authenticated remote MCP discovery, reads, confirmed writes, durable receipts, and outage visibility. |
 
 ## Smaller Capability Apps
@@ -40,7 +40,7 @@ Use real apps as templates. They are the best evidence of how AI Fabric modules 
 - Need annotation-driven entity/vector lifecycle: `ai-fabric-live-data-sync`.
 - Need the full specialist and human-review surface: `agentic-ai-action-resolver`.
 - Need deployment- and tenant-scoped RAG: `deployment-knowledge-guard`.
-- Need bounded multi-specialist composition: `incident-investigation-room`.
+- Need bounded multi-specialist investigation with observable tool and evidence choice: `incident-investigation-room`.
 - Need a real remote MCP boundary: `mcp-operations-assistant` plus `mcp-operations-reference-server`.
 - Need action registry: `db-action-registry-lab`.
 

@@ -2,11 +2,18 @@ package com.ai.fabric.realapps.incident.web;
 
 import ai.fabric.execution.plan.ExecutionPlanRegistry;
 import ai.fabric.execution.specialist.SpecialistRegistry;
+import ai.fabric.intent.action.AIActionRegistry;
 import ai.fabric.provider.AIProvider;
 import ai.fabric.provider.AIProviderManager;
 import com.ai.fabric.examples.smoke.health.DemoDeploymentInfoService;
 import com.ai.fabric.realapps.incident.execution.IncidentPlans;
 import com.ai.fabric.realapps.incident.execution.IncidentSpecialists;
+import com.ai.fabric.realapps.incident.action.ReadChangeApprovalsActionHandler;
+import com.ai.fabric.realapps.incident.action.ReadIncidentAlertsActionHandler;
+import com.ai.fabric.realapps.incident.action.ReadRecentDeploymentsActionHandler;
+import com.ai.fabric.realapps.incident.action.ReadServiceMetricsActionHandler;
+import com.ai.fabric.realapps.incident.service.IncidentEventRepository;
+import com.ai.fabric.realapps.incident.service.IncidentRunbookIndexService;
 import java.util.List;
 import java.util.Map;
 import javax.sql.DataSource;
@@ -25,6 +32,9 @@ public class IncidentHealthController {
     private final AIProviderManager providers;
     private final Environment environment;
     private final DataSource dataSource;
+    private final AIActionRegistry actions;
+    private final IncidentEventRepository events;
+    private final IncidentRunbookIndexService runbooks;
 
     public IncidentHealthController(
         DemoDeploymentInfoService deploymentInfo,
@@ -32,7 +42,10 @@ public class IncidentHealthController {
         ExecutionPlanRegistry plans,
         AIProviderManager providers,
         Environment environment,
-        DataSource dataSource
+        DataSource dataSource,
+        AIActionRegistry actions,
+        IncidentEventRepository events,
+        IncidentRunbookIndexService runbooks
     ) {
         this.deploymentInfo = deploymentInfo;
         this.specialists = specialists;
@@ -40,6 +53,9 @@ public class IncidentHealthController {
         this.providers = providers;
         this.environment = environment;
         this.dataSource = dataSource;
+        this.actions = actions;
+        this.events = events;
+        this.runbooks = runbooks;
     }
 
     @GetMapping("/health")
@@ -48,7 +64,11 @@ public class IncidentHealthController {
             IncidentSpecialists.SERVICE_HEALTH.toString(),
             IncidentSpecialists.CHANGE_RISK.toString(),
             IncidentSpecialists.INTAKE.toString(),
-            IncidentSpecialists.CONVERSATION_MANAGER.toString()
+            IncidentSpecialists.CONVERSATION_MANAGER.toString(),
+            IncidentSpecialists.SERVICE_HEALTH_V2.toString(),
+            IncidentSpecialists.CHANGE_RISK_V2.toString(),
+            IncidentSpecialists.INTAKE_V2.toString(),
+            IncidentSpecialists.CONVERSATION_MANAGER_V2.toString()
         );
         boolean specialistsReady = specialistIds.stream().allMatch(id ->
             specialists.findRegistered(
@@ -56,7 +76,9 @@ public class IncidentHealthController {
             ).isPresent()
         );
         boolean plansReady = plans.find(IncidentPlans.SEQUENTIAL).isPresent()
-            && plans.find(IncidentPlans.PARALLEL).isPresent();
+            && plans.find(IncidentPlans.PARALLEL).isPresent()
+            && plans.find(IncidentPlans.SEQUENTIAL_V2).isPresent()
+            && plans.find(IncidentPlans.PARALLEL_V2).isPresent();
         List<Map<String, Object>> specialistHealth = specialistIds.stream()
             .map(id -> specialists.requireRegistered(
                 ai.fabric.execution.specialist.SpecialistId.parse(id)
@@ -70,7 +92,9 @@ public class IncidentHealthController {
             .toList();
         List<Map<String, Object>> planHealth = List.of(
             plans.require(IncidentPlans.SEQUENTIAL),
-            plans.require(IncidentPlans.PARALLEL)
+            plans.require(IncidentPlans.PARALLEL),
+            plans.require(IncidentPlans.SEQUENTIAL_V2),
+            plans.require(IncidentPlans.PARALLEL_V2)
         ).stream().map(plan -> Map.<String, Object>of(
             "id", plan.id().toString(),
             "contentHash", plan.contentHash(),
@@ -85,15 +109,38 @@ public class IncidentHealthController {
             && provider.isAvailable()
             && provider.getStatus().isHealthy();
         boolean storageReady = storageReady();
+        List<String> actionNames = List.of(
+            ReadServiceMetricsActionHandler.NAME,
+            ReadIncidentAlertsActionHandler.NAME,
+            ReadRecentDeploymentsActionHandler.NAME,
+            ReadChangeApprovalsActionHandler.NAME
+        );
+        boolean actionsReady = actionNames.stream().allMatch(name ->
+            actions.findHandler(name).isPresent()
+                && actions.findMetadata(name).isPresent()
+        );
+        IncidentRunbookIndexService.IndexStatus runbookStatus =
+            runbooks.status();
+        boolean runbooksReady = "READY".equals(runbookStatus.state())
+            && runbookStatus.indexedDocuments() > 0;
         Map<String, Object> out = new java.util.LinkedHashMap<>(
             deploymentInfo.health()
         );
-        out.put("status", specialistsReady && plansReady && providerReady
-            && storageReady ? "UP" : "DOWN");
+        out.put("status", specialistsReady && plansReady && actionsReady
+            && providerReady && storageReady && runbooksReady ? "UP" : "DOWN");
         out.put("specialists", specialistHealth);
         out.put("plans", planHealth);
         out.put("specialistsReady", specialistsReady);
         out.put("plansReady", plansReady);
+        out.put("actions", actionNames.stream().map(name ->
+            Map.<String, Object>of(
+                "name", name,
+                "ready", actions.findHandler(name).isPresent()
+                    && actions.findMetadata(name).isPresent(),
+                "accessMode", "READ"
+            )
+        ).toList());
+        out.put("actionsReady", actionsReady);
         out.put("provider", Map.of(
             "generation", generationProvider,
             "ready", providerReady
@@ -105,6 +152,12 @@ public class IncidentHealthController {
         ));
         out.put("fanInPolicy", "ALL_REQUIRED");
         out.put("conversationHistory", "BACKEND_OWNED");
+        out.put("eventStore", Map.of(
+            "type", "IMMUTABLE_IN_MEMORY",
+            "totalEvents", events.totalCount(),
+            "trustedFiltering", true
+        ));
+        out.put("runbooks", runbookStatus);
         return Map.copyOf(out);
     }
 

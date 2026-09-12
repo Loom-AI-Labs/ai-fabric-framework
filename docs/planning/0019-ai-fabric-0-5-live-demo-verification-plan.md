@@ -489,6 +489,12 @@ fan-in answer.
    `COMPLETE`.
 8. Replayed manager input does not append a second turn or invoke a second worker.
 
+Post-release expansion is tracked in
+[`0020-incident-investigation-room-capability-expansion-plan.md`](0020-incident-investigation-room-capability-expansion-plan.md).
+It preserves these v1 contracts and adds exact v2 workers that select approved operational READ
+actions, choose relevant evidence from richer authorized candidate sets, combine scoped runbook
+RAG where applicable, and expose the complete model/application decision boundary in the UI.
+
 ## 10. Demo 6: Live Data Sync Operations
 
 ### 10.1 Decision

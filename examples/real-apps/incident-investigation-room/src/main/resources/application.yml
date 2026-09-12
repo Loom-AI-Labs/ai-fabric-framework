@@ -27,8 +27,13 @@ ai:
       enabled: true
       fail-fast: true
     capabilities:
-      registered-vector-spaces: []
-      allowed-actions: []
+      registered-vector-spaces:
+        - incident-runbook
+      allowed-actions:
+        - read_service_metrics
+        - read_incident_alerts
+        - read_recent_deployments
+        - read_change_approvals
     async:
       repository: IN_MEMORY
       core-pool-size: 4
@@ -42,12 +47,12 @@ ai:
       parallel-enabled: true
       max-parallel-branches: 2
       max-steps: 3
-      max-duration: PT1M
+      max-duration: PT75S
       max-active: 500
       result-ttl: PT15M
     conversation-managers:
       enabled: true
-      max-duration: PT1M
+      max-duration: PT75S
       max-active: 500
       result-ttl: PT15M
     receipts:
@@ -61,28 +66,118 @@ ai:
     max-context-chars: 5000
   providers:
     llm-provider: openai
-    embedding-provider: simple
+    embedding-provider: openai
     openai:
       enabled: ${OPENAI_ENABLED:false}
       api-key: ${OPENAI_API_KEY:}
       base-url: ${OPENAI_BASE_URL:https://api.openai.com/v1}
       model: ${OPENAI_MODEL:gpt-4o-mini}
+      embedding-model: ${OPENAI_EMBEDDING_MODEL:text-embedding-3-small}
+      embedding-dimensions: ${OPENAI_EMBEDDING_DIMENSIONS:512}
       timeout: ${OPENAI_TIMEOUT:60}
+  vector-db:
+    type: lucene
+    lucene:
+      index-path: ./data/incident-runbook-lucene-${OPENAI_EMBEDDING_DIMENSIONS:512}
+      similarity-threshold: 0.0
   service:
     features:
       enable-generation: true
-      enable-embeddings: false
-      enable-search: false
-      enable-rag: false
+      enable-embeddings: true
+      enable-search: true
+      enable-rag: true
   orchestration:
     default-mode: resolver
     strict-mode-routing: true
     modes:
       resolver:
+        actions-enabled: true
+        actions-preferred: true
+        retrieval-enabled: true
+        retrieval-allowlist-required: true
+        vector-space-selection-required: false
+        information-mode: DETERMINISTIC_RAG_GENERATE
+        rag:
+          fanout-enabled: false
+          max-spaces: 1
+          top-k-per-space: 3
+          similarity-threshold: 0.0
+          max-documents-returned-to-client: 3
+          max-documents-used-for-context: 3
+          max-context-chars: 5000
+          retrieval-vector-spaces-allowlist:
+            - incident-runbook
+        read-action-resolution:
+          enabled: true
+          planning-mode: ITERATIVE
+          require-allowlist: true
+          allowed-read-actions:
+            - read_service_metrics
+            - read_incident_alerts
+            - read_recent_deployments
+            - read_change_approvals
+          max-iterations: 2
+          max-actions-per-iteration: 1
+          max-total-actions: 2
+          max-parallel-actions: 1
+          max-planner-context-chars: 5000
+          max-action-evidence-chars-per-action: 4000
+          rag-cooperation-mode: RAG_IF_ACTIONS_INSUFFICIENT
+          require-grounding-eligible: true
+      incident-health:
         actions-enabled: false
         actions-preferred: false
         retrieval-enabled: false
+        retrieval-allowlist-required: false
+        vector-space-selection-required: false
         information-mode: LLM_DRIVEN
+        read-action-resolution:
+          enabled: true
+          planning-mode: ITERATIVE
+          require-allowlist: true
+          allowed-read-actions:
+            - read_service_metrics
+            - read_incident_alerts
+          max-iterations: 2
+          max-actions-per-iteration: 1
+          max-total-actions: 2
+          max-parallel-actions: 1
+          max-planner-context-chars: 5000
+          max-action-evidence-chars-per-action: 4000
+          rag-cooperation-mode: NONE
+          require-grounding-eligible: true
+      incident-change:
+        actions-enabled: false
+        actions-preferred: false
+        retrieval-enabled: true
+        retrieval-allowlist-required: true
+        vector-space-selection-required: false
+        information-mode: DETERMINISTIC_RAG_GENERATE
+        rag:
+          fanout-enabled: false
+          max-spaces: 1
+          top-k-per-space: 3
+          similarity-threshold: 0.0
+          max-documents-returned-to-client: 3
+          max-documents-used-for-context: 3
+          max-context-chars: 5000
+          retrieval-vector-spaces-allowlist:
+            - incident-runbook
+        read-action-resolution:
+          enabled: true
+          planning-mode: ITERATIVE
+          require-allowlist: true
+          allowed-read-actions:
+            - read_recent_deployments
+            - read_change_approvals
+          max-iterations: 2
+          max-actions-per-iteration: 1
+          max-total-actions: 2
+          max-parallel-actions: 1
+          max-planner-context-chars: 5000
+          max-action-evidence-chars-per-action: 4000
+          rag-cooperation-mode: PARALLEL_ACTIONS_AND_RAG
+          require-grounding-eligible: true
   behavior:
     enabled: false
   pii-detection:

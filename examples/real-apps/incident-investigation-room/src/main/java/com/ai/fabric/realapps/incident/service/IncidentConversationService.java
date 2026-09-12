@@ -10,6 +10,7 @@ import ai.fabric.execution.manager.ConversationManagerGateway;
 import ai.fabric.execution.manager.ConversationManagerTurnRequest;
 import ai.fabric.execution.manager.ConversationManagerTurnResult;
 import com.ai.fabric.realapps.incident.domain.IncidentManagerRequest;
+import com.ai.fabric.realapps.incident.domain.IncidentManagerTurnView;
 import com.ai.fabric.realapps.incident.execution.IncidentConversationManagers;
 import java.time.Clock;
 import java.util.Set;
@@ -21,24 +22,35 @@ public class IncidentConversationService {
     private static final Set<String> MANAGER_SCOPES = Set.of(
         "specialist:incident-conversation-manager@1",
         "specialist:service-health-reader@1",
-        "specialist:change-risk-reader@1"
+        "specialist:change-risk-reader@1",
+        "specialist:incident-conversation-manager@2",
+        "specialist:service-health-reader@2",
+        "specialist:change-risk-reader@2",
+        "action:read_service_metrics",
+        "action:read_incident_alerts",
+        "action:read_recent_deployments",
+        "action:read_change_approvals",
+        "vector:incident-runbook"
     );
 
     private final ConversationManagerGateway gateway;
     private final IncidentSessionService sessions;
+    private final IncidentDecisionTraceStore traces;
     private final Clock clock;
 
     public IncidentConversationService(
         ConversationManagerGateway gateway,
         IncidentSessionService sessions,
+        IncidentDecisionTraceStore traces,
         Clock clock
     ) {
         this.gateway = gateway;
         this.sessions = sessions;
+        this.traces = traces;
         this.clock = clock;
     }
 
-    public ConversationManagerTurnResult chat(
+    public IncidentManagerTurnView chat(
         String sessionId,
         String question,
         String idempotencyKey
@@ -48,8 +60,9 @@ public class IncidentConversationService {
             question,
             sessions.planRequest(sessionId, question)
         );
-        return gateway.execute(new ConversationManagerTurnRequest<>(
-            IncidentConversationManagers.INVESTIGATION,
+        ConversationManagerTurnResult result = gateway.execute(
+            new ConversationManagerTurnRequest<>(
+            IncidentConversationManagers.INVESTIGATION_V2,
             request,
             trustedContext(session),
             new ConversationBinding(
@@ -59,6 +72,10 @@ public class IncidentConversationService {
             null,
             requireIdempotencyKey(idempotencyKey)
         ));
+        return IncidentManagerTurnView.from(
+            result,
+            traces.find(result.workerInvocationId())
+        );
     }
 
     private TrustedExecutionContext trustedContext(
@@ -75,7 +92,7 @@ public class IncidentConversationService {
             ),
             ExecutionSource.INTERACTIVE,
             "public-demo",
-            "incident-investigation-room",
+            session.scenario().deploymentId(),
             MANAGER_SCOPES,
             null,
             clock.instant()
