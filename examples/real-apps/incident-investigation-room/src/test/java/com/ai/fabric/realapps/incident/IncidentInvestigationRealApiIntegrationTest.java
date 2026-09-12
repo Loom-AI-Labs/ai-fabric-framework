@@ -187,6 +187,10 @@ class IncidentInvestigationRealApiIntegrationTest {
             .doesNotContain("wrong-revision-release")
             .doesNotContain("runbook-private-tenant");
         JsonNode result = objectMapper.readTree(body);
+        assertThat(result.at("/output/healthStatus").asText())
+            .isEqualTo("DEGRADED");
+        assertThat(result.at("/output/serviceHealth/severity").asText())
+            .isEqualTo("HIGH");
         assertThat(result.at("/output/changeRisk").asText())
             .isIn("MEDIUM", "HIGH");
         assertThat(result.at(

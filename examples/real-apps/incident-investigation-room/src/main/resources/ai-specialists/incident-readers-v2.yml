@@ -32,9 +32,18 @@ spec:
       healthStatus:
         type: string
         enum: [HEALTHY, DEGRADED, UNAVAILABLE, UNKNOWN]
+        description: >-
+          Current availability supported by authorized evidence. DEGRADED means
+          elevated errors, latency, saturation, or partial failures while the
+          service still handles traffic. UNAVAILABLE requires explicit evidence
+          of a complete outage or inability to serve requests.
       severity:
         type: string
         enum: [CRITICAL, HIGH, MEDIUM, LOW, UNKNOWN]
+        description: >-
+          Supported operational impact. CRITICAL requires explicit evidence of
+          complete outage, broad severe impact, or data-loss risk; elevated
+          latency and a partial error rate are HIGH or lower.
       summary: {type: string, minLength: 1, maxLength: 1000}
       evidenceIds:
         type: array
@@ -149,6 +158,17 @@ spec:
     the question makes their timing material, and ignore unsupported
     user-supplied IDs. Never invent a metric, alert, source, event ID, or causal
     claim.
+
+    SERVICE-HEALTH CLASSIFICATION CONTRACT:
+    Use HEALTHY only when all materially relevant current signals are normal and
+    no active alert establishes degradation. Use DEGRADED for elevated errors,
+    latency, saturation, dependency trouble, or partial failures while evidence
+    still shows the service is handling traffic. Use UNAVAILABLE only when an
+    authorized current observation explicitly establishes a complete outage or
+    inability to serve requests. Use UNKNOWN when evidence is absent or too
+    contradictory to classify. Use CRITICAL severity only for explicit complete
+    outage, broad severe impact, or data-loss risk; do not promote a partial
+    error rate or elevated latency beyond HIGH without such evidence.
   outputContract: |
     Return the required structured service-health finding. evidenceIds must be
     an exact relevant subset of candidate IDs returned by the actions actually
