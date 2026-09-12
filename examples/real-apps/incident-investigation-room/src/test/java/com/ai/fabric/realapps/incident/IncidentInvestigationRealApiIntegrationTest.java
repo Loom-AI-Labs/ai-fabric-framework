@@ -147,6 +147,9 @@ class IncidentInvestigationRealApiIntegrationTest {
         );
         assertAllowedSources(trace, CHANGE_ACTIONS);
         assertThat(trace.path("runbookEvidenceIds")).isNotEmpty();
+        assertThat(trace.path("selectedEvidenceIds"))
+            .anySatisfy(id -> assertThat(id.asText())
+                .isEqualTo("change-payment-client-284"));
         assertThat(result.toString())
             .doesNotContain("runbook-private-tenant");
         verify(ragProvider, atLeastOnce()).performRAGQuery(argThat(request ->
@@ -247,6 +250,9 @@ class IncidentInvestigationRealApiIntegrationTest {
             "/changeRiskFinding/runbookEvidenceIds"
         )).anySatisfy(id -> assertThat(id.asText())
             .isEqualTo("runbook-search-dependency"));
+        assertThat(output.at("/changeRiskFinding/evidenceIds"))
+            .anySatisfy(id -> assertThat(id.asText())
+                .isEqualTo("approval-search-none"));
         assertThat(body).doesNotContain("runbook-private-tenant");
     }
 
