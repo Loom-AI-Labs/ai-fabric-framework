@@ -1,6 +1,6 @@
 # AI Fabric Deployment Knowledge Guard
 
-This reference app proves the AI Fabric `0.5.x` specialist boundary with
+This reference app proves the AI Fabric `0.6.1` specialist boundary with
 real vector retrieval. A browser chooses one server-approved demo context. The
 backend binds its tenant and deployment IDs into `TrustedExecutionContext`, and
 the framework enforces those values as Lucene metadata filters.
