@@ -33,7 +33,12 @@ class DefaultSpecialistManifestCompilerTest {
         assertThat(result.specialist().source())
             .isEqualTo(SpecialistDefinitionSource.MANIFEST);
         assertThat(result.specialist().contentHash())
-            .isEqualTo(ManifestTestFixtures.HASH);
+            .matches("[a-f0-9]{64}")
+            .isNotEqualTo(ManifestTestFixtures.HASH)
+            .isEqualTo(compiler.compile(
+                ManifestTestFixtures.manifest(),
+                ManifestTestFixtures.compilationContext()
+            ).specialist().contentHash());
         assertThat(result.specialist().definition().id().toString())
             .isEqualTo("support-knowledge@1");
         assertThat(result.specialist().definition().inputAdapter().inputType())
@@ -55,6 +60,84 @@ class DefaultSpecialistManifestCompilerTest {
         assertThat(result.specialist().definition().outputAdapter()
             .orchestrationIntentPolicy())
             .isEqualTo(OrchestrationIntentPolicy.MODEL_DIRECTED);
+    }
+
+    @Test
+    void effectiveHashChangesWithReferencedPromptOrSchemaSemantics() {
+        String baseline = compiler.compile(
+            ManifestTestFixtures.manifest(),
+            ManifestTestFixtures.compilationContext()
+        ).specialist().contentHash();
+        SpecialistPromptProfile prompt = ManifestTestFixtures.promptProfile();
+        SpecialistPromptProfile changedPrompt = new SpecialistPromptProfile(
+            prompt.apiVersion(),
+            prompt.kind(),
+            prompt.metadata(),
+            new SpecialistPromptProfileSpec(
+                prompt.spec().constraints() + " Never infer missing facts.",
+                prompt.spec().outputContract()
+            )
+        );
+        SpecialistSchemaDefinition input = ManifestTestFixtures.inputSchema();
+        var changedInputJson = input.spec().schema().deepCopy();
+        ((com.fasterxml.jackson.databind.node.ObjectNode) changedInputJson
+            .path("properties").path("question"))
+            .put("maxLength", 501);
+        SpecialistSchemaDefinition changedInput =
+            new SpecialistSchemaDefinition(
+                input.apiVersion(),
+                input.kind(),
+                input.metadata(),
+                new SpecialistSchemaSpec(
+                    input.spec().direction(),
+                    input.spec().draft(),
+                    changedInputJson
+                )
+            );
+        SpecialistSchemaDefinition output = ManifestTestFixtures.outputSchema();
+        var changedOutputJson = output.spec().schema().deepCopy();
+        ((com.fasterxml.jackson.databind.node.ObjectNode) changedOutputJson
+            .path("properties").path("answer"))
+            .put("maxLength", 1_999);
+        SpecialistSchemaDefinition changedOutput =
+            new SpecialistSchemaDefinition(
+                output.apiVersion(),
+                output.kind(),
+                output.metadata(),
+                new SpecialistSchemaSpec(
+                    output.spec().direction(),
+                    output.spec().draft(),
+                    changedOutputJson
+                )
+            );
+
+        String promptHash = compiler.compile(
+            ManifestTestFixtures.manifest(),
+            ManifestTestFixtures.compilationContext(
+                changedPrompt,
+                input,
+                ManifestTestFixtures.outputSchema()
+            )
+        ).specialist().contentHash();
+        String inputHash = compiler.compile(
+            ManifestTestFixtures.manifest(),
+            ManifestTestFixtures.compilationContext(
+                prompt,
+                changedInput,
+                ManifestTestFixtures.outputSchema()
+            )
+        ).specialist().contentHash();
+        String outputHash = compiler.compile(
+            ManifestTestFixtures.manifest(),
+            ManifestTestFixtures.compilationContext(
+                prompt,
+                input,
+                changedOutput
+            )
+        ).specialist().contentHash();
+
+        assertThat(Set.of(baseline, promptHash, inputHash, outputHash))
+            .hasSize(4);
     }
 
     @Test

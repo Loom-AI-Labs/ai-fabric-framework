@@ -189,6 +189,35 @@ public final class ManifestTestFixtures {
     }
 
     public static SpecialistCompilationContext compilationContext(
+        SpecialistPromptProfile promptProfile,
+        SpecialistSchemaDefinition inputSchema,
+        SpecialistSchemaDefinition outputSchema
+    ) {
+        ObjectMapper mapper = objectMapper();
+        SpecialistJsonSchemaValidator schemaValidator =
+            new SpecialistJsonSchemaValidator();
+        return new SpecialistCompilationContext(
+            new SpecialistJsonSchemaRegistry(
+                List.of(inputSchema, outputSchema),
+                schemaValidator
+            ),
+            new SpecialistPromptProfileRegistry(List.of(promptProfile)),
+            new SpecialistGroundingValidatorRegistry(List.of()),
+            new SpecialistFinalOutputValidatorRegistry(List.of()),
+            new SpecialistDirectOutputProjectorRegistry(List.of()),
+            new SpecialistOutputNormalizerRegistry(List.of()),
+            new SpecialistInputContinuationRegistry(List.of()),
+            schemaValidator,
+            definitionValidator(),
+            new CanonicalJsonSupport(mapper),
+            mapper,
+            Set.of(),
+            "support.yml#4",
+            HASH
+        );
+    }
+
+    public static SpecialistCompilationContext compilationContext(
         List<SpecialistInputContinuation<?>> continuations,
         List<SpecialistSchemaDefinition> additionalSchemas
     ) {

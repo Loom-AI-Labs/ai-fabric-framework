@@ -72,6 +72,14 @@ computes a content hash over the manager, workers, component IDs and classes,
 target descriptions, policies, and limits. A changed definition cannot resume
 old durable work.
 
+Starting with `0.6.1`, a manifest-defined manager or worker content hash also
+covers its raw manifest hash and exact resolved prompt, input schema, and output
+schema. A prompt-only or schema-only change is therefore definition drift and
+cannot resume protected work under the old identity. Drain active manifest-
+backed chains, jobs, receipts, and linked reviews before that upgrade, or
+deliberately recreate failed-closed work afterward. Java-defined specialist
+hashing is unchanged.
+
 ## Register Application Boundaries
 
 The application owns three projections:
@@ -463,9 +471,11 @@ Tests run normally. Do not use Maven test-skipping flags.
 
 The `0.6.0` release source was verified with all 383 execution-module tests,
 all 14 keyed Incident OpenAI scenarios, a PostgreSQL restart/replay Docker
-smoke, and desktop/mobile browser canaries. See the
-[`0.6.0` release notes](../../release-notes/0.6.0.md) for exact source versus
-post-publication gates.
+smoke, and desktop/mobile browser canaries. The `0.6.1` hardening proof adds
+385 execution-module tests and seven keyed Account Resolver OpenAI scenarios.
+See the [`0.6.0` release notes](../../release-notes/0.6.0.md) and
+[`0.6.1` release notes](../../release-notes/0.6.1.md) for exact source versus
+post-publication gates and the manifest-hash migration requirement.
 
 ## Release Boundary
 

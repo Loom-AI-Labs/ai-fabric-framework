@@ -1,6 +1,10 @@
 package com.ai.fabric.realapps.agenticresolver.service;
 
 import ai.fabric.execution.action.ActionProposalReceiptRepository;
+import ai.fabric.execution.chain.RegisteredSpecialistChain;
+import ai.fabric.execution.chain.SpecialistChainRegistry;
+import ai.fabric.execution.chain.state.JdbcSpecialistChainExecutionRepository;
+import ai.fabric.execution.chain.state.SpecialistChainExecutionRepository;
 import ai.fabric.execution.config.AIExecutionProperties;
 import ai.fabric.execution.gateway.AIExecutionGateway;
 import ai.fabric.execution.gateway.AIInteractiveExecutionGateway;
@@ -20,6 +24,7 @@ import ai.fabric.execution.state.DurableExecutionRepository;
 import ai.fabric.provider.AIProvider;
 import com.ai.fabric.realapps.agenticresolver.agentic.AccountConversationManagers;
 import com.ai.fabric.realapps.agenticresolver.agentic.AccountResolverSpecialists;
+import com.ai.fabric.realapps.agenticresolver.agentic.AccountSpecialistChains;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
@@ -58,6 +63,8 @@ public class DeploymentInfoService {
     private final DurableExecutionRepository durableExecutionRepository;
     private final AIExecutionProperties executionProperties;
     private final SpecialistManifestRuntimeStatus manifestRuntimeStatus;
+    private final SpecialistChainRegistry specialistChainRegistry;
+    private final SpecialistChainExecutionRepository chainExecutionRepository;
 
     public DeploymentInfoService(
         Environment environment,
@@ -69,6 +76,8 @@ public class DeploymentInfoService {
         ConversationManagerGateway conversationManagerGateway,
         ConversationManagerRegistry conversationManagerRegistry,
         SpecialistRegistry specialistRegistry,
+        Optional<SpecialistChainRegistry> specialistChainRegistry,
+        Optional<SpecialistChainExecutionRepository> chainExecutionRepository,
         ActionProposalReceiptRepository receiptRepository,
         Optional<DurableExecutionRepository> durableExecutionRepository,
         AIExecutionProperties executionProperties,
@@ -86,6 +95,8 @@ public class DeploymentInfoService {
         this.conversationManagerGateway = conversationManagerGateway;
         this.conversationManagerRegistry = conversationManagerRegistry;
         this.specialistRegistry = specialistRegistry;
+        this.specialistChainRegistry = specialistChainRegistry.orElse(null);
+        this.chainExecutionRepository = chainExecutionRepository.orElse(null);
         this.receiptRepository = receiptRepository;
         this.durableExecutionRepository =
             durableExecutionRepository.orElse(null);
@@ -219,6 +230,38 @@ public class DeploymentInfoService {
         execution.put("receiptRetention", receipts.getRetention().toString());
         execution.put("specialists", specialists);
         execution.put("specialistDefinitions", specialistDefinitions);
+        List<Map<String, Object>> specialistChains =
+            specialistChainRegistry == null
+                ? List.of()
+                : specialistChainRegistry.list().stream()
+                    .map(this::chainDefinition)
+                    .toList();
+        boolean chainsEnabled = executionProperties.getSpecialistChains()
+            .isEnabled();
+        boolean accountChainRegistered = specialistChainRegistry != null
+            && specialistChainRegistry.find(
+                AccountSpecialistChains.SMART_RESOLUTION
+            ).isPresent();
+        execution.put("specialistChainsEnabled", chainsEnabled);
+        execution.put(
+            "specialistChainsReady",
+            !chainsEnabled || accountChainRegistered
+                && chainExecutionRepository != null
+        );
+        execution.put(
+            "specialistChainDurability",
+            chainExecutionRepository == null
+                ? "DISABLED"
+                : chainExecutionRepository
+                    instanceof JdbcSpecialistChainExecutionRepository
+                        ? "JDBC"
+                        : "EPHEMERAL"
+        );
+        execution.put("specialistChains", specialistChains);
+        execution.put(
+            "accountSmartResolutionChainRegistered",
+            accountChainRegistered
+        );
         execution.put("manifestRuntime", Map.of(
             "enabled", manifestRuntimeStatus.enabled(),
             "ready", manifestRuntimeStatus.ready(),
@@ -301,6 +344,22 @@ public class DeploymentInfoService {
         definition.put("specialistSteps", specialistSteps);
         definition.put("stages", stages);
         return Map.copyOf(definition);
+    }
+
+    private Map<String, Object> chainDefinition(
+        RegisteredSpecialistChain chain
+    ) {
+        return Map.of(
+            "id", chain.id().toString(),
+            "contentHash", chain.contentHash(),
+            "manager", chain.definition().managerSpecialistId().toString(),
+            "targets", chain.definition().targets().stream()
+                .map(target -> target.specialistId().toString())
+                .toList(),
+            "conversationPolicy",
+                chain.definition().conversationPolicy().name(),
+            "ready", true
+        );
     }
 
     private Map<String, Object> stageDefinition(PlanStage stage) {

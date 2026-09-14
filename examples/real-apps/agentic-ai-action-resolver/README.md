@@ -74,6 +74,39 @@ cannot choose or impersonate the reviewer.
 The original `ai-fabric-account-resolver` remains unchanged and deployable as
 the governed-action baseline.
 
+## Bounded Smart Account Coordinator
+
+The primary demo flow now runs `account-smart-resolution@1`. The browser sends
+one natural-language request and a stable idempotency key; it does not choose a
+worker. The backend selects the exact chain, trusted account subject, tenant,
+deployment, conversation, and capability scopes.
+
+The exact-version manager `account-resolution-chain-manager@1` sees only a
+closed catalog containing:
+
+- `account-resolver-manager-read@1` for current account, subscription, payment,
+  address, and ordering-readiness facts; and
+- `billing-resolution-manager-advisor@1` for a supplied refund or account-credit
+  policy assessment.
+
+It may complete without a worker, ask one bounded question, invoke either
+worker, invoke both independent reads in parallel, consult both sequentially,
+or make one terminal read-only handoff. Both workers remain leaves: they cannot
+start another transition, write application data, read chain conversation, or
+observe sibling output.
+
+Java-owned mappers construct each typed worker request. Java-owned projectors
+reduce validated worker output to bounded business facts and evidence IDs
+before the manager can see it. A final answer must structurally cite every
+projected result by its exact result ID. The public API and UI never return raw
+provider output, hidden prompts, trusted context, or executable parameters.
+
+The chain is durable in JDBC. Its protected request, checkpoints, projected
+results, immutable chain/manager hashes, access binding, and terminal result
+survive restart. Identical replay returns the same execution and lineage;
+changed work under the same key conflicts. Cancellation, deadline, provider,
+validation, persistence, and required-branch failures remain visible.
+
 ## Public Demo Experience
 
 - Resolver UI: `https://ai-fabric.dev/demos/ai-fabric-agentic-action-resolver`
@@ -81,7 +114,14 @@ the governed-action baseline.
   `https://ai-fabric.dev/demos/ai-fabric-agentic-action-resolver/review`
 - Backend: `https://ai-fabric-agentic-action-resolver.46.224.145.148.sslip.io`
 
-The resolver UI includes a guided proactive-event proof. It sends payment
+The resolver UI opens with the Smart Account Coordinator. Guided natural
+requests prove account-only, billing-only, parallel, adaptive sequential,
+clarification, handoff, completion without a worker, and invented-target
+guardrail paths. It polls the authoritative asynchronous execution, exposes
+bounded budget and lineage diagnostics, supports cancellation and exact replay,
+and renders only application-projected facts.
+
+The resolver UI also includes a guided proactive-event proof. It sends payment
 failure facts only, then polls the durable `EVENT` execution and displays the
 backend-owned `SERVICE` principal, source, invocation, status, and typed
 result. It never turns the event into a fabricated chat message or supplies
@@ -95,6 +135,23 @@ receipt state from the backend.
 
 ## What This Proves
 
+- `account-smart-resolution@1` is selected by backend code and binds one closed,
+  exact-version manager/worker catalog; no public field can select a chain,
+  specialist, principal, subject, tenant, deployment, or capability.
+- One strict five-field manager directive may request `ASK_USER`, `INVOKE_ONE`,
+  `INVOKE_PARALLEL`, `HANDOFF`, or `COMPLETE`; schema and Java policy validate
+  every transition before execution.
+- Account and billing workers are independently authorized, read-only,
+  non-interactive leaves with one invocation maximum per target.
+- Manager context contains only bounded application context, remaining budget,
+  exact target descriptions, and safe application-projected worker results.
+- `ALL_REQUIRED` parallel work returns no partial success when a required branch
+  fails. Sequential work adapts only after receiving the first safe projection.
+- `supportingResultIds` must exactly attribute all projected worker results
+  before the manager may complete.
+- JDBC state is protected before dispatch and supports scoped status,
+  cancellation, restart recovery, exact replay, changed-payload conflict, and
+  changed-definition rejection.
 - A typed `AccountResolutionRequest` enters through a schema-bound
   `SpecialistClient` over `AIExecutionGateway`.
 - `billing-resolution-advisor@1` binds a registered input continuation and
@@ -680,6 +737,41 @@ PUT /api/agentic-resolver/sessions/{sessionId}/scenarios/{scenarioId}
 DELETE /api/agentic-resolver/sessions/{sessionId}
 ```
 
+Run the bounded smart coordinator synchronously:
+
+```http
+POST /api/agentic-resolver/smart-resolutions
+X-AI-Fabric-Demo-Session: {sessionId}
+Idempotency-Key: account-resolution-1
+Content-Type: application/json
+
+{
+  "question": "Inspect both my current account blockers and this supplied refund assessment. Both independent read-only checks are required.",
+  "resolutionType": "REFUND",
+  "amount": 75
+}
+```
+
+The same endpoint supports natural account-only and billing-only requests. A
+billing assessment with a supplied type but no amount produces `ASKED_USER`
+before any worker is invoked. A capability explanation or unsupported request
+may complete with no worker. A request naming an unapproved target cannot add
+that target to the server-owned catalog.
+
+Submit asynchronously, inspect status, or cancel:
+
+```http
+POST /api/agentic-resolver/smart-resolutions/async
+GET /api/agentic-resolver/smart-resolutions/{executionId}
+POST /api/agentic-resolver/smart-resolutions/{executionId}/cancel
+X-AI-Fabric-Demo-Session: {sessionId}
+```
+
+Repeat the original request with the same scoped idempotency key for exact
+replay. The terminal response reuses the same execution ID, manager decisions,
+worker invocation IDs, projected result IDs, and timeline. Reusing the key with
+different typed input fails with an idempotency conflict.
+
 Run a stateless read-only application call:
 
 ```http
@@ -1115,6 +1207,41 @@ Its active-turn lease and approved history snapshot are shared with direct
 interactive dialogue. Its retained replay result is separate from chat turns
 and is lost after its TTL or process restart.
 
+## Durable Specialist-Chain Configuration
+
+The Smart Account Coordinator uses the separate bounded-chain repository:
+
+```yaml
+ai:
+  execution:
+    specialist-chains:
+      enabled: true
+      durable-enabled: true
+      allow-ephemeral: false
+      initialize-schema: false
+      max-duration: PT75S
+      max-manager-decisions: 4
+      max-worker-invocations: 2
+      max-parallel-workers: 2
+      max-invocations-per-target: 1
+      max-projected-result-characters: 8000
+      max-directive-corrections: 1
+      cleanup-enabled: true
+      retention: P7D
+      encryption-secret: ${AI_SPECIALIST_CHAIN_ENCRYPTION_SECRET}
+      fingerprint-secret: ${AI_SPECIALIST_CHAIN_FINGERPRINT_SECRET}
+```
+
+Both secrets must be stable, distinct, and at least 32 characters. They must
+also differ from receipt, async-execution, and review secrets. Production
+applications should install the framework chain-state migration and keep
+`initialize-schema=false`; this self-contained demo may initialize its schema.
+
+This storage is not chat memory or an action receipt. It protects the chain
+request and execution checkpoints needed for restart recovery, status,
+cancellation, and exact replay. Conversation remains in `ai-fabric-chat-session`;
+write parameters remain in governed action receipts.
+
 ## Durable Async Configuration
 
 The proactive event path uses the framework's separate durable read-job
@@ -1204,24 +1331,24 @@ are never removed by retention cleanup.
 ## Docker
 
 Build from the repository root. The image resolves the immutable AI Fabric
-`0.6.0` artifacts from Maven Central and runs the real-app reactor tests while
+`0.6.1` artifacts from Maven Central and runs the real-app reactor tests while
 packaging the app:
 
 ```bash
 docker build \
   -f examples/real-apps/agentic-ai-action-resolver/Dockerfile \
-  --build-arg AI_FABRIC_VERSION=0.6.0 \
+  --build-arg AI_FABRIC_VERSION=0.6.1 \
   --build-arg BUILD_COMMIT="$(git rev-parse HEAD)" \
   --build-arg BUILD_BRANCH="$(git branch --show-current)" \
   --build-arg BUILD_TIME="$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-  -t agentic-ai-action-resolver:0.6.0 \
+  -t agentic-ai-action-resolver:0.6.1 \
   .
 ```
 
 Run with durable local data. The volume holds application state, opaque demo
-session bindings, action receipts, durable specialist jobs, chat sessions, and
-the local vector index. It deliberately does not make pending input waits or
-fixed-plan checkpoints durable:
+session bindings, specialist-chain checkpoints, action receipts, durable
+specialist jobs, chat sessions, and the local vector index. It deliberately
+does not make pending input waits or fixed-plan checkpoints durable:
 
 ```bash
 docker volume create agentic-resolver-data
@@ -1232,6 +1359,10 @@ docker run --rm -p 8105:8105 \
   -e OPENAI_ENABLED=true \
   -e OPENAI_API_KEY="$OPENAI_API_KEY" \
   -e OPENAI_MODEL=gpt-4o-mini \
+  -e AI_SPECIALIST_CHAINS_ENABLED=true \
+  -e AI_SPECIALIST_CHAINS_DURABLE_ENABLED=true \
+  -e AI_SPECIALIST_CHAIN_ENCRYPTION_SECRET="$AI_SPECIALIST_CHAIN_ENCRYPTION_SECRET" \
+  -e AI_SPECIALIST_CHAIN_FINGERPRINT_SECRET="$AI_SPECIALIST_CHAIN_FINGERPRINT_SECRET" \
   -e AI_EXECUTION_RECEIPT_ENCRYPTION_SECRET="$AI_EXECUTION_RECEIPT_ENCRYPTION_SECRET" \
   -e AI_EXECUTION_RECEIPT_FINGERPRINT_SECRET="$AI_EXECUTION_RECEIPT_FINGERPRINT_SECRET" \
   -e AI_EXECUTION_ASYNC_ENCRYPTION_SECRET="$AI_EXECUTION_ASYNC_ENCRYPTION_SECRET" \
@@ -1243,7 +1374,7 @@ docker run --rm -p 8105:8105 \
   -e APP_REVIEWER_API_KEY="$APP_REVIEWER_API_KEY" \
   -e APP_SENIOR_REVIEWER_API_KEY="$APP_SENIOR_REVIEWER_API_KEY" \
   -e CORS_ALLOWED_ORIGINS=https://ai-fabric.dev \
-  agentic-ai-action-resolver:0.6.0
+  agentic-ai-action-resolver:0.6.1
 ```
 
 For Coolify deployment:

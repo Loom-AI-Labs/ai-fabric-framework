@@ -22,6 +22,8 @@ public final class AccountResolverSpecialists {
         SpecialistId.of("billing-resolution-manager-advisor", "1");
     public static final SpecialistId MANAGER_READ_SPECIALIST_ID =
         SpecialistId.of("account-resolver-manager-read", "1");
+    public static final SpecialistId CHAIN_MANAGER_ID =
+        SpecialistId.of("account-resolution-chain-manager", "1");
     public static final String PROFILE_ACTION = "get_account_profile";
     public static final String BILLING_ASSESSMENT_ACTION =
         "assess_billing_resolution";

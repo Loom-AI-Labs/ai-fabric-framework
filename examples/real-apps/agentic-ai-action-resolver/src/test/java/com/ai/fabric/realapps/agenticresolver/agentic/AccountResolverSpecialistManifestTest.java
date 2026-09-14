@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import ai.fabric.evidence.AIEvidenceReference;
+import ai.fabric.execution.chain.SpecialistChainRegistry;
 import ai.fabric.execution.specialist.ExecutionStrategy;
 import ai.fabric.execution.specialist.RegisteredSpecialist;
 import ai.fabric.execution.specialist.SpecialistDefinition;
@@ -40,6 +41,9 @@ import org.springframework.boot.test.context.SpringBootTest;
     "ai.providers.openai.enabled=false",
     "ai.execution.receipts.encryption-secret=test-agentic-manifest-encryption-key-at-least-32",
     "ai.execution.receipts.fingerprint-secret=test-agentic-manifest-fingerprint-key-at-least-32",
+    "ai.execution.specialist-chains.enabled=true",
+    "ai.execution.specialist-chains.encryption-secret=test-account-chain-encryption-secret-at-least-32",
+    "ai.execution.specialist-chains.fingerprint-secret=test-account-chain-fingerprint-secret-at-least-32",
     "ai.vector-db.lucene.index-path=target/agentic-manifest-integration-index",
     "app.demo.cleanup.enabled=false",
     "logging.level.ai.fabric=WARN"
@@ -51,6 +55,9 @@ class AccountResolverSpecialistManifestTest {
 
     @Autowired
     private ConversationManagerRegistry conversationManagerRegistry;
+
+    @Autowired
+    private SpecialistChainRegistry specialistChainRegistry;
 
     @Autowired
     private ObjectMapper objectMapper;
@@ -337,6 +344,54 @@ class AccountResolverSpecialistManifestTest {
         assertThatThrownBy(() ->
             managerSpecialist.outputAdapter().validate(inventedDirective)
         ).isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void declaresBoundedReadOnlyAccountSpecialistChain() {
+        var registered = specialistChainRegistry.require(
+            AccountSpecialistChains.SMART_RESOLUTION
+        );
+        var definition = registered.definition();
+
+        assertThat(registered.contentHash()).matches("[a-f0-9]{64}");
+        assertThat(registered.managerContentHash()).matches("[a-f0-9]{64}");
+        assertThat(definition.managerSpecialistId())
+            .isEqualTo(AccountResolverSpecialists.CHAIN_MANAGER_ID);
+        assertThat(definition.inputType())
+            .isEqualTo(AccountDelegationCoordinatorRequest.class);
+        assertThat(definition.conversationPolicy())
+            .isEqualTo(
+                ai.fabric.execution.chain.SpecialistChainConversationPolicy
+                    .REQUIRED
+            );
+        assertThat(definition.targets())
+            .extracting(target -> target.specialistId())
+            .containsExactly(
+                AccountResolverSpecialists.MANAGER_READ_SPECIALIST_ID,
+                AccountResolverSpecialists.MANAGER_BILLING_ADVISOR_ID
+            );
+        assertThat(definition.targets())
+            .allSatisfy(target -> {
+                assertThat(target.delegationAllowed()).isTrue();
+                assertThat(target.parallelEligible()).isTrue();
+                assertThat(target.handoffAllowed()).isTrue();
+            });
+        assertThat(definition.limits().maxManagerDecisions()).isEqualTo(4);
+        assertThat(definition.limits().maxWorkerInvocations()).isEqualTo(2);
+        assertThat(definition.limits().maxParallelWorkers()).isEqualTo(2);
+
+        SpecialistDefinition<JsonNode, JsonNode> manager = definition(
+            AccountResolverSpecialists.CHAIN_MANAGER_ID
+        );
+        assertThat(manager.executionProfile().writeEnabled()).isFalse();
+        assertThat(manager.executionProfile()
+            .requestedCapabilities().visibleActions()).isEmpty();
+        assertThat(manager.instructions().render())
+            .contains("Coordinate one bounded, read-only")
+            .contains("approvedTargets is the complete exact-version catalog")
+            .contains("Never execute, propose, confirm, approve")
+            .contains("HANDOFF")
+            .contains("terminal");
     }
 
     @Test

@@ -1268,6 +1268,62 @@ or governance evidence.
 - Do not let semantic search receive raw email/phone/SSN queries.
 - Do not hide PII detection failures behind generic "safe" UI labels.
 
+## Lesson: A Specialist Chain Needs Semantic And Identity Proof
+
+### Symptom
+
+A chain manager can return schema-valid JSON while still choosing the wrong
+domain worker. Separately, changing a referenced prompt or schema can leave a
+manifest's raw YAML hash unchanged even though its executable behavior changed.
+
+### Root Cause
+
+JSON Schema proves shape, not business intent. A closed target enum prevents an
+invented specialist from executing, but it does not by itself stop a model from
+substituting another approved worker when the user explicitly requested no
+worker. Also, a manifest is only one part of a compiled specialist: referenced
+prompt, input-schema, and output-schema content are executable dependencies.
+
+### Fix Pattern
+
+- Give a manager an explicit classification and decision contract tied to the
+  original user request, completed safe projections, and current approved
+  targets.
+- Treat requests to invoke, delegate, hand off, select, exclude, or bypass a
+  worker as capability-control language. Do not infer domain intent from names
+  inside that language.
+- Keep the manager target catalog server-owned and exact-versioned. Unsupported
+  or excluded targets must complete or fail safely, never trigger a convenient
+  approved substitute.
+- Validate transition shape in Java. A correction attempt may describe only the
+  safe failure category and required shape; never echo rejected model content.
+- Compute manifest specialist identity over the raw manifest hash plus the
+  fully resolved prompt profile, input schema, and output schema.
+- Prove semantic routes with a live provider matrix: one worker, parallel,
+  adaptive sequential, clarification, no worker, terminal handoff, and hostile
+  target pressure. Keep deterministic tests for every policy and persistence
+  boundary.
+- Return application-projected facts and evidence IDs to the manager and UI.
+  Do not expose raw worker/provider payloads as chain context or public output.
+
+### Operational Consequence
+
+A prompt-only or schema-only deployment now has a new specialist content hash.
+Durable work created under an older effective definition must fail closed after
+the change, or be deliberately drained and recreated. This is safer than
+resuming protected work under behavior that was incorrectly identified as the
+same specialist.
+
+### What Not To Do
+
+- Do not treat schema-valid manager output as proof that worker selection was
+  semantically correct.
+- Do not route with browser-selected workers or text matching hidden behind a
+  polished scenario button.
+- Do not hash only the top-level manifest when it references mutable resources.
+- Do not add a fallback worker when the provider makes a bad decision; expose
+  the failure and improve the bounded prompt/validator contract.
+
 ## Quick Triage Checklist
 
 ### Orchestration Error Before Any AI Response
@@ -1349,3 +1405,7 @@ Check in this order:
 - Payment capture belongs outside the LLM/action text path; pass only safe tokens or metadata.
 - Conversation memory belongs in `ai-fabric-chat-session` when available; the browser sends the new
   turn and stable conversation identifiers, not prior prompt history.
+- A manifest specialist's identity includes its resolved prompt and input/output schemas, not only
+  the top-level manifest file.
+- Structured output validates shape; live provider scenarios are still required to prove semantic
+  manager routing.

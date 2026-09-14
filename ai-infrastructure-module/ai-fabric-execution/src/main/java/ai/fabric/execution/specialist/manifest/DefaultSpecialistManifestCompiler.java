@@ -170,7 +170,12 @@ public final class DefaultSpecialistManifestCompiler
                 new RegisteredSpecialist(
                     definition,
                     SpecialistDefinitionSource.MANIFEST,
-                    context.contentHash(),
+                    effectiveContentHash(
+                        context,
+                        prompt,
+                        inputSchema,
+                        outputSchema
+                    ),
                     context.source(),
                     metadata.labels()
                 ),
@@ -186,6 +191,29 @@ public final class DefaultSpecialistManifestCompiler
                 ex
             );
         }
+    }
+
+    private String effectiveContentHash(
+        SpecialistCompilationContext context,
+        SpecialistPromptProfile prompt,
+        SpecialistSchemaDefinition inputSchema,
+        SpecialistSchemaDefinition outputSchema
+    ) {
+        var fingerprint = context.objectMapper().createObjectNode();
+        fingerprint.put("manifestContentHash", context.contentHash());
+        fingerprint.set(
+            "promptProfile",
+            context.objectMapper().valueToTree(prompt)
+        );
+        fingerprint.set(
+            "inputSchema",
+            context.objectMapper().valueToTree(inputSchema)
+        );
+        fingerprint.set(
+            "outputSchema",
+            context.objectMapper().valueToTree(outputSchema)
+        );
+        return context.canonicalJson().hash(fingerprint);
     }
 
     private void validateEnvelope(

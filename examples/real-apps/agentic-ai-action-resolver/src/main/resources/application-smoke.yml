@@ -1,4 +1,6 @@
 ai:
+  providers:
+    llm-provider: account-resolver-smoke
   execution:
     async:
       encryption-secret: smoke-agentic-async-encryption-key-local-only-0001
@@ -14,6 +16,18 @@ ai:
       initialize-schema: true
       encryption-secret: smoke-agentic-review-encryption-key-local-only-0001
       fingerprint-secret: smoke-agentic-review-fingerprint-key-local-only-0002
+    specialist-chains:
+      enabled: true
+      durable-enabled: true
+      allow-ephemeral: false
+      initialize-schema: true
+      encryption-secret: smoke-account-chain-encryption-secret-local-only-0001
+      fingerprint-secret: smoke-account-chain-fingerprint-secret-local-only-0002
+  orchestration:
+    modes:
+      resolver:
+        rag:
+          similarity-threshold: 0.0
 app:
   agentic-resolver:
     reviews:

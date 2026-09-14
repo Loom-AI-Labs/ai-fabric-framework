@@ -47,6 +47,27 @@ ai:
       retention: ${AI_EXECUTION_ASYNC_RETENTION:P30D}
       encryption-secret: ${AI_EXECUTION_ASYNC_ENCRYPTION_SECRET:${ai.execution.receipts.encryption-secret:}}
       fingerprint-secret: ${AI_EXECUTION_ASYNC_FINGERPRINT_SECRET:${ai.execution.receipts.fingerprint-secret:}}
+    specialist-chains:
+      enabled: ${AI_SPECIALIST_CHAINS_ENABLED:true}
+      max-active: ${AI_SPECIALIST_CHAINS_MAX_ACTIVE:250}
+      max-duration: ${AI_SPECIALIST_CHAINS_MAX_DURATION:PT75S}
+      max-manager-decisions: 4
+      max-worker-invocations: 2
+      max-parallel-workers: 2
+      max-invocations-per-target: 1
+      max-projected-result-characters: 8000
+      max-directive-corrections: 1
+      durable-enabled: ${AI_SPECIALIST_CHAINS_DURABLE_ENABLED:true}
+      allow-ephemeral: ${AI_SPECIALIST_CHAINS_ALLOW_EPHEMERAL:false}
+      initialize-schema: ${AI_SPECIALIST_CHAINS_INITIALIZE_SCHEMA:true}
+      lease-duration: ${AI_SPECIALIST_CHAINS_LEASE_DURATION:PT2M}
+      recovery-interval: ${AI_SPECIALIST_CHAINS_RECOVERY_INTERVAL:PT30S}
+      recovery-batch-size: ${AI_SPECIALIST_CHAINS_RECOVERY_BATCH_SIZE:50}
+      max-attempts: ${AI_SPECIALIST_CHAINS_MAX_ATTEMPTS:3}
+      cleanup-enabled: ${AI_SPECIALIST_CHAINS_CLEANUP_ENABLED:true}
+      retention: ${AI_SPECIALIST_CHAINS_RETENTION:P7D}
+      encryption-secret: ${AI_SPECIALIST_CHAIN_ENCRYPTION_SECRET:}
+      fingerprint-secret: ${AI_SPECIALIST_CHAIN_FINGERPRINT_SECRET:}
     receipts:
       enabled: true
       repository: JDBC

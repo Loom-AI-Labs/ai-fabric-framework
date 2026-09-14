@@ -2,9 +2,9 @@
 
 ## Purpose
 
-This runbook lets LoomAI adopt AI Fabric `0.6.0` bounded multi-specialist
-chains without replacing existing specialist, plan, action, RAG, or chat
-behavior.
+This runbook lets LoomAI adopt the bounded multi-specialist chains introduced
+in AI Fabric `0.6.0` through the current `0.6.1` patch release, without
+replacing existing specialist, plan, action, RAG, or chat behavior.
 
 The capability is opt-in. Upgrade first with chains disabled, prove all
 existing LoomAI flows, then enable one read-only canary chain.
@@ -26,14 +26,14 @@ chain worker.
 
 ## Phase 1: Upgrade With The Feature Off
 
-1. Import the published `0.6.0` BOM after Maven Central verification.
+1. Import the published `0.6.1` BOM after Maven Central verification.
 2. Keep `ai.execution.specialist-chains.enabled=false`.
 3. Compile the entire platform and every deployed application.
 4. Run existing indexing, Data Sync, RAG, chat, action, receipt, review,
    specialist, plan, delegation, and handoff tests.
 5. Verify deployed health reports the expected AI Fabric version and immutable
    application commit.
-6. Choose the structured-output attempt budget explicitly. AI Fabric `0.6.0`
+6. Choose the structured-output attempt budget explicitly. AI Fabric `0.6.1`
    defaults `ai.execution.output-finalization.max-attempts` to `2`; use `1` if
    LoomAI must preserve the prior single-generation behavior and cost profile.
 
@@ -66,7 +66,7 @@ worker specialists. The manager manifest must use the strict
 `SpecialistChainDirective` JSON Schema and enumerate only the canary's exact
 worker IDs.
 
-AI Fabric `0.6.0` intentionally has no YAML chain manifest. Register the chain
+AI Fabric `0.6.x` intentionally has no YAML chain manifest. Register the chain
 as an application Java bean referencing registered mapper/projector components.
 Do not create a LoomAI-only YAML contract, reflection bridge, or ignored
 configuration fields.
@@ -81,6 +81,20 @@ control remains the authority for:
 - component IDs;
 - limits; and
 - conversation policy.
+
+### Manifest identity migration in 0.6.1
+
+AI Fabric `0.6.1` makes a manifest-defined specialist's effective identity
+include the exact resolved prompt profile plus the resolved input and output
+schemas. This closes a reproducibility gap: changing a referenced resource now
+changes the specialist hash even if the top-level YAML is unchanged.
+
+For a fresh LoomAI chain adoption, no data migration is needed. If LoomAI has
+already persisted `0.6.0` executions that reference manifest-defined
+specialists, stop new submissions and drain or explicitly cancel those records
+before replacing the runtime. Do not relabel old executions with the new hash.
+Retain the old runtime and secrets until every retained `0.6.0` execution is
+terminal or outside the required audit window.
 
 ## Phase 4: Install Durable Storage
 
@@ -225,7 +239,7 @@ receipt, review, delegation, handoff, or fixed-plan state.
 
 LoomAI may enable the canary for production traffic only when it records:
 
-- published `0.6.0` Maven Central resolution;
+- published `0.6.1` Maven Central resolution;
 - immutable framework tag and checksum;
 - full platform compile and deterministic tests;
 - keyed provider matrix result;

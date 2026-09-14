@@ -6,10 +6,10 @@
 #
 # From repo root:
 # docker build -f examples/real-apps/agentic-ai-action-resolver/Dockerfile \
-#   --build-arg AI_FABRIC_VERSION=0.6.0 \
-#   -t agentic-ai-action-resolver:0.6.0 .
+#   --build-arg AI_FABRIC_VERSION=0.6.1 \
+#   -t agentic-ai-action-resolver:0.6.1 .
 
-ARG AI_FABRIC_VERSION=0.6.0
+ARG AI_FABRIC_VERSION=0.6.1
 ARG APP_VERSION=1.0.0-SNAPSHOT
 ARG SOURCE_COMMIT=
 ARG SOURCE_BRANCH=

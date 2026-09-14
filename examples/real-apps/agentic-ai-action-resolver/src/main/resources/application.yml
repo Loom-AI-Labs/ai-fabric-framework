@@ -82,6 +82,27 @@ ai:
       max-duration: ${AI_EXECUTION_MANAGER_MAX_DURATION:PT1M}
       max-active: ${AI_EXECUTION_MANAGER_MAX_ACTIVE:500}
       result-ttl: ${AI_EXECUTION_MANAGER_RESULT_TTL:PT15M}
+    specialist-chains:
+      enabled: ${AI_SPECIALIST_CHAINS_ENABLED:false}
+      max-active: ${AI_SPECIALIST_CHAINS_MAX_ACTIVE:250}
+      max-duration: PT75S
+      max-manager-decisions: 4
+      max-worker-invocations: 2
+      max-parallel-workers: 2
+      max-invocations-per-target: 1
+      max-projected-result-characters: 8000
+      max-directive-corrections: 1
+      durable-enabled: ${AI_SPECIALIST_CHAINS_DURABLE_ENABLED:true}
+      allow-ephemeral: ${AI_SPECIALIST_CHAINS_ALLOW_EPHEMERAL:false}
+      initialize-schema: ${AI_SPECIALIST_CHAINS_INITIALIZE_SCHEMA:true}
+      lease-duration: PT2M
+      recovery-interval: PT30S
+      recovery-batch-size: 50
+      max-attempts: 3
+      cleanup-enabled: true
+      retention: P7D
+      encryption-secret: ${AI_SPECIALIST_CHAIN_ENCRYPTION_SECRET:}
+      fingerprint-secret: ${AI_SPECIALIST_CHAIN_FINGERPRINT_SECRET:}
     receipts:
       enabled: true
       repository: JDBC

@@ -14,6 +14,7 @@ import ai.fabric.dto.AIGenerationRequest;
 import ai.fabric.dto.AIGenerationResponse;
 import ai.fabric.evidence.AIEvidenceReference;
 import ai.fabric.execution.specialist.ExecutionStrategy;
+import ai.fabric.execution.specialist.JsonSchemaOutputContract;
 import ai.fabric.execution.specialist.SpecialistDefinition;
 import ai.fabric.execution.specialist.SpecialistExecutionProfile;
 import ai.fabric.execution.specialist.SpecialistId;
@@ -26,6 +27,7 @@ import ai.fabric.execution.specialist.SpecialistOutputMode;
 import ai.fabric.execution.specialist.SpecialistWritePolicy;
 import ai.fabric.execution.specialist.manifest.DefaultSpecialistManifestCompiler;
 import ai.fabric.execution.specialist.manifest.ManifestTestFixtures;
+import ai.fabric.execution.specialist.manifest.SpecialistSchemaId;
 import ai.fabric.intent.orchestration.OrchestrationContext;
 import ai.fabric.intent.orchestration.OrchestrationResult;
 import ai.fabric.intent.orchestration.OrchestrationResultType;
@@ -85,6 +87,14 @@ class DefaultStructuredSpecialistOutputFinalizerTest {
             .generateContent(request.capture(), eq(LlmPurpose.GENERATION));
         assertThat(request.getValue().getSystemPrompt())
             .contains("untrusted data")
+            .contains("schema-validated application input")
+            .contains("requested")
+            .contains("operation and supplied parameters")
+            .contains("never grants")
+            .contains("Follow the server-owned specialist instructions")
+            .contains("only supplied grounding for claims")
+            .contains("Do not infer a domain operation solely from names")
+            .contains("silently substituted with a different approved operation")
             .contains("READ_ACTION_FACTS")
             .contains("authoritative server-produced application state")
             .contains("a requirement alone")
@@ -282,6 +292,64 @@ class DefaultStructuredSpecialistOutputFinalizerTest {
             .doesNotContain("private-value");
     }
 
+    @Test
+    void givesChainDirectiveRetryShapeWithoutEchoingRejectedContent() {
+        AICoreService aiCoreService = mock(AICoreService.class);
+        when(aiCoreService.generateContent(any(), eq(LlmPurpose.GENERATION)))
+            .thenReturn(
+                AIGenerationResponse.builder()
+                    .content("""
+                        {
+                          "type": "INVOKE_ONE",
+                          "targets": [{
+                            "targetSpecialist": "account-reader@1",
+                            "objective": "Inspect readiness."
+                          }],
+                          "message": null,
+                          "reason": "Inspect the account.",
+                          "supportingResultIds": ["private-result-id"]
+                        }
+                        """)
+                    .build(),
+                AIGenerationResponse.builder()
+                    .content("""
+                        {
+                          "type": "INVOKE_ONE",
+                          "targets": [{
+                            "targetSpecialist": "account-reader@1",
+                            "objective": "Inspect readiness."
+                          }],
+                          "message": null,
+                          "reason": "Inspect the account.",
+                          "supportingResultIds": []
+                        }
+                        """)
+                    .build()
+            );
+
+        SpecialistOutputFinalization<JsonNode> finalized =
+            finalizer(aiCoreService).finalizeOutput(
+                chainDirectiveDefinition(),
+                "Inspect my account.",
+                OrchestrationContext.builder().build(),
+                successfulResult(),
+                List.of()
+            );
+
+        assertThat(finalized.output().path("type").asText())
+            .isEqualTo("INVOKE_ONE");
+        assertThat(finalized.output().path("supportingResultIds")).isEmpty();
+        ArgumentCaptor<AIGenerationRequest> requests =
+            ArgumentCaptor.forClass(AIGenerationRequest.class);
+        org.mockito.Mockito.verify(aiCoreService, times(2))
+            .generateContent(requests.capture(), eq(LlmPurpose.GENERATION));
+        assertThat(requests.getAllValues().get(1).getPrompt())
+            .contains("For a bounded chain directive")
+            .contains("INVOKE_ONE and HANDOFF have exactly one target")
+            .contains("supportingResultIds=[]")
+            .doesNotContain("private-result-id");
+    }
+
     private DefaultStructuredSpecialistOutputFinalizer finalizer(
         AICoreService aiCoreService
     ) {
@@ -369,6 +437,99 @@ class DefaultStructuredSpecialistOutputFinalizerTest {
                     if (output.summary() == null || output.summary().isBlank()) {
                         throw new IllegalArgumentException(
                             "summary is required"
+                        );
+                    }
+                }
+            }
+        );
+    }
+
+    private SpecialistDefinition<JsonNode, JsonNode>
+        chainDirectiveDefinition() {
+        var properties = objectMapper.createObjectNode();
+        properties.set("type", objectMapper.createObjectNode());
+        properties.set("targets", objectMapper.createObjectNode());
+        properties.set("message", objectMapper.createObjectNode());
+        properties.set("reason", objectMapper.createObjectNode());
+        properties.set(
+            "supportingResultIds",
+            objectMapper.createObjectNode()
+        );
+        var schema = objectMapper.createObjectNode();
+        schema.set("properties", properties);
+
+        return new SpecialistDefinition<>(
+            new SpecialistIdentity(
+                SpecialistId.of("chain-manager", "1"),
+                "Chain Manager",
+                "Selects one approved worker"
+            ),
+            new SpecialistInstructions(
+                "Select one approved worker.",
+                "Return one bounded directive."
+            ),
+            new SpecialistExecutionProfile(
+                "resolver",
+                new RequestedCapabilityProfile(
+                    false,
+                    Set.of(),
+                    Set.of(),
+                    Set.of(),
+                    Set.of()
+                ),
+                ExecutionStrategy.SINGLE_PASS,
+                SpecialistWritePolicy.DISABLED
+            ),
+            new SpecialistLimits(Duration.ofSeconds(30), 2_000, 3_000, 4),
+            new SpecialistInputAdapter<>() {
+                @Override
+                public Class<JsonNode> inputType() {
+                    return JsonNode.class;
+                }
+
+                @Override
+                public void validate(JsonNode input) {}
+
+                @Override
+                public String renderModelInput(JsonNode input) {
+                    return input.toString();
+                }
+            },
+            new SpecialistOutputAdapter<>() {
+                @Override
+                public Class<JsonNode> outputType() {
+                    return JsonNode.class;
+                }
+
+                @Override
+                public SpecialistOutputMode outputMode() {
+                    return SpecialistOutputMode.STRUCTURED_GENERATION;
+                }
+
+                @Override
+                public JsonSchemaOutputContract outputContract() {
+                    return new JsonSchemaOutputContract(
+                        new SpecialistSchemaId("chain-directive", "1"),
+                        schema,
+                        "Return one bounded chain directive."
+                    );
+                }
+
+                @Override
+                public JsonNode project(
+                    OrchestrationResult result,
+                    List<AIEvidenceReference> evidence
+                ) {
+                    throw new UnsupportedOperationException();
+                }
+
+                @Override
+                public void validate(JsonNode output) {
+                    if ("INVOKE_ONE".equals(output.path("type").asText())
+                        && !output.path("supportingResultIds").isEmpty()) {
+                        throw new IllegalArgumentException(
+                            "supporting results are invalid at "
+                                + "/supportingResultIds"
                         );
                     }
                 }

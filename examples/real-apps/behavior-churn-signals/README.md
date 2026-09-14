@@ -383,10 +383,10 @@ Build from the repo root:
 
 ```bash
 docker build -f examples/real-apps/behavior-churn-signals/Dockerfile \
-  --build-arg AI_FABRIC_VERSION=0.6.0 \
+  --build-arg AI_FABRIC_VERSION=0.6.1 \
   --build-arg SOURCE_COMMIT="$(git rev-parse --short HEAD)" \
   --build-arg SOURCE_BRANCH="$(git branch --show-current)" \
-  -t ai-fabric-behavior-churn-signals:0.6.0 \
+  -t ai-fabric-behavior-churn-signals:0.6.1 \
   examples/real-apps
 ```
 
@@ -396,7 +396,7 @@ Run the image:
 docker run --rm -p 8097:8097 \
   -e PORT=8097 \
   -e CORS_ALLOWED_ORIGINS=https://ai-fabric.dev \
-  ai-fabric-behavior-churn-signals:0.6.0
+  ai-fabric-behavior-churn-signals:0.6.1
 ```
 
 Then verify the running container:

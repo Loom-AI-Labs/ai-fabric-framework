@@ -26,7 +26,8 @@ class SpecialistRegistryBootstrapTest {
                 assertThat(registered.source())
                     .isEqualTo(SpecialistDefinitionSource.MANIFEST);
                 assertThat(registered.contentHash())
-                    .isEqualTo(ManifestTestFixtures.HASH);
+                    .matches("[a-f0-9]{64}")
+                    .isNotEqualTo(ManifestTestFixtures.HASH);
             });
         assertThat(bootstrap.status().ready()).isTrue();
         assertThat(bootstrap.status().manifestDefinitionCount()).isEqualTo(1);

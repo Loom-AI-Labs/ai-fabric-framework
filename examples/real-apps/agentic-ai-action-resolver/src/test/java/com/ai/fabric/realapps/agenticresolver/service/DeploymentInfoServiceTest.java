@@ -2,9 +2,14 @@ package com.ai.fabric.realapps.agenticresolver.service;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.when;
 
 import ai.fabric.execution.action.ActionProposalReceiptRepository;
+import ai.fabric.execution.chain.RegisteredSpecialistChain;
+import ai.fabric.execution.chain.SpecialistChainDefinition;
+import ai.fabric.execution.chain.SpecialistChainRegistry;
+import ai.fabric.execution.chain.state.JdbcSpecialistChainExecutionRepository;
 import ai.fabric.execution.config.AIExecutionProperties;
 import ai.fabric.execution.gateway.AIExecutionGateway;
 import ai.fabric.execution.gateway.AIInteractiveExecutionGateway;
@@ -20,6 +25,7 @@ import ai.fabric.execution.specialist.manifest.SpecialistManifestRuntimeStatus;
 import ai.fabric.execution.state.DurableExecutionRepository;
 import ai.fabric.provider.AIProvider;
 import com.ai.fabric.realapps.agenticresolver.agentic.AccountResolverSpecialists;
+import com.ai.fabric.realapps.agenticresolver.agentic.AccountSpecialistChains;
 import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
@@ -93,6 +99,31 @@ class DeploymentInfoServiceTest {
         );
         executionProperties.getPlans().setParallelEnabled(true);
         executionProperties.getPlans().setMaxParallelBranches(2);
+        executionProperties.getSpecialistChains().setEnabled(true);
+        SpecialistChainRegistry chainRegistry = mock(
+            SpecialistChainRegistry.class
+        );
+        RegisteredSpecialistChain registeredChain = mock(
+            RegisteredSpecialistChain.class
+        );
+        SpecialistChainDefinition<?> chainDefinition = mock(
+            SpecialistChainDefinition.class
+        );
+        when(registeredChain.id()).thenReturn(
+            AccountSpecialistChains.SMART_RESOLUTION
+        );
+        when(registeredChain.contentHash()).thenReturn("c".repeat(64));
+        doReturn(chainDefinition).when(registeredChain).definition();
+        when(chainDefinition.managerSpecialistId()).thenReturn(
+            AccountResolverSpecialists.CHAIN_MANAGER_ID
+        );
+        when(chainDefinition.targets()).thenReturn(List.of());
+        when(chainDefinition.conversationPolicy()).thenReturn(
+            ai.fabric.execution.chain.SpecialistChainConversationPolicy.REQUIRED
+        );
+        when(chainRegistry.list()).thenReturn(List.of(registeredChain));
+        when(chainRegistry.find(AccountSpecialistChains.SMART_RESOLUTION))
+            .thenReturn(Optional.of(registeredChain));
         Map<String, Object> health = new DeploymentInfoService(
             environment,
             List.of(provider),
@@ -103,6 +134,8 @@ class DeploymentInfoServiceTest {
             mock(ConversationManagerGateway.class),
             emptyManagerRegistry(),
             registry,
+            Optional.of(chainRegistry),
+            Optional.of(mock(JdbcSpecialistChainExecutionRepository.class)),
             mock(ActionProposalReceiptRepository.class),
             Optional.of(mock(DurableExecutionRepository.class)),
             executionProperties,
@@ -148,6 +181,13 @@ class DeploymentInfoServiceTest {
                     .containsEntry("parallelPlansEnabled", true)
                     .containsEntry("maxParallelBranches", 2)
                     .containsEntry("plans", List.of())
+                    .containsEntry("specialistChainsEnabled", true)
+                    .containsEntry("specialistChainsReady", true)
+                    .containsEntry("specialistChainDurability", "JDBC")
+                    .containsEntry(
+                        "accountSmartResolutionChainRegistered",
+                        true
+                    )
                     .containsEntry("asyncDurability", "DURABLE")
                     .containsEntry("durableAsyncStateReady", true)
                     .containsEntry("writeReceiptDurability", "JDBC")
