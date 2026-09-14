@@ -124,9 +124,11 @@ public final class SpecialistJsonSchemaValidator {
     }
 
     private String safeLocation(Error error) {
-        return error != null && error.getInstanceLocation() != null
-            ? error.getInstanceLocation().toString()
-            : "/";
+        if (error == null || error.getInstanceLocation() == null) {
+            return "/";
+        }
+        String location = error.getInstanceLocation().toString();
+        return location == null || location.isBlank() ? "/" : location;
     }
 
     private SpecialistManifestException failure(

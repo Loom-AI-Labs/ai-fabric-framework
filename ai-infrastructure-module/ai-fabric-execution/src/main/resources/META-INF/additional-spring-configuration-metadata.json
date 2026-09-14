@@ -1,6 +1,12 @@
 {
   "properties": [
     {
+      "name": "ai.execution.output-finalization.max-attempts",
+      "type": "java.lang.Integer",
+      "description": "Maximum bounded structured-generation attempts after parse or validation failure. Provider call failures are not retried and no deterministic fallback is produced.",
+      "defaultValue": 2
+    },
+    {
       "name": "ai.execution.manifests.enabled",
       "type": "java.lang.Boolean",
       "description": "Load versioned specialist manifests, schemas, and prompt profiles during application startup.",
@@ -28,6 +34,124 @@
       "type": "java.lang.Integer",
       "description": "Maximum byte size of one configured specialist resource file.",
       "defaultValue": 65536
+    },
+    {
+      "name": "ai.execution.specialist-chains.enabled",
+      "type": "java.lang.Boolean",
+      "description": "Enable the opt-in bounded multi-specialist chain runtime.",
+      "defaultValue": false
+    },
+    {
+      "name": "ai.execution.specialist-chains.max-active",
+      "type": "java.lang.Integer",
+      "description": "Maximum non-terminal chain executions retained by this application instance.",
+      "defaultValue": 250
+    },
+    {
+      "name": "ai.execution.specialist-chains.max-duration",
+      "type": "java.time.Duration",
+      "description": "Deployment ceiling for one bounded chain deadline.",
+      "defaultValue": "PT2M"
+    },
+    {
+      "name": "ai.execution.specialist-chains.max-manager-decisions",
+      "type": "java.lang.Integer",
+      "description": "Deployment ceiling for manager decisions in one chain, including final completion.",
+      "defaultValue": 4
+    },
+    {
+      "name": "ai.execution.specialist-chains.max-worker-invocations",
+      "type": "java.lang.Integer",
+      "description": "Deployment ceiling for read-only worker invocations in one chain.",
+      "defaultValue": 4
+    },
+    {
+      "name": "ai.execution.specialist-chains.max-parallel-workers",
+      "type": "java.lang.Integer",
+      "description": "Deployment ceiling for one ALL_REQUIRED parallel worker group.",
+      "defaultValue": 3
+    },
+    {
+      "name": "ai.execution.specialist-chains.max-invocations-per-target",
+      "type": "java.lang.Integer",
+      "description": "Per-target invocation ceiling. The first release requires exactly one.",
+      "defaultValue": 1
+    },
+    {
+      "name": "ai.execution.specialist-chains.max-projected-result-characters",
+      "type": "java.lang.Integer",
+      "description": "Maximum approved projected worker-result characters exposed to later manager decisions.",
+      "defaultValue": 12000
+    },
+    {
+      "name": "ai.execution.specialist-chains.max-directive-corrections",
+      "type": "java.lang.Integer",
+      "description": "Maximum bounded runtime-feedback retries for a manager directive that selects an exhausted target or supplies incorrect final result attribution.",
+      "defaultValue": 1
+    },
+    {
+      "name": "ai.execution.specialist-chains.durable-enabled",
+      "type": "java.lang.Boolean",
+      "description": "Use a durable SpecialistChainExecutionRepository. The provided production adapter requires Spring JDBC and a DataSource.",
+      "defaultValue": false
+    },
+    {
+      "name": "ai.execution.specialist-chains.allow-ephemeral",
+      "type": "java.lang.Boolean",
+      "description": "Explicitly acknowledge process-local chain state for tests or read-only experiments.",
+      "defaultValue": false
+    },
+    {
+      "name": "ai.execution.specialist-chains.initialize-schema",
+      "type": "java.lang.Boolean",
+      "description": "Create the JDBC chain table at startup. Intended for tests and self-contained demos; production applications should own migrations.",
+      "defaultValue": false
+    },
+    {
+      "name": "ai.execution.specialist-chains.lease-duration",
+      "type": "java.time.Duration",
+      "description": "Lease duration for one claimed chain continuation.",
+      "defaultValue": "PT2M"
+    },
+    {
+      "name": "ai.execution.specialist-chains.recovery-interval",
+      "type": "java.time.Duration",
+      "description": "Interval between abandoned-chain and retention scans.",
+      "defaultValue": "PT30S"
+    },
+    {
+      "name": "ai.execution.specialist-chains.recovery-batch-size",
+      "type": "java.lang.Integer",
+      "description": "Maximum chain records considered in one recovery or cleanup scan.",
+      "defaultValue": 50
+    },
+    {
+      "name": "ai.execution.specialist-chains.max-attempts",
+      "type": "java.lang.Integer",
+      "description": "Maximum durable continuation claims before a chain fails visibly.",
+      "defaultValue": 3
+    },
+    {
+      "name": "ai.execution.specialist-chains.cleanup-enabled",
+      "type": "java.lang.Boolean",
+      "description": "Delete terminal chain records after the configured retention period.",
+      "defaultValue": false
+    },
+    {
+      "name": "ai.execution.specialist-chains.retention",
+      "type": "java.time.Duration",
+      "description": "Retention period for terminal durable chain records when cleanup is enabled.",
+      "defaultValue": "P30D"
+    },
+    {
+      "name": "ai.execution.specialist-chains.encryption-secret",
+      "type": "java.lang.String",
+      "description": "Stable secret used to encrypt durable request, checkpoint, and result state. Must contain at least 32 characters."
+    },
+    {
+      "name": "ai.execution.specialist-chains.fingerprint-secret",
+      "type": "java.lang.String",
+      "description": "Stable distinct secret used for keyed chain access, idempotency, and request fingerprints. Must contain at least 32 characters."
     },
     {
       "name": "ai.execution.reviews.enabled",

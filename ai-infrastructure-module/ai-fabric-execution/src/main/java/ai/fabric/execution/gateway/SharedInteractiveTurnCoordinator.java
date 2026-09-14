@@ -156,6 +156,17 @@ public final class SharedInteractiveTurnCoordinator {
         }
     }
 
+    ConversationBinding approveInvocation(
+        ConversationBinding binding,
+        ApprovedConversationSnapshot snapshot
+    ) {
+        return snapshotRegistry.approve(binding, snapshot);
+    }
+
+    void releaseInvocation(ConversationBinding binding) {
+        snapshotRegistry.release(binding);
+    }
+
     private AIExecutionFailure validateRequest(
         TrustedExecutionContext trustedContext,
         ConversationBinding binding,

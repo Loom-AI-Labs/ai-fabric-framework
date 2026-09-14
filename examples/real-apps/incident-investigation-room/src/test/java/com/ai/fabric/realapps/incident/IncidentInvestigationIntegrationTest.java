@@ -12,6 +12,8 @@ import com.ai.fabric.realapps.incident.service.IncidentDemoSessionRepository;
 import com.ai.fabric.realapps.incident.service.IncidentInvocationMetrics;
 import com.ai.fabric.realapps.incident.service.IncidentSessionService;
 import jakarta.persistence.EntityManager;
+import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -19,6 +21,7 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 
 @SpringBootTest(properties = {
     "spring.datasource.url=jdbc:h2:mem:incident-integration;DB_CLOSE_DELAY=-1",
@@ -55,15 +58,326 @@ class IncidentInvestigationIntegrationTest {
         mockMvc.perform(get("/api/demo/health"))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.status").value("UP"))
-            .andExpect(jsonPath("$.specialists.length()").value(8))
+            .andExpect(jsonPath("$.specialists.length()").value(9))
             .andExpect(jsonPath("$.specialists[0].contentHash").isNotEmpty())
             .andExpect(jsonPath("$.plans.length()").value(4))
+            .andExpect(jsonPath("$.chains.length()").value(1))
+            .andExpect(jsonPath("$.chains[0].id")
+                .value("incident-smart-investigation@1"))
+            .andExpect(jsonPath("$.chainsReady").value(true))
             .andExpect(jsonPath("$.actions.length()").value(4))
             .andExpect(jsonPath("$.runbooks.state").value("READY"))
             .andExpect(jsonPath("$.provider.generation")
                 .value("incident-smoke"))
             .andExpect(jsonPath("$.provider.ready").value(true))
-            .andExpect(jsonPath("$.storage.domain").value("UP"));
+            .andExpect(jsonPath("$.storage.domain").value("UP"))
+            .andExpect(jsonPath("$.storage.specialistChains")
+                .value("JDBC"));
+    }
+
+    @Test
+    void smartInvestigationSelectsOnlyHealthForPureHealthRequest()
+        throws Exception {
+        String sessionId = createSession("checkout-regression");
+
+        mockMvc.perform(smartInvestigation(
+                sessionId,
+                "smart-health-1",
+                "Check current service latency and errors."
+            ))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.status").value("COMPLETED"))
+            .andExpect(jsonPath("$.durable").value(true))
+            .andExpect(jsonPath("$.results.length()").value(1))
+            .andExpect(jsonPath("$.results[0].specialist")
+                .value("service-health-reader@2"))
+            .andExpect(jsonPath("$.timeline[0].directiveType")
+                .value("INVOKE_ONE"))
+            .andExpect(jsonPath("$.timeline[0].workers.length()").value(1))
+            .andExpect(jsonPath("$.timeline[1].directiveType")
+                .value("COMPLETE"));
+    }
+
+    @Test
+    void smartInvestigationAdaptsAfterHealthResult() throws Exception {
+        String sessionId = createSession("inventory-pressure");
+
+        mockMvc.perform(smartInvestigation(
+                sessionId,
+                "smart-adaptive-1",
+                "Why is inventory allocation timing out? Investigate the likely cause."
+            ))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.status").value("COMPLETED"))
+            .andExpect(jsonPath("$.results.length()").value(2))
+            .andExpect(jsonPath("$.results[0].specialist")
+                .value("service-health-reader@2"))
+            .andExpect(jsonPath("$.results[1].specialist")
+                .value("change-risk-reader@2"))
+            .andExpect(jsonPath("$.timeline[0].directiveType")
+                .value("INVOKE_ONE"))
+            .andExpect(jsonPath("$.timeline[1].directiveType")
+                .value("INVOKE_ONE"))
+            .andExpect(jsonPath("$.timeline[2].directiveType")
+                .value("COMPLETE"));
+    }
+
+    @Test
+    void smartInvestigationRunsIndependentReadersInParallel()
+        throws Exception {
+        String sessionId = createSession("checkout-regression");
+
+        mockMvc.perform(smartInvestigation(
+                sessionId,
+                "smart-parallel-1",
+                "Checkout degraded after deployment. Investigate both health and change risk."
+            ))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.status").value("COMPLETED"))
+            .andExpect(jsonPath("$.results.length()").value(2))
+            .andExpect(jsonPath("$.timeline[0].directiveType")
+                .value("INVOKE_PARALLEL"))
+            .andExpect(jsonPath("$.timeline[0].parallelGroupId")
+                .isNotEmpty())
+            .andExpect(jsonPath("$.timeline[0].workers.length()").value(2))
+            .andExpect(jsonPath("$.timeline[0].workers[0].specialist")
+                .value("service-health-reader@2"))
+            .andExpect(jsonPath("$.timeline[0].workers[1].specialist")
+                .value("change-risk-reader@2"));
+    }
+
+    @Test
+    void smartInvestigationCanClarifyOrCompleteWithoutWorker()
+        throws Exception {
+        String clarifySession = createSession("checkout-regression");
+        mockMvc.perform(smartInvestigation(
+                clarifySession,
+                "smart-clarify-1",
+                "Something is wrong."
+            ))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.status").value("ASKED_USER"))
+            .andExpect(jsonPath("$.results.length()").value(0))
+            .andExpect(jsonPath("$.timeline[0].workers.length()").value(0));
+
+        String completeSession = createSession("checkout-regression");
+        mockMvc.perform(smartInvestigation(
+                completeSession,
+                "smart-no-complete-1",
+                "What can you do?"
+            ))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.status").value("COMPLETED"))
+            .andExpect(jsonPath("$.results.length()").value(0))
+            .andExpect(jsonPath("$.timeline[0].directiveType")
+                .value("COMPLETE"));
+    }
+
+    @Test
+    void smartInvestigationSupportsOneTerminalReadOnlyHandoff()
+        throws Exception {
+        String sessionId = createSession("checkout-regression");
+
+        mockMvc.perform(smartInvestigation(
+                sessionId,
+                "smart-handoff-1",
+                "Handoff this release and rollback investigation."
+            ))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.status").value("HANDED_OFF"))
+            .andExpect(jsonPath("$.handoffTarget")
+                .value("change-risk-reader@2"))
+            .andExpect(jsonPath("$.results.length()").value(1))
+            .andExpect(jsonPath("$.timeline.length()").value(1))
+            .andExpect(jsonPath("$.timeline[0].directiveType")
+                .value("HANDOFF"));
+    }
+
+    @Test
+    void smartInvestigationFailsClosedWhenRequiredParallelBranchFails()
+        throws Exception {
+        String sessionId = createSession("branch-failure");
+
+        mockMvc.perform(smartInvestigation(
+                sessionId,
+                "smart-branch-failure-1",
+                "Run a full investigation of both health and change risk."
+            ))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.status").value("FAILED"))
+            .andExpect(jsonPath("$.message").doesNotExist())
+            .andExpect(jsonPath("$.failure.reason").isNotEmpty())
+            .andExpect(jsonPath("$.timeline[0].directiveType")
+                .value("INVOKE_PARALLEL"));
+    }
+
+    @Test
+    void smartInvestigationDeniesInventedTargetWithoutFallback()
+        throws Exception {
+        String sessionId = createSession("checkout-regression");
+
+        String body = mockMvc.perform(smartInvestigation(
+                sessionId,
+                "smart-invented-target-1",
+                "Use the invented target database-admin@99."
+            ))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.status").value("FAILED"))
+            .andExpect(jsonPath("$.failure.reason")
+                .value("OUTPUT_FINALIZATION_VALIDATION_FAILED"))
+            .andExpect(jsonPath("$.results.length()").value(0))
+            .andExpect(jsonPath("$.message").doesNotExist())
+            .andReturn().getResponse().getContentAsString();
+
+        assertThat(body).doesNotContain("Bypass the approved catalog");
+    }
+
+    @Test
+    void smartInvestigationIgnoresCallerSuppliedAuthorityAndEvidence()
+        throws Exception {
+        String sessionId = createSession("checkout-regression");
+        String body = mockMvc.perform(post(
+                "/api/incidents/sessions/{id}/smart-investigations",
+                sessionId
+            )
+                .header(SESSION_HEADER, sessionId)
+                .header("Idempotency-Key", "smart-scope-attack-1")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(Map.of(
+                    "question", "Inspect both approved evidence areas.",
+                    "tenantId", "attacker-tenant",
+                    "deploymentId", "attacker-deployment",
+                    "specialistId", "database-admin@99",
+                    "evidenceIds", List.of(
+                        "other-tenant-critical-error",
+                        "wrong-revision-release"
+                    )
+                ))))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.status").value("COMPLETED"))
+            .andReturn().getResponse().getContentAsString();
+
+        assertThat(body)
+            .doesNotContain("attacker-tenant")
+            .doesNotContain("attacker-deployment")
+            .doesNotContain("database-admin@99")
+            .doesNotContain("other-tenant-critical-error")
+            .doesNotContain("wrong-revision-release");
+    }
+
+    @Test
+    void smartInvestigationDurableReplayKeepsOriginalLineage()
+        throws Exception {
+        String sessionId = createSession("checkout-regression");
+        String first = mockMvc.perform(smartInvestigation(
+                sessionId,
+                "smart-replay-1",
+                "Check current service health."
+            ))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.replayed").value(false))
+            .andReturn().getResponse().getContentAsString();
+        IncidentInvocationMetrics.Snapshot beforeReplay =
+            invocationMetrics.snapshot();
+
+        String replay = mockMvc.perform(smartInvestigation(
+                sessionId,
+                "smart-replay-1",
+                "Check current service health."
+            ))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.replayed").value(true))
+            .andReturn().getResponse().getContentAsString();
+
+        JsonNode firstJson = objectMapper.readTree(first);
+        JsonNode replayJson = objectMapper.readTree(replay);
+        assertThat(replayJson.path("executionId").asText())
+            .isEqualTo(firstJson.path("executionId").asText());
+        assertThat(replayJson.path("timeline").toString())
+            .isEqualTo(firstJson.path("timeline").toString());
+        assertThat(invocationMetrics.snapshot().modelCalls())
+            .isEqualTo(beforeReplay.modelCalls());
+    }
+
+    @Test
+    void asyncSmartInvestigationExposesAuthorizedStatusAndTerminalResult()
+        throws Exception {
+        String sessionId = createSession("checkout-regression");
+        String submittedBody = mockMvc.perform(post(
+                "/api/incidents/sessions/{id}/smart-investigations/async",
+                sessionId
+            )
+                .header(SESSION_HEADER, sessionId)
+                .header("Idempotency-Key", "smart-async-1")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(question(
+                    "Inspect both service health and recent change risk."
+                )))
+            .andExpect(status().isAccepted())
+            .andExpect(jsonPath("$.executionId").isNotEmpty())
+            .andExpect(jsonPath("$.durable").value(true))
+            .andReturn().getResponse().getContentAsString();
+        String executionId = objectMapper.readTree(submittedBody)
+            .path("executionId").asText();
+
+        JsonNode terminal = awaitSmartInvestigation(
+            sessionId,
+            executionId
+        );
+
+        assertThat(terminal.path("status").asText())
+            .isEqualTo("COMPLETED");
+        assertThat(terminal.path("timeline")).hasSize(2);
+        assertThat(terminal.at("/result/status").asText())
+            .isEqualTo("COMPLETED");
+        assertThat(terminal.at("/result/results")).hasSize(2);
+        mockMvc.perform(get(
+                "/api/incidents/sessions/{id}/smart-investigations/{executionId}",
+                sessionId,
+                executionId
+            ).header(SESSION_HEADER, "another-session"))
+            .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void asyncSmartInvestigationCanBeCancelledWithoutASubstituteAnswer()
+        throws Exception {
+        String sessionId = createSession("checkout-regression");
+        String submittedBody = mockMvc.perform(post(
+                "/api/incidents/sessions/{id}/smart-investigations/async",
+                sessionId
+            )
+                .header(SESSION_HEADER, sessionId)
+                .header("Idempotency-Key", "smart-async-cancel-1")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(question("Inspect both service health and change risk.")))
+            .andExpect(status().isAccepted())
+            .andReturn().getResponse().getContentAsString();
+        String executionId = objectMapper.readTree(submittedBody)
+            .path("executionId").asText();
+
+        JsonNode beforeCancel = objectMapper.readTree(mockMvc.perform(get(
+                "/api/incidents/sessions/{id}/smart-investigations/{executionId}",
+                sessionId,
+                executionId
+            ).header(SESSION_HEADER, sessionId))
+            .andExpect(status().isOk())
+            .andReturn().getResponse().getContentAsString());
+        if (beforeCancel.path("status").asText().matches("QUEUED|RUNNING")) {
+            mockMvc.perform(post(
+                    "/api/incidents/sessions/{id}/smart-investigations/{executionId}/cancel",
+                    sessionId,
+                    executionId
+                ).header(SESSION_HEADER, sessionId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("CANCELLED"))
+                .andExpect(jsonPath("$.result.message").doesNotExist())
+                .andExpect(jsonPath("$.failure.reason")
+                    .value("CHAIN_CANCELLED"));
+        } else {
+            assertThat(beforeCancel.path("status").asText())
+                .isEqualTo("COMPLETED");
+        }
     }
 
     @Test
@@ -437,5 +751,45 @@ class IncidentInvestigationIntegrationTest {
         return objectMapper.writeValueAsString(
             java.util.Map.of("question", value)
         );
+    }
+
+    private JsonNode awaitSmartInvestigation(
+        String sessionId,
+        String executionId
+    ) throws Exception {
+        JsonNode value = null;
+        for (int attempt = 0; attempt < 100; attempt++) {
+            String body = mockMvc.perform(get(
+                    "/api/incidents/sessions/{id}/smart-investigations/{executionId}",
+                    sessionId,
+                    executionId
+                ).header(SESSION_HEADER, sessionId))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+            value = objectMapper.readTree(body);
+            if (!"QUEUED".equals(value.path("status").asText())
+                && !"RUNNING".equals(value.path("status").asText())) {
+                return value;
+            }
+            Thread.sleep(20L);
+        }
+        throw new AssertionError(
+            "Smart investigation did not finish: " + value
+        );
+    }
+
+    private MockHttpServletRequestBuilder smartInvestigation(
+        String sessionId,
+        String idempotencyKey,
+        String value
+    ) throws Exception {
+        return post(
+            "/api/incidents/sessions/{id}/smart-investigations",
+            sessionId
+        )
+            .header(SESSION_HEADER, sessionId)
+            .header("Idempotency-Key", idempotencyKey)
+            .contentType(MediaType.APPLICATION_JSON)
+            .content(question(value));
     }
 }

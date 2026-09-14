@@ -79,9 +79,11 @@ For specialist execution and manifest authoring:
 4. `application-patterns/ONE_LEVEL_SPECIALIST_DELEGATION.md`
 5. `application-patterns/EXPLICIT_SPECIALIST_HANDOFF.md`
 6. `application-patterns/BOUNDED_READ_ONLY_PARALLEL_PLANS.md`
-7. `actions-governance/GOVERNED_SPECIALIST_WRITES_AND_RECEIPTS.md`
-8. `security-auth/RUNTIME_AUTHORIZATION_AND_ACCESS_CONTROL_GUIDE.md`
-9. `testing-verification/VERIFICATION_PLAYBOOK.md`
+7. `application-patterns/BOUNDED_MULTI_SPECIALIST_CHAINS.md`
+8. `application-patterns/LOOMAI_AI_FABRIC_0_6_CHAIN_MIGRATION_RUNBOOK.md`
+9. `actions-governance/GOVERNED_SPECIALIST_WRITES_AND_RECEIPTS.md`
+10. `security-auth/RUNTIME_AUTHORIZATION_AND_ACCESS_CONTROL_GUIDE.md`
+11. `testing-verification/VERIFICATION_PLAYBOOK.md`
 
 For RAG, vector, and provider work:
 

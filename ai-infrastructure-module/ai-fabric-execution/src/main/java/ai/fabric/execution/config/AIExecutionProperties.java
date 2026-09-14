@@ -19,6 +19,10 @@ public class AIExecutionProperties {
     private final Plans plans = new Plans();
     private final ConversationManagers conversationManagers =
         new ConversationManagers();
+    private final SpecialistChains specialistChains =
+        new SpecialistChains();
+    private final OutputFinalization outputFinalization =
+        new OutputFinalization();
 
     public Async getAsync() {
         return async;
@@ -50,6 +54,261 @@ public class AIExecutionProperties {
 
     public ConversationManagers getConversationManagers() {
         return conversationManagers;
+    }
+
+    public SpecialistChains getSpecialistChains() {
+        return specialistChains;
+    }
+
+    public OutputFinalization getOutputFinalization() {
+        return outputFinalization;
+    }
+
+    public static class OutputFinalization {
+        private int maxAttempts = 2;
+
+        public int getMaxAttempts() {
+            return maxAttempts;
+        }
+
+        public void setMaxAttempts(int maxAttempts) {
+            if (maxAttempts < 1 || maxAttempts > 3) {
+                throw new IllegalArgumentException(
+                    "maxAttempts must be between 1 and 3"
+                );
+            }
+            this.maxAttempts = maxAttempts;
+        }
+    }
+
+    public static class SpecialistChains {
+        private boolean enabled;
+        private int maxActive = 250;
+        private Duration maxDuration = Duration.ofMinutes(2);
+        private int maxManagerDecisions = 4;
+        private int maxWorkerInvocations = 4;
+        private int maxParallelWorkers = 3;
+        private int maxInvocationsPerTarget = 1;
+        private int maxProjectedResultCharacters = 12_000;
+        private int maxDirectiveCorrections = 1;
+        private boolean durableEnabled;
+        private boolean allowEphemeral;
+        private boolean initializeSchema;
+        private Duration leaseDuration = Duration.ofMinutes(2);
+        private Duration recoveryInterval = Duration.ofSeconds(30);
+        private int recoveryBatchSize = 50;
+        private int maxAttempts = 3;
+        private boolean cleanupEnabled;
+        private Duration retention = Duration.ofDays(30);
+        private String encryptionSecret;
+        private String fingerprintSecret;
+
+        public boolean isEnabled() {
+            return enabled;
+        }
+
+        public void setEnabled(boolean enabled) {
+            this.enabled = enabled;
+        }
+
+        public int getMaxActive() {
+            return maxActive;
+        }
+
+        public void setMaxActive(int maxActive) {
+            this.maxActive = positive(maxActive, "maxActive");
+        }
+
+        public Duration getMaxDuration() {
+            return maxDuration;
+        }
+
+        public void setMaxDuration(Duration maxDuration) {
+            this.maxDuration = positive(maxDuration, "maxDuration");
+        }
+
+        public int getMaxManagerDecisions() {
+            return maxManagerDecisions;
+        }
+
+        public void setMaxManagerDecisions(int value) {
+            this.maxManagerDecisions = positive(
+                value,
+                "maxManagerDecisions"
+            );
+        }
+
+        public int getMaxWorkerInvocations() {
+            return maxWorkerInvocations;
+        }
+
+        public void setMaxWorkerInvocations(int value) {
+            this.maxWorkerInvocations = positive(
+                value,
+                "maxWorkerInvocations"
+            );
+        }
+
+        public int getMaxParallelWorkers() {
+            return maxParallelWorkers;
+        }
+
+        public void setMaxParallelWorkers(int value) {
+            this.maxParallelWorkers = positive(
+                value,
+                "maxParallelWorkers"
+            );
+        }
+
+        public int getMaxInvocationsPerTarget() {
+            return maxInvocationsPerTarget;
+        }
+
+        public void setMaxInvocationsPerTarget(int value) {
+            this.maxInvocationsPerTarget = positive(
+                value,
+                "maxInvocationsPerTarget"
+            );
+        }
+
+        public int getMaxProjectedResultCharacters() {
+            return maxProjectedResultCharacters;
+        }
+
+        public void setMaxProjectedResultCharacters(int value) {
+            this.maxProjectedResultCharacters = positive(
+                value,
+                "maxProjectedResultCharacters"
+            );
+        }
+
+        public int getMaxDirectiveCorrections() {
+            return maxDirectiveCorrections;
+        }
+
+        public void setMaxDirectiveCorrections(int value) {
+            if (value < 0 || value > 3) {
+                throw new IllegalArgumentException(
+                    "maxDirectiveCorrections must be between 0 and 3"
+                );
+            }
+            this.maxDirectiveCorrections = value;
+        }
+
+        public boolean isDurableEnabled() {
+            return durableEnabled;
+        }
+
+        public void setDurableEnabled(boolean durableEnabled) {
+            this.durableEnabled = durableEnabled;
+        }
+
+        public boolean isAllowEphemeral() {
+            return allowEphemeral;
+        }
+
+        public void setAllowEphemeral(boolean allowEphemeral) {
+            this.allowEphemeral = allowEphemeral;
+        }
+
+        public boolean isInitializeSchema() {
+            return initializeSchema;
+        }
+
+        public void setInitializeSchema(boolean initializeSchema) {
+            this.initializeSchema = initializeSchema;
+        }
+
+        public Duration getLeaseDuration() {
+            return leaseDuration;
+        }
+
+        public void setLeaseDuration(Duration leaseDuration) {
+            this.leaseDuration = positive(
+                leaseDuration,
+                "leaseDuration"
+            );
+        }
+
+        public Duration getRecoveryInterval() {
+            return recoveryInterval;
+        }
+
+        public void setRecoveryInterval(Duration recoveryInterval) {
+            this.recoveryInterval = positive(
+                recoveryInterval,
+                "recoveryInterval"
+            );
+        }
+
+        public int getRecoveryBatchSize() {
+            return recoveryBatchSize;
+        }
+
+        public void setRecoveryBatchSize(int recoveryBatchSize) {
+            this.recoveryBatchSize = positive(
+                recoveryBatchSize,
+                "recoveryBatchSize"
+            );
+        }
+
+        public int getMaxAttempts() {
+            return maxAttempts;
+        }
+
+        public void setMaxAttempts(int maxAttempts) {
+            this.maxAttempts = positive(maxAttempts, "maxAttempts");
+        }
+
+        public boolean isCleanupEnabled() {
+            return cleanupEnabled;
+        }
+
+        public void setCleanupEnabled(boolean cleanupEnabled) {
+            this.cleanupEnabled = cleanupEnabled;
+        }
+
+        public Duration getRetention() {
+            return retention;
+        }
+
+        public void setRetention(Duration retention) {
+            this.retention = positive(retention, "retention");
+        }
+
+        public String getEncryptionSecret() {
+            return encryptionSecret;
+        }
+
+        public void setEncryptionSecret(String encryptionSecret) {
+            this.encryptionSecret = encryptionSecret;
+        }
+
+        public String getFingerprintSecret() {
+            return fingerprintSecret;
+        }
+
+        public void setFingerprintSecret(String fingerprintSecret) {
+            this.fingerprintSecret = fingerprintSecret;
+        }
+
+        private Duration positive(Duration value, String field) {
+            if (value == null || value.isZero() || value.isNegative()) {
+                throw new IllegalArgumentException(
+                    field + " must be positive"
+                );
+            }
+            return value;
+        }
+
+        private int positive(int value, String field) {
+            if (value < 1) {
+                throw new IllegalArgumentException(
+                    field + " must be positive"
+                );
+            }
+            return value;
+        }
     }
 
     public static class ConversationManagers {

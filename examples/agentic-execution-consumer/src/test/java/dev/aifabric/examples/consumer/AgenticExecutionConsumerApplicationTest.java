@@ -2,6 +2,7 @@ package dev.aifabric.examples.consumer;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import ai.fabric.execution.chain.SpecialistChainDefinition;
 import ai.fabric.execution.plan.ExecutionPlanDefinition;
 import ai.fabric.execution.plan.ParallelPlanStep;
 import java.util.Map;
@@ -21,6 +22,11 @@ class AgenticExecutionConsumerApplicationTest {
     @Autowired
     private Map<String, ExecutionPlanDefinition<?, ?>> plans;
 
+    @Autowired
+    private SpecialistChainDefinition<
+        SupportPlanConfiguration.SupportRequest
+    > supportChain;
+
     @Test
     void standaloneSpringBootConsumerLoadsPublicPlanDeclarations() {
         assertThat(plans)
@@ -33,5 +39,25 @@ class AgenticExecutionConsumerApplicationTest {
         assertThat(parallel.steps())
             .singleElement()
             .isInstanceOf(ParallelPlanStep.class);
+    }
+
+    @Test
+    void standaloneSpringBootConsumerLoadsPublicBoundedChainDeclaration() {
+        assertThat(supportChain.id())
+            .isEqualTo(SupportChainConfiguration.SUPPORT_CHAIN);
+        assertThat(supportChain.managerSpecialistId())
+            .isEqualTo(SupportChainConfiguration.SUPPORT_MANAGER);
+        assertThat(supportChain.targets())
+            .extracting(target -> target.specialistId().toString())
+            .containsExactly(
+                "consumer-account-reader@1",
+                "consumer-policy-reader@1"
+            );
+        assertThat(supportChain.targets())
+            .allSatisfy(target -> {
+                assertThat(target.delegationAllowed()).isTrue();
+                assertThat(target.parallelEligible()).isTrue();
+                assertThat(target.handoffAllowed()).isFalse();
+            });
     }
 }

@@ -57,7 +57,8 @@ class JsonSchemaSpecialistAdapterTest {
             definition.outputAdapter().validate(invalidOutput)
         )
             .isInstanceOf(IllegalArgumentException.class)
-            .hasMessageContaining("support-answer@1");
+            .hasMessageContaining("support-answer@1")
+            .hasMessageEndingWith("at /");
     }
 
     @Test

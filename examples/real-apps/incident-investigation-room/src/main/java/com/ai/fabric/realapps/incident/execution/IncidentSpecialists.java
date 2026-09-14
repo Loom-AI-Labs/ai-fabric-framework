@@ -20,6 +20,8 @@ public final class IncidentSpecialists {
         SpecialistId.of("incident-intake", "2");
     public static final SpecialistId CONVERSATION_MANAGER_V2 =
         SpecialistId.of("incident-conversation-manager", "2");
+    public static final SpecialistId CHAIN_MANAGER_V3 =
+        SpecialistId.of("incident-chain-manager", "3");
 
     private IncidentSpecialists() {}
 }

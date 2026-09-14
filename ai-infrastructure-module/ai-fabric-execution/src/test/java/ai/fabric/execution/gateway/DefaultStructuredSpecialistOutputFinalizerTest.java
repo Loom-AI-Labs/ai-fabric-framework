@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.when;
 
 import ai.fabric.core.AICoreService;
@@ -98,6 +99,54 @@ class DefaultStructuredSpecialistOutputFinalizerTest {
     }
 
     @Test
+    void regeneratesOneInvalidStructuredOutputWithoutFallback() {
+        AICoreService aiCoreService = mock(AICoreService.class);
+        when(aiCoreService.generateContent(any(), eq(LlmPurpose.GENERATION)))
+            .thenReturn(
+                AIGenerationResponse.builder()
+                    .content("""
+                        {
+                          "assessment": "MAYBE",
+                          "summary": "This violates the approved enum."
+                        }
+                        """)
+                    .build(),
+                AIGenerationResponse.builder()
+                    .content("""
+                        {
+                          "assessment": "BLOCKED",
+                          "summary": "Payment is missing."
+                        }
+                        """)
+                    .model("gpt-test")
+                    .build()
+            );
+
+        SpecialistOutputFinalization<TestOutput> finalized =
+            finalizer(aiCoreService).finalizeOutput(
+                definition(),
+                "Is this account ready?",
+                OrchestrationContext.builder().build(),
+                successfulResult(),
+                List.of(evidence())
+            );
+
+        assertThat(finalized.output())
+            .isEqualTo(new TestOutput("BLOCKED", "Payment is missing."));
+        assertThat(finalized.diagnostics())
+            .containsEntry("outputFinalizationAttempts", 2)
+            .containsEntry("outputFinalizationCorrected", true);
+        ArgumentCaptor<AIGenerationRequest> requests =
+            ArgumentCaptor.forClass(AIGenerationRequest.class);
+        org.mockito.Mockito.verify(aiCoreService, times(2))
+            .generateContent(requests.capture(), eq(LlmPurpose.GENERATION));
+        assertThat(requests.getAllValues().get(1).getPrompt())
+            .contains("BOUNDED STRUCTURED-OUTPUT CORRECTION")
+            .contains("violated the schema or application validator")
+            .contains("Do not add a fallback answer");
+    }
+
+    @Test
     void exposesProviderFailureWithoutFallback() {
         AICoreService aiCoreService = mock(AICoreService.class);
         when(aiCoreService.generateContent(any(), eq(LlmPurpose.GENERATION)))
@@ -121,7 +170,7 @@ class DefaultStructuredSpecialistOutputFinalizerTest {
     }
 
     @Test
-    void exposesNonJsonProviderOutputWithoutFallback() {
+    void exposesNonJsonProviderOutputAfterBoundedRegeneration() {
         AICoreService aiCoreService = mock(AICoreService.class);
         when(aiCoreService.generateContent(any(), eq(LlmPurpose.GENERATION)))
             .thenReturn(AIGenerationResponse.builder()
@@ -170,7 +219,7 @@ class DefaultStructuredSpecialistOutputFinalizerTest {
     }
 
     @Test
-    void exposesManifestSchemaMismatchWithoutRepairOrFallback() {
+    void exposesManifestSchemaMismatchAfterBoundedRegeneration() {
         AICoreService aiCoreService = mock(AICoreService.class);
         when(aiCoreService.generateContent(any(), eq(LlmPurpose.GENERATION)))
             .thenReturn(AIGenerationResponse.builder()
@@ -195,6 +244,42 @@ class DefaultStructuredSpecialistOutputFinalizerTest {
                     assertThat(failure.retryable()).isFalse();
                 }
             );
+    }
+
+    @Test
+    void givesRegenerationOnlyTheSanitizedSchemaLocation() {
+        AICoreService aiCoreService = mock(AICoreService.class);
+        when(aiCoreService.generateContent(any(), eq(LlmPurpose.GENERATION)))
+            .thenReturn(
+                AIGenerationResponse.builder()
+                    .content(
+                        "{\"answer\":\"Use approved recovery.\","
+                            + "\"internal\":\"private-value\"}"
+                    )
+                    .build(),
+                AIGenerationResponse.builder()
+                    .content("{\"answer\":\"Use approved recovery.\"}")
+                    .build()
+            );
+
+        SpecialistOutputFinalization<JsonNode> finalized =
+            finalizer(aiCoreService).finalizeOutput(
+                manifestDefinition(),
+                "How do I recover access?",
+                OrchestrationContext.builder().build(),
+                successfulResult(),
+                List.of(evidence())
+            );
+
+        assertThat(finalized.output().path("answer").asText())
+            .isEqualTo("Use approved recovery.");
+        ArgumentCaptor<AIGenerationRequest> requests =
+            ArgumentCaptor.forClass(AIGenerationRequest.class);
+        org.mockito.Mockito.verify(aiCoreService, times(2))
+            .generateContent(requests.capture(), eq(LlmPurpose.GENERATION));
+        assertThat(requests.getAllValues().get(1).getPrompt())
+            .contains("The rejected schema location is /")
+            .doesNotContain("private-value");
     }
 
     private DefaultStructuredSpecialistOutputFinalizer finalizer(

@@ -404,13 +404,15 @@ public class AIExecutionAutoConfiguration {
         AICoreService aiCoreService,
         StructuredJsonCallExecutor structuredJsonCallExecutor,
         ObjectMapper objectMapper,
-        SpecialistGroundingProjector groundingProjector
+        SpecialistGroundingProjector groundingProjector,
+        AIExecutionProperties properties
     ) {
         return new DefaultStructuredSpecialistOutputFinalizer(
             aiCoreService,
             structuredJsonCallExecutor,
             objectMapper,
-            groundingProjector
+            groundingProjector,
+            properties.getOutputFinalization().getMaxAttempts()
         );
     }
 

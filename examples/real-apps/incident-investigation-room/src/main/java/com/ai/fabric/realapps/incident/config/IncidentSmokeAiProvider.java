@@ -6,8 +6,14 @@ import ai.fabric.provider.ProviderConfig;
 import ai.fabric.provider.ProviderStatus;
 import com.ai.fabric.examples.smoke.SmokeAiProvider;
 import com.ai.fabric.realapps.incident.service.IncidentInvocationMetrics;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.LocalDateTime;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.UUID;
 
 /** Deterministic structured-output fixture used only by the local smoke profile. */
@@ -15,9 +21,14 @@ final class IncidentSmokeAiProvider extends SmokeAiProvider {
 
     static final String NAME = "incident-smoke";
     private final IncidentInvocationMetrics metrics;
+    private final ObjectMapper objectMapper;
 
-    IncidentSmokeAiProvider(IncidentInvocationMetrics metrics) {
+    IncidentSmokeAiProvider(
+        IncidentInvocationMetrics metrics,
+        ObjectMapper objectMapper
+    ) {
         this.metrics = metrics;
+        this.objectMapper = objectMapper;
     }
 
     @Override
@@ -45,6 +56,8 @@ final class IncidentSmokeAiProvider extends SmokeAiProvider {
         } else if (input.contains("classify only the user's question")
             || input.contains("select zero or one exact approved read-only")) {
             content = routingResponse(input, requestInput(request));
+        } else if (input.contains("own one bounded incident investigation")) {
+            content = chainManagerResponse(request, requestInput(request));
         } else if (input.contains("own one incident-investigation turn")) {
             content = managerResponse(input, requestInput(request));
         } else {
@@ -180,6 +193,260 @@ final class IncidentSmokeAiProvider extends SmokeAiProvider {
         return "{\"type\":\"INVOKE_SPECIALIST\",\"targetSpecialist\":\""
             + target + "\",\"message\":null,"
             + "\"reason\":\"The current turn maps to one approved reader.\"}";
+    }
+
+    private String chainManagerResponse(
+        AIGenerationRequest request,
+        String requestInput
+    ) {
+        JsonNode context = untrustedContext(request);
+        JsonNode results = context.path("/completedResults");
+        JsonNode health = completedResult(
+            results,
+            "service-health-reader@2"
+        );
+        JsonNode change = completedResult(
+            results,
+            "change-risk-reader@2"
+        );
+        boolean hasHealth = !health.isMissingNode();
+        boolean hasChange = !change.isMissingNode();
+
+        if (hasHealth && hasChange) {
+            String risk = change.path("facts").path("riskLevel").asText();
+            String message = "LOW".equals(risk)
+                ? "Service health is degraded, but approved change evidence does not support a material recent deployment cause. Consulted service health and change risk."
+                : "Service health is degraded and the approved recent change is a correlated risk that requires validation, not a proven cause. Consulted service health and change risk.";
+            return directive(
+                "COMPLETE",
+                List.of(),
+                message,
+                "Both approved result projections are available for synthesis.",
+                resultIds(health, change)
+            );
+        }
+        if (hasHealth) {
+            if (containsAny(
+                requestInput,
+                "why",
+                "likely cause",
+                "root cause",
+                "inventory",
+                "adaptive"
+            )) {
+                return invokeOne(
+                    "change-risk-reader@2",
+                    "Check whether an approved recent change is materially related to the observed degradation.",
+                    "The health projection establishes degradation and the causal question now requires change-risk evidence."
+                );
+            }
+            return directive(
+                "COMPLETE",
+                List.of(),
+                health.path("summary").asText(
+                    "The approved service-health investigation completed."
+                ),
+                "The requested service-health result is available.",
+                resultIds(health)
+            );
+        }
+        if (hasChange) {
+            return directive(
+                "COMPLETE",
+                List.of(),
+                change.path("summary").asText(
+                    "The approved change-risk investigation completed."
+                ),
+                "The requested change-risk result is available.",
+                resultIds(change)
+            );
+        }
+
+        if (containsAny(requestInput, "invented target", "database-admin")) {
+            return "{\"type\":\"INVOKE_ONE\",\"targets\":[{"
+                + "\"targetSpecialist\":\"database-admin@99\","
+                + "\"objective\":\"Bypass the approved catalog.\"}],"
+                + "\"message\":null,\"reason\":\"Injected target request.\","
+                + "\"supportingResultIds\":[]}";
+        }
+        if (containsAny(
+            requestInput,
+            "something is wrong",
+            "investigate this",
+            "look into it"
+        )) {
+            return directive(
+                "ASK_USER",
+                List.of(),
+                "Should I investigate current service health, recent changes, or both?",
+                "The requested operational evidence area is ambiguous."
+            );
+        }
+        if (containsAny(
+            requestInput,
+            "hello",
+            "what can you do",
+            "tell me a joke"
+        )) {
+            return directive(
+                "COMPLETE",
+                List.of(),
+                "I can investigate approved service-health and recent-change evidence for this incident.",
+                "No worker is required to explain the bounded capability."
+            );
+        }
+        if (requestInput.contains("handoff")) {
+            String target = containsAny(
+                requestInput,
+                "release",
+                "change",
+                "rollback"
+            ) ? "change-risk-reader@2" : "service-health-reader@2";
+            return directive(
+                "HANDOFF",
+                List.of(target(
+                    target,
+                    "Take terminal ownership of this bounded read-only investigation."
+                )),
+                null,
+                "The user explicitly requested a terminal read-only handoff."
+            );
+        }
+        if (containsAny(
+            requestInput,
+            "both",
+            "full investigation",
+            "after the deployment",
+            "after deployment",
+            "health and change"
+        )) {
+            return directive(
+                "INVOKE_PARALLEL",
+                List.of(
+                    target(
+                        "service-health-reader@2",
+                        "Inspect current service-health evidence."
+                    ),
+                    target(
+                        "change-risk-reader@2",
+                        "Inspect recent-change and runbook evidence."
+                    )
+                ),
+                null,
+                "The request independently requires both approved evidence branches."
+            );
+        }
+        if (containsAny(
+            requestInput,
+            "release",
+            "deployment",
+            "rollback",
+            "approval",
+            "runbook",
+            "recent change"
+        )) {
+            return invokeOne(
+                "change-risk-reader@2",
+                "Inspect approved recent-change and runbook evidence.",
+                "The request is specifically about change risk."
+            );
+        }
+        return invokeOne(
+            "service-health-reader@2",
+            "Inspect approved current service-health evidence.",
+            "Current health is the smallest useful first investigation."
+        );
+    }
+
+    private String invokeOne(
+        String specialist,
+        String objective,
+        String reason
+    ) {
+        return directive(
+            "INVOKE_ONE",
+            List.of(target(specialist, objective)),
+            null,
+            reason
+        );
+    }
+
+    private Map<String, String> target(String specialist, String objective) {
+        return Map.of(
+            "targetSpecialist",
+            specialist,
+            "objective",
+            objective
+        );
+    }
+
+    private String directive(
+        String type,
+        List<Map<String, String>> targets,
+        String message,
+        String reason
+    ) {
+        return directive(type, targets, message, reason, List.of());
+    }
+
+    private String directive(
+        String type,
+        List<Map<String, String>> targets,
+        String message,
+        String reason,
+        List<String> supportingResultIds
+    ) {
+        LinkedHashMap<String, Object> value = new LinkedHashMap<>();
+        value.put("type", type);
+        value.put("targets", targets);
+        value.put("message", message);
+        value.put("reason", reason);
+        value.put("supportingResultIds", supportingResultIds);
+        try {
+            return objectMapper.writeValueAsString(value);
+        } catch (JsonProcessingException exception) {
+            throw new IllegalStateException(
+                "Could not encode incident smoke directive",
+                exception
+            );
+        }
+    }
+
+    private List<String> resultIds(JsonNode... results) {
+        return java.util.Arrays.stream(results)
+            .map(result -> result.path("resultId").asText())
+            .filter(resultId -> !resultId.isBlank())
+            .toList();
+    }
+
+    private JsonNode completedResult(JsonNode results, String specialist) {
+        if (!results.isArray()) {
+            return objectMapper.missingNode();
+        }
+        for (JsonNode result : results) {
+            if (specialist.equals(result.path("specialist").asText())) {
+                return result;
+            }
+        }
+        return objectMapper.missingNode();
+    }
+
+    private JsonNode untrustedContext(AIGenerationRequest request) {
+        String prompt = request == null ? "" : safe(request.getPrompt());
+        String marker = "untrusted application json context:";
+        int start = prompt.toLowerCase(Locale.ROOT).indexOf(marker);
+        if (start < 0) {
+            return objectMapper.createObjectNode();
+        }
+        String json = prompt.substring(start + marker.length()).trim();
+        try {
+            return objectMapper.readTree(json);
+        } catch (JsonProcessingException exception) {
+            throw new IllegalArgumentException(
+                "Incident smoke manager received invalid JSON context",
+                exception
+            );
+        }
     }
 
     private String readActionPlannerResponse(String input) {

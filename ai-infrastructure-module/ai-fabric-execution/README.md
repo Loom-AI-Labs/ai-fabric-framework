@@ -274,6 +274,54 @@ The initial plan store is bounded and explicitly `EPHEMERAL`. It does not
 survive restart, support WRITE-capable steps, branch, run in parallel, choose
 specialists dynamically, or own an interactive conversation.
 
+## Bounded Multi-Specialist Chains
+
+Use a bounded specialist chain when the relevant read-only specialists depend
+on the user's request or on application-approved projections from earlier
+workers. One exact-version manager may ask for clarification, invoke one
+worker, invoke independent workers in parallel, adaptively select another
+worker, complete with exact projected-result attribution, or perform one
+terminal read-only handoff.
+
+Workers remain non-interactive leaves. Every invocation still passes through
+`AIExecutionGateway` and its independent capability, authorization, RAG,
+action, provider, grounding, and validation boundaries. The manager receives
+only application-projected facts and evidence references, never raw worker
+results or trusted authority.
+
+Chains are disabled by default. Production use requires durable JDBC state or
+an explicit `allow-ephemeral=true` development acknowledgement:
+
+```yaml
+ai:
+  execution:
+    specialist-chains:
+      enabled: true
+      max-active: 250
+      max-duration: PT2M
+      max-manager-decisions: 4
+      max-worker-invocations: 4
+      max-parallel-workers: 3
+      max-invocations-per-target: 1
+      max-projected-result-characters: 12000
+      durable-enabled: true
+      allow-ephemeral: false
+      initialize-schema: false
+      lease-duration: PT2M
+      recovery-interval: PT30S
+      recovery-batch-size: 50
+      max-attempts: 3
+      cleanup-enabled: true
+      retention: P30D
+      encryption-secret: ${AI_SPECIALIST_CHAIN_ENCRYPTION_SECRET}
+      fingerprint-secret: ${AI_SPECIALIST_CHAIN_FINGERPRINT_SECRET}
+```
+
+See
+[`BOUNDED_MULTI_SPECIALIST_CHAINS.md`](../../docs/Framework-Dev-Guides/application-patterns/BOUNDED_MULTI_SPECIALIST_CHAINS.md)
+for registration, directive schema, sync/async APIs, durable recovery,
+security, failure semantics, and verification.
+
 ## Conversation Memory
 
 Typed application execution does not read or write chat history by default.
@@ -315,12 +363,33 @@ For structured generation:
 Normalization must never repair an invalid model decision or invent missing
 facts.
 
+Malformed or validator-rejected structured output receives one bounded fresh
+generation attempt by default. The retry sees the same approved grounding plus
+only a safe failure category and schema location; it does not receive or log
+the rejected payload. Provider call errors are not retried by this output-shape
+mechanism, and exhausting the attempts remains an explicit execution failure.
+
+Configure the total number of structured-output attempts from `1` through `3`:
+
+```yaml
+ai:
+  execution:
+    output-finalization:
+      max-attempts: 2
+```
+
+Use `1` to retain the previous single-attempt behavior when additional model
+usage is not acceptable. Every real provider attempt remains visible in usage
+and diagnostics; this is correction, not a fallback answer.
+
 ## Configuration
 
 ```yaml
 ai:
   execution:
     enabled: true
+    output-finalization:
+      max-attempts: 2
     capabilities:
       registered-vector-spaces:
         - account-policy
@@ -448,21 +517,24 @@ for configuration, migrations, recovery, metrics, and rollback guidance.
 
 The implemented scope supports bounded single-specialist execution, optional
 confirmation-gated writes, fixed sequential and bounded-parallel read-only
-plans, one-level allowlisted delegation and handoff, durable human review,
-and opt-in durable terminal read-only jobs. It also accepts application-owned
-`EVENT` and `SCHEDULED` execution contexts; AI Fabric does not own the event
-consumer or scheduler that creates those trusted calls.
+plans, one-level allowlisted delegation and handoff, bounded manager-owned
+multi-specialist chains, durable human review, and opt-in durable terminal
+read-only jobs. It also accepts application-owned `EVENT` and `SCHEDULED`
+execution contexts; AI Fabric does not own the event consumer or scheduler
+that creates those trusted calls.
 
-Plan checkpoints, specialist input waits, interactive confirmation
-continuation, delegation, and handoff remain explicitly ephemeral. Durable
-read jobs, durable human-review tasks, and durable write receipts are separate
-state machines and do not turn AI Fabric into an unrestricted workflow
-engine.
+Fixed-plan checkpoints, specialist input waits, interactive confirmation
+continuation, standalone delegation, and standalone handoff remain explicitly
+ephemeral. Bounded specialist chains have their own optional durable JDBC
+checkpoint state. Durable chains, read jobs, human-review tasks, and write
+receipts are separate state machines and do not turn AI Fabric into an
+unrestricted workflow engine.
 
 The following remain deferred:
 
-- conditional, nested, dynamic/model-authored, or WRITE-capable plans;
+- conditional, nested, model-authored, or WRITE-capable fixed plans;
 - recursive delegation or handoff and unrestricted model-selected specialist discovery;
+- arbitrary graph topology, partial-success chain fan-in, or WRITE-capable chain workers;
 - durable WRITE-capable specialist jobs, input waits, interactive confirmations, plans,
   delegation, or handoff;
 - framework-owned scheduler or event-broker consumers; and

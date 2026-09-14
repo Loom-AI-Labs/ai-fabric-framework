@@ -1,0 +1,36 @@
+# syntax=docker/dockerfile:1.7
+
+# CI-only runtime proof for a JAR already built against locally installed
+# candidate artifacts. Release deployments continue to use Dockerfile.
+FROM eclipse-temurin:21-jre-alpine
+WORKDIR /app
+
+ARG AI_FABRIC_VERSION=unknown
+ARG APP_VERSION=1.0.0-SNAPSHOT
+ARG SOURCE_COMMIT=unknown
+ARG SOURCE_BRANCH=unknown
+ARG BUILD_TIME=
+
+ENV PORT=8107
+ENV JAVA_OPTS=""
+ENV AI_FABRIC_VERSION="${AI_FABRIC_VERSION}"
+ENV APP_VERSION="${APP_VERSION}"
+
+RUN addgroup -S app && adduser -S app -G app \
+    && mkdir -p /app/data \
+    && chown -R app:app /app
+
+RUN actual_build_time="${BUILD_TIME:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}" \
+    && printf 'version=%s\ncommit=%s\nbranch=%s\nbuiltAt=%s\naiFabricVersion=%s\n' \
+      "${APP_VERSION}" "${SOURCE_COMMIT}" "${SOURCE_BRANCH}" "${actual_build_time}" "${AI_FABRIC_VERSION}" \
+      > /app/build-info.properties \
+    && chown app:app /app/build-info.properties
+
+COPY --chown=app:app target/incident-investigation-room-*.jar /app/app.jar
+
+USER app:app
+EXPOSE 8107
+HEALTHCHECK --interval=10s --timeout=5s --start-period=30s --retries=6 \
+  CMD wget -qO- "http://127.0.0.1:${PORT}/actuator/health" >/dev/null 2>&1 || exit 1
+
+ENTRYPOINT ["sh", "-c", "java ${JAVA_OPTS} -jar /app/app.jar"]

@@ -6,6 +6,8 @@ import com.ai.fabric.realapps.incident.domain.IncidentInvestigationPlanCompariso
 import com.ai.fabric.realapps.incident.domain.IncidentManagerTurnView;
 import com.ai.fabric.realapps.incident.domain.IncidentPlanRunView;
 import com.ai.fabric.realapps.incident.domain.IncidentScenario;
+import com.ai.fabric.realapps.incident.domain.IncidentSmartInvestigationExecutionView;
+import com.ai.fabric.realapps.incident.domain.IncidentSmartInvestigationView;
 import com.ai.fabric.realapps.incident.domain.IncidentTransitionResponse;
 import com.ai.fabric.realapps.incident.execution.IncidentPlans;
 import com.ai.fabric.realapps.incident.execution.IncidentSpecialists;
@@ -15,6 +17,7 @@ import com.ai.fabric.realapps.incident.service.IncidentEventRepository;
 import com.ai.fabric.realapps.incident.service.IncidentRunbookIndexService;
 import com.ai.fabric.realapps.incident.service.IncidentScenarioCatalog;
 import com.ai.fabric.realapps.incident.service.IncidentSessionService;
+import com.ai.fabric.realapps.incident.service.IncidentSmartInvestigationService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import java.util.List;
@@ -38,6 +41,7 @@ public class IncidentController {
     private final IncidentSessionService sessions;
     private final IncidentExecutionService execution;
     private final IncidentConversationService conversations;
+    private final IncidentSmartInvestigationService smartInvestigations;
     private final IncidentEventRepository events;
     private final IncidentRunbookIndexService runbooks;
 
@@ -46,6 +50,7 @@ public class IncidentController {
         IncidentSessionService sessions,
         IncidentExecutionService execution,
         IncidentConversationService conversations,
+        IncidentSmartInvestigationService smartInvestigations,
         IncidentEventRepository events,
         IncidentRunbookIndexService runbooks
     ) {
@@ -53,6 +58,7 @@ public class IncidentController {
         this.sessions = sessions;
         this.execution = execution;
         this.conversations = conversations;
+        this.smartInvestigations = smartInvestigations;
         this.events = events;
         this.runbooks = runbooks;
     }
@@ -179,6 +185,61 @@ public class IncidentController {
             request.question(),
             idempotencyKey
         );
+    }
+
+    @PostMapping("/sessions/{sessionId}/smart-investigations")
+    public IncidentSmartInvestigationView smartInvestigation(
+        @PathVariable String sessionId,
+        @RequestHeader("X-AI-Fabric-Demo-Session") String sessionToken,
+        @RequestHeader("Idempotency-Key") String idempotencyKey,
+        @Valid @RequestBody IncidentQuestionRequest request
+    ) {
+        requireSessionToken(sessionId, sessionToken);
+        return smartInvestigations.investigate(
+            sessionId,
+            request.question(),
+            idempotencyKey
+        );
+    }
+
+    @PostMapping("/sessions/{sessionId}/smart-investigations/async")
+    @ResponseStatus(HttpStatus.ACCEPTED)
+    public IncidentSmartInvestigationExecutionView submitSmartInvestigation(
+        @PathVariable String sessionId,
+        @RequestHeader("X-AI-Fabric-Demo-Session") String sessionToken,
+        @RequestHeader("Idempotency-Key") String idempotencyKey,
+        @Valid @RequestBody IncidentQuestionRequest request
+    ) {
+        requireSessionToken(sessionId, sessionToken);
+        return smartInvestigations.submit(
+            sessionId,
+            request.question(),
+            idempotencyKey
+        );
+    }
+
+    @GetMapping(
+        "/sessions/{sessionId}/smart-investigations/{executionId}"
+    )
+    public IncidentSmartInvestigationExecutionView smartInvestigationStatus(
+        @PathVariable String sessionId,
+        @PathVariable String executionId,
+        @RequestHeader("X-AI-Fabric-Demo-Session") String sessionToken
+    ) {
+        requireSessionToken(sessionId, sessionToken);
+        return smartInvestigations.status(sessionId, executionId);
+    }
+
+    @PostMapping(
+        "/sessions/{sessionId}/smart-investigations/{executionId}/cancel"
+    )
+    public IncidentSmartInvestigationExecutionView cancelSmartInvestigation(
+        @PathVariable String sessionId,
+        @PathVariable String executionId,
+        @RequestHeader("X-AI-Fabric-Demo-Session") String sessionToken
+    ) {
+        requireSessionToken(sessionId, sessionToken);
+        return smartInvestigations.cancel(sessionId, executionId);
     }
 
     public record CreateSessionRequest(@NotBlank String scenarioId) {}

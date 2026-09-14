@@ -1,5 +1,8 @@
 package com.ai.fabric.realapps.incident.web;
 
+import ai.fabric.execution.chain.SpecialistChainRegistry;
+import ai.fabric.execution.chain.state.JdbcSpecialistChainExecutionRepository;
+import ai.fabric.execution.chain.state.SpecialistChainExecutionRepository;
 import ai.fabric.execution.plan.ExecutionPlanRegistry;
 import ai.fabric.execution.specialist.SpecialistRegistry;
 import ai.fabric.intent.action.AIActionRegistry;
@@ -7,6 +10,7 @@ import ai.fabric.provider.AIProvider;
 import ai.fabric.provider.AIProviderManager;
 import com.ai.fabric.examples.smoke.health.DemoDeploymentInfoService;
 import com.ai.fabric.realapps.incident.execution.IncidentPlans;
+import com.ai.fabric.realapps.incident.execution.IncidentSpecialistChains;
 import com.ai.fabric.realapps.incident.execution.IncidentSpecialists;
 import com.ai.fabric.realapps.incident.action.ReadChangeApprovalsActionHandler;
 import com.ai.fabric.realapps.incident.action.ReadIncidentAlertsActionHandler;
@@ -29,6 +33,8 @@ public class IncidentHealthController {
     private final DemoDeploymentInfoService deploymentInfo;
     private final SpecialistRegistry specialists;
     private final ExecutionPlanRegistry plans;
+    private final SpecialistChainRegistry chains;
+    private final SpecialistChainExecutionRepository chainExecutions;
     private final AIProviderManager providers;
     private final Environment environment;
     private final DataSource dataSource;
@@ -40,6 +46,8 @@ public class IncidentHealthController {
         DemoDeploymentInfoService deploymentInfo,
         SpecialistRegistry specialists,
         ExecutionPlanRegistry plans,
+        SpecialistChainRegistry chains,
+        SpecialistChainExecutionRepository chainExecutions,
         AIProviderManager providers,
         Environment environment,
         DataSource dataSource,
@@ -50,6 +58,8 @@ public class IncidentHealthController {
         this.deploymentInfo = deploymentInfo;
         this.specialists = specialists;
         this.plans = plans;
+        this.chains = chains;
+        this.chainExecutions = chainExecutions;
         this.providers = providers;
         this.environment = environment;
         this.dataSource = dataSource;
@@ -68,7 +78,8 @@ public class IncidentHealthController {
             IncidentSpecialists.SERVICE_HEALTH_V2.toString(),
             IncidentSpecialists.CHANGE_RISK_V2.toString(),
             IncidentSpecialists.INTAKE_V2.toString(),
-            IncidentSpecialists.CONVERSATION_MANAGER_V2.toString()
+            IncidentSpecialists.CONVERSATION_MANAGER_V2.toString(),
+            IncidentSpecialists.CHAIN_MANAGER_V3.toString()
         );
         boolean specialistsReady = specialistIds.stream().allMatch(id ->
             specialists.findRegistered(
@@ -79,6 +90,9 @@ public class IncidentHealthController {
             && plans.find(IncidentPlans.PARALLEL).isPresent()
             && plans.find(IncidentPlans.SEQUENTIAL_V2).isPresent()
             && plans.find(IncidentPlans.PARALLEL_V2).isPresent();
+        boolean chainsReady = chains.find(
+            IncidentSpecialistChains.SMART_INVESTIGATION
+        ).isPresent();
         List<Map<String, Object>> specialistHealth = specialistIds.stream()
             .map(id -> specialists.requireRegistered(
                 ai.fabric.execution.specialist.SpecialistId.parse(id)
@@ -127,11 +141,24 @@ public class IncidentHealthController {
             deploymentInfo.health()
         );
         out.put("status", specialistsReady && plansReady && actionsReady
-            && providerReady && storageReady && runbooksReady ? "UP" : "DOWN");
+            && chainsReady && providerReady && storageReady && runbooksReady
+            ? "UP" : "DOWN");
         out.put("specialists", specialistHealth);
         out.put("plans", planHealth);
+        out.put("chains", chains.list().stream().map(chain ->
+            Map.<String, Object>of(
+                "id", chain.id().toString(),
+                "contentHash", chain.contentHash(),
+                "manager", chain.definition().managerSpecialistId().toString(),
+                "targets", chain.definition().targets().stream()
+                    .map(target -> target.specialistId().toString())
+                    .toList(),
+                "ready", true
+            )
+        ).toList());
         out.put("specialistsReady", specialistsReady);
         out.put("plansReady", plansReady);
+        out.put("chainsReady", chainsReady);
         out.put("actions", actionNames.stream().map(name ->
             Map.<String, Object>of(
                 "name", name,
@@ -148,7 +175,11 @@ public class IncidentHealthController {
         out.put("storage", Map.of(
             "domain", storageReady ? "UP" : "DOWN",
             "chat", storageReady ? "UP" : "DOWN",
-            "execution", "EPHEMERAL"
+            "plans", "EPHEMERAL",
+            "specialistChains",
+            chainExecutions instanceof JdbcSpecialistChainExecutionRepository
+                ? "JDBC"
+                : "EPHEMERAL"
         ));
         out.put("fanInPolicy", "ALL_REQUIRED");
         out.put("conversationHistory", "BACKEND_OWNED");

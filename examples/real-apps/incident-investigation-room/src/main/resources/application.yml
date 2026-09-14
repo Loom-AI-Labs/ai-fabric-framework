@@ -6,10 +6,9 @@ spring:
   application:
     name: incident-investigation-room
   datasource:
-    url: jdbc:h2:file:./data/incident-investigation
-    driver-class-name: org.h2.Driver
-    username: sa
-    password:
+    url: ${SPRING_DATASOURCE_URL:jdbc:h2:file:./data/incident-investigation}
+    username: ${SPRING_DATASOURCE_USERNAME:sa}
+    password: ${SPRING_DATASOURCE_PASSWORD:}
   jpa:
     open-in-view: false
     hibernate:
@@ -23,6 +22,8 @@ ai:
         enabled: false
   execution:
     enabled: true
+    output-finalization:
+      max-attempts: 3
     manifests:
       enabled: true
       fail-fast: true
@@ -55,6 +56,27 @@ ai:
       max-duration: PT75S
       max-active: 500
       result-ttl: PT15M
+    specialist-chains:
+      enabled: true
+      max-active: 250
+      max-duration: PT75S
+      max-manager-decisions: 4
+      max-worker-invocations: 2
+      max-parallel-workers: 2
+      max-invocations-per-target: 1
+      max-projected-result-characters: 8000
+      max-directive-corrections: 1
+      durable-enabled: ${AI_SPECIALIST_CHAINS_DURABLE_ENABLED:true}
+      allow-ephemeral: ${AI_SPECIALIST_CHAINS_ALLOW_EPHEMERAL:false}
+      initialize-schema: ${AI_SPECIALIST_CHAINS_INITIALIZE_SCHEMA:true}
+      lease-duration: PT2M
+      recovery-interval: PT30S
+      recovery-batch-size: 50
+      max-attempts: 3
+      cleanup-enabled: true
+      retention: P7D
+      encryption-secret: ${AI_SPECIALIST_CHAIN_ENCRYPTION_SECRET:}
+      fingerprint-secret: ${AI_SPECIALIST_CHAIN_FINGERPRINT_SECRET:}
     receipts:
       enabled: false
     reviews:

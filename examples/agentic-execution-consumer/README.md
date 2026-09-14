@@ -9,7 +9,10 @@ It has no framework reactor parent and no relative module dependency.
 - AI Fabric dependency management through `ai-fabric-bom`.
 - Explicit consumption of `ai-fabric-execution`.
 - Public typed sequential and bounded parallel plan declarations.
+- Public exact-version bounded specialist-chain declaration with two approved,
+  independently parallelizable read workers.
 - Application-owned branch mappers and deterministic aggregation.
+- Application-owned chain input mapping and safe worker-result projection.
 - Spring Boot context startup with execution auto-configuration disabled.
 - Real `DefaultAIExecutionCoordinator` fan-out/fan-in from packaged classes.
 - Two read branches overlap and return one atomic typed result.
@@ -38,7 +41,7 @@ not compile against framework source directories.
 
 ## Published Maven Central Verification
 
-After AI Fabric `0.5.3` is published, prove source-independent consumption with
+After AI Fabric `0.6.0` is published, prove source-independent consumption with
 a fresh local Maven repository. Do not install the framework reactor first:
 
 ```bash
@@ -46,11 +49,11 @@ MAVEN_REPO="$(mktemp -d)"
 
 mvn -B -V --no-transfer-progress \
   -Dmaven.repo.local="$MAVEN_REPO" \
-  -Dai-fabric.version=0.5.3 \
+  -Dai-fabric.version=0.6.0 \
   -f examples/agentic-execution-consumer/pom.xml \
   clean test
 ```
 
 That command proves Maven Central metadata and transitive artifact
-completeness. Run it only after the `0.5.3` BOM is visible on Maven Central;
+completeness. Run it only after the `0.6.0` BOM is visible on Maven Central;
 local reactor artifacts must not satisfy this verification.

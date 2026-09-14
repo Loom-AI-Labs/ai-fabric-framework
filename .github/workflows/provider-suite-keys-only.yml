@@ -169,6 +169,12 @@ jobs:
               "realapi_spring_profiles": "realapi",
             })
 
+          incident_chain_assigned = False
+          for entry in include:
+            should_run = entry["llm"] == "openai" and not incident_chain_assigned
+            entry["run_incident_chain"] = should_run
+            incident_chain_assigned = incident_chain_assigned or should_run
+
           matrix = {"include": include}
           print("matrix=" + json.dumps(matrix))
           print("has_any=" + ("true" if include else "false"))
@@ -350,3 +356,21 @@ jobs:
           cd ai-infrastructure-module/integration-Testing/behavior-integration-tests
           export SPRING_PROFILES_ACTIVE="realapi"
           bash run-behavior-realapi-tests.sh "${{ matrix.llm }}:${{ matrix.embedding }}"
+
+      - name: Run bounded specialist-chain OpenAI scenarios
+        if: matrix.run_incident_chain == true
+        run: |
+          mvn -B -V --no-transfer-progress \
+            -f examples/real-apps/pom.xml \
+            -pl incident-investigation-room -am \
+            -Dtest=IncidentInvestigationRealApiIntegrationTest \
+            -Dsurefire.failIfNoSpecifiedTests=false \
+            test
+
+      - name: Upload bounded specialist-chain OpenAI reports
+        if: always() && matrix.run_incident_chain == true
+        uses: actions/upload-artifact@v4
+        with:
+          name: incident-specialist-chain-openai-${{ matrix.name }}
+          path: examples/real-apps/incident-investigation-room/target/surefire-reports/
+          retention-days: 30

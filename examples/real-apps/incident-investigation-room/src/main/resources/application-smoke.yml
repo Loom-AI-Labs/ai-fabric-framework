@@ -8,3 +8,9 @@ ai:
   execution:
     async:
       repository: IN_MEMORY
+    specialist-chains:
+      durable-enabled: true
+      allow-ephemeral: false
+      initialize-schema: true
+      encryption-secret: incident-chain-smoke-encryption-secret-1234567890
+      fingerprint-secret: incident-chain-smoke-fingerprint-secret-1234567890
