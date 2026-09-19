@@ -1434,6 +1434,13 @@ For Coolify deployment:
 - persistent storage: mount at `/app/data`, or use the `prod` PostgreSQL profile
 - include source commit in build: enabled
 
+The default file-backed H2 database and local vector index are single-process
+stores. Do not overlap old and replacement containers while both mount
+`/app/data`. For this self-contained demo, stop the running Coolify application
+before starting its replacement and keep the persistent volume intact. Use the
+`prod` PostgreSQL profile and an independently managed vector store before
+introducing overlapping replicas or rolling replacement.
+
 ## Failure And Recovery Semantics
 
 - Provider, retrieval, grounding, schema, policy, persistence, and domain
