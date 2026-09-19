@@ -80,12 +80,13 @@ For specialist execution and manifest authoring:
 5. `application-patterns/EXPLICIT_SPECIALIST_HANDOFF.md`
 6. `application-patterns/BOUNDED_READ_ONLY_PARALLEL_PLANS.md`
 7. `application-patterns/BOUNDED_MULTI_SPECIALIST_CHAINS.md`
-8. `application-patterns/LOOMAI_AI_FABRIC_0_7_DECLARATIVE_CHAIN_MIGRATION_RUNBOOK.md`
-9. `developer-workflows/LOOMAI_AI_FABRIC_0_7_DECLARATIVE_CHAIN_ADOPTION_PROMPT.md`
-10. `application-patterns/LOOMAI_AI_FABRIC_0_6_CHAIN_MIGRATION_RUNBOOK.md`
-11. `actions-governance/GOVERNED_SPECIALIST_WRITES_AND_RECEIPTS.md`
-12. `security-auth/RUNTIME_AUTHORIZATION_AND_ACCESS_CONTROL_GUIDE.md`
-13. `testing-verification/VERIFICATION_PLAYBOOK.md`
+8. `../release-notes/LOOMAI_PLATFORM_AI_FABRIC_0_7_0_UPGRADE_NOTES.md`
+9. `application-patterns/LOOMAI_AI_FABRIC_0_7_DECLARATIVE_CHAIN_MIGRATION_RUNBOOK.md`
+10. `developer-workflows/LOOMAI_AI_FABRIC_0_7_DECLARATIVE_CHAIN_ADOPTION_PROMPT.md`
+11. `application-patterns/LOOMAI_AI_FABRIC_0_6_CHAIN_MIGRATION_RUNBOOK.md`
+12. `actions-governance/GOVERNED_SPECIALIST_WRITES_AND_RECEIPTS.md`
+13. `security-auth/RUNTIME_AUTHORIZATION_AND_ACCESS_CONTROL_GUIDE.md`
+14. `testing-verification/VERIFICATION_PLAYBOOK.md`
 
 For RAG, vector, and provider work:
 

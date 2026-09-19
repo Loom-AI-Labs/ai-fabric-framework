@@ -1,269 +1,359 @@
-# LoomAI AI Fabric 0.7 Declarative Chain Migration Runbook
+# LoomAI AI Fabric 0.7 Migration Runbook
 
 ## Purpose
 
-This runbook moves LoomAI from AI Fabric `0.6.1` Java-defined bounded chains
-to the optional `0.7.0` `SpecialistChain` resource without changing LoomAI's
-identity, authorization, data, deployment, receipt, review, or reconciliation
-ownership.
+This is the operator checklist for moving LoomAI from AI Fabric `0.6.1` to
+`0.7.0`, then optionally adopting one declarative bounded specialist chain.
 
-The declarative resource is a startup-loaded configuration form of the
-existing bounded chain runtime. It does not add another engine, database, graph
-language, or model-controlled authority boundary.
+Read the complete
+[LoomAI platform upgrade notes](../../release-notes/LOOMAI_PLATFORM_AI_FABRIC_0_7_0_UPGRADE_NOTES.md)
+before executing this runbook.
 
-## Release Decision
+## Correct Starting Point
 
-Adopt a declarative chain only when:
+LoomAI does not currently have a Java deployment-knowledge chain to convert.
+It has:
 
-- the manager and workers already exist as exact registered specialists;
-- all workers are read-only, non-interactive, and JSON Schema-backed;
-- inputs can be selected with bounded JSON Pointers into top-level fields;
-- outputs can be reduced to a summary, bounded string facts, and approved
-  evidence IDs; and
-- the topology is one closed bounded chain.
+- a direct manifest-defined `deployment-knowledge-specialist@1`;
+- `POST /api/specialists/deployment-knowledge/query`;
+- backend-owned trusted tenant, deployment, subject, and scopes;
+- grounded retrieval from the `document` vector space; and
+- `AI_EXECUTION_SPECIALIST_CHAINS_ENABLED=false`.
 
-Keep LoomAI's chain Java-defined when an input mapper or result projector must
-query authoritative state, compute a domain invariant, reconcile a system of
-record, or return a rich application representation.
+The existing direct endpoint is the functional baseline. The first chain is a
+new optional route, not a replacement hidden inside the dependency upgrade.
 
-Do not add Java class names, bean names, adapters, mappers, projectors, SpEL,
-scripts, SQL, providers, credentials, identity, tenant, deployment, subject,
-or scopes to chain YAML.
+## Release Gates
 
-## Compatibility And Drain Boundary
+Treat these as separate releasable gates:
 
-`0.7.0` intentionally corrects Java-chain execution identity so target
-declaration order is preserved rather than sorted during hashing. Before
-replacing a `0.6.1` runtime:
+| Gate | Change | Chain flag |
+| --- | --- | --- |
+| A | Upgrade all LoomAI framework consumers to `0.7.0` | `false` |
+| B | Add deployment-runtime chain table migration | `false` |
+| C | Package one reviewed canary and stable secrets | Internal profile only |
+| D | Promote a useful product chain | Approved traffic only |
 
-1. Stop new chain submissions.
-2. Inventory all non-terminal `ai_specialist_chain_execution` rows.
-3. Let them finish or cancel them under `0.6.1`.
-4. Retain the existing chain secrets and database.
-5. Do not rewrite stored chain hashes or relabel old work.
-6. Deploy `0.7.0` only after the retained work is terminal.
+Do not combine Gate A with chain enablement.
 
-Other execution state remains separate. Do not migrate chat turns, action
-receipts, reviews, durable direct jobs, indexing status, or business records
-into the chain table.
+## Gate A: Base `0.7.0` Upgrade
 
-## Phase 1: Upgrade With Declarative Chains Absent
+### A1. Capture baseline
 
-1. Resolve the published `0.7.0` BOM from Maven Central using an empty Maven
-   local repository.
-2. Keep current Java chain beans and endpoints in place.
-3. Do not package any `SpecialistChain` resource yet.
-4. Run the complete LoomAI compile and deterministic regression suite.
-5. Verify indexing, Data Sync, RAG, chat, actions, receipts, reviews, direct
-   specialists, plans, delegation, handoff, and Java chains.
-6. Verify health reports AI Fabric `0.7.0` and the deployed immutable commit.
+```bash
+git status --short --branch
+git rev-parse HEAD
+```
 
-No new table is required. Declarative chains reuse the existing
-`ai_specialist_chain_execution` table.
+Record and preserve existing dirty files. Do not reset user work.
 
-## Phase 2: Select One Canary
+### A2. Verify the release
 
-Use a deployment-knowledge or deployment-diagnostics read path whose useful
-evidence may require one or two existing read-only specialists. Keep its
-current Java endpoint and add a separately named exact declarative chain, for
-example:
+- Tag: `ai-fabric-framework-v0.7.0`
+- Commit: `5b075b66384dc5b756b3b3dd12efaf896ce9a50b`
+- BOM: `io.github.loom-ai-labs:ai-fabric-bom:0.7.0`
+
+Resolve the BOM from an empty Maven cache. Do not use a local framework
+install as release evidence.
+
+### A3. Audit legacy chain state
+
+For each environment, determine whether
+`ai_specialist_chain_execution` exists and whether it contains non-terminal
+`0.6.1` work.
+
+Expected LoomAI result: the table is absent or contains no work because chains
+are disabled. Record the actual result.
+
+If any non-terminal work exists:
+
+1. stop new chain submissions;
+2. let it finish or cancel it under `0.6.1`;
+3. retain the database and existing secrets;
+4. do not rewrite stored hashes; and
+5. continue only when retained work is terminal.
+
+This drain is required because `0.7.0` preserves target declaration order in
+chain identity while `0.6.1` sorted targets during hashing.
+
+### A4. Update LoomAI version sources
+
+Update current release defaults in:
 
 ```text
-deployment-knowledge@1              Java baseline
-deployment-knowledge-declarative@1  Manifest canary
+ai-fabric-product/pom.xml
+ai-infrastructure-module/pom.xml
+Platfrom/backend/src/main/resources/application.yml
+Platfrom/backend/src/main/java/com/ai/fabric/platform/backend/deployment/entity/DeploymentVersionEntity.java
+Platfrom/backend/src/main/java/com/ai/fabric/platform/backend/deployment/service/DeploymentConfigCompiler.java
 ```
 
-Do not register both sources under the same exact chain ID. Duplicate Java and
-manifest IDs fail startup by design.
+Update associated tests and generated deployment expectations. Preserve
+historical records and evidence that intentionally identify `0.6.1`.
 
-The canary must cover:
+### A5. Preserve disabled behavior
 
-- completion without a worker;
-- one worker;
-- independent parallel workers;
-- adaptive second-worker selection;
-- one clarification;
-- one terminal read-only handoff if the domain needs it;
-- exact replay;
-- cancellation;
-- restart recovery; and
-- cross-principal, tenant, deployment, and subject denial.
-
-## Phase 3: Package Immutable Resources
-
-Keep the exact input schema, manager, workers, prompts, and chain in reviewed
-classpath or mounted deployment resources. Example locations:
-
-```yaml
-ai:
-  execution:
-    manifests:
-      enabled: true
-      fail-fast: true
-      locations:
-        - classpath*:ai-specialists/*.yml
-        - classpath*:ai-chains/*.yml
-        # - file:/etc/loomai/ai-fabric/*.yml
-```
-
-Use `apiVersion: ai.fabric/v1` and `kind: SpecialistChain`. Every reference is
-an exact `name@version` identity. The manifest may declare only:
-
-- one chain input schema reference;
-- one manager message pointer and bounded context allowlist;
-- one exact manager;
-- one to eight exact workers within deployment ceilings;
-- `JSON_POINTER_MAP` input fields from `CHAIN_INPUT` or
-  `MANAGER_OBJECTIVE`;
-- `BOUNDED_FACT_PROJECTION` summary/string facts/evidence IDs;
-- explicit delegation, parallel, and handoff flags;
-- bounded limits; and
-- conversation policy.
-
-Validate the resource with the packaged schema:
+Keep both of these effective:
 
 ```text
-META-INF/ai-fabric/specialist-resource-v1.schema.json
+AI_EXECUTION_SPECIALIST_CHAINS_ENABLED=false
 ```
-
-Then compile it with `SpecialistChainManifestValidator`. Supply LoomAI's
-previously published exact-ID semantics catalogue so an exact version cannot
-silently change meaning.
-
-## Phase 4: Configure The Runtime
-
-Keep LoomAI's existing datasource and stable chain secrets:
 
 ```yaml
 ai:
   execution:
     specialist-chains:
-      enabled: true
-      durable-enabled: true
-      allow-ephemeral: false
-      initialize-schema: false
-      max-active: 100
-      max-duration: PT90S
-      max-manager-decisions: 4
-      max-worker-invocations: 2
-      max-parallel-workers: 2
-      max-invocations-per-target: 1
-      max-projected-result-characters: 8000
-      max-json-pointer-characters: 500
-      max-json-pointer-depth: 16
-      max-mappings-per-target: 32
-      max-mappings-per-chain: 128
-      max-copied-node-depth: 16
-      max-copied-node-count: 1000
-      max-copied-value-bytes: 32768
-      max-mapped-input-bytes: 65536
-      max-mapping-work-units: 4096
-      lease-duration: PT2M
-      recovery-interval: PT30S
-      recovery-batch-size: 50
-      max-attempts: 3
-      cleanup-enabled: true
-      retention: P30D
-      encryption-secret: ${AI_SPECIALIST_CHAIN_ENCRYPTION_SECRET}
-      fingerprint-secret: ${AI_SPECIALIST_CHAIN_FINGERPRINT_SECRET}
+      enabled: false
 ```
 
-The two secrets must be distinct, stable, private, and at least 32 characters.
-Do not put them in Git, manifests, health output, prompts, or browser config.
+Package no `SpecialistChain` resource yet. In fail-fast mode, discovering one
+while chain execution is disabled rejects startup by design.
 
-If a `SpecialistChain` resource is discovered while chain execution is
-disabled, fail-fast mode rejects startup. Diagnostics mode keeps it inactive
-and readiness false; it never silently ignores the chain or requires JDBC
-while inactive.
+### A6. Run regression suites
 
-## Phase 5: Preserve LoomAI Ownership
+```bash
+mvn -f ai-fabric-product/pom.xml clean verify
+mvn -f ai-infrastructure-module/pom.xml clean verify
+mvn -f Platfrom/backend/pom.xml clean verify
+```
 
-The browser or API caller may provide only the newest user message and normal
-domain input. LoomAI backend code still owns:
+Run tests normally. Never use `-DskipTests` or `maven.test.skip`.
 
-- authenticated principal;
-- subject;
-- tenant and deployment;
-- authority scopes;
-- conversation ownership;
-- exact chain selection;
-- idempotency key derivation;
-- deadlines;
-- source-of-truth reads;
-- write proposals, confirmations, receipts, and reviews; and
-- reconciliation.
+### A7. Build and deploy from Central
 
-Strip or reject caller-provided identity, scope, topology, target, evidence,
-vector-space, provider, model, prompt, or credential fields. A manager
-objective is untrusted routing text; it never widens worker authority.
+Build the release image with an empty Central-only cache. Prove all AI Fabric
+dependencies resolve to `0.7.0`. Deploy the exact immutable LoomAI commit.
 
-## Phase 6: Prove Runtime Identity
+### A8. Base canary
 
-Expose safe health fields from `SpecialistChainManifestRuntimeStatus`:
+Verify:
 
-- manifest loading and chain execution enabled;
-- readiness;
-- discovered, inactive, manifest-defined, Java-defined, and total counts;
-- audit resource aggregate hash;
-- declarative semantics aggregate hash;
-- effective execution registry hash; and
-- bounded reason/source diagnostics.
+- runtime and Platform health;
+- framework version and deployed commit readback;
+- `deployment-knowledge-specialist@1` registration and health;
+- valid direct specialist query;
+- insufficient-evidence behavior;
+- missing tenant/deployment denial;
+- two-tenant and two-deployment retrieval isolation;
+- Data Sync and indexing status;
+- existing chat, RAG, actions, receipts, and reviews; and
+- generated deployments still receive the chain flag as `false`.
 
-For each registered chain, expose only exact ID, source (`JAVA` or `MANIFEST`),
-effective content hash, optional resource/semantics hashes, exact manager, and
-exact target IDs. Do not expose prompt text, full schemas, manifests, trusted
-context, protected state, or raw worker results.
+Gate A is complete only after this evidence is attached to the LoomAI release
+record.
 
-## Phase 7: Required Verification
+## Gate B: Durable Schema Preparation
 
-Run, without test-skipping flags:
+Add an application-owned migration to each deployment-local runtime database
+for `ai_specialist_chain_execution`. Do not add it to the central Platform
+backend database.
 
-1. resource JSON Schema validation;
-2. offline semantic compilation;
-3. duplicate Java/manifest ID rejection;
-4. malformed mapping/projection and deployment-ceiling rejection before a
-   provider call;
-5. no-worker, single, adaptive, parallel, clarification, and optional handoff;
-6. required-branch/provider/projection failures with no fallback answer;
-7. exact replay with no repeated worker call;
-8. changed payload under the same key conflict;
-9. restart after a persisted worker projection without repeating that worker;
-10. cancellation and deadline;
-11. changed schema, prompt, target order, mapping, projection, limit, and
-    policy rejection;
-12. descriptive metadata changing only the audit hash;
-13. cross-owner, cross-tenant, cross-deployment, and cross-subject denial;
-14. a packaged application with mounted immutable resources;
-15. a real OpenAI route with no deterministic fallback; and
-16. an empty-cache standalone consumer resolving only Maven Central `0.7.0`
-    artifacts.
+Use the reviewed schema in the
+[`BOUNDED_MULTI_SPECIALIST_CHAINS.md` configuration section](BOUNDED_MULTI_SPECIALIST_CHAINS.md#configuration).
+Validate SQL types against LoomAI's production database.
 
-Use the framework references:
+Apply the migration while chains remain disabled. Production must use:
+
+```yaml
+ai:
+  execution:
+    specialist-chains:
+      initialize-schema: false
+```
+
+Verify migration apply, restart, and rollback policy without enabling a chain.
+
+## Gate C: Declarative Mechanics Canary
+
+### C1. Keep the baseline
+
+Do not remove or rename:
 
 ```text
-examples/real-apps/incident-investigation-room
-examples/real-apps/agentic-ai-action-resolver
-examples/agentic-execution-consumer
+deployment-knowledge-specialist@1
+POST /api/specialists/deployment-knowledge/query
 ```
 
-## Traffic Migration
+### C2. Select exact canary IDs
 
-1. Deploy Java and declarative chain IDs side by side.
-2. Compare approved scenarios, projected facts, evidence IDs, lineage,
-   latency, model calls, and failures.
-3. Route internal canary traffic to the declarative exact ID.
-4. Promote only after deterministic, restart, isolation, and keyed-provider
-   evidence is recorded.
-5. Keep the Java route during the observation window.
-6. Remove it only through a separate reviewed application change.
+Use separately versioned resources, for example:
+
+```text
+deployment-knowledge-chain-request@1
+deployment-knowledge-chain-directive@1
+deployment-knowledge-chain-manager@1
+deployment-knowledge-declarative@1
+```
+
+Do not register the same exact chain ID from Java and a manifest. Duplicate
+sources fail startup.
+
+### C3. Keep the topology honest
+
+The current LoomAI baseline provides one real read-only worker. A one-worker
+chain may be used to prove manager routing, packaging, trusted context,
+persistence, replay, restart, and health.
+
+Do not add a fake second worker solely to claim parallel orchestration. Add a
+second worker only when it owns distinct data or reasoning, such as an
+authoritative runtime-state reader separate from indexed deployment evidence.
+
+### C4. Author immutable resources
+
+Use `apiVersion: ai.fabric/v1` and `kind: SpecialistChain`. The resource may
+declare only:
+
+- one exact chain input schema;
+- one exact manager;
+- one to eight exact read-only, non-interactive workers;
+- `JSON_POINTER_MAP` fields from `CHAIN_INPUT` or `MANAGER_OBJECTIVE`;
+- `BOUNDED_FACT_PROJECTION` output;
+- explicit transition flags and limits; and
+- conversation policy.
+
+Do not place Java classes, Spring beans, mappers, projectors, expressions,
+scripts, SQL, URLs, providers, models, credentials, identity, tenants,
+deployments, subjects, or scopes in YAML.
+
+Validate resources with:
+
+```text
+META-INF/ai-fabric/specialist-resource-v1.schema.json
+SpecialistChainManifestValidator
+```
+
+Persist or compare published exact-ID semantics so the same exact version
+cannot silently change execution meaning.
+
+### C5. Add resource locations deliberately
+
+LoomAI currently scans `classpath*:ai-specialists/*`. Either keep the chain in
+that immutable bundle or add:
+
+```yaml
+ai:
+  execution:
+    manifests:
+      locations:
+        - classpath*:ai-specialists/*.yml
+        - classpath*:ai-specialists/*.yaml
+        - classpath*:ai-specialists/*.json
+        - classpath*:ai-chains/*.yml
+        - classpath*:ai-chains/*.yaml
+        - classpath*:ai-chains/*.json
+```
+
+### C6. Configure secrets
+
+Create distinct, stable secret-store values of at least 32 characters:
+
+```text
+AI_SPECIALIST_CHAIN_ENCRYPTION_SECRET
+AI_SPECIALIST_CHAIN_FINGERPRINT_SECRET
+```
+
+Never print their values. Keep them stable across restarts and replacements.
+
+### C7. Enable only the canary profile
+
+Use durable storage, no ephemeral fallback, no runtime schema creation, and
+explicit bounded limits from the upgrade notes.
+
+Enable:
+
+```text
+AI_EXECUTION_SPECIALIST_CHAINS_ENABLED=true
+```
+
+only for the reviewed internal canary deployment. Leave general provisioning
+defaults at `false` until promotion is approved.
+
+### C8. Preserve backend authority
+
+LoomAI backend code owns:
+
+- authenticated principal;
+- tenant, deployment, subject, and scopes;
+- exact chain selection;
+- schema-valid chain input;
+- idempotency key and deadline;
+- conversation binding when configured;
+- source-of-truth reads and all writes; and
+- receipts, reviews, confirmations, and reconciliation.
+
+Strip or reject caller-provided identity, authority, topology, target,
+evidence, vector-space, provider, model, prompt, or credential fields.
+
+### C9. Expose safe health
+
+Project safe fields from `SpecialistChainManifestRuntimeStatus`:
+
+- enabled flags and readiness;
+- Java, discovered, inactive, manifest, and total counts;
+- aggregate audit, semantics, and execution hashes;
+- bounded diagnostics; and
+- exact chain source and safe identity.
+
+Never expose manifest bodies, prompts, schemas, trusted context, protected
+state, secrets, or raw worker results.
+
+### C10. Verify the canary
+
+Required evidence:
+
+1. schema and semantic validation;
+2. duplicate and unknown reference rejection;
+3. no-worker completion;
+4. one-worker grounded answer;
+5. insufficient evidence;
+6. malformed manager, mapping, projection, grounding, and provider failures
+   with no fallback answer;
+7. exact replay with no repeated provider or worker call;
+8. changed request under the same key conflict;
+9. restart after a persisted worker projection without repeating that worker;
+10. cancellation and deadline;
+11. definition-drift rejection;
+12. cross-owner, tenant, deployment, and subject denial;
+13. packaged-runtime startup with immutable resources;
+14. real OpenAI execution with usage and lineage; and
+15. no raw worker output or protected state in the public response.
+
+## Gate D: Product Chain
+
+Promote beyond the mechanics canary only when a second specialist has a real,
+separate responsibility. Prove manager selection of each worker alone and both
+when required. Parallel work must be independent and bounded.
+
+Keep a direct route during the observation window. Compare selected workers,
+facts, approved evidence IDs, failures, lineage, latency, and provider calls.
 
 ## Rollback
 
 1. Stop new declarative submissions.
-2. Drain or cancel active declarative executions.
-3. Route traffic back to the Java exact ID.
-4. Remove the chain resource from the next immutable deployment.
-5. Keep chain storage and secrets until retention and audit requirements allow
-   cleanup.
+2. Drain or cancel active declarative work.
+3. Route traffic to the direct deployment-knowledge endpoint.
+4. Set the chain flag to `false` in the next immutable deployment.
+5. Remove the chain resource from that package.
+6. Retain chain storage and both secrets through the audit/replay retention
+   period.
 
-Do not hot-edit an active exact resource or overwrite its stored hashes.
+Do not hot-edit an exact resource, rewrite stored hashes, or delete durable
+state merely to make a rollback appear clean.
+
+## Final Sign-Off
+
+Record:
+
+- changed files and LoomAI commit;
+- exact framework version and Central-only resolution proof;
+- all test totals;
+- packaged dependency evidence;
+- deployed commit/version evidence;
+- direct-specialist regression evidence;
+- two-boundary security evidence;
+- chain table and secret names, without values;
+- exact chain/manager/worker/schema IDs;
+- manifest source and hashes;
+- replay/restart/cancellation/drift evidence;
+- real-provider evidence; and
+- rollback readiness.
