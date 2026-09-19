@@ -1498,10 +1498,24 @@ The `0.7.0` source candidate passed these pre-publication gates on
 - the published JSON Schema parsed successfully, changed files contained no
   placeholder implementations, and `git diff --check` was clean.
 
-The immutable tag, Maven Central artifacts, empty-cache external-consumer
-build, and deployed-demo identity are post-publication gates. They do not alter
-the implementation contract and must be verified before declaring the release
-complete.
+The post-publication gates completed on 2026-09-19:
+
+- the immutable `ai-fabric-framework-v0.7.0` tag points to release commit
+  `5b075b66384dc5b756b3b3dd12efaf896ce9a50b`;
+- the Maven Central release workflow succeeded and representative `0.7.0`
+  artifacts resolved over HTTPS;
+- a new empty-cache standalone consumer passed all five tests using Maven
+  Central only;
+- both public reference applications deployed with AI Fabric `0.7.0` and
+  reported their manifest-defined chains as registered and ready; and
+- live OpenAI calls executed each declarative chain with an
+  `INVOKE_PARALLEL` decision followed by `COMPLETE`, then returned an exact
+  replay for the same scoped idempotency key and execution ID.
+
+The public Incident and Agentic Resolver UIs call the declarative async,
+status, and cancellation endpoints. Java-defined chains remain available only
+as an explicit comparison and as the supported escape hatch for complex
+application-owned mapping or projection.
 
 ## 26. Final Recommendation
 
