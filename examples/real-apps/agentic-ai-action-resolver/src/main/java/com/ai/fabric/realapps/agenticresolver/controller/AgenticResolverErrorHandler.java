@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 @RestControllerAdvice(assignableTypes = {
     AgenticResolverController.class,
     AgenticResolverManagerController.class,
+    AgenticResolverDeclarativeResolutionController.class,
     AgenticResolverSmartResolutionController.class,
     ProactiveAccountEventController.class,
     SupportCreditReviewController.class,
