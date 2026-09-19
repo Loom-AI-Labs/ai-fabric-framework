@@ -1,0 +1,52 @@
+apiVersion: ai.fabric/v1
+kind: SpecialistChain
+metadata:
+  name: consumer-support-investigation
+  version: "1"
+  displayName: Consumer Support Investigation
+  description: Coordinates one approved account reader.
+  labels:
+    domain: support
+spec:
+  input:
+    schemaRef: consumer-support-chain-input@1
+    managerMessagePointer: /question
+    managerContext:
+      - name: accountReference
+        valuePointer: /accountReference
+        required: true
+  manager:
+    specialistRef: consumer-support-manager@1
+  targets:
+    - specialistRef: consumer-account-reader@1
+      description: Reads approved account facts.
+      input:
+        type: JSON_POINTER_MAP
+        fields:
+          - source: CHAIN_INPUT
+            sourcePointer: /question
+            targetField: question
+            required: true
+          - source: MANAGER_OBJECTIVE
+            targetField: objective
+            required: true
+      result:
+        type: BOUNDED_FACT_PROJECTION
+        summaryPointer: /summary
+        facts:
+          - name: status
+            valuePointer: /status
+            required: true
+        evidenceReferences: NONE
+      transitions:
+        delegationAllowed: true
+        parallelEligible: false
+        handoffAllowed: false
+  limits:
+    maxDuration: PT20S
+    maxManagerDecisions: 3
+    maxWorkerInvocations: 1
+    maxParallelWorkers: 1
+    maxInvocationsPerTarget: 1
+    maxProjectedResultCharacters: 2000
+  conversationPolicy: REQUIRED

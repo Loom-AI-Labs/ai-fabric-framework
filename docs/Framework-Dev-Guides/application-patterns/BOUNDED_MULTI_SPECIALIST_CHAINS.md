@@ -27,7 +27,7 @@ manager calls, persistence, deadlines, and a larger operational surface.
 
 ```text
 authenticated application request
-  -> exact chain definition selected by application code
+  -> exact Java-defined or manifest-defined chain selected by backend code
   -> exact manager specialist
   -> validated typed directive
   -> zero, one, or bounded approved READ workers
@@ -65,12 +65,18 @@ SpecialistChainDirective
 SpecialistChainExecutionRequest<I>
 SpecialistChainGateway
 SpecialistChainExecutionResult
+SpecialistChainRegistration
+SpecialistChainDefinitionSource
+SpecialistChainManifestValidator
+SpecialistChainAuthoringCatalogProvider
+SpecialistChainManifestRuntimeStatus
 ```
 
 Definitions and targets use exact `name@version` identities. The registry
-computes a content hash over the manager, workers, component IDs and classes,
-target descriptions, policies, and limits. A changed definition cannot resume
-old durable work.
+computes an effective content hash over the manager, workers, component or
+declarative identities, ordered target descriptions, policies, schemas,
+mappings, projections, and limits. A changed definition cannot resume old
+durable work.
 
 Starting with `0.6.1`, a manifest-defined manager or worker content hash also
 covers its raw manifest hash and exact resolved prompt, input schema, and output
@@ -79,6 +85,121 @@ cannot resume protected work under the old identity. Drain active manifest-
 backed chains, jobs, receipts, and linked reviews before that upgrade, or
 deliberately recreate failed-closed work afterward. Java-defined specialist
 hashing is unchanged.
+
+Starting with `0.7.0`, chain target declaration order is preserved in manager
+input, execution order, and chain identity. Earlier releases sorted targets
+only while hashing them. This correction means a Java-defined chain declared
+in non-sorted order receives a new content hash after upgrade. Drain or cancel
+non-terminal chain executions before moving to `0.7.0`; do not expect old
+checkpoints to resume under the corrected identity.
+
+Manifest-defined chains additionally retain three separate identities:
+
+- the audit resource hash covers the complete canonical resource, including
+  descriptive metadata;
+- the declarative semantics hash covers executable declarative meaning; and
+- the effective execution hash also covers resolved manager, workers, schemas,
+  target order, mappings, projections, limits, and conversation policy.
+
+Changing labels or display text changes the audit identity without silently
+changing durable execution semantics. Changing any executable field or
+resolved dependency changes the effective identity and protected work fails
+closed.
+
+## Choose Java Or A Manifest
+
+Use a manifest-defined chain when every manager and worker already exists as
+an exact manifest specialist, all contracts are JSON Schema-backed, worker
+input can be built with bounded RFC 6901 selection into top-level fields, and
+worker output can be reduced to a summary, bounded string facts, and approved
+evidence IDs.
+
+```yaml
+apiVersion: ai.fabric/v1
+kind: SpecialistChain
+metadata:
+  name: incident-investigation
+  version: "1"
+  displayName: Incident Investigation
+  description: Coordinates approved health and change readers.
+spec:
+  input:
+    schemaRef: incident-chain-request@1
+    managerMessagePointer: /question
+    managerContext:
+      - name: incidentId
+        valuePointer: /incidentId
+  manager:
+    specialistRef: incident-chain-manager@1
+  targets:
+    - specialistRef: service-health-reader@1
+      description: Inspect approved current health evidence.
+      input:
+        type: JSON_POINTER_MAP
+        fields:
+          - source: MANAGER_OBJECTIVE
+            targetField: question
+          - source: CHAIN_INPUT
+            sourcePointer: /incidentId
+            targetField: incidentId
+      result:
+        type: BOUNDED_FACT_PROJECTION
+        summaryPointer: /summary
+        facts:
+          - name: healthStatus
+            valuePointer: /healthStatus
+        evidenceReferences: ALL_APPROVED
+      transitions:
+        delegationAllowed: true
+        parallelEligible: true
+        handoffAllowed: false
+  limits:
+    maxDuration: PT60S
+    maxManagerDecisions: 3
+    maxWorkerInvocations: 1
+    maxParallelWorkers: 1
+    maxInvocationsPerTarget: 1
+    maxProjectedResultCharacters: 4000
+  conversationPolicy: REQUIRED
+```
+
+The resource cannot name Java classes, Spring beans, adapters, mappers,
+projectors, expressions, providers, or trusted identity. It compiles into
+`SpecialistChainDefinition<JsonNode>` and then uses the same registry,
+gateway, JDBC state, replay, recovery, security, and metrics as Java-defined
+chains. Duplicate exact IDs across either source fail startup.
+
+Keep a chain Java-defined when mapping or projection needs authoritative
+application state, computed domain invariants, reconciliation, complex typed
+objects, or an application dependency. A Java definition is the correct
+boundary for those needs, not a weakness in the declarative subset.
+
+Load a declarative chain through the same startup resource pipeline as its
+schemas, prompts, and specialists:
+
+```yaml
+ai:
+  execution:
+    manifests:
+      enabled: true
+      fail-fast: true
+      locations:
+        - classpath*:ai-specialists/*.yml
+        - classpath*:ai-chains/*.yml
+        # - file:/etc/ai-fabric/chains/*.yml
+    specialist-chains:
+      enabled: true
+```
+
+Loading is startup-only. Treat mounted resources as immutable deployment
+artifacts and use a new exact version for a semantic change.
+
+The packaged `META-INF/ai-fabric/specialist-resource-v1.schema.json` is the
+editor/build schema. `SpecialistChainManifestValidator` applies the same
+semantic compiler used at runtime and can reject changed semantics under a
+previously published exact ID. `SpecialistChainAuthoringCatalogProvider`
+exposes only the supported declarative vocabulary, bounds, ceilings, and safe
+specialist contract metadata; it does not grant execution authority.
 
 ## Register Application Boundaries
 
@@ -259,6 +380,15 @@ ai:
       max-parallel-workers: 3
       max-invocations-per-target: 1
       max-projected-result-characters: 12000
+      max-json-pointer-characters: 500
+      max-json-pointer-depth: 16
+      max-mappings-per-target: 32
+      max-mappings-per-chain: 128
+      max-copied-node-depth: 16
+      max-copied-node-count: 1000
+      max-copied-value-bytes: 32768
+      max-mapped-input-bytes: 65536
+      max-mapping-work-units: 4096
       durable-enabled: true
       allow-ephemeral: false
       initialize-schema: false
@@ -431,6 +561,20 @@ Micrometer metrics cover active/terminal chains, selected workers, decision and
 model-call counts, parallel group size/duration, outcomes, replay, budget
 failures, and repository depth.
 
+For declarative resources, `SpecialistChainManifestRuntimeStatus` also exposes
+safe Java/manifest/inactive counts and aggregate audit, semantics, and
+effective execution hashes. It never exposes manifests, prompts, schemas,
+trusted context, or protected payloads. Manifest-specific meters cover load,
+compilation, mapping, projection, and registry counts:
+
+```text
+ai.fabric.specialist.chain.manifest.load
+ai.fabric.specialist.chain.manifest.compilation
+ai.fabric.specialist.chain.manifest.mapping
+ai.fabric.specialist.chain.manifest.projection
+ai.fabric.specialist.chain.registry.definition.count
+```
+
 ## Reference Verification
 
 Run the chain-focused framework suite:
@@ -469,13 +613,13 @@ mvn -f examples/real-apps/pom.xml \
 
 Tests run normally. Do not use Maven test-skipping flags.
 
-The `0.6.0` release source was verified with all 383 execution-module tests,
-all 14 keyed Incident OpenAI scenarios, a PostgreSQL restart/replay Docker
-smoke, and desktop/mobile browser canaries. The `0.6.1` hardening proof adds
-385 execution-module tests and seven keyed Account Resolver OpenAI scenarios.
-See the [`0.6.0` release notes](../../release-notes/0.6.0.md) and
-[`0.6.1` release notes](../../release-notes/0.6.1.md) for exact source versus
-post-publication gates and the manifest-hash migration requirement.
+The `0.7.0` release proof adds declarative parser/compiler, bounded mapping and
+projection, source-aware registry, exact hash, deterministic real-app,
+keyed-provider, and standalone Maven Central consumer coverage. See the
+[`0.7.0` release notes](../../release-notes/0.7.0.md) and the
+[0.7 migration runbook](LOOMAI_AI_FABRIC_0_7_DECLARATIVE_CHAIN_MIGRATION_RUNBOOK.md)
+for exact source versus post-publication gates and the target-order hash
+migration requirement.
 
 ## Release Boundary
 

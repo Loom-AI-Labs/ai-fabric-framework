@@ -7,6 +7,7 @@ import static org.mockito.Mockito.when;
 
 import ai.fabric.execution.action.ActionProposalReceiptRepository;
 import ai.fabric.execution.chain.RegisteredSpecialistChain;
+import ai.fabric.execution.chain.SpecialistChainDefinitionSource;
 import ai.fabric.execution.chain.SpecialistChainDefinition;
 import ai.fabric.execution.chain.SpecialistChainRegistry;
 import ai.fabric.execution.chain.state.JdbcSpecialistChainExecutionRepository;
@@ -106,6 +107,9 @@ class DeploymentInfoServiceTest {
         RegisteredSpecialistChain registeredChain = mock(
             RegisteredSpecialistChain.class
         );
+        RegisteredSpecialistChain manifestChain = mock(
+            RegisteredSpecialistChain.class
+        );
         SpecialistChainDefinition<?> chainDefinition = mock(
             SpecialistChainDefinition.class
         );
@@ -113,7 +117,28 @@ class DeploymentInfoServiceTest {
             AccountSpecialistChains.SMART_RESOLUTION
         );
         when(registeredChain.contentHash()).thenReturn("c".repeat(64));
+        when(registeredChain.source()).thenReturn(
+            SpecialistChainDefinitionSource.JAVA
+        );
+        when(registeredChain.resourceHash()).thenReturn(Optional.empty());
+        when(registeredChain.declarativeSemanticsHash()).thenReturn(
+            Optional.empty()
+        );
         doReturn(chainDefinition).when(registeredChain).definition();
+        when(manifestChain.id()).thenReturn(
+            AccountSpecialistChains.DECLARATIVE_RESOLUTION
+        );
+        when(manifestChain.contentHash()).thenReturn("f".repeat(64));
+        when(manifestChain.source()).thenReturn(
+            SpecialistChainDefinitionSource.MANIFEST
+        );
+        when(manifestChain.resourceHash()).thenReturn(
+            Optional.of("d".repeat(64))
+        );
+        when(manifestChain.declarativeSemanticsHash()).thenReturn(
+            Optional.of("e".repeat(64))
+        );
+        doReturn(chainDefinition).when(manifestChain).definition();
         when(chainDefinition.managerSpecialistId()).thenReturn(
             AccountResolverSpecialists.CHAIN_MANAGER_ID
         );
@@ -121,9 +146,15 @@ class DeploymentInfoServiceTest {
         when(chainDefinition.conversationPolicy()).thenReturn(
             ai.fabric.execution.chain.SpecialistChainConversationPolicy.REQUIRED
         );
-        when(chainRegistry.list()).thenReturn(List.of(registeredChain));
+        when(chainRegistry.list()).thenReturn(List.of(
+            registeredChain,
+            manifestChain
+        ));
         when(chainRegistry.find(AccountSpecialistChains.SMART_RESOLUTION))
             .thenReturn(Optional.of(registeredChain));
+        when(chainRegistry.find(
+            AccountSpecialistChains.DECLARATIVE_RESOLUTION
+        )).thenReturn(Optional.of(manifestChain));
         Map<String, Object> health = new DeploymentInfoService(
             environment,
             List.of(provider),
@@ -186,6 +217,10 @@ class DeploymentInfoServiceTest {
                     .containsEntry("specialistChainDurability", "JDBC")
                     .containsEntry(
                         "accountSmartResolutionChainRegistered",
+                        true
+                    )
+                    .containsEntry(
+                        "accountDeclarativeResolutionChainRegistered",
                         true
                     )
                     .containsEntry("asyncDurability", "DURABLE")

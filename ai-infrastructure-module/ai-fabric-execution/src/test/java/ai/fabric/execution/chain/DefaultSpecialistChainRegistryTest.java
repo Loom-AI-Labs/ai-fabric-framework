@@ -93,6 +93,39 @@ class DefaultSpecialistChainRegistryTest {
     }
 
     @Test
+    void declarationOrderIsPartOfTheDurableExecutionIdentity() {
+        SpecialistRegistry specialists = validSpecialists();
+        SpecialistChainDefinition<String> original = definition(
+            "Inspect current health.",
+            conservativeLimits()
+        );
+        SpecialistChainDefinition<String> reversed =
+            new SpecialistChainDefinition<>(
+                original.id(),
+                original.managerSpecialistId(),
+                original.inputType(),
+                original.inputAdapter(),
+                List.of(
+                    changeTarget(),
+                    healthTarget("Inspect current health.")
+                ),
+                original.limits(),
+                original.conversationPolicy()
+            );
+
+        String originalHash = registry(
+            List.of(original),
+            specialists
+        ).require(original.id()).contentHash();
+        String reversedHash = registry(
+            List.of(reversed),
+            specialists
+        ).require(reversed.id()).contentHash();
+
+        assertThat(reversedHash).isNotEqualTo(originalHash);
+    }
+
+    @Test
     void rejectsUnknownSpecialistsAndDuplicateChainIds() {
         SpecialistChainDefinition<String> definition = definition(
             "Inspect current health.",
@@ -321,6 +354,125 @@ class DefaultSpecialistChainRegistryTest {
             .hasMessageContaining("limits exceed a deployment ceiling");
     }
 
+    @Test
+    void targetDeclarationOrderChangesTheEffectiveExecutionHash() {
+        SpecialistRegistry specialists = validSpecialists();
+        SpecialistChainDefinition<String> declared = definition(
+            "Inspect current health.",
+            conservativeLimits()
+        );
+        SpecialistChainDefinition<String> reversed =
+            new SpecialistChainDefinition<>(
+                declared.id(),
+                declared.managerSpecialistId(),
+                declared.inputType(),
+                declared.inputAdapter(),
+                List.of(changeTarget(), healthTarget(
+                    "Inspect current health."
+                )),
+                declared.limits(),
+                declared.conversationPolicy()
+            );
+
+        assertThat(registry(List.of(declared), specialists)
+            .require(declared.id()).contentHash())
+            .isNotEqualTo(registry(List.of(reversed), specialists)
+                .require(reversed.id()).contentHash());
+    }
+
+    @Test
+    void manifestAuditMetadataDoesNotChangeEffectiveExecutionHash() {
+        SpecialistRegistry specialists = validSpecialists();
+        SpecialistChainDefinition<String> definition = definition(
+            "Inspect current health.",
+            conservativeLimits()
+        );
+        String semantics = "b".repeat(64);
+        Map<SpecialistSchemaId, String> schemas = Map.of(
+            new SpecialistSchemaId("incident-request", "1"),
+            "c".repeat(64)
+        );
+        SpecialistChainRegistration first = new SpecialistChainRegistration(
+            definition,
+            SpecialistChainDefinitionSource.MANIFEST,
+            SpecialistChainRegistrationIdentity.manifest(
+                "a".repeat(64),
+                semantics,
+                schemas,
+                "first.yml#1"
+            )
+        );
+        SpecialistChainRegistration renamed = new SpecialistChainRegistration(
+            definition,
+            SpecialistChainDefinitionSource.MANIFEST,
+            SpecialistChainRegistrationIdentity.manifest(
+                "d".repeat(64),
+                semantics,
+                schemas,
+                "renamed.yml#1"
+            )
+        );
+
+        RegisteredSpecialistChain firstRegistered = registry(
+            new SpecialistChainRegistrationBundle(
+                List.of(first),
+                List.of(),
+                1,
+                1
+            ),
+            specialists
+        ).require(definition.id());
+        RegisteredSpecialistChain renamedRegistered = registry(
+            new SpecialistChainRegistrationBundle(
+                List.of(renamed),
+                List.of(),
+                1,
+                1
+            ),
+            specialists
+        ).require(definition.id());
+
+        assertThat(firstRegistered.resourceHash())
+            .isNotEqualTo(renamedRegistered.resourceHash());
+        assertThat(firstRegistered.contentHash())
+            .isEqualTo(renamedRegistered.contentHash());
+    }
+
+    @Test
+    void rejectsDuplicateIdsAcrossJavaAndManifestRegistrations() {
+        SpecialistRegistry specialists = validSpecialists();
+        SpecialistChainDefinition<String> definition = definition(
+            "Inspect current health.",
+            conservativeLimits()
+        );
+        SpecialistChainRegistration manifest = new SpecialistChainRegistration(
+            definition,
+            SpecialistChainDefinitionSource.MANIFEST,
+            SpecialistChainRegistrationIdentity.manifest(
+                "a".repeat(64),
+                "b".repeat(64),
+                Map.of(
+                    new SpecialistSchemaId("incident-request", "1"),
+                    "c".repeat(64)
+                ),
+                "incident-chain.yml#1"
+            )
+        );
+
+        assertThatThrownBy(() -> registry(
+            new SpecialistChainRegistrationBundle(
+                List.of(
+                    SpecialistChainRegistration.javaDefinition(definition),
+                    manifest
+                ),
+                List.of(),
+                1,
+                1
+            ),
+            specialists
+        )).hasMessageContaining("duplicates an existing chain ID");
+    }
+
     private void assertSchemaRejected(
         SpecialistChainDefinition<String> definition,
         JsonNode schema,
@@ -342,6 +494,24 @@ class DefaultSpecialistChainRegistryTest {
     ) {
         return new DefaultSpecialistChainRegistry(
             definitions,
+            specialists,
+            clientFactory(),
+            new CanonicalJsonSupport(OBJECT_MAPPER),
+            Duration.ofMinutes(2),
+            4,
+            4,
+            3,
+            1,
+            12_000
+        );
+    }
+
+    private DefaultSpecialistChainRegistry registry(
+        SpecialistChainRegistrationBundle registrations,
+        SpecialistRegistry specialists
+    ) {
+        return new DefaultSpecialistChainRegistry(
+            registrations,
             specialists,
             clientFactory(),
             new CanonicalJsonSupport(OBJECT_MAPPER),

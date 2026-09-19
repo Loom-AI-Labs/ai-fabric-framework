@@ -202,6 +202,21 @@ public class IncidentController {
         );
     }
 
+    @PostMapping("/sessions/{sessionId}/declarative-investigations")
+    public IncidentSmartInvestigationView declarativeInvestigation(
+        @PathVariable String sessionId,
+        @RequestHeader("X-AI-Fabric-Demo-Session") String sessionToken,
+        @RequestHeader("Idempotency-Key") String idempotencyKey,
+        @Valid @RequestBody IncidentQuestionRequest request
+    ) {
+        requireSessionToken(sessionId, sessionToken);
+        return smartInvestigations.investigateDeclarative(
+            sessionId,
+            request.question(),
+            idempotencyKey
+        );
+    }
+
     @PostMapping("/sessions/{sessionId}/smart-investigations/async")
     @ResponseStatus(HttpStatus.ACCEPTED)
     public IncidentSmartInvestigationExecutionView submitSmartInvestigation(
@@ -212,6 +227,25 @@ public class IncidentController {
     ) {
         requireSessionToken(sessionId, sessionToken);
         return smartInvestigations.submit(
+            sessionId,
+            request.question(),
+            idempotencyKey
+        );
+    }
+
+    @PostMapping(
+        "/sessions/{sessionId}/declarative-investigations/async"
+    )
+    @ResponseStatus(HttpStatus.ACCEPTED)
+    public IncidentSmartInvestigationExecutionView
+        submitDeclarativeInvestigation(
+            @PathVariable String sessionId,
+            @RequestHeader("X-AI-Fabric-Demo-Session") String sessionToken,
+            @RequestHeader("Idempotency-Key") String idempotencyKey,
+            @Valid @RequestBody IncidentQuestionRequest request
+        ) {
+        requireSessionToken(sessionId, sessionToken);
+        return smartInvestigations.submitDeclarative(
             sessionId,
             request.question(),
             idempotencyKey
@@ -230,6 +264,19 @@ public class IncidentController {
         return smartInvestigations.status(sessionId, executionId);
     }
 
+    @GetMapping(
+        "/sessions/{sessionId}/declarative-investigations/{executionId}"
+    )
+    public IncidentSmartInvestigationExecutionView
+        declarativeInvestigationStatus(
+            @PathVariable String sessionId,
+            @PathVariable String executionId,
+            @RequestHeader("X-AI-Fabric-Demo-Session") String sessionToken
+        ) {
+        requireSessionToken(sessionId, sessionToken);
+        return smartInvestigations.status(sessionId, executionId);
+    }
+
     @PostMapping(
         "/sessions/{sessionId}/smart-investigations/{executionId}/cancel"
     )
@@ -238,6 +285,19 @@ public class IncidentController {
         @PathVariable String executionId,
         @RequestHeader("X-AI-Fabric-Demo-Session") String sessionToken
     ) {
+        requireSessionToken(sessionId, sessionToken);
+        return smartInvestigations.cancel(sessionId, executionId);
+    }
+
+    @PostMapping(
+        "/sessions/{sessionId}/declarative-investigations/{executionId}/cancel"
+    )
+    public IncidentSmartInvestigationExecutionView
+        cancelDeclarativeInvestigation(
+            @PathVariable String sessionId,
+            @PathVariable String executionId,
+            @RequestHeader("X-AI-Fabric-Demo-Session") String sessionToken
+        ) {
         requireSessionToken(sessionId, sessionToken);
         return smartInvestigations.cancel(sessionId, executionId);
     }

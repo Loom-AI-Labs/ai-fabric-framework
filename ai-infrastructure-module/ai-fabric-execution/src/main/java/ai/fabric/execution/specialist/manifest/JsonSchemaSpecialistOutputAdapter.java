@@ -91,6 +91,10 @@ public final class JsonSchemaSpecialistOutputAdapter
         return specification.mode();
     }
 
+    public SpecialistSchemaDefinition schemaDefinition() {
+        return schema;
+    }
+
     @Override
     public OrchestrationIntentPolicy orchestrationIntentPolicy() {
         boolean noActions = capabilities.visibleActions().isEmpty()

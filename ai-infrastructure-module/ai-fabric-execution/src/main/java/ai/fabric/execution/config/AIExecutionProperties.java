@@ -91,6 +91,15 @@ public class AIExecutionProperties {
         private int maxInvocationsPerTarget = 1;
         private int maxProjectedResultCharacters = 12_000;
         private int maxDirectiveCorrections = 1;
+        private int maxJsonPointerCharacters = 500;
+        private int maxJsonPointerDepth = 16;
+        private int maxMappingsPerTarget = 32;
+        private int maxMappingsPerChain = 128;
+        private int maxCopiedNodeDepth = 16;
+        private int maxCopiedNodeCount = 1_000;
+        private int maxCopiedValueBytes = 32_768;
+        private int maxMappedInputBytes = 65_536;
+        private int maxMappingWorkUnits = 4_096;
         private boolean durableEnabled;
         private boolean allowEphemeral;
         private boolean initializeSchema;
@@ -193,6 +202,87 @@ public class AIExecutionProperties {
                 );
             }
             this.maxDirectiveCorrections = value;
+        }
+
+        public int getMaxJsonPointerCharacters() {
+            return maxJsonPointerCharacters;
+        }
+
+        public void setMaxJsonPointerCharacters(int value) {
+            this.maxJsonPointerCharacters = positive(
+                value,
+                "maxJsonPointerCharacters"
+            );
+        }
+
+        public int getMaxJsonPointerDepth() {
+            return maxJsonPointerDepth;
+        }
+
+        public void setMaxJsonPointerDepth(int value) {
+            this.maxJsonPointerDepth = positive(value, "maxJsonPointerDepth");
+        }
+
+        public int getMaxMappingsPerTarget() {
+            return maxMappingsPerTarget;
+        }
+
+        public void setMaxMappingsPerTarget(int value) {
+            this.maxMappingsPerTarget = positive(
+                value,
+                "maxMappingsPerTarget"
+            );
+        }
+
+        public int getMaxMappingsPerChain() {
+            return maxMappingsPerChain;
+        }
+
+        public void setMaxMappingsPerChain(int value) {
+            this.maxMappingsPerChain = positive(
+                value,
+                "maxMappingsPerChain"
+            );
+        }
+
+        public int getMaxCopiedNodeDepth() {
+            return maxCopiedNodeDepth;
+        }
+
+        public void setMaxCopiedNodeDepth(int value) {
+            this.maxCopiedNodeDepth = positive(value, "maxCopiedNodeDepth");
+        }
+
+        public int getMaxCopiedNodeCount() {
+            return maxCopiedNodeCount;
+        }
+
+        public void setMaxCopiedNodeCount(int value) {
+            this.maxCopiedNodeCount = positive(value, "maxCopiedNodeCount");
+        }
+
+        public int getMaxCopiedValueBytes() {
+            return maxCopiedValueBytes;
+        }
+
+        public void setMaxCopiedValueBytes(int value) {
+            this.maxCopiedValueBytes = positive(value, "maxCopiedValueBytes");
+        }
+
+        public int getMaxMappedInputBytes() {
+            return maxMappedInputBytes;
+        }
+
+        public void setMaxMappedInputBytes(int value) {
+            this.maxMappedInputBytes = positive(value, "maxMappedInputBytes");
+        }
+
+        public int getMaxMappingWorkUnits() {
+            return maxMappingWorkUnits;
+        }
+
+        public void setMaxMappingWorkUnits(int value) {
+            this.maxMappingWorkUnits = positive(value, "maxMappingWorkUnits");
         }
 
         public boolean isDurableEnabled() {

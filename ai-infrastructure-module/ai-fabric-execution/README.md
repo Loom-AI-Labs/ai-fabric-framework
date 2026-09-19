@@ -56,6 +56,13 @@ or more specialists. AI Fabric validates and compiles each manifest into the
 same immutable registry used by Java definitions. No specialist database or
 second execution path is introduced.
 
+Starting with `0.7.0`, the loader also accepts a `kind: SpecialistChain`
+resource. It resolves one exact manager and a closed catalogue of
+schema-backed, read-only, non-interactive workers, then compiles bounded JSON
+Pointer mappings and result projections into the existing
+`SpecialistChainDefinition<JsonNode>` runtime. Manifest chains and Java chains
+share one registry, gateway, durable state model, and duplicate-ID checks.
+
 The packaged public resources are:
 
 ```text
@@ -288,6 +295,29 @@ Workers remain non-interactive leaves. Every invocation still passes through
 action, provider, grounding, and validation boundaries. The manager receives
 only application-projected facts and evidence references, never raw worker
 results or trusted authority.
+
+The chain may be Java-defined or manifest-defined. Use a manifest when worker
+inputs and approved result projections fit the bounded schema-backed JSON
+subset. Keep Java definitions for rich application types, source-of-truth
+lookups, computed domain invariants, reconciliation, or authoritative custom
+projection logic. A chain manifest cannot reference Java classes, Spring
+beans, adapters, mappers, projectors, scripts, expressions, SQL, credentials,
+or trusted identity.
+
+Declarative chains use the normal resource loader:
+
+```yaml
+ai:
+  execution:
+    manifests:
+      enabled: true
+      fail-fast: true
+      locations:
+        - classpath*:ai-specialists/*.yml
+        - classpath*:ai-chains/*.yml
+    specialist-chains:
+      enabled: true
+```
 
 Chains are disabled by default. Production use requires durable JDBC state or
 an explicit `allow-ephemeral=true` development acknowledgement:

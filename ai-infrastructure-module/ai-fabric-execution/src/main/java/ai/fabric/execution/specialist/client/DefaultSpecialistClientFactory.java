@@ -126,11 +126,13 @@ public final class DefaultSpecialistClientFactory
             (JsonSchemaOutputContract) registered.definition()
                 .outputAdapter()
                 .outputContract();
-        bindingValidator.validate(
-            inputAdapter.schemaDefinition(),
-            key.inputType(),
-            "input"
-        );
+        if (key.inputType() != com.fasterxml.jackson.databind.JsonNode.class) {
+            bindingValidator.validate(
+                inputAdapter.schemaDefinition(),
+                key.inputType(),
+                "input"
+            );
+        }
         SpecialistSchemaDefinition outputSchema =
             new SpecialistSchemaDefinition(
                 "ai.fabric/v1",
@@ -146,11 +148,13 @@ public final class DefaultSpecialistClientFactory
                     outputContract.schema()
                 )
             );
-        bindingValidator.validate(
-            outputSchema,
-            key.outputType(),
-            "output"
-        );
+        if (key.outputType() != com.fasterxml.jackson.databind.JsonNode.class) {
+            bindingValidator.validate(
+                outputSchema,
+                key.outputType(),
+                "output"
+            );
+        }
     }
 
     private void validateNativeBinding(

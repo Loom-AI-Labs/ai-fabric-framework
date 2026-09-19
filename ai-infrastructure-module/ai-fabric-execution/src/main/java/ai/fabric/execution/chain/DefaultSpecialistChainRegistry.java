@@ -38,6 +38,42 @@ public final class DefaultSpecialistChainRegistry
         int maximumInvocationsPerTarget,
         int maximumProjectedResultCharacters
     ) {
+        this(
+            new SpecialistChainRegistrationBundle(
+                definitions == null
+                    ? List.of()
+                    : definitions.stream()
+                        .map(SpecialistChainRegistration::javaDefinition)
+                        .toList(),
+                List.of(),
+                0,
+                0
+            ),
+            specialistRegistry,
+            clientFactory,
+            canonicalJson,
+            maximumDuration,
+            maximumManagerDecisions,
+            maximumWorkerInvocations,
+            maximumParallelWorkers,
+            maximumInvocationsPerTarget,
+            maximumProjectedResultCharacters
+        );
+    }
+
+    public DefaultSpecialistChainRegistry(
+        SpecialistChainRegistrationBundle registrations,
+        SpecialistRegistry specialistRegistry,
+        SpecialistClientFactory clientFactory,
+        CanonicalJsonSupport canonicalJson,
+        Duration maximumDuration,
+        int maximumManagerDecisions,
+        int maximumWorkerInvocations,
+        int maximumParallelWorkers,
+        int maximumInvocationsPerTarget,
+        int maximumProjectedResultCharacters
+    ) {
+        Objects.requireNonNull(registrations, "registrations are required");
         Objects.requireNonNull(
             specialistRegistry,
             "specialistRegistry is required"
@@ -59,13 +95,12 @@ public final class DefaultSpecialistChainRegistry
 
         Map<SpecialistChainId, RegisteredSpecialistChain> validated =
             new LinkedHashMap<>();
-        if (definitions != null) {
-            for (SpecialistChainDefinition<?> definition : definitions) {
-                SpecialistChainDefinition<?> required =
-                    Objects.requireNonNull(
-                        definition,
-                        "chain definition is required"
-                    );
+        for (SpecialistChainRegistration registration
+            : registrations.registrations()) {
+                SpecialistChainRegistration required = Objects.requireNonNull(
+                    registration,
+                    "chain registration is required"
+                );
                 RegisteredSpecialistChain registered = validate(
                     required,
                     specialistRegistry,
@@ -83,11 +118,10 @@ public final class DefaultSpecialistChainRegistry
                         registered
                     ) != null) {
                     throw invalid(
-                        required,
+                        required.definition(),
                         "duplicates an existing chain ID"
                     );
                 }
-            }
         }
         this.chains = Map.copyOf(validated);
     }
@@ -105,7 +139,7 @@ public final class DefaultSpecialistChainRegistry
     }
 
     private RegisteredSpecialistChain validate(
-        SpecialistChainDefinition<?> definition,
+        SpecialistChainRegistration registration,
         SpecialistRegistry specialistRegistry,
         SpecialistClientFactory clientFactory,
         CanonicalJsonSupport canonicalJson,
@@ -116,6 +150,7 @@ public final class DefaultSpecialistChainRegistry
         int maximumInvocationsPerTarget,
         int maximumProjectedResultCharacters
     ) {
+        SpecialistChainDefinition<?> definition = registration.definition();
         validateLimits(
             definition,
             maximumDuration,
@@ -155,20 +190,37 @@ public final class DefaultSpecialistChainRegistry
         validateDirectiveSchema(definition, manager.definition());
 
         List<Map<String, Object>> fingerprintTargets = new ArrayList<>();
-        definition.targets().stream()
-            .sorted(Comparator.comparing(value ->
-                value.specialistId().toString()
-            ))
-            .forEach(target -> fingerprintTargets.add(validateTarget(
+        definition.targets().forEach(target ->
+            fingerprintTargets.add(validateTarget(
                 definition,
                 target,
                 manager.definition(),
                 specialistRegistry,
                 clientFactory
-            )));
+            ))
+        );
 
         LinkedHashMap<String, Object> fingerprint = new LinkedHashMap<>();
         fingerprint.put("id", definition.id().toString());
+        registration.identity().declarativeSemanticsHash().ifPresent(hash ->
+            fingerprint.put("declarativeSemanticsHash", hash)
+        );
+        if (!registration.identity().schemaDependencies().isEmpty()) {
+            fingerprint.put(
+                "schemaDependencies",
+                registration.identity().schemaDependencies().entrySet()
+                    .stream()
+                    .sorted(Map.Entry.comparingByKey(
+                        Comparator.comparing(Object::toString)
+                    ))
+                    .collect(java.util.stream.Collectors.toMap(
+                        entry -> entry.getKey().toString(),
+                        Map.Entry::getValue,
+                        (left, right) -> left,
+                        LinkedHashMap::new
+                    ))
+            );
+        }
         fingerprint.put("managerSpecialist", manager.id().toString());
         fingerprint.put("managerContentHash", manager.contentHash());
         fingerprint.put("inputType", definition.inputType().getName());
@@ -186,7 +238,12 @@ public final class DefaultSpecialistChainRegistry
         return new RegisteredSpecialistChain(
             definition,
             canonicalJson.hashValue(fingerprint),
-            manager.contentHash()
+            manager.contentHash(),
+            registration.source(),
+            registration.identity().resourceHash(),
+            registration.identity().declarativeSemanticsHash(),
+            registration.identity().schemaDependencies(),
+            registration.identity().safeSource()
         );
     }
 

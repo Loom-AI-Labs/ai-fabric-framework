@@ -74,12 +74,15 @@ cannot choose or impersonate the reviewer.
 The original `ai-fabric-account-resolver` remains unchanged and deployable as
 the governed-action baseline.
 
-## Bounded Smart Account Coordinator
+## Declarative Account Coordinator
 
-The primary demo flow now runs `account-smart-resolution@1`. The browser sends
-one natural-language request and a stable idempotency key; it does not choose a
-worker. The backend selects the exact chain, trusted account subject, tenant,
-deployment, conversation, and capability scopes.
+The primary public demo flow now runs the manifest-defined
+`account-declarative-resolution@1`. The browser sends one natural-language
+request and a stable idempotency key; it does not choose a worker or topology.
+The backend selects the exact chain, trusted account subject, tenant,
+deployment, conversation, and capability scopes. The Java-defined
+`account-smart-resolution@1` remains available as the rich typed-boundary
+comparison path.
 
 The exact-version manager `account-resolution-chain-manager@1` sees only a
 closed catalog containing:
@@ -95,11 +98,13 @@ or make one terminal read-only handoff. Both workers remain leaves: they cannot
 start another transition, write application data, read chain conversation, or
 observe sibling output.
 
-Java-owned mappers construct each typed worker request. Java-owned projectors
-reduce validated worker output to bounded business facts and evidence IDs
-before the manager can see it. A final answer must structurally cite every
-projected result by its exact result ID. The public API and UI never return raw
-provider output, hidden prompts, trusted context, or executable parameters.
+For the primary path, application code creates one schema-valid request from
+backend-owned domain/session state. The immutable chain manifest copies only
+allowlisted fields into fresh schema-validated worker requests and projects
+only declared summaries, string facts, and approved evidence IDs. A final
+answer must structurally cite every projected result by its exact result ID.
+The public API and UI never return raw provider output, hidden prompts, trusted
+context, or executable parameters.
 
 The chain is durable in JDBC. Its protected request, checkpoints, projected
 results, immutable chain/manager hashes, access binding, and terminal result
@@ -114,12 +119,14 @@ validation, persistence, and required-branch failures remain visible.
   `https://ai-fabric.dev/demos/ai-fabric-agentic-action-resolver/review`
 - Backend: `https://ai-fabric-agentic-action-resolver.46.224.145.148.sslip.io`
 
-The resolver UI opens with the Smart Account Coordinator. Guided natural
+The resolver UI opens with the Declarative Account Coordinator. Guided natural
 requests prove account-only, billing-only, parallel, adaptive sequential,
 clarification, handoff, completion without a worker, and invented-target
 guardrail paths. It polls the authoritative asynchronous execution, exposes
 bounded budget and lineage diagnostics, supports cancellation and exact replay,
-and renders only application-projected facts.
+and renders only bounded projected facts. Health output proves the chain source
+is `MANIFEST` and exposes audit, semantics, and effective execution hashes
+without exposing manifest content.
 
 The resolver UI also includes a guided proactive-event proof. It sends payment
 failure facts only, then polls the durable `EVENT` execution and displays the
@@ -300,6 +307,42 @@ It pins the manager input/directive schemas, manager prompt profile, closed
 delegation targets, and two isolated worker variants. Application Java owns
 the typed manager definition, safe context adapter, worker input mappers, and
 external result projectors.
+
+## Declarative Chain Boundary
+
+The app deliberately exposes both chain-definition styles so framework users
+can see where each belongs:
+
+- `account-smart-resolution@1` remains Java-defined because its rich typed
+  path computes authoritative account and billing facts in application code;
+- `account-declarative-resolution@1` is loaded from
+  [`src/main/resources/ai-chains/account-declarative-resolution.yml`](src/main/resources/ai-chains/account-declarative-resolution.yml)
+  and uses only AI Fabric's bounded JSON mapping and result projection.
+
+The declarative chain references the same exact manager and read-only workers,
+but it cannot name Java adapters, mappers, projectors, classes, or beans. The
+application prepares one schema-valid request from backend-owned session and
+domain state, while the manifest owns only the closed team, safe field
+selection, safe result facts, transition flags, budgets, and conversation
+policy.
+
+Both definitions execute through the same `SpecialistChainRegistry`,
+`SpecialistChainGateway`, trusted authorization boundary, JDBC state, replay,
+recovery, cancellation, and metrics. Duplicate exact IDs across Java and YAML
+fail startup.
+
+The manifest-defined API is:
+
+```text
+POST /api/agentic-resolver/declarative-resolutions
+POST /api/agentic-resolver/declarative-resolutions/async
+GET  /api/agentic-resolver/declarative-resolutions/{executionId}
+POST /api/agentic-resolver/declarative-resolutions/{executionId}/cancel
+```
+
+It accepts the same public, user-oriented resolution request. The caller still
+cannot choose principal, account subject, tenant, deployment, chain,
+specialist, capability, evidence, or provider.
 
 ## Bounded Conversation Manager
 
@@ -737,10 +780,10 @@ PUT /api/agentic-resolver/sessions/{sessionId}/scenarios/{scenarioId}
 DELETE /api/agentic-resolver/sessions/{sessionId}
 ```
 
-Run the bounded smart coordinator synchronously:
+Run the manifest-defined coordinator synchronously:
 
 ```http
-POST /api/agentic-resolver/smart-resolutions
+POST /api/agentic-resolver/declarative-resolutions
 X-AI-Fabric-Demo-Session: {sessionId}
 Idempotency-Key: account-resolution-1
 Content-Type: application/json
@@ -761,9 +804,9 @@ that target to the server-owned catalog.
 Submit asynchronously, inspect status, or cancel:
 
 ```http
-POST /api/agentic-resolver/smart-resolutions/async
-GET /api/agentic-resolver/smart-resolutions/{executionId}
-POST /api/agentic-resolver/smart-resolutions/{executionId}/cancel
+POST /api/agentic-resolver/declarative-resolutions/async
+GET /api/agentic-resolver/declarative-resolutions/{executionId}
+POST /api/agentic-resolver/declarative-resolutions/{executionId}/cancel
 X-AI-Fabric-Demo-Session: {sessionId}
 ```
 
@@ -771,6 +814,10 @@ Repeat the original request with the same scoped idempotency key for exact
 replay. The terminal response reuses the same execution ID, manager decisions,
 worker invocation IDs, projected result IDs, and timeline. Reusing the key with
 different typed input fails with an idempotency conflict.
+
+The equivalent Java-defined comparison remains available under
+`/api/agentic-resolver/smart-resolutions` with the same sync, async, status,
+and cancellation suffixes.
 
 Run a stateless read-only application call:
 
@@ -1331,17 +1378,17 @@ are never removed by retention cleanup.
 ## Docker
 
 Build from the repository root. The image resolves the immutable AI Fabric
-`0.6.1` artifacts from Maven Central and runs the real-app reactor tests while
+`0.7.0` artifacts from Maven Central and runs the real-app reactor tests while
 packaging the app:
 
 ```bash
 docker build \
   -f examples/real-apps/agentic-ai-action-resolver/Dockerfile \
-  --build-arg AI_FABRIC_VERSION=0.6.1 \
+  --build-arg AI_FABRIC_VERSION=0.7.0 \
   --build-arg BUILD_COMMIT="$(git rev-parse HEAD)" \
   --build-arg BUILD_BRANCH="$(git branch --show-current)" \
   --build-arg BUILD_TIME="$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-  -t agentic-ai-action-resolver:0.6.1 \
+  -t agentic-ai-action-resolver:0.7.0 \
   .
 ```
 
@@ -1374,7 +1421,7 @@ docker run --rm -p 8105:8105 \
   -e APP_REVIEWER_API_KEY="$APP_REVIEWER_API_KEY" \
   -e APP_SENIOR_REVIEWER_API_KEY="$APP_SENIOR_REVIEWER_API_KEY" \
   -e CORS_ALLOWED_ORIGINS=https://ai-fabric.dev \
-  agentic-ai-action-resolver:0.6.1
+  agentic-ai-action-resolver:0.7.0
 ```
 
 For Coolify deployment:

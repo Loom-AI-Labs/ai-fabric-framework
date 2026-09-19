@@ -33,6 +33,7 @@ import ai.fabric.execution.specialist.SpecialistOutputAdapter;
 import ai.fabric.execution.specialist.manifest.CanonicalJsonSupport;
 import ai.fabric.execution.specialist.manifest.DefaultSpecialistManifestCompiler;
 import ai.fabric.execution.specialist.manifest.ManifestTestFixtures;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.time.Instant;
 import java.util.List;
@@ -188,6 +189,61 @@ class DefaultSpecialistClientFactoryTest {
             .isInstanceOf(IllegalArgumentException.class)
             .hasMessageContaining("input")
             .hasMessageContaining("question");
+    }
+
+    @Test
+    void bindsSchemaBackedJsonNodesForDeclarativeInfrastructure() {
+        var compiled = new DefaultSpecialistManifestCompiler()
+            .compile(
+                ManifestTestFixtures.manifest(),
+                ManifestTestFixtures.compilationContext()
+            )
+            .specialist();
+        var registry = new DefaultSpecialistRegistry(
+            List.of(compiled),
+            ManifestTestFixtures.definitionValidator()
+        );
+        AIExecutionGateway gateway = mock(AIExecutionGateway.class);
+        ObjectNode rawOutput = ManifestTestFixtures.objectMapper()
+            .createObjectNode()
+            .put("answer", "Use the approved recovery process.");
+        when(gateway.execute(any())).thenReturn(new AIExecutionResult<>(
+            "exec-json-node",
+            SpecialistId.of("support-knowledge", "1"),
+            AIExecutionStatus.SUCCEEDED,
+            rawOutput,
+            List.of(),
+            Map.of(),
+            null,
+            Instant.EPOCH,
+            Instant.EPOCH
+        ));
+        SpecialistClientFactory factory = new DefaultSpecialistClientFactory(
+            registry,
+            gateway,
+            ManifestTestFixtures.objectMapper()
+        );
+        SpecialistClient<JsonNode, JsonNode> client = factory.bind(
+            SpecialistId.of("support-knowledge", "1"),
+            JsonNode.class,
+            JsonNode.class
+        );
+        ObjectNode input = ManifestTestFixtures.objectMapper()
+            .createObjectNode()
+            .put("question", "How do I reset MFA?");
+
+        AIExecutionResult<JsonNode> result = client.execute(
+            input,
+            trustedContext()
+        );
+
+        assertThat(result.output().path("answer").asText())
+            .isEqualTo("Use the approved recovery process.");
+        @SuppressWarnings("rawtypes")
+        ArgumentCaptor<AIExecutionRequest> request =
+            ArgumentCaptor.forClass(AIExecutionRequest.class);
+        verify(gateway).execute(request.capture());
+        assertThat(request.getValue().input()).isEqualTo(input);
     }
 
     @Test

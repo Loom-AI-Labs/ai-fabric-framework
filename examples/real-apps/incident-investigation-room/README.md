@@ -7,6 +7,19 @@ specialist, consult two independent specialists in parallel, adapt after a
 projected result, or end with one approved read-only handoff. AI Fabric validates
 every proposed transition and persists the chain before returning a result.
 
+The app exposes the same bounded team through two definition sources:
+
+- `incident-smart-investigation@1` is Java-defined and demonstrates typed,
+  application-owned mappers and projectors; and
+- `incident-declarative-investigation@1` is loaded from
+  `ai-specialists/incident-declarative-chain.yml` and demonstrates the official
+  `ai.fabric/v1` `SpecialistChain` resource with bounded JSON mapping and
+  projection.
+
+Both definitions use the same registry, gateway, manager and workers, trusted
+context, durable JDBC state, replay, cancellation, recovery, and failure
+semantics. The declarative route is not a second demo engine.
+
 Each worker chooses only its approved operational READ actions, receives
 backend-authorized incident candidates, and cites relevant evidence. The
 application validates every event, runbook, tenant, deployment, and source
@@ -41,6 +54,11 @@ graph, keyword router, or fallback intelligence.
 - an application-selected `incident-smart-investigation@1` chain whose manager
   chooses zero, one, sequential, parallel, or terminal-handoff work from a
   closed exact-version target catalog;
+- a manifest-defined `incident-declarative-investigation@1` chain compiled at
+  startup from exact schemas, manager, workers, ordered targets, mappings,
+  projections, limits, and conversation policy;
+- source-aware registry identity with separate audit-resource, declarative-
+  semantics, and effective-execution hashes;
 - application-owned worker input mappers and safe result projectors;
 - exact final-answer attribution through `supportingResultIds`, with no prose
   or keyword matching;
@@ -77,7 +95,7 @@ The application owns authority and safety:
 ```text
 browser question only
   -> server-owned incident session
-  -> application selects incident-smart-investigation@1
+  -> application selects the Java or manifest-defined exact chain endpoint
   -> durable chain request and trusted-context fingerprints are persisted
   -> OpenAI manager returns one typed, schema-constrained directive
   -> AI Fabric validates target, policy, type, budget, deadline, and authority
@@ -130,18 +148,30 @@ curl -s -X POST http://localhost:8107/api/incidents/sessions \
 ```
 
 Use the returned ID as both the URL ID and the demo-session header. Generate a
-new idempotency key for each new logical operation. Run the primary smart path:
+new idempotency key for each new logical operation. Run the primary
+manifest-defined path used by the public UI:
 
 ```bash
 SESSION_ID='<returned-session-id>'
 REQUEST_KEY="$(uuidgen)"
 
 curl -s -X POST \
-  "http://localhost:8107/api/incidents/sessions/${SESSION_ID}/smart-investigations" \
+  "http://localhost:8107/api/incidents/sessions/${SESSION_ID}/declarative-investigations" \
   -H "X-AI-Fabric-Demo-Session: ${SESSION_ID}" \
   -H "Idempotency-Key: ${REQUEST_KEY}" \
   -H 'Content-Type: application/json' \
   -d '{"question":"Checkout degraded after deployment. Investigate health and change risk."}'
+```
+
+Run the Java-defined comparison path with the same public request shape:
+
+```bash
+curl -s -X POST \
+  "http://localhost:8107/api/incidents/sessions/${SESSION_ID}/smart-investigations" \
+  -H "X-AI-Fabric-Demo-Session: ${SESSION_ID}" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H 'Content-Type: application/json' \
+  -d '{"question":"Inspect current checkout health and approved deployment risk in parallel."}'
 ```
 
 Available execution endpoints:
@@ -154,6 +184,10 @@ POST   /api/incidents/sessions/{id}/smart-investigations
 POST   /api/incidents/sessions/{id}/smart-investigations/async
 GET    /api/incidents/sessions/{id}/smart-investigations/{executionId}
 POST   /api/incidents/sessions/{id}/smart-investigations/{executionId}/cancel
+POST   /api/incidents/sessions/{id}/declarative-investigations
+POST   /api/incidents/sessions/{id}/declarative-investigations/async
+GET    /api/incidents/sessions/{id}/declarative-investigations/{executionId}
+POST   /api/incidents/sessions/{id}/declarative-investigations/{executionId}/cancel
 POST   /api/incidents/sessions/{id}/plans/sequential
 POST   /api/incidents/sessions/{id}/plans/parallel
 POST   /api/incidents/sessions/{id}/compare
@@ -190,9 +224,10 @@ mvn -f examples/real-apps/pom.xml \
   -Dsurefire.failIfNoSpecifiedTests=false test
 ```
 
-The real suite verifies scoped direct and generated RAG, single-worker,
-adaptive, parallel, clarification, no-worker, no-material-change, handoff,
-invented-target, exact-replay, cross-boundary, plan, and history-backed flows.
+The real suite verifies scoped direct and generated RAG, Java and manifest
+chains, single-worker, adaptive, parallel, clarification, no-worker,
+no-material-change, handoff, invented-target, exact-replay, cross-boundary,
+plan, and history-backed flows.
 It asserts contracts and observable choices rather than exact prose.
 
 ## Run Offline
@@ -225,17 +260,17 @@ to smoke output.
 
 ## Deployment
 
-After `0.6.1` is published, build the release image from the repository root.
+After `0.7.0` is published, build the release image from the repository root.
 It resolves the immutable AI Fabric release from Maven Central and does not
 compile framework source from this checkout:
 
 ```bash
 docker build \
   -f examples/real-apps/incident-investigation-room/Dockerfile \
-  --build-arg AI_FABRIC_VERSION=0.6.1 \
+  --build-arg AI_FABRIC_VERSION=0.7.0 \
   --build-arg SOURCE_COMMIT="$(git rev-parse HEAD)" \
   --build-arg SOURCE_BRANCH="$(git branch --show-current)" \
-  -t ai-fabric-incident-investigation-room:0.6.1 .
+  -t ai-fabric-incident-investigation-room:0.7.0 .
 ```
 
 Before publication, CI uses `Dockerfile.candidate` only after the framework and

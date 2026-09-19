@@ -38,7 +38,7 @@ class AccountSpecialistChainIntegrationTest {
 
     @Test
     void healthProvesExactChainAndDurableCheckpointStore() throws Exception {
-        mockMvc.perform(get("/api/demo/health"))
+        String body = mockMvc.perform(get("/api/demo/health"))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.status").value("UP"))
             .andExpect(jsonPath("$.execution.specialistChainsReady")
@@ -46,11 +46,23 @@ class AccountSpecialistChainIntegrationTest {
             .andExpect(jsonPath("$.execution.specialistChainDurability")
                 .value("JDBC"))
             .andExpect(jsonPath("$.execution.specialistChains.length()")
-                .value(1))
-            .andExpect(jsonPath("$.execution.specialistChains[0].id")
-                .value("account-smart-resolution@1"))
-            .andExpect(jsonPath("$.execution.specialistChains[0].manager")
-                .value("account-resolution-chain-manager@1"));
+                .value(2))
+            .andReturn().getResponse().getContentAsString();
+
+        JsonNode chains = objectMapper.readTree(body)
+            .at("/execution/specialistChains");
+        JsonNode javaChain = chain(chains, "account-smart-resolution@1");
+        assertThat(javaChain.path("manager").asText())
+            .isEqualTo("account-resolution-chain-manager@1");
+        assertThat(javaChain.path("source").asText()).isEqualTo("JAVA");
+        JsonNode manifestChain = chain(
+            chains,
+            "account-declarative-resolution@1"
+        );
+        assertThat(manifestChain.path("source").asText())
+            .isEqualTo("MANIFEST");
+        assertThat(manifestChain.path("declarativeSemanticsHash").asText())
+            .matches("[a-f0-9]{64}");
     }
 
     @Test
@@ -71,10 +83,41 @@ class AccountSpecialistChainIntegrationTest {
             .isEqualTo("account-resolver-manager-read@1");
         assertThat(result.at("/results/0/facts/assessment").asText())
             .isEqualTo("BLOCKED");
+        assertThat(result.at("/results/0/facts/blockerCount").asText())
+            .isEqualTo("1");
+        assertThat(result.at(
+            "/results/0/facts/blockerRequirements"
+        ).asText()).isEqualTo("VERIFIED_PAYMENT_METHOD");
+        assertThat(result.at(
+            "/results/0/facts/recommendedNextSteps"
+        ).asText()).containsIgnoringCase("payment method");
         assertThat(result.path("timeline"))
             .extracting(step -> step.path("directiveType").asText())
             .containsExactly("INVOKE_ONE", "COMPLETE");
         assertThat(result.path("durable").asBoolean()).isTrue();
+    }
+
+    @Test
+    void executesDeclarativeChainWithBoundedDirectProjection()
+        throws Exception {
+        String sessionId = createSession();
+        JsonNode result = executeAt(
+            "/api/agentic-resolver/declarative-resolutions",
+            sessionId,
+            "account-declarative-1",
+            "Inspect only my current account readiness and explain any "
+                + "blockers. Do not assess a refund or account credit.",
+            null,
+            null
+        );
+
+        assertThat(result.path("chain").asText())
+            .isEqualTo("account-declarative-resolution@1");
+        assertThat(result.path("status").asText()).isEqualTo("COMPLETED");
+        assertThat(result.at("/results/0/facts/assessment").asText())
+            .isEqualTo("BLOCKED");
+        assertThat(result.at("/results/0/facts/blockerCount").isMissingNode())
+            .isTrue();
     }
 
     @Test
@@ -249,6 +292,106 @@ class AccountSpecialistChainIntegrationTest {
     }
 
     @Test
+    void declarativeAsyncExecutionExposesAuthorizedStatusAndTerminalResult()
+        throws Exception {
+        String sessionId = createSession();
+        var request = objectMapper.createObjectNode();
+        request.put(
+            "question",
+            "Inspect both my account blockers and assess this refund."
+        );
+        request.put("resolutionType", "REFUND");
+        request.put("amount", 75);
+        String endpoint = "/api/agentic-resolver/declarative-resolutions";
+        String submittedBody = mockMvc.perform(post(endpoint + "/async")
+                .header(AgenticResolverController.SESSION_HEADER, sessionId)
+                .header(
+                    AgenticResolverController.IDEMPOTENCY_HEADER,
+                    "account-declarative-async-1"
+                )
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsBytes(request)))
+            .andExpect(status().isAccepted())
+            .andExpect(jsonPath("$.executionId").isNotEmpty())
+            .andExpect(jsonPath("$.durable").value(true))
+            .andReturn().getResponse().getContentAsString();
+        String executionId = objectMapper.readTree(submittedBody)
+            .path("executionId").asText();
+
+        JsonNode terminal = awaitExecution(
+            endpoint,
+            sessionId,
+            executionId
+        );
+
+        assertThat(terminal.path("status").asText()).isEqualTo("COMPLETED");
+        assertThat(terminal.at("/result/chain").asText())
+            .isEqualTo("account-declarative-resolution@1");
+        assertThat(terminal.at("/result/results")).hasSize(2);
+        String anotherSession = createSession();
+        mockMvc.perform(get(endpoint + "/{executionId}", executionId)
+                .header(
+                    AgenticResolverController.SESSION_HEADER,
+                    anotherSession
+                ))
+            .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void declarativeAsyncCancellationNeverCreatesASubstituteAnswer()
+        throws Exception {
+        String sessionId = createSession();
+        var request = objectMapper.createObjectNode();
+        request.put(
+            "question",
+            "Inspect both my account blockers and assess this refund."
+        );
+        request.put("resolutionType", "REFUND");
+        request.put("amount", 75);
+        String endpoint = "/api/agentic-resolver/declarative-resolutions";
+        String submittedBody = mockMvc.perform(post(endpoint + "/async")
+                .header(AgenticResolverController.SESSION_HEADER, sessionId)
+                .header(
+                    AgenticResolverController.IDEMPOTENCY_HEADER,
+                    "account-declarative-async-cancel-1"
+                )
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsBytes(request)))
+            .andExpect(status().isAccepted())
+            .andReturn().getResponse().getContentAsString();
+        String executionId = objectMapper.readTree(submittedBody)
+            .path("executionId").asText();
+
+        JsonNode beforeCancel = fetchStatus(
+            endpoint,
+            sessionId,
+            executionId
+        );
+        if (beforeCancel.path("status").asText().matches("QUEUED|RUNNING")) {
+            String cancelledBody = mockMvc.perform(post(
+                    endpoint + "/{executionId}/cancel",
+                    executionId
+                ).header(
+                    AgenticResolverController.SESSION_HEADER,
+                    sessionId
+                ))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+            JsonNode cancelled = objectMapper.readTree(cancelledBody);
+            assertThat(cancelled.path("status").asText())
+                .isEqualTo("CANCELLED");
+            assertThat(cancelled.at("/failure/reason").asText())
+                .isEqualTo("CHAIN_CANCELLED");
+            assertThat(cancelled.at("/result/message").isMissingNode()
+                || cancelled.at("/result/message").isNull()).isTrue();
+            assertThat(cancelled.at("/result/results")).isEmpty();
+        } else {
+            assertThat(beforeCancel.path("status").asText())
+                .isEqualTo("COMPLETED");
+        }
+    }
+
+    @Test
     void asyncExecutionCanBeCancelledWithoutASubstituteAnswer()
         throws Exception {
         String sessionId = createSession();
@@ -331,6 +474,24 @@ class AccountSpecialistChainIntegrationTest {
         String resolutionType,
         BigDecimal amount
     ) throws Exception {
+        return executeAt(
+            "/api/agentic-resolver/smart-resolutions",
+            sessionId,
+            idempotencyKey,
+            question,
+            resolutionType,
+            amount
+        );
+    }
+
+    private JsonNode executeAt(
+        String endpoint,
+        String sessionId,
+        String idempotencyKey,
+        String question,
+        String resolutionType,
+        BigDecimal amount
+    ) throws Exception {
         var request = objectMapper.createObjectNode();
         request.put("question", question);
         if (resolutionType != null) {
@@ -339,9 +500,7 @@ class AccountSpecialistChainIntegrationTest {
         if (amount != null) {
             request.put("amount", amount);
         }
-        String body = mockMvc.perform(post(
-                "/api/agentic-resolver/smart-resolutions"
-            )
+        String body = mockMvc.perform(post(endpoint)
                 .header(AgenticResolverController.SESSION_HEADER, sessionId)
                 .header(
                     AgenticResolverController.IDEMPOTENCY_HEADER,
@@ -354,13 +513,34 @@ class AccountSpecialistChainIntegrationTest {
         return objectMapper.readTree(body);
     }
 
+    private JsonNode chain(JsonNode chains, String id) {
+        return java.util.stream.StreamSupport.stream(
+            chains.spliterator(),
+            false
+        ).filter(chain -> id.equals(chain.path("id").asText()))
+            .findFirst()
+            .orElseThrow();
+    }
+
     private JsonNode awaitExecution(
+        String sessionId,
+        String executionId
+    ) throws Exception {
+        return awaitExecution(
+            "/api/agentic-resolver/smart-resolutions",
+            sessionId,
+            executionId
+        );
+    }
+
+    private JsonNode awaitExecution(
+        String endpoint,
         String sessionId,
         String executionId
     ) throws Exception {
         JsonNode value = null;
         for (int attempt = 0; attempt < 100; attempt++) {
-            value = fetchStatus(sessionId, executionId);
+            value = fetchStatus(endpoint, sessionId, executionId);
             if (!value.path("status").asText().matches("QUEUED|RUNNING")) {
                 return value;
             }
@@ -375,8 +555,20 @@ class AccountSpecialistChainIntegrationTest {
         String sessionId,
         String executionId
     ) throws Exception {
+        return fetchStatus(
+            "/api/agentic-resolver/smart-resolutions",
+            sessionId,
+            executionId
+        );
+    }
+
+    private JsonNode fetchStatus(
+        String endpoint,
+        String sessionId,
+        String executionId
+    ) throws Exception {
         String body = mockMvc.perform(get(
-                "/api/agentic-resolver/smart-resolutions/{executionId}",
+                endpoint + "/{executionId}",
                 executionId
             ).header(
                 AgenticResolverController.SESSION_HEADER,

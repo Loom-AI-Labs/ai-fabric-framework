@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://ai-fabric.dev/schemas/specialist-resource-v1.schema.json",
   "title": "AI Fabric Specialist Resource V1",
-  "description": "Authoring schema for one AI Fabric specialist manifest, JSON Schema resource, or prompt-profile resource.",
+  "description": "Authoring schema for one AI Fabric specialist, bounded specialist chain, JSON Schema, or prompt-profile resource.",
   "oneOf": [
     {
       "$ref": "#/$defs/specialist"
@@ -12,6 +12,9 @@
     },
     {
       "$ref": "#/$defs/promptProfile"
+    },
+    {
+      "$ref": "#/$defs/specialistChain"
     }
   ],
   "$defs": {
@@ -442,7 +445,8 @@
           "enum": [
             "READ_ACTION",
             "VECTOR_SPACE",
-            "ANY_ALLOWED_VECTOR_SPACE"
+            "ANY_ALLOWED_VECTOR_SPACE",
+            "ANY_REQUESTABLE_READ_ACTION"
           ]
         },
         "name": {
@@ -609,6 +613,222 @@
           "type": "integer",
           "minimum": 1,
           "maximum": 8192
+        }
+      }
+    },
+    "jsonPointer": {
+      "type": "string",
+      "maxLength": 500,
+      "pattern": "^(?:|(?:/(?:[^~/]|~[01])*)+)$"
+    },
+    "specialistChain": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["apiVersion", "kind", "metadata", "spec"],
+      "properties": {
+        "apiVersion": {"const": "ai.fabric/v1"},
+        "kind": {"const": "SpecialistChain"},
+        "metadata": {"$ref": "#/$defs/specialistMetadata"},
+        "spec": {"$ref": "#/$defs/specialistChainSpec"}
+      }
+    },
+    "specialistChainSpec": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "input",
+        "manager",
+        "targets",
+        "limits",
+        "conversationPolicy"
+      ],
+      "properties": {
+        "input": {"$ref": "#/$defs/specialistChainInput"},
+        "manager": {"$ref": "#/$defs/specialistChainManager"},
+        "targets": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 8,
+          "items": {"$ref": "#/$defs/specialistChainTarget"}
+        },
+        "limits": {"$ref": "#/$defs/specialistChainLimits"},
+        "conversationPolicy": {
+          "enum": ["DISABLED", "OPTIONAL", "REQUIRED"]
+        }
+      }
+    },
+    "specialistChainInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaRef",
+        "managerMessagePointer",
+        "managerContext"
+      ],
+      "properties": {
+        "schemaRef": {"$ref": "#/$defs/exactRef"},
+        "managerMessagePointer": {"$ref": "#/$defs/jsonPointer"},
+        "managerContext": {
+          "type": "array",
+          "maxItems": 16,
+          "items": {"$ref": "#/$defs/specialistChainContextValue"}
+        }
+      }
+    },
+    "specialistChainContextValue": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "valuePointer"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_.-]{0,99}$"
+        },
+        "valuePointer": {"$ref": "#/$defs/jsonPointer"},
+        "required": {"type": "boolean", "default": true}
+      }
+    },
+    "specialistChainManager": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["specialistRef"],
+      "properties": {
+        "specialistRef": {"$ref": "#/$defs/exactRef"}
+      }
+    },
+    "specialistChainTarget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "specialistRef",
+        "description",
+        "input",
+        "result",
+        "transitions"
+      ],
+      "properties": {
+        "specialistRef": {"$ref": "#/$defs/exactRef"},
+        "description": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        },
+        "input": {"$ref": "#/$defs/specialistChainTargetInput"},
+        "result": {"$ref": "#/$defs/specialistChainTargetResult"},
+        "transitions": {"$ref": "#/$defs/specialistChainTransitions"}
+      }
+    },
+    "specialistChainTargetInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "fields"],
+      "properties": {
+        "type": {"const": "JSON_POINTER_MAP"},
+        "fields": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 32,
+          "items": {"$ref": "#/$defs/specialistChainMappingField"}
+        }
+      }
+    },
+    "specialistChainMappingField": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source", "targetField"],
+      "properties": {
+        "source": {"enum": ["CHAIN_INPUT", "MANAGER_OBJECTIVE"]},
+        "sourcePointer": {"$ref": "#/$defs/jsonPointer"},
+        "targetField": {
+          "type": "string",
+          "pattern": "^(?!(?:__proto__|constructor|prototype)$)[A-Za-z][A-Za-z0-9_-]{0,99}$"
+        },
+        "required": {"type": "boolean", "default": true}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"source": {"const": "CHAIN_INPUT"}}},
+          "then": {"required": ["sourcePointer"]},
+          "else": {"not": {"required": ["sourcePointer"]}}
+        }
+      ]
+    },
+    "specialistChainTargetResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "summaryPointer",
+        "facts",
+        "evidenceReferences"
+      ],
+      "properties": {
+        "type": {"const": "BOUNDED_FACT_PROJECTION"},
+        "summaryPointer": {"$ref": "#/$defs/jsonPointer"},
+        "facts": {
+          "type": "array",
+          "maxItems": 24,
+          "items": {"$ref": "#/$defs/specialistChainFact"}
+        },
+        "evidenceReferences": {"enum": ["NONE", "ALL_APPROVED"]}
+      }
+    },
+    "specialistChainFact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "valuePointer"],
+      "properties": {
+        "name": {"type": "string", "minLength": 1, "maxLength": 100},
+        "valuePointer": {"$ref": "#/$defs/jsonPointer"},
+        "required": {"type": "boolean", "default": true}
+      }
+    },
+    "specialistChainTransitions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "delegationAllowed",
+        "parallelEligible",
+        "handoffAllowed"
+      ],
+      "properties": {
+        "delegationAllowed": {"type": "boolean"},
+        "parallelEligible": {"type": "boolean"},
+        "handoffAllowed": {"type": "boolean"}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"parallelEligible": {"const": true}}},
+          "then": {"properties": {"delegationAllowed": {"const": true}}}
+        },
+        {
+          "anyOf": [
+            {"properties": {"delegationAllowed": {"const": true}}},
+            {"properties": {"handoffAllowed": {"const": true}}}
+          ]
+        }
+      ]
+    },
+    "specialistChainLimits": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "maxDuration",
+        "maxManagerDecisions",
+        "maxWorkerInvocations",
+        "maxParallelWorkers",
+        "maxInvocationsPerTarget",
+        "maxProjectedResultCharacters"
+      ],
+      "properties": {
+        "maxDuration": {"type": "string", "minLength": 3, "maxLength": 40},
+        "maxManagerDecisions": {"type": "integer", "minimum": 2},
+        "maxWorkerInvocations": {"type": "integer", "minimum": 1},
+        "maxParallelWorkers": {"type": "integer", "minimum": 1},
+        "maxInvocationsPerTarget": {"const": 1},
+        "maxProjectedResultCharacters": {
+          "type": "integer",
+          "minimum": 1
         }
       }
     },

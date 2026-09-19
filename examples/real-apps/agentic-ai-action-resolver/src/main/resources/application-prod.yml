@@ -24,6 +24,14 @@ spring:
 ai:
   execution:
     enabled: true
+    manifests:
+      locations:
+        - classpath*:ai-specialists/*.yml
+        - classpath*:ai-specialists/*.yaml
+        - classpath*:ai-specialists/*.json
+        - classpath*:ai-chains/*.yml
+        - classpath*:ai-chains/*.yaml
+        - classpath*:ai-chains/*.json
     capabilities:
       registered-vector-spaces:
         - account-resolution-policy

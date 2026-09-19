@@ -121,17 +121,17 @@ hosted durability should use PostgreSQL.
 
 ## Docker
 
-AI Fabric `0.6.1` contains the exact-binding connector hardening. Build the
+AI Fabric `0.7.0` contains the exact-binding connector hardening. Build the
 assistant from the repository root; the image resolves that immutable release
 from Maven Central and packages the application source:
 
 ```bash
 docker build \
   -f examples/real-apps/mcp-operations-assistant/Dockerfile \
-  --build-arg AI_FABRIC_VERSION=0.6.1 \
+  --build-arg AI_FABRIC_VERSION=0.7.0 \
   --build-arg SOURCE_COMMIT="$(git rev-parse HEAD)" \
   --build-arg SOURCE_BRANCH="$(git branch --show-current)" \
-  -t ai-fabric-mcp-operations-assistant:0.6.1 \
+  -t ai-fabric-mcp-operations-assistant:0.7.0 \
   .
 ```
 
@@ -140,7 +140,7 @@ Build the reference server separately with the real-app reactor as its context:
 ```bash
 docker build \
   -f examples/real-apps/mcp-operations-reference-server/Dockerfile \
-  -t ai-fabric-mcp-operations-reference-server:0.6.1 \
+  -t ai-fabric-mcp-operations-reference-server:0.7.0 \
   examples/real-apps
 ```
 

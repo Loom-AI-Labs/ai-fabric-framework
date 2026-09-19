@@ -3,6 +3,9 @@ package ai.fabric.execution.config;
 import ai.fabric.execution.chain.DefaultSpecialistChainRegistry;
 import ai.fabric.execution.chain.MicrometerSpecialistChainMetrics;
 import ai.fabric.execution.chain.SpecialistChainDefinition;
+import ai.fabric.execution.chain.SpecialistChainRegistration;
+import ai.fabric.execution.chain.SpecialistChainRegistrationBundle;
+import ai.fabric.execution.chain.SpecialistChainDefinitionSource;
 import ai.fabric.execution.chain.SpecialistChainGateway;
 import ai.fabric.execution.chain.SpecialistChainMetrics;
 import ai.fabric.execution.chain.SpecialistChainRegistry;
@@ -18,11 +21,27 @@ import ai.fabric.execution.handoff.SpecialistHandoffGateway;
 import ai.fabric.execution.specialist.SpecialistRegistry;
 import ai.fabric.execution.specialist.client.SpecialistClientFactory;
 import ai.fabric.execution.specialist.manifest.CanonicalJsonSupport;
+import ai.fabric.execution.specialist.manifest.SpecialistCompilationDiagnostic;
+import ai.fabric.execution.specialist.manifest.SpecialistJsonSchemaRegistry;
+import ai.fabric.execution.specialist.manifest.SpecialistJsonSchemaValidator;
+import ai.fabric.execution.specialist.manifest.SpecialistManifestException;
+import ai.fabric.execution.specialist.manifest.SpecialistResourceBundle;
+import ai.fabric.execution.chain.manifest.DefaultSpecialistChainManifestCompiler;
+import ai.fabric.execution.chain.manifest.DefaultSpecialistChainAuthoringCatalogProvider;
+import ai.fabric.execution.chain.manifest.DefaultSpecialistChainManifestValidator;
+import ai.fabric.execution.chain.manifest.LoadedSpecialistChainManifest;
+import ai.fabric.execution.chain.manifest.SpecialistChainCompilationContext;
+import ai.fabric.execution.chain.manifest.SpecialistChainManifestCompiler;
+import ai.fabric.execution.chain.manifest.SpecialistChainAuthoringCatalogProvider;
+import ai.fabric.execution.chain.manifest.SpecialistChainManifestValidator;
+import ai.fabric.execution.chain.manifest.SpecialistChainManifestRuntimeStatus;
+import ai.fabric.execution.chain.manifest.SpecialistChainManifestMetrics;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.security.SecureRandom;
 import java.time.Clock;
 import java.util.HexFormat;
+import java.util.ArrayList;
 import java.util.List;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -52,10 +71,113 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 public class AIExecutionSpecialistChainAutoConfiguration {
 
     @Bean
+    @ConditionalOnMissingBean
+    public SpecialistChainManifestCompiler specialistChainManifestCompiler(
+        SpecialistChainManifestMetrics metrics
+    ) {
+        return new DefaultSpecialistChainManifestCompiler(metrics);
+    }
+
+    @Bean
+    @ConditionalOnBean(SpecialistClientFactory.class)
+    @ConditionalOnMissingBean
+    public SpecialistChainCompilationContext
+        specialistChainCompilationContext(
+            SpecialistRegistry specialistRegistry,
+            SpecialistClientFactory clientFactory,
+            SpecialistJsonSchemaRegistry schemaRegistry,
+            SpecialistJsonSchemaValidator schemaValidator,
+            CanonicalJsonSupport canonicalJson,
+            ObjectMapper objectMapper,
+            AIExecutionProperties properties
+        ) {
+        return new SpecialistChainCompilationContext(
+            specialistRegistry,
+            clientFactory,
+            schemaRegistry,
+            schemaValidator,
+            canonicalJson,
+            objectMapper,
+            properties.getSpecialistChains()
+        );
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    public SpecialistChainManifestValidator specialistChainManifestValidator(
+        SpecialistChainManifestCompiler compiler,
+        SpecialistChainCompilationContext context
+    ) {
+        return new DefaultSpecialistChainManifestValidator(compiler, context);
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    public SpecialistChainAuthoringCatalogProvider
+        specialistChainAuthoringCatalogProvider(
+            SpecialistRegistry specialistRegistry,
+            AIExecutionProperties properties
+        ) {
+        return new DefaultSpecialistChainAuthoringCatalogProvider(
+            specialistRegistry,
+            properties.getSpecialistChains()
+        );
+    }
+
+    @Bean
+    @ConditionalOnBean(SpecialistClientFactory.class)
+    @ConditionalOnMissingBean(SpecialistChainRegistrationBundle.class)
+    public SpecialistChainRegistrationBundle specialistChainRegistrations(
+        List<SpecialistChainDefinition<?>> definitions,
+        SpecialistResourceBundle resources,
+        SpecialistChainManifestCompiler compiler,
+        SpecialistChainCompilationContext context,
+        AIExecutionProperties properties,
+        SpecialistChainManifestMetrics metrics
+    ) {
+        List<SpecialistChainRegistration> registrations = new ArrayList<>();
+        definitions.stream()
+            .map(SpecialistChainRegistration::javaDefinition)
+            .forEach(registrations::add);
+        List<SpecialistCompilationDiagnostic> diagnostics = new ArrayList<>();
+        int compiled = 0;
+        for (LoadedSpecialistChainManifest manifest
+            : resources.chainManifests()) {
+            try {
+                registrations.add(compiler.compile(manifest, context));
+                compiled++;
+                metrics.recordCompilation("compiled", "none");
+            } catch (SpecialistManifestException ex) {
+                metrics.recordCompilation("rejected", ex.reason());
+                if (properties.getManifests().isFailFast()) {
+                    throw ex;
+                }
+                diagnostics.add(new SpecialistCompilationDiagnostic(
+                    ex.reason(),
+                    ex.getMessage(),
+                    ex.source() == null ? manifest.source() : ex.source()
+                ));
+            }
+        }
+        int javaCount = definitions == null ? 0 : definitions.size();
+        metrics.recordRegistryCounts(
+            javaCount,
+            compiled,
+            resources.chainManifests().size() - compiled
+        );
+        return new SpecialistChainRegistrationBundle(
+            registrations,
+            diagnostics,
+            resources.chainManifests().size(),
+            compiled
+        );
+    }
+
+    @Bean
     @ConditionalOnBean(SpecialistClientFactory.class)
     @ConditionalOnMissingBean(SpecialistChainRegistry.class)
     public SpecialistChainRegistry specialistChainRegistry(
-        List<SpecialistChainDefinition<?>> definitions,
+        SpecialistChainRegistrationBundle registrations,
         SpecialistRegistry specialistRegistry,
         SpecialistClientFactory clientFactory,
         CanonicalJsonSupport canonicalJson,
@@ -64,7 +186,7 @@ public class AIExecutionSpecialistChainAutoConfiguration {
         AIExecutionProperties.SpecialistChains chain =
             properties.getSpecialistChains();
         return new DefaultSpecialistChainRegistry(
-            definitions,
+            registrations,
             specialistRegistry,
             clientFactory,
             canonicalJson,
@@ -74,6 +196,55 @@ public class AIExecutionSpecialistChainAutoConfiguration {
             chain.getMaxParallelWorkers(),
             chain.getMaxInvocationsPerTarget(),
             chain.getMaxProjectedResultCharacters()
+        );
+    }
+
+    @Bean
+    @ConditionalOnBean(SpecialistChainRegistry.class)
+    @ConditionalOnMissingBean(SpecialistChainManifestRuntimeStatus.class)
+    public SpecialistChainManifestRuntimeStatus
+        specialistChainManifestRuntimeStatus(
+            SpecialistChainRegistrationBundle registrations,
+            SpecialistChainRegistry registry,
+            CanonicalJsonSupport canonicalJson,
+            AIExecutionProperties properties
+        ) {
+        List<SpecialistChainRegistration> manifestRegistrations =
+            registrations.registrations().stream()
+                .filter(item -> item.source()
+                    == SpecialistChainDefinitionSource.MANIFEST)
+                .toList();
+        int javaCount = (int) registrations.registrations().stream()
+            .filter(item -> item.source()
+                == SpecialistChainDefinitionSource.JAVA)
+            .count();
+        String auditHash = manifestRegistrations.isEmpty()
+            ? ""
+            : canonicalJson.hashValue(manifestRegistrations.stream()
+                .map(item -> item.identity().resourceHash().orElseThrow())
+                .sorted()
+                .toList());
+        String semanticsHash = manifestRegistrations.isEmpty()
+            ? ""
+            : canonicalJson.hashValue(manifestRegistrations.stream()
+                .map(item -> item.identity()
+                    .declarativeSemanticsHash().orElseThrow())
+                .sorted()
+                .toList());
+        return new SpecialistChainManifestRuntimeStatus(
+            properties.getManifests().isEnabled(),
+            true,
+            registrations.diagnostics().isEmpty(),
+            javaCount,
+            registrations.discoveredManifestCount(),
+            registrations.discoveredManifestCount()
+                - registrations.compiledManifestCount(),
+            registrations.compiledManifestCount(),
+            registry.list().size(),
+            auditHash,
+            semanticsHash,
+            registry.registryContentHash(),
+            registrations.diagnostics()
         );
     }
 

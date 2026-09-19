@@ -103,6 +103,107 @@ Unknown fields, unsupported API versions, malformed exact IDs, duplicate
 resources, oversized documents, missing references, and unsupported
 combinations fail before registry publication.
 
+## Define A Bounded Specialist Chain
+
+Starting with AI Fabric `0.7.0`, the same resource bundle may also contain a
+`SpecialistChain`. It declares one exact manager and a closed set of
+exact-version, read-only, non-interactive workers. The resource compiles into
+the existing `SpecialistChainDefinition<JsonNode>` and executes through the
+existing registry, gateway, JDBC checkpoints, replay, cancellation, and
+recovery paths.
+
+Enable the chain engine explicitly:
+
+```yaml
+ai:
+  execution:
+    specialist-chains:
+      enabled: true
+      durable-enabled: true
+      allow-ephemeral: false
+      initialize-schema: false
+      encryption-secret: ${AI_SPECIALIST_CHAIN_ENCRYPTION_SECRET}
+      fingerprint-secret: ${AI_SPECIALIST_CHAIN_FINGERPRINT_SECRET}
+```
+
+A minimal resource has this shape:
+
+```yaml
+apiVersion: ai.fabric/v1
+kind: SpecialistChain
+metadata:
+  name: incident-investigation
+  version: "1"
+  displayName: Incident Investigation
+  description: Coordinates approved health and change-risk readers.
+spec:
+  input:
+    schemaRef: incident-chain-request@1
+    managerMessagePointer: /question
+    managerContext:
+      - name: incidentId
+        valuePointer: /incidentId
+  manager:
+    specialistRef: incident-chain-manager@1
+  targets:
+    - specialistRef: service-health-reader@1
+      description: Inspect approved live health observations.
+      input:
+        type: JSON_POINTER_MAP
+        fields:
+          - source: MANAGER_OBJECTIVE
+            targetField: question
+          - source: CHAIN_INPUT
+            sourcePointer: /incidentId
+            targetField: incidentId
+      result:
+        type: BOUNDED_FACT_PROJECTION
+        summaryPointer: /summary
+        facts:
+          - name: healthStatus
+            valuePointer: /healthStatus
+        evidenceReferences: ALL_APPROVED
+      transitions:
+        delegationAllowed: true
+        parallelEligible: true
+        handoffAllowed: false
+  limits:
+    maxDuration: PT60S
+    maxManagerDecisions: 3
+    maxWorkerInvocations: 1
+    maxParallelWorkers: 1
+    maxInvocationsPerTarget: 1
+    maxProjectedResultCharacters: 4000
+  conversationPolicy: REQUIRED
+```
+
+The input schema, manager, workers, and each worker input/output schema must be
+present in the same compiled deployment inventory. JSON Pointer mapping copies
+only declared values into a fresh schema-validated worker object. Result
+projection exposes only the declared summary, string facts, and optionally
+approved evidence IDs. Raw worker output never reaches the manager.
+
+A chain manifest cannot reference a Java class, Spring bean, adapter, mapper,
+projector, expression, script, SQL statement, provider, credential, or trusted
+identity value. Configuration closes the topology and bounds; the manager
+model still decides among the allowed `ASK_USER`, `INVOKE_ONE`,
+`INVOKE_PARALLEL`, `HANDOFF`, and `COMPLETE` directives.
+
+Keep the chain Java-defined when its input mapping or result projection needs
+authoritative application state, computed domain invariants, reconciliation,
+or a representation beyond the bounded JSON subset. Both sources share one
+registry and duplicate exact IDs fail startup.
+
+Complete runnable resources are available at:
+
+```text
+examples/real-apps/incident-investigation-room/
+  src/main/resources/ai-specialists/incident-declarative-chain.yml
+
+examples/real-apps/agentic-ai-action-resolver/
+  src/main/resources/ai-chains/account-declarative-resolution.yml
+```
+
 ## Define Input
 
 V1 accepts `PRIMARY_TEXT_WITH_JSON_CONTEXT`:
@@ -311,6 +412,27 @@ ownership and storage remain in `ai-fabric-chat-session`.
 Metrics are emitted for load, validation, registry counts, and execution
 source. Do not expose full manifests, schemas, prompt text, user data,
 authority scopes, receipt payloads, or secrets through health endpoints.
+
+`SpecialistChainManifestRuntimeStatus` separately reports chain loading,
+whether chain execution is enabled, Java/manifest/inactive counts, aggregate
+audit-resource identity, aggregate declarative-semantics identity, effective
+registry identity, and bounded diagnostics. The corresponding Micrometer
+meters are:
+
+```text
+ai.fabric.specialist.chain.manifest.load
+ai.fabric.specialist.chain.manifest.compilation
+ai.fabric.specialist.chain.manifest.mapping
+ai.fabric.specialist.chain.manifest.projection
+ai.fabric.specialist.chain.registry.definition.count
+```
+
+`SpecialistChainManifestValidator` compiles candidate resources with the same
+semantic validator used at startup. Pass previously published exact-ID
+semantics hashes when an authoring system must reject an exact version whose
+meaning changed. `SpecialistChainAuthoringCatalogProvider` exposes the bounded
+mapping/projection vocabulary, deployment ceilings, and eligible specialist
+metadata; it is an authoring aid, not an authorization decision.
 
 Common reason codes include:
 

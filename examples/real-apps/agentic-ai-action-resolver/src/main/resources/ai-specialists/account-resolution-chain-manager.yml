@@ -186,6 +186,56 @@ spec:
           supportingResultIds: {maxItems: 0}
 ---
 apiVersion: ai.fabric/v1
+kind: SpecialistSchema
+metadata:
+  name: account-smart-resolution-chain-request
+  version: "1"
+spec:
+  direction: INPUT
+  draft: "2020-12"
+  schema:
+    type: object
+    additionalProperties: false
+    required:
+      - question
+      - billingInputState
+      - accountReadQuestion
+      - billingAssessmentQuestion
+    properties:
+      question:
+        type: string
+        minLength: 1
+        maxLength: 2000
+      billingInputState:
+        type: string
+        enum:
+          - BOTH_MISSING
+          - RESOLUTION_TYPE_MISSING
+          - AMOUNT_MISSING
+          - COMPLETE
+      accountReadQuestion:
+        type: string
+        minLength: 1
+        maxLength: 500
+      billingAssessmentQuestion:
+        type: string
+        minLength: 1
+        maxLength: 500
+      resolutionType:
+        type: string
+        enum:
+          - REFUND
+          - ACCOUNT_CREDIT
+      amount:
+        type: number
+        exclusiveMinimum: 0
+        maximum: 1000000
+      amountText:
+        type: string
+        minLength: 1
+        maxLength: 64
+---
+apiVersion: ai.fabric/v1
 kind: SpecialistPromptProfile
 metadata:
   name: account-resolution-chain-manager

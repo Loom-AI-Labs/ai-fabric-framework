@@ -138,6 +138,14 @@ health = request("/api/demo/health")
 assert health["status"] == "UP", health
 assert health["chainsReady"] is True, health
 assert health["storage"]["specialistChains"] == "JDBC", health
+assert health["chainManifests"]["ready"] is True, health
+assert health["chainManifests"]["discovered"] == 1, health
+assert health["chainManifests"]["registered"] == 1, health
+manifest_chain = next(
+    item for item in health["chains"]
+    if item["id"] == "incident-declarative-investigation@1"
+)
+assert manifest_chain["source"] == "MANIFEST", manifest_chain
 
 session = request(
     "/api/incidents/sessions",
@@ -146,7 +154,7 @@ session = request(
 )
 session_id = session["sessionId"]
 result = request(
-    f"/api/incidents/sessions/{session_id}/smart-investigations",
+    f"/api/incidents/sessions/{session_id}/declarative-investigations",
     method="POST",
     payload={"question": "Check current service latency and errors."},
     headers={
@@ -165,7 +173,7 @@ assert [item["directiveType"] for item in result["timeline"]] == [
 ], result
 
 replay = request(
-    f"/api/incidents/sessions/{session_id}/smart-investigations",
+    f"/api/incidents/sessions/{session_id}/declarative-investigations",
     method="POST",
     payload={"question": "Check current service latency and errors."},
     headers={
@@ -202,7 +210,8 @@ body = json.dumps({
 }).encode()
 session_id = state["sessionId"]
 request = urllib.request.Request(
-    base_url + f"/api/incidents/sessions/{session_id}/smart-investigations",
+    base_url
+    + f"/api/incidents/sessions/{session_id}/declarative-investigations",
     data=body,
     headers={
         "Content-Type": "application/json",

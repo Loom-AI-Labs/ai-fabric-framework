@@ -4,6 +4,10 @@ import ai.fabric.config.OrchestrationProperties;
 import ai.fabric.core.AICoreService;
 import ai.fabric.evidence.AIEvidenceReferenceMapper;
 import ai.fabric.execution.action.ActionProposalCoordinator;
+import ai.fabric.execution.chain.manifest.SpecialistChainManifestRuntimeStatus;
+import ai.fabric.execution.chain.manifest.MicrometerSpecialistChainManifestMetrics;
+import ai.fabric.execution.chain.manifest.SpecialistChainManifestMetrics;
+import ai.fabric.execution.chain.SpecialistChainDefinition;
 import ai.fabric.execution.delegation.DefaultSpecialistDelegationGateway;
 import ai.fabric.execution.delegation.DefaultSpecialistHandoffGateway;
 import ai.fabric.execution.delegation.SpecialistDelegationGateway;
@@ -58,7 +62,9 @@ import ai.fabric.execution.specialist.manifest.SpecialistJsonSchemaValidator;
 import ai.fabric.execution.specialist.manifest.SpecialistManifestCompiler;
 import ai.fabric.execution.specialist.manifest.SpecialistManifestLoader;
 import ai.fabric.execution.specialist.manifest.SpecialistManifestMetrics;
+import ai.fabric.execution.specialist.manifest.SpecialistManifestException;
 import ai.fabric.execution.specialist.manifest.SpecialistManifestRuntimeStatus;
+import ai.fabric.execution.specialist.manifest.SpecialistCompilationDiagnostic;
 import ai.fabric.execution.specialist.manifest.SpecialistOutputNormalizer;
 import ai.fabric.execution.specialist.manifest.SpecialistOutputNormalizerRegistry;
 import ai.fabric.execution.specialist.manifest.SpecialistPromptProfileRegistry;
@@ -78,6 +84,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.LinkedHashSet;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
@@ -203,11 +210,110 @@ public class AIExecutionAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
+    public SpecialistChainManifestMetrics specialistChainManifestMetrics(
+        ObjectProvider<MeterRegistry> meterRegistryProvider
+    ) {
+        MeterRegistry meterRegistry = meterRegistryProvider.getIfAvailable();
+        return meterRegistry == null
+            ? SpecialistChainManifestMetrics.noop()
+            : new MicrometerSpecialistChainManifestMetrics(meterRegistry);
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
     public SpecialistResourceBundle specialistResourceBundle(
         SpecialistManifestLoader loader,
-        AIExecutionProperties properties
+        AIExecutionProperties properties,
+        SpecialistChainManifestMetrics chainMetrics
     ) {
-        return loader.load(properties.getManifests());
+        SpecialistResourceBundle resources = loader.load(
+            properties.getManifests()
+        );
+        resources.chainManifests().forEach(ignored ->
+            chainMetrics.recordLoad("loaded", "none")
+        );
+        resources.diagnostics().stream()
+            .filter(item -> item.reason().startsWith("CHAIN_MANIFEST_"))
+            .forEach(item -> chainMetrics.recordLoad(
+                "rejected",
+                item.reason()
+            ));
+        if (resources.chainManifests().isEmpty()
+            || properties.getSpecialistChains().isEnabled()) {
+            return resources;
+        }
+        String source = resources.chainManifests().getFirst().source();
+        SpecialistManifestException failure = new SpecialistManifestException(
+            "CHAIN_MANIFEST_FEATURE_DISABLED",
+            "A SpecialistChain resource requires "
+                + "ai.execution.specialist-chains.enabled=true.",
+            source
+        );
+        if (properties.getManifests().isFailFast()) {
+            throw failure;
+        }
+        List<SpecialistCompilationDiagnostic> diagnostics = new ArrayList<>(
+            resources.diagnostics()
+        );
+        resources.chainManifests().forEach(chain -> diagnostics.add(
+            new SpecialistCompilationDiagnostic(
+                failure.reason(),
+                failure.getMessage(),
+                chain.source()
+            )
+        ));
+        return new SpecialistResourceBundle(
+            resources.manifests(),
+            resources.schemas(),
+            resources.promptProfiles(),
+            resources.chainManifests(),
+            diagnostics
+        );
+    }
+
+    @Bean
+    @ConditionalOnProperty(
+        prefix = "ai.execution.specialist-chains",
+        name = "enabled",
+        havingValue = "false",
+        matchIfMissing = true
+    )
+    @ConditionalOnMissingBean(SpecialistChainManifestRuntimeStatus.class)
+    public SpecialistChainManifestRuntimeStatus
+        disabledSpecialistChainManifestRuntimeStatus(
+            SpecialistResourceBundle resources,
+            List<SpecialistChainDefinition<?>> javaDefinitions,
+            AIExecutionProperties properties,
+            SpecialistChainManifestMetrics metrics
+        ) {
+        List<SpecialistCompilationDiagnostic> diagnostics =
+            resources.diagnostics().stream()
+                .filter(item -> item.reason().startsWith("CHAIN_MANIFEST_"))
+                .toList();
+        metrics.recordRegistryCounts(
+            javaDefinitions.size(),
+            0,
+            resources.chainManifests().size()
+        );
+        diagnostics.forEach(item -> metrics.recordCompilation(
+            "inactive",
+            item.reason()
+        ));
+        return new SpecialistChainManifestRuntimeStatus(
+            properties.getManifests().isEnabled(),
+            false,
+            resources.chainManifests().isEmpty()
+                && diagnostics.isEmpty(),
+            javaDefinitions.size(),
+            resources.chainManifests().size(),
+            resources.chainManifests().size(),
+            0,
+            0,
+            "",
+            "",
+            "",
+            diagnostics
+        );
     }
 
     @Bean

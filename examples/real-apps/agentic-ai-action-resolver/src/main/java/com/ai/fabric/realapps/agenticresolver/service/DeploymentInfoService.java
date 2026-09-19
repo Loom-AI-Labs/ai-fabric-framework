@@ -242,10 +242,15 @@ public class DeploymentInfoService {
             && specialistChainRegistry.find(
                 AccountSpecialistChains.SMART_RESOLUTION
             ).isPresent();
+        boolean declarativeChainRegistered = specialistChainRegistry != null
+            && specialistChainRegistry.find(
+                AccountSpecialistChains.DECLARATIVE_RESOLUTION
+            ).isPresent();
         execution.put("specialistChainsEnabled", chainsEnabled);
         execution.put(
             "specialistChainsReady",
             !chainsEnabled || accountChainRegistered
+                && declarativeChainRegistered
                 && chainExecutionRepository != null
         );
         execution.put(
@@ -261,6 +266,10 @@ public class DeploymentInfoService {
         execution.put(
             "accountSmartResolutionChainRegistered",
             accountChainRegistered
+        );
+        execution.put(
+            "accountDeclarativeResolutionChainRegistered",
+            declarativeChainRegistered
         );
         execution.put("manifestRuntime", Map.of(
             "enabled", manifestRuntimeStatus.enabled(),
@@ -349,17 +358,31 @@ public class DeploymentInfoService {
     private Map<String, Object> chainDefinition(
         RegisteredSpecialistChain chain
     ) {
-        return Map.of(
-            "id", chain.id().toString(),
-            "contentHash", chain.contentHash(),
-            "manager", chain.definition().managerSpecialistId().toString(),
-            "targets", chain.definition().targets().stream()
-                .map(target -> target.specialistId().toString())
-                .toList(),
-            "conversationPolicy",
-                chain.definition().conversationPolicy().name(),
-            "ready", true
+        Map<String, Object> definition = new LinkedHashMap<>();
+        definition.put("id", chain.id().toString());
+        definition.put("source", chain.source().name());
+        definition.put("contentHash", chain.contentHash());
+        definition.put("resourceHash", chain.resourceHash().orElse(""));
+        definition.put(
+            "declarativeSemanticsHash",
+            chain.declarativeSemanticsHash().orElse("")
         );
+        definition.put(
+            "manager",
+            chain.definition().managerSpecialistId().toString()
+        );
+        definition.put(
+            "targets",
+            chain.definition().targets().stream()
+                .map(target -> target.specialistId().toString())
+                .toList()
+        );
+        definition.put(
+            "conversationPolicy",
+            chain.definition().conversationPolicy().name()
+        );
+        definition.put("ready", true);
+        return Map.copyOf(definition);
     }
 
     private Map<String, Object> stageDefinition(PlanStage stage) {

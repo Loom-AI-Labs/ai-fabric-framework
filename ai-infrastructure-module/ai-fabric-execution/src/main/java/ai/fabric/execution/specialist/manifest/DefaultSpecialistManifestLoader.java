@@ -1,5 +1,7 @@
 package ai.fabric.execution.specialist.manifest;
 
+import ai.fabric.execution.chain.manifest.LoadedSpecialistChainManifest;
+import ai.fabric.execution.chain.manifest.SpecialistChainManifest;
 import ai.fabric.execution.config.AIExecutionProperties;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.DeserializationFeature;
@@ -7,6 +9,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.MappingIterator;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
@@ -31,9 +34,11 @@ public final class DefaultSpecialistManifestLoader
     public DefaultSpecialistManifestLoader(ObjectMapper objectMapper) {
         Objects.requireNonNull(objectMapper, "objectMapper is required");
         this.strictMapper = objectMapper.copy()
+            .registerModule(new JavaTimeModule())
             .enable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
             .enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS);
         this.yamlMapper = new ObjectMapper(new YAMLFactory())
+            .registerModule(new JavaTimeModule())
             .findAndRegisterModules()
             .enable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
             .enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS);
@@ -52,6 +57,7 @@ public final class DefaultSpecialistManifestLoader
         List<LoadedSpecialistManifest> manifests = new ArrayList<>();
         List<SpecialistSchemaDefinition> schemas = new ArrayList<>();
         List<SpecialistPromptProfile> promptProfiles = new ArrayList<>();
+        List<LoadedSpecialistChainManifest> chainManifests = new ArrayList<>();
         List<SpecialistCompilationDiagnostic> diagnostics = new ArrayList<>();
         for (String location : properties.getLocations()) {
             List<Resource> resources;
@@ -71,7 +77,8 @@ public final class DefaultSpecialistManifestLoader
                         properties,
                         manifests,
                         schemas,
-                        promptProfiles
+                        promptProfiles,
+                        chainManifests
                     );
                 } catch (SpecialistManifestException ex) {
                     if (properties.isFailFast()) {
@@ -85,6 +92,7 @@ public final class DefaultSpecialistManifestLoader
             manifests,
             schemas,
             promptProfiles,
+            chainManifests,
             diagnostics
         );
     }
@@ -109,7 +117,8 @@ public final class DefaultSpecialistManifestLoader
         AIExecutionProperties.Manifests properties,
         List<LoadedSpecialistManifest> manifests,
         List<SpecialistSchemaDefinition> schemas,
-        List<SpecialistPromptProfile> promptProfiles
+        List<SpecialistPromptProfile> promptProfiles,
+        List<LoadedSpecialistChainManifest> chainManifests
     ) {
         String source = safeSource(resource.getFilename());
         byte[] bytes = readBounded(
@@ -120,6 +129,8 @@ public final class DefaultSpecialistManifestLoader
         List<LoadedSpecialistManifest> parsedManifests = new ArrayList<>();
         List<SpecialistSchemaDefinition> parsedSchemas = new ArrayList<>();
         List<SpecialistPromptProfile> parsedPromptProfiles =
+            new ArrayList<>();
+        List<LoadedSpecialistChainManifest> parsedChainManifests =
             new ArrayList<>();
         try {
             ObjectMapper parser = yaml(resource) ? yamlMapper : strictMapper;
@@ -140,12 +151,14 @@ public final class DefaultSpecialistManifestLoader
                     properties.getMaxManifestBytes(),
                     parsedManifests,
                     parsedSchemas,
-                    parsedPromptProfiles
+                    parsedPromptProfiles,
+                    parsedChainManifests
                 );
             }
             manifests.addAll(parsedManifests);
             schemas.addAll(parsedSchemas);
             promptProfiles.addAll(parsedPromptProfiles);
+            chainManifests.addAll(parsedChainManifests);
         } catch (SpecialistManifestException ex) {
             throw ex;
         } catch (IOException | RuntimeException ex) {
@@ -164,7 +177,8 @@ public final class DefaultSpecialistManifestLoader
         int maxManifestBytes,
         List<LoadedSpecialistManifest> manifests,
         List<SpecialistSchemaDefinition> schemas,
-        List<SpecialistPromptProfile> promptProfiles
+        List<SpecialistPromptProfile> promptProfiles,
+        List<LoadedSpecialistChainManifest> chainManifests
     ) throws JsonProcessingException {
         if (!node.isObject()) {
             throw new SpecialistManifestException(
@@ -218,6 +232,27 @@ public final class DefaultSpecialistManifestLoader
                 );
                 profile.id();
                 promptProfiles.add(profile);
+            }
+            case "SpecialistChain" -> {
+                SpecialistChainManifest manifest = strictMapper.treeToValue(
+                    node,
+                    SpecialistChainManifest.class
+                );
+                JsonNode canonical = strictMapper.valueToTree(manifest);
+                if (canonicalJson.write(canonical).getBytes(
+                        java.nio.charset.StandardCharsets.UTF_8
+                    ).length > maxManifestBytes) {
+                    throw new SpecialistManifestException(
+                        "CHAIN_MANIFEST_TOO_LARGE",
+                        "A specialist-chain manifest exceeds its configured size limit.",
+                        source
+                    );
+                }
+                chainManifests.add(new LoadedSpecialistChainManifest(
+                    manifest,
+                    canonicalJson.hash(canonical),
+                    source
+                ));
             }
             default -> throw new SpecialistManifestException(
                 "RESOURCE_KIND_UNSUPPORTED",

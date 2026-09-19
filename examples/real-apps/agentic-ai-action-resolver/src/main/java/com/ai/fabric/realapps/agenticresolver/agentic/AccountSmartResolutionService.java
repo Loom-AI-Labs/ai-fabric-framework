@@ -61,7 +61,11 @@ public class AccountSmartResolutionService {
         String idempotencyKey
     ) {
         SpecialistChainExecutionRequest<AccountDelegationCoordinatorRequest>
-            request = request(sessionId, input, idempotencyKey);
+            request = request(
+            sessionId,
+            input,
+            idempotencyKey
+        );
         var handle = gateway.submit(request);
         if (!handle.replayed() || !handle.status().terminal()) {
             return AccountSmartResolutionExecutionView.from(handle);

@@ -1,11 +1,11 @@
 # syntax=docker/dockerfile:1.7
 # Build context: repository root.
 #
-# The connector and execution hardening is published in AI Fabric 0.6.1. This
+# The connector and execution hardening is published in AI Fabric 0.7.0. This
 # image therefore resolves the immutable framework release from Maven Central
 # and packages only the reference application from this source revision.
 
-ARG AI_FABRIC_VERSION=0.6.1
+ARG AI_FABRIC_VERSION=0.7.0
 ARG APP_VERSION=1.0.0-SNAPSHOT
 ARG SOURCE_COMMIT=
 ARG SOURCE_BRANCH=

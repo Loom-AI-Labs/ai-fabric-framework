@@ -1,6 +1,7 @@
 package com.ai.fabric.realapps.incident.web;
 
 import ai.fabric.execution.chain.SpecialistChainRegistry;
+import ai.fabric.execution.chain.manifest.SpecialistChainManifestRuntimeStatus;
 import ai.fabric.execution.chain.state.JdbcSpecialistChainExecutionRepository;
 import ai.fabric.execution.chain.state.SpecialistChainExecutionRepository;
 import ai.fabric.execution.plan.ExecutionPlanRegistry;
@@ -35,6 +36,7 @@ public class IncidentHealthController {
     private final ExecutionPlanRegistry plans;
     private final SpecialistChainRegistry chains;
     private final SpecialistChainExecutionRepository chainExecutions;
+    private final SpecialistChainManifestRuntimeStatus chainManifests;
     private final AIProviderManager providers;
     private final Environment environment;
     private final DataSource dataSource;
@@ -48,6 +50,7 @@ public class IncidentHealthController {
         ExecutionPlanRegistry plans,
         SpecialistChainRegistry chains,
         SpecialistChainExecutionRepository chainExecutions,
+        SpecialistChainManifestRuntimeStatus chainManifests,
         AIProviderManager providers,
         Environment environment,
         DataSource dataSource,
@@ -60,6 +63,7 @@ public class IncidentHealthController {
         this.plans = plans;
         this.chains = chains;
         this.chainExecutions = chainExecutions;
+        this.chainManifests = chainManifests;
         this.providers = providers;
         this.environment = environment;
         this.dataSource = dataSource;
@@ -92,7 +96,9 @@ public class IncidentHealthController {
             && plans.find(IncidentPlans.PARALLEL_V2).isPresent();
         boolean chainsReady = chains.find(
             IncidentSpecialistChains.SMART_INVESTIGATION
-        ).isPresent();
+        ).isPresent() && chains.find(
+            IncidentSpecialistChains.DECLARATIVE_INVESTIGATION
+        ).isPresent() && chainManifests.ready();
         List<Map<String, Object>> specialistHealth = specialistIds.stream()
             .map(id -> specialists.requireRegistered(
                 ai.fabric.execution.specialist.SpecialistId.parse(id)
@@ -149,6 +155,7 @@ public class IncidentHealthController {
             Map.<String, Object>of(
                 "id", chain.id().toString(),
                 "contentHash", chain.contentHash(),
+                "source", chain.source().name(),
                 "manager", chain.definition().managerSpecialistId().toString(),
                 "targets", chain.definition().targets().stream()
                     .map(target -> target.specialistId().toString())
@@ -156,6 +163,16 @@ public class IncidentHealthController {
                 "ready", true
             )
         ).toList());
+        out.put("chainManifests", Map.of(
+            "ready", chainManifests.ready(),
+            "discovered", chainManifests.discoveredManifestCount(),
+            "registered", chainManifests.manifestDefinedCount(),
+            "auditHash", chainManifests.auditResourceAggregateHash(),
+            "semanticsHash",
+            chainManifests.declarativeSemanticsAggregateHash(),
+            "executionHash",
+            chainManifests.effectiveExecutionAggregateHash()
+        ));
         out.put("specialistsReady", specialistsReady);
         out.put("plansReady", plansReady);
         out.put("chainsReady", chainsReady);

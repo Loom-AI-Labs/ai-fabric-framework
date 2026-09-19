@@ -1,0 +1,116 @@
+apiVersion: ai.fabric/v1
+kind: SpecialistSchema
+metadata:
+  name: incident-declarative-chain-request
+  version: "1"
+spec:
+  direction: INPUT
+  draft: "2020-12"
+  schema:
+    type: object
+    additionalProperties: false
+    required: [question, incidentId, deploymentId, sourceRevision]
+    properties:
+      question: {type: string, minLength: 1, maxLength: 2000}
+      incidentId: {type: string, minLength: 1, maxLength: 120}
+      deploymentId: {type: string, minLength: 1, maxLength: 120}
+      sourceRevision: {type: string, minLength: 1, maxLength: 160}
+---
+apiVersion: ai.fabric/v1
+kind: SpecialistChain
+metadata:
+  name: incident-declarative-investigation
+  version: "1"
+  displayName: Declarative Incident Investigation
+  description: Coordinates exact read-only incident specialists through bounded manifest mappings and projections.
+  labels:
+    domain: incident-operations
+    definition: declarative
+spec:
+  input:
+    schemaRef: incident-declarative-chain-request@1
+    managerMessagePointer: /question
+    managerContext:
+      - name: incidentId
+        valuePointer: /incidentId
+      - name: deploymentId
+        valuePointer: /deploymentId
+      - name: sourceRevision
+        valuePointer: /sourceRevision
+  manager:
+    specialistRef: incident-chain-manager@3
+  targets:
+    - specialistRef: service-health-reader@2
+      description: Inspect current metrics, alerts, latency, errors, saturation, and availability from approved live sources.
+      input:
+        type: JSON_POINTER_MAP
+        fields:
+          - source: MANAGER_OBJECTIVE
+            targetField: question
+          - source: CHAIN_INPUT
+            sourcePointer: /incidentId
+            targetField: incidentId
+          - source: CHAIN_INPUT
+            sourcePointer: /deploymentId
+            targetField: deploymentId
+          - source: CHAIN_INPUT
+            sourcePointer: /sourceRevision
+            targetField: sourceRevision
+      result:
+        type: BOUNDED_FACT_PROJECTION
+        summaryPointer: /summary
+        facts:
+          - name: healthStatus
+            valuePointer: /healthStatus
+          - name: severity
+            valuePointer: /severity
+          - name: selectionReason
+            valuePointer: /selectionReason
+          - name: sourceRevision
+            valuePointer: /sourceRevision
+        evidenceReferences: ALL_APPROVED
+      transitions:
+        delegationAllowed: true
+        parallelEligible: true
+        handoffAllowed: true
+    - specialistRef: change-risk-reader@2
+      description: Inspect recent deployments, approvals, rollback safety, and tenant-scoped runbook guidance.
+      input:
+        type: JSON_POINTER_MAP
+        fields:
+          - source: MANAGER_OBJECTIVE
+            targetField: question
+          - source: CHAIN_INPUT
+            sourcePointer: /incidentId
+            targetField: incidentId
+          - source: CHAIN_INPUT
+            sourcePointer: /deploymentId
+            targetField: deploymentId
+          - source: CHAIN_INPUT
+            sourcePointer: /sourceRevision
+            targetField: sourceRevision
+      result:
+        type: BOUNDED_FACT_PROJECTION
+        summaryPointer: /summary
+        facts:
+          - name: riskLevel
+            valuePointer: /riskLevel
+          - name: suspectedChange
+            valuePointer: /suspectedChange
+          - name: selectionReason
+            valuePointer: /selectionReason
+          - name: sourceRevision
+            valuePointer: /sourceRevision
+        evidenceReferences: ALL_APPROVED
+      transitions:
+        delegationAllowed: true
+        parallelEligible: true
+        handoffAllowed: true
+  limits:
+    maxDuration: PT70S
+    maxManagerDecisions: 4
+    maxWorkerInvocations: 2
+    maxParallelWorkers: 2
+    maxInvocationsPerTarget: 1
+    maxProjectedResultCharacters: 8000
+  conversationPolicy: REQUIRED

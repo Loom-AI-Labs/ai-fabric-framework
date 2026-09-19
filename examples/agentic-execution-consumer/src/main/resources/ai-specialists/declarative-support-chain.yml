@@ -1,0 +1,93 @@
+apiVersion: ai.fabric/v1
+kind: SpecialistSchema
+metadata:
+  name: consumer-support-chain-input
+  version: "1"
+spec:
+  direction: INPUT
+  draft: "2020-12"
+  schema:
+    type: object
+    additionalProperties: false
+    required: [question, accountReference]
+    properties:
+      question: {type: string, minLength: 1, maxLength: 2000}
+      accountReference: {type: string, minLength: 1, maxLength: 120}
+---
+apiVersion: ai.fabric/v1
+kind: SpecialistChain
+metadata:
+  name: consumer-declarative-support
+  version: "1"
+  displayName: Consumer Declarative Support
+  description: Coordinates exact read-only support specialists without Java mapping components.
+  labels:
+    domain: support
+    example: external-consumer
+spec:
+  input:
+    schemaRef: consumer-support-chain-input@1
+    managerMessagePointer: /question
+    managerContext:
+      - name: accountReference
+        valuePointer: /accountReference
+        required: true
+  manager:
+    specialistRef: consumer-support-manager@1
+  targets:
+    - specialistRef: consumer-account-reader@1
+      description: Reads approved account status and payment readiness.
+      input:
+        type: JSON_POINTER_MAP
+        fields:
+          - source: CHAIN_INPUT
+            sourcePointer: /question
+            targetField: question
+            required: true
+          - source: MANAGER_OBJECTIVE
+            targetField: objective
+            required: true
+      result:
+        type: BOUNDED_FACT_PROJECTION
+        summaryPointer: /summary
+        facts:
+          - name: status
+            valuePointer: /status
+            required: true
+        evidenceReferences: ALL_APPROVED
+      transitions:
+        delegationAllowed: true
+        parallelEligible: true
+        handoffAllowed: false
+    - specialistRef: consumer-policy-reader@1
+      description: Reads the approved account payment policy.
+      input:
+        type: JSON_POINTER_MAP
+        fields:
+          - source: CHAIN_INPUT
+            sourcePointer: /question
+            targetField: question
+            required: true
+          - source: MANAGER_OBJECTIVE
+            targetField: objective
+            required: true
+      result:
+        type: BOUNDED_FACT_PROJECTION
+        summaryPointer: /summary
+        facts:
+          - name: policy
+            valuePointer: /policy
+            required: true
+        evidenceReferences: ALL_APPROVED
+      transitions:
+        delegationAllowed: true
+        parallelEligible: true
+        handoffAllowed: false
+  limits:
+    maxDuration: PT20S
+    maxManagerDecisions: 3
+    maxWorkerInvocations: 2
+    maxParallelWorkers: 2
+    maxInvocationsPerTarget: 1
+    maxProjectedResultCharacters: 2000
+  conversationPolicy: DISABLED

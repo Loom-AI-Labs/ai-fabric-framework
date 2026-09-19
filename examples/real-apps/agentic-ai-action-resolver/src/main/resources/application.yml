@@ -38,6 +38,13 @@ ai:
     manifests:
       enabled: true
       fail-fast: true
+      locations:
+        - classpath*:ai-specialists/*.yml
+        - classpath*:ai-specialists/*.yaml
+        - classpath*:ai-specialists/*.json
+        - classpath*:ai-chains/*.yml
+        - classpath*:ai-chains/*.yaml
+        - classpath*:ai-chains/*.json
     capabilities:
       registered-vector-spaces:
         - account-resolution-policy
@@ -83,7 +90,7 @@ ai:
       max-active: ${AI_EXECUTION_MANAGER_MAX_ACTIVE:500}
       result-ttl: ${AI_EXECUTION_MANAGER_RESULT_TTL:PT15M}
     specialist-chains:
-      enabled: ${AI_SPECIALIST_CHAINS_ENABLED:false}
+      enabled: ${AI_SPECIALIST_CHAINS_ENABLED:true}
       max-active: ${AI_SPECIALIST_CHAINS_MAX_ACTIVE:250}
       max-duration: PT75S
       max-manager-decisions: 4
@@ -101,8 +108,9 @@ ai:
       max-attempts: 3
       cleanup-enabled: true
       retention: P7D
-      encryption-secret: ${AI_SPECIALIST_CHAIN_ENCRYPTION_SECRET:}
-      fingerprint-secret: ${AI_SPECIALIST_CHAIN_FINGERPRINT_SECRET:}
+      # Local/demo defaults only. The production profile requires environment secrets.
+      encryption-secret: ${AI_SPECIALIST_CHAIN_ENCRYPTION_SECRET:local-agentic-chain-encryption-secret-not-for-production-0001}
+      fingerprint-secret: ${AI_SPECIALIST_CHAIN_FINGERPRINT_SECRET:local-agentic-chain-fingerprint-secret-not-for-production-0002}
     receipts:
       enabled: true
       repository: JDBC

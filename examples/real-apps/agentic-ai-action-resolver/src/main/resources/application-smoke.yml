@@ -2,6 +2,14 @@ ai:
   providers:
     llm-provider: account-resolver-smoke
   execution:
+    manifests:
+      locations:
+        - classpath*:ai-specialists/*.yml
+        - classpath*:ai-specialists/*.yaml
+        - classpath*:ai-specialists/*.json
+        - classpath*:ai-chains/*.yml
+        - classpath*:ai-chains/*.yaml
+        - classpath*:ai-chains/*.json
     async:
       encryption-secret: smoke-agentic-async-encryption-key-local-only-0001
       fingerprint-secret: smoke-agentic-async-fingerprint-key-local-only-0002

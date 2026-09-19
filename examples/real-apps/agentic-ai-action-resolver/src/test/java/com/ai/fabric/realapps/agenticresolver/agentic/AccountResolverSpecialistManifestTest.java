@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import ai.fabric.evidence.AIEvidenceReference;
+import ai.fabric.execution.chain.SpecialistChainDefinitionSource;
 import ai.fabric.execution.chain.SpecialistChainRegistry;
 import ai.fabric.execution.specialist.ExecutionStrategy;
 import ai.fabric.execution.specialist.RegisteredSpecialist;
@@ -42,6 +43,8 @@ import org.springframework.boot.test.context.SpringBootTest;
     "ai.execution.receipts.encryption-secret=test-agentic-manifest-encryption-key-at-least-32",
     "ai.execution.receipts.fingerprint-secret=test-agentic-manifest-fingerprint-key-at-least-32",
     "ai.execution.specialist-chains.enabled=true",
+    "ai.execution.manifests.locations[0]=classpath*:ai-specialists/*.yml",
+    "ai.execution.manifests.locations[1]=classpath*:ai-chains/*.yml",
     "ai.execution.specialist-chains.encryption-secret=test-account-chain-encryption-secret-at-least-32",
     "ai.execution.specialist-chains.fingerprint-secret=test-account-chain-fingerprint-secret-at-least-32",
     "ai.vector-db.lucene.index-path=target/agentic-manifest-integration-index",
@@ -349,16 +352,27 @@ class AccountResolverSpecialistManifestTest {
     @Test
     void declaresBoundedReadOnlyAccountSpecialistChain() {
         var registered = specialistChainRegistry.require(
-            AccountSpecialistChains.SMART_RESOLUTION
+            AccountSpecialistChains.DECLARATIVE_RESOLUTION
         );
         var definition = registered.definition();
 
         assertThat(registered.contentHash()).matches("[a-f0-9]{64}");
         assertThat(registered.managerContentHash()).matches("[a-f0-9]{64}");
+        assertThat(registered.source())
+            .isEqualTo(SpecialistChainDefinitionSource.MANIFEST);
+        assertThat(registered.resourceHash()).hasValueSatisfying(
+            hash -> assertThat(hash).matches("[a-f0-9]{64}")
+        );
+        assertThat(registered.declarativeSemanticsHash()).hasValueSatisfying(
+            hash -> assertThat(hash).matches("[a-f0-9]{64}")
+        );
+        assertThat(registered.sourceDescription())
+            .contains("account-declarative-resolution.yml");
+        assertThat(registered.schemaDependencies()).hasSize(5);
         assertThat(definition.managerSpecialistId())
             .isEqualTo(AccountResolverSpecialists.CHAIN_MANAGER_ID);
         assertThat(definition.inputType())
-            .isEqualTo(AccountDelegationCoordinatorRequest.class);
+            .isEqualTo(JsonNode.class);
         assertThat(definition.conversationPolicy())
             .isEqualTo(
                 ai.fabric.execution.chain.SpecialistChainConversationPolicy

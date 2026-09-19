@@ -11,6 +11,10 @@ It has no framework reactor parent and no relative module dependency.
 - Public typed sequential and bounded parallel plan declarations.
 - Public exact-version bounded specialist-chain declaration with two approved,
   independently parallelizable read workers.
+- Public `SpecialistChain` resource loading and compilation from
+  `src/main/resources/ai-chains/consumer-support-investigation.yml`.
+- Bounded JSON Pointer input mapping, safe result projection, separate
+  resource/semantics identities, and the effective registered definition.
 - Application-owned branch mappers and deterministic aggregation.
 - Application-owned chain input mapping and safe worker-result projection.
 - Spring Boot context startup with execution auto-configuration disabled.
@@ -41,7 +45,7 @@ not compile against framework source directories.
 
 ## Published Maven Central Verification
 
-After AI Fabric `0.6.1` is published, prove source-independent consumption with
+After AI Fabric `0.7.0` is published, prove source-independent consumption with
 a fresh local Maven repository. Do not install the framework reactor first:
 
 ```bash
@@ -49,11 +53,11 @@ MAVEN_REPO="$(mktemp -d)"
 
 mvn -B -V --no-transfer-progress \
   -Dmaven.repo.local="$MAVEN_REPO" \
-  -Dai-fabric.version=0.6.1 \
+  -Dai-fabric.version=0.7.0 \
   -f examples/agentic-execution-consumer/pom.xml \
   clean test
 ```
 
 That command proves Maven Central metadata and transitive artifact
-completeness. Run it only after the `0.6.1` BOM is visible on Maven Central;
+completeness. Run it only after the `0.7.0` BOM is visible on Maven Central;
 local reactor artifacts must not satisfy this verification.

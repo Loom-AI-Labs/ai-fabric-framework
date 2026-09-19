@@ -28,6 +28,8 @@ import org.springframework.test.web.servlet.MockMvc;
     "ai.execution.receipts.fingerprint-secret="
         + "account-real-api-receipt-fingerprint-secret-1234567890",
     "ai.execution.specialist-chains.enabled=true",
+    "ai.execution.manifests.locations[0]=classpath*:ai-specialists/*.yml",
+    "ai.execution.manifests.locations[1]=classpath*:ai-chains/*.yml",
     "ai.execution.specialist-chains.encryption-secret="
         + "account-real-api-chain-encryption-secret-1234567890",
     "ai.execution.specialist-chains.fingerprint-secret="
@@ -224,6 +226,52 @@ class AccountSpecialistChainRealApiIntegrationTest {
             .isEqualTo("HANDOFF");
     }
 
+    @Test
+    void liveOpenAiExecutesDeclarativeParallelChainAndReplaysExactly()
+        throws Exception {
+        String sessionId = createSession();
+        String key = "real-account-declarative-parallel-1";
+        JsonNode first = executeAt(
+            "/api/agentic-resolver/declarative-resolutions",
+            sessionId,
+            key,
+            "Inspect both my current account blockers and this supplied refund "
+                + "assessment. Both independent read-only checks are required.",
+            "REFUND",
+            new BigDecimal("75")
+        );
+        JsonNode replay = executeAt(
+            "/api/agentic-resolver/declarative-resolutions",
+            sessionId,
+            key,
+            "Inspect both my current account blockers and this supplied refund "
+                + "assessment. Both independent read-only checks are required.",
+            "REFUND",
+            new BigDecimal("75")
+        );
+
+        assertThat(first.path("chain").asText())
+            .isEqualTo("account-declarative-resolution@1");
+        assertCompletedWithSpecialists(
+            first,
+            "account-resolver-manager-read@1",
+            "billing-resolution-manager-advisor@1"
+        );
+        assertThat(first.at("/timeline/0/directiveType").asText())
+            .isEqualTo("INVOKE_PARALLEL");
+        assertThat(first.at("/results/0/facts/assessment").asText())
+            .isEqualTo("BLOCKED");
+        assertThat(first.at("/results/0/facts/blockerCount").isMissingNode())
+            .isTrue();
+        assertThat(first.at("/results/1/facts/decision").asText())
+            .isEqualTo("REVIEW_REQUIRED");
+        assertThat(replay.path("executionId").asText())
+            .isEqualTo(first.path("executionId").asText());
+        assertThat(replay.path("timeline")).isEqualTo(first.path("timeline"));
+        assertThat(replay.path("results")).isEqualTo(first.path("results"));
+        assertThat(replay.path("replayed").asBoolean()).isTrue();
+    }
+
     private void assertCompletedWithSpecialists(
         JsonNode result,
         String... specialists
@@ -252,6 +300,24 @@ class AccountSpecialistChainRealApiIntegrationTest {
         String resolutionType,
         BigDecimal amount
     ) throws Exception {
+        return executeAt(
+            "/api/agentic-resolver/smart-resolutions",
+            sessionId,
+            idempotencyKey,
+            question,
+            resolutionType,
+            amount
+        );
+    }
+
+    private JsonNode executeAt(
+        String endpoint,
+        String sessionId,
+        String idempotencyKey,
+        String question,
+        String resolutionType,
+        BigDecimal amount
+    ) throws Exception {
         var request = objectMapper.createObjectNode();
         request.put("question", question);
         if (resolutionType != null) {
@@ -260,9 +326,7 @@ class AccountSpecialistChainRealApiIntegrationTest {
         if (amount != null) {
             request.put("amount", amount);
         }
-        String body = mockMvc.perform(post(
-                "/api/agentic-resolver/smart-resolutions"
-            )
+        String body = mockMvc.perform(post(endpoint)
                 .header(AgenticResolverController.SESSION_HEADER, sessionId)
                 .header(
                     AgenticResolverController.IDEMPOTENCY_HEADER,

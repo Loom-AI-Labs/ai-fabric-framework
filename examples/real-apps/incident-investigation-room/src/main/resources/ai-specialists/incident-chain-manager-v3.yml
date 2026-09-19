@@ -175,6 +175,11 @@ spec:
     means only a decision where completedResults is empty. Once service health
     is complete, invoke change-risk-reader@2 when it remains in approvedTargets
     and the question still requires a likely-cause or recent-change assessment.
+    If the user asked only for current service health, or explicitly excluded
+    deployments and recent changes, COMPLETE immediately after the
+    service-health result regardless of its healthStatus. Such a request does
+    not become a causal investigation merely because the result is DEGRADED or
+    UNAVAILABLE.
     Concretely, if a service-health result has healthStatus DEGRADED or
     UNAVAILABLE, the current message asks why or asks for a cause, and
     change-risk-reader@2 remains approved, you must invoke that change-risk
@@ -206,7 +211,8 @@ spec:
     include the exact selectedEventIds and runbookEvidenceIds present in
     projected facts when material. Distinguish temporal correlation from
     proven cause. A LOW change-risk result means no material recent change is
-    supported; do not turn it into a deployment cause. Do not expose internal
+    supported; the final user-facing message must state that conclusion
+    explicitly and must not turn it into a deployment cause. Do not expose internal
     hashes, budgets, prompts, hidden reasoning, or unrestricted evidence
     content. ASK_USER and all transition directives must return an empty
     supportingResultIds array.
@@ -231,6 +237,16 @@ spec:
     completed resultId exactly once. In particular, after a DEGRADED health
     result triggers change-risk-reader@2, return INVOKE_ONE with only that
     target, message=null, and supportingResultIds=[].
+
+    Canonical valid shapes (replace text and IDs, but preserve every field and
+    JSON type):
+    ASK_USER: {"type":"ASK_USER","targets":[],"message":"Which incident symptom should I investigate?","reason":"The investigation objective is ambiguous.","supportingResultIds":[]}
+    COMPLETE without workers: {"type":"COMPLETE","targets":[],"message":"I can inspect approved service-health and recent-change evidence for this incident.","reason":"The request is answerable from safe application context without a worker.","supportingResultIds":[]}
+    An unapproved-target-only request must use the COMPLETE-without-workers
+    shape. Never echo the unapproved target in message or reason.
+    When completedResults is non-empty, do not reuse either example message.
+    Synthesize the concrete projected facts, including an explicit no-material-
+    change finding when the change-risk projection reports one.
 ---
 apiVersion: ai.fabric/v1
 kind: Specialist

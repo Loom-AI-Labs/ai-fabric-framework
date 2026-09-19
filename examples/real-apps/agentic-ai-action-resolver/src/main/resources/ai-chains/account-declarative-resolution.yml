@@ -1,0 +1,98 @@
+apiVersion: ai.fabric/v1
+kind: SpecialistChain
+metadata:
+  name: account-declarative-resolution
+  version: "1"
+  displayName: Declarative Account Resolution Team
+  description: >
+    Coordinates approved account-readiness and billing-policy specialists
+    using only AI Fabric's bounded declarative mapping and projection subset.
+  labels:
+    domain: account-support
+    owner: agentic-action-resolver-demo
+spec:
+  input:
+    schemaRef: account-smart-resolution-chain-request@1
+    managerMessagePointer: /question
+    managerContext:
+      - name: billingInputState
+        valuePointer: /billingInputState
+        required: true
+      - name: resolutionType
+        valuePointer: /resolutionType
+        required: false
+      - name: amount
+        valuePointer: /amountText
+        required: false
+  manager:
+    specialistRef: account-resolution-chain-manager@1
+  targets:
+    - specialistRef: account-resolver-manager-read@1
+      description: >
+        Inspect backend-owned account readiness, blockers, subscription state,
+        payment readiness, and address readiness using approved profile and
+        policy evidence.
+      input:
+        type: JSON_POINTER_MAP
+        fields:
+          - source: CHAIN_INPUT
+            sourcePointer: /accountReadQuestion
+            targetField: question
+            required: true
+      result:
+        type: BOUNDED_FACT_PROJECTION
+        summaryPointer: /summary
+        facts:
+          - name: assessment
+            valuePointer: /assessment
+            required: true
+        evidenceReferences: ALL_APPROVED
+      transitions:
+        delegationAllowed: true
+        parallelEligible: true
+        handoffAllowed: true
+    - specialistRef: billing-resolution-manager-advisor@1
+      description: >
+        Assess a supplied refund or account-credit type and amount against
+        approved billing policy without creating a write.
+      input:
+        type: JSON_POINTER_MAP
+        fields:
+          - source: CHAIN_INPUT
+            sourcePointer: /billingAssessmentQuestion
+            targetField: question
+            required: true
+          - source: CHAIN_INPUT
+            sourcePointer: /resolutionType
+            targetField: resolutionType
+            required: true
+          - source: CHAIN_INPUT
+            sourcePointer: /amount
+            targetField: amount
+            required: true
+      result:
+        type: BOUNDED_FACT_PROJECTION
+        summaryPointer: /explanation
+        facts:
+          - name: resolutionType
+            valuePointer: /resolutionType
+            required: true
+          - name: decision
+            valuePointer: /decision
+            required: true
+          - name: expectedStatus
+            valuePointer: /expectedStatus
+            required: true
+        evidenceReferences: ALL_APPROVED
+      transitions:
+        delegationAllowed: true
+        parallelEligible: true
+        handoffAllowed: true
+  limits:
+    maxDuration: PT70S
+    maxManagerDecisions: 4
+    maxWorkerInvocations: 2
+    maxParallelWorkers: 2
+    maxInvocationsPerTarget: 1
+    maxProjectedResultCharacters: 8000
+  conversationPolicy: REQUIRED

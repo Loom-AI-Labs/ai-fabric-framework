@@ -55,15 +55,19 @@ class IncidentInvestigationIntegrationTest {
     @Test
     void exposesRegisteredSpecialistsPlansProviderAndStorageHealth()
         throws Exception {
-        mockMvc.perform(get("/api/demo/health"))
+        String body = mockMvc.perform(get("/api/demo/health"))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.status").value("UP"))
             .andExpect(jsonPath("$.specialists.length()").value(9))
             .andExpect(jsonPath("$.specialists[0].contentHash").isNotEmpty())
             .andExpect(jsonPath("$.plans.length()").value(4))
-            .andExpect(jsonPath("$.chains.length()").value(1))
-            .andExpect(jsonPath("$.chains[0].id")
-                .value("incident-smart-investigation@1"))
+            .andExpect(jsonPath("$.chains.length()").value(2))
+            .andExpect(jsonPath("$.chainManifests.ready").value(true))
+            .andExpect(jsonPath("$.chainManifests.discovered").value(1))
+            .andExpect(jsonPath("$.chainManifests.registered").value(1))
+            .andExpect(jsonPath("$.chainManifests.auditHash").isNotEmpty())
+            .andExpect(jsonPath("$.chainManifests.semanticsHash").isNotEmpty())
+            .andExpect(jsonPath("$.chainManifests.executionHash").isNotEmpty())
             .andExpect(jsonPath("$.chainsReady").value(true))
             .andExpect(jsonPath("$.actions.length()").value(4))
             .andExpect(jsonPath("$.runbooks.state").value("READY"))
@@ -72,7 +76,94 @@ class IncidentInvestigationIntegrationTest {
             .andExpect(jsonPath("$.provider.ready").value(true))
             .andExpect(jsonPath("$.storage.domain").value("UP"))
             .andExpect(jsonPath("$.storage.specialistChains")
-                .value("JDBC"));
+                .value("JDBC"))
+            .andReturn().getResponse().getContentAsString();
+
+        JsonNode javaChain = java.util.stream.StreamSupport.stream(
+            objectMapper.readTree(body).path("chains").spliterator(),
+            false
+        ).filter(chain -> "incident-smart-investigation@1".equals(
+            chain.path("id").asText()
+        )).findFirst().orElseThrow();
+        assertThat(javaChain.path("source").asText()).isEqualTo("JAVA");
+
+        JsonNode manifestChain = java.util.stream.StreamSupport.stream(
+            objectMapper.readTree(body).path("chains").spliterator(),
+            false
+        ).filter(chain -> "incident-declarative-investigation@1".equals(
+            chain.path("id").asText()
+        )).findFirst().orElseThrow();
+        assertThat(manifestChain.path("source").asText())
+            .isEqualTo("MANIFEST");
+    }
+
+    @Test
+    void declarativeChainMapsInputAndProjectsOnlyBoundedStringFacts()
+        throws Exception {
+        String sessionId = createSession("checkout-regression");
+
+        String body = mockMvc.perform(declarativeInvestigation(
+                sessionId,
+                "manifest-health-1",
+                "Inspect only current checkout service health."
+            ))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.chain")
+                .value("incident-declarative-investigation@1"))
+            .andExpect(jsonPath("$.status").value("COMPLETED"))
+            .andExpect(jsonPath("$.durable").value(true))
+            .andExpect(jsonPath("$.results.length()").value(1))
+            .andExpect(jsonPath("$.results[0].specialist")
+                .value("service-health-reader@2"))
+            .andExpect(jsonPath("$.results[0].facts.healthStatus")
+                .value("DEGRADED"))
+            .andExpect(jsonPath("$.results[0].facts.severity")
+                .value("HIGH"))
+            .andExpect(jsonPath("$.results[0].facts.sourceRevision")
+                .value("incident-rev-checkout-7"))
+            .andExpect(jsonPath("$.results[0].facts.candidateEventCount")
+                .doesNotExist())
+            .andReturn().getResponse().getContentAsString();
+
+        assertThat(body)
+            .doesNotContain("other-tenant-critical-error")
+            .doesNotContain("wrong-revision-release");
+    }
+
+    @Test
+    void declarativeChainRunsParallelAndReplaysWithoutProviderCalls()
+        throws Exception {
+        String sessionId = createSession("checkout-regression");
+        MockHttpServletRequestBuilder request = declarativeInvestigation(
+            sessionId,
+            "manifest-parallel-replay-1",
+            "Inspect both current checkout health and recent change risk."
+        );
+
+        String first = mockMvc.perform(request)
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.status").value("COMPLETED"))
+            .andExpect(jsonPath("$.results.length()").value(2))
+            .andExpect(jsonPath("$.timeline[0].directiveType")
+                .value("INVOKE_PARALLEL"))
+            .andReturn().getResponse().getContentAsString();
+        IncidentInvocationMetrics.Snapshot beforeReplay =
+            invocationMetrics.snapshot();
+
+        String replay = mockMvc.perform(declarativeInvestigation(
+                sessionId,
+                "manifest-parallel-replay-1",
+                "Inspect both current checkout health and recent change risk."
+            ))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.replayed").value(true))
+            .andReturn().getResponse().getContentAsString();
+
+        assertThat(objectMapper.readTree(replay).path("executionId").asText())
+            .isEqualTo(objectMapper.readTree(first)
+                .path("executionId").asText());
+        assertThat(invocationMetrics.snapshot().modelCalls())
+            .isEqualTo(beforeReplay.modelCalls());
     }
 
     @Test
@@ -337,6 +428,93 @@ class IncidentInvestigationIntegrationTest {
                 executionId
             ).header(SESSION_HEADER, "another-session"))
             .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void asyncDeclarativeInvestigationExposesAuthorizedTerminalResult()
+        throws Exception {
+        String sessionId = createSession("checkout-regression");
+        String path = "declarative-investigations";
+        String submittedBody = mockMvc.perform(post(
+                "/api/incidents/sessions/{id}/{path}/async",
+                sessionId,
+                path
+            )
+                .header(SESSION_HEADER, sessionId)
+                .header("Idempotency-Key", "manifest-async-1")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(question(
+                    "Inspect both service health and recent change risk."
+                )))
+            .andExpect(status().isAccepted())
+            .andExpect(jsonPath("$.executionId").isNotEmpty())
+            .andExpect(jsonPath("$.durable").value(true))
+            .andReturn().getResponse().getContentAsString();
+        String executionId = objectMapper.readTree(submittedBody)
+            .path("executionId").asText();
+
+        JsonNode terminal = awaitInvestigation(
+            path,
+            sessionId,
+            executionId
+        );
+
+        assertThat(terminal.path("status").asText())
+            .isEqualTo("COMPLETED");
+        assertThat(terminal.at("/result/chain").asText())
+            .isEqualTo("incident-declarative-investigation@1");
+        assertThat(terminal.at("/result/results")).hasSize(2);
+        mockMvc.perform(get(
+                "/api/incidents/sessions/{id}/{path}/{executionId}",
+                sessionId,
+                path,
+                executionId
+            ).header(SESSION_HEADER, "another-session"))
+            .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void asyncDeclarativeCancellationNeverCreatesASubstituteAnswer()
+        throws Exception {
+        String sessionId = createSession("checkout-regression");
+        String path = "declarative-investigations";
+        String submittedBody = mockMvc.perform(post(
+                "/api/incidents/sessions/{id}/{path}/async",
+                sessionId,
+                path
+            )
+                .header(SESSION_HEADER, sessionId)
+                .header("Idempotency-Key", "manifest-async-cancel-1")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(question(
+                    "Inspect both service health and recent change risk."
+                )))
+            .andExpect(status().isAccepted())
+            .andReturn().getResponse().getContentAsString();
+        String executionId = objectMapper.readTree(submittedBody)
+            .path("executionId").asText();
+
+        JsonNode beforeCancel = fetchInvestigation(
+            path,
+            sessionId,
+            executionId
+        );
+        if (beforeCancel.path("status").asText().matches("QUEUED|RUNNING")) {
+            mockMvc.perform(post(
+                    "/api/incidents/sessions/{id}/{path}/{executionId}/cancel",
+                    sessionId,
+                    path,
+                    executionId
+                ).header(SESSION_HEADER, sessionId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("CANCELLED"))
+                .andExpect(jsonPath("$.result.message").doesNotExist())
+                .andExpect(jsonPath("$.failure.reason")
+                    .value("CHAIN_CANCELLED"));
+        } else {
+            assertThat(beforeCancel.path("status").asText())
+                .isEqualTo("COMPLETED");
+        }
     }
 
     @Test
@@ -757,16 +935,21 @@ class IncidentInvestigationIntegrationTest {
         String sessionId,
         String executionId
     ) throws Exception {
+        return awaitInvestigation(
+            "smart-investigations",
+            sessionId,
+            executionId
+        );
+    }
+
+    private JsonNode awaitInvestigation(
+        String path,
+        String sessionId,
+        String executionId
+    ) throws Exception {
         JsonNode value = null;
         for (int attempt = 0; attempt < 100; attempt++) {
-            String body = mockMvc.perform(get(
-                    "/api/incidents/sessions/{id}/smart-investigations/{executionId}",
-                    sessionId,
-                    executionId
-                ).header(SESSION_HEADER, sessionId))
-                .andExpect(status().isOk())
-                .andReturn().getResponse().getContentAsString();
-            value = objectMapper.readTree(body);
+            value = fetchInvestigation(path, sessionId, executionId);
             if (!"QUEUED".equals(value.path("status").asText())
                 && !"RUNNING".equals(value.path("status").asText())) {
                 return value;
@@ -778,6 +961,22 @@ class IncidentInvestigationIntegrationTest {
         );
     }
 
+    private JsonNode fetchInvestigation(
+        String path,
+        String sessionId,
+        String executionId
+    ) throws Exception {
+        String body = mockMvc.perform(get(
+                "/api/incidents/sessions/{id}/{path}/{executionId}",
+                sessionId,
+                path,
+                executionId
+            ).header(SESSION_HEADER, sessionId))
+            .andExpect(status().isOk())
+            .andReturn().getResponse().getContentAsString();
+        return objectMapper.readTree(body);
+    }
+
     private MockHttpServletRequestBuilder smartInvestigation(
         String sessionId,
         String idempotencyKey,
@@ -785,6 +984,21 @@ class IncidentInvestigationIntegrationTest {
     ) throws Exception {
         return post(
             "/api/incidents/sessions/{id}/smart-investigations",
+            sessionId
+        )
+            .header(SESSION_HEADER, sessionId)
+            .header("Idempotency-Key", idempotencyKey)
+            .contentType(MediaType.APPLICATION_JSON)
+            .content(question(value));
+    }
+
+    private MockHttpServletRequestBuilder declarativeInvestigation(
+        String sessionId,
+        String idempotencyKey,
+        String value
+    ) throws Exception {
+        return post(
+            "/api/incidents/sessions/{id}/declarative-investigations",
             sessionId
         )
             .header(SESSION_HEADER, sessionId)

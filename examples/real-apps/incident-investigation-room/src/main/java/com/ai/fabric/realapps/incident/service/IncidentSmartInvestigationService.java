@@ -4,6 +4,7 @@ import ai.fabric.execution.chain.SpecialistChainExecutionRequest;
 import ai.fabric.execution.chain.SpecialistChainExecutionResult;
 import ai.fabric.execution.chain.SpecialistChainExecutionSnapshot;
 import ai.fabric.execution.chain.SpecialistChainGateway;
+import ai.fabric.execution.chain.SpecialistChainId;
 import ai.fabric.execution.context.ExecutionPrincipal;
 import ai.fabric.execution.context.ExecutionPrincipalType;
 import ai.fabric.execution.context.ExecutionSource;
@@ -14,6 +15,9 @@ import com.ai.fabric.realapps.incident.domain.IncidentManagerRequest;
 import com.ai.fabric.realapps.incident.domain.IncidentSmartInvestigationExecutionView;
 import com.ai.fabric.realapps.incident.domain.IncidentSmartInvestigationView;
 import com.ai.fabric.realapps.incident.execution.IncidentSpecialistChains;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.time.Clock;
 import java.util.Set;
 import org.springframework.stereotype.Service;
@@ -35,15 +39,18 @@ public class IncidentSmartInvestigationService {
     private final SpecialistChainGateway gateway;
     private final IncidentSessionService sessions;
     private final Clock clock;
+    private final ObjectMapper objectMapper;
 
     public IncidentSmartInvestigationService(
         SpecialistChainGateway gateway,
         IncidentSessionService sessions,
-        Clock clock
+        Clock clock,
+        ObjectMapper objectMapper
     ) {
         this.gateway = gateway;
         this.sessions = sessions;
         this.clock = clock;
+        this.objectMapper = objectMapper;
     }
 
     public IncidentSmartInvestigationView investigate(
@@ -56,13 +63,39 @@ public class IncidentSmartInvestigationService {
         ));
     }
 
+    public IncidentSmartInvestigationView investigateDeclarative(
+        String sessionId,
+        String question,
+        String idempotencyKey
+    ) {
+        return IncidentSmartInvestigationView.from(gateway.execute(
+            declarativeRequest(sessionId, question, idempotencyKey)
+        ));
+    }
+
     public IncidentSmartInvestigationExecutionView submit(
         String sessionId,
         String question,
         String idempotencyKey
     ) {
-        SpecialistChainExecutionRequest<IncidentManagerRequest> request =
-            request(sessionId, question, idempotencyKey);
+        return submit(request(sessionId, question, idempotencyKey));
+    }
+
+    public IncidentSmartInvestigationExecutionView submitDeclarative(
+        String sessionId,
+        String question,
+        String idempotencyKey
+    ) {
+        return submit(declarativeRequest(
+            sessionId,
+            question,
+            idempotencyKey
+        ));
+    }
+
+    private <I> IncidentSmartInvestigationExecutionView submit(
+        SpecialistChainExecutionRequest<I> request
+    ) {
         var handle = gateway.submit(request);
         if (!handle.replayed() || !handle.status().terminal()) {
             return IncidentSmartInvestigationExecutionView.from(handle);
@@ -143,6 +176,47 @@ public class IncidentSmartInvestigationService {
         );
         return new SpecialistChainExecutionRequest<>(
             IncidentSpecialistChains.SMART_INVESTIGATION,
+            input,
+            trustedContext(session),
+            new ConversationBinding(
+                session.ownerId(),
+                session.conversationId()
+            ),
+            null,
+            requireIdempotencyKey(idempotencyKey)
+        );
+    }
+
+    private SpecialistChainExecutionRequest<JsonNode> declarativeRequest(
+        String sessionId,
+        String question,
+        String idempotencyKey
+    ) {
+        IncidentSessionService.ActiveSession session = sessions.active(
+            sessionId
+        );
+        var plan = sessions.planRequest(sessionId, question);
+        ObjectNode input = objectMapper.createObjectNode()
+            .put("question", question)
+            .put("incidentId", plan.incidentId())
+            .put("deploymentId", plan.deploymentId())
+            .put("sourceRevision", plan.sourceRevision());
+        return chainRequest(
+            IncidentSpecialistChains.DECLARATIVE_INVESTIGATION,
+            input,
+            session,
+            idempotencyKey
+        );
+    }
+
+    private <I> SpecialistChainExecutionRequest<I> chainRequest(
+        SpecialistChainId chainId,
+        I input,
+        IncidentSessionService.ActiveSession session,
+        String idempotencyKey
+    ) {
+        return new SpecialistChainExecutionRequest<>(
+            chainId,
             input,
             trustedContext(session),
             new ConversationBinding(

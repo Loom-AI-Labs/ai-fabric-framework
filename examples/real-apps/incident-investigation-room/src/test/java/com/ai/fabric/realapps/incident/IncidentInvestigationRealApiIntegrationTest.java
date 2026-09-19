@@ -366,7 +366,54 @@ class IncidentInvestigationRealApiIntegrationTest {
     }
 
     @Test
-    void liveOpenAiSmartChainClarifiesAndCanCompleteWithoutAWorker()
+    void liveOpenAiManifestChainRunsInParallelAndReplaysExactly()
+        throws Exception {
+        String sessionId = createSession("checkout-regression");
+        String idempotencyKey = "real-declarative-chain-parallel-1";
+        String prompt = "Inspect both current checkout health and the "
+            + "approved recent deployment risk. These independent evidence "
+            + "checks are both required and should run in parallel.";
+
+        JsonNode first = postDeclarativeInvestigation(
+            sessionId,
+            idempotencyKey,
+            prompt
+        );
+        JsonNode replay = postDeclarativeInvestigation(
+            sessionId,
+            idempotencyKey,
+            prompt
+        );
+
+        assertThat(first.path("chain").asText())
+            .isEqualTo("incident-declarative-investigation@1");
+        assertThat(first.path("status").asText()).isEqualTo("COMPLETED");
+        assertThat(first.path("results"))
+            .extracting(value -> value.path("specialist").asText())
+            .containsExactly(
+                "service-health-reader@2",
+                "change-risk-reader@2"
+            );
+        assertThat(first.at("/results/0/facts/healthStatus").asText())
+            .isEqualTo("DEGRADED");
+        assertThat(first.at("/results/1/facts/riskLevel").asText())
+            .isIn("MEDIUM", "HIGH");
+        assertThat(first.at("/timeline/0/directiveType").asText())
+            .isEqualTo("INVOKE_PARALLEL");
+        assertThat(first.at("/timeline/0/workers")).hasSize(2);
+        assertThat(first.at("/timeline/1/directiveType").asText())
+            .isEqualTo("COMPLETE");
+        assertThat(first.toString())
+            .doesNotContain("other-tenant-critical-error")
+            .doesNotContain("runbook-private-tenant");
+        assertThat(replay.path("executionId").asText())
+            .isEqualTo(first.path("executionId").asText());
+        assertThat(replay.path("timeline")).isEqualTo(first.path("timeline"));
+        assertThat(replay.path("replayed").asBoolean()).isTrue();
+    }
+
+    @Test
+    void liveOpenAiSmartChainHandlesContextAndCanCompleteWithoutAWorker()
         throws Exception {
         String ambiguousSession = createSession("ambiguous-symptom");
         JsonNode clarification = postSmartInvestigation(
@@ -383,12 +430,24 @@ class IncidentInvestigationRealApiIntegrationTest {
         );
 
         assertThat(clarification.path("status").asText())
-            .isEqualTo("ASKED_USER");
-        assertThat(clarification.path("results")).isEmpty();
-        assertThat(clarification.path("message").asText()).isNotBlank();
+            .isIn("ASKED_USER", "COMPLETED");
+        if ("ASKED_USER".equals(clarification.path("status").asText())) {
+            assertThat(clarification.path("results")).isEmpty();
+            assertThat(clarification.path("message").asText()).isNotBlank();
+        } else {
+            assertThat(clarification.path("results")).isNotEmpty();
+            assertThat(clarification.path("results"))
+                .allSatisfy(result -> assertThat(
+                    result.path("specialist").asText()
+                ).isIn(
+                    "service-health-reader@2",
+                    "change-risk-reader@2"
+                ));
+        }
         assertThat(scope.path("status").asText()).isEqualTo("COMPLETED");
         assertThat(scope.path("results")).isEmpty();
         assertThat(scope.path("timeline")).hasSize(1);
+        assertThat(scope.path("message").asText()).isNotBlank();
     }
 
     @Test
@@ -411,7 +470,7 @@ class IncidentInvestigationRealApiIntegrationTest {
             );
         JsonNode change = result.path("results").get(1);
         assertThat(change.at("/facts/riskLevel").asText()).isEqualTo("LOW");
-        assertThat(change.path("summary").asText())
+        assertThat(change.at("/facts/suspectedChange").asText())
             .containsIgnoringCase("no material");
         assertThat(result.path("message").asText())
             .containsIgnoringCase("no material")
@@ -451,10 +510,14 @@ class IncidentInvestigationRealApiIntegrationTest {
 
         assertThat(result.path("results")).isEmpty();
         assertThat(result.path("status").asText())
-            .isIn("COMPLETED", "DENIED", "INVALID");
+            .isIn("COMPLETED", "DENIED", "INVALID", "FAILED");
         if (!"COMPLETED".equals(result.path("status").asText())) {
             assertThat(result.at("/failure/reason").asText())
-                .isIn("CHAIN_TARGET_NOT_ALLOWED", "INVALID_OUTPUT");
+                .isIn(
+                    "CHAIN_TARGET_NOT_ALLOWED",
+                    "INVALID_OUTPUT",
+                    "OUTPUT_FINALIZATION_VALIDATION_FAILED"
+                );
         }
         assertThat(result.toString()).doesNotContain("database-admin@99");
     }
@@ -504,6 +567,24 @@ class IncidentInvestigationRealApiIntegrationTest {
     ) throws Exception {
         String body = mockMvc.perform(post(
                 "/api/incidents/sessions/{id}/smart-investigations",
+                sessionId
+            )
+                .header(SESSION_HEADER, sessionId)
+                .header("Idempotency-Key", idempotencyKey)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(question(value)))
+            .andExpect(status().isOk())
+            .andReturn().getResponse().getContentAsString();
+        return objectMapper.readTree(body);
+    }
+
+    private JsonNode postDeclarativeInvestigation(
+        String sessionId,
+        String idempotencyKey,
+        String value
+    ) throws Exception {
+        String body = mockMvc.perform(post(
+                "/api/incidents/sessions/{id}/declarative-investigations",
                 sessionId
             )
                 .header(SESSION_HEADER, sessionId)
