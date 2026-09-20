@@ -5,12 +5,14 @@ import ai.fabric.execution.specialist.SpecialistId;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
+import java.sql.Types;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import javax.sql.DataSource;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.SqlParameterValue;
 
 /**
  * JDBC durable execution state with optimistic compare-and-set transitions.
@@ -156,8 +158,8 @@ public final class JdbcDurableExecutionRepository
             expected.invocationId(),
             expected.status().name(),
             expected.version(),
-            expected.leaseOwner(),
-            expected.leaseOwner()
+            varchar(expected.leaseOwner()),
+            varchar(expected.leaseOwner())
         );
         return rows == 1;
     }
@@ -217,6 +219,10 @@ public final class JdbcDurableExecutionRepository
         Object value
     ) {
         return jdbc.query(sql, this::map, value).stream().findFirst();
+    }
+
+    private SqlParameterValue varchar(String value) {
+        return new SqlParameterValue(Types.VARCHAR, value);
     }
 
     private DurableExecutionRecord map(ResultSet resultSet, int row)

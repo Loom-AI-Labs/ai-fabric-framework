@@ -11,6 +11,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
+import java.sql.Types;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
@@ -18,6 +19,7 @@ import java.util.Set;
 import javax.sql.DataSource;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.SqlParameterValue;
 
 /**
  * JDBC review-task state with optimistic transitions and no raw sensitive
@@ -192,8 +194,8 @@ public final class JdbcReviewTaskRepository
             expected.taskId(),
             expected.status().name(),
             expected.version(),
-            expected.leaseOwner(),
-            expected.leaseOwner()
+            varchar(expected.leaseOwner()),
+            varchar(expected.leaseOwner())
         );
         return rows == 1;
     }
@@ -301,6 +303,10 @@ public final class JdbcReviewTaskRepository
         Object value
     ) {
         return jdbc.query(sql, this::map, value).stream().findFirst();
+    }
+
+    private SqlParameterValue varchar(String value) {
+        return new SqlParameterValue(Types.VARCHAR, value);
     }
 
     private ReviewTaskRecord map(ResultSet resultSet, int row)

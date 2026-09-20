@@ -33,7 +33,7 @@
   ·
   <a href="docs/llm-context/README.md"><strong>Coding-Assistant Context</strong></a>
   ·
-  <a href="docs/release-notes/0.7.0.md"><strong>0.7.0 Release Notes</strong></a>
+  <a href="docs/release-notes/0.7.1.md"><strong>0.7.1 Release Notes</strong></a>
 </p>
 
 ---
@@ -101,7 +101,7 @@ flowchart LR
 See [Public Architecture](docs/architecture/AI_FABRIC_PUBLIC_ARCHITECTURE.md) for the complete
 ownership model and module map.
 
-## Start With `0.7.0`
+## Start With `0.7.1`
 
 ### Requirements
 
@@ -116,7 +116,7 @@ required.
 
 ```xml
 <properties>
-  <ai-fabric.version>0.7.0</ai-fabric.version>
+  <ai-fabric.version>0.7.1</ai-fabric.version>
 </properties>
 
 <dependencyManagement>
@@ -298,7 +298,7 @@ readiness, and relationship queries.
 - [Interactive course](https://ai-fabric.dev/course): guided lessons, videos, checks, and real-app case studies.
 - [Course source](docs/course/AI_FABRIC_EXTERNAL_USER_COURSE.md): versioned curriculum and lab contracts.
 - [Architecture](docs/architecture/AI_FABRIC_PUBLIC_ARCHITECTURE.md): request flow and ownership boundaries.
-- [Release notes](docs/release-notes/0.7.0.md): current behavior and migration considerations.
+- [Release notes](docs/release-notes/0.7.1.md): current behavior and migration considerations.
 - [LoomAI 0.7 upgrade notes](docs/release-notes/LOOMAI_PLATFORM_AI_FABRIC_0_7_0_UPGRADE_NOTES.md): code-backed platform migration, canary, and rollback guidance.
 - [0.6.1 release notes](docs/release-notes/0.6.1.md): previous release behavior.
 - [Production checklist](docs/getting-started/13-production-checklist.md): release and deployment gate.
@@ -371,11 +371,11 @@ The project favors focused, well-tested changes with real-app proof over broad r
 
 ## Release Policy
 
-The current release is **`0.7.0`**. AI Fabric remains on a `0.x` release line, so review release
+The current release is **`0.7.1`**. AI Fabric remains on a `0.x` release line, so review release
 notes and migration guidance before upgrading:
 
-- [AI Fabric 0.7.0 release notes](docs/release-notes/0.7.0.md)
-- [LoomAI platform 0.7.0 upgrade notes](docs/release-notes/LOOMAI_PLATFORM_AI_FABRIC_0_7_0_UPGRADE_NOTES.md)
+- [AI Fabric 0.7.1 release notes](docs/release-notes/0.7.1.md)
+- [LoomAI platform 0.7.0 feature upgrade notes](docs/release-notes/LOOMAI_PLATFORM_AI_FABRIC_0_7_0_UPGRADE_NOTES.md)
 - [AI Fabric 0.6.1 release notes](docs/release-notes/0.6.1.md)
 - [AI Fabric 0.6.0 release notes](docs/release-notes/0.6.0.md)
 - [AI Fabric 0.5.3 release notes](docs/release-notes/0.5.3.md)
