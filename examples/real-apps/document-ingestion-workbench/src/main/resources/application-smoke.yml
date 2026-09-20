@@ -4,3 +4,6 @@ ai:
     embedding-provider: smoke
   vector-db:
     type: memory
+  indexing:
+    async-worker:
+      fixed-delay: PT0.1S

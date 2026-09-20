@@ -1,203 +1,303 @@
 package ai.fabric.indexing.document.springai;
 
-import ai.fabric.config.AIEntityConfigurationLoader;
-import ai.fabric.dto.AIEntityConfig;
-import ai.fabric.entity.IndexingQueueEntry;
+import ai.fabric.config.AIIndexingProperties;
 import ai.fabric.indexing.api.AIIndexWorkType;
-import ai.fabric.indexing.api.AIProcessOperation;
+import ai.fabric.indexing.document.DocumentChunkIdentity;
+import ai.fabric.indexing.document.DocumentEntityPolicyValidator;
+import ai.fabric.indexing.document.DocumentManifestOperations;
+import ai.fabric.indexing.document.DocumentMetadataNormalizer;
+import ai.fabric.indexing.document.model.DocumentIngestionChunk;
+import ai.fabric.indexing.document.model.DocumentIngestionException;
+import ai.fabric.indexing.document.model.DocumentIngestionFailureCode;
+import ai.fabric.indexing.document.model.DocumentIngestionManifest;
+import ai.fabric.indexing.document.model.DocumentIngestionPlan;
+import ai.fabric.indexing.document.model.DocumentIngestionWarning;
+import ai.fabric.indexing.document.model.DocumentIngestionWarningCode;
+import ai.fabric.indexing.document.model.DocumentMetadataKeys;
 import ai.fabric.indexing.model.AIIndexDocument;
-import ai.fabric.indexing.queue.IndexingQueueService;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.document.DocumentReader;
 import org.springframework.ai.document.DocumentTransformer;
 import org.springframework.ai.transformer.splitter.TokenTextSplitter;
-import org.springframework.util.StringUtils;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
-import java.time.temporal.TemporalAccessor;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 
-/**
- * Converts Spring AI ETL documents into AI Fabric indexing queue work.
- */
+/** Prepares trusted Spring AI documents for the AI Fabric indexing lifecycle. */
 public class SpringAiDocumentIndexingAdapter {
 
-    private static final String ENTITY_ID_PREFIX = "springai-";
-    private static final List<String> SENSITIVE_METADATA_KEY_PARTS = List.of(
-        "authorization",
-        "credential",
-        "password",
-        "secret",
-        "token",
-        "api_key",
-        "apikey",
-        "url",
-        "uri",
-        "path",
-        "prompt",
-        "completion"
-    );
+    private final AIIndexingProperties.DocumentProperties properties;
+    private final DocumentChunkIdentity identity;
+    private final DocumentMetadataNormalizer metadataNormalizer;
+    private final DocumentEntityPolicyValidator entityPolicy;
+    private final DocumentManifestOperations manifestOperations;
 
-    private final IndexingQueueService queueService;
-    private final AIEntityConfigurationLoader configurationLoader;
-
-    public SpringAiDocumentIndexingAdapter(IndexingQueueService queueService,
-                                           AIEntityConfigurationLoader configurationLoader) {
-        this.queueService = Objects.requireNonNull(queueService, "queueService is required");
-        this.configurationLoader = Objects.requireNonNull(configurationLoader, "configurationLoader is required");
-    }
-
-    public List<IndexingQueueEntry> enqueue(DocumentReader reader, SpringAiDocumentIndexingOptions options) {
-        return enqueue(readDocuments(reader), options);
-    }
-
-    public List<IndexingQueueEntry> enqueue(List<Document> documents, SpringAiDocumentIndexingOptions options) {
-        List<AIIndexDocument> indexDocuments = toIndexDocuments(documents, options);
-        List<IndexingQueueEntry> entries = new ArrayList<>(indexDocuments.size());
-        for (AIIndexDocument document : indexDocuments) {
-            entries.add(queueService.enqueue(
-                document,
-                options.strategy(),
-                options.scheduledFor()
-            ));
-        }
-        return List.copyOf(entries);
-    }
-
-    public List<AIIndexDocument> toIndexDocuments(
-        DocumentReader reader,
-        SpringAiDocumentIndexingOptions options
+    public SpringAiDocumentIndexingAdapter(
+        AIIndexingProperties.DocumentProperties properties,
+        DocumentChunkIdentity identity,
+        DocumentMetadataNormalizer metadataNormalizer,
+        DocumentEntityPolicyValidator entityPolicy,
+        DocumentManifestOperations manifestOperations
     ) {
-        return toIndexDocuments(readDocuments(reader), options);
-    }
-
-    public List<AIIndexDocument> toIndexDocuments(
-        List<Document> documents,
-        SpringAiDocumentIndexingOptions options
-    ) {
-        SpringAiDocumentIndexingOptions resolved = Objects.requireNonNull(options, "options is required");
-        validateEntityType(resolved.entityType());
-
-        List<Document> transformed = transform(documents, resolved);
-        List<Document> textDocuments = transformed.stream()
-            .filter(Objects::nonNull)
-            .filter(Document::isText)
-            .filter(document -> StringUtils.hasText(document.getText()))
-            .toList();
-
-        if (textDocuments.size() > resolved.maxChunks()) {
-            throw new IllegalArgumentException("Spring AI document ingestion produced "
-                + textDocuments.size() + " chunks; maxChunks=" + resolved.maxChunks());
-        }
-
-        List<AIIndexDocument> requests = new ArrayList<>(textDocuments.size());
-        int chunkCount = textDocuments.size();
-        for (int i = 0; i < chunkCount; i++) {
-            requests.add(toIndexDocument(textDocuments.get(i), resolved, i, chunkCount));
-        }
-        return List.copyOf(requests);
-    }
-
-    public AIIndexDocument toDeleteDocument(
-        String entityType,
-        String entityId,
-        java.time.Instant occurredAt
-    ) {
-        validateEntityType(entityType);
-        if (!StringUtils.hasText(entityId)) {
-            throw new IllegalArgumentException("entityId is required");
-        }
-        return new AIIndexDocument(
-            AIIndexDocument.CURRENT_SCHEMA_VERSION,
-            documentProjectionHash(),
-            entityType.trim(),
-            entityId.trim(),
-            AIIndexWorkType.DELETE,
-            AIProcessOperation.DELETE,
-            null,
-            null,
-            Map.of(),
-            Map.of(),
-            Map.of(),
-            null,
-            "",
-            occurredAt == null ? java.time.Instant.now() : occurredAt
+        this.properties = Objects.requireNonNull(
+            properties,
+            "properties is required"
+        );
+        this.properties.validate();
+        this.identity = Objects.requireNonNull(identity, "identity is required");
+        this.metadataNormalizer = Objects.requireNonNull(
+            metadataNormalizer,
+            "metadataNormalizer is required"
+        );
+        this.entityPolicy = Objects.requireNonNull(
+            entityPolicy,
+            "entityPolicy is required"
+        );
+        this.manifestOperations = Objects.requireNonNull(
+            manifestOperations,
+            "manifestOperations is required"
         );
     }
 
-    private List<Document> readDocuments(DocumentReader reader) {
+    public DocumentIngestionPlan plan(
+        DocumentReader reader,
+        SpringAiDocumentIndexingOptions options
+    ) {
         Objects.requireNonNull(reader, "reader is required");
-        List<Document> documents = reader.read();
-        return documents == null ? List.of() : documents;
+        try {
+            List<Document> documents = reader.read();
+            return plan(documents == null ? List.of() : documents, options);
+        } catch (DocumentIngestionException exception) {
+            throw exception;
+        } catch (RuntimeException exception) {
+            throw new DocumentIngestionException(
+                DocumentIngestionFailureCode.DOCUMENT_PARSE_FAILED,
+                "The trusted document reader failed",
+                exception
+            );
+        }
     }
 
-    private void validateEntityType(String entityType) {
-        AIEntityConfig config = configurationLoader.getEntityConfig(entityType);
-        if (config == null) {
-            throw new IllegalArgumentException("Unknown AI Fabric entityType/vector space: " + entityType);
+    public DocumentIngestionPlan plan(
+        List<Document> documents,
+        SpringAiDocumentIndexingOptions options
+    ) {
+        SpringAiDocumentIndexingOptions resolved = Objects.requireNonNull(
+            options,
+            "options is required"
+        );
+        validateBounds(resolved);
+        entityPolicy.requireIndexable(
+            resolved.entityType(),
+            resolved.tenantId()
+        );
+
+        List<DocumentIngestionWarning> planWarnings = new ArrayList<>();
+        List<Document> input = normalizeInput(documents, resolved, planWarnings);
+        List<Document> transformed = transform(input, resolved);
+        List<Document> textDocuments = new ArrayList<>();
+        for (Document document : transformed) {
+            if (document == null
+                || !document.isText()
+                || document.getText() == null
+                || document.getText().isBlank()) {
+                planWarnings.add(DocumentIngestionWarning.one(
+                    DocumentIngestionWarningCode.TRANSFORMER_DOCUMENT_SKIPPED_EMPTY,
+                    "document"
+                ));
+                continue;
+            }
+            textDocuments.add(document);
         }
-        if (config.getIndexing() == null
-            || !Boolean.TRUE.equals(config.getIndexing().getEnabled())) {
-            throw new IllegalArgumentException("AI Fabric entityType is not indexable: " + entityType);
+        if (textDocuments.isEmpty()) {
+            throw new DocumentIngestionException(
+                DocumentIngestionFailureCode.DOCUMENT_PARSE_FAILED,
+                "Document preparation produced no indexable text"
+            );
+        }
+        if (textDocuments.size() > resolved.maxChunks()) {
+            throw limit("Document preparation exceeded the chunk limit");
+        }
+
+        List<DocumentIngestionChunk> chunks = new ArrayList<>();
+        int totalContentLength = 0;
+        int chunkCount = textDocuments.size();
+        for (int index = 0; index < chunkCount; index++) {
+            Document source = textDocuments.get(index);
+            String content = source.getText().trim();
+            if (content.length() > resolved.maxContentLength()) {
+                throw limit("Document preparation exceeded the per-chunk content limit");
+            }
+            totalContentLength += content.length();
+            if (totalContentLength > resolved.maxTotalContentLength()) {
+                throw limit("Document preparation exceeded the total content limit");
+            }
+            DocumentIngestionChunk chunk = chunk(
+                source,
+                resolved,
+                index,
+                chunkCount,
+                content
+            );
+            chunks.add(chunk);
+            planWarnings.addAll(chunk.warnings());
+        }
+
+        String planId = identity.planId(
+            resolved.entityType(),
+            resolved.sourceId(),
+            resolved.sourceVersion(),
+            chunks
+        );
+        return new DocumentIngestionPlan(
+            planId,
+            resolved.sourceId(),
+            resolved.sourceVersion(),
+            resolved.sourceName(),
+            resolved.entityType(),
+            resolved.tenantId(),
+            resolved.visibility(),
+            resolved.occurredAt(),
+            input.size(),
+            totalContentLength,
+            chunks,
+            planWarnings
+        );
+    }
+
+    public DocumentIngestionManifest manifest(DocumentIngestionPlan plan) {
+        return manifestOperations.manifest(plan);
+    }
+
+    private List<Document> normalizeInput(
+        List<Document> documents,
+        SpringAiDocumentIndexingOptions options,
+        List<DocumentIngestionWarning> warnings
+    ) {
+        List<Document> source = documents == null ? List.of() : documents;
+        if (source.size() > options.maxDocuments()) {
+            throw limit("Document preparation exceeded the document limit");
+        }
+        List<Document> result = new ArrayList<>();
+        for (Document document : source) {
+            if (document == null) {
+                warnings.add(DocumentIngestionWarning.one(
+                    DocumentIngestionWarningCode.PARSER_DOCUMENT_SKIPPED_EMPTY,
+                    "document"
+                ));
+            } else {
+                result.add(document);
+            }
+        }
+        if (result.isEmpty()) {
+            throw new DocumentIngestionException(
+                DocumentIngestionFailureCode.DOCUMENT_PARSE_FAILED,
+                "Document reader produced no documents"
+            );
+        }
+        return List.copyOf(result);
+    }
+
+    private List<Document> transform(
+        List<Document> documents,
+        SpringAiDocumentIndexingOptions options
+    ) {
+        List<Document> current = documents;
+        try {
+            for (DocumentTransformer transformer : options.transformers()) {
+                List<Document> transformed = transformer.transform(current);
+                current = transformed == null ? List.of() : transformed;
+            }
+            if (properties.getDefaultSplitter().isEnabled()
+                && options.splitWithTokenTextSplitter()) {
+                TokenTextSplitter splitter = TokenTextSplitter.builder()
+                    .withChunkSize(options.tokenChunkSize())
+                    .withMinChunkSizeChars(
+                        properties.getDefaultSplitter().getMinChunkSizeChars()
+                    )
+                    .withMinChunkLengthToEmbed(
+                        properties.getDefaultSplitter().getMinChunkLengthToEmbed()
+                    )
+                    .withMaxNumChunks(options.maxChunks())
+                    .build();
+                current = splitter.split(current);
+            }
+            return current == null ? List.of() : current;
+        } catch (RuntimeException exception) {
+            throw new DocumentIngestionException(
+                DocumentIngestionFailureCode.DOCUMENT_PARSE_FAILED,
+                "Document transformation failed",
+                exception
+            );
         }
     }
 
-    private List<Document> transform(List<Document> documents, SpringAiDocumentIndexingOptions options) {
-        List<Document> current = documents == null ? List.of() : List.copyOf(documents);
-        for (DocumentTransformer transformer : options.transformers()) {
-            current = safeTransform(transformer, current);
-        }
-        if (options.splitWithTokenTextSplitter()) {
-            TokenTextSplitter splitter = TokenTextSplitter.builder()
-                .withChunkSize(options.tokenChunkSize())
-                .withMaxNumChunks(options.maxChunks())
-                .build();
-            current = splitter.split(current);
-        }
-        return current;
-    }
-
-    private List<Document> safeTransform(DocumentTransformer transformer, List<Document> documents) {
-        List<Document> transformed = transformer.transform(documents);
-        return transformed == null ? List.of() : transformed;
-    }
-
-    private AIIndexDocument toIndexDocument(
-        Document document,
+    private DocumentIngestionChunk chunk(
+        Document source,
         SpringAiDocumentIndexingOptions options,
         int chunkIndex,
-        int chunkCount
+        int chunkCount,
+        String content
     ) {
-        String content = document.getText().trim();
-        if (content.length() > options.maxContentLength()) {
-            throw new IllegalArgumentException("Spring AI document chunk exceeds maxContentLength="
-                + options.maxContentLength());
+        String fingerprint = identity.contentFingerprint(content);
+        DocumentChunkIdentity.ChunkIdentity chunkIdentity = identity.chunk(
+            options.entityType(),
+            options.sourceId(),
+            options.sourceVersion(),
+            chunkIndex,
+            chunkIndex,
+            fingerprint
+        );
+        Set<String> allowedKeys = new LinkedHashSet<>(
+            properties.getMetadata().getAllowedApplicationKeys()
+        );
+        allowedKeys.addAll(options.allowedMetadataKeys());
+        int applicationMetadataLimit = Math.max(
+            0,
+            options.maxMetadataEntries() - DocumentMetadataKeys.ALL.size()
+        );
+        DocumentMetadataNormalizer.NormalizedMetadata normalized =
+            metadataNormalizer.normalize(
+                source.getMetadata(),
+                options.metadata(),
+                allowedKeys,
+                applicationMetadataLimit,
+                options.maxMetadataValueLength(),
+                properties.getMetadata().isWarnOnDrop()
+            );
+
+        String sourceDocumentId = sourceDocumentId(source, chunkIndex);
+        Map<String, Object> metadata = new LinkedHashMap<>(
+            normalized.metadata()
+        );
+        metadata.put(DocumentMetadataKeys.SOURCE_ID, options.sourceId());
+        metadata.put(DocumentMetadataKeys.SOURCE_VERSION, options.sourceVersion());
+        metadata.put(DocumentMetadataKeys.SOURCE_NAME, options.sourceName());
+        metadata.put(DocumentMetadataKeys.DOCUMENT_ID, sourceDocumentId);
+        metadata.put(DocumentMetadataKeys.CHUNK_ID, chunkIdentity.chunkId());
+        metadata.put(DocumentMetadataKeys.CHUNK_INDEX, chunkIndex);
+        metadata.put(DocumentMetadataKeys.CHUNK_COUNT, chunkCount);
+        metadata.put(DocumentMetadataKeys.CONTENT_FINGERPRINT, fingerprint);
+        if (!options.tenantId().isEmpty()) {
+            metadata.put(DocumentMetadataKeys.TENANT_ID, options.tenantId());
+        }
+        if (!options.visibility().isEmpty()) {
+            metadata.put(DocumentMetadataKeys.VISIBILITY, options.visibility());
+        }
+        if (metadata.size() > options.maxMetadataEntries()) {
+            throw limit("Document metadata exceeded the per-chunk entry limit");
         }
 
-        MetadataSanitization sanitizedMetadata = sanitizeMetadata(document.getMetadata(), options);
-        String documentId = StringUtils.hasText(document.getId()) ? document.getId().trim() : "document-" + chunkIndex;
-        String entityId = stableEntityId(options.sourceId(), documentId, chunkIndex);
-        Map<String, Object> metadata = new LinkedHashMap<>(sanitizedMetadata.metadata());
-        metadata.put("_springAiSourceId", options.sourceId());
-        metadata.put("_springAiSourceName", options.sourceName());
-        metadata.put("_springAiDocumentId", documentId);
-        metadata.put("_springAiChunkIndex", chunkIndex);
-        metadata.put("_springAiChunkCount", chunkCount);
-        metadata.put("_springAiContentFingerprint", sha256(content));
-        metadata.put("_springAiMetadataDroppedCount", sanitizedMetadata.droppedCount());
-
-        return new AIIndexDocument(
+        AIIndexDocument indexDocument = new AIIndexDocument(
             AIIndexDocument.CURRENT_SCHEMA_VERSION,
-            documentProjectionHash(),
+            identity.projectionHash(),
             options.entityType(),
-            entityId,
+            chunkIdentity.entityId(),
             AIIndexWorkType.UPSERT,
             options.operation(),
             content,
@@ -205,136 +305,69 @@ public class SpringAiDocumentIndexingAdapter {
             metadata,
             Map.of(),
             Map.of(),
-            sourceVersion(metadata),
-            "",
+            options.sourceVersion(),
+            options.correlationId(),
             options.occurredAt()
+        );
+        return new DocumentIngestionChunk(
+            chunkIndex,
+            sourceDocumentId,
+            chunkIdentity.chunkId(),
+            chunkIndex,
+            chunkCount,
+            chunkIdentity.entityId(),
+            content.length(),
+            fingerprint,
+            indexDocument,
+            normalized.warnings()
         );
     }
 
-    private String documentProjectionHash() {
-        return sha256("spring-ai-document-projection-v1");
+    private String sourceDocumentId(Document document, int index) {
+        String id = document.getId();
+        if (id == null || id.isBlank() || looksLikeResourceLocation(id)) {
+            return "document-" + index;
+        }
+        String normalized = id.trim();
+        return normalized.length() <= 256
+            ? normalized
+            : normalized.substring(0, 256);
     }
 
-    private Long sourceVersion(Map<String, Object> metadata) {
-        Object value = metadata.get("sourceVersion");
-        if (value instanceof Number number) {
-            return number.longValue();
-        }
-        if (value instanceof CharSequence sequence) {
-            try {
-                return Long.parseLong(sequence.toString());
-            } catch (NumberFormatException ignored) {
-                return null;
-            }
-        }
-        return null;
+    private boolean looksLikeResourceLocation(String value) {
+        String normalized = value.trim().toLowerCase(java.util.Locale.ROOT);
+        return normalized.contains("/")
+            || normalized.contains("\\")
+            || normalized.startsWith("file:")
+            || normalized.startsWith("http:")
+            || normalized.startsWith("https:")
+            || normalized.startsWith("classpath:");
     }
 
-    private MetadataSanitization sanitizeMetadata(Map<String, Object> documentMetadata,
-                                                  SpringAiDocumentIndexingOptions options) {
-        Map<String, Object> merged = new LinkedHashMap<>();
-        if (documentMetadata != null) {
-            merged.putAll(documentMetadata);
-        }
-        merged.putAll(options.metadata());
-
-        Map<String, Object> sanitized = new LinkedHashMap<>();
-        int dropped = 0;
-        for (Map.Entry<String, Object> entry : merged.entrySet()) {
-            if (sanitized.size() >= options.maxMetadataEntries()) {
-                dropped++;
-                continue;
-            }
-
-            String key = safeMetadataKey(entry.getKey());
-            if (!StringUtils.hasText(key) || isSensitiveMetadataKey(key)) {
-                dropped++;
-                continue;
-            }
-
-            Object value = safeMetadataValue(entry.getValue(), options.maxMetadataValueLength());
-            if (value == null) {
-                dropped++;
-                continue;
-            }
-            sanitized.put(key, value);
-        }
-        return new MetadataSanitization(Map.copyOf(sanitized), dropped);
-    }
-
-    private String safeMetadataKey(String key) {
-        if (!StringUtils.hasText(key)) {
-            return "";
-        }
-        String trimmed = key.trim();
-        if (trimmed.length() > 96) {
-            return "";
-        }
-        return trimmed;
-    }
-
-    private boolean isSensitiveMetadataKey(String key) {
-        String normalized = key.toLowerCase(Locale.ROOT);
-        return SENSITIVE_METADATA_KEY_PARTS.stream().anyMatch(normalized::contains);
-    }
-
-    private Object safeMetadataValue(Object value, int maxLength) {
-        if (value == null) {
-            return null;
-        }
-        if (value instanceof Boolean || value instanceof Integer || value instanceof Long) {
-            return value;
-        }
-        if (value instanceof Float number) {
-            return Float.isFinite(number) ? number.doubleValue() : null;
-        }
-        if (value instanceof Double number) {
-            return Double.isFinite(number) ? number : null;
-        }
-        if (value instanceof Number number) {
-            return number.doubleValue();
-        }
-        if (value instanceof Enum<?> enumValue) {
-            return boundedString(enumValue.name(), maxLength);
-        }
-        if (value instanceof Character character) {
-            return character.toString();
-        }
-        if (value instanceof TemporalAccessor) {
-            return boundedString(value.toString(), maxLength);
-        }
-        if (value instanceof CharSequence text) {
-            return boundedString(text.toString(), maxLength);
-        }
-        return null;
-    }
-
-    private String boundedString(String value, int maxLength) {
-        if (!StringUtils.hasText(value)) {
-            return null;
-        }
-        String trimmed = value.trim();
-        return trimmed.length() <= maxLength ? trimmed : trimmed.substring(0, maxLength);
-    }
-
-    private String stableEntityId(String sourceId, String documentId, int chunkIndex) {
-        return ENTITY_ID_PREFIX + sha256(sourceId + "|" + documentId + "|" + chunkIndex).substring(0, 40);
-    }
-
-    private String sha256(String value) {
-        try {
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            byte[] hash = digest.digest(value.getBytes(StandardCharsets.UTF_8));
-            StringBuilder hex = new StringBuilder(hash.length * 2);
-            for (byte b : hash) {
-                hex.append(String.format("%02x", b));
-            }
-            return hex.toString();
-        } catch (NoSuchAlgorithmException ex) {
-            throw new IllegalStateException("SHA-256 is not available", ex);
+    private void validateBounds(SpringAiDocumentIndexingOptions options) {
+        AIIndexingProperties.DocumentProperties limits = properties;
+        if (options.maxDocuments() > limits.getMaxDocumentsPerPlan()
+            || options.maxChunks() > limits.getMaxChunksPerPlan()
+            || options.maxContentLength()
+                > limits.getMaxContentLengthPerChunk()
+            || options.maxTotalContentLength()
+                > limits.getMaxTotalContentLength()
+            || options.maxMetadataEntries()
+                > limits.getMaxMetadataEntriesPerChunk()
+            || options.maxMetadataValueLength()
+                > limits.getMaxMetadataValueLength()
+            || options.tokenChunkSize()
+                > limits.getDefaultSplitter().getChunkSize()) {
+            throw limit(
+                "Document preparation options exceed configured safety limits"
+            );
         }
     }
 
-    private record MetadataSanitization(Map<String, Object> metadata, int droppedCount) {
+    private DocumentIngestionException limit(String message) {
+        return new DocumentIngestionException(
+            DocumentIngestionFailureCode.DOCUMENT_LIMIT_EXCEEDED,
+            message
+        );
     }
 }

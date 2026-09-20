@@ -9,59 +9,62 @@ ai-entities:
       - RAG_CONTEXT
       preprocessing: NORMALIZE
       priority: 90
-    - name: sourceName
-      destinations:
-      - SEMANTIC_SEARCH
-      - RAG_CONTEXT
-      preprocessing: NORMALIZE
-      priority: 70
     metadata-fields:
-    - name: sourceId
+    - name: _aiDocumentSourceId
       data-type: STRING
       destinations:
       - VECTOR_METADATA
       - API_RESPONSE
-    - name: sourceName
-      data-type: STRING
-      destinations:
-      - VECTOR_METADATA
-      - API_RESPONSE
-    - name: sourceVersion
+      required: true
+    - name: _aiDocumentSourceVersion
       data-type: NUMBER
       destinations:
       - VECTOR_METADATA
       - API_RESPONSE
-    - name: tenantId
+      required: true
+    - name: _aiDocumentSourceName
       data-type: STRING
       destinations:
       - VECTOR_METADATA
       - API_RESPONSE
-    - name: visibility
+    - name: _aiDocumentId
+      data-type: STRING
+      destinations:
+      - VECTOR_METADATA
+      - API_RESPONSE
+    - name: _aiDocumentChunkId
+      data-type: STRING
+      destinations:
+      - VECTOR_METADATA
+      - API_RESPONSE
+      required: true
+    - name: _aiDocumentChunkIndex
+      data-type: NUMBER
+      destinations:
+      - VECTOR_METADATA
+      - API_RESPONSE
+    - name: _aiDocumentChunkCount
+      data-type: NUMBER
+      destinations:
+      - VECTOR_METADATA
+      - API_RESPONSE
+    - name: _aiDocumentContentFingerprint
+      data-type: STRING
+      destinations:
+      - VECTOR_METADATA
+      - API_RESPONSE
+    - name: _aiDocumentTenantId
+      data-type: STRING
+      destinations:
+      - VECTOR_METADATA
+      - API_RESPONSE
+      required: true
+    - name: _aiDocumentVisibility
       data-type: STRING
       destinations:
       - VECTOR_METADATA
       - API_RESPONSE
     - name: originalFilename
-      data-type: STRING
-      destinations:
-      - VECTOR_METADATA
-      - API_RESPONSE
-    - name: documentId
-      data-type: STRING
-      destinations:
-      - VECTOR_METADATA
-      - API_RESPONSE
-    - name: chunkIndex
-      data-type: NUMBER
-      destinations:
-      - VECTOR_METADATA
-      - API_RESPONSE
-    - name: chunkCount
-      data-type: NUMBER
-      destinations:
-      - VECTOR_METADATA
-      - API_RESPONSE
-    - name: contentFingerprint
       data-type: STRING
       destinations:
       - VECTOR_METADATA

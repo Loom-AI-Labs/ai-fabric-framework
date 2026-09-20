@@ -23,6 +23,9 @@ spring:
 document-workbench:
   trusted-root: ${DOCUMENT_WORKBENCH_TRUSTED_ROOT:${java.io.tmpdir}/ai-fabric-document-workbench}
   entity-type: kb
+  preview:
+    max-characters: 400
+    max-chunks: 25
 
 ai:
   enabled: true
@@ -30,6 +33,23 @@ ai:
     embedding-provider: ${AI_EMBEDDING_PROVIDER:openai}
   indexing:
     enabled: true
+    documents:
+      enabled: true
+      max-documents-per-plan: 100
+      max-chunks-per-plan: 500
+      max-content-length-per-chunk: 10000
+      max-total-content-length: 1000000
+      max-metadata-entries-per-chunk: 32
+      max-metadata-value-length: 512
+      default-splitter:
+        enabled: true
+        chunk-size: 800
+        min-chunk-size-chars: 200
+        min-chunk-length-to-embed: 5
+      metadata:
+        allowed-application-keys:
+        - originalFilename
+        warn-on-drop: true
   vector-db:
     type: ${AI_VECTOR_DB_TYPE:lucene}
   pii-detection:

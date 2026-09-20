@@ -4,6 +4,8 @@ import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 import java.time.Duration;
+import java.util.LinkedHashSet;
+import java.util.Set;
 
 /**
  * Configuration model for the indexing queue, workers, and cleanup jobs.
@@ -13,6 +15,7 @@ import java.time.Duration;
 public class AIIndexingProperties {
 
     private boolean enabled = true;
+    private DocumentProperties documents = new DocumentProperties();
     private QueueProperties queue = new QueueProperties();
     private WorkerProperties syncRetryWorker = WorkerProperties.builder()
         .enabled(true)
@@ -30,6 +33,107 @@ public class AIIndexingProperties {
         .batchSize(500)
         .build();
     private CleanupProperties cleanup = new CleanupProperties();
+
+    @Data
+    public static class DocumentProperties {
+        private static final int PROTECTED_METADATA_ENTRY_COUNT = 10;
+
+        private boolean enabled = true;
+        private int maxDocumentsPerPlan = 100;
+        private int maxChunksPerPlan = 500;
+        private int maxContentLengthPerChunk = 10_000;
+        private int maxTotalContentLength = 1_000_000;
+        private int maxMetadataEntriesPerChunk = 32;
+        private int maxMetadataValueLength = 512;
+        private DefaultSplitterProperties defaultSplitter = new DefaultSplitterProperties();
+        private MetadataProperties metadata = new MetadataProperties();
+
+        public void validate() {
+            requirePositive(maxDocumentsPerPlan, "max-documents-per-plan");
+            requirePositive(maxChunksPerPlan, "max-chunks-per-plan");
+            requirePositive(maxContentLengthPerChunk, "max-content-length-per-chunk");
+            requirePositive(maxTotalContentLength, "max-total-content-length");
+            if (maxTotalContentLength < maxContentLengthPerChunk) {
+                throw new IllegalArgumentException(
+                    "ai.indexing.documents.max-total-content-length must be greater than or equal to "
+                        + "max-content-length-per-chunk"
+                );
+            }
+            if (maxMetadataEntriesPerChunk < PROTECTED_METADATA_ENTRY_COUNT) {
+                throw new IllegalArgumentException(
+                    "ai.indexing.documents.max-metadata-entries-per-chunk must be at least "
+                        + PROTECTED_METADATA_ENTRY_COUNT
+                );
+            }
+            requirePositive(maxMetadataValueLength, "max-metadata-value-length");
+            if (defaultSplitter == null) {
+                throw new IllegalArgumentException(
+                    "ai.indexing.documents.default-splitter is required"
+                );
+            }
+            defaultSplitter.validate();
+            if (metadata == null) {
+                throw new IllegalArgumentException(
+                    "ai.indexing.documents.metadata is required"
+                );
+            }
+            metadata.normalize();
+        }
+
+        private void requirePositive(int value, String property) {
+            if (value <= 0) {
+                throw new IllegalArgumentException(
+                    "ai.indexing.documents." + property + " must be positive"
+                );
+            }
+        }
+    }
+
+    @Data
+    public static class DefaultSplitterProperties {
+        private boolean enabled = true;
+        private int chunkSize = 800;
+        private int minChunkSizeChars = 200;
+        private int minChunkLengthToEmbed = 5;
+
+        public void validate() {
+            if (chunkSize <= 0) {
+                throw new IllegalArgumentException(
+                    "ai.indexing.documents.default-splitter.chunk-size must be positive"
+                );
+            }
+            if (minChunkSizeChars < 0 || minChunkSizeChars > chunkSize) {
+                throw new IllegalArgumentException(
+                    "ai.indexing.documents.default-splitter.min-chunk-size-chars must be between 0 and chunk-size"
+                );
+            }
+            if (minChunkLengthToEmbed < 0 || minChunkLengthToEmbed > chunkSize) {
+                throw new IllegalArgumentException(
+                    "ai.indexing.documents.default-splitter.min-chunk-length-to-embed must be between 0 and chunk-size"
+                );
+            }
+        }
+    }
+
+    @Data
+    public static class MetadataProperties {
+        private Set<String> allowedApplicationKeys = new LinkedHashSet<>();
+        private boolean warnOnDrop = true;
+
+        private void normalize() {
+            if (allowedApplicationKeys == null) {
+                allowedApplicationKeys = new LinkedHashSet<>();
+                return;
+            }
+            Set<String> normalized = new LinkedHashSet<>();
+            for (String key : allowedApplicationKeys) {
+                if (key != null && !key.isBlank()) {
+                    normalized.add(key.trim());
+                }
+            }
+            allowedApplicationKeys = normalized;
+        }
+    }
 
     @Data
     public static class QueueProperties {

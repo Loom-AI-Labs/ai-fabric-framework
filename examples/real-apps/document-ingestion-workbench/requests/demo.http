@@ -1,6 +1,7 @@
 @host = http://localhost:8098
+@sourceId = replace-with-id-from-create-response
 
-### 1) Upload trusted text source
+### 1) Store a trusted text source; this does not index it
 POST {{host}}/api/documents/sources
 Content-Type: multipart/form-data; boundary=demo
 
@@ -20,16 +21,28 @@ internal
 Content-Disposition: form-data; name="file"; filename="incident-runbook.txt"
 Content-Type: text/plain
 
-Rotate impacted credentials, notify the customer success owner, and preserve audit evidence.
+Rotate impacted credentials within four hours, notify the customer success owner, and preserve audit evidence.
 --demo--
 
-### 2) Preview chunks before enqueueing work
+### 2) Preview bounded chunks; no queue/vector work occurs
 GET {{host}}/api/documents/sources/{{sourceId}}/preview
 
-### 3) Queue indexing work and persist chunk manifest
+### 3) Confirm no evidence is active before submission
+GET {{host}}/api/documents/query?query=Rotate%20impacted%20credentials&tenantId=tenant-acme&limit=5
+
+### 4) Submit indexing and capture the returned work IDs
 POST {{host}}/api/documents/sources/{{sourceId}}/index
 
-### 4) Replace source content before reindexing
+### 5) Poll until source.status=INDEXED and activeVersion=1
+GET {{host}}/api/documents/sources/{{sourceId}}
+
+### 6) Retrieve active evidence with source/version/chunk attribution
+GET {{host}}/api/documents/query?query=Rotate%20impacted%20credentials%20within%20four%20hours&tenantId=tenant-acme&limit=5
+
+### 7) Cross-tenant query must return no evidence
+GET {{host}}/api/documents/query?query=Rotate%20impacted%20credentials&tenantId=tenant-other&limit=5
+
+### 8) Store version 2 while version 1 remains active
 PUT {{host}}/api/documents/sources/{{sourceId}}/content
 Content-Type: multipart/form-data; boundary=demo
 
@@ -49,19 +62,35 @@ internal
 Content-Disposition: form-data; name="file"; filename="incident-runbook.txt"
 Content-Type: text/plain
 
-Rotate impacted credentials, notify customer success, preserve audit evidence, and open a follow-up task.
+Rotate impacted credentials within two hours, notify security and customer success, preserve audit evidence, and open a review task.
 --demo--
 
-### 5) Reindex replacement; old chunks are deleted first
+### 9) Submit the candidate; old evidence is not deleted first
 POST {{host}}/api/documents/sources/{{sourceId}}/index
 
-### 6) Delete source vectors and manifest entries
+### 10) Poll until version 2 is ACTIVE and version 1 is DELETED
+GET {{host}}/api/documents/sources/{{sourceId}}
+
+### 11) Verify retrieval identifies only active version 2
+GET {{host}}/api/documents/query?query=Rotate%20impacted%20credentials%20within%20two%20hours&tenantId=tenant-acme&limit=5
+
+### 12) Queue exact deletion of the active manifest
 DELETE {{host}}/api/documents/sources/{{sourceId}}
 
-### 7) Safety path: unsupported file extension is rejected
+### 13) Poll until source.status=DELETED
+GET {{host}}/api/documents/sources/{{sourceId}}
+
+### 14) Deleted evidence must no longer be retrievable
+GET {{host}}/api/documents/query?query=Rotate%20impacted%20credentials&tenantId=tenant-acme&limit=5
+
+### 15) Safety path: unsupported extension fails closed
 POST {{host}}/api/documents/sources
 Content-Type: multipart/form-data; boundary=demo
 
+--demo
+Content-Disposition: form-data; name="tenantId"
+
+tenant-acme
 --demo
 Content-Disposition: form-data; name="file"; filename="unsafe.exe"
 Content-Type: application/octet-stream

@@ -50,6 +50,13 @@ public class DocumentIngestionController {
         return documentIngestionService.preview(sourceId);
     }
 
+    @GetMapping("/{sourceId}")
+    public DocumentIngestionService.LifecycleResult status(
+        @PathVariable String sourceId
+    ) {
+        return documentIngestionService.status(sourceId);
+    }
+
     @PostMapping("/{sourceId}/index")
     public DocumentIngestionService.IndexResult index(@PathVariable String sourceId) {
         return documentIngestionService.index(sourceId);

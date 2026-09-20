@@ -16,6 +16,11 @@ import ai.fabric.indexing.api.AIIndexAnalysisHandler;
 import ai.fabric.indexing.api.IndexingWorkQuery;
 import ai.fabric.indexing.descriptor.AIEntityDescriptorInitializer;
 import ai.fabric.indexing.descriptor.AIEntityDescriptorRegistry;
+import ai.fabric.indexing.document.DocumentChunkIdentity;
+import ai.fabric.indexing.document.DocumentEntityPolicyValidator;
+import ai.fabric.indexing.document.DocumentIndexingQueueAdapter;
+import ai.fabric.indexing.document.DocumentManifestOperations;
+import ai.fabric.indexing.document.DocumentMetadataNormalizer;
 import ai.fabric.indexing.document.springai.SpringAiDocumentIndexingAdapter;
 import ai.fabric.indexing.document.springai.SpringAiDocumentReaderFactory;
 import ai.fabric.indexing.observability.AIEntityIndexingEndpoint;
@@ -253,18 +258,82 @@ public class AIIndexingAutoConfiguration {
 
     @Configuration(proxyBeanMethods = false)
     @ConditionalOnClass(name = "org.springframework.ai.document.Document")
-    @ConditionalOnBean(IndexingQueueService.class)
+    @ConditionalOnProperty(
+        prefix = "ai.indexing",
+        name = "enabled",
+        havingValue = "true",
+        matchIfMissing = true
+    )
+    @ConditionalOnProperty(
+        prefix = "ai.indexing.documents",
+        name = "enabled",
+        havingValue = "true",
+        matchIfMissing = true
+    )
+    @Conditional({VectorDbConfiguredCondition.class, EmbeddingsFeatureEnabledCondition.class})
+    @EnableConfigurationProperties(AIIndexingProperties.class)
     static class SpringAiDocumentIndexingConfiguration {
 
         @Bean
         @ConditionalOnMissingBean
-        SpringAiDocumentIndexingAdapter springAiDocumentIndexingAdapter(
-            IndexingQueueService queueService,
+        DocumentChunkIdentity documentChunkIdentity() {
+            return new DocumentChunkIdentity();
+        }
+
+        @Bean
+        @ConditionalOnMissingBean
+        DocumentMetadataNormalizer documentMetadataNormalizer() {
+            return new DocumentMetadataNormalizer();
+        }
+
+        @Bean
+        @ConditionalOnMissingBean
+        DocumentEntityPolicyValidator documentEntityPolicyValidator(
             AIEntityConfigurationLoader configurationLoader
         ) {
+            return new DocumentEntityPolicyValidator(configurationLoader);
+        }
+
+        @Bean
+        @ConditionalOnMissingBean
+        DocumentManifestOperations documentManifestOperations(
+            DocumentChunkIdentity identity,
+            DocumentEntityPolicyValidator entityPolicy
+        ) {
+            return new DocumentManifestOperations(identity, entityPolicy);
+        }
+
+        @Bean
+        @ConditionalOnMissingBean
+        SpringAiDocumentIndexingAdapter springAiDocumentIndexingAdapter(
+            AIIndexingProperties indexingProperties,
+            DocumentChunkIdentity identity,
+            DocumentMetadataNormalizer metadataNormalizer,
+            DocumentEntityPolicyValidator entityPolicy,
+            DocumentManifestOperations manifestOperations
+        ) {
             return new SpringAiDocumentIndexingAdapter(
+                indexingProperties.getDocuments(),
+                identity,
+                metadataNormalizer,
+                entityPolicy,
+                manifestOperations
+            );
+        }
+
+        @Bean
+        @ConditionalOnMissingBean
+        DocumentIndexingQueueAdapter documentIndexingQueueAdapter(
+            IndexingQueueService queueService,
+            DocumentChunkIdentity identity,
+            DocumentEntityPolicyValidator entityPolicy,
+            DocumentManifestOperations manifestOperations
+        ) {
+            return new DocumentIndexingQueueAdapter(
                 queueService,
-                configurationLoader
+                identity,
+                entityPolicy,
+                manifestOperations
             );
         }
 

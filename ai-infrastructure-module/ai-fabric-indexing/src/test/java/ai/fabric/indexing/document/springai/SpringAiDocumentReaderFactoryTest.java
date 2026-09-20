@@ -1,5 +1,7 @@
 package ai.fabric.indexing.document.springai;
 
+import ai.fabric.indexing.document.model.DocumentIngestionException;
+import ai.fabric.indexing.document.model.DocumentIngestionFailureCode;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.ai.document.Document;
@@ -57,8 +59,15 @@ class SpringAiDocumentReaderFactoryTest {
             new UrlResource(URI.create("https://example.com/private.txt")),
             policy
         ))
-            .isInstanceOf(IllegalArgumentException.class)
-            .hasMessageContaining("Remote URL");
+            .isInstanceOfSatisfying(
+                DocumentIngestionException.class,
+                exception -> {
+                    assertThat(exception.getCode()).isEqualTo(
+                        DocumentIngestionFailureCode.DOCUMENT_RESOURCE_UNTRUSTED
+                    );
+                    assertThat(exception.getMessage()).contains("Remote URL");
+                }
+            );
     }
 
     @Test
@@ -69,8 +78,15 @@ class SpringAiDocumentReaderFactoryTest {
 
         try {
             assertThatThrownBy(() -> factory.textReader(new FileSystemResource(outside), policy))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("outside trusted roots");
+                .isInstanceOfSatisfying(
+                    DocumentIngestionException.class,
+                    exception -> {
+                        assertThat(exception.getCode()).isEqualTo(
+                            DocumentIngestionFailureCode.DOCUMENT_RESOURCE_UNTRUSTED
+                        );
+                        assertThat(exception.getMessage()).contains("outside trusted roots");
+                    }
+                );
         } finally {
             Files.deleteIfExists(outside);
         }

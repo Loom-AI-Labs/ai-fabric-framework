@@ -2,130 +2,182 @@
 
 ## Scenario
 
-This app demonstrates trusted knowledge-base ingestion for AI Fabric.
+This real app demonstrates governed document ingestion for an AI Fabric knowledge base. It accepts
+small text or JSON uploads, stores them beneath an application-controlled trusted root, prepares
+deterministic chunks through Spring AI document ETL, and submits canonical `AIIndexDocument` work
+through AI Fabric's durable indexing queue.
 
-It accepts small text or JSON documents, stores them under an application-controlled trusted root,
-previews chunks produced through Spring AI document reader integration, queues AI Fabric indexing
-work, and records chunk manifests so reindex/delete operations remove stale vectors.
+The app deliberately owns source files, manifest persistence, and lifecycle orchestration. The
+framework owns trusted preparation, protected metadata, deterministic identities, canonical queue
+payloads, and exact delete work.
 
 ## AI Fabric Capabilities Proved
 
-- Spring AI document readers can feed AI Fabric indexing without bypassing lifecycle policy.
-- Trusted-resource policy guards what readers can access.
-- Chunk preview is available before enqueueing indexing work.
-- Source re-upload replaces old chunk manifests and queues delete requests for stale chunks.
-- Source deletion queues delete requests for every indexed chunk.
-- Metadata is normalized and sanitized before it becomes indexing payload evidence.
-- Unsupported file or metadata shapes fail closed.
-- Smoke mode runs locally with deterministic providers.
+- Spring AI `DocumentReader`, transformers, and token splitting feed AI Fabric without writing
+  directly to a Spring AI `VectorStore`.
+- Text and JSON resources are read only after an AI Fabric trusted-resource check.
+- Preview is bounded and side-effect free: it creates no queue or vector work.
+- Parser metadata is allowlisted; tenant and lifecycle metadata cannot be overridden by document
+  content or request metadata.
+- Source, version, chunk, entity, plan, and manifest identities are deterministic.
+- Queue acceptance returns real AI Fabric work IDs and does not pretend indexing has completed.
+- A version becomes active only after every indexing work item reaches a successful terminal state.
+- Replacement is new-first: the previous active version remains available until the candidate is
+  indexed, then its exact manifest entity IDs are deleted.
+- A failed candidate remains visible and does not retire the previous active version.
+- Retrieval evidence identifies the source, version, chunk, entity ID, score, and safe metadata.
+- Source deletion is complete only after every exact vector delete succeeds.
+- Unsupported and oversized inputs fail closed with bounded error responses.
 
 ## Framework Surfaces
 
 - `ai-fabric-indexing`
 - `SpringAiDocumentReaderFactory`
-- `SpringAiDocumentIndexingAdapter`
 - `SpringAiTrustedResourcePolicy`
-- `IndexingQueueService`
-- Lucene or memory vector provider depending on profile
+- `SpringAiDocumentIndexingAdapter`
+- `DocumentIngestionPlan`
+- `DocumentIngestionManifest`
+- `DocumentIndexingQueueAdapter`
+- `DocumentManifestOperations`
+- `IndexingWorkQuery`
+- `AICoreService.performSearch(...)`
 
-## Runtime Posture
+`AIIndexDocument` remains the only indexing payload. The document bridge does not introduce a
+second vector lifecycle or a document-specific receipt hierarchy.
 
-Default runtime is local:
+## Backend Architecture
 
-- H2 database
-- trusted local document root
-- local deterministic providers in smoke profile
-- no external model required
+```text
+multipart upload
+  -> app-owned trusted source file + DocumentSource
+  -> Spring AI text/JSON DocumentReader
+  -> transformer / TokenTextSplitter
+  -> AI Fabric metadata policy + deterministic identity
+  -> server-side DocumentIngestionPlan
+       |-> bounded app preview
+       |-> content-free manifest persisted by the app
+       +-> DocumentIndexingQueueAdapter
+             -> existing indexing queue/workers
+             -> configured embedding provider
+             -> configured AI Fabric vector provider
 
-OpenAI embeddings can be enabled explicitly when needed.
-
-## Demo Backend App Architecture
-
-The `aifabric` site includes a Document Intelligence Hub demo page. That page is currently an
-explanatory UI page, not a live browser client wired to this backend. This app is the runnable backend
-candidate for a live document-ingestion demo.
+GET /api/documents/query
+  -> AI Fabric vector search
+  -> tenant and active-manifest filter
+  -> source/version/chunk evidence
+```
 
 Backend dependencies:
 
-- Spring Boot Web, Data JPA, Validation, Actuator, H2, and Lombok.
-- Spring AI commons for document-reader integration.
-- AI Fabric modules: `ai-fabric-starter`, `ai-fabric-indexing`, and `ai-fabric-vector-lucene`.
-- `smoke-support` for shared release smoke and build metadata.
+- Spring Boot Web, Data JPA, Validation, Actuator, and H2.
+- Spring AI commons for document ETL.
+- AI Fabric starter, indexing, and Lucene vector modules.
+- `smoke-support` for deterministic local providers and deployment metadata.
 
-AI-enabled domain model:
+The app is config-driven and uses no Java AI annotations. `ai-entity-config.yml` declares the `kb`
+entity type, its searchable projection, required tenant metadata, and indexability.
 
-- The workbench is config-driven and uses no Java AI annotations.
-- `ai-entity-config.yml` defines the generated `kb` chunk entity type, searchable content/source
-  fields, embeddable fields, and chunk/source metadata.
-- `DocumentSource` stores trusted source files; `DocumentChunkManifest` records the generated chunks
-  so replacement and deletion can remove stale vectors.
-- `DocumentIngestionService` controls trusted writes, preview, indexing, reindex, and delete
-  lifecycle.
+## Lifecycle
 
-Providers and storage:
+1. Create a source. The source is `PENDING`; no vectors exist.
+2. Preview the source. The response includes bounded text and safe metadata, never the full plan or
+   local storage path.
+3. Submit indexing. The source becomes `INDEXING` and returns durable work IDs.
+4. Poll the source endpoint. Successful worker outcomes promote the manifest to `ACTIVE` and the
+   source to `INDEXED`.
+5. Replace content. The source advances to a pending version while `activeVersion` still points to
+   the old evidence.
+6. Submit the replacement. The source reports `REPLACING`. Once all candidate work succeeds, the
+   new manifest becomes `ACTIVE`; only then are exact old IDs queued for deletion.
+7. Delete the source. It reports `DELETING` until every exact delete is terminal, then `DELETED`.
 
-- The default profile uses the configured embedding provider and Lucene vector DB.
-- Smoke mode runs with deterministic local providers.
-- H2 stores source and chunk manifests.
-- `document-workbench.trusted-root` is the only filesystem root from which source files are read.
+Calling the status endpoint performs app-owned reconciliation against `IndexingWorkQuery`. Queue
+acceptance alone never produces `INDEXED` or `DELETED`.
 
-Request and data flow:
+## API
 
-1. The UI/API creates or updates a source through `/api/documents/sources`.
-2. The backend writes the uploaded text/JSON into the trusted root and stores source metadata.
-3. Preview calls use Spring AI document readers to produce chunks without indexing yet.
-4. Index calls turn chunks into normalized AI Fabric indexing payloads with source and chunk metadata.
-5. Re-upload queues stale chunk deletes before new chunks are indexed.
-6. Delete removes the source and queues deletes for every indexed chunk manifest.
-7. Unsupported paths, files, or metadata fail closed before they can become retrieval evidence.
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `POST` | `/api/documents/sources` | Store a trusted text/JSON source. |
+| `PUT` | `/api/documents/sources/{sourceId}/content` | Prepare the next source version. |
+| `GET` | `/api/documents/sources/{sourceId}/preview` | Return a bounded preview with no indexing side effects. |
+| `POST` | `/api/documents/sources/{sourceId}/index` | Submit canonical chunk work to the existing queue. |
+| `GET` | `/api/documents/sources/{sourceId}` | Reconcile and return source, manifest, and work status. |
+| `GET` | `/api/documents/query?query=...&tenantId=...` | Return active tenant-scoped retrieval evidence. |
+| `DELETE` | `/api/documents/sources/{sourceId}` | Queue exact deletes for the active manifest. |
+
+The query endpoint intentionally returns retrieval evidence rather than an invented answer. An
+application may pass that evidence into its normal AI Fabric RAG or specialist flow.
 
 ## Run
 
-From the repository root:
+From the repository root, install the current framework contracts and package the real app:
 
 ```bash
-mvn -B -V --no-transfer-progress -f examples/real-apps/pom.xml -pl document-ingestion-workbench -am package
-java -jar examples/real-apps/document-ingestion-workbench/target/document-ingestion-workbench-1.0.0-SNAPSHOT.jar \
+mvn -B -V --no-transfer-progress \
+  -f ai-infrastructure-module/pom.xml \
+  -pl ai-fabric-indexing -am clean install
+
+mvn -B -V --no-transfer-progress \
+  -f examples/real-apps/pom.xml \
+  -pl document-ingestion-workbench -am clean package
+
+java -jar \
+  examples/real-apps/document-ingestion-workbench/target/document-ingestion-workbench-1.0.0-SNAPSHOT.jar \
   --spring.profiles.active=smoke
 ```
 
-Use OpenAI embeddings with:
+Smoke mode uses deterministic local generation/embedding support and the memory vector provider. It
+requires no API key.
+
+Use OpenAI embeddings explicitly with:
 
 ```bash
 export OPENAI_API_KEY="..."
-java -jar examples/real-apps/document-ingestion-workbench/target/document-ingestion-workbench-1.0.0-SNAPSHOT.jar \
+export AI_EMBEDDING_PROVIDER=openai
+export AI_VECTOR_DB_TYPE=lucene
+
+java -jar \
+  examples/real-apps/document-ingestion-workbench/target/document-ingestion-workbench-1.0.0-SNAPSHOT.jar \
   --spring.profiles.active=openai
 ```
 
-## Validate
+## Verify
 
 Focused tests:
 
 ```bash
-mvn -B -V --no-transfer-progress -f examples/real-apps/pom.xml -pl document-ingestion-workbench -am test
+mvn -B -V --no-transfer-progress \
+  -f examples/real-apps/pom.xml \
+  -pl document-ingestion-workbench -am clean test
 ```
 
-Use `requests/demo.http` to run the scenario.
+Packaged deterministic lifecycle smoke:
 
-## Demo Flow
+```bash
+mvn -B -V --no-transfer-progress \
+  -f examples/real-apps/pom.xml \
+  -pl document-ingestion-workbench -am clean package
 
-1. Create a document source.
-2. Preview chunks before indexing.
-3. Queue indexing work and persist chunk manifests.
-4. Replace source content.
-5. Reindex and verify stale chunks are deleted first.
-6. Delete the source and verify delete requests are queued.
-7. Try unsupported input and confirm fail-closed behavior.
+.github/scripts/smoke-document-ingestion-workbench.sh
+```
+
+The smoke proves text and JSON preview, initial activation, tenant-scoped evidence, rejected
+replacement safety, new-first successful replacement, exact retirement, source deletion, and
+fail-closed inputs against the executable JAR. `requests/demo.http` provides the same flow for
+interactive use.
 
 ## Configuration
 
-- `document-workbench.trusted-root`: directory where uploaded source files are written.
-- `document-workbench.entity-type`: AI Fabric entity type used for generated chunk payloads.
-- `ai.vector-db.type`: defaults to `lucene`; smoke profile switches to `memory`.
+- `document-workbench.trusted-root`: app-owned root for uploaded source files.
+- `document-workbench.entity-type`: AI Fabric entity type for prepared chunks.
+- `document-workbench.preview.max-characters`: maximum content returned for one preview chunk.
+- `document-workbench.preview.max-chunks`: maximum chunks returned by preview.
+- `ai.indexing.documents.*`: framework preparation and metadata safety bounds.
+- `ai.vector-db.type`: vector provider; smoke uses `memory`, default runtime uses `lucene`.
 
-## What This App Does Not Cover
+## Deliberate Boundaries
 
-- Full PDF/OCR production parsing.
-- Live external object storage.
-- Retrieval-connector `/retrieval/search` boundary. That should be covered by a separate
-  `retrieval-connector-boundary-lab`.
+This app does not implement PDF/OCR, remote URL crawling, object storage, source schedules,
+approvals, quotas, or an operator UI. Those are optional reader or application/Platform concerns,
+not part of AI Fabric's reduced document-indexing core.

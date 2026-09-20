@@ -33,7 +33,7 @@
   ·
   <a href="docs/llm-context/README.md"><strong>Coding-Assistant Context</strong></a>
   ·
-  <a href="docs/release-notes/0.7.1.md"><strong>0.7.1 Release Notes</strong></a>
+  <a href="docs/release-notes/0.8.0.md"><strong>0.8.0 Release Notes</strong></a>
 </p>
 
 ---
@@ -65,6 +65,7 @@ it may see and what it may change.**
 | Governed application actions | `ai-fabric-starter`, optional action registry, `ai-fabric-chat-session` | [First Governed Action](docs/getting-started/05-first-governed-action.md) |
 | Follow-ups and pending confirmations | `ai-fabric-chat-session` | [Chat Session Memory](docs/getting-started/06-chat-session-memory.md) |
 | Live entity create/update/delete synchronization | `ai-fabric-indexing`, optional `ai-fabric-data-sync` | [Live Data Sync](docs/course/production/05-live-data-sync/lesson.md) |
+| Governed text/JSON document ingestion | `ai-fabric-indexing`, Spring AI document ETL, one vector provider | [Document Ingestion Workbench](examples/real-apps/document-ingestion-workbench/README.md) |
 | Existing-data backfill | `ai-fabric-migration-core` | [Migration and Backfill](docs/course/production/04-migration-backfill/lesson.md) |
 | Tenant-safe and role-aware retrieval | Access policy hooks plus a metadata-filtering vector provider | [Security and Access Policy](docs/getting-started/10-security-access-policy.md) |
 | PII detection and sanitized evidence | `ai-fabric-pii`, optional `ai-fabric-governance` | [Privacy Shield app](examples/real-apps/privacy-first-customer-facing-support/README.md) |
@@ -101,7 +102,7 @@ flowchart LR
 See [Public Architecture](docs/architecture/AI_FABRIC_PUBLIC_ARCHITECTURE.md) for the complete
 ownership model and module map.
 
-## Start With `0.7.1`
+## Start With `0.8.0`
 
 ### Requirements
 
@@ -116,7 +117,7 @@ required.
 
 ```xml
 <properties>
-  <ai-fabric.version>0.7.1</ai-fabric.version>
+  <ai-fabric.version>0.8.0</ai-fabric.version>
 </properties>
 
 <dependencyManagement>
@@ -298,8 +299,8 @@ readiness, and relationship queries.
 - [Interactive course](https://ai-fabric.dev/course): guided lessons, videos, checks, and real-app case studies.
 - [Course source](docs/course/AI_FABRIC_EXTERNAL_USER_COURSE.md): versioned curriculum and lab contracts.
 - [Architecture](docs/architecture/AI_FABRIC_PUBLIC_ARCHITECTURE.md): request flow and ownership boundaries.
-- [Release notes](docs/release-notes/0.7.1.md): current behavior and migration considerations.
-- [LoomAI 0.7 upgrade notes](docs/release-notes/LOOMAI_PLATFORM_AI_FABRIC_0_7_0_UPGRADE_NOTES.md): code-backed platform migration, canary, and rollback guidance.
+- [Release notes](docs/release-notes/0.8.0.md): current behavior and migration considerations.
+- [LoomAI 0.8 upgrade notes](docs/release-notes/LOOMAI_PLATFORM_AI_FABRIC_0_8_0_UPGRADE_NOTES.md): code-backed platform impact, adoption gates, and rollback guidance.
 - [0.6.1 release notes](docs/release-notes/0.6.1.md): previous release behavior.
 - [Production checklist](docs/getting-started/13-production-checklist.md): release and deployment gate.
 
@@ -371,11 +372,12 @@ The project favors focused, well-tested changes with real-app proof over broad r
 
 ## Release Policy
 
-The current release is **`0.7.1`**. AI Fabric remains on a `0.x` release line, so review release
+The current release is **`0.8.0`**. AI Fabric remains on a `0.x` release line, so review release
 notes and migration guidance before upgrading:
 
-- [AI Fabric 0.7.1 release notes](docs/release-notes/0.7.1.md)
-- [LoomAI platform 0.7.0 feature upgrade notes](docs/release-notes/LOOMAI_PLATFORM_AI_FABRIC_0_7_0_UPGRADE_NOTES.md)
+- [AI Fabric 0.8.0 release notes](docs/release-notes/0.8.0.md)
+- [LoomAI platform 0.8.0 upgrade notes](docs/release-notes/LOOMAI_PLATFORM_AI_FABRIC_0_8_0_UPGRADE_NOTES.md)
+- [LoomAI 0.8 document-indexing adoption runbook](docs/Framework-Dev-Guides/retrieval-vectorization/LOOMAI_AI_FABRIC_0_8_DOCUMENT_INDEXING_MIGRATION_RUNBOOK.md)
 - [AI Fabric 0.6.1 release notes](docs/release-notes/0.6.1.md)
 - [AI Fabric 0.6.0 release notes](docs/release-notes/0.6.0.md)
 - [AI Fabric 0.5.3 release notes](docs/release-notes/0.5.3.md)

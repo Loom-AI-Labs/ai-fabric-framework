@@ -1,12 +1,19 @@
 # Document Ingestion Workbench Proposal
 
-Status: proposed
+Status: implemented through the reduced 0.8 core; historical proposal retained for decision context
 
 Date: 2026-07-01
 
 Owner: AI Fabric framework plus real-app examples
 
 Core support plan: `docs/planning/0010-document-indexing-core-support-plan.md`
+
+> **Current contract:** This proposal predates the final 0.8 design. References below to
+> `IndexingRequest`, direct adapter enqueue methods, a shared preview DTO, or a document-specific
+> Data Sync path describe the original exploration, not the implemented API. The authoritative
+> implementation and deferral decisions are in plan `0010`, the 0.8 migration guide, and the
+> workbench README. The shipped shape is side-effect-free planning, a content-free exact manifest,
+> explicit submission through the existing indexing queue, and application-owned lifecycle state.
 
 ## Summary
 

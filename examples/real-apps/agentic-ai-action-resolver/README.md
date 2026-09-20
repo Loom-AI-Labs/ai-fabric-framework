@@ -1378,17 +1378,17 @@ are never removed by retention cleanup.
 ## Docker
 
 Build from the repository root. The image resolves the immutable AI Fabric
-`0.7.1` artifacts from Maven Central and runs the real-app reactor tests while
+`0.8.0` artifacts from Maven Central and runs the real-app reactor tests while
 packaging the app:
 
 ```bash
 docker build \
   -f examples/real-apps/agentic-ai-action-resolver/Dockerfile \
-  --build-arg AI_FABRIC_VERSION=0.7.1 \
+  --build-arg AI_FABRIC_VERSION=0.8.0 \
   --build-arg BUILD_COMMIT="$(git rev-parse HEAD)" \
   --build-arg BUILD_BRANCH="$(git branch --show-current)" \
   --build-arg BUILD_TIME="$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-  -t agentic-ai-action-resolver:0.7.1 \
+  -t agentic-ai-action-resolver:0.8.0 \
   .
 ```
 
@@ -1421,7 +1421,7 @@ docker run --rm -p 8105:8105 \
   -e APP_REVIEWER_API_KEY="$APP_REVIEWER_API_KEY" \
   -e APP_SENIOR_REVIEWER_API_KEY="$APP_SENIOR_REVIEWER_API_KEY" \
   -e CORS_ALLOWED_ORIGINS=https://ai-fabric.dev \
-  agentic-ai-action-resolver:0.7.1
+  agentic-ai-action-resolver:0.8.0
 ```
 
 For Coolify deployment:

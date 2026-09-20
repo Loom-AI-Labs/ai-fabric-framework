@@ -1,5 +1,7 @@
 package ai.fabric.indexing.document.springai;
 
+import ai.fabric.indexing.document.model.DocumentIngestionException;
+import ai.fabric.indexing.document.model.DocumentIngestionFailureCode;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.core.io.InputStreamResource;
@@ -45,7 +47,7 @@ public record SpringAiTrustedResourcePolicy(
 
         if (resource instanceof ClassPathResource) {
             if (!allowClasspathResources) {
-                throw new IllegalArgumentException("Classpath Spring AI document resources are not trusted by policy");
+                throw untrusted("Classpath document resources are not trusted by policy");
             }
             requireReadable(resource);
             return;
@@ -53,7 +55,7 @@ public record SpringAiTrustedResourcePolicy(
 
         if (resource instanceof ByteArrayResource || resource instanceof InputStreamResource) {
             if (!allowInMemoryResources) {
-                throw new IllegalArgumentException("In-memory Spring AI document resources are not trusted by policy");
+                throw untrusted("In-memory document resources are not trusted by policy");
             }
             requireReadable(resource);
             return;
@@ -64,14 +66,13 @@ public record SpringAiTrustedResourcePolicy(
             return;
         }
 
-        throw new IllegalArgumentException("Unsupported Spring AI document resource type: "
-            + resource.getClass().getName());
+        throw untrusted("Unsupported document resource type");
     }
 
     private void rejectUrlResource(Resource resource) {
         String protocol = protocol(resource);
         if (resource instanceof UrlResource || isRemoteProtocol(protocol)) {
-            throw new IllegalArgumentException("Remote URL Spring AI document resources are not trusted");
+            throw untrusted("Remote URL document resources are not trusted");
         }
     }
 
@@ -103,17 +104,21 @@ public record SpringAiTrustedResourcePolicy(
 
     private void validateFileResource(Resource resource) {
         if (trustedRoots.isEmpty()) {
-            throw new IllegalArgumentException("File Spring AI document resources require at least one trusted root");
+            throw untrusted("File document resources require a trusted root");
         }
         requireReadable(resource);
         try {
             Path file = resource.getFile().toPath().toRealPath();
             boolean trusted = trustedRoots.stream().anyMatch(root -> file.startsWith(realRoot(root)));
             if (!trusted) {
-                throw new IllegalArgumentException("File Spring AI document resource is outside trusted roots");
+                throw untrusted("File document resource is outside trusted roots");
             }
         } catch (IOException ex) {
-            throw new IllegalArgumentException("Unable to resolve Spring AI document resource path", ex);
+            throw new DocumentIngestionException(
+                DocumentIngestionFailureCode.DOCUMENT_RESOURCE_UNTRUSTED,
+                "Unable to resolve the document resource path",
+                ex
+            );
         }
     }
 
@@ -127,8 +132,15 @@ public record SpringAiTrustedResourcePolicy(
 
     private void requireReadable(Resource resource) {
         if (!resource.exists() || !resource.isReadable()) {
-            throw new IllegalArgumentException("Spring AI document resource must exist and be readable");
+            throw untrusted("Document resource must exist and be readable");
         }
+    }
+
+    private DocumentIngestionException untrusted(String safeMessage) {
+        return new DocumentIngestionException(
+            DocumentIngestionFailureCode.DOCUMENT_RESOURCE_UNTRUSTED,
+            safeMessage
+        );
     }
 
     public static final class Builder {

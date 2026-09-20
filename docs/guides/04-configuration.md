@@ -372,6 +372,22 @@ It owns queueing, workers, retry/dead-letter behavior, and annotation-driven ent
 ai:
   indexing:
     enabled: true
+    documents:
+      enabled: true
+      max-documents-per-plan: 100
+      max-chunks-per-plan: 500
+      max-content-length-per-chunk: 10000
+      max-total-content-length: 1000000
+      max-metadata-entries-per-chunk: 32
+      max-metadata-value-length: 512
+      default-splitter:
+        enabled: true
+        chunk-size: 800
+        min-chunk-size-chars: 200
+        min-chunk-length-to-embed: 5
+      metadata:
+        allowed-application-keys: []
+        warn-on-drop: true
     queue:
       max-retries: 5
       visibility-timeout: 2m
@@ -387,10 +403,20 @@ ai:
 
 When `spring-ai-commons` is available, the module also exposes optional Spring AI document ingestion
 helpers. They are code-level helpers, not URL fetchers: create readers through
-`SpringAiDocumentReaderFactory` with a `SpringAiTrustedResourcePolicy`, then enqueue through
-`SpringAiDocumentIndexingAdapter`. The adapter validates that the target `entityType` exists and is
-indexable, applies Spring AI transformers such as `TokenTextSplitter`, bounds chunk and metadata
-sizes, and drops URL/path/secret-like metadata before queueing.
+`SpringAiDocumentReaderFactory` with a `SpringAiTrustedResourcePolicy`, then create a side-effect-free
+`DocumentIngestionPlan` through `SpringAiDocumentIndexingAdapter`. Persist its content-free
+`DocumentIngestionManifest` and submit the plan explicitly through `DocumentIndexingQueueAdapter`.
+The planning adapter validates that the target `entityType` exists and is indexable, applies Spring
+AI transformers such as `TokenTextSplitter`, enforces configured bounds, and allows only approved
+safe metadata. Queue acceptance is durable submission evidence, not completion; reconcile the
+returned work IDs before activating a version. Use the manifest-backed delete helper for exact,
+provider-neutral replacement and removal.
+
+Application options may tighten `ai.indexing.documents.*` bounds but cannot exceed them. Remote URL
+resources are rejected, file resources require a trusted root, and parser/application metadata
+cannot override protected `_aiDocument*` identity or tenant keys. See
+`docs/Framework-Dev-Guides/retrieval-vectorization/DOCUMENT_INDEXING_0_8_MIGRATION_GUIDE.md` for the
+complete lifecycle and migration sequence.
 
 ## Data Sync (`ai.data-sync.*`)
 
