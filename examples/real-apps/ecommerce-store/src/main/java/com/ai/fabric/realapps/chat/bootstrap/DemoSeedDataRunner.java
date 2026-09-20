@@ -2,6 +2,8 @@ package com.ai.fabric.realapps.chat.bootstrap;
 
 import com.ai.fabric.realapps.chat.catalog.domain.Product;
 import com.ai.fabric.realapps.chat.catalog.repo.ProductRepository;
+import com.ai.fabric.realapps.chat.policies.domain.Policy;
+import com.ai.fabric.realapps.chat.policies.repo.PolicyRepository;
 import com.ai.fabric.realapps.chat.promotions.domain.Coupon;
 import com.ai.fabric.realapps.chat.promotions.repo.CouponRepository;
 import java.math.BigDecimal;
@@ -19,12 +21,14 @@ public class DemoSeedDataRunner implements ApplicationRunner {
 
     private final ProductRepository productRepository;
     private final CouponRepository couponRepository;
+    private final PolicyRepository policyRepository;
 
     @Override
     @Transactional
     public void run(ApplicationArguments args) {
         seedProducts();
         seedCoupons();
+        seedPolicies();
     }
 
     private void seedProducts() {
@@ -63,6 +67,22 @@ public class DemoSeedDataRunner implements ApplicationRunner {
         coupon.setActive(true);
         coupon.setDiscountPercent(10);
         couponRepository.save(coupon);
+    }
+
+    private void seedPolicies() {
+        String title = "Returns and refunds";
+        if (policyRepository.existsByTitleIgnoreCase(title)) {
+            return;
+        }
+
+        Policy policy = new Policy();
+        policy.setTitle(title);
+        policy.setText(
+            "Unused items may be returned within 30 days of delivery. Items must be in their "
+                + "original condition. Approved refunds are issued to the original payment method."
+        );
+        policy.setClassification("PUBLIC");
+        policyRepository.save(policy);
     }
 
     private void upsertProduct(String sku,
