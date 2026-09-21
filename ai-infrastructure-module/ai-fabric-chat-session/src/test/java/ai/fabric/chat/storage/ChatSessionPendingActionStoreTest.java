@@ -14,6 +14,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -113,6 +114,28 @@ class ChatSessionPendingActionStoreTest {
 
         assertThat(store.peekPendingAction("conv-1", "owner-1")).isEmpty();
         assertThat(session.getSessionMetadata()).doesNotContainKey(ConfirmationStack.METADATA_KEY_STACK);
+    }
+
+    @Test
+    void shouldRoundTripTrustedResolvedParameters() {
+        InMemoryStorage storage = new InMemoryStorage();
+        storage.save(session("conv-1", "user-1", Map.of()));
+        ChatSessionPendingActionStore store = new ChatSessionPendingActionStore(storage);
+        PendingAction pending = new PendingAction(
+            "update_cart",
+            Map.of("shopperSessionId", "shopper-session-123"),
+            "Update cart?",
+            Instant.parse("2026-06-18T08:30:00Z"),
+            Map.of(),
+            Set.of("shopperSessionId")
+        );
+
+        store.pushPendingAction("conv-1", "user-1", pending);
+
+        assertThat(store.peekPendingAction("conv-1", "user-1"))
+            .get()
+            .satisfies(restored -> assertThat(restored.trustedResolvedParameters())
+                .containsExactly("shopperSessionId"));
     }
 
     private PendingAction pending(String action) {

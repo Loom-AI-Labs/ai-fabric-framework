@@ -111,7 +111,8 @@ public final class ConfirmationInterceptionContext {
             Map.copyOf(next),
             top.description(),
             top.createdAt(),
-            top.trustedEvidenceValuesByKey()
+            top.trustedEvidenceValuesByKey(),
+            top.trustedResolvedParameters()
         ));
     }
 

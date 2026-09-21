@@ -462,7 +462,8 @@ public class ConfiguredConfirmationInterceptorsResolver extends ConfirmationReso
             Collections.unmodifiableMap(new LinkedHashMap<>(params)),
             pendingAction.description(),
             pendingAction.createdAt() != null ? pendingAction.createdAt() : Instant.now(),
-            pendingAction.trustedEvidenceValuesByKey()
+            pendingAction.trustedEvidenceValuesByKey(),
+            pendingAction.trustedResolvedParameters()
         );
     }
 

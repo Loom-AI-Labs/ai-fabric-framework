@@ -4,8 +4,10 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.springframework.util.StringUtils;
 
 /**
@@ -16,7 +18,8 @@ public record PendingAction(
     Map<String, Object> actionParams,
     String description,
     Instant createdAt,
-    Map<String, List<String>> trustedEvidenceValuesByKey
+    Map<String, List<String>> trustedEvidenceValuesByKey,
+    Set<String> trustedResolvedParameters
 ) {
 
     public static final String TRUSTED_EVIDENCE_METADATA_KEY = "__trustedActionEvidenceValuesByKey";
@@ -27,11 +30,22 @@ public record PendingAction(
         String description,
         Instant createdAt
     ) {
-        this(action, actionParams, description, createdAt, Map.of());
+        this(action, actionParams, description, createdAt, Map.of(), Set.of());
+    }
+
+    public PendingAction(
+        String action,
+        Map<String, Object> actionParams,
+        String description,
+        Instant createdAt,
+        Map<String, List<String>> trustedEvidenceValuesByKey
+    ) {
+        this(action, actionParams, description, createdAt, trustedEvidenceValuesByKey, Set.of());
     }
 
     public PendingAction {
         trustedEvidenceValuesByKey = freezeTrustedEvidenceValues(trustedEvidenceValuesByKey);
+        trustedResolvedParameters = freezeTrustedResolvedParameters(trustedResolvedParameters);
     }
 
     public Map<String, Object> toMap() {
@@ -43,6 +57,9 @@ public record PendingAction(
         out.put("trustedEvidenceValuesByKey", trustedEvidenceValuesByKey != null
             ? trustedEvidenceValuesByKey
             : Collections.emptyMap());
+        out.put("trustedResolvedParameters", trustedResolvedParameters != null
+            ? trustedResolvedParameters
+            : Collections.emptySet());
         return Collections.unmodifiableMap(out);
     }
 
@@ -69,11 +86,32 @@ public record PendingAction(
             params = (Map<String, Object>) map;
         }
         Map<String, List<String>> trustedEvidenceValuesByKey = parseTrustedEvidence(raw.get("trustedEvidenceValuesByKey"));
+        Set<String> trustedResolvedParameters = parseTrustedResolvedParameters(raw.get("trustedResolvedParameters"));
 
         if (!StringUtils.hasText(action)) {
             return null;
         }
-        return new PendingAction(action.trim(), params, description, createdAt, trustedEvidenceValuesByKey);
+        return new PendingAction(
+            action.trim(),
+            params,
+            description,
+            createdAt,
+            trustedEvidenceValuesByKey,
+            trustedResolvedParameters
+        );
+    }
+
+    private static Set<String> parseTrustedResolvedParameters(Object raw) {
+        if (!(raw instanceof Iterable<?> iterable)) {
+            return Set.of();
+        }
+        LinkedHashSet<String> out = new LinkedHashSet<>();
+        for (Object value : iterable) {
+            if (value != null && StringUtils.hasText(value.toString())) {
+                out.add(value.toString().trim());
+            }
+        }
+        return out.isEmpty() ? Set.of() : Collections.unmodifiableSet(out);
     }
 
     private static Map<String, List<String>> parseTrustedEvidence(Object raw) {
@@ -122,5 +160,18 @@ public record PendingAction(
             }
         }
         return out.isEmpty() ? Map.of() : Collections.unmodifiableMap(out);
+    }
+
+    private static Set<String> freezeTrustedResolvedParameters(Set<String> raw) {
+        if (raw == null || raw.isEmpty()) {
+            return Set.of();
+        }
+        LinkedHashSet<String> out = new LinkedHashSet<>();
+        for (String value : raw) {
+            if (StringUtils.hasText(value)) {
+                out.add(value.trim());
+            }
+        }
+        return out.isEmpty() ? Set.of() : Collections.unmodifiableSet(out);
     }
 }

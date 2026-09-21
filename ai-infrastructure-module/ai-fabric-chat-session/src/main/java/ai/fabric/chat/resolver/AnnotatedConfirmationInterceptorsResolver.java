@@ -176,7 +176,8 @@ public class AnnotatedConfirmationInterceptorsResolver extends ConfirmationResol
             Map.copyOf(next),
             current.description(),
             current.createdAt(),
-            current.trustedEvidenceValuesByKey()
+            current.trustedEvidenceValuesByKey(),
+            current.trustedResolvedParameters()
         );
         popPending(context);
         pushPending(context, updated);

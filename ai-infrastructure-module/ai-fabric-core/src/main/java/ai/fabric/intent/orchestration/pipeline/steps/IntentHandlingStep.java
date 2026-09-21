@@ -345,6 +345,13 @@ public class IntentHandlingStep implements PipelineStep {
     }
     
     private OrchestrationResult handleAction(Intent intent, OrchestrationContext context, PipelineContext pipelineContext) {
+        return handleAction(intent, context, pipelineContext, Set.of());
+    }
+
+    private OrchestrationResult handleAction(Intent intent,
+                                             OrchestrationContext context,
+                                             PipelineContext pipelineContext,
+                                             Set<String> pendingTrustedResolvedParameters) {
         String actionName = StringUtils.hasText(intent.getAction()) ? intent.getAction() : intent.getIntent();
         if (!StringUtils.hasText(actionName)) {
             return OrchestrationResult.error(ERROR_MSG_MISSING_ACTION_NAME);
@@ -461,7 +468,13 @@ public class IntentHandlingStep implements PipelineStep {
         }
 
         OrchestrationProperties.ActionParamProvenanceMode provenanceMode = actionParamProvenanceMode();
-        Set<String> trustedResolvedParameters = resolvedContextParams.resolvedParameters();
+        Set<String> trustedContextResolvedParameters = resolvedContextParams.resolvedParameters();
+        if (confirmedThisRequest && pendingTrustedResolvedParameters != null && !pendingTrustedResolvedParameters.isEmpty()) {
+            java.util.LinkedHashSet<String> merged = new java.util.LinkedHashSet<>(trustedContextResolvedParameters);
+            merged.addAll(pendingTrustedResolvedParameters);
+            trustedContextResolvedParameters = Collections.unmodifiableSet(merged);
+        }
+        Set<String> trustedResolvedParameters = trustedContextResolvedParameters;
         if (confirmedThisRequest && requiresConfirmation) {
             trustedResolvedParameters = trustConfirmedActionParams(meta, trustedResolvedParameters, effectiveParams);
         }
@@ -526,7 +539,7 @@ public class IntentHandlingStep implements PipelineStep {
             meta,
             effectiveParams,
             buildEvidenceBundle(pipelineContext),
-            resolvedContextParams.resolvedParameters()
+            trustedContextResolvedParameters
         );
         validation = mergeExecutableValidation(validation, executableValidation);
         if (executableValidation != null && executableValidation.hasFailures()) {
@@ -657,7 +670,8 @@ public class IntentHandlingStep implements PipelineStep {
                     meta,
                     effectiveParams,
                     resolvedContextParams.resolvedParameters()
-                )
+                ),
+                resolvedContextParams.resolvedParameters()
             );
             if (pendingActionStore != null) {
                 pendingActionStore.pushPendingAction(context.getConversationId(), identifier, pending);
@@ -1110,7 +1124,7 @@ public class IntentHandlingStep implements PipelineStep {
             .metadata(ActionEvidenceSupport.mergeTrustedActionEvidence(base.getMetadata(), pending.trustedEvidenceValuesByKey()))
             .build();
 
-        return handleAction(synthetic, context, marked);
+        return handleAction(synthetic, context, marked, pending.trustedResolvedParameters());
     }
 
     private OrchestrationResult handleConfirmationNegative(OrchestrationContext context, PipelineContext pipelineContext) {

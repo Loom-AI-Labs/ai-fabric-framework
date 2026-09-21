@@ -19,6 +19,7 @@ import ai.fabric.intent.action.ActionAccessMode;
 import ai.fabric.intent.action.ActionResult;
 import ai.fabric.intent.action.ActionResultContracts;
 import ai.fabric.intent.action.InMemoryPendingActionStore;
+import ai.fabric.intent.action.PendingAction;
 import ai.fabric.intent.actiondraft.InMemoryActionDraftStore;
 import ai.fabric.intent.orchestration.OrchestrationContext;
 import ai.fabric.intent.orchestration.OrchestrationResult;
@@ -486,6 +487,110 @@ class IntentHandlingStepBatchTargetsTest {
         ArgumentCaptor<Map<String, Object>> paramsCaptor = ArgumentCaptor.forClass(Map.class);
         verify(handler, times(1)).executeAction(paramsCaptor.capture(), any());
         assertThat(paramsCaptor.getValue()).containsKey("add_items");
+    }
+
+    @Test
+    void shouldPreserveTrustedRuntimeContextAcrossPendingConfirmation() {
+        AIActionMetaData meta = sessionBoundCartMeta();
+        AIActionHandler handler = mock(AIActionHandler.class);
+        when(handler.validateActionAllowed(any())).thenReturn(true);
+        when(handler.requiresConfirmation()).thenReturn(true);
+        when(handler.actionRuntimeConfig()).thenReturn(commerceCartRuntimeConfig());
+        when(handler.getConfirmationMessage(anyMap(), any())).thenReturn("Add the selected item to your cart?");
+        when(handler.executeAction(anyMap(), any())).thenReturn(ActionResult.builder()
+            .success(true)
+            .message("Cart updated.")
+            .data(ActionResultContracts.object(Map.of("status", "updated")))
+            .build());
+
+        AIActionRegistry registry = mock(AIActionRegistry.class);
+        when(registry.findHandler("commerce_update_cart")).thenReturn(Optional.of(handler));
+        when(registry.findMetadata("commerce_update_cart")).thenReturn(Optional.of(meta));
+
+        InMemoryPendingActionStore pendingActionStore = new InMemoryPendingActionStore();
+        IntentHandlingStep step = newStep(registry, pendingActionStore);
+        OrchestrationContext orchestrationContext = OrchestrationContext.builder()
+            .userId("user")
+            .conversationId("chat-session-bound-confirm")
+            .sessionId("shopper-session-123")
+            .build();
+        Intent actionIntent = Intent.builder()
+            .type(IntentType.ACTION)
+            .action("commerce_update_cart")
+            .actionParams(Map.of("add_items", List.of(Map.of("product_variant_id", "variant-1", "quantity", 1))))
+            .build();
+        PipelineContext turn1 = PipelineContext.from("Add the item to my cart.", orchestrationContext)
+            .toBuilder()
+            .intentResponse(MultiIntentResponse.builder().intents(List.of(actionIntent)).build())
+            .build();
+
+        OrchestrationResult turn1Result = step.process(turn1).getIntentResult();
+
+        assertThat(turn1Result.getType()).isEqualTo(OrchestrationResultType.CONFIRMATION_REQUIRED);
+        assertThat(pendingActionStore.peekPendingAction("chat-session-bound-confirm", "user"))
+            .get()
+            .satisfies(pending -> assertThat(pending.trustedResolvedParameters())
+                .containsExactly("shopperSessionId"));
+
+        Intent confirmIntent = Intent.builder().type(IntentType.CONFIRMATION_POSITIVE).build();
+        PipelineContext turn2 = PipelineContext.from("Yes, confirm", orchestrationContext)
+            .toBuilder()
+            .intentResponse(MultiIntentResponse.builder().intents(List.of(confirmIntent)).build())
+            .build();
+
+        OrchestrationResult turn2Result = step.process(turn2).getIntentResult();
+
+        assertThat(turn2Result.getType()).isEqualTo(OrchestrationResultType.ACTION_EXECUTED);
+        assertThat(turn2Result.isSuccess()).isTrue();
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<Map<String, Object>> paramsCaptor = ArgumentCaptor.forClass(Map.class);
+        verify(handler, times(1)).executeAction(paramsCaptor.capture(), any());
+        assertThat(paramsCaptor.getValue()).containsEntry("shopperSessionId", "shopper-session-123");
+    }
+
+    @Test
+    void shouldNotTrustUnprovenHiddenPendingParameterAfterConfirmation() {
+        AIActionMetaData meta = sessionBoundCartMeta();
+        AIActionHandler handler = mock(AIActionHandler.class);
+        when(handler.validateActionAllowed(any())).thenReturn(true);
+        when(handler.requiresConfirmation()).thenReturn(true);
+        when(handler.actionRuntimeConfig()).thenReturn(commerceCartRuntimeConfig());
+
+        AIActionRegistry registry = mock(AIActionRegistry.class);
+        when(registry.findHandler("commerce_update_cart")).thenReturn(Optional.of(handler));
+        when(registry.findMetadata("commerce_update_cart")).thenReturn(Optional.of(meta));
+
+        InMemoryPendingActionStore pendingActionStore = new InMemoryPendingActionStore();
+        pendingActionStore.pushPendingAction(
+            "chat-untrusted-hidden-confirm",
+            "user",
+            new PendingAction(
+                "commerce_update_cart",
+                Map.of(
+                    "add_items", List.of(Map.of("product_variant_id", "variant-1", "quantity", 1)),
+                    "shopperSessionId", "client-supplied-session"
+                ),
+                "Add the selected item to your cart?",
+                java.time.Instant.now()
+            )
+        );
+        IntentHandlingStep step = newStep(registry, pendingActionStore);
+        OrchestrationContext orchestrationContext = OrchestrationContext.builder()
+            .userId("user")
+            .conversationId("chat-untrusted-hidden-confirm")
+            .build();
+        Intent confirmIntent = Intent.builder().type(IntentType.CONFIRMATION_POSITIVE).build();
+        PipelineContext turn = PipelineContext.from("Yes, confirm", orchestrationContext)
+            .toBuilder()
+            .intentResponse(MultiIntentResponse.builder().intents(List.of(confirmIntent)).build())
+            .build();
+
+        OrchestrationResult result = step.process(turn).getIntentResult();
+
+        assertThat(result.getType()).isEqualTo(OrchestrationResultType.CLARIFICATION_REQUIRED);
+        assertThat(result.getMessage()).contains("trusted application context");
+        assertThat(result.toString()).doesNotContain("shopperSessionId");
+        verify(handler, never()).executeAction(anyMap(), any());
     }
 
     @Test
@@ -1213,6 +1318,34 @@ class IntentHandlingStepBatchTargetsTest {
             .readActionResolutionEligible(true)
             .parameterSchemas(Map.of("query", query, "limit", limit))
             .requiredParameters(Set.of("query"))
+            .build();
+    }
+
+    private AIActionMetaData sessionBoundCartMeta() {
+        AIActionParamSchema addItems = AIActionParamSchema.builder()
+            .name("add_items")
+            .type(AIActionParamType.ARRAY)
+            .required(true)
+            .items(AIActionParamSchema.builder().type(AIActionParamType.OBJECT).build())
+            .build();
+        AIActionParamSchema shopperSessionId = AIActionParamSchema.builder()
+            .name("shopperSessionId")
+            .type(AIActionParamType.STRING)
+            .required(true)
+            .visibility("INTERNAL")
+            .askUser(false)
+            .resolveFrom(Map.of("source", "RUNTIME_CONTEXT", "field", "sessionId"))
+            .build();
+        return AIActionMetaData.builder()
+            .name("commerce_update_cart")
+            .description("Update commerce cart")
+            .category("commerce")
+            .accessMode(ActionAccessMode.WRITE_ONLY)
+            .parameterSchemas(Map.of(
+                "add_items", addItems,
+                "shopperSessionId", shopperSessionId
+            ))
+            .requiredParameters(Set.of("add_items", "shopperSessionId"))
             .build();
     }
 
