@@ -315,6 +315,62 @@ Rule of thumb:
 
 ---
 
+### 3.5 MCP logical-parameter and rendered-payload gates
+
+An MCP-backed action can have two different parameter shapes:
+
+- the logical action parameters extracted, resolved, validated, and confirmed by AI Fabric;
+- the rendered MCP tool arguments emitted after `execution.mcp.argumentTemplate` is applied.
+
+These shapes are intentionally separate. Use the following fields only for their defined stage:
+
+| Field | Evaluated by | Input shape | Purpose |
+| --- | --- | --- | --- |
+| `execution.mcp.requiredAnyParams` | AI Fabric core, before execution | logical action `params` | Require at least one meaningful source parameter before handing the action to a connector. |
+| `execution.mcp.requiredAnyArguments` | MCP connector/gateway, after template rendering | final MCP tool argument JSON | Require at least one meaningful outbound payload path before calling the MCP tool. |
+
+Example:
+
+```yaml
+execution:
+  adapterType: mcp-tool
+  mcp:
+    serverRef: commerce
+    toolName: update_resource
+    requiredAnyParams:
+      - add_items
+      - update_items
+      - remove_item_ids
+    requiredAnyArguments:
+      - request.items
+    argumentTemplate:
+      request:
+        items: "{{params.resolved_items}}"
+```
+
+Here, the application-facing action accepts one of three requested changes. Trusted application or
+connector code may turn that request into a full-state `resolved_items` collection. The outbound
+MCP call is allowed only when the rendered `request.items` value is meaningful.
+
+Rules:
+
+- `requiredAnyParams` paths are relative to the logical `params` map. Plain names,
+  `params.name`, and `$.params.name` are accepted.
+- `requiredAnyArguments` paths are relative to the rendered MCP argument root. Plain dotted paths
+  and restricted JSONPath such as `$.request.items` are accepted by a compatible gateway.
+- Do not use `requiredAnyArguments` to describe source action parameters.
+- Do not use `requiredAnyParams` to describe a transformed connector payload.
+- Standard parameter schemas, evidence-bound validation, hidden-parameter trust, confirmation,
+  and authorization still run independently. These one-of gates do not weaken them.
+- If a configured one-of gate has no meaningful value, execution fails closed before the next
+  boundary is crossed.
+
+AI Fabric does not interpret `requiredAnyArguments`; it reserves that field for the connector that
+owns final payload rendering and transport. Likewise, a connector must not reinterpret
+`requiredAnyParams` as a payload path contract.
+
+---
+
 ## 4) Customer Connector API (execution contract)
 
 AI Fabric should call a **single connector base URL**.

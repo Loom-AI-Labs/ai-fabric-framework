@@ -24,11 +24,14 @@ class ActionExecutableValidationSupportTest {
     }
 
     @Test
-    void shouldDetectMcpRuntimeAndRequiredAnyArgumentsAcrossPathFormats() {
+    void shouldDetectMcpRuntimeAndRequiredAnyParamsAcrossPathFormats() {
         Map<String, Object> runtimeConfig = Map.of(
             "execution", Map.of(
                 "adapterType", "mcp-tool",
-                "mcp", Map.of("requiredAnyArguments", List.of("$.params.add_items", "update_items"))
+                "mcp", Map.of(
+                    "requiredAnyParams", List.of("$.params.add_items", "update_items"),
+                    "requiredAnyArguments", List.of("cart.line_items")
+                )
             )
         );
 
@@ -49,6 +52,25 @@ class ActionExecutableValidationSupportTest {
             );
         assertThat(present).isNotNull();
         assertThat(present.hasFailures()).isFalse();
+        assertThat(present.debugMetadata())
+            .containsEntry("requiredAnyParams", List.of("$.params.add_items", "update_items"));
+    }
+
+    @Test
+    void shouldReserveRequiredAnyArgumentsForPostTemplateConnectorValidation() {
+        Map<String, Object> runtimeConfig = Map.of(
+            "execution", Map.of(
+                "adapterType", "mcp-tool",
+                "mcp", Map.of("requiredAnyArguments", List.of("cart.line_items"))
+            )
+        );
+
+        ActionExecutableValidationSupport.ActionExecutableValidation validation =
+            validateExecutableActionParams(runtimeConfig, null, Map.of(), EMPTY_EVIDENCE, Set.of());
+
+        assertThat(validation).isNotNull();
+        assertThat(validation.hasFailures()).isFalse();
+        assertThat(validation.debugMetadata()).containsEntry("requiredAnyParams", List.of());
     }
 
     @Test

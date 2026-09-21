@@ -6,11 +6,11 @@
 #
 # From repo root:
 # docker build -f examples/real-apps/behavior-churn-signals/Dockerfile \
-#   --build-arg AI_FABRIC_VERSION=0.8.2 \
-#   -t ai-fabric-behavior-churn-signals:0.8.2 \
+#   --build-arg AI_FABRIC_VERSION=0.8.3 \
+#   -t ai-fabric-behavior-churn-signals:0.8.3 \
 #   examples/real-apps
 
-ARG AI_FABRIC_VERSION=0.8.2
+ARG AI_FABRIC_VERSION=0.8.3
 ARG APP_VERSION=1.0.0-SNAPSHOT
 ARG SOURCE_COMMIT=
 ARG SOURCE_BRANCH=

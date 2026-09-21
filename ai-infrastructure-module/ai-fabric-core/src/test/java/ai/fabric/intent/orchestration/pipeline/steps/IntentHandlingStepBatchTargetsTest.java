@@ -1539,6 +1539,7 @@ class IntentHandlingStepBatchTargetsTest {
                 "mcp", Map.of(
                     "serverRef", "commerce-storefront",
                     "toolName", "update_cart",
+                    "requiredAnyParams", List.of("add_items", "update_items", "remove_line_ids"),
                     "requiredAnyArguments", List.of("add_items", "update_items", "remove_line_ids"),
                     "argumentTemplate", Map.of(
                         "add_items", "{{params.add_items}}",

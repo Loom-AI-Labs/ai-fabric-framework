@@ -64,17 +64,19 @@ final class ActionExecutableValidationSupport {
         Map<String, Object> debug = new LinkedHashMap<>();
         Set<String> trustedResolved = normalizeParameterNameSet(trustedResolvedParameters);
 
-        List<String> requiredAnyArguments = mcpRequiredAnyArguments(actionRuntimeConfig);
-        if (!requiredAnyArguments.isEmpty()) {
+        // This gate applies to the logical action contract. A connector may separately
+        // validate requiredAnyArguments after rendering its outbound MCP payload.
+        List<String> requiredAnyParams = mcpRequiredAnyParams(actionRuntimeConfig);
+        if (!requiredAnyParams.isEmpty()) {
             boolean hasAny = false;
-            for (String requiredAny : requiredAnyArguments) {
+            for (String requiredAny : requiredAnyParams) {
                 if (hasMeaningfulActionParamAtPath(params, requiredAny)) {
                     hasAny = true;
                     break;
                 }
             }
             if (!hasAny) {
-                missingExecutable.addAll(requiredAnyArguments);
+                missingExecutable.addAll(requiredAnyParams);
             }
         }
 
@@ -102,7 +104,7 @@ final class ActionExecutableValidationSupport {
         debug.put("missingExecutable", List.copyOf(missingExecutable));
         debug.put("invalidArguments", List.copyOf(invalidArguments));
         debug.put("untrustedArguments", List.copyOf(untrustedArguments));
-        debug.put("requiredAnyArguments", List.copyOf(requiredAnyArguments));
+        debug.put("requiredAnyParams", List.copyOf(requiredAnyParams));
         debug.put("trustedResolvedParameters", List.copyOf(trustedResolved));
         debug.put("sourcesUsed", evidence != null ? evidence.sourcesUsed() : Map.of());
         return new ActionExecutableValidation(
@@ -130,12 +132,12 @@ final class ActionExecutableValidationSupport {
         return false;
     }
 
-    static List<String> mcpRequiredAnyArguments(Map<String, Object> actionRuntimeConfig) {
+    static List<String> mcpRequiredAnyParams(Map<String, Object> actionRuntimeConfig) {
         Map<?, ?> mcp = mcpRuntimeConfig(actionRuntimeConfig);
         if (mcp == null || mcp.isEmpty()) {
             return List.of();
         }
-        Object raw = mcp.get("requiredAnyArguments");
+        Object raw = mcp.get("requiredAnyParams");
         if (!(raw instanceof List<?> list) || list.isEmpty()) {
             return List.of();
         }
