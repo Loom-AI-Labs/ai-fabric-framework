@@ -549,6 +549,56 @@ class IntentHandlingStepBatchTargetsTest {
     }
 
     @Test
+    void shouldUseTrustedRuntimeContextCarriedByChatSessionConfirmationResolver() {
+        AIActionMetaData meta = sessionBoundCartMeta();
+        AIActionHandler handler = mock(AIActionHandler.class);
+        when(handler.validateActionAllowed(any())).thenReturn(true);
+        when(handler.requiresConfirmation()).thenReturn(true);
+        when(handler.actionRuntimeConfig()).thenReturn(commerceCartRuntimeConfig());
+        when(handler.executeAction(anyMap(), any())).thenReturn(ActionResult.builder()
+            .success(true)
+            .message("Cart updated.")
+            .data(ActionResultContracts.object(Map.of("status", "updated")))
+            .build());
+
+        AIActionRegistry registry = mock(AIActionRegistry.class);
+        when(registry.findHandler("commerce_update_cart")).thenReturn(Optional.of(handler));
+        when(registry.findMetadata("commerce_update_cart")).thenReturn(Optional.of(meta));
+
+        Intent restoredAction = Intent.builder()
+            .type(IntentType.ACTION)
+            .action("commerce_update_cart")
+            .actionParams(Map.of(
+                "add_items", List.of(Map.of("product_variant_id", "variant-1", "quantity", 1)),
+                "shopperSessionId", "shopper-session-123"
+            ))
+            .build();
+        OrchestrationContext orchestrationContext = OrchestrationContext.builder()
+            .userId("user")
+            .conversationId("chat-session-resolver-confirm")
+            .sessionId("shopper-session-123")
+            .build();
+        PipelineContext confirmationTurn = PipelineContext.from("Yes", orchestrationContext)
+            .toBuilder()
+            .intentResponse(MultiIntentResponse.builder().intents(List.of(restoredAction)).build())
+            .confirmedActions(Set.of("commerce_update_cart"))
+            .confirmedActionTrustedResolvedParameters(Map.of(
+                "commerce_update_cart",
+                Set.of("shopperSessionId")
+            ))
+            .build();
+
+        OrchestrationResult result = newStep(registry).process(confirmationTurn).getIntentResult();
+
+        assertThat(result.getType()).isEqualTo(OrchestrationResultType.ACTION_EXECUTED);
+        assertThat(result.isSuccess()).isTrue();
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<Map<String, Object>> paramsCaptor = ArgumentCaptor.forClass(Map.class);
+        verify(handler, times(1)).executeAction(paramsCaptor.capture(), any());
+        assertThat(paramsCaptor.getValue()).containsEntry("shopperSessionId", "shopper-session-123");
+    }
+
+    @Test
     void shouldNotTrustUnprovenHiddenPendingParameterAfterConfirmation() {
         AIActionMetaData meta = sessionBoundCartMeta();
         AIActionHandler handler = mock(AIActionHandler.class);

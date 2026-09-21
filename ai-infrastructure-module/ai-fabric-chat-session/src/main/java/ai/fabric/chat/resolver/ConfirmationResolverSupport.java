@@ -6,6 +6,7 @@ import ai.fabric.dto.IntentType;
 import ai.fabric.dto.MultiIntentResponse;
 import ai.fabric.intent.action.PendingAction;
 import ai.fabric.intent.action.PendingActionStore;
+import ai.fabric.intent.action.AIActionNames;
 import ai.fabric.intent.orchestration.pipeline.PipelineContext;
 import java.time.Duration;
 import java.time.Instant;
@@ -138,17 +139,49 @@ public abstract class ConfirmationResolverSupport implements IntentResolver {
         }
         PipelineContext marked = markConfirmed(context, pending.action());
         Map<String, List<String>> trustedEvidence = pending.trustedEvidenceValuesByKey();
-        if (marked == null || trustedEvidence == null || trustedEvidence.isEmpty()) {
+        if (marked == null) {
             return marked;
         }
-        Map<String, Object> metadata = new LinkedHashMap<>(marked.getMetadata() != null ? marked.getMetadata() : Map.of());
-        metadata.put(
-            PendingAction.TRUSTED_EVIDENCE_METADATA_KEY,
-            Collections.unmodifiableMap(new LinkedHashMap<>(trustedEvidence))
-        );
-        return marked.toBuilder()
-            .metadata(Collections.unmodifiableMap(metadata))
-            .build();
+
+        PipelineContext.PipelineContextBuilder builder = marked.toBuilder();
+        if (trustedEvidence != null && !trustedEvidence.isEmpty()) {
+            Map<String, Object> metadata = new LinkedHashMap<>(marked.getMetadata() != null ? marked.getMetadata() : Map.of());
+            metadata.put(
+                PendingAction.TRUSTED_EVIDENCE_METADATA_KEY,
+                Collections.unmodifiableMap(new LinkedHashMap<>(trustedEvidence))
+            );
+            builder.metadata(Collections.unmodifiableMap(metadata));
+        }
+
+        Set<String> trustedResolvedParameters = pending.trustedResolvedParameters();
+        if (trustedResolvedParameters != null && !trustedResolvedParameters.isEmpty()) {
+            Map<String, Set<String>> trustedByAction = new LinkedHashMap<>(
+                marked.getConfirmedActionTrustedResolvedParameters() != null
+                    ? marked.getConfirmedActionTrustedResolvedParameters()
+                    : Map.of()
+            );
+            String actionKey = AIActionNames.normalize(pending.action());
+            Set<String> merged = new java.util.LinkedHashSet<>(
+                trustedByAction.getOrDefault(actionKey, Set.of())
+            );
+            merged.addAll(trustedResolvedParameters);
+            trustedByAction.put(actionKey, Collections.unmodifiableSet(merged));
+            builder.confirmedActionTrustedResolvedParameters(
+                Collections.unmodifiableMap(trustedByAction)
+            );
+        }
+        return builder.build();
+    }
+
+    protected PipelineContext markConfirmed(PipelineContext context,
+                                            String actionName,
+                                            PendingAction pending) {
+        if (pending != null
+            && actionName != null
+            && AIActionNames.normalize(actionName).equals(AIActionNames.normalize(pending.action()))) {
+            return markConfirmed(context, pending);
+        }
+        return markConfirmed(context, actionName);
     }
 
     protected PendingActionStore store() {

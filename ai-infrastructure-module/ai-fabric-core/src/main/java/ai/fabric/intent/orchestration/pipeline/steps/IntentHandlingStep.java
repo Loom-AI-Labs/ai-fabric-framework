@@ -8,6 +8,7 @@ import ai.fabric.dto.Intent;
 import ai.fabric.dto.MultiIntentResponse;
 import ai.fabric.dto.NextStepRecommendation;
 import ai.fabric.intent.action.AIActionMetaData;
+import ai.fabric.intent.action.AIActionNames;
 import ai.fabric.intent.action.AIActionParamSchema;
 import ai.fabric.intent.action.AIActionHandler;
 import ai.fabric.intent.action.AIActionRegistry;
@@ -469,9 +470,14 @@ public class IntentHandlingStep implements PipelineStep {
 
         OrchestrationProperties.ActionParamProvenanceMode provenanceMode = actionParamProvenanceMode();
         Set<String> trustedContextResolvedParameters = resolvedContextParams.resolvedParameters();
-        if (confirmedThisRequest && pendingTrustedResolvedParameters != null && !pendingTrustedResolvedParameters.isEmpty()) {
+        Set<String> confirmationTrustedResolvedParameters = confirmedActionTrustedResolvedParameters(
+            pipelineContext,
+            actionName,
+            pendingTrustedResolvedParameters
+        );
+        if (confirmedThisRequest && !confirmationTrustedResolvedParameters.isEmpty()) {
             java.util.LinkedHashSet<String> merged = new java.util.LinkedHashSet<>(trustedContextResolvedParameters);
-            merged.addAll(pendingTrustedResolvedParameters);
+            merged.addAll(confirmationTrustedResolvedParameters);
             trustedContextResolvedParameters = Collections.unmodifiableSet(merged);
         }
         Set<String> trustedResolvedParameters = trustedContextResolvedParameters;
@@ -883,6 +889,25 @@ public class IntentHandlingStep implements PipelineStep {
         return orchestrationProperties != null && orchestrationProperties.getActionParamProvenanceMode() != null
             ? orchestrationProperties.getActionParamProvenanceMode()
             : OrchestrationProperties.ActionParamProvenanceMode.WARN;
+    }
+
+    private Set<String> confirmedActionTrustedResolvedParameters(PipelineContext pipelineContext,
+                                                                 String actionName,
+                                                                 Set<String> pendingTrustedResolvedParameters) {
+        java.util.LinkedHashSet<String> trusted = new java.util.LinkedHashSet<>();
+        if (pendingTrustedResolvedParameters != null) {
+            trusted.addAll(pendingTrustedResolvedParameters);
+        }
+        if (pipelineContext != null
+            && StringUtils.hasText(actionName)
+            && pipelineContext.getConfirmedActionTrustedResolvedParameters() != null) {
+            Set<String> restored = pipelineContext.getConfirmedActionTrustedResolvedParameters()
+                .get(AIActionNames.normalize(actionName));
+            if (restored != null) {
+                trusted.addAll(restored);
+            }
+        }
+        return trusted.isEmpty() ? Set.of() : Collections.unmodifiableSet(trusted);
     }
 
     private Set<String> trustConfirmedActionParams(AIActionMetaData meta,

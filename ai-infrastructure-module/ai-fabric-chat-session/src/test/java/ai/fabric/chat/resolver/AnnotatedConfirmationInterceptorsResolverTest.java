@@ -17,6 +17,7 @@ import java.util.Deque;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import org.junit.jupiter.api.Test;
 import org.springframework.context.ApplicationContext;
@@ -84,7 +85,14 @@ class AnnotatedConfirmationInterceptorsResolverTest {
             .conversationId("conv-2")
             .build());
 
-        store.pushPendingAction("conv-2", "demo-user", new PendingAction("get_active_orders", Map.of(), null, Instant.now()));
+        store.pushPendingAction("conv-2", "demo-user", new PendingAction(
+            "get_active_orders",
+            Map.of(),
+            null,
+            Instant.now(),
+            Map.of(),
+            Set.of("accountId")
+        ));
 
         MultiIntentResponse response = MultiIntentResponse.builder()
             .intents(java.util.List.of(Intent.builder().type(IntentType.CONFIRMATION_POSITIVE).build()))
@@ -94,6 +102,8 @@ class AnnotatedConfirmationInterceptorsResolverTest {
 
         assertThat(updated.getConfirmedActions()).contains("get_active_orders");
         assertThat(updated.getConfirmedActions()).hasSize(1);
+        assertThat(updated.getConfirmedActionTrustedResolvedParameters())
+            .containsEntry("get_active_orders", Set.of("accountId"));
         assertThat(updated.getIntentResponse()).isNotNull();
         assertThat(updated.getIntentResponse().getIntents()).hasSize(1);
         assertThat(updated.getIntentResponse().getIntents().getFirst().getAction()).isEqualTo("get_active_orders");

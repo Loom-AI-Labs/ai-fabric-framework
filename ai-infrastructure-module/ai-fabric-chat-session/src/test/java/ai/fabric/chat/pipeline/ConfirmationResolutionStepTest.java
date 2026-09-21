@@ -19,6 +19,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -48,7 +49,8 @@ class ConfirmationResolutionStepTest {
             Map.of("sku", "ELEC-LAPTOP-001", "quantity", 1),
             "Create purchase order for 1 × ELEC-LAPTOP-001?",
             Instant.now(),
-            Map.of("sku", List.of("ELEC-LAPTOP-001"))
+            Map.of("sku", List.of("ELEC-LAPTOP-001")),
+            Set.of("shopperSessionId")
         );
         when(pendingActionStore.peekPendingAction("conv-1", "user-1")).thenReturn(Optional.of(pending));
         when(pendingActionStore.popPendingAction("conv-1", "user-1")).thenReturn(Optional.of(pending));
@@ -81,6 +83,8 @@ class ConfirmationResolutionStepTest {
         assertThat(resolved.isActionConfirmed("create_purchase_order")).isTrue();
         assertThat(resolved.getMetadata())
             .containsEntry(PendingAction.TRUSTED_EVIDENCE_METADATA_KEY, Map.of("sku", List.of("ELEC-LAPTOP-001")));
+        assertThat(resolved.getConfirmedActionTrustedResolvedParameters())
+            .containsEntry("create_purchase_order", Set.of("shopperSessionId"));
     }
 
     @Test

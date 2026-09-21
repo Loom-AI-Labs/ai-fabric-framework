@@ -98,7 +98,7 @@ public class ConfiguredConfirmationInterceptorsResolver extends ConfirmationReso
         if (decision.confirmedActions() != null) {
             for (String actionName : decision.confirmedActions()) {
                 if (StringUtils.hasText(actionName)) {
-                    updated = markConfirmed(updated, actionName.trim());
+                    updated = markConfirmed(updated, actionName.trim(), pending);
                 }
             }
         }

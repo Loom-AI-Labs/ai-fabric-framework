@@ -159,6 +159,17 @@ public class PipelineContext {
     private final Set<String> confirmedActions = Set.of();
 
     /**
+     * Trusted parameter names restored from pending actions confirmed in this request.
+     *
+     * <p>The map is keyed by normalized action name. This is internal pipeline state and must
+     * never be populated from request metadata or serialized into responses.</p>
+     */
+    @JsonIgnore
+    @ToString.Exclude
+    @Builder.Default
+    private final transient Map<String, Set<String>> confirmedActionTrustedResolvedParameters = Map.of();
+
+    /**
      * Deterministically resolved targets for this request (attachments / working set).
      */
     @Builder.Default

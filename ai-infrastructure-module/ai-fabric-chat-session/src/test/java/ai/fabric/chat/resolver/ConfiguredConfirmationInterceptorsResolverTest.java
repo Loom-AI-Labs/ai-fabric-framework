@@ -16,6 +16,7 @@ import ai.fabric.intent.orchestration.pipeline.PipelineContext;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.support.StaticListableBeanFactory;
@@ -74,7 +75,9 @@ class ConfiguredConfirmationInterceptorsResolverTest {
             "offer_order_discount",
             Map.of("orderNumber", "PO-1", "discountPercent", 15),
             null,
-            Instant.now()
+            Instant.now(),
+            Map.of(),
+            Set.of("accountId")
         ));
 
         PipelineContext updated = resolver.resolve(confirmation(IntentType.CONFIRMATION_POSITIVE), Map.of(), context);
@@ -85,6 +88,8 @@ class ConfiguredConfirmationInterceptorsResolverTest {
             .containsEntry("orderNumber", "PO-1")
             .containsEntry("discountPercent", 15);
         assertThat(updated.getConfirmedActions()).containsExactly("offer_order_discount");
+        assertThat(updated.getConfirmedActionTrustedResolvedParameters())
+            .containsEntry("offer_order_discount", Set.of("accountId"));
         assertThat(store.getPendingActionStack("conv-2", "demo-user")).isEmpty();
     }
 
@@ -107,7 +112,9 @@ class ConfiguredConfirmationInterceptorsResolverTest {
             "offer_order_discount",
             Map.of("orderNumber", "PO-9", "discountPercent", 10),
             null,
-            Instant.now()
+            Instant.now(),
+            Map.of(),
+            Set.of("accountId")
         ));
 
         PipelineContext updated = resolver.resolve(confirmation(IntentType.CONFIRMATION_NEGATIVE), Map.of(), context);
@@ -118,6 +125,8 @@ class ConfiguredConfirmationInterceptorsResolverTest {
             .containsEntry("orderNumber", "PO-9")
             .containsEntry("orderId", 42);
         assertThat(updated.getConfirmedActions()).containsExactly("cancel_purchase_order");
+        assertThat(updated.getConfirmedActionTrustedResolvedParameters())
+            .doesNotContainKey("cancel_purchase_order");
         assertThat(store.getPendingActionStack("conv-3", "demo-user")).isEmpty();
     }
 
