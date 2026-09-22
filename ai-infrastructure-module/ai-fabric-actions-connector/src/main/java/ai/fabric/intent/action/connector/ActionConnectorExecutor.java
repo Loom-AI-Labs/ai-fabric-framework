@@ -149,7 +149,15 @@ public class ActionConnectorExecutor {
         }
 
         boolean mcpToolAction = isMcpToolAction(actionConfig);
-        if (mcpToolAction && hasMcpActionExecutor()) {
+        boolean connectorDispatchedMcpAction;
+        try {
+            connectorDispatchedMcpAction = mcpToolAction && usesConnectorMcpDispatch(actionConfig);
+        } catch (Exception ex) {
+            String message = safeConfigErrorMessage(ex.getMessage());
+            log.warn("Connector action '{}' skipped due to invalid MCP dispatch configuration: {}", actionId, message);
+            return failure(ERROR_INVALID_CONFIGURATION, message);
+        }
+        if (mcpToolAction && !connectorDispatchedMcpAction && hasMcpActionExecutor()) {
             ActionResult mcpResult = mcpActionExecutor.execute(actionId, accessMode, params, context, actionConfig);
             if (mcpResult != null && (mcpResult.isSuccess()
                 || !McpActionExecutor.ERROR_MCP_TOOL_NOT_AVAILABLE.equals(mcpResult.getErrorCode())
@@ -160,12 +168,14 @@ public class ActionConnectorExecutor {
         }
         String url;
         try {
-            url = mcpToolAction ? buildMcpGatewayExecuteUrl() : buildExecuteUrl();
+            url = mcpToolAction && !connectorDispatchedMcpAction
+                ? buildMcpGatewayExecuteUrl()
+                : buildExecuteUrl();
         } catch (Exception ex) {
             String message = safeConfigErrorMessage(ex != null ? ex.getMessage() : null);
             log.warn("Connector action '{}' skipped due to invalid {} configuration: {}",
                 actionId,
-                mcpToolAction ? "MCP gateway" : "connector",
+                mcpToolAction && !connectorDispatchedMcpAction ? "MCP gateway" : "connector",
                 message);
             return failure(ERROR_INVALID_CONFIGURATION, message);
         }
@@ -182,12 +192,14 @@ public class ActionConnectorExecutor {
         String body = writeJson(request);
         HttpHeaders headers;
         try {
-            headers = mcpToolAction ? buildMcpGatewayHeaders() : buildHeaders(body);
+            headers = mcpToolAction && !connectorDispatchedMcpAction
+                ? buildMcpGatewayHeaders()
+                : buildHeaders(body);
         } catch (Exception ex) {
             String message = safeConfigErrorMessage(ex != null ? ex.getMessage() : null);
             log.warn("Connector action '{}' skipped due to invalid {} configuration: {}",
                 actionId,
-                mcpToolAction ? "MCP gateway" : "connector",
+                mcpToolAction && !connectorDispatchedMcpAction ? "MCP gateway" : "connector",
                 message);
             return failure(ERROR_INVALID_CONFIGURATION, message);
         }
@@ -514,6 +526,34 @@ public class ActionConnectorExecutor {
             return execution.containsKey("mcp");
         }
         return false;
+    }
+
+    private boolean usesConnectorMcpDispatch(Map<String, Object> actionConfig) {
+        if (actionConfig == null || actionConfig.isEmpty()) {
+            return false;
+        }
+        Object executionRaw = actionConfig.get("execution");
+        if (!(executionRaw instanceof Map<?, ?> execution)) {
+            return false;
+        }
+        Object mcpRaw = execution.get("mcp");
+        if (!(mcpRaw instanceof Map<?, ?> mcp)) {
+            return false;
+        }
+        Object rawDispatchMode = mcp.get("dispatchMode");
+        if (rawDispatchMode == null || !StringUtils.hasText(rawDispatchMode.toString())) {
+            return false;
+        }
+        String dispatchMode = rawDispatchMode.toString().trim().toUpperCase(Locale.ROOT);
+        if ("CONNECTOR".equals(dispatchMode)) {
+            return true;
+        }
+        if ("DIRECT_GATEWAY".equals(dispatchMode)) {
+            return false;
+        }
+        throw new IllegalStateException(
+            "execution.mcp.dispatchMode must be CONNECTOR or DIRECT_GATEWAY."
+        );
     }
 
     private boolean hasConfiguredMcpGateway() {

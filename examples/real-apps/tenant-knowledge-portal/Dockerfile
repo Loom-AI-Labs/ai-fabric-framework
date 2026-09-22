@@ -6,11 +6,11 @@
 #
 # From repo root:
 # docker build -f examples/real-apps/tenant-knowledge-portal/Dockerfile \
-#   --build-arg AI_FABRIC_VERSION=0.8.3 \
-#   -t ai-fabric-tenant-guard:0.8.3 \
+#   --build-arg AI_FABRIC_VERSION=0.8.4 \
+#   -t ai-fabric-tenant-guard:0.8.4 \
 #   examples/real-apps
 
-ARG AI_FABRIC_VERSION=0.8.3
+ARG AI_FABRIC_VERSION=0.8.4
 ARG APP_VERSION=1.0.0-SNAPSHOT
 ARG BUILD_COMMIT=unknown
 ARG BUILD_BRANCH=unknown

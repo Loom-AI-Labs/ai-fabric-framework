@@ -371,6 +371,41 @@ owns final payload rendering and transport. Likewise, a connector must not reint
 
 ---
 
+### 3.6 MCP dispatch boundary
+
+MCP actions use the shared MCP gateway directly by default. Some applications have an authorized
+connector that must adapt the logical action request before the final MCP call, for example to
+resolve application-owned state or convert a delta into a provider's full-state contract. Such an
+action can opt into the existing connector boundary without giving up its `mcp-tool` identity:
+
+```yaml
+execution:
+  adapterType: mcp-tool
+  mcp:
+    dispatchMode: CONNECTOR
+    serverRef: commerce
+    toolName: update_resource
+```
+
+Supported values are:
+
+| Value | Behavior |
+| --- | --- |
+| `DIRECT_GATEWAY` | Use Spring AI MCP when available, then the configured MCP gateway. This is the default when the field is absent. |
+| `CONNECTOR` | Send the governed action request to the configured application connector. The connector receives the full action config in `trace.actionConfig` and owns any authorized adaptation before invoking MCP. |
+
+Rules:
+
+- Dispatch selection is trusted action configuration, never a model or end-user parameter.
+- `CONNECTOR` still runs AI Fabric parameter validation, authorization, confirmation, provenance,
+  and idempotency behavior before crossing the connector boundary.
+- The connector must preserve the action identity and return the standard `ActionResult` contract.
+- Unknown dispatch modes fail closed as `INVALID_CONFIGURATION`.
+- Use connector dispatch only when application-owned adaptation is required. Normal MCP actions
+  should keep the default direct-gateway path.
+
+---
+
 ## 4) Customer Connector API (execution contract)
 
 AI Fabric should call a **single connector base URL**.

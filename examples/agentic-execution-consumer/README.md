@@ -45,7 +45,7 @@ not compile against framework source directories.
 
 ## Published Maven Central Verification
 
-After AI Fabric `0.8.3` is published, prove source-independent consumption with
+After AI Fabric `0.8.4` is published, prove source-independent consumption with
 a fresh local Maven repository. Do not install the framework reactor first:
 
 ```bash
@@ -53,11 +53,11 @@ MAVEN_REPO="$(mktemp -d)"
 
 mvn -B -V --no-transfer-progress \
   -Dmaven.repo.local="$MAVEN_REPO" \
-  -Dai-fabric.version=0.8.3 \
+  -Dai-fabric.version=0.8.4 \
   -f examples/agentic-execution-consumer/pom.xml \
   clean test
 ```
 
 That command proves Maven Central metadata and transitive artifact
-completeness. Run it only after the `0.8.3` BOM is visible on Maven Central;
+completeness. Run it only after the `0.8.4` BOM is visible on Maven Central;
 local reactor artifacts must not satisfy this verification.

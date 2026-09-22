@@ -260,17 +260,17 @@ to smoke output.
 
 ## Deployment
 
-After `0.8.3` is published, build the release image from the repository root.
+After `0.8.4` is published, build the release image from the repository root.
 It resolves the immutable AI Fabric release from Maven Central and does not
 compile framework source from this checkout:
 
 ```bash
 docker build \
   -f examples/real-apps/incident-investigation-room/Dockerfile \
-  --build-arg AI_FABRIC_VERSION=0.8.3 \
+  --build-arg AI_FABRIC_VERSION=0.8.4 \
   --build-arg SOURCE_COMMIT="$(git rev-parse HEAD)" \
   --build-arg SOURCE_BRANCH="$(git branch --show-current)" \
-  -t ai-fabric-incident-investigation-room:0.8.3 .
+  -t ai-fabric-incident-investigation-room:0.8.4 .
 ```
 
 Before publication, CI uses `Dockerfile.candidate` only after the framework and

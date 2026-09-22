@@ -202,6 +202,89 @@ class ActionConnectorExecutorTest {
     }
 
     @Test
+    void execute_shouldDispatchMcpToolThroughConnectorWhenConfigured() {
+        FakeHttpClient fake = new FakeHttpClient(List.of(
+            new OutboundHttpExecutionResponse(200, "{\"success\":true,\"message\":\"adapted\",\"data\":{}}", Map.of())
+        ));
+        AIActionConnectorProperties props = connectorProps("https://connector.internal", 1, Duration.ZERO);
+        props.getApiKey().setHeader("X-CONNECTOR-KEY");
+        props.getApiKey().setValue("connector-secret");
+        props.getMcpGateway().setBaseUrl("https://mcp-gateway.internal");
+        props.getMcpGateway().setApiKey("gateway-secret");
+        RecordingMcpActionExecutor mcpExecutor = new RecordingMcpActionExecutor(ActionResult.builder()
+            .success(true)
+            .message("local mcp")
+            .build());
+        ActionConnectorExecutor executor = new ActionConnectorExecutor(
+            props,
+            fake,
+            null,
+            fixedClock(),
+            mcpExecutor
+        );
+
+        ActionResult result = executor.execute(
+            "commerce_create_cart",
+            ActionAccessMode.WRITE_ONLY,
+            Map.of("add_items", List.of(Map.of("product_variant_id", "variant-1", "quantity", 1))),
+            testContext(),
+            Map.of(
+                "adapterType", "mcp-tool",
+                "execution", Map.of("mcp", Map.of(
+                    "serverRef", "commerce-mcp",
+                    "toolName", "create_cart",
+                    "dispatchMode", "CONNECTOR"
+                ))
+            )
+        );
+
+        assertThat(result.isSuccess()).isTrue();
+        assertThat(result.getMessage()).isEqualTo("adapted");
+        assertThat(fake.lastRequest().url()).isEqualTo("https://connector.internal/actions/execute");
+        assertThat(fake.lastRequest().headers())
+            .containsEntry("X-CONNECTOR-KEY", "connector-secret")
+            .doesNotContainKey("X-MCP-GATEWAY-API-KEY");
+        assertThat(mcpExecutor.calls()).isZero();
+        Map<String, Object> request = readRequest(fake.lastRequestBody());
+        @SuppressWarnings("unchecked")
+        Map<String, Object> trace = (Map<String, Object>) request.get(ActionConnectorProtocol.KEY_TRACE);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> actionConfig = (Map<String, Object>) trace.get("actionConfig");
+        assertThat(actionConfig).containsEntry("adapterType", "mcp-tool");
+    }
+
+    @Test
+    void execute_shouldFailClosedForUnsupportedMcpDispatchMode() {
+        FakeHttpClient fake = new FakeHttpClient(List.of());
+        ActionConnectorExecutor executor = new ActionConnectorExecutor(
+            connectorProps("https://connector.internal", 1, Duration.ZERO),
+            fake,
+            null,
+            fixedClock()
+        );
+
+        ActionResult result = executor.execute(
+            "commerce_create_cart",
+            ActionAccessMode.WRITE_ONLY,
+            Map.of("add_items", List.of(Map.of("id", "variant-1"))),
+            testContext(),
+            Map.of(
+                "adapterType", "mcp-tool",
+                "execution", Map.of("mcp", Map.of(
+                    "serverRef", "commerce-mcp",
+                    "toolName", "create_cart",
+                    "dispatchMode", "UNSAFE_FALLBACK"
+                ))
+            )
+        );
+
+        assertThat(result.isSuccess()).isFalse();
+        assertThat(result.getErrorCode()).isEqualTo("INVALID_CONFIGURATION");
+        assertThat(result.getMessage()).contains("CONNECTOR or DIRECT_GATEWAY");
+        assertThat(fake.callCount()).isZero();
+    }
+
+    @Test
     void execute_shouldForwardReferencedMcpSecretValuesFromRuntimeEnvironment() {
         String secretRef = "MCP_SECRET_VENDOR_TOKEN";
         String oldValue = System.getProperty(secretRef);
