@@ -1,9 +1,12 @@
 package com.ai.fabric.realapps.docingest;
 
 import ai.fabric.config.AIProviderConfig;
+import ai.fabric.embedding.EmbeddingProvider;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -30,6 +33,9 @@ class DocumentOpenAiConfigurationTest {
     @Autowired
     private AIProviderConfig providerConfig;
 
+    @Autowired
+    private List<EmbeddingProvider> embeddingProviders;
+
     @Test
     void mapsDeploymentEnvironmentIntoOpenAiEmbeddingConfiguration() {
         assertThat(providerConfig.getEmbeddingProvider()).isEqualTo("openai");
@@ -39,5 +45,8 @@ class DocumentOpenAiConfigurationTest {
         assertThat(providerConfig.getOpenai().getEmbeddingModel()).isEqualTo("text-embedding-3-small");
         assertThat(providerConfig.getOpenai().getEmbeddingDimensions()).isEqualTo(512);
         assertThat(providerConfig.getOpenai().getTimeout()).isEqualTo(45);
+        assertThat(embeddingProviders)
+            .extracting(EmbeddingProvider::getProviderName)
+            .contains("openai");
     }
 }
