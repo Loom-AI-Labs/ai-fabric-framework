@@ -57,6 +57,22 @@ class McpOperationsServiceTest {
                 .containsEntry("source", "READ_ACTION")
                 .containsEntry("actionName", McpOperationsService.STATUS_ACTION)
                 .containsEntry("resultPath", "revision"));
+        assertThat(operations.catalog())
+            .filteredOn(policy -> McpOperationsService.RESTART_ACTION.equals(
+                policy.actionId()
+            ))
+            .singleElement()
+            .satisfies(policy -> {
+                assertThat(policy.dispatchMode()).isEqualTo("CONNECTOR");
+                assertThat(policy.requiredAnyParams())
+                    .containsExactly("expectedRevision");
+                assertThat(policy.requiredAnyArguments())
+                    .containsExactly("request.revision");
+            });
+        assertThat(operations.catalog())
+            .filteredOn(policy -> policy.accessMode() == ActionAccessMode.READ)
+            .extracting(McpOperationsService.ToolPolicy::dispatchMode)
+            .containsOnly("DIRECT_GATEWAY");
     }
 
     @Test

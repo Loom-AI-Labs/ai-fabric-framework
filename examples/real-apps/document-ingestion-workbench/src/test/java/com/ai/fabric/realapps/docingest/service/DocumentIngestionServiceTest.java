@@ -186,6 +186,30 @@ class DocumentIngestionServiceTest {
     }
 
     @Test
+    void listsOnlySourcesOwnedByTheRequestedTenant() {
+        var tenantA = service.createSource(textCommand(
+            "Tenant A runbook",
+            "tenant-a.txt",
+            "Tenant A recovery guidance",
+            "tenant-a"
+        ));
+        service.createSource(textCommand(
+            "Tenant B runbook",
+            "tenant-b.txt",
+            "Tenant B recovery guidance",
+            "tenant-b"
+        ));
+
+        var result = service.listSources("tenant-a");
+
+        assertThat(result).extracting(DocumentIngestionService.SourceSummary::id)
+            .containsExactly(tenantA.id());
+        assertThat(result).allSatisfy(source ->
+            assertThat(source.tenantId()).isEqualTo("tenant-a")
+        );
+    }
+
+    @Test
     void jsonSourceUsesTheSamePlanAndQueueLifecycle() {
         var source = service.createSource(new DocumentIngestionService.CreateSourceCommand(
             "Refund policy",

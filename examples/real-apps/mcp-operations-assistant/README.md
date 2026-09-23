@@ -19,6 +19,8 @@ MCP Operations Assistant (Spring Boot, port 8100)
   | backend-owned identity, selected service, scopes, and conversation
   | AI Fabric mcp-operations-specialist@1
   | AI Fabric action catalog + confirmation receipt
+  | READ tools: DIRECT_GATEWAY
+  | restart write: authenticated CONNECTOR adapter
   v
 SpringAiMcpActionExecutor
   | authenticated Streamable HTTP, exact serverRef and toolName
@@ -32,10 +34,14 @@ Persistent JDBC state
 ## AI Fabric Capabilities
 
 - typed specialist manifest with bounded iterative planning;
+- an app-scoped intent overlay that treats managed sandbox diagnostics as
+  supported operations while preserving the default assistant-internals guard;
 - backend-owned chat sessions and follow-up context;
 - connector action catalog loaded from `ai-actions.yml`;
 - exact MCP `serverRef` and tool binding;
 - trusted argument construction for sandbox ID, selected service, and optimistic revision;
+- direct-gateway reads plus connector-dispatched writes in one action catalog;
+- separate logical (`expectedRevision`) and rendered (`request.revision`) write gates;
 - read tools that can run directly;
 - confirmation-gated write tool with durable JDBC receipt;
 - idempotent replay protection;
@@ -107,6 +113,7 @@ OPENAI_MODEL=gpt-4o-mini
 MCP_OPERATIONS_SERVER_URL=https://<reference-server-host>
 MCP_OPERATIONS_SERVER_ENDPOINT=/mcp
 MCP_OPERATIONS_SERVER_API_KEY=<same protected key as reference server>
+MCP_OPERATIONS_CONNECTOR_API_KEY=<strong independent internal connector key>
 AI_EXECUTION_RECEIPT_ENCRYPTION_SECRET=<strong independent secret>
 AI_EXECUTION_RECEIPT_FINGERPRINT_SECRET=<strong independent secret>
 SPRING_DATASOURCE_URL=jdbc:postgresql://<host>:5432/<database>
@@ -162,6 +169,19 @@ GET    /api/mcp-ops/connection
 GET    /api/demo/health
 ```
 
+The internal connector endpoint is intentionally not a browser API:
+
+```text
+POST /internal/mcp-connector/actions/execute
+Header: X-MCP-OPERATIONS-CONNECTOR-KEY
+```
+
+AI Fabric calls that endpoint only for the restart action. The adapter validates
+the exact server/tool binding, transforms the logical flat parameters into the
+nested remote contract, proves `request.revision` is present, and then invokes
+the Spring AI MCP client. Missing authentication, an altered binding, or a
+missing rendered gate fails before the remote tool is called.
+
 Chat accepts only `message` and requires an `Idempotency-Key` header. Confirm and reject use the
 durable receipt ID returned by AI Fabric.
 
@@ -174,12 +194,17 @@ durable receipt ID returned by AI Fabric.
 5. Run the binding canary and verify `MCP_TOOL_NOT_AVAILABLE` with `writeDelta: 0`.
 6. Remove the MCP API key and verify an explicit authentication failure.
 7. Stop the reference server and verify no local fallback is used.
+8. Inspect `/api/mcp-ops/tools` and verify reads report `DIRECT_GATEWAY`, while
+   restart reports `CONNECTOR`, `expectedRevision`, and `request.revision`.
 
 ## Source Map
 
 - action catalog: `src/main/resources/ai-actions.yml`
 - specialist manifest: `src/main/resources/ai-specialists/mcp-operations-specialist.yml`
+- intent overlay: `src/main/resources/prompts/intent-extraction/**/v1-mcp-operations`
 - remote bridge configuration: `McpClientConfiguration`
+- authenticated write adapter: `McpConnectorApiKeyFilter` and
+  `McpConnectorDispatchController`
 - trusted execution boundary: `McpOperationsExecutionService` and
   `McpOperationsTrustedRuntimeContextStep`
 - safe audit projection: `McpInvocationAuditService`

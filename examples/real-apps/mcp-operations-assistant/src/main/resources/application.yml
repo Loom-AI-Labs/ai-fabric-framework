@@ -31,10 +31,23 @@ spring:
               endpoint: ${MCP_OPERATIONS_SERVER_ENDPOINT:/mcp}
 
 ai:
+  prompts:
+    bundle:
+      overlays:
+        - v1-mcp-operations
+        - v1-default-optimized
+
   actions:
     sources:
       - type: FILE
         path: classpath:ai-actions.yml
+    connector:
+      base-url: ${MCP_OPERATIONS_CONNECTOR_BASE_URL:http://127.0.0.1:8100}
+      execute-path: /internal/mcp-connector/actions/execute
+      max-attempts: 1
+      api-key:
+        header: X-MCP-OPERATIONS-CONNECTOR-KEY
+        value: ${MCP_OPERATIONS_CONNECTOR_API_KEY:}
 
   execution:
     enabled: true
@@ -121,6 +134,8 @@ ai:
 app:
   mcp-operations:
     executor: ${APP_MCP_OPERATIONS_EXECUTOR:remote}
+    connector:
+      api-key: ${MCP_OPERATIONS_CONNECTOR_API_KEY:}
     remote:
       api-key: ${MCP_OPERATIONS_SERVER_API_KEY:}
     sessions:

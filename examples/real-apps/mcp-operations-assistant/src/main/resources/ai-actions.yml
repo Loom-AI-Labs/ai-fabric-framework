@@ -13,6 +13,7 @@ actions:
     execution:
       adapterType: mcp-tool
       mcp:
+        dispatchMode: DIRECT_GATEWAY
         serverRef: ai-fabric-operations-reference
         toolName: get_sandbox_service_status
         argumentTemplate:
@@ -63,6 +64,7 @@ actions:
     execution:
       adapterType: mcp-tool
       mcp:
+        dispatchMode: DIRECT_GATEWAY
         serverRef: ai-fabric-operations-reference
         toolName: list_recent_sandbox_incidents
         argumentTemplate:
@@ -117,12 +119,18 @@ actions:
     execution:
       adapterType: mcp-tool
       mcp:
+        dispatchMode: CONNECTOR
         serverRef: ai-fabric-operations-reference
         toolName: restart_sandbox_service
+        requiredAnyParams:
+          - expectedRevision
+        requiredAnyArguments:
+          - request.revision
         argumentTemplate:
-          sandboxId: "{{params.sandboxId}}"
-          serviceName: "{{params.serviceName}}"
-          expectedRevision: "{{params.expectedRevision}}"
+          request:
+            sandbox: "{{params.sandboxId}}"
+            service: "{{params.serviceName}}"
+            revision: "{{params.expectedRevision}}"
         responseMapping:
           resultPath: $.structuredContent
           maxCharacters: 8192

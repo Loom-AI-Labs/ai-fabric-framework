@@ -106,6 +106,51 @@ acceptance alone never produces `INDEXED` or `DELETED`.
 | `GET` | `/api/documents/query?query=...&tenantId=...` | Return active tenant-scoped retrieval evidence. |
 | `DELETE` | `/api/documents/sources/{sourceId}` | Queue exact deletes for the active manifest. |
 
+The public demo uses a backend-owned tenant derived from an opaque session ID.
+It exposes the same lifecycle without accepting tenant identity from the browser:
+
+| Method | Endpoint | Purpose |
+| --- | --- | --- |
+| `POST` | `/api/document-demo/sessions` | Create an isolated workspace and queue three real seed documents. |
+| `GET` | `/api/document-demo/sessions/{sessionId}` | Reconcile and list the workspace sources. |
+| `POST` | `/api/document-demo/sessions/{sessionId}/sources` | Upload a trusted text or JSON source. |
+| `PUT` | `/api/document-demo/sessions/{sessionId}/sources/{sourceId}/content` | Prepare replacement content. |
+| `GET` | `/api/document-demo/sessions/{sessionId}/sources/{sourceId}/preview` | Inspect the bounded, side-effect-free plan preview. |
+| `POST` | `/api/document-demo/sessions/{sessionId}/sources/{sourceId}/index` | Queue the current source version. |
+| `GET` | `/api/document-demo/sessions/{sessionId}/sources/{sourceId}` | Inspect manifests and work evidence. |
+| `DELETE` | `/api/document-demo/sessions/{sessionId}/sources/{sourceId}` | Queue exact deletion of active chunks. |
+| `GET` | `/api/document-demo/sessions/{sessionId}/query?query=...` | Retrieve evidence through the server-owned tenant boundary. |
+
+## Docker Deployment
+
+Build from the real-app reactor directory so only released AI Fabric artifacts
+are consumed:
+
+```bash
+docker build \
+  -f document-ingestion-workbench/Dockerfile \
+  --build-arg AI_FABRIC_VERSION=0.8.4 \
+  --build-arg SOURCE_COMMIT="$(git rev-parse HEAD)" \
+  -t ai-fabric-document-knowledge-operations:0.8.4 \
+  .
+```
+
+Hosted environment:
+
+```text
+PORT=8098
+OPENAI_API_KEY=<protected>
+AI_EMBEDDING_PROVIDER=openai
+AI_VECTOR_DB_TYPE=lucene
+CORS_ALLOWED_ORIGINS=https://ai-fabric.dev
+DOCUMENT_WORKBENCH_TRUSTED_ROOT=/app/document-workbench
+JAVA_OPTS=-Xms256m -Xmx768m
+```
+
+The demo intentionally enables embedding and retrieval, not LLM generation.
+The UI displays the actual evidence returned by AI Fabric and never synthesizes
+an answer locally.
+
 The query endpoint intentionally returns retrieval evidence rather than an invented answer. An
 application may pass that evidence into its normal AI Fabric RAG or specialist flow.
 

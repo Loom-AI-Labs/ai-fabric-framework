@@ -13,6 +13,11 @@ ai:
   providers:
     llm-provider: smoke
     embedding-provider: smoke
+  actions:
+    connector:
+      base-url: http://127.0.0.1:8100
+      api-key:
+        value: smoke-mcp-connector-key-local-only
   execution:
     receipts:
       encryption-secret: smoke-mcp-receipt-encryption-key-local-only-0001
@@ -21,3 +26,5 @@ ai:
 app:
   mcp-operations:
     executor: local-smoke
+    connector:
+      api-key: smoke-mcp-connector-key-local-only

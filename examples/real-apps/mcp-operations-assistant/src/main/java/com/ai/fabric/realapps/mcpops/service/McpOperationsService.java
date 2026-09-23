@@ -52,6 +52,9 @@ public class McpOperationsService {
                 STATUS_ACTION,
                 ActionAccessMode.READ,
                 false,
+                "DIRECT_GATEWAY",
+                List.of(),
+                List.of(),
                 "Read current status from the isolated sandbox."
             ),
             new ToolPolicy(
@@ -59,6 +62,9 @@ public class McpOperationsService {
                 INCIDENTS_ACTION,
                 ActionAccessMode.READ,
                 false,
+                "DIRECT_GATEWAY",
+                List.of(),
+                List.of(),
                 "Read recent incidents from the isolated sandbox."
             ),
             new ToolPolicy(
@@ -66,6 +72,9 @@ public class McpOperationsService {
                 RESTART_ACTION,
                 ActionAccessMode.WRITE_ONLY,
                 true,
+                "CONNECTOR",
+                List.of("expectedRevision"),
+                List.of("request.revision"),
                 "Restart only the selected isolated sandbox service."
             )
         );
@@ -262,8 +271,19 @@ public class McpOperationsService {
         String toolName,
         ActionAccessMode accessMode,
         boolean requiresConfirmation,
+        String dispatchMode,
+        List<String> requiredAnyParams,
+        List<String> requiredAnyArguments,
         String description
     ) {
+        public ToolPolicy {
+            requiredAnyParams = requiredAnyParams == null
+                ? List.of()
+                : List.copyOf(requiredAnyParams);
+            requiredAnyArguments = requiredAnyArguments == null
+                ? List.of()
+                : List.copyOf(requiredAnyArguments);
+        }
     }
 
     public record SandboxState(

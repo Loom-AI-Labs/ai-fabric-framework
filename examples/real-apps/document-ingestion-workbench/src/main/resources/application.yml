@@ -27,6 +27,10 @@ document-workbench:
     max-characters: 400
     max-chunks: 25
 
+app:
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:}
+
 ai:
   enabled: true
   providers:

@@ -266,6 +266,20 @@ public class DocumentIngestionService {
         return new LifecycleResult(toSummary(source), runs);
     }
 
+    public synchronized List<SourceSummary> listSources(String tenantId) {
+        String safeTenant = requiredText(tenantId, "tenantId", 256);
+        List<String> sourceIds = sourceRepository
+            .findByTenantIdOrderByUpdatedAtDesc(safeTenant)
+            .stream()
+            .map(DocumentSource::getId)
+            .toList();
+        sourceIds.forEach(this::reconcile);
+        return sourceRepository.findByTenantIdOrderByUpdatedAtDesc(safeTenant)
+            .stream()
+            .map(this::toSummary)
+            .toList();
+    }
+
     public synchronized DeleteResult delete(String sourceId) {
         reconcile(sourceId);
         DocumentSource source = requireSource(sourceId);
