@@ -220,6 +220,10 @@ interactive use.
 - `document-workbench.preview.max-chunks`: maximum chunks returned by preview.
 - `ai.indexing.documents.*`: framework preparation and metadata safety bounds.
 - `ai.vector-db.type`: vector provider; smoke uses `memory`, default runtime uses `lucene`.
+- `OPENAI_ENABLED`, `OPENAI_API_KEY`, `OPENAI_BASE_URL`, `OPENAI_EMBEDDING_MODEL`,
+  `OPENAI_EMBEDDING_DIMENSIONS`, and `OPENAI_TIMEOUT`: deployment-safe OpenAI embedding settings
+  mapped by the app into `ai.providers.openai.*`.
+- `AI_VECTOR_DB_LUCENE_INDEX_PATH`: persistent Lucene location for the deployed container.
 
 ## Deliberate Boundaries
 

@@ -35,6 +35,13 @@ ai:
   enabled: true
   providers:
     embedding-provider: ${AI_EMBEDDING_PROVIDER:openai}
+    openai:
+      enabled: ${OPENAI_ENABLED:false}
+      api-key: ${OPENAI_API_KEY:}
+      base-url: ${OPENAI_BASE_URL:https://api.openai.com/v1}
+      embedding-model: ${OPENAI_EMBEDDING_MODEL:text-embedding-3-small}
+      embedding-dimensions: ${OPENAI_EMBEDDING_DIMENSIONS:512}
+      timeout: ${OPENAI_TIMEOUT:45}
   indexing:
     enabled: true
     documents:
@@ -56,6 +63,10 @@ ai:
         warn-on-drop: true
   vector-db:
     type: ${AI_VECTOR_DB_TYPE:lucene}
+    lucene:
+      index-path: ${AI_VECTOR_DB_LUCENE_INDEX_PATH:./data/document-knowledge-lucene-${OPENAI_EMBEDDING_DIMENSIONS:512}}
+      vector-dimension: ${OPENAI_EMBEDDING_DIMENSIONS:512}
+      similarity-threshold: 0.0
   pii-detection:
     enabled: false
   service:
