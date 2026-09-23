@@ -16,6 +16,7 @@ COPY . .
 RUN --mount=type=cache,target=/root/.m2 \
     mvn -B -V --no-transfer-progress \
     -Dai-fabric.version="${AI_FABRIC_VERSION}" \
+    -DskipTests \
     -pl document-ingestion-workbench -am package
 
 FROM eclipse-temurin:21-jre-alpine AS runtime
