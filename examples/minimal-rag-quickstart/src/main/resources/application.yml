@@ -1,0 +1,17 @@
+spring:
+  application:
+    name: minimal-rag-quickstart
+  main:
+    web-application-type: none
+    banner-mode: off
+
+logging:
+  level:
+    root: warn
+
+ai:
+  vector-db:
+    lucene:
+      index-path: target/lucene-vector-index
+      vector-dimension: 8
+      cleanup-on-close: true
