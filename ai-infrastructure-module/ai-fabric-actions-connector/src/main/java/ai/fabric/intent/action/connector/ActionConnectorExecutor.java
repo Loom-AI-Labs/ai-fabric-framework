@@ -5,6 +5,7 @@ import ai.fabric.http.OutboundHttpExecutionRequest;
 import ai.fabric.http.OutboundHttpExecutionResponse;
 import ai.fabric.http.OutboundHttpExecutor;
 import ai.fabric.intent.action.ActionContext;
+import ai.fabric.intent.action.ActionGroundingSufficiency;
 import ai.fabric.intent.action.ActionListPayload;
 import ai.fabric.intent.action.ActionObjectPayload;
 import ai.fabric.intent.action.ActionPayload;
@@ -610,6 +611,14 @@ public class ActionConnectorExecutor {
         String errorCode = readString(parsed.get(ActionConnectorProtocol.KEY_ERROR_CODE));
         Object dataRaw = parsed.get(ActionConnectorProtocol.KEY_DATA);
         Object pinnedRaw = parsed.get(ActionConnectorProtocol.KEY_PINNED_TARGETS);
+        ActionGroundingSufficiency groundingSufficiency;
+        try {
+            groundingSufficiency = parseGroundingSufficiency(
+                parsed.get(ActionConnectorProtocol.KEY_GROUNDING_SUFFICIENCY)
+            );
+        } catch (IllegalArgumentException ex) {
+            return failure(ERROR_INVALID_RESPONSE, ex.getMessage());
+        }
 
         ActionPayload payload = null;
         if (dataRaw != null) {
@@ -631,8 +640,22 @@ public class ActionConnectorExecutor {
             .message(StringUtils.hasText(message) ? message : (success ? null : "Connector action failed."))
             .data(payload)
             .pinnedTargets(pinnedTargets)
+            .groundingSufficiency(groundingSufficiency)
             .errorCode(success ? errorCode : (StringUtils.hasText(errorCode) ? errorCode : ERROR_ACTION_EXECUTION_FAILED))
             .build();
+    }
+
+    private ActionGroundingSufficiency parseGroundingSufficiency(Object raw) {
+        if (raw == null || !StringUtils.hasText(raw.toString())) {
+            return null;
+        }
+        try {
+            return ActionGroundingSufficiency.valueOf(raw.toString().trim().toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException ex) {
+            throw new IllegalArgumentException(
+                "groundingSufficiency must be SUFFICIENT or INSUFFICIENT."
+            );
+        }
     }
 
     private ActionResult failureForHttpStatus(int statusCode, String body, String actionId) {

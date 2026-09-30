@@ -17,6 +17,7 @@ class ActionResultSerializationTest {
         ActionResult input = ActionResult.builder()
             .success(true)
             .message("ok")
+            .groundingSufficiency(ActionGroundingSufficiency.SUFFICIENT)
             .pinnedTargets(List.of(
                 new ActionTargetRef("85", "product", "snippet", Map.of("sku", "SKU-85"))
             ))
@@ -27,6 +28,7 @@ class ActionResultSerializationTest {
 
         ActionResult output = mapper.readValue(json, ActionResult.class);
         assertThat(output.isSuccess()).isTrue();
+        assertThat(output.getGroundingSufficiency()).isEqualTo(ActionGroundingSufficiency.SUFFICIENT);
         assertThat(output.getPinnedTargets()).hasSize(1);
         assertThat(output.getPinnedTargets().getFirst().id()).isEqualTo("85");
         assertThat(output.getPinnedTargets().getFirst().vectorSpace()).isEqualTo("product");

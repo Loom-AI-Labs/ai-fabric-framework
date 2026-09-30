@@ -532,6 +532,25 @@ List payload example:
 }
 ```
 
+For grounding-eligible read actions, an empty typed list is preserved as a valid no-match fact but is
+not considered sufficient grounding by default. Under `RAG_IF_ACTIONS_INSUFFICIENT`, retrieval can
+therefore add independent evidence. A trusted connector can override the default per result:
+
+```json
+{
+  "success": true,
+  "message": "No matching record exists.",
+  "groundingSufficiency": "SUFFICIENT",
+  "data": {
+    "_count": 0,
+    "_items": []
+  }
+}
+```
+
+Allowed values are `SUFFICIENT` and `INSUFFICIENT`. Omit the field to use typed-payload inference.
+Invalid values fail closed as `INVALID_RESPONSE`.
+
 ##### Reserved keys validation (connector + framework)
 
 If `data` contains `_items`:

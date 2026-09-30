@@ -19,6 +19,7 @@ public final class ActionConnectorProtocol {
     public static final String KEY_MESSAGE = "message";
     public static final String KEY_DATA = "data";
     public static final String KEY_PINNED_TARGETS = "pinnedTargets";
+    public static final String KEY_GROUNDING_SUFFICIENCY = "groundingSufficiency";
     public static final String KEY_ERROR_CODE = "errorCode";
 
     public static final String TRACE_REQUEST_ID = "requestId";

@@ -13,6 +13,7 @@ import ai.fabric.intent.action.AIActionMetaData;
 import ai.fabric.intent.action.AIActionRegistry;
 import ai.fabric.intent.action.ActionAccessMode;
 import ai.fabric.intent.action.ActionContext;
+import ai.fabric.intent.action.ActionGroundingSufficiency;
 import ai.fabric.intent.action.ActionPayload;
 import ai.fabric.intent.action.ActionResult;
 import ai.fabric.intent.orchestration.OrchestrationContext;
@@ -945,7 +946,10 @@ class ReadActionResolutionServiceTest {
             .thenReturn(ActionResult.builder()
                 .success(true)
                 .message("Action executed.")
-                .data(ActionPayload.object(Map.of("count", 0)))
+                .data(ActionPayload.list(List.of(), Map.of(
+                    "query", "return policy",
+                    "source", "live-policy-service"
+                )))
                 .build());
         when(policyHandler.buildPostActionLlmFacts(any(ActionResult.class), any(ActionContext.class)))
             .thenReturn(Optional.of(Map.of(
@@ -954,7 +958,9 @@ class ReadActionResolutionServiceTest {
                 "success", true,
                 "message", "Action executed.",
                 "query", "return policy",
-                "count", 0
+                "source", "live-policy-service",
+                "items", List.of(),
+                "itemsCount", 0
             )));
 
         when(actionRegistry.getAllMetadata()).thenReturn(List.of(getPolicy));
@@ -1022,8 +1028,150 @@ class ReadActionResolutionServiceTest {
         assertThat(outcome.hasGroundingEvidence()).isFalse();
         assertThat(outcome.canAnswerFromActionEvidenceOnly()).isFalse();
         assertThat(outcome.useRag()).isTrue();
+        assertThat(outcome.evidenceContext())
+            .contains("live-policy-service")
+            .contains("\"itemsCount\":0");
         assertThat(outcome.diagnostics()).containsEntry("groundingUsableActionCount", 0L);
         assertThat(outcome.diagnostics()).containsEntry("insufficientActionEvidenceCount", 1L);
+    }
+
+    @Test
+    void shouldHonorExplicitAuthoritativeEmptyGroundingResult() {
+        ReadActionResolutionService.ResolutionOutcome outcome = resolveSingleReadAction(
+            ActionResult.builder()
+                .success(true)
+                .message("No matching records.")
+                .data(ActionPayload.list(List.of(), Map.of("query", "exact identifier")))
+                .groundingSufficiency(ActionGroundingSufficiency.SUFFICIENT)
+                .build(),
+            Map.of(
+                "query", "exact identifier",
+                "items", List.of(),
+                "itemsCount", 0
+            )
+        );
+
+        assertThat(outcome.executedActions()).hasSize(1);
+        assertThat(outcome.executedActions().getFirst().groundingUsable()).isTrue();
+        assertThat(outcome.hasGroundingEvidence()).isTrue();
+        assertThat(outcome.canAnswerFromActionEvidenceOnly()).isTrue();
+        assertThat(outcome.useRag()).isFalse();
+        assertThat(outcome.executedActions().getFirst().toDiagnosticMap())
+            .containsEntry("groundingSufficiency", "SUFFICIENT");
+    }
+
+    @Test
+    void shouldTreatNonEmptyTypedListAsSufficientWithoutUnnecessaryRag() {
+        ReadActionResolutionService.ResolutionOutcome outcome = resolveSingleReadAction(
+            ActionResult.builder()
+                .success(true)
+                .message("One matching record.")
+                .data(ActionPayload.list(List.of(Map.of("id", "record-1"))))
+                .build(),
+            Map.of(
+                "items", List.of(Map.of("id", "record-1")),
+                "itemsCount", 1
+            )
+        );
+
+        assertThat(outcome.executedActions()).hasSize(1);
+        assertThat(outcome.executedActions().getFirst().groundingUsable()).isTrue();
+        assertThat(outcome.hasGroundingEvidence()).isTrue();
+        assertThat(outcome.canAnswerFromActionEvidenceOnly()).isTrue();
+        assertThat(outcome.useRag()).isFalse();
+    }
+
+    @Test
+    void shouldHonorExplicitInsufficientGroundingResultEvenWhenListIsNonEmpty() {
+        ReadActionResolutionService.ResolutionOutcome outcome = resolveSingleReadAction(
+            ActionResult.builder()
+                .success(true)
+                .message("Partial records.")
+                .data(ActionPayload.list(List.of(Map.of("id", "record-1"))))
+                .groundingSufficiency(ActionGroundingSufficiency.INSUFFICIENT)
+                .build(),
+            Map.of(
+                "items", List.of(Map.of("id", "record-1")),
+                "itemsCount", 1
+            )
+        );
+
+        assertThat(outcome.executedActions()).hasSize(1);
+        assertThat(outcome.executedActions().getFirst().groundingUsable()).isFalse();
+        assertThat(outcome.hasGroundingEvidence()).isFalse();
+        assertThat(outcome.canAnswerFromActionEvidenceOnly()).isFalse();
+        assertThat(outcome.useRag()).isTrue();
+    }
+
+    private ReadActionResolutionService.ResolutionOutcome resolveSingleReadAction(
+        ActionResult actionResult,
+        Map<String, Object> llmFacts
+    ) {
+        AICoreService aiCoreService = mock(AICoreService.class);
+        AIActionRegistry actionRegistry = mock(AIActionRegistry.class);
+        PromptTemplateResolver templateResolver = mock(PromptTemplateResolver.class);
+        AIActionMetaData metadata = AIActionMetaData.builder()
+            .name("search_records")
+            .description("Search records.")
+            .category("records")
+            .accessMode(ActionAccessMode.READ)
+            .groundingEligible(true)
+            .readActionResolutionEligible(true)
+            .requiredParameters(Set.of("query"))
+            .build();
+        AIActionHandler handler = mock(AIActionHandler.class);
+        when(handler.validateActionAllowed(any(ActionContext.class))).thenReturn(true);
+        when(handler.executeAction(eq(Map.of("query", "exact identifier")), any(ActionContext.class)))
+            .thenReturn(actionResult);
+        when(handler.buildPostActionLlmFacts(any(ActionResult.class), any(ActionContext.class)))
+            .thenReturn(Optional.of(llmFacts));
+
+        when(actionRegistry.getAllMetadata()).thenReturn(List.of(metadata));
+        when(actionRegistry.findHandler("search_records")).thenReturn(Optional.of(handler));
+        when(actionRegistry.findMetadata("search_records")).thenReturn(Optional.of(metadata));
+        when(templateResolver.resolve("orchestration/read-action-resolution", "system"))
+            .thenReturn(resolvedTemplate("system", ""));
+        when(templateResolver.resolve("orchestration/read-action-resolution", "user"))
+            .thenReturn(resolvedTemplate("user", "query={{query}}\nactions={{eligible_actions_json}}"));
+        when(aiCoreService.generateContent(any(), eq(LlmPurpose.ORCHESTRATION))).thenReturn(
+            AIGenerationResponse.builder()
+                .content("""
+                    {
+                      "decision": "EXECUTE_READ_ACTIONS",
+                      "actions": [
+                        {"name": "search_records", "params": {"query": "exact identifier"}, "priority": 1}
+                      ],
+                      "needsMoreSteps": false
+                    }
+                    """)
+                .build()
+        );
+
+        ReadActionResolutionService service = new ReadActionResolutionService(
+            aiCoreService,
+            actionRegistry,
+            new IntentExtractionJsonSupport(new ObjectMapper()),
+            templateResolver,
+            new PromptRenderer()
+        );
+        OrchestrationContext context = OrchestrationContext.forUser("user-1");
+        return service.resolve(
+            Intent.builder()
+                .type(IntentType.INFORMATION)
+                .intent("Find exact identifier")
+                .optimizedQuery("exact identifier")
+                .build(),
+            context,
+            PipelineContext.from("Find exact identifier", context)
+                .toBuilder()
+                .orchestrationPolicy(readActionPolicy(
+                    "thinker",
+                    List.of("search_records"),
+                    OrchestrationProperties.ReadActionResolutionPlanningMode.SINGLE_PASS,
+                    OrchestrationProperties.ReadActionResolutionRagCooperationMode.RAG_IF_ACTIONS_INSUFFICIENT
+                ))
+                .build()
+        );
     }
 
     private ResolvedPromptTemplate resolvedTemplate(String name, String body) {

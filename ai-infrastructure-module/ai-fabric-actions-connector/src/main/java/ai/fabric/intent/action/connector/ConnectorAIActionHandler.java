@@ -3,6 +3,7 @@ package ai.fabric.intent.action.connector;
 import ai.fabric.intent.action.AIActionHandler;
 import ai.fabric.intent.action.AIActionMetaData;
 import ai.fabric.intent.action.ActionContext;
+import ai.fabric.intent.action.ActionListPayload;
 import ai.fabric.intent.action.ActionResult;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -154,6 +155,8 @@ public final class ConnectorAIActionHandler implements AIActionHandler {
         Map<String, Object> rootPayload = selectFactsRoot(payload);
         if (llmFacts != null && llmFacts.configured()) {
             applyConfiguredFacts(facts, rootPayload, context);
+        } else if (actionResult.getData() instanceof ActionListPayload listPayload) {
+            applyTypedListFacts(facts, listPayload);
         } else {
             applyFallbackFacts(facts, payload, rootPayload);
         }
@@ -205,6 +208,19 @@ public final class ConnectorAIActionHandler implements AIActionHandler {
             && !facts.containsKey("documents") && !facts.containsKey("record")) {
             putFallbackObjectFacts(facts, rootPayload);
         }
+    }
+
+    private void applyTypedListFacts(Map<String, Object> facts, ActionListPayload listPayload) {
+        List<Map<String, Object>> items = compactFallbackRecords(listPayload.getItems());
+        facts.put("items", items);
+        facts.put("itemsCount", listPayload.getCount());
+        if (listPayload.getTotalCount() != null) {
+            facts.put("totalItemsCount", listPayload.getTotalCount());
+        }
+        if (StringUtils.hasText(listPayload.getCursor())) {
+            facts.put("cursor", listPayload.getCursor());
+        }
+        copyFallbackScalars(listPayload.getExtra(), facts);
     }
 
     private boolean supportsObjectFallbackFacts() {

@@ -35,5 +35,14 @@ public class ActionResult {
      */
     private List<ActionTargetRef> pinnedTargets;
 
+    /**
+     * Optional trusted override for answer-grounding sufficiency.
+     *
+     * <p>Execution success and grounding sufficiency are separate. When this value is absent,
+     * orchestration derives sufficiency from the typed payload; in particular, an empty
+     * {@link ActionListPayload} is insufficient by default.</p>
+     */
+    private ActionGroundingSufficiency groundingSufficiency;
+
     private String errorCode;
 }

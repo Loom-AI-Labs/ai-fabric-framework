@@ -170,6 +170,21 @@ Do not invent custom pagination keys.
 Malformed list payloads on successful responses are treated as connector contract bugs, not transient
 outages. Fix the connector response shape rather than retrying.
 
+### 5.3 Grounding sufficiency
+
+Execution success does not automatically mean that a read result fully grounds the requested answer.
+
+- A successful empty list payload is insufficient by default. With
+  `RAG_IF_ACTIONS_INSUFFICIENT`, AI Fabric keeps the no-match result as a fact and invokes the
+  configured retrieval fallback.
+- A successful non-empty list uses its projected facts normally.
+- A trusted connector may set top-level `groundingSufficiency` to `SUFFICIENT` when an empty result
+  fully answers the requested fact, or to `INSUFFICIENT` when another grounding source is still
+  required.
+- Unknown `groundingSufficiency` values fail closed as `INVALID_RESPONSE`.
+
+Do not derive this field from user input. It is an action-owned result contract.
+
 ---
 
 ## 6) Minimal implementation sketch (reference)

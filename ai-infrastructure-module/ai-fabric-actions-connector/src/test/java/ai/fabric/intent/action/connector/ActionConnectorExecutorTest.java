@@ -5,6 +5,7 @@ import ai.fabric.http.OutboundHttpExecutionResponse;
 import ai.fabric.http.OutboundHttpExecutor;
 import ai.fabric.intent.action.ActionAccessMode;
 import ai.fabric.intent.action.ActionContext;
+import ai.fabric.intent.action.ActionGroundingSufficiency;
 import ai.fabric.intent.action.ActionListPayload;
 import ai.fabric.intent.action.ActionObjectPayload;
 import ai.fabric.intent.action.ActionResult;
@@ -109,6 +110,66 @@ class ActionConnectorExecutorTest {
         assertThat(map).containsEntry("_totalCount", 10L);
         assertThat(map).containsEntry("_cursor", "abc");
         assertThat(map).containsEntry("note", "x");
+    }
+
+    @Test
+    void execute_shouldParseTrustedGroundingSufficiencyOverride() {
+        FakeHttpClient fake = new FakeHttpClient(List.of(
+            new OutboundHttpExecutionResponse(
+                200,
+                """
+                    {"success":true,"message":"No match","groundingSufficiency":"SUFFICIENT","data":{"_count":0,"_items":[]}}
+                    """.trim(),
+                Map.of()
+            )
+        ));
+        ActionConnectorExecutor executor = new ActionConnectorExecutor(
+            connectorProps("https://example", 1, Duration.ZERO),
+            fake,
+            null,
+            fixedClock()
+        );
+
+        ActionResult result = executor.execute(
+            "find_record",
+            ActionAccessMode.READ,
+            Map.of("id", "missing"),
+            testContext()
+        );
+
+        assertThat(result.isSuccess()).isTrue();
+        assertThat(result.getGroundingSufficiency()).isEqualTo(ActionGroundingSufficiency.SUFFICIENT);
+        assertThat(result.getData()).isInstanceOf(ActionListPayload.class);
+    }
+
+    @Test
+    void execute_shouldRejectUnknownGroundingSufficiencyOverride() {
+        FakeHttpClient fake = new FakeHttpClient(List.of(
+            new OutboundHttpExecutionResponse(
+                200,
+                """
+                    {"success":true,"groundingSufficiency":"MAYBE","data":{"_count":0,"_items":[]}}
+                    """.trim(),
+                Map.of()
+            )
+        ));
+        ActionConnectorExecutor executor = new ActionConnectorExecutor(
+            connectorProps("https://example", 1, Duration.ZERO),
+            fake,
+            null,
+            fixedClock()
+        );
+
+        ActionResult result = executor.execute(
+            "find_record",
+            ActionAccessMode.READ,
+            Map.of("id", "missing"),
+            testContext()
+        );
+
+        assertThat(result.isSuccess()).isFalse();
+        assertThat(result.getErrorCode()).isEqualTo("INVALID_RESPONSE");
+        assertThat(result.getMessage()).contains("SUFFICIENT or INSUFFICIENT");
     }
 
     @Test

@@ -4,6 +4,11 @@
 
 Confirmed against AI Fabric `0.8.5` in a live hosted canary on 2026-09-30.
 
+Implemented on `main` for the `0.8.6` patch release. The implementation uses
+the typed `ActionListPayload` contract and the explicit trusted
+`ActionGroundingSufficiency` result override. It does not inspect action names,
+business fields, or answer text.
+
 This is a framework change request. It is not a request for application-specific
 matching, dealership-specific behavior, or answer-prompt compensation.
 
@@ -87,12 +92,22 @@ normalized evidence state or a declarative empty-result policy, provided that:
   failure; and
 - it is honored consistently by single-pass and iterative orchestration.
 
-The final API shape is owned by AI Fabric. The important semantic distinction is
+The implemented API shape is:
+
+- a successful empty `ActionListPayload` is insufficient by default;
+- a non-empty typed list continues to use its projected facts;
+- `ActionResult.groundingSufficiency=SUFFICIENT` explicitly marks even an empty
+  result as authoritative and complete;
+- `ActionResult.groundingSufficiency=INSUFFICIENT` explicitly requests another
+  configured grounding source even when the payload contains records; and
+- the action evidence summary remains available to generation when RAG runs.
+
+The important semantic distinction is
 `executionSucceeded != groundingSufficient`.
 
 ## Regression Coverage
 
-Add framework tests for at least these cases:
+Framework coverage now includes these cases:
 
 1. Non-empty read result is sufficient and does not force unnecessary RAG.
 2. Empty read collection plus an unanswered alternative request invokes RAG in
@@ -104,6 +119,13 @@ Add framework tests for at least these cases:
 6. Iteration and total-action limits remain enforced.
 7. A failed action is still represented as failure, not as an empty success.
 8. No domain-specific action names, fields, or text matching are introduced.
+
+Focused verification:
+
+- `ReadActionResolutionServiceTest`
+- `ActionResultSerializationTest`
+- `ActionConnectorExecutorTest`
+- `ConnectorAIActionHandlerTest`
 
 ## Acceptance Evidence
 

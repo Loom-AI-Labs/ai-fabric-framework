@@ -218,6 +218,23 @@ return ActionResult.builder()
 
 This keeps the core orchestrator domain-agnostic and enables deterministic behaviors (like “READ empty result → RAG”).
 
+An empty typed list is a successful action fact but is insufficient answer grounding by default. If
+the empty result is authoritative and complete for the request, set the trusted result override:
+
+```java
+import ai.fabric.intent.action.ActionGroundingSufficiency;
+
+return ActionResult.builder()
+    .success(true)
+    .message("No matching record exists.")
+    .data(ActionResultContracts.list(java.util.List.of()))
+    .groundingSufficiency(ActionGroundingSufficiency.SUFFICIENT)
+    .build();
+```
+
+Use `INSUFFICIENT` when a successful partial result should still cooperate with another configured
+grounding source. Do not set either value from model- or user-supplied input.
+
 ### Optional: custom confirmation message
 If you omit `@ActionConfirmation`, the framework auto-generates a basic confirmation prompt.
 

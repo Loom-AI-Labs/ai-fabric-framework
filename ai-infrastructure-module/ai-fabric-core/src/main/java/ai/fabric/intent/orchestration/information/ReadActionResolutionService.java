@@ -13,6 +13,8 @@ import ai.fabric.intent.action.AIActionParamSchema;
 import ai.fabric.intent.action.AIActionRegistry;
 import ai.fabric.intent.action.ActionAccessMode;
 import ai.fabric.intent.action.ActionContext;
+import ai.fabric.intent.action.ActionGroundingSufficiency;
+import ai.fabric.intent.action.ActionListPayload;
 import ai.fabric.intent.action.ActionPayload;
 import ai.fabric.intent.action.ActionResult;
 import ai.fabric.intent.orchestration.capability.CapabilityAwareActionMetadataSupport;
@@ -484,7 +486,7 @@ public class ReadActionResolutionService {
                 Collections.unmodifiableMap(new LinkedHashMap<>(proposal.params())),
                 metadata,
                 result,
-                result != null && result.isSuccess() && evidence.groundingUsable(),
+                isGroundingSufficient(result, evidence),
                 evidence.summary(),
                 null
             );
@@ -507,6 +509,22 @@ public class ReadActionResolutionService {
                 ex.getMessage()
             );
         }
+    }
+
+    private boolean isGroundingSufficient(ActionResult result, EvidenceSnippet evidence) {
+        if (result == null || !result.isSuccess()) {
+            return false;
+        }
+        if (result.getGroundingSufficiency() == ActionGroundingSufficiency.SUFFICIENT) {
+            return true;
+        }
+        if (result.getGroundingSufficiency() == ActionGroundingSufficiency.INSUFFICIENT) {
+            return false;
+        }
+        if (result.getData() instanceof ActionListPayload listPayload && listPayload.isEmpty()) {
+            return false;
+        }
+        return evidence != null && evidence.groundingUsable();
     }
 
     private boolean isAnonymous(
@@ -1200,6 +1218,9 @@ public class ReadActionResolutionService {
             if (actionResult != null) {
                 item.put("success", actionResult.isSuccess());
                 item.put("message", actionResult.getMessage());
+                if (actionResult.getGroundingSufficiency() != null) {
+                    item.put("groundingSufficiency", actionResult.getGroundingSufficiency().name());
+                }
                 if (StringUtils.hasText(actionResult.getErrorCode())) {
                     item.put("errorCode", actionResult.getErrorCode());
                 }

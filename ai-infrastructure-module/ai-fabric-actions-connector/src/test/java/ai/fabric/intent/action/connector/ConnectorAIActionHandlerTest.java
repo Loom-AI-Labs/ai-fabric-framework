@@ -448,6 +448,35 @@ class ConnectorAIActionHandlerTest {
     }
 
     @Test
+    void shouldExposeEmptyTypedListAsAnEmptyListFactWithoutInventingARecord() {
+        ActionResult actionResult = ActionResult.builder()
+            .success(true)
+            .message("No matching records.")
+            .data(ActionPayload.list(List.of(), Map.of(
+                "query", "diesel SUV under 10000",
+                "source", "live-inventory"
+            )))
+            .build();
+        ConnectorAIActionHandler handler = new ConnectorAIActionHandler(
+            metadata(),
+            false,
+            null,
+            Set.of(),
+            null
+        );
+
+        Optional<Map<String, Object>> facts = handler.buildPostActionLlmFacts(actionResult, null);
+
+        assertThat(facts).isPresent();
+        assertThat(facts.get())
+            .containsEntry("items", List.of())
+            .containsEntry("itemsCount", 0)
+            .containsEntry("query", "diesel SUV under 10000")
+            .containsEntry("source", "live-inventory")
+            .doesNotContainKeys("record", "recordCount");
+    }
+
+    @Test
     void shouldExposeMcpToolTextJsonAsFallbackDocuments() {
         ActionResult actionResult = ActionResult.builder()
             .success(true)
