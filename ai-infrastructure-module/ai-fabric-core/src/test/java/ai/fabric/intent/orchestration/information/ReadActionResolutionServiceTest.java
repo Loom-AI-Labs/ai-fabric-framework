@@ -45,6 +45,92 @@ import static org.mockito.Mockito.when;
 class ReadActionResolutionServiceTest {
 
     @Test
+    void shouldOmitNullPlannerParamsWithoutFailingReadActionResolution() {
+        AICoreService aiCoreService = mock(AICoreService.class);
+        AIActionRegistry actionRegistry = mock(AIActionRegistry.class);
+        PromptTemplateResolver templateResolver = mock(PromptTemplateResolver.class);
+
+        AIActionMetaData searchInventory = AIActionMetaData.builder()
+            .name("search_inventory")
+            .description("Search current inventory with optional filters.")
+            .category("inventory")
+            .accessMode(ActionAccessMode.READ)
+            .groundingEligible(true)
+            .readActionResolutionEligible(true)
+            .build();
+        AIActionHandler searchHandler = mock(AIActionHandler.class);
+        when(searchHandler.validateActionAllowed(any(ActionContext.class))).thenReturn(true);
+        when(searchHandler.executeAction(eq(Map.of("fuelType", "Electric")), any(ActionContext.class)))
+            .thenReturn(ActionResult.builder()
+                .success(true)
+                .message("Inventory loaded.")
+                .data(ActionPayload.object(Map.of("count", 2)))
+                .build());
+        when(searchHandler.buildPostActionLlmFacts(any(ActionResult.class), any(ActionContext.class)))
+            .thenReturn(Optional.of(Map.of("count", 2)));
+
+        when(actionRegistry.getAllMetadata()).thenReturn(List.of(searchInventory));
+        when(actionRegistry.findHandler("search_inventory")).thenReturn(Optional.of(searchHandler));
+        when(actionRegistry.findMetadata("search_inventory")).thenReturn(Optional.of(searchInventory));
+        when(templateResolver.resolve("orchestration/read-action-resolution", "system"))
+            .thenReturn(resolvedTemplate("system", ""));
+        when(templateResolver.resolve("orchestration/read-action-resolution", "user"))
+            .thenReturn(resolvedTemplate("user",
+                "mode={{mode}}\nquery={{query}}\nintent={{intent_json}}\nactions={{eligible_actions_json}}\n"
+                    + "prior={{prior_evidence_json}}\nmax={{max_actions_per_iteration}}\ntotal={{max_total_actions}}\n"
+                    + "rag={{rag_cooperation_mode}}\niteration={{iteration}}\niterations={{max_iterations}}"));
+        when(aiCoreService.generateContent(any(), eq(LlmPurpose.ORCHESTRATION))).thenReturn(
+            AIGenerationResponse.builder()
+                .content("""
+                    {
+                      "decision": "EXECUTE_READ_ACTIONS",
+                      "actions": [
+                        {
+                          "name": "search_inventory",
+                          "params": {"make": null, "fuelType": "Electric", "maxPrice": null},
+                          "priority": 1
+                        }
+                      ],
+                      "needsMoreSteps": false
+                    }
+                    """)
+                .build()
+        );
+
+        ReadActionResolutionService service = new ReadActionResolutionService(
+            aiCoreService,
+            actionRegistry,
+            new IntentExtractionJsonSupport(new ObjectMapper()),
+            templateResolver,
+            new PromptRenderer()
+        );
+
+        ReadActionResolutionService.ResolutionOutcome outcome = service.resolve(
+            Intent.builder()
+                .type(IntentType.INFORMATION)
+                .intent("Show current electric inventory.")
+                .optimizedQuery("current electric inventory")
+                .build(),
+            OrchestrationContext.forUser("user-1"),
+            PipelineContext.from("Show current electric inventory.", OrchestrationContext.forUser("user-1"))
+                .toBuilder()
+                .orchestrationPolicy(readActionPolicy(
+                    "inventory_assistant",
+                    List.of("search_inventory"),
+                    OrchestrationProperties.ReadActionResolutionPlanningMode.SINGLE_PASS,
+                    OrchestrationProperties.ReadActionResolutionRagCooperationMode.NONE
+                ))
+                .build()
+        );
+
+        assertThat(outcome.executedActions()).hasSize(1);
+        assertThat(outcome.executedActions().getFirst().params())
+            .containsExactlyEntriesOf(Map.of("fuelType", "Electric"));
+        assertThat(outcome.diagnostics()).containsEntry("executedActionsCount", 1);
+        verify(searchHandler).executeAction(eq(Map.of("fuelType", "Electric")), any(ActionContext.class));
+    }
+
+    @Test
     void shouldRespectPlannerSelectedReadActionWithoutApplicationOverride() {
         AICoreService aiCoreService = mock(AICoreService.class);
         AIActionRegistry actionRegistry = mock(AIActionRegistry.class);

@@ -367,7 +367,7 @@ public class ReadActionResolutionService {
                     }
                     proposals.add(new PlannerActionProposal(
                         action.name.trim(),
-                        action.params != null ? Map.copyOf(action.params) : Map.of(),
+                        immutableNonNullParams(action.params),
                         action.priority != null ? action.priority : proposals.size() + 1
                     ));
                 }
@@ -1026,6 +1026,21 @@ public class ReadActionResolutionService {
         return actionName.trim().toLowerCase(Locale.ROOT) + "::" + writeJson(params != null ? params : Map.of());
     }
 
+    private static Map<String, Object> immutableNonNullParams(Map<String, Object> params) {
+        if (params == null || params.isEmpty()) {
+            return Map.of();
+        }
+        Map<String, Object> normalized = new LinkedHashMap<>();
+        params.forEach((key, value) -> {
+            if (StringUtils.hasText(key) && value != null) {
+                normalized.put(key.trim(), value);
+            }
+        });
+        return normalized.isEmpty()
+            ? Map.of()
+            : Collections.unmodifiableMap(normalized);
+    }
+
     private enum PlannerDecisionType {
         ANSWER_FROM_CONTEXT,
         EXECUTE_READ_ACTIONS,
@@ -1165,7 +1180,7 @@ public class ReadActionResolutionService {
                                                  ActionResult actionResult) {
             return new ExecutedReadAction(
                 actionName,
-                params != null ? Map.copyOf(params) : Map.of(),
+                immutableNonNullParams(params),
                 metadata,
                 actionResult,
                 false,
