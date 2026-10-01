@@ -14,6 +14,7 @@ import ai.fabric.intent.action.AIActionHandler;
 import ai.fabric.intent.action.AIActionRegistry;
 import ai.fabric.intent.action.ActionAccessMode;
 import ai.fabric.intent.action.ActionContext;
+import ai.fabric.intent.action.ActionGroundingSupport;
 import ai.fabric.intent.action.ActionResult;
 import ai.fabric.intent.action.invocation.ActionConfirmationState;
 import ai.fabric.intent.action.invocation.ActionProposalCandidate;
@@ -997,18 +998,17 @@ public class IntentHandlingStep implements PipelineStep {
         if (meta == null || meta.getAccessMode() != ActionAccessMode.READ) {
             return null;
         }
-        // In action-first modes, an empty list is a valid, user-visible result.
-        // Falling back to RAG here makes it look like the action wasn't executed.
         OrchestrationPolicy policy = pipelineContext != null ? pipelineContext.getOrchestrationPolicy() : null;
         if (policy != null
             && policy.capabilities() != null
-            && policy.capabilities().actionsPreferred()) {
+            && policy.capabilities().actionsPreferred()
+            && !allowsCooperativeReadFallback(meta, policy)) {
             return null;
         }
         if (actionResult == null || !actionResult.isSuccess()) {
             return null;
         }
-        if (!RagResultSummarySupport.isEmptyActionResultPayload(actionResult.getData())) {
+        if (!ActionGroundingSupport.requiresAdditionalGrounding(actionResult)) {
             return null;
         }
         if (ragProvider == null || ragProvider.getIfAvailable() == null) {
@@ -1072,6 +1072,19 @@ public class IntentHandlingStep implements PipelineStep {
         }
 
         return result;
+    }
+
+    private boolean allowsCooperativeReadFallback(AIActionMetaData meta,
+                                                  OrchestrationPolicy policy) {
+        if (meta == null
+            || policy == null
+            || !ReadActionResolutionSupport.isActionExecutionAllowedByPolicy(meta.getName(), meta, policy)) {
+            return false;
+        }
+        OrchestrationPolicy.ReadActionResolutionPolicy readPolicy = policy.readActionResolutionPolicy();
+        return readPolicy != null
+            && readPolicy.ragCooperationMode()
+                != OrchestrationProperties.ReadActionResolutionRagCooperationMode.NONE;
     }
 
     private boolean requiresActionConfirmation(AIActionHandler handler) {

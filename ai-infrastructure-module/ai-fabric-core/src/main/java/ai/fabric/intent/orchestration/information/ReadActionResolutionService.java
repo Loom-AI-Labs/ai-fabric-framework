@@ -13,8 +13,8 @@ import ai.fabric.intent.action.AIActionParamSchema;
 import ai.fabric.intent.action.AIActionRegistry;
 import ai.fabric.intent.action.ActionAccessMode;
 import ai.fabric.intent.action.ActionContext;
+import ai.fabric.intent.action.ActionGroundingSupport;
 import ai.fabric.intent.action.ActionGroundingSufficiency;
-import ai.fabric.intent.action.ActionListPayload;
 import ai.fabric.intent.action.ActionPayload;
 import ai.fabric.intent.action.ActionResult;
 import ai.fabric.intent.orchestration.capability.CapabilityAwareActionMetadataSupport;
@@ -518,10 +518,7 @@ public class ReadActionResolutionService {
         if (result.getGroundingSufficiency() == ActionGroundingSufficiency.SUFFICIENT) {
             return true;
         }
-        if (result.getGroundingSufficiency() == ActionGroundingSufficiency.INSUFFICIENT) {
-            return false;
-        }
-        if (result.getData() instanceof ActionListPayload listPayload && listPayload.isEmpty()) {
+        if (ActionGroundingSupport.requiresAdditionalGrounding(result)) {
             return false;
         }
         return evidence != null && evidence.groundingUsable();

@@ -18,6 +18,9 @@ import ai.fabric.intent.action.AIActionMetaData;
 import ai.fabric.intent.action.AIActionHandler;
 import ai.fabric.intent.action.AIActionRegistry;
 import ai.fabric.intent.action.ActionAccessMode;
+import ai.fabric.intent.action.ActionContext;
+import ai.fabric.intent.action.ActionGroundingSufficiency;
+import ai.fabric.intent.action.ActionListPayload;
 import ai.fabric.intent.action.ActionResult;
 import ai.fabric.intent.action.ActionResultContracts;
 import ai.fabric.intent.action.InMemoryPendingActionStore;
@@ -26,6 +29,8 @@ import ai.fabric.intent.orchestration.OrchestrationContext;
 import ai.fabric.intent.orchestration.OrchestrationResult;
 import ai.fabric.intent.orchestration.OrchestrationResultType;
 import ai.fabric.intent.orchestration.pipeline.PipelineContext;
+import ai.fabric.intent.orchestration.pipeline.steps.PostActionGenerationSupport.PostActionGenerationOutcome;
+import ai.fabric.intent.orchestration.pipeline.steps.PostActionGenerationSupport.ResolvedPostActionGeneration;
 import ai.fabric.intent.orchestration.policy.OrchestrationPolicy;
 import ai.fabric.intent.orchestration.policy.OrchestrationProfile;
 import ai.fabric.intent.vectorspace.RankBasedMerger;
@@ -50,9 +55,59 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 class IntentHandlingStepPostActionGenerationTest {
+
+    @Test
+    void shouldNotTreatInsufficientReadActionResultAsGenerationGrounding() {
+        AIActionHandler handler = mock(AIActionHandler.class);
+        AICoreService aiCoreService = mock(AICoreService.class);
+        PostActionGenerationProperties properties = new PostActionGenerationProperties();
+        properties.setEnabled(true);
+        PostActionGenerationSupport support = new PostActionGenerationSupport(
+            aiCoreService,
+            new RelationshipQueryPostActionGenerationProperties(),
+            properties,
+            providerOf(new ObjectMapper()),
+            promptTemplateResolver(),
+            new PromptRenderer()
+        );
+        ActionResult result = ActionResult.builder()
+            .success(true)
+            .message("Search completed.")
+            .groundingSufficiency(ActionGroundingSufficiency.INSUFFICIENT)
+            .data(ActionListPayload.of(List.of()))
+            .build();
+
+        assertThat(support.buildReadActionGroundingObservation(
+            "search_inventory",
+            handler,
+            result,
+            mock(ActionContext.class)
+        )).isEmpty();
+
+        PostActionGenerationOutcome outcome = support.maybeGeneratePostActionSummary(
+            "search_inventory",
+            handler,
+            Intent.builder().type(IntentType.ACTION).action("search_inventory").build(),
+            result,
+            OrchestrationContext.forUser("user-1"),
+            PipelineContext.from("Search inventory", OrchestrationContext.forUser("user-1")),
+            Map.of(),
+            new ResolvedPostActionGeneration(true, null, true)
+        );
+
+        assertThat(outcome).isNotNull();
+        assertThat(outcome.summary()).isNull();
+        assertThat(outcome.message()).isEqualTo("Search completed.");
+        assertThat(outcome.metadata())
+            .containsEntry("used", false)
+            .containsEntry("skippedReason", "grounding_insufficient")
+            .containsEntry("groundingSufficiency", "INSUFFICIENT");
+        verifyNoInteractions(handler, aiCoreService);
+    }
 
     @Test
     void shouldGeneratePostActionSummaryWhenHandlerProvidesFacts() {

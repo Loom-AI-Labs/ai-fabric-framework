@@ -510,6 +510,10 @@ public class ResponseSanitizer {
         List<String> types = new ArrayList<>(messageOutcome.detectedTypes());
         sanitized.put("message", messageOutcome.value());
 
+        if (actionResult.getGroundingSufficiency() != null) {
+            sanitized.put("groundingSufficiency", actionResult.getGroundingSufficiency().name());
+        }
+
         Object rawData = actionResult.getData();
         if (rawData != null) {
             SanitizationOutcome<Object> dataOutcome = sanitizeObject(rawData, userId);

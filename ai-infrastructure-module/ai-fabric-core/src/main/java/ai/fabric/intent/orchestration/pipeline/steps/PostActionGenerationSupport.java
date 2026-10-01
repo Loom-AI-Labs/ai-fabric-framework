@@ -11,6 +11,7 @@ import ai.fabric.intent.action.AIActionHandler;
 import ai.fabric.intent.action.AIActionMetaData;
 import ai.fabric.intent.action.ActionAccessMode;
 import ai.fabric.intent.action.ActionContext;
+import ai.fabric.intent.action.ActionGroundingSupport;
 import ai.fabric.intent.action.ActionPayload;
 import ai.fabric.intent.action.ActionResult;
 import ai.fabric.intent.orchestration.OrchestrationAuthContextResolver;
@@ -143,7 +144,8 @@ final class PostActionGenerationSupport {
         if (!StringUtils.hasText(actionName)
             || handler == null
             || actionResult == null
-            || !actionResult.isSuccess()) {
+            || !actionResult.isSuccess()
+            || ActionGroundingSupport.requiresAdditionalGrounding(actionResult)) {
             return Optional.empty();
         }
 
@@ -203,6 +205,19 @@ final class PostActionGenerationSupport {
         }
         if (actionResult == null || !actionResult.isSuccess()) {
             return null;
+        }
+        if (ActionGroundingSupport.requiresAdditionalGrounding(actionResult)) {
+            Map<String, Object> metadata = new LinkedHashMap<>();
+            metadata.put("used", false);
+            metadata.put("skippedReason", "grounding_insufficient");
+            if (actionResult.getGroundingSufficiency() != null) {
+                metadata.put("groundingSufficiency", actionResult.getGroundingSufficiency().name());
+            }
+            return new PostActionGenerationOutcome(
+                null,
+                StringUtils.hasText(actionResult.getMessage()) ? actionResult.getMessage() : null,
+                Collections.unmodifiableMap(metadata)
+            );
         }
 
         if (!ACTION_RELATIONSHIP_QUERY.equalsIgnoreCase(actionName)) {

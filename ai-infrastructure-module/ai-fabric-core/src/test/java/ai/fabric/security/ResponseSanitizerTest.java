@@ -5,6 +5,7 @@ import ai.fabric.dto.NextStepRecommendation;
 import ai.fabric.dto.RAGResponse;
 import ai.fabric.intent.action.ActionResult;
 import ai.fabric.intent.action.ActionResultContracts;
+import ai.fabric.intent.action.ActionGroundingSufficiency;
 import ai.fabric.intent.orchestration.OrchestrationResult;
 import ai.fabric.intent.orchestration.OrchestrationResultType;
 import ai.fabric.privacy.pii.PIIDetectionService;
@@ -85,6 +86,7 @@ class ResponseSanitizerTest {
         @SuppressWarnings("unchecked")
         Map<String, Object> actionResult = (Map<String, Object>) data.get("actionResult");
         assertThat(actionResult.get("message").toString()).doesNotContain("4111-1111-1111-1111");
+        assertThat(actionResult).containsEntry("groundingSufficiency", "INSUFFICIENT");
 
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> suggestions = (List<Map<String, Object>>) payload.get("suggestions");
@@ -359,6 +361,7 @@ class ResponseSanitizerTest {
         data.put("actionResult", ActionResult.builder()
             .success(true)
             .message("Card 4111-1111-1111-1111 processed successfully.")
+            .groundingSufficiency(ActionGroundingSufficiency.INSUFFICIENT)
             .data(ActionResultContracts.object(Map.of("card", "4111-1111-1111-1111")))
             .build());
         return data;

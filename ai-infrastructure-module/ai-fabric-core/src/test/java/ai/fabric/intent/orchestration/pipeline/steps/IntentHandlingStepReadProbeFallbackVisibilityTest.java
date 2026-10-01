@@ -16,6 +16,7 @@ import ai.fabric.intent.action.AIActionHandler;
 import ai.fabric.intent.action.AIActionMetaData;
 import ai.fabric.intent.action.AIActionRegistry;
 import ai.fabric.intent.action.ActionAccessMode;
+import ai.fabric.intent.action.ActionGroundingSufficiency;
 import ai.fabric.intent.action.ActionListPayload;
 import ai.fabric.intent.action.ActionResult;
 import ai.fabric.intent.action.InMemoryPendingActionStore;
@@ -43,9 +44,83 @@ import org.springframework.core.io.DefaultResourceLoader;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class IntentHandlingStepReadProbeFallbackVisibilityTest {
+
+    @Test
+    void shouldFallbackToRagForInsufficientAllowlistedReadActionInActionsPreferredMode() {
+        AIActionRegistry registry = mock(AIActionRegistry.class);
+        AIActionHandler handler = mock(AIActionHandler.class);
+        when(registry.findHandler("list_orders")).thenReturn(Optional.of(handler));
+        when(handler.validateActionAllowed(any())).thenReturn(true);
+        when(handler.requiresConfirmation()).thenReturn(false);
+        when(handler.executeAction(any(), any())).thenReturn(ActionResult.builder()
+            .success(true)
+            .message("No exact action match.")
+            .groundingSufficiency(ActionGroundingSufficiency.INSUFFICIENT)
+            .data(ActionListPayload.of(List.of()))
+            .build());
+
+        AIActionMetaData meta = AIActionMetaData.builder()
+            .name("list_orders")
+            .description("List my orders")
+            .accessMode(ActionAccessMode.READ)
+            .groundingEligible(true)
+            .readActionResolutionEligible(true)
+            .build();
+        when(registry.findMetadata("list_orders")).thenReturn(Optional.of(meta));
+
+        RAGProvider ragProvider = mock(RAGProvider.class);
+        when(ragProvider.performRag(any())).thenReturn(RAGResponse.builder()
+            .documents(List.of())
+            .context("Indexed order guidance is available.")
+            .success(true)
+            .build());
+
+        AIServiceConfig aiServiceConfig = new AIServiceConfig();
+        aiServiceConfig.getFeatures().setEnableGeneration(false);
+        IntentHandlingStep step = new IntentHandlingStep(
+            registry,
+            providerOf(ragProvider),
+            mock(AICoreService.class),
+            aiServiceConfig,
+            providerOf((AdvancedRAGProvider) null),
+            new VectorSpaceRoutingProperties(),
+            new RankBasedMerger(),
+            new RelationshipQueryPostActionGenerationProperties(),
+            new PostActionGenerationProperties(),
+            providerOf(new ObjectMapper()),
+            new OrchestrationProperties(),
+            providerOf((KnowledgeBaseOverviewService) null),
+            null,
+            new InMemoryPendingActionStore(),
+            new InMemoryActionDraftStore(),
+            promptTemplateResolver(),
+            new PromptRenderer()
+        );
+
+        Intent intent = Intent.builder()
+            .type(IntentType.ACTION)
+            .action("list_orders")
+            .actionParams(Map.of())
+            .vectorSpace("order")
+            .optimizedQuery("List my orders")
+            .build();
+        PipelineContext context = PipelineContext.from("List my orders", OrchestrationContext.forUser("user-1"))
+            .toBuilder()
+            .intentResponse(MultiIntentResponse.builder().intents(List.of(intent)).build())
+            .orchestrationPolicy(actionsPreferredCooperativePolicy())
+            .build();
+
+        OrchestrationResult result = step.process(context).getIntentResult();
+
+        assertThat(result).isNotNull();
+        assertThat(result.getType()).isEqualTo(OrchestrationResultType.INFORMATION_PROVIDED);
+        assertThat(result.getMetadata()).containsKey("readProbe");
+        verify(ragProvider).performRag(any());
+    }
 
     @Test
     void shouldNotIncludeReadProbeMetadataByDefault() {
@@ -220,6 +295,45 @@ class IntentHandlingStepReadProbeFallbackVisibilityTest {
         return new PromptTemplateResolver(
             new ClasspathPromptTemplateStore(new DefaultResourceLoader()),
             new PromptBundleProperties()
+        );
+    }
+
+    private OrchestrationPolicy actionsPreferredCooperativePolicy() {
+        return new OrchestrationPolicy(
+            OrchestrationProfile.PRODUCTION_CHAT,
+            "executor",
+            "search",
+            OrchestrationProperties.InformationMode.LLM_DRIVEN,
+            new OrchestrationPolicy.OrchestrationCapabilities(
+                true,
+                true,
+                false,
+                false,
+                true,
+                true,
+                false,
+                false,
+                false,
+                true,
+                false,
+                false,
+                false
+            ),
+            new OrchestrationPolicy.ReadActionResolutionPolicy(
+                true,
+                OrchestrationProperties.ReadActionResolutionPlanningMode.ITERATIVE,
+                List.of("list_orders"),
+                true,
+                2,
+                2,
+                2,
+                1,
+                4000,
+                2400,
+                OrchestrationProperties.ReadActionResolutionRagCooperationMode.RAG_IF_ACTIONS_INSUFFICIENT,
+                true
+            ),
+            OrchestrationPolicy.RagBudgets.defaults()
         );
     }
 }
