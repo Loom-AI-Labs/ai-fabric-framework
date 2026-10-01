@@ -4,10 +4,15 @@
 
 Confirmed against AI Fabric `0.8.5` in a live hosted canary on 2026-09-30.
 
-Implemented on `main` for the `0.8.6` patch release. The implementation uses
-the typed `ActionListPayload` contract and the explicit trusted
+The planner-driven path was implemented in `0.8.6`. A hosted downstream canary
+then proved that extracted direct `ACTION` intents still used a separate
+post-action observation path, where a canonical empty list could be marked
+usable before the configured cooperative RAG policy ran.
+
+The direct-action path is fixed in `0.8.7`. The implementation uses the typed
+`ActionListPayload` contract and the explicit trusted
 `ActionGroundingSufficiency` result override. It does not inspect action names,
-business fields, or answer text.
+business fields, query text, or answer text.
 
 This is a framework change request. It is not a request for application-specific
 matching, dealership-specific behavior, or answer-prompt compensation.
@@ -119,6 +124,10 @@ Framework coverage now includes these cases:
 6. Iteration and total-action limits remain enforced.
 7. A failed action is still represented as failure, not as an empty success.
 8. No domain-specific action names, fields, or text matching are introduced.
+9. An extracted direct read-action intent in an action-preferred mode still
+   invokes RAG when its allowlisted policy is `RAG_IF_ACTIONS_INSUFFICIENT`.
+10. An insufficient direct action is not projected as usable post-action
+    grounding and is not sent to answer generation by itself.
 
 Focused verification:
 
@@ -126,6 +135,10 @@ Focused verification:
 - `ActionResultSerializationTest`
 - `ActionConnectorExecutorTest`
 - `ConnectorAIActionHandlerTest`
+- `ActionGroundingSupportTest`
+- `IntentHandlingStepReadProbeFallbackVisibilityTest`
+- `IntentHandlingStepPostActionGenerationTest`
+- `ResponseSanitizerTest`
 
 ## Acceptance Evidence
 
