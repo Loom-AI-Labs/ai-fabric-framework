@@ -1,0 +1,41 @@
+name: Maven Central Deployment Status
+
+on:
+  workflow_dispatch:
+    inputs:
+      deployment_id:
+        description: Maven Central publisher deployment ID to inspect.
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  status:
+    name: Inspect Maven Central deployment
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Query deployment status
+        shell: bash
+        env:
+          CENTRAL_TOKEN_USERNAME: ${{ secrets.CENTRAL_TOKEN_USERNAME }}
+          CENTRAL_TOKEN_PASSWORD: ${{ secrets.CENTRAL_TOKEN_PASSWORD }}
+          DEPLOYMENT_ID: ${{ inputs.deployment_id }}
+        run: |
+          set -euo pipefail
+
+          bearer="$(printf '%s:%s' "${CENTRAL_TOKEN_USERNAME}" "${CENTRAL_TOKEN_PASSWORD}" | base64 | tr -d '\n')"
+          http_code="$(curl --silent --show-error \
+            --output central-status.json \
+            --write-out '%{http_code}' \
+            --header "Authorization: Bearer ${bearer}" \
+            "https://central.sonatype.com/api/v1/publisher/status?id=${DEPLOYMENT_ID}")"
+
+          if [[ "${http_code}" != "200" ]]; then
+            echo "Maven Central status request failed with HTTP ${http_code}." >&2
+            jq '{error}' central-status.json 2>/dev/null || true
+            exit 1
+          fi
+
+          jq '{deploymentId, deploymentName, deploymentState, purls, errors}' central-status.json
