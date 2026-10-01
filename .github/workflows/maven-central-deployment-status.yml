@@ -27,6 +27,7 @@ jobs:
 
           bearer="$(printf '%s:%s' "${CENTRAL_TOKEN_USERNAME}" "${CENTRAL_TOKEN_PASSWORD}" | base64 | tr -d '\n')"
           http_code="$(curl --silent --show-error \
+            --request POST \
             --output central-status.json \
             --write-out '%{http_code}' \
             --header "Authorization: Bearer ${bearer}" \
