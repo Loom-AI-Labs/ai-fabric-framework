@@ -3,6 +3,7 @@ package ai.fabric.intent.orchestration.pipeline.steps;
 import ai.fabric.dto.Intent;
 import ai.fabric.intent.action.AIActionMetaData;
 import ai.fabric.intent.action.ActionAccessMode;
+import ai.fabric.intent.action.ActionResult;
 import ai.fabric.intent.orchestration.OrchestrationContext;
 import ai.fabric.intent.orchestration.OrchestrationResult;
 import ai.fabric.intent.orchestration.information.ReadActionResolutionService;
@@ -12,8 +13,10 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.util.StringUtils;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
@@ -21,6 +24,7 @@ import java.util.Map;
 final class ReadActionResolutionSupport {
 
     static final String METADATA_KEY = "readActionResolution";
+    static final String ACTIONS_KEY = "actions";
 
     private ReadActionResolutionSupport() {
     }
@@ -112,8 +116,46 @@ final class ReadActionResolutionSupport {
             data.putAll(result.getData());
         }
         data.put(METADATA_KEY, Collections.unmodifiableMap(new LinkedHashMap<>(resolutionOutcome.diagnostics())));
+        List<Object> actionResults = projectActionResults(resolutionOutcome);
+        if (!actionResults.isEmpty() && firstList(data.get(ACTIONS_KEY)).isEmpty()) {
+            data.put(ACTIONS_KEY, actionResults);
+        }
         result.setData(Collections.unmodifiableMap(data));
         return result;
+    }
+
+    private static List<Object> projectActionResults(ReadActionResolutionService.ResolutionOutcome resolutionOutcome) {
+        if (resolutionOutcome == null
+            || resolutionOutcome.executedActions() == null
+            || resolutionOutcome.executedActions().isEmpty()) {
+            return List.of();
+        }
+
+        List<Object> actions = new ArrayList<>();
+        for (ReadActionResolutionService.ExecutedReadAction executed : resolutionOutcome.executedActions()) {
+            if (executed == null || executed.actionResult() == null || !StringUtils.hasText(executed.actionName())) {
+                continue;
+            }
+
+            ActionResult source = executed.actionResult();
+            ActionResult publicResult = ActionResult.builder()
+                .success(source.isSuccess())
+                .message(source.getMessage())
+                .data(source.getData())
+                .groundingSufficiency(source.getGroundingSufficiency())
+                .errorCode(source.getErrorCode())
+                .build();
+
+            Map<String, Object> action = new LinkedHashMap<>();
+            action.put("action", executed.actionName());
+            action.put("actionResult", publicResult);
+            actions.add(Collections.unmodifiableMap(action));
+        }
+        return actions.isEmpty() ? List.of() : List.copyOf(actions);
+    }
+
+    private static List<?> firstList(Object value) {
+        return value instanceof List<?> list ? list : List.of();
     }
 
     static String mergeEvidenceIntoGenerationContext(String retrievedContext,

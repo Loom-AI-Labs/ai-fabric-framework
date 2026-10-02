@@ -4,6 +4,9 @@ import ai.fabric.config.OrchestrationProperties;
 import ai.fabric.dto.Intent;
 import ai.fabric.intent.action.AIActionMetaData;
 import ai.fabric.intent.action.ActionAccessMode;
+import ai.fabric.intent.action.ActionGroundingSufficiency;
+import ai.fabric.intent.action.ActionResult;
+import ai.fabric.intent.action.ActionResultContracts;
 import ai.fabric.intent.orchestration.OrchestrationContext;
 import ai.fabric.intent.orchestration.OrchestrationResult;
 import ai.fabric.intent.orchestration.information.ReadActionResolutionService;
@@ -110,11 +113,27 @@ class ReadActionResolutionSupportTest {
 
     @Test
     void shouldAttachDiagnosticsToResultMetadataAndData() {
+        ActionResult actionResult = ActionResult.builder()
+            .success(true)
+            .message("Record loaded.")
+            .data(ActionResultContracts.object(Map.of(
+                "record", Map.of("name", "Alpha Record", "status", "ready")
+            )))
+            .groundingSufficiency(ActionGroundingSufficiency.SUFFICIENT)
+            .build();
         ReadActionResolutionService.ResolutionOutcome outcome =
             ReadActionResolutionService.ResolutionOutcome.continueWithRag(
                 "READ ACTION EVIDENCE\n- live fact",
                 List.of("records"),
-                List.of(),
+                List.of(new ReadActionResolutionService.ExecutedReadAction(
+                    "get_record",
+                    Map.of("trustedRecordId", "internal-001"),
+                    null,
+                    actionResult,
+                    true,
+                    "Alpha Record is ready.",
+                    null
+                )),
                 Map.of("attempted", true, "useRag", true)
             );
         OrchestrationResult result = OrchestrationResult.builder()
@@ -133,6 +152,50 @@ class ReadActionResolutionSupportTest {
         assertThat(attached.getData()).containsEntry("answer", "ok");
         Map<?, ?> dataDiagnostics = (Map<?, ?>) attached.getData().get(ReadActionResolutionSupport.METADATA_KEY);
         assertThat(dataDiagnostics.get("attempted")).isEqualTo(true);
+        assertThat((List<?>) attached.getData().get(ReadActionResolutionSupport.ACTIONS_KEY))
+            .singleElement()
+            .satisfies(rawAction -> {
+                assertThat(rawAction).isInstanceOf(Map.class);
+                Map<?, ?> action = (Map<?, ?>) rawAction;
+                assertThat(action.get("action")).isEqualTo("get_record");
+                assertThat(action.containsKey("params")).isFalse();
+                assertThat(action.get("actionResult")).isInstanceOf(ActionResult.class);
+                ActionResult projectedResult = (ActionResult) action.get("actionResult");
+                assertThat(projectedResult.isSuccess()).isTrue();
+                assertThat(projectedResult.getMessage()).isEqualTo("Record loaded.");
+                assertThat(projectedResult.getGroundingSufficiency())
+                    .isEqualTo(ActionGroundingSufficiency.SUFFICIENT);
+                assertThat(projectedResult.getData()).isNotNull();
+                assertThat(projectedResult.getPinnedTargets()).isNull();
+            });
+    }
+
+    @Test
+    void shouldPreserveAnExistingActionEnvelope() {
+        ReadActionResolutionService.ResolutionOutcome outcome =
+            ReadActionResolutionService.ResolutionOutcome.answerFromActionsOnly(
+                "READ ACTION EVIDENCE\n- live fact",
+                List.of(),
+                List.of(new ReadActionResolutionService.ExecutedReadAction(
+                    "read_again",
+                    Map.of(),
+                    null,
+                    ActionResult.builder().success(true).message("new").build(),
+                    true,
+                    "new",
+                    null
+                )),
+                Map.of("attempted", true)
+            );
+        List<Map<String, Object>> existingActions = List.of(Map.of("action", "existing_action"));
+        OrchestrationResult result = OrchestrationResult.builder()
+            .success(true)
+            .data(Map.of("actions", existingActions))
+            .build();
+
+        OrchestrationResult attached = ReadActionResolutionSupport.attachDiagnostics(result, outcome);
+
+        assertThat(attached.getData().get("actions")).isEqualTo(existingActions);
     }
 
     @Test

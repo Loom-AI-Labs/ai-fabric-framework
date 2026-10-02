@@ -2,10 +2,10 @@
 #
 # Build context: examples/real-apps
 # docker build -f ai-fabric-live-data-sync/Dockerfile \
-#   --build-arg AI_FABRIC_VERSION=0.8.7 \
-#   -t ai-fabric-live-data-sync:0.8.7 .
+#   --build-arg AI_FABRIC_VERSION=0.8.8 \
+#   -t ai-fabric-live-data-sync:0.8.8 .
 
-ARG AI_FABRIC_VERSION=0.8.7
+ARG AI_FABRIC_VERSION=0.8.8
 ARG APP_VERSION=1.0.0-SNAPSHOT
 ARG SOURCE_COMMIT=
 ARG SOURCE_BRANCH=
