@@ -7,6 +7,7 @@ import ai.fabric.intent.action.ActionAccessMode;
 import ai.fabric.intent.action.ActionGroundingSufficiency;
 import ai.fabric.intent.action.ActionResult;
 import ai.fabric.intent.action.ActionResultContracts;
+import ai.fabric.intent.action.ActionTargetRef;
 import ai.fabric.intent.orchestration.OrchestrationContext;
 import ai.fabric.intent.orchestration.OrchestrationResult;
 import ai.fabric.intent.orchestration.information.ReadActionResolutionService;
@@ -15,6 +16,7 @@ import ai.fabric.intent.orchestration.policy.OrchestrationPolicy;
 import ai.fabric.intent.orchestration.policy.OrchestrationProfile;
 import ai.fabric.intent.orchestration.targets.ResolvedTarget;
 import ai.fabric.intent.orchestration.targets.ResolvedTargetSource;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.ObjectProvider;
 
@@ -112,13 +114,16 @@ class ReadActionResolutionSupportTest {
     }
 
     @Test
-    void shouldAttachDiagnosticsToResultMetadataAndData() {
+    void shouldAttachDiagnosticsToResultMetadataAndData() throws Exception {
         ActionResult actionResult = ActionResult.builder()
             .success(true)
             .message("Record loaded.")
             .data(ActionResultContracts.object(Map.of(
                 "record", Map.of("name", "Alpha Record", "status", "ready")
             )))
+            .pinnedTargets(List.of(
+                new ActionTargetRef("record-1", "records", "Alpha Record is ready.", Map.of("name", "Alpha Record"))
+            ))
             .groundingSufficiency(ActionGroundingSufficiency.SUFFICIENT)
             .build();
         ReadActionResolutionService.ResolutionOutcome outcome =
@@ -168,6 +173,12 @@ class ReadActionResolutionSupportTest {
                 assertThat(projectedResult.getData()).isNotNull();
                 assertThat(projectedResult.getPinnedTargets()).isNull();
             });
+        assertThat(attached.getInternalPinnedTargets()).singleElement().satisfies(target -> {
+            assertThat(target.id()).isEqualTo("record-1");
+            assertThat(target.vectorSpace()).isEqualTo("records");
+        });
+        assertThat(new ObjectMapper().writeValueAsString(attached))
+            .doesNotContain("internalPinnedTargets", "Alpha Record is ready.");
     }
 
     @Test

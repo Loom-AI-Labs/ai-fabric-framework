@@ -368,36 +368,55 @@ public class ConversationRecordingStep implements PipelineStep {
         }
 
         OrchestrationResult result = context.getIntentResult();
-        if (result.getType() != OrchestrationResultType.ACTION_EXECUTED) {
-            return List.of();
-        }
-
         Map<String, Object> data = result.getData();
-        ActionResult actionResult = coerceActionResult(data.get(RESULT_DATA_KEY_ACTION_RESULT));
-        if (actionResult == null || !actionResult.isSuccess()) {
-            return List.of();
+        List<ActionResult> actionResults = new ArrayList<>();
+        if (result.getType() == OrchestrationResultType.ACTION_EXECUTED) {
+            ActionResult direct = coerceActionResult(data.get(RESULT_DATA_KEY_ACTION_RESULT));
+            if (direct != null) {
+                actionResults.add(direct);
+            }
+        } else if (result.getType() == OrchestrationResultType.INFORMATION_PROVIDED
+            && result.getInternalPinnedTargets() != null
+            && !result.getInternalPinnedTargets().isEmpty()) {
+            actionResults.add(ActionResult.builder()
+                .success(true)
+                .pinnedTargets(result.getInternalPinnedTargets())
+                .build());
         }
-
-        List<ai.fabric.intent.action.ActionTargetRef> pinned = actionResult.getPinnedTargets();
-        if (pinned == null || pinned.isEmpty()) {
+        if (actionResults.isEmpty()) {
             return List.of();
         }
 
         List<ResolvedTarget> targets = new ArrayList<>();
-        for (ai.fabric.intent.action.ActionTargetRef ref : pinned) {
+        Set<String> seen = new java.util.LinkedHashSet<>();
+        for (ActionResult actionResult : actionResults) {
+            if (actionResult == null || !actionResult.isSuccess()
+                || actionResult.getPinnedTargets() == null || actionResult.getPinnedTargets().isEmpty()) {
+                continue;
+            }
+            for (ai.fabric.intent.action.ActionTargetRef ref : actionResult.getPinnedTargets()) {
+                if (targets.size() >= RESOLVED_TARGETS_MAX) {
+                    break;
+                }
+                if (ref == null || !StringUtils.hasText(ref.id())) {
+                    continue;
+                }
+                String vectorSpace = StringUtils.hasText(ref.vectorSpace()) ? ref.vectorSpace().trim() : null;
+                String key = (vectorSpace != null ? vectorSpace : "") + "\u0000" + ref.id().trim();
+                if (!seen.add(key)) {
+                    continue;
+                }
+                targets.add(ResolvedTarget.builder()
+                    .id(ref.id().trim())
+                    .vectorSpace(vectorSpace)
+                    .contentText(StringUtils.hasText(ref.contentText()) ? ref.contentText().trim() : null)
+                    .metadata(ref.metadata() != null ? ref.metadata() : Map.of())
+                    .source(ai.fabric.intent.orchestration.targets.ResolvedTargetSource.ACTION_RESULT_ITEMS)
+                    .build());
+            }
             if (targets.size() >= RESOLVED_TARGETS_MAX) {
                 break;
             }
-            if (ref == null || !StringUtils.hasText(ref.id())) {
-                continue;
-            }
-            targets.add(ResolvedTarget.builder()
-                .id(ref.id().trim())
-                .vectorSpace(StringUtils.hasText(ref.vectorSpace()) ? ref.vectorSpace().trim() : null)
-                .contentText(StringUtils.hasText(ref.contentText()) ? ref.contentText().trim() : null)
-                .metadata(ref.metadata() != null ? ref.metadata() : Map.of())
-                .source(ai.fabric.intent.orchestration.targets.ResolvedTargetSource.ACTION_RESULT_ITEMS)
-                .build());
         }
 
         return targets.isEmpty() ? List.of() : Collections.unmodifiableList(targets);

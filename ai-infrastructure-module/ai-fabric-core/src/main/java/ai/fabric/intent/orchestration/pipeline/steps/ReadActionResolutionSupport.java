@@ -4,6 +4,7 @@ import ai.fabric.dto.Intent;
 import ai.fabric.intent.action.AIActionMetaData;
 import ai.fabric.intent.action.ActionAccessMode;
 import ai.fabric.intent.action.ActionResult;
+import ai.fabric.intent.action.ActionTargetRef;
 import ai.fabric.intent.orchestration.OrchestrationContext;
 import ai.fabric.intent.orchestration.OrchestrationResult;
 import ai.fabric.intent.orchestration.information.ReadActionResolutionService;
@@ -97,10 +98,12 @@ final class ReadActionResolutionSupport {
 
     static OrchestrationResult attachDiagnostics(OrchestrationResult result,
                                                  ReadActionResolutionService.ResolutionOutcome resolutionOutcome) {
-        if (result == null
-            || resolutionOutcome == null
-            || resolutionOutcome.diagnostics() == null
-            || resolutionOutcome.diagnostics().isEmpty()) {
+        if (result == null || resolutionOutcome == null) {
+            return result;
+        }
+
+        result.setInternalPinnedTargets(collectInternalPinnedTargets(result, resolutionOutcome));
+        if (resolutionOutcome.diagnostics() == null || resolutionOutcome.diagnostics().isEmpty()) {
             return result;
         }
 
@@ -152,6 +155,48 @@ final class ReadActionResolutionSupport {
             actions.add(Collections.unmodifiableMap(action));
         }
         return actions.isEmpty() ? List.of() : List.copyOf(actions);
+    }
+
+    private static List<ActionTargetRef> collectInternalPinnedTargets(
+        OrchestrationResult result,
+        ReadActionResolutionService.ResolutionOutcome resolutionOutcome
+    ) {
+        final int maxTargetsPerTurn = 100;
+        LinkedHashMap<String, ActionTargetRef> targets = new LinkedHashMap<>();
+        if (result.getInternalPinnedTargets() != null) {
+            for (ActionTargetRef target : result.getInternalPinnedTargets()) {
+                addInternalPinnedTarget(targets, target, maxTargetsPerTurn);
+            }
+        }
+        if (resolutionOutcome.executedActions() != null) {
+            for (ReadActionResolutionService.ExecutedReadAction executed : resolutionOutcome.executedActions()) {
+                if (executed == null || executed.actionResult() == null || !executed.actionResult().isSuccess()
+                    || executed.actionResult().getPinnedTargets() == null) {
+                    continue;
+                }
+                for (ActionTargetRef target : executed.actionResult().getPinnedTargets()) {
+                    addInternalPinnedTarget(targets, target, maxTargetsPerTurn);
+                    if (targets.size() >= maxTargetsPerTurn) {
+                        break;
+                    }
+                }
+                if (targets.size() >= maxTargetsPerTurn) {
+                    break;
+                }
+            }
+        }
+        return targets.isEmpty() ? List.of() : List.copyOf(targets.values());
+    }
+
+    private static void addInternalPinnedTarget(Map<String, ActionTargetRef> targets,
+                                                ActionTargetRef target,
+                                                int maxTargets) {
+        if (target == null || targets.size() >= maxTargets || !StringUtils.hasText(target.id())) {
+            return;
+        }
+        String vectorSpace = StringUtils.hasText(target.vectorSpace()) ? target.vectorSpace().trim() : "";
+        String id = target.id().trim();
+        targets.putIfAbsent(vectorSpace + "\u0000" + id, target);
     }
 
     private static List<?> firstList(Object value) {

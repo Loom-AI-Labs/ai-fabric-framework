@@ -1,6 +1,7 @@
 package ai.fabric.intent.orchestration;
 
 import ai.fabric.dto.NextStepRecommendation;
+import ai.fabric.intent.action.ActionTargetRef;
 import ai.fabric.intent.action.invocation.ActionProposalCandidate;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
@@ -62,6 +63,17 @@ public class OrchestrationResult {
     @ToString.Exclude
     @EqualsAndHashCode.Exclude
     private transient ActionProposalCandidate actionProposalCandidate;
+
+    /**
+     * Trusted target material produced while resolving read actions for this turn.
+     * Chat/session integrations may persist a bounded projection for follow-up turns,
+     * but this carrier must never be returned to clients or written to diagnostic logs.
+     */
+    @JsonIgnore
+    @ToString.Exclude
+    @EqualsAndHashCode.Exclude
+    @Builder.Default
+    private transient List<ActionTargetRef> internalPinnedTargets = List.of();
 
     public static OrchestrationResult error(String message) {
         return OrchestrationResult.builder()

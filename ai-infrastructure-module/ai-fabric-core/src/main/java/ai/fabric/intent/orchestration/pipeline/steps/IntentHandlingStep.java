@@ -1575,17 +1575,20 @@ public class IntentHandlingStep implements PipelineStep {
                         metadata.put("vectorSpacesSelected", vectorSpaces);
                         metadata.put("vectorSpacesSelectionSource", "ADVANCED_FALLBACK_FAN_OUT");
 
-                        return informationRagExecutionSupport.fanOut(
-                            intent,
-                            context,
-                            pipelineContext,
-                            deterministic,
-                            needsGeneration,
-                            generationQuery,
-                            retrievalQuery,
-                            metadata,
-                            vectorSpaces,
-                            ragBudgets,
+                        return ReadActionResolutionSupport.attachDiagnostics(
+                            informationRagExecutionSupport.fanOut(
+                                intent,
+                                context,
+                                pipelineContext,
+                                deterministic,
+                                needsGeneration,
+                                generationQuery,
+                                retrievalQuery,
+                                metadata,
+                                vectorSpaces,
+                                ragBudgets,
+                                readActionResolution
+                            ),
                             readActionResolution
                         );
                     }

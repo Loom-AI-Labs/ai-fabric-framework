@@ -542,4 +542,70 @@ class ConversationRecordingStepTest {
                 && "ACTION_RESULT_ITEMS".equals(entry.get("originSource"));
         }));
     }
+
+    @Test
+    void shouldPersistPinnedTargetsFromReadActionsProjectedIntoInformationResponses() {
+        ChatSessionService chatSessionService = mock(ChatSessionService.class);
+        ChatSessionProperties properties = new ChatSessionProperties();
+        properties.setEnabled(true);
+        @SuppressWarnings("unchecked")
+        ObjectProvider<PIIDetectionService> provider = mock(ObjectProvider.class);
+        when(provider.getIfAvailable()).thenReturn(null);
+        when(chatSessionService.getSession(anyString(), anyString())).thenReturn(ChatSession.builder()
+            .id("conv-1")
+            .ownerId("user-1")
+            .turns(java.util.List.of(ai.fabric.chat.domain.ChatTurn.builder().build()))
+            .createdAt(java.time.LocalDateTime.now())
+            .lastInteractionAt(java.time.LocalDateTime.now())
+            .build());
+
+        ActionResult readResult = ActionResult.builder()
+            .success(true)
+            .message("Two current records found.")
+            .data(ActionResultContracts.list(java.util.List.of(
+                Map.of("stockId", "stock-1"),
+                Map.of("stockId", "stock-2")
+            )))
+            .pinnedTargets(java.util.List.of(
+                new ActionTargetRef("stock-1", "dealer-vehicle", "Northstar S4", Map.of("model", "S4")),
+                new ActionTargetRef("stock-2", "dealer-vehicle", "Arden V3", Map.of("model", "V3"))
+            ))
+            .build();
+        OrchestrationResult result = OrchestrationResult.builder()
+            .type(OrchestrationResultType.INFORMATION_PROVIDED)
+            .success(true)
+            .message("I found two current vehicles.")
+            .internalPinnedTargets(readResult.getPinnedTargets())
+            .data(Map.of(
+                "answer", "I found two current vehicles.",
+                "actions", java.util.List.of(Map.of(
+                    "action", "search_inventory",
+                    "actionResult", ActionResult.builder()
+                        .success(true)
+                        .message(readResult.getMessage())
+                        .data(readResult.getData())
+                        .build()
+                ))
+            ))
+            .build();
+        PipelineContext context = PipelineContext.from(
+            "Show electric cars",
+            OrchestrationContext.builder().userId("user-1").conversationId("conv-1").build()
+        ).toBuilder()
+            .intentResult(result)
+            .sanitizedPayload(Map.of("message", "I found two current vehicles."))
+            .build();
+
+        new ConversationRecordingStep(chatSessionService, properties, provider).process(context);
+
+        verify(chatSessionService).mergeSessionMetadata(eq("conv-1"), eq("user-1"), argThat(map -> {
+            Object raw = map.get("lastResolvedTargets");
+            if (!(raw instanceof java.util.List<?> targets) || targets.size() != 2) {
+                return false;
+            }
+            return targets.stream().allMatch(item -> item instanceof Map<?, ?> entry
+                && "dealer-vehicle".equals(entry.get("vectorSpace"))
+                && "ACTION_RESULT_ITEMS".equals(entry.get("originSource")));
+        }));
+    }
 }
