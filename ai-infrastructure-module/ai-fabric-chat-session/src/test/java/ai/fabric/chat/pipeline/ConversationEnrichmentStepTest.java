@@ -1,13 +1,11 @@
 package ai.fabric.chat.pipeline;
 
 import ai.fabric.chat.config.ChatSessionProperties;
-import ai.fabric.chat.domain.ChatSession;
 import ai.fabric.execution.context.ExecutionPrincipal;
 import ai.fabric.execution.context.ExecutionPrincipalType;
 import ai.fabric.execution.context.ExecutionSource;
 import ai.fabric.execution.context.ExecutionSubjectRef;
 import ai.fabric.execution.context.TrustedExecutionContext;
-import ai.fabric.intent.orchestration.targets.ResolvedTargetSource;
 import ai.fabric.chat.exception.ChatSessionAccessDeniedException;
 import ai.fabric.chat.service.ChatSessionService;
 import ai.fabric.intent.orchestration.OrchestrationContext;
@@ -28,6 +26,7 @@ import java.time.Instant;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -321,34 +320,9 @@ class ConversationEnrichmentStepTest {
     }
 
     @Test
-    void shouldSeedResolvedTargetsFromSessionMetadataWhenWithinReuseWindow() {
+    void shouldNotActivatePersistedTargetsBeforeIntentExtraction() {
         ChatSessionService service = mock(ChatSessionService.class);
         when(service.getConversationMessages(anyString(), anyString())).thenReturn(List.of());
-
-        ChatSession session = ChatSession.builder()
-            .id("conv-1")
-            .ownerId("user-1")
-            .turns(java.util.List.of(
-                ai.fabric.chat.domain.ChatTurn.builder().build(),
-                ai.fabric.chat.domain.ChatTurn.builder().build(),
-                ai.fabric.chat.domain.ChatTurn.builder().build()
-            ))
-            .sessionMetadata(Map.of(
-                "lastResolvedTargetsTurnIndex", 2,
-                "lastResolvedTargets", java.util.List.of(
-                    Map.of(
-                        "vectorSpace", "product",
-                        "contentText", "snippet",
-                        "contentTextTruncated", false,
-                        "originSource", "REQUEST_ATTACHMENTS"
-                    )
-                )
-            ))
-            .createdAt(java.time.LocalDateTime.now())
-            .lastInteractionAt(java.time.LocalDateTime.now())
-            .build();
-
-        when(service.getSession(anyString(), anyString())).thenReturn(session);
 
         ChatSessionProperties properties = new ChatSessionProperties();
         properties.setEnabled(true);
@@ -367,11 +341,9 @@ class ConversationEnrichmentStepTest {
         PipelineContext context = PipelineContext.from("summarize this", orchestrationContext);
         PipelineContext updated = step.process(context);
 
-        assertThat(updated.getResolvedTargets()).hasSize(1);
-        assertThat(updated.getResolvedTargets().getFirst().getId()).isNull();
-        assertThat(updated.getResolvedTargets().getFirst().getContentText()).isEqualTo("snippet");
-        assertThat(updated.getResolvedTargets().getFirst().getSource()).isEqualTo(ResolvedTargetSource.REQUEST_ATTACHMENTS);
-        assertThat(updated.getPinnedTargetsContext()).startsWith("PINNED TARGETS (previously pinned; not current UI selection):");
+        assertThat(updated.getResolvedTargets()).isEmpty();
+        assertThat(updated.getPinnedTargetsContext()).isNull();
+        verify(service, never()).getSession(anyString(), anyString());
     }
 
     // no vector database provider needed (pinned targets are persisted as full documents)

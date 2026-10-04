@@ -57,6 +57,136 @@ class WorkingSetTargetSeedingStepTest {
     }
 
     @Test
+    void shouldActivatePersistedActionTargetsAfterTargetDependentIntentExtraction() {
+        ChatSessionService service = mock(ChatSessionService.class);
+        ChatSession session = ChatSession.builder()
+            .id("conv-1")
+            .ownerId("user-1")
+            .turns(List.of(
+                ChatTurn.builder().build(),
+                ChatTurn.builder().build(),
+                ChatTurn.builder().build()
+            ))
+            .sessionMetadata(Map.of(
+                "lastResolvedTargetsTurnIndex", 2,
+                "lastResolvedTargets", List.of(
+                    Map.of(
+                        "id", "stock-42",
+                        "vectorSpace", "product",
+                        "contentText", "make: Example model: One",
+                        "contentTextTruncated", false,
+                        "metadata", Map.of("stockId", "stock-42"),
+                        "originSource", "ACTION_RESULT_ITEMS"
+                    )
+                )
+            ))
+            .createdAt(LocalDateTime.now())
+            .lastInteractionAt(LocalDateTime.now())
+            .build();
+        when(service.getSession("conv-1", "user-1")).thenReturn(session);
+
+        ChatSessionProperties properties = new ChatSessionProperties();
+        properties.setEnabled(true);
+        properties.setPinnedTargetReuseWindowTurns(3);
+
+        Intent intent = Intent.builder()
+            .type(IntentType.INFORMATION)
+            .intent("compare_previous_results")
+            .requiresTargetResolution(true)
+            .build();
+        OrchestrationContext orchContext = OrchestrationContext.builder()
+            .userId("user-1")
+            .conversationId("conv-1")
+            .build();
+        PipelineContext context = PipelineContext.from("Of those, which is best?", orchContext)
+            .toBuilder()
+            .intentResponse(MultiIntentResponse.builder().intents(List.of(intent)).build())
+            .build();
+
+        PipelineContext updated = new WorkingSetTargetSeedingStep(service, properties).process(context);
+
+        assertThat(updated.getResolvedTargets()).hasSize(1);
+        assertThat(updated.getResolvedTargets().getFirst().getId()).isEqualTo("stock-42");
+        assertThat(updated.getResolvedTargets().getFirst().getContentText()).contains("Example model");
+        assertThat(updated.getResolvedTargets().getFirst().getSource())
+            .isEqualTo(ResolvedTargetSource.ACTION_RESULT_ITEMS);
+        assertThat(updated.getPinnedTargetsContext())
+            .startsWith("PINNED TARGETS (previously pinned; selected for this target-dependent turn):");
+        assertThat(updated.getMetadata().get("workingSetTargetSeeding"))
+            .isEqualTo(Map.of("seeded", true, "count", 1, "source", "PINNED_TARGETS"));
+    }
+
+    @Test
+    void shouldNotActivateExpiredOrFutureDatedPersistedTargets() {
+        ChatSessionService service = mock(ChatSessionService.class);
+        ChatSessionProperties properties = new ChatSessionProperties();
+        properties.setEnabled(true);
+        properties.setPinnedTargetReuseWindowTurns(2);
+
+        Intent intent = Intent.builder()
+            .type(IntentType.INFORMATION)
+            .intent("compare_previous_results")
+            .requiresTargetResolution(true)
+            .build();
+        OrchestrationContext orchContext = OrchestrationContext.builder()
+            .userId("user-1")
+            .conversationId("conv-1")
+            .build();
+        PipelineContext context = PipelineContext.from("Compare those", orchContext)
+            .toBuilder()
+            .intentResponse(MultiIntentResponse.builder().intents(List.of(intent)).build())
+            .build();
+
+        List<Map<String, Object>> storedTargets = List.of(Map.of(
+            "id", "stock-42",
+            "vectorSpace", "product",
+            "originSource", "ACTION_RESULT_ITEMS"
+        ));
+        ChatSession expired = ChatSession.builder()
+            .id("conv-1")
+            .ownerId("user-1")
+            .turns(List.of(
+                ChatTurn.builder().build(),
+                ChatTurn.builder().build(),
+                ChatTurn.builder().build(),
+                ChatTurn.builder().build()
+            ))
+            .sessionMetadata(Map.of(
+                "lastResolvedTargetsTurnIndex", 1,
+                "lastResolvedTargets", storedTargets
+            ))
+            .createdAt(LocalDateTime.now())
+            .lastInteractionAt(LocalDateTime.now())
+            .build();
+        when(service.getSession("conv-1", "user-1")).thenReturn(expired);
+
+        PipelineContext expiredResult = new WorkingSetTargetSeedingStep(service, properties).process(context);
+
+        assertThat(expiredResult.getResolvedTargets()).isEmpty();
+        assertThat(expiredResult.getMetadata().get("workingSetTargetSeeding"))
+            .isEqualTo(Map.of("seeded", false));
+
+        ChatSession futureDated = ChatSession.builder()
+            .id("conv-1")
+            .ownerId("user-1")
+            .turns(expired.getTurns())
+            .sessionMetadata(Map.of(
+                "lastResolvedTargetsTurnIndex", 5,
+                "lastResolvedTargets", storedTargets
+            ))
+            .createdAt(LocalDateTime.now())
+            .lastInteractionAt(LocalDateTime.now())
+            .build();
+        when(service.getSession("conv-1", "user-1")).thenReturn(futureDated);
+
+        PipelineContext futureResult = new WorkingSetTargetSeedingStep(service, properties).process(context);
+
+        assertThat(futureResult.getResolvedTargets()).isEmpty();
+        assertThat(futureResult.getMetadata().get("workingSetTargetSeeding"))
+            .isEqualTo(Map.of("seeded", false));
+    }
+
+    @Test
     void shouldSeedFromLatestWorkingSetWhenIntentRequiresTargetResolution() {
         ChatSessionService service = mock(ChatSessionService.class);
 

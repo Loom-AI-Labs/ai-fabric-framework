@@ -35,8 +35,11 @@ public class WorkingSetTargetSeedingStep implements PipelineStep {
     private static final int STEP_ORDER = 51;
 
     private static final String METADATA_KEY_TARGET_SEEDING = "workingSetTargetSeeding";
+    private static final String SESSION_META_KEY_LAST_RESOLVED_TARGETS = "lastResolvedTargets";
+    private static final String SESSION_META_KEY_LAST_RESOLVED_TARGETS_TURN_INDEX = "lastResolvedTargetsTurnIndex";
 
     private static final int WORKING_SET_MAX_TARGETS = 4;
+    private static final int PINNED_TARGET_MAX_TARGETS = 8;
     private static final int WORKING_SET_MAX_METADATA_FIELDS = 8;
 
     private final ChatSessionService chatSessionService;
@@ -95,18 +98,24 @@ public class WorkingSetTargetSeedingStep implements PipelineStep {
             return context;
         }
 
-        List<ResolvedTarget> targets = session != null ? extractWorkingSetTargets(session.getTurns()) : List.of();
+        TargetSeed seed = session != null ? extractPersistedPinnedTargets(session) : TargetSeed.empty();
+        if (seed.targets().isEmpty() && session != null) {
+            seed = new TargetSeed(extractWorkingSetTargets(session.getTurns()), "WORKING_SET");
+        }
+        List<ResolvedTarget> targets = seed.targets();
         if (targets.isEmpty()) {
             return context.withMetadata(METADATA_KEY_TARGET_SEEDING, Map.of("seeded", false));
         }
 
         PipelineContext updated = context.toBuilder()
             .resolvedTargets(targets)
+            .pinnedTargetsContext(buildTargetContext(targets))
             .build();
 
         return updated.withMetadata(METADATA_KEY_TARGET_SEEDING, Map.of(
             "seeded", true,
-            "count", targets.size()
+            "count", targets.size(),
+            "source", seed.source()
         ));
     }
 
@@ -120,6 +129,69 @@ public class WorkingSetTargetSeedingStep implements PipelineStep {
             }
         }
         return false;
+    }
+
+    private TargetSeed extractPersistedPinnedTargets(ChatSession session) {
+        if (session == null || session.getSessionMetadata() == null || session.getSessionMetadata().isEmpty()) {
+            return TargetSeed.empty();
+        }
+
+        int reuseWindow = properties.getPinnedTargetReuseWindowTurns();
+        if (reuseWindow <= 0) {
+            return TargetSeed.empty();
+        }
+
+        Map<String, Object> sessionMetadata = session.getSessionMetadata();
+        int currentTurnIndex = session.getTurns() != null ? session.getTurns().size() : 0;
+        int lastTurnIndex = coerceInt(sessionMetadata.get(SESSION_META_KEY_LAST_RESOLVED_TARGETS_TURN_INDEX), -1);
+        if (lastTurnIndex < 0
+            || lastTurnIndex > currentTurnIndex
+            || (currentTurnIndex - lastTurnIndex) > reuseWindow) {
+            return TargetSeed.empty();
+        }
+
+        Object rawTargets = sessionMetadata.get(SESSION_META_KEY_LAST_RESOLVED_TARGETS);
+        if (!(rawTargets instanceof List<?> storedTargets) || storedTargets.isEmpty()) {
+            return TargetSeed.empty();
+        }
+
+        int maxTargets = PINNED_TARGET_MAX_TARGETS;
+        if (properties.getPinnedTargetPersistence() != null
+            && properties.getPinnedTargetPersistence().getMaxTargets() > 0) {
+            maxTargets = properties.getPinnedTargetPersistence().getMaxTargets();
+        }
+
+        List<ResolvedTarget> targets = new ArrayList<>();
+        for (Object storedTarget : storedTargets) {
+            if (targets.size() >= maxTargets) {
+                break;
+            }
+            if (!(storedTarget instanceof Map<?, ?> map)) {
+                continue;
+            }
+
+            String id = coerceString(map.get("id"));
+            String vectorSpace = coerceString(map.get("vectorSpace"));
+            String contentText = coerceString(map.get("contentText"));
+            boolean contentTextTruncated = Boolean.TRUE.equals(map.get("contentTextTruncated"));
+            Map<String, String> metadata = safeMetadata(map.get("metadata"));
+            if (!StringUtils.hasText(id) && !StringUtils.hasText(contentText) && metadata.isEmpty()) {
+                continue;
+            }
+
+            targets.add(ResolvedTarget.builder()
+                .id(StringUtils.hasText(id) ? id.trim() : null)
+                .vectorSpace(StringUtils.hasText(vectorSpace) ? vectorSpace.trim() : null)
+                .contentText(StringUtils.hasText(contentText) ? contentText.trim() : null)
+                .contentTextTruncated(contentTextTruncated)
+                .metadata(metadata)
+                .source(coerceTargetSource(map.get("originSource")))
+                .build());
+        }
+
+        return targets.isEmpty()
+            ? TargetSeed.empty()
+            : new TargetSeed(Collections.unmodifiableList(targets), "PINNED_TARGETS");
     }
 
     private List<ResolvedTarget> extractWorkingSetTargets(List<ChatTurn> turns) {
@@ -160,28 +232,7 @@ public class WorkingSetTargetSeedingStep implements PipelineStep {
                     continue;
                 }
 
-                Map<String, String> metadata = Map.of();
-                Object meta = refMap.get("metadata");
-                if (meta instanceof Map<?, ?> metaMap && !metaMap.isEmpty()) {
-                    Map<String, String> normalized = new LinkedHashMap<>();
-                    for (Map.Entry<?, ?> metaEntry : metaMap.entrySet()) {
-                        if (normalized.size() >= WORKING_SET_MAX_METADATA_FIELDS) {
-                            break;
-                        }
-                        if (metaEntry == null || metaEntry.getKey() == null || metaEntry.getValue() == null) {
-                            continue;
-                        }
-                        String key = String.valueOf(metaEntry.getKey());
-                        String value = String.valueOf(metaEntry.getValue());
-                        if (!StringUtils.hasText(key) || !StringUtils.hasText(value)) {
-                            continue;
-                        }
-                        normalized.put(key, value);
-                    }
-                    if (!normalized.isEmpty()) {
-                        metadata = Collections.unmodifiableMap(normalized);
-                    }
-                }
+                Map<String, String> metadata = safeMetadata(refMap.get("metadata"));
 
                 out.add(ResolvedTarget.builder()
                     .id(idText.trim())
@@ -195,5 +246,75 @@ public class WorkingSetTargetSeedingStep implements PipelineStep {
         }
 
         return List.of();
+    }
+
+    private Map<String, String> safeMetadata(Object value) {
+        if (!(value instanceof Map<?, ?> raw) || raw.isEmpty()) {
+            return Map.of();
+        }
+        Map<String, String> normalized = new LinkedHashMap<>();
+        for (Map.Entry<?, ?> entry : raw.entrySet()) {
+            if (normalized.size() >= WORKING_SET_MAX_METADATA_FIELDS) {
+                break;
+            }
+            if (entry == null || entry.getKey() == null || entry.getValue() == null) {
+                continue;
+            }
+            String key = String.valueOf(entry.getKey());
+            String item = String.valueOf(entry.getValue());
+            if (StringUtils.hasText(key) && StringUtils.hasText(item)) {
+                normalized.put(key.trim(), item.trim());
+            }
+        }
+        return normalized.isEmpty() ? Map.of() : Collections.unmodifiableMap(normalized);
+    }
+
+    private ResolvedTargetSource coerceTargetSource(Object value) {
+        String source = coerceString(value);
+        if (StringUtils.hasText(source)) {
+            try {
+                return ResolvedTargetSource.valueOf(source.trim());
+            } catch (IllegalArgumentException ignored) {
+            }
+        }
+        return ResolvedTargetSource.SESSION_METADATA;
+    }
+
+    private String buildTargetContext(List<ResolvedTarget> targets) {
+        return ai.fabric.intent.orchestration.targets.ResolvedTargetsContextRenderer.renderGrouped(
+            "PINNED TARGETS (previously pinned; selected for this target-dependent turn):",
+            "target",
+            targets,
+            List.of(ResolvedTargetSource.ACTION_RESULT_ITEMS, ResolvedTargetSource.REQUEST_ATTACHMENTS),
+            Map.of(
+                ResolvedTargetSource.ACTION_RESULT_ITEMS, "Action result targets:",
+                ResolvedTargetSource.REQUEST_ATTACHMENTS, "User-selected targets:"
+            ),
+            "Conversation working set:"
+        );
+    }
+
+    private int coerceInt(Object value, int fallback) {
+        if (value instanceof Number number) {
+            return number.intValue();
+        }
+        String text = coerceString(value);
+        if (StringUtils.hasText(text)) {
+            try {
+                return Integer.parseInt(text.trim());
+            } catch (NumberFormatException ignored) {
+            }
+        }
+        return fallback;
+    }
+
+    private String coerceString(Object value) {
+        return value instanceof String text ? text : value != null ? value.toString() : null;
+    }
+
+    private record TargetSeed(List<ResolvedTarget> targets, String source) {
+        private static TargetSeed empty() {
+            return new TargetSeed(List.of(), "NONE");
+        }
     }
 }
