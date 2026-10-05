@@ -1,6 +1,6 @@
 # AI Fabric Deployment Knowledge Guard
 
-This reference app proves the AI Fabric `0.8.10` specialist boundary with
+This reference app proves the AI Fabric `0.8.11` specialist boundary with
 real vector retrieval. A browser chooses one server-approved demo context. The
 backend binds its tenant and deployment IDs into `TrustedExecutionContext`, and
 the framework enforces those values as Lucene metadata filters.
@@ -58,8 +58,8 @@ Build from the repository root:
 ```bash
 docker build \
   -f examples/real-apps/deployment-knowledge-guard/Dockerfile \
-  --build-arg AI_FABRIC_VERSION=0.8.10 \
-  -t ai-fabric-deployment-knowledge-guard:0.8.10 .
+  --build-arg AI_FABRIC_VERSION=0.8.11 \
+  -t ai-fabric-deployment-knowledge-guard:0.8.11 .
 ```
 
 The image resolves the immutable AI Fabric release from Maven Central; it does

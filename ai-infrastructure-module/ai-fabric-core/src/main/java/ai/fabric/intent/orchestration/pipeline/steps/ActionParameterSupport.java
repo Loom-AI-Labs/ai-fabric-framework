@@ -70,6 +70,10 @@ final class ActionParameterSupport {
             return true;
         }
         AIActionParamSchema schema = paramSchema(meta, parameter);
+        return isHiddenActionParameter(schema);
+    }
+
+    static boolean isHiddenActionParameter(AIActionParamSchema schema) {
         if (schema == null) {
             return false;
         }

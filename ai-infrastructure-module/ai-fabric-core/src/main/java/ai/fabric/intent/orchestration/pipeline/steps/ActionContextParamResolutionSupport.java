@@ -64,13 +64,29 @@ final class ActionContextParamResolutionSupport {
                                                     Map<String, Object> effectiveParams,
                                                     OrchestrationContext context,
                                                     PipelineContext pipelineContext) {
-        return resolveContextActionParams(meta, effectiveParams, context, pipelineContext, 0);
+        return resolveContextActionParams(meta, effectiveParams, context, pipelineContext, Set.of(), 0);
+    }
+
+    ResolvedActionParams resolveContextActionParams(AIActionMetaData meta,
+                                                    Map<String, Object> effectiveParams,
+                                                    OrchestrationContext context,
+                                                    PipelineContext pipelineContext,
+                                                    Set<String> previouslyTrustedParameters) {
+        return resolveContextActionParams(
+            meta,
+            effectiveParams,
+            context,
+            pipelineContext,
+            ActionParameterSupport.normalizeParameterNameSet(previouslyTrustedParameters),
+            0
+        );
     }
 
     private ResolvedActionParams resolveContextActionParams(AIActionMetaData meta,
                                                             Map<String, Object> effectiveParams,
                                                             OrchestrationContext context,
                                                             PipelineContext pipelineContext,
+                                                            Set<String> previouslyTrustedParameters,
                                                             int depth) {
         if (meta == null) {
             return new ResolvedActionParams(effectiveParams, Set.of(), null);
@@ -90,7 +106,10 @@ final class ActionContextParamResolutionSupport {
             AIActionParamSchema schema = paramSchema(meta, parameter);
             Object existingValue = valueByCandidateKeys(current, List.of(parameter));
             boolean hasExistingValue = hasMeaningfulActionParamValue(existingValue);
-            boolean shouldResolve = !hasExistingValue || shouldResolveConfiguredActionParam(parameter, schema, existingValue);
+            boolean alreadyTrusted = previouslyTrustedParameters != null
+                && previouslyTrustedParameters.contains(parameter.trim().toLowerCase(Locale.ROOT));
+            boolean shouldResolve = !hasExistingValue
+                || (!alreadyTrusted && shouldResolveConfiguredActionParam(parameter, schema, existingValue));
             if (!shouldResolve) {
                 continue;
             }
@@ -219,6 +238,7 @@ final class ActionContextParamResolutionSupport {
             readParams,
             context,
             pipelineContext,
+            Set.of(),
             depth + 1
         );
         readParams = resolvedReadParams.params();

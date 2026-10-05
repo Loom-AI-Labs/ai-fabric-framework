@@ -448,7 +448,13 @@ public class IntentHandlingStep implements PipelineStep {
 
         effectiveParams = actionBatchSupport.applyBatchTargetsDefaulting(meta, effectiveParams, pipelineContext);
         ActionContextParamResolutionSupport.ResolvedActionParams resolvedContextParams =
-            actionContextParamResolutionSupport.resolveContextActionParams(meta, effectiveParams, context, pipelineContext);
+            actionContextParamResolutionSupport.resolveContextActionParams(
+                meta,
+                effectiveParams,
+                context,
+                pipelineContext,
+                pendingTrustedResolvedParameters
+            );
         effectiveParams = resolvedContextParams.params();
         actionContext = actionContext.withActionParams(effectiveParams);
         if (resolvedContextParams.blockingReadActionResult() != null) {

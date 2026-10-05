@@ -13,6 +13,7 @@ import java.util.regex.Pattern;
 import java.util.regex.PatternSyntaxException;
 
 import static ai.fabric.intent.orchestration.pipeline.steps.ActionContextLookupSupport.valueByCandidateKeys;
+import static ai.fabric.intent.orchestration.pipeline.steps.ActionParameterSupport.isHiddenActionParameter;
 import static ai.fabric.intent.orchestration.pipeline.steps.ActionValueSupport.numericValue;
 
 @Slf4j
@@ -28,6 +29,9 @@ final class ActionContextSchemaSupport {
             return false;
         }
         if (!hasMeaningfulActionParamValue(existingValue)) {
+            return true;
+        }
+        if (isHiddenActionParameter(schema)) {
             return true;
         }
         return !actionParamValueSatisfiesSchema(parameter, existingValue, schema);

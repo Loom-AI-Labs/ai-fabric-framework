@@ -77,6 +77,16 @@ class ActionContextSchemaSupportTest {
         assertThat(ActionContextSchemaSupport.shouldResolveConfiguredActionParam("quantity", schema, null)).isTrue();
         assertThat(ActionContextSchemaSupport.shouldResolveConfiguredActionParam("quantity", schema, "not-int")).isTrue();
         assertThat(ActionContextSchemaSupport.shouldResolveConfiguredActionParam("quantity", schema, "3")).isFalse();
+        assertThat(ActionContextSchemaSupport.shouldResolveConfiguredActionParam(
+            "resourceId",
+            AIActionParamSchema.builder()
+                .type(AIActionParamType.STRING)
+                .visibility("INTERNAL")
+                .askUser(false)
+                .resolveFrom(Map.of("source", "ATTACHMENT_METADATA"))
+                .build(),
+            "model-proposed-value"
+        )).isTrue();
         assertThat(ActionContextSchemaSupport.shouldResolveConfiguredActionParam("quantity", AIActionParamSchema.builder().build(), null))
             .isFalse();
     }

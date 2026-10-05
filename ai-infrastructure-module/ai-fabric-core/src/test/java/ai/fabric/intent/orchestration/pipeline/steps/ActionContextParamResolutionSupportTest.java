@@ -31,6 +31,93 @@ import static org.mockito.Mockito.when;
 class ActionContextParamResolutionSupportTest {
 
     @Test
+    void shouldReplaceModelValueForHiddenAttachmentResolvedParam() {
+        AIActionMetaData meta = AIActionMetaData.builder()
+            .parameterSchemas(Map.of(
+                "vehicle",
+                internalSchema(Map.of(
+                    "source", "ATTACHMENT_METADATA",
+                    "metadataKeys", List.of("lookupValue")
+                ))
+            ))
+            .build();
+        OrchestrationContext context = OrchestrationContext.builder()
+            .userId("user-1")
+            .attachmentsNormalized(List.of(NormalizedAttachment.builder()
+                .metadata(Map.of("lookupValue", "DEMO-1001"))
+                .build()))
+            .build();
+        PipelineContext pipelineContext = PipelineContext.from("Load the selected result", context);
+
+        ActionContextParamResolutionSupport.ResolvedActionParams resolved =
+            new ActionContextParamResolutionSupport(mock(AIActionRegistry.class))
+                .resolveContextActionParams(
+                    meta,
+                    Map.of("vehicle", "2025 Aster E1"),
+                    context,
+                    pipelineContext
+                );
+
+        assertThat(resolved.params()).containsEntry("vehicle", "DEMO-1001");
+        assertThat(resolved.resolvedParameters()).containsExactly("vehicle");
+    }
+
+    @Test
+    void shouldRemoveUntrustedModelValueWhenHiddenResolverHasNoValue() {
+        AIActionMetaData meta = AIActionMetaData.builder()
+            .parameterSchemas(Map.of(
+                "vehicle",
+                internalSchema(Map.of(
+                    "source", "ATTACHMENT_METADATA",
+                    "metadataKeys", List.of("lookupValue")
+                ))
+            ))
+            .build();
+        OrchestrationContext context = OrchestrationContext.builder().userId("user-1").build();
+        PipelineContext pipelineContext = PipelineContext.from("Load the selected result", context);
+
+        ActionContextParamResolutionSupport.ResolvedActionParams resolved =
+            new ActionContextParamResolutionSupport(mock(AIActionRegistry.class))
+                .resolveContextActionParams(
+                    meta,
+                    Map.of("vehicle", "2025 Aster E1"),
+                    context,
+                    pipelineContext
+                );
+
+        assertThat(resolved.params()).doesNotContainKey("vehicle");
+        assertThat(resolved.resolvedParameters()).isEmpty();
+    }
+
+    @Test
+    void shouldRetainPreviouslyTrustedHiddenParamDuringContinuation() {
+        AIActionMetaData meta = AIActionMetaData.builder()
+            .parameterSchemas(Map.of(
+                "vehicle",
+                internalSchema(Map.of(
+                    "source", "ATTACHMENT_METADATA",
+                    "metadataKeys", List.of("lookupValue")
+                ))
+            ))
+            .build();
+        OrchestrationContext context = OrchestrationContext.builder().userId("user-1").build();
+        PipelineContext pipelineContext = PipelineContext.from("Yes, confirm", context);
+
+        ActionContextParamResolutionSupport.ResolvedActionParams resolved =
+            new ActionContextParamResolutionSupport(mock(AIActionRegistry.class))
+                .resolveContextActionParams(
+                    meta,
+                    Map.of("vehicle", "DEMO-1001"),
+                    context,
+                    pipelineContext,
+                    java.util.Set.of("vehicle")
+                );
+
+        assertThat(resolved.params()).containsEntry("vehicle", "DEMO-1001");
+        assertThat(resolved.resolvedParameters()).isEmpty();
+    }
+
+    @Test
     void shouldResolveRuntimeAttachmentAndOwnedResourceParams() {
         AIActionMetaData meta = AIActionMetaData.builder()
             .parameterSchemas(Map.of(
