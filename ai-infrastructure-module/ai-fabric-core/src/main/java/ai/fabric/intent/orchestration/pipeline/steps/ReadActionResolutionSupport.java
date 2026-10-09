@@ -7,6 +7,7 @@ import ai.fabric.intent.action.ActionResult;
 import ai.fabric.intent.action.ActionTargetRef;
 import ai.fabric.intent.orchestration.OrchestrationContext;
 import ai.fabric.intent.orchestration.OrchestrationResult;
+import ai.fabric.intent.orchestration.information.ReadActionExecutionScope;
 import ai.fabric.intent.orchestration.information.ReadActionResolutionService;
 import ai.fabric.intent.orchestration.pipeline.PipelineContext;
 import ai.fabric.intent.orchestration.policy.OrchestrationPolicy;
@@ -66,6 +67,17 @@ final class ReadActionResolutionSupport {
         PipelineContext pipelineContext,
         Map<String, Object> metadata
     ) {
+        return resolve(serviceProvider, intent, context, pipelineContext, metadata, null);
+    }
+
+    static ReadActionResolutionService.ResolutionOutcome resolve(
+        ObjectProvider<ReadActionResolutionService> serviceProvider,
+        Intent intent,
+        OrchestrationContext context,
+        PipelineContext pipelineContext,
+        Map<String, Object> metadata,
+        ReadActionExecutionScope executionScope
+    ) {
         ReadActionResolutionService service = serviceProvider != null
             ? serviceProvider.getIfAvailable()
             : null;
@@ -73,7 +85,9 @@ final class ReadActionResolutionSupport {
             return ReadActionResolutionService.ResolutionOutcome.skipped("SERVICE_UNAVAILABLE");
         }
         try {
-            ReadActionResolutionService.ResolutionOutcome outcome = service.resolve(intent, context, pipelineContext);
+            ReadActionResolutionService.ResolutionOutcome outcome = executionScope != null
+                ? service.resolve(intent, context, pipelineContext, executionScope)
+                : service.resolve(intent, context, pipelineContext);
             if (metadata != null && outcome != null && outcome.diagnostics() != null && !outcome.diagnostics().isEmpty()) {
                 metadata.put(METADATA_KEY, outcome.diagnostics());
             }

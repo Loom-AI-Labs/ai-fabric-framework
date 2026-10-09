@@ -6,11 +6,11 @@
 #
 # From repo root:
 # docker build -f examples/real-apps/privacy-first-customer-facing-support/Dockerfile \
-#   --build-arg AI_FABRIC_VERSION=0.8.13 \
-#   -t ai-fabric-privacy-shield:0.8.13 \
+#   --build-arg AI_FABRIC_VERSION=0.8.14 \
+#   -t ai-fabric-privacy-shield:0.8.14 \
 #   examples/real-apps
 
-ARG AI_FABRIC_VERSION=0.8.13
+ARG AI_FABRIC_VERSION=0.8.14
 ARG APP_VERSION=1.0.0-SNAPSHOT
 ARG SOURCE_COMMIT=
 ARG SOURCE_BRANCH=

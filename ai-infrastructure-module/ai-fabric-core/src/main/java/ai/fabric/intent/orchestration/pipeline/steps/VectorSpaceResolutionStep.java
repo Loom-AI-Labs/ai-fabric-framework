@@ -176,7 +176,7 @@ public class VectorSpaceResolutionStep implements PipelineStep {
 
             if (deterministic) {
                 if (!hasText(intent.getVectorSpace())) {
-	                    RoutingResult routing = vectorSpaceRouter.route(intent, context.getOriginalQuery());
+                    RoutingResult routing = vectorSpaceRouter.route(intent, resolveRoutingQuery(intent, context));
 	                    routingEvents.add(toRoutingEvent(i, routing));
 
 	                    String resolvedVectorSpace = resolveVectorSpaceString(routing);
@@ -209,7 +209,7 @@ public class VectorSpaceResolutionStep implements PipelineStep {
                 continue;
             }
 
-	            RoutingResult routing = vectorSpaceRouter.route(intent, context.getOriginalQuery());
+	            RoutingResult routing = vectorSpaceRouter.route(intent, resolveRoutingQuery(intent, context));
 	            routingEvents.add(toRoutingEvent(i, routing));
 
 	            if (routing == null || !routing.isSuccess()) {
@@ -268,6 +268,19 @@ public class VectorSpaceResolutionStep implements PipelineStep {
 
 	        return updated;
 	    }
+
+    private String resolveRoutingQuery(Intent intent, PipelineContext context) {
+        if (intent != null && hasText(intent.getOptimizedQuery())) {
+            return intent.getOptimizedQuery().trim();
+        }
+        if (intent != null && hasText(intent.getIntentOrAction())) {
+            return intent.getIntentOrAction().trim();
+        }
+        if (context != null && hasText(context.getEffectiveQuery())) {
+            return context.getEffectiveQuery().trim();
+        }
+        return context != null ? context.getOriginalQuery() : null;
+    }
 
 	    private int resolveEffectiveMaxSpaces(OrchestrationPolicy.RagBudgets ragBudgets, boolean fanoutAllowed) {
 	        if (!fanoutAllowed) {

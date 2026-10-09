@@ -20,6 +20,7 @@ import ai.fabric.intent.vectorspace.RoutingResult;
 import ai.fabric.intent.vectorspace.RoutingStrategy;
 import ai.fabric.intent.vectorspace.VectorSpaceRouter;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.ObjectProvider;
 
 import java.util.Map;
@@ -296,6 +297,63 @@ class VectorSpaceResolutionStepTest {
         assertThat(updated.isShouldTerminate()).isFalse();
         assertThat(updated.getIntentResponse().getIntents().getFirst().getVectorSpace()).isEqualTo("policies");
         assertThat(updated.getMetadata()).containsKey("vectorSpaceRouting");
+    }
+
+    @Test
+    void shouldRouteEachCompoundIntentUsingItsOwnOptimizedQuery() {
+        VectorSpaceRouter router = mock(VectorSpaceRouter.class);
+        when(router.route(any(), anyString())).thenReturn(
+            RoutingResult.builder()
+                .success(true)
+                .vectorSpace("dealer-vehicle")
+                .strategy(RoutingStrategy.HEURISTIC)
+                .confidence(0.8d)
+                .build(),
+            RoutingResult.builder()
+                .success(true)
+                .vectorSpace("document")
+                .strategy(RoutingStrategy.HEURISTIC)
+                .confidence(0.8d)
+                .build()
+        );
+
+        VectorSpaceResolutionStep step = new VectorSpaceResolutionStep(
+            router,
+            new OrchestrationProperties(),
+            new VectorSpaceRoutingProperties(),
+            providerOf((KnowledgeBaseOverviewService) null)
+        );
+        Intent inventory = Intent.builder()
+            .type(IntentType.INFORMATION)
+            .intent("Find inventory")
+            .optimizedQuery("available electric vehicle inventory")
+            .requiresRetrieval(true)
+            .build();
+        Intent policy = Intent.builder()
+            .type(IntentType.INFORMATION)
+            .intent("Explain delivery")
+            .optimizedQuery("delivery distance charge handover requirements")
+            .requiresRetrieval(true)
+            .build();
+        String original = "Which electric vehicles are available and what are the delivery terms?";
+
+        PipelineContext updated = step.process(
+            PipelineContext.from(original, OrchestrationContext.forUser("user"))
+                .toBuilder()
+                .intentResponse(MultiIntentResponse.builder().intents(List.of(inventory, policy)).build())
+                .build()
+        );
+
+        assertThat(updated.isShouldTerminate()).isFalse();
+        assertThat(updated.getIntentResponse().getIntents())
+            .extracting(Intent::getVectorSpace)
+            .containsExactly("dealer-vehicle", "document");
+        ArgumentCaptor<String> queryCaptor = ArgumentCaptor.forClass(String.class);
+        verify(router, org.mockito.Mockito.times(2)).route(any(), queryCaptor.capture());
+        assertThat(queryCaptor.getAllValues()).containsExactly(
+            "available electric vehicle inventory",
+            "delivery distance charge handover requirements"
+        );
     }
 
     @Test

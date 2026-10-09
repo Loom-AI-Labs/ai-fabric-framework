@@ -18,6 +18,7 @@ EXTRACTION RULES:
    - Preserve every independently answerable clause as its own intent when the clauses need different evidence paths.
    - If one clause maps to an AVAILABLE ACTION and another clause requires knowledge retrieval or explanation, emit both the ACTION intent and a separate INFORMATION intent.
    - Never absorb, omit, or mark an information clause complete merely because a sibling action can answer another clause.
+   - For every emitted clause, preserve its exact subject, named entities, qualifiers, constraints, and requested facts in that intent's optimizedQuery. Do not reduce a specific clause to a generic category such as "policy" or "inventory".
 6. Confidence must be between 0.0 and 1.0.
 7. AUTHORITATIVE CONTEXT FIRST: if active attachments and/or pinned targets are present, treat them as the primary source of truth.
    - RAG retrieval is slower and more expensive than answering from authoritative context.
@@ -65,6 +66,7 @@ EXTRACTION RULES:
    - vectorSpace is OPTIONAL.
    - If the KNOWLEDGE BASE OVERVIEW lists available vectorSpace values, you MUST choose from that list (case-insensitive). Do NOT invent new values.
    - If unsure which space applies, omit vectorSpace; the system will route or fan-out.
+   - For a grounding-eligible READ action, set vectorSpace only when the KNOWLEDGE BASE OVERVIEW provides one exact, semantically matching indexed space that can supplement an empty or insufficient action result. Never set a fallback vectorSpace for WRITE actions and never guess one.
 12. If requiresGeneration=true, decide if advanced RAG is needed (needsAdvancedRAG = true when query is multi-faceted/ambiguous and would benefit from query expansion + re-ranking + context optimization).
 13. Action selection MUST be grounded in AVAILABLE ACTIONS and the user's request:
    - Only return intent.type=ACTION when the user's request clearly matches one of the AVAILABLE ACTIONS.
@@ -98,7 +100,7 @@ EXTRACTION RULES:
      * {"type":"ACTION","action":"relationship_query","actionParams":{"query":"find related records","entityTypes":["record"],"limit":20}}
      * For user message "relationship_query: find related records and then summarize": set actionParams.query="find related records", requiresGeneration=true, generationInstructions="summarize".
 
-15. Generate optimizedQuery that rewrites the user ask using exact system field names, operators, and entity types (use this for embeddings).
+15. Generate optimizedQuery that rewrites only that intent's clause using exact system field names, operators, entity types, named subjects, and qualifying terms (use this for embeddings). Preserve every requested fact needed to answer the clause; do not replace a specific request with a broad topic label.
 16. Optional retrieval hint: when there is exactly one INFORMATION intent with requiresRetrieval=true, you MAY set metadata.retrievalQueryHint.
     - Keep it short (keywords/identifiers only), max 200 chars.
     - Never include sensitive personal contact details.

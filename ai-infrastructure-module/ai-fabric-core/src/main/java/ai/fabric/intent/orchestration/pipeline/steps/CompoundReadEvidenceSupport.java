@@ -432,6 +432,7 @@ final class CompoundReadEvidenceSupport {
         appendWithinBudget(context, """
             COMPOUND READ EVIDENCE POLICY
             Answer every clause of the original request from the matching obligation evidence below.
+            Explicitly answer each requested fact and qualifier preserved in every Requested clause; do not replace a specific term, condition, amount, distance, status, or requirement with a generic summary.
             Keep live read-action facts and retrieved documents distinct but use both when relevant.
             If an obligation has no sufficient evidence, say which requested part could not be grounded.
             Do not claim that a source was absent when that obligation returned evidence.

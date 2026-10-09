@@ -141,11 +141,27 @@ final class PostActionGenerationSupport {
         ActionResult actionResult,
         ActionContext actionContext
     ) {
+        if (actionResult == null || ActionGroundingSupport.requiresAdditionalGrounding(actionResult)) {
+            return Optional.empty();
+        }
+        return buildReadActionExecutionObservation(
+            actionName,
+            handler,
+            actionResult,
+            actionContext
+        ).filter(observation -> Boolean.TRUE.equals(observation.get("groundingUsable")));
+    }
+
+    Optional<Map<String, Object>> buildReadActionExecutionObservation(
+        String actionName,
+        AIActionHandler handler,
+        ActionResult actionResult,
+        ActionContext actionContext
+    ) {
         if (!StringUtils.hasText(actionName)
             || handler == null
             || actionResult == null
-            || !actionResult.isSuccess()
-            || ActionGroundingSupport.requiresAdditionalGrounding(actionResult)) {
+            || !actionResult.isSuccess()) {
             return Optional.empty();
         }
 
@@ -186,7 +202,13 @@ final class PostActionGenerationSupport {
         Map<String, Object> observation = new LinkedHashMap<>();
         observation.put("action", actionName.trim());
         observation.put("success", true);
-        observation.put("groundingUsable", true);
+        observation.put(
+            "groundingUsable",
+            !ActionGroundingSupport.requiresAdditionalGrounding(actionResult)
+        );
+        if (actionResult.getGroundingSufficiency() != null) {
+            observation.put("groundingSufficiency", actionResult.getGroundingSufficiency().name());
+        }
         observation.put("evidenceSummary", payload.payload());
         observation.put("truncated", payload.truncated());
         return Optional.of(Collections.unmodifiableMap(observation));

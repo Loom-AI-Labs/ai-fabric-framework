@@ -10,6 +10,7 @@ import ai.fabric.core.AICoreService;
 import ai.fabric.dto.Intent;
 import ai.fabric.dto.IntentType;
 import ai.fabric.dto.MultiIntentResponse;
+import ai.fabric.dto.RAGRequest;
 import ai.fabric.dto.RAGResponse;
 import ai.fabric.intent.KnowledgeBaseOverviewService;
 import ai.fabric.intent.action.AIActionHandler;
@@ -38,12 +39,14 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.core.io.DefaultResourceLoader;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -117,9 +120,25 @@ class IntentHandlingStepReadProbeFallbackVisibilityTest {
         OrchestrationResult result = step.process(context).getIntentResult();
 
         assertThat(result).isNotNull();
-        assertThat(result.getType()).isEqualTo(OrchestrationResultType.INFORMATION_PROVIDED);
+        assertThat(result.getType()).as("result=%s", result).isEqualTo(OrchestrationResultType.INFORMATION_PROVIDED);
         assertThat(result.getMetadata()).containsKey("readProbe");
-        verify(ragProvider).performRag(any());
+        @SuppressWarnings("unchecked")
+        Map<String, Object> resolution = (Map<String, Object>) result.getData().get("readActionResolution");
+        assertThat(resolution)
+            .containsEntry("origin", "DIRECT_ACTION_FALLBACK")
+            .containsEntry("executedActionsCount", 1)
+            .containsEntry("insufficientActionEvidenceCount", 1)
+            .containsEntry("useRag", true);
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> executed = (List<Map<String, Object>>) resolution.get("executedActions");
+        assertThat(executed.getFirst())
+            .containsEntry("action", "list_orders")
+            .containsEntry("groundingUsable", false)
+            .containsKey("actionExecutionId");
+        verify(handler, times(1)).executeAction(any(), any());
+        ArgumentCaptor<RAGRequest> requestCaptor = ArgumentCaptor.forClass(RAGRequest.class);
+        verify(ragProvider).performRag(requestCaptor.capture());
+        assertThat(requestCaptor.getValue().getEntityType()).isEqualTo("order");
     }
 
     @Test
@@ -189,7 +208,7 @@ class IntentHandlingStepReadProbeFallbackVisibilityTest {
         OrchestrationResult result = updated.getIntentResult();
 
         assertThat(result).isNotNull();
-        assertThat(result.getType()).isEqualTo(OrchestrationResultType.INFORMATION_PROVIDED);
+        assertThat(result.getType()).as("result=%s", result).isEqualTo(OrchestrationResultType.INFORMATION_PROVIDED);
         assertThat(result.getMetadata()).doesNotContainKey("readProbe");
     }
 
@@ -270,7 +289,7 @@ class IntentHandlingStepReadProbeFallbackVisibilityTest {
         OrchestrationResult result = updated.getIntentResult();
 
         assertThat(result).isNotNull();
-        assertThat(result.getType()).isEqualTo(OrchestrationResultType.INFORMATION_PROVIDED);
+        assertThat(result.getType()).as("result=%s", result).isEqualTo(OrchestrationResultType.INFORMATION_PROVIDED);
         assertThat(result.getMetadata()).isNotNull();
         assertThat(result.getMetadata()).containsKey("readProbe");
         assertThat(result.getMetadata().get("readProbe")).isInstanceOf(Map.class);

@@ -28,6 +28,7 @@ import ai.fabric.intent.actiondraft.InMemoryActionDraftStore;
 import ai.fabric.intent.orchestration.OrchestrationContext;
 import ai.fabric.intent.orchestration.OrchestrationResult;
 import ai.fabric.intent.orchestration.OrchestrationResultType;
+import ai.fabric.intent.orchestration.information.ReadActionExecutionScope;
 import ai.fabric.intent.orchestration.information.ReadActionResolutionService;
 import ai.fabric.intent.orchestration.pipeline.PipelineContext;
 import ai.fabric.intent.vectorspace.RankBasedMerger;
@@ -72,7 +73,7 @@ class IntentHandlingStepCompoundReadEvidenceTest {
         when(aiCoreService.generateTextResponse(anyString(), eq(LlmPurpose.GENERATION)))
             .thenReturn(AIGenerationResponse.builder().content("Combined grounded answer.").build());
         ReadActionResolutionService resolutionService = mock(ReadActionResolutionService.class);
-        when(resolutionService.resolve(any(), any(), any()))
+        when(resolutionService.resolve(any(), any(), any(), any(ReadActionExecutionScope.class)))
             .thenReturn(ReadActionResolutionService.ResolutionOutcome.skipped("NO_ELIGIBLE_READ_ACTIONS"));
 
         IntentHandlingStep step = newStep(mock(AIActionRegistry.class), ragProvider, aiCoreService);
@@ -87,7 +88,12 @@ class IntentHandlingStepCompoundReadEvidenceTest {
         step.process(context(originalQuery, inventory, policy));
 
         ArgumentCaptor<PipelineContext> contextCaptor = ArgumentCaptor.forClass(PipelineContext.class);
-        verify(resolutionService, times(2)).resolve(any(), any(), contextCaptor.capture());
+        verify(resolutionService, times(2)).resolve(
+            any(),
+            any(),
+            contextCaptor.capture(),
+            any(ReadActionExecutionScope.class)
+        );
         assertThat(contextCaptor.getAllValues())
             .extracting(PipelineContext::getEffectiveQuery)
             .containsExactly("available electric vehicle inventory", "delivery policy charges requirements");

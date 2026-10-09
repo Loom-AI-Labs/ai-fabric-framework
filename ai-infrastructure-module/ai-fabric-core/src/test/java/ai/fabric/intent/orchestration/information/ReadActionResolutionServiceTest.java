@@ -40,10 +40,107 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class ReadActionResolutionServiceTest {
+
+    @Test
+    void shouldExecuteSameReadActionAndParamsOnlyOnceWithinRequestScope() {
+        AICoreService aiCoreService = mock(AICoreService.class);
+        AIActionRegistry actionRegistry = mock(AIActionRegistry.class);
+        PromptTemplateResolver templateResolver = mock(PromptTemplateResolver.class);
+        AIActionMetaData metadata = AIActionMetaData.builder()
+            .name("search_inventory")
+            .description("Search current inventory.")
+            .category("inventory")
+            .accessMode(ActionAccessMode.READ)
+            .groundingEligible(true)
+            .readActionResolutionEligible(true)
+            .build();
+        AIActionHandler handler = mock(AIActionHandler.class);
+        ActionResult actionResult = ActionResult.builder()
+            .success(true)
+            .message("One vehicle found.")
+            .data(ActionPayload.list(List.of(Map.of("id", "vehicle-1"))))
+            .build();
+        when(handler.validateActionAllowed(any(ActionContext.class))).thenReturn(true);
+        when(handler.executeAction(eq(Map.of("fuel", "electric")), any(ActionContext.class)))
+            .thenReturn(actionResult);
+        when(handler.buildPostActionLlmFacts(eq(actionResult), any(ActionContext.class)))
+            .thenReturn(Optional.of(Map.of("items", List.of(Map.of("id", "vehicle-1")), "itemsCount", 1)));
+        when(actionRegistry.getAllMetadata()).thenReturn(List.of(metadata));
+        when(actionRegistry.findHandler("search_inventory")).thenReturn(Optional.of(handler));
+        when(actionRegistry.findMetadata("search_inventory")).thenReturn(Optional.of(metadata));
+        when(templateResolver.resolve("orchestration/read-action-resolution", "system"))
+            .thenReturn(resolvedTemplate("system", ""));
+        when(templateResolver.resolve("orchestration/read-action-resolution", "user"))
+            .thenReturn(resolvedTemplate("user", "query={{query}}\nactions={{eligible_actions_json}}"));
+        when(aiCoreService.generateContent(any(), eq(LlmPurpose.ORCHESTRATION)))
+            .thenReturn(AIGenerationResponse.builder().content("""
+                {
+                  "decision": "EXECUTE_READ_ACTIONS",
+                  "actions": [
+                    {"name": "search_inventory", "params": {"fuel": "electric"}, "priority": 1}
+                  ],
+                  "needsMoreSteps": false,
+                  "suggestedVectorSpaces": ["dealer-vehicle"]
+                }
+                """).build());
+
+        ReadActionResolutionService service = new ReadActionResolutionService(
+            aiCoreService,
+            actionRegistry,
+            new IntentExtractionJsonSupport(new ObjectMapper()),
+            templateResolver,
+            new PromptRenderer()
+        );
+        OrchestrationContext orchestrationContext = OrchestrationContext.forUser("user-1");
+        PipelineContext pipelineContext = PipelineContext.from("Find electric vehicles", orchestrationContext)
+            .toBuilder()
+            .orchestrationPolicy(readActionPolicy(
+                "inventory_assistant",
+                List.of("search_inventory"),
+                OrchestrationProperties.ReadActionResolutionPlanningMode.SINGLE_PASS,
+                OrchestrationProperties.ReadActionResolutionRagCooperationMode.RAG_IF_ACTIONS_INSUFFICIENT
+            ))
+            .build();
+        Intent intent = Intent.builder()
+            .type(IntentType.INFORMATION)
+            .intent("Find electric vehicles")
+            .optimizedQuery("available electric vehicle inventory")
+            .build();
+        ReadActionExecutionScope scope = new ReadActionExecutionScope();
+
+        ReadActionResolutionService.ResolutionOutcome first = service.resolve(
+            intent,
+            orchestrationContext,
+            pipelineContext,
+            scope
+        );
+        ReadActionResolutionService.ResolutionOutcome duplicate = service.resolve(
+            intent,
+            orchestrationContext,
+            pipelineContext,
+            scope
+        );
+
+        assertThat(first.executedActions()).hasSize(1);
+        assertThat(duplicate.executedActions()).isEmpty();
+        assertThat(duplicate.useRag()).isTrue();
+        assertThat(duplicate.diagnostics())
+            .containsEntry("executedActionsCount", 0)
+            .containsEntry("deduplicatedActionsCount", 1);
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> duplicates =
+            (List<Map<String, Object>>) duplicate.diagnostics().get("deduplicatedActions");
+        assertThat(duplicates.getFirst())
+            .containsEntry("action", "search_inventory")
+            .containsEntry("reason", "REQUEST_SCOPED_DUPLICATE")
+            .containsKey("existingActionExecutionId");
+        verify(handler, times(1)).executeAction(eq(Map.of("fuel", "electric")), any(ActionContext.class));
+    }
 
     @Test
     void shouldPlanFromTheScopedCompoundObligationQuery() {

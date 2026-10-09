@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.7
 # Build context: examples/real-apps
 
-ARG AI_FABRIC_VERSION=0.8.13
+ARG AI_FABRIC_VERSION=0.8.14
 ARG APP_VERSION=1.0.0-SNAPSHOT
 ARG SOURCE_COMMIT=
 ARG SOURCE_BRANCH=

@@ -106,6 +106,13 @@ public class ReadActionResolutionService {
     public ResolutionOutcome resolve(Intent intent,
                                      OrchestrationContext orchestrationContext,
                                      PipelineContext pipelineContext) {
+        return resolve(intent, orchestrationContext, pipelineContext, null);
+    }
+
+    public ResolutionOutcome resolve(Intent intent,
+                                     OrchestrationContext orchestrationContext,
+                                     PipelineContext pipelineContext,
+                                     ReadActionExecutionScope executionScope) {
         OrchestrationPolicy policy = pipelineContext != null ? pipelineContext.getOrchestrationPolicy() : null;
         OrchestrationPolicy.ReadActionResolutionPolicy readPolicy = policy != null
             ? policy.readActionResolutionPolicy()
@@ -141,6 +148,7 @@ public class ReadActionResolutionService {
 
         List<ExecutedReadAction> executedActions = new ArrayList<>();
         List<Map<String, Object>> plannerIterations = new ArrayList<>();
+        List<Map<String, Object>> deduplicatedActions = new ArrayList<>();
         Set<String> executionKeys = new LinkedHashSet<>();
         PlannerDecision lastDecision = null;
 
@@ -171,7 +179,9 @@ public class ReadActionResolutionService {
                 eligibleActions,
                 executedActions.size(),
                 readPolicy,
-                executionKeys
+                executionKeys,
+                executionScope,
+                deduplicatedActions
             );
             if (approved.isEmpty()) {
                 if (readPolicy.planningMode() != ai.fabric.config.OrchestrationProperties.ReadActionResolutionPlanningMode.ITERATIVE
@@ -182,7 +192,17 @@ public class ReadActionResolutionService {
             }
 
             for (PlannerActionProposal proposal : approved) {
-                executedActions.add(executeAction(proposal, orchestrationContext, pipelineContext, readPolicy));
+                String executionKey = ReadActionExecutionScope.executionKey(proposal.name(), proposal.params());
+                ExecutedReadAction executed = executeAction(
+                    proposal,
+                    orchestrationContext,
+                    pipelineContext,
+                    readPolicy
+                );
+                executedActions.add(executed);
+                if (executionScope != null) {
+                    executionScope.recordExecution(executionKey, executed.actionExecutionId());
+                }
             }
 
             if (readPolicy.planningMode() != ai.fabric.config.OrchestrationProperties.ReadActionResolutionPlanningMode.ITERATIVE
@@ -216,6 +236,10 @@ public class ReadActionResolutionService {
         diagnostics.put("iterations", Collections.unmodifiableList(plannerIterations));
         diagnostics.put("executedActions", executedActions.stream().map(ExecutedReadAction::toDiagnosticMap).toList());
         diagnostics.put("executedActionsCount", executedActions.size());
+        diagnostics.put("deduplicatedActionsCount", deduplicatedActions.size());
+        if (!deduplicatedActions.isEmpty()) {
+            diagnostics.put("deduplicatedActions", Collections.unmodifiableList(deduplicatedActions));
+        }
         diagnostics.put("groundingUsableActionCount", executedActions.stream().filter(ExecutedReadAction::groundingUsable).count());
         diagnostics.put("insufficientActionEvidenceCount", insufficientActionEvidenceCount);
         diagnostics.put("useRag", useRag);
@@ -402,7 +426,9 @@ public class ReadActionResolutionService {
                                                                List<EligibleReadAction> eligibleActions,
                                                                int executedCount,
                                                                OrchestrationPolicy.ReadActionResolutionPolicy readPolicy,
-                                                               Set<String> executionKeys) {
+                                                               Set<String> executionKeys,
+                                                               ReadActionExecutionScope executionScope,
+                                                               List<Map<String, Object>> deduplicatedActions) {
         if (decision == null || decision.actions == null || decision.actions.isEmpty()) {
             return List.of();
         }
@@ -431,9 +457,23 @@ public class ReadActionResolutionService {
             if (!hasRequiredParams(eligible.metadata(), proposal.params())) {
                 continue;
             }
-            String executionKey = buildExecutionKey(eligible.name(), proposal.params());
+            String executionKey = ReadActionExecutionScope.executionKey(eligible.name(), proposal.params());
             if (!executionKeys.add(executionKey)) {
                 continue;
+            }
+            if (executionScope != null) {
+                ReadActionExecutionScope.Claim claim = executionScope.claim(eligible.name(), proposal.params());
+                if (!claim.acquired()) {
+                    Map<String, Object> duplicate = new LinkedHashMap<>();
+                    duplicate.put("action", eligible.name());
+                    duplicate.put("params", immutableNonNullParams(proposal.params()));
+                    duplicate.put("reason", "REQUEST_SCOPED_DUPLICATE");
+                    if (StringUtils.hasText(claim.existingExecutionId())) {
+                        duplicate.put("existingActionExecutionId", claim.existingExecutionId());
+                    }
+                    deduplicatedActions.add(Collections.unmodifiableMap(duplicate));
+                    continue;
+                }
             }
             approved.add(new PlannerActionProposal(eligible.name(), proposal.params(), proposal.priority()));
         }
@@ -1040,10 +1080,6 @@ public class ReadActionResolutionService {
         return value.substring(0, Math.max(0, maxChars - 3)) + "...";
     }
 
-    private String buildExecutionKey(String actionName, Map<String, Object> params) {
-        return actionName.trim().toLowerCase(Locale.ROOT) + "::" + writeJson(params != null ? params : Map.of());
-    }
-
     private static Map<String, Object> immutableNonNullParams(Map<String, Object> params) {
         if (params == null || params.isEmpty()) {
             return Map.of();
@@ -1174,6 +1210,27 @@ public class ReadActionResolutionService {
                 preferredVectorSpaces != null ? List.copyOf(preferredVectorSpaces) : List.of(),
                 executedActions != null ? List.copyOf(executedActions) : List.of(),
                 diagnostics != null ? Collections.unmodifiableMap(new LinkedHashMap<>(diagnostics)) : Map.of("attempted", true)
+            );
+        }
+
+        public static ResolutionOutcome continueWithRagAfterInsufficientActions(
+            String evidenceContext,
+            List<String> preferredVectorSpaces,
+            List<ExecutedReadAction> executedActions,
+            Map<String, Object> diagnostics
+        ) {
+            return new ResolutionOutcome(
+                true,
+                null,
+                PlannerDecisionType.EXECUTE_READ_ACTIONS_AND_RAG,
+                true,
+                false,
+                evidenceContext,
+                preferredVectorSpaces != null ? List.copyOf(preferredVectorSpaces) : List.of(),
+                executedActions != null ? List.copyOf(executedActions) : List.of(),
+                diagnostics != null
+                    ? Collections.unmodifiableMap(new LinkedHashMap<>(diagnostics))
+                    : Map.of("attempted", true, "useRag", true)
             );
         }
 
