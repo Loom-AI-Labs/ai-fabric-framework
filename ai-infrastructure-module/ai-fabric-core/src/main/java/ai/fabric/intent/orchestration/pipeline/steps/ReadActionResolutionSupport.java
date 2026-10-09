@@ -152,6 +152,9 @@ final class ReadActionResolutionSupport {
             Map<String, Object> action = new LinkedHashMap<>();
             action.put("action", executed.actionName());
             action.put("actionResult", publicResult);
+            if (StringUtils.hasText(executed.actionExecutionId())) {
+                action.put("actionExecutionId", executed.actionExecutionId());
+            }
             actions.add(Collections.unmodifiableMap(action));
         }
         return actions.isEmpty() ? List.of() : List.copyOf(actions);

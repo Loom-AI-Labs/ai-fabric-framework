@@ -64,7 +64,7 @@ class VectorSpaceResolutionStepTest {
     }
 
     @Test
-    void shouldFallbackToFanOutWhenVectorSpaceNotAvailable() {
+    void shouldNotBroadenInvalidVectorSpaceAcrossAllAvailableDomains() {
         VectorSpaceRouter router = mock(VectorSpaceRouter.class);
 
         KnowledgeBaseOverviewService overviewService = mock(KnowledgeBaseOverviewService.class);
@@ -93,10 +93,11 @@ class VectorSpaceResolutionStepTest {
 
         PipelineContext updated = step.process(context);
 
-        assertThat(updated.isShouldTerminate()).isFalse();
-        assertThat(updated.getIntentResponse().getIntents().getFirst().getVectorSpace()).isEqualTo("faq,policies");
-        assertThat(updated.getMetadata()).containsKey("vectorSpaceRouting");
-        verify(router, never()).route(any(), anyString());
+        assertThat(updated.isShouldTerminate()).isTrue();
+        assertThat(updated.getEarlyTerminationResult().getType())
+            .isEqualTo(OrchestrationResultType.CLARIFICATION_REQUIRED);
+        assertThat(updated.getIntentResponse().getIntents().getFirst().getVectorSpace()).isNull();
+        verify(router).route(any(), anyString());
     }
 
     @Test
@@ -146,7 +147,7 @@ class VectorSpaceResolutionStepTest {
     }
 
     @Test
-    void shouldPreferRequestContextVectorSpaceHintOverInvalidExtractedVectorSpace() {
+    void shouldPreferTrustedVectorSpaceHintOverInvalidExtractedVectorSpace() {
         VectorSpaceRouter router = mock(VectorSpaceRouter.class);
 
         KnowledgeBaseOverviewService overviewService = mock(KnowledgeBaseOverviewService.class);
@@ -185,6 +186,49 @@ class VectorSpaceResolutionStepTest {
         assertThat(updated.isShouldTerminate()).isFalse();
         assertThat(updated.getIntentResponse().getIntents().getFirst().getVectorSpace()).isEqualTo("primary-docs");
         assertThat(updated.getMetadata()).containsKey("vectorSpaceRouting");
+        verify(router, never()).route(any(), anyString());
+    }
+
+    @Test
+    void shouldIgnoreRawPublicRequestContextRoutingFields() {
+        VectorSpaceRouter router = mock(VectorSpaceRouter.class);
+        KnowledgeBaseOverviewService overviewService = mock(KnowledgeBaseOverviewService.class);
+        when(overviewService.getOverview()).thenReturn(KnowledgeBaseOverview.builder()
+            .entityTypes(List.of("dealer-vehicle", "document"))
+            .build());
+
+        VectorSpaceResolutionStep step = new VectorSpaceResolutionStep(
+            router,
+            new OrchestrationProperties(),
+            new VectorSpaceRoutingProperties(),
+            providerOf(overviewService)
+        );
+
+        Intent intent = Intent.builder()
+            .type(IntentType.INFORMATION)
+            .intent("find_vehicle")
+            .requiresRetrieval(true)
+            .vectorSpace("dealer-vehicle")
+            .build();
+        OrchestrationContext orchestrationContext = OrchestrationContext.builder()
+            .userId("user")
+            .metadata(Map.of("requestContext", Map.of(
+                "preferredVectorSpaces", List.of("document"),
+                "vectorSpace", "document",
+                "entityType", "document"
+            )))
+            .build();
+
+        PipelineContext updated = step.process(
+            PipelineContext.from("Find the vehicle", orchestrationContext)
+                .toBuilder()
+                .intentResponse(MultiIntentResponse.builder().intents(List.of(intent)).build())
+                .build()
+        );
+
+        assertThat(updated.isShouldTerminate()).isFalse();
+        assertThat(updated.getIntentResponse().getIntents().getFirst().getVectorSpace())
+            .isEqualTo("dealer-vehicle");
         verify(router, never()).route(any(), anyString());
     }
 

@@ -21,6 +21,27 @@ import static org.mockito.Mockito.when;
 class RagContextSupportTest {
 
     @Test
+    void preservesActualVectorSpaceAndMarksMismatchedQueryBranch() {
+        RAGResponse.RAGDocument document = RAGResponse.RAGDocument.builder()
+            .id("policy-1")
+            .type("document")
+            .content("Policy")
+            .metadata(Map.of("vectorSpace", "document"))
+            .build();
+
+        RAGResponse.RAGDocument tagged = RagContextSupport.tagDocumentWithVectorSpace(
+            document,
+            "dealer-vehicle"
+        );
+
+        assertThat(tagged.getMetadata())
+            .containsEntry("vectorSpace", "document")
+            .containsEntry("queriedVectorSpace", "dealer-vehicle")
+            .containsEntry("vectorSpaceMismatch", true);
+        assertThat(RagContextSupport.hasVectorSpaceMismatch(tagged)).isTrue();
+    }
+
+    @Test
     void shouldBuildTaggedContextFromDocuments() {
         String context = RagContextSupport.buildContextFromDocuments(List.of(
             doc("doc-1", "Snowboard", "A stable all-mountain board.", Map.of("vectorSpace", "product"), 0.8, null)

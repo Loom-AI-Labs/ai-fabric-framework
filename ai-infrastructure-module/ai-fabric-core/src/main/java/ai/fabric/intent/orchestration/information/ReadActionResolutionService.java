@@ -462,6 +462,7 @@ public class ReadActionResolutionService {
             return ExecutedReadAction.failure(proposal.name(), proposal.params(), "ACTION_NOT_ALLOWED", metadata, null);
         }
 
+        String actionExecutionId = "read-action-" + UUID.randomUUID();
         try {
             GovernedActionInvocationOutcome invocationOutcome =
                 new DefaultGovernedActionInvocationService(actionRegistry).invoke(
@@ -482,6 +483,7 @@ public class ReadActionResolutionService {
                 readPolicy.maxActionEvidenceCharsPerAction()
             );
             return new ExecutedReadAction(
+                actionExecutionId,
                 proposal.name(),
                 Collections.unmodifiableMap(new LinkedHashMap<>(proposal.params())),
                 metadata,
@@ -500,6 +502,7 @@ public class ReadActionResolutionService {
                 readPolicy.maxActionEvidenceCharsPerAction()
             );
             return new ExecutedReadAction(
+                actionExecutionId,
                 proposal.name(),
                 Collections.unmodifiableMap(new LinkedHashMap<>(proposal.params())),
                 metadata,
@@ -1180,6 +1183,7 @@ public class ReadActionResolutionService {
     }
 
     public record ExecutedReadAction(
+        String actionExecutionId,
         String actionName,
         Map<String, Object> params,
         AIActionMetaData metadata,
@@ -1188,12 +1192,32 @@ public class ReadActionResolutionService {
         String evidenceSummary,
         String errorMessage
     ) {
+        public ExecutedReadAction(String actionName,
+                                  Map<String, Object> params,
+                                  AIActionMetaData metadata,
+                                  ActionResult actionResult,
+                                  boolean groundingUsable,
+                                  String evidenceSummary,
+                                  String errorMessage) {
+            this(
+                null,
+                actionName,
+                params,
+                metadata,
+                actionResult,
+                groundingUsable,
+                evidenceSummary,
+                errorMessage
+            );
+        }
+
         public static ExecutedReadAction failure(String actionName,
                                                  Map<String, Object> params,
                                                  String errorMessage,
                                                  AIActionMetaData metadata,
                                                  ActionResult actionResult) {
             return new ExecutedReadAction(
+                null,
                 actionName,
                 immutableNonNullParams(params),
                 metadata,
@@ -1206,6 +1230,9 @@ public class ReadActionResolutionService {
 
         public Map<String, Object> toDiagnosticMap() {
             Map<String, Object> item = new LinkedHashMap<>();
+            if (StringUtils.hasText(actionExecutionId)) {
+                item.put("actionExecutionId", actionExecutionId);
+            }
             item.put("action", actionName);
             item.put("params", params != null ? params : Map.of());
             item.put("groundingUsable", groundingUsable);

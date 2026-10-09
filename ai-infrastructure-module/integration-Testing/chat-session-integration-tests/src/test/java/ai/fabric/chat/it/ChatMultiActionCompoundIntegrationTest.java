@@ -93,11 +93,11 @@ class ChatMultiActionCompoundIntegrationTest {
         OrchestrationResult result = pipeline.execute("Run both safe actions.", orch);
 
         assertThat(result).isNotNull();
-        // Normalization promotes COMPOUND_HANDLED to the primary child type (typically ACTION_EXECUTED).
-        assertThat(result.getType()).isEqualTo(OrchestrationResultType.ACTION_EXECUTED);
+        assertThat(result.getType()).isEqualTo(OrchestrationResultType.INFORMATION_PROVIDED);
         assertThat(result.getChildren()).hasSize(2);
         assertThat(result.getChildren().getFirst().getType()).isEqualTo(OrchestrationResultType.ACTION_EXECUTED);
         assertThat(result.getChildren().get(1).getType()).isEqualTo(OrchestrationResultType.ACTION_EXECUTED);
+        assertThat(result.getData()).containsKeys("actions", "compoundEvidence");
 
         ChatSession session = chatSessionService.getSession(conversationId, ownerId);
         assertThat(session.getTurns()).hasSize(1);

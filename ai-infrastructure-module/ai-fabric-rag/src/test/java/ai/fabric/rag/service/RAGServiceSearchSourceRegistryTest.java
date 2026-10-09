@@ -96,6 +96,13 @@ class RAGServiceSearchSourceRegistryTest {
                 )))
                 .totalResults(1)
                 .maxScore(0.74)
+                .diagnostics(Map.of(
+                    "queriedVectorSpace", "product",
+                    "rawResultsCount", 2,
+                    "filteredResultsCount", 1,
+                    "vectorSpaceMismatchCount", 1,
+                    "providerCredential", "must-not-escape"
+                ))
                 .build()
         );
         when(sharedSource.search(any(), any(), any())).thenReturn(
@@ -146,6 +153,16 @@ class RAGServiceSearchSourceRegistryTest {
             .containsEntry("searchSourceIds", List.of("shared-catalog", "deployment-private-vector"))
             .containsEntry("searchSourceAdapterTypes", List.of("shared-index", "deployment-private-vector"));
         assertThat(response.getMetadata().get("searchSourceDiagnostics")).isInstanceOf(List.class);
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> diagnostics = (List<Map<String, Object>>) response.getMetadata()
+            .get("searchSourceDiagnostics");
+        assertThat(diagnostics).anySatisfy(entry -> assertThat(entry)
+            .containsEntry("sourceId", "deployment-private-vector")
+            .containsEntry("queriedVectorSpace", "product")
+            .containsEntry("rawResultsCount", 2)
+            .containsEntry("filteredResultsCount", 1)
+            .containsEntry("vectorSpaceMismatchCount", 1)
+            .doesNotContainKey("providerCredential"));
         verify(searchSourceRegistry).recordSearchExecution(any(), eq(false));
     }
 
@@ -331,6 +348,37 @@ class RAGServiceSearchSourceRegistryTest {
             .containsEntry("searchSourceFailedCount", 0)
             .containsEntry("searchSourceSkippedCount", 0)
             .containsEntry("searchSourcesDegraded", false);
+    }
+
+    @Test
+    void performRagPropagatesRegistryResolutionDiagnosticsWhenNoSourceMatches() {
+        when(searchSourceRegistry.resolveSearchSources(any())).thenReturn(List.of());
+        when(searchSourceRegistry.resolutionDiagnostics(any())).thenReturn(List.of(Map.of(
+            "sourceId", "knowledge-source-registry",
+            "sourceType", "routing",
+            "adapterType", "registry",
+            "status", "SKIPPED",
+            "reason", "NO_MATCHING_KNOWLEDGE_SOURCE",
+            "requestedEntityType", "document",
+            "providerCredential", "must-not-escape"
+        )));
+
+        RAGResponse response = ragService.performRag(RAGRequest.builder()
+            .query("delivery policy")
+            .entityType("document")
+            .limit(5)
+            .threshold(0.1)
+            .build());
+
+        assertThat(response.getDocuments()).isEmpty();
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> diagnostics = (List<Map<String, Object>>) response.getMetadata()
+            .get("searchSourceDiagnostics");
+        assertThat(diagnostics).singleElement().satisfies(diagnostic -> assertThat(diagnostic)
+            .containsEntry("reason", "NO_MATCHING_KNOWLEDGE_SOURCE")
+            .containsEntry("requestedEntityType", "document")
+            .doesNotContainKey("providerCredential"));
+        verify(searchSourceRegistry).recordSearchExecution(any(), eq(false));
     }
 
     private void configureSourceIdentities() {

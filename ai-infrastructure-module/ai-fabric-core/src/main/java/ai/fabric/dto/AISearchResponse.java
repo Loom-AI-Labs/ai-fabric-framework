@@ -29,4 +29,10 @@ public class AISearchResponse {
     private String query;
     
     private String model;
+
+    /**
+     * Bounded operational facts produced by a search adapter. Callers must
+     * explicitly allowlist any values projected outside the adapter boundary.
+     */
+    private Map<String, Object> diagnostics;
 }

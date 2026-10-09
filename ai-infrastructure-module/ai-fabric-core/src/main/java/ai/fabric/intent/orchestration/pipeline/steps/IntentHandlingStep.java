@@ -74,6 +74,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
 import java.time.Instant;
 
 import static ai.fabric.intent.orchestration.pipeline.steps.ActionEvidenceSupport.buildEvidenceBundle;
@@ -123,6 +124,7 @@ public class IntentHandlingStep implements PipelineStep {
     // RAG defaults
     // Data keys
     private static final String DATA_KEY_ACTION = "action";
+    private static final String DATA_KEY_ACTION_EXECUTION_ID = "actionExecutionId";
     private static final String DATA_KEY_METADATA = "metadata";
     private static final String DATA_KEY_ACTION_RESULT = "actionResult";
     private static final String DATA_KEY_CONFIRMATION_MESSAGE = "confirmationMessage";
@@ -336,9 +338,16 @@ public class IntentHandlingStep implements PipelineStep {
     // =========================================================================
     
     private OrchestrationResult handleSingleIntent(Intent intent, OrchestrationContext context, PipelineContext pipelineContext) {
+        return handleSingleIntent(intent, context, pipelineContext, false);
+    }
+
+    private OrchestrationResult handleSingleIntent(Intent intent,
+                                                    OrchestrationContext context,
+                                                    PipelineContext pipelineContext,
+                                                    boolean collectEvidenceOnly) {
         return switch (intent.getType()) {
-            case ACTION -> handleAction(intent, context, pipelineContext);
-            case INFORMATION -> handleInformation(intent, context, pipelineContext);
+            case ACTION -> handleAction(intent, context, pipelineContext, Set.of(), collectEvidenceOnly);
+            case INFORMATION -> handleInformation(intent, context, pipelineContext, collectEvidenceOnly);
             case CONFIRMATION_POSITIVE -> handleConfirmationPositive(context, pipelineContext);
             case CONFIRMATION_NEGATIVE -> handleConfirmationNegative(context, pipelineContext);
             case OUT_OF_SCOPE -> handleOutOfScope(intent);
@@ -347,13 +356,21 @@ public class IntentHandlingStep implements PipelineStep {
     }
     
     private OrchestrationResult handleAction(Intent intent, OrchestrationContext context, PipelineContext pipelineContext) {
-        return handleAction(intent, context, pipelineContext, Set.of());
+        return handleAction(intent, context, pipelineContext, Set.of(), false);
     }
 
     private OrchestrationResult handleAction(Intent intent,
                                              OrchestrationContext context,
                                              PipelineContext pipelineContext,
                                              Set<String> pendingTrustedResolvedParameters) {
+        return handleAction(intent, context, pipelineContext, pendingTrustedResolvedParameters, false);
+    }
+
+    private OrchestrationResult handleAction(Intent intent,
+                                             OrchestrationContext context,
+                                             PipelineContext pipelineContext,
+                                             Set<String> pendingTrustedResolvedParameters,
+                                             boolean collectEvidenceOnly) {
         String actionName = StringUtils.hasText(intent.getAction()) ? intent.getAction() : intent.getIntent();
         if (!StringUtils.hasText(actionName)) {
             return OrchestrationResult.error(ERROR_MSG_MISSING_ACTION_NAME);
@@ -807,9 +824,11 @@ public class IntentHandlingStep implements PipelineStep {
             }
             ActionResult actionResult = invocationOutcome.actionResult();
             boolean success = actionResult != null && actionResult.isSuccess();
+            String actionExecutionId = "action-" + UUID.randomUUID();
             
             Map<String, Object> data = new LinkedHashMap<>();
             data.put(DATA_KEY_ACTION, actionName);
+            data.put(DATA_KEY_ACTION_EXECUTION_ID, actionExecutionId);
             data.put(DATA_KEY_CONFIRMATION_MESSAGE, confirmationMessage);
             data.put(DATA_KEY_METADATA, publicActionMetadata(getMetadataForAction(actionName)));
             if (actionResult != null) {
@@ -826,13 +845,24 @@ public class IntentHandlingStep implements PipelineStep {
                     handler,
                     actionResult,
                     actionContext
-                ).ifPresent(observation -> data.put(
-                    "readActionResolution",
-                    Map.of("executedActions", List.of(observation))
-                ));
+                ).ifPresent(observation -> {
+                    Map<String, Object> executionObservation = new LinkedHashMap<>(observation);
+                    executionObservation.put(DATA_KEY_ACTION_EXECUTION_ID, actionExecutionId);
+                    data.put(
+                        "readActionResolution",
+                        Map.of("executedActions", List.of(Collections.unmodifiableMap(executionObservation)))
+                    );
+                });
             }
 
-            OrchestrationResult readFallback = maybeFallbackReadActionToRag(intent, meta, actionResult, context, pipelineContext);
+            OrchestrationResult readFallback = maybeFallbackReadActionToRag(
+                intent,
+                meta,
+                actionResult,
+                context,
+                pipelineContext,
+                collectEvidenceOnly
+            );
             if (readFallback != null) {
                 return readFallback;
             }
@@ -840,16 +870,18 @@ public class IntentHandlingStep implements PipelineStep {
             String message = actionResult != null ? actionResult.getMessage() : null;
             Map<String, Object> resultData = Collections.unmodifiableMap(data);
 
-            PostActionGenerationOutcome postActionGeneration = postActionGenerationSupport.maybeGeneratePostActionSummary(
-                actionName,
-                handler,
-                intent,
-                actionResult,
-                context,
-                pipelineContext,
-                effectiveParams,
-                postActionRequest
-            );
+            PostActionGenerationOutcome postActionGeneration = collectEvidenceOnly
+                ? null
+                : postActionGenerationSupport.maybeGeneratePostActionSummary(
+                    actionName,
+                    handler,
+                    intent,
+                    actionResult,
+                    context,
+                    pipelineContext,
+                    effectiveParams,
+                    postActionRequest
+                );
             if (postActionGeneration != null) {
                 message = postActionGeneration.message();
                 Map<String, Object> enriched = new LinkedHashMap<>(data);
@@ -1000,7 +1032,8 @@ public class IntentHandlingStep implements PipelineStep {
                                                             AIActionMetaData meta,
                                                             ActionResult actionResult,
                                                             OrchestrationContext context,
-                                                            PipelineContext pipelineContext) {
+                                                            PipelineContext pipelineContext,
+                                                            boolean collectEvidenceOnly) {
         if (meta == null || meta.getAccessMode() != ActionAccessMode.READ) {
             return null;
         }
@@ -1047,7 +1080,7 @@ public class IntentHandlingStep implements PipelineStep {
         }
         infoIntent.setVectorSpace(String.join(",", vectorSpaces));
 
-        OrchestrationResult result = handleInformation(infoIntent, context, pipelineContext);
+        OrchestrationResult result = handleInformation(infoIntent, context, pipelineContext, collectEvidenceOnly);
         if (result == null) {
             return null;
         }
@@ -1358,6 +1391,13 @@ public class IntentHandlingStep implements PipelineStep {
     }
 
     private OrchestrationResult handleInformation(Intent intent, OrchestrationContext context, PipelineContext pipelineContext) {
+        return handleInformation(intent, context, pipelineContext, false);
+    }
+
+    private OrchestrationResult handleInformation(Intent intent,
+                                                  OrchestrationContext context,
+                                                  PipelineContext pipelineContext,
+                                                  boolean collectEvidenceOnly) {
         InformationIntentPlanningSupport.Plan informationPlan = InformationIntentPlanningSupport.plan(
             intent,
             context,
@@ -1433,13 +1473,19 @@ public class IntentHandlingStep implements PipelineStep {
                     metadata.put(DATA_KEY_REQUIRES_GENERATION, true);
                 }
                 if (readActionResolution.canAnswerFromActionEvidenceOnly()) {
-                    return handleInformationFromReadActionEvidence(
-                        intent,
-                        pipelineContext,
-                        generationQuery,
-                        metadata,
-                        readActionResolution
-                    );
+                    return collectEvidenceOnly
+                        ? InformationGenerationResponseSupport.collectReadActionEvidence(
+                            intent,
+                            metadata,
+                            readActionResolution
+                        )
+                        : handleInformationFromReadActionEvidence(
+                            intent,
+                            pipelineContext,
+                            generationQuery,
+                            metadata,
+                            readActionResolution
+                        );
                 }
                 if (readActionResolution.attempted() && readActionResolution.useRag()) {
                     requiresRetrieval = true;
@@ -1471,13 +1517,19 @@ public class IntentHandlingStep implements PipelineStep {
             metadata.put(DATA_KEY_REQUIRES_GENERATION, true);
         }
         if (readActionResolution.canAnswerFromActionEvidenceOnly()) {
-            return handleInformationFromReadActionEvidence(
-                intent,
-                pipelineContext,
-                generationQuery,
-                metadata,
-                readActionResolution
-            );
+            return collectEvidenceOnly
+                ? InformationGenerationResponseSupport.collectReadActionEvidence(
+                    intent,
+                    metadata,
+                    readActionResolution
+                )
+                : handleInformationFromReadActionEvidence(
+                    intent,
+                    pipelineContext,
+                    generationQuery,
+                    metadata,
+                    readActionResolution
+                );
         }
         if (readActionResolution.attempted() && readActionResolution.useRag() && !requiresRetrieval) {
             requiresRetrieval = true;
@@ -1486,9 +1538,13 @@ public class IntentHandlingStep implements PipelineStep {
             metadata.put("requiresRetrieval", true);
         }
         if (!requiresRetrieval) {
-            OrchestrationResult result = handleInformationGenerationOnly(intent, pipelineContext, generationQuery, metadata);
+            OrchestrationResult result = collectEvidenceOnly
+                ? InformationGenerationResponseSupport.collectGenerationOnly(intent, metadata)
+                : handleInformationGenerationOnly(intent, pipelineContext, generationQuery, metadata);
             return ReadActionResolutionSupport.attachDiagnostics(result, readActionResolution);
         }
+
+        boolean executeGeneration = needsGeneration && !collectEvidenceOnly;
 
         InformationVectorSpaceRoutingSupport.RoutedVectorSpaces routedVectorSpaces =
             InformationVectorSpaceRoutingSupport.route(
@@ -1529,7 +1585,7 @@ public class IntentHandlingStep implements PipelineStep {
                 context,
                 pipelineContext,
                 deterministic,
-                needsGeneration,
+                executeGeneration,
                 generationQuery,
                 retrievalQuery,
                 metadata,
@@ -1542,7 +1598,13 @@ public class IntentHandlingStep implements PipelineStep {
 
         String advancedDecisionQuery = preparedQuery.advancedDecisionQuery();
 
-        if (advancedRagSupport.shouldUseAdvancedRag(intent, needsGeneration, advancedDecisionQuery, context, pipelineContext)) {
+        if (advancedRagSupport.shouldUseAdvancedRag(
+            intent,
+            needsGeneration,
+            advancedDecisionQuery,
+            context,
+            pipelineContext
+        )) {
             String advancedQuery = embedding != null && StringUtils.hasText(embedding.embeddingQuery())
                 ? embedding.embeddingQuery()
                 : retrievalQuery;
@@ -1550,7 +1612,7 @@ public class IntentHandlingStep implements PipelineStep {
                     intent,
                     context,
                     pipelineContext,
-                    needsGeneration,
+                    executeGeneration,
                     generationQuery,
                     advancedQuery,
                     metadata,
@@ -1587,7 +1649,7 @@ public class IntentHandlingStep implements PipelineStep {
                                 context,
                                 pipelineContext,
                                 deterministic,
-                                needsGeneration,
+                                executeGeneration,
                                 generationQuery,
                                 retrievalQuery,
                                 metadata,
@@ -1607,7 +1669,7 @@ public class IntentHandlingStep implements PipelineStep {
             intent,
             context,
             pipelineContext,
-            needsGeneration,
+            executeGeneration,
             generationQuery,
             retrievalQuery,
             metadata,
@@ -1724,9 +1786,15 @@ public class IntentHandlingStep implements PipelineStep {
         }
         List<OrchestrationResult> childResults = new ArrayList<>();
         List<NextStepRecommendation> nextSteps = new ArrayList<>();
+        boolean readEvidenceCompound = isReadEvidenceCompound(response.getIntents());
 
         for (Intent intent : response.getIntents()) {
-            OrchestrationResult child = handleSingleIntent(intent, context, pipelineContext);
+            OrchestrationResult child = handleSingleIntent(
+                intent,
+                context,
+                pipelineContext,
+                readEvidenceCompound
+            );
             if (child == null) {
                 log.error("handleSingleIntent returned null for intent type: {}",
                     intent != null ? intent.getType() : "NULL_INTENT");
@@ -1734,6 +1802,20 @@ public class IntentHandlingStep implements PipelineStep {
             }
             childResults.add(child);
             nextSteps.addAll(child.getNextSteps());
+        }
+
+        if (readEvidenceCompound) {
+            OrchestrationResult synthesized = CompoundReadEvidenceSupport.synthesize(
+                response.getIntents(),
+                childResults,
+                nextSteps,
+                pipelineContext,
+                ragResponseGenerationSupport,
+                isGenerationEnabled()
+            );
+            if (synthesized != null) {
+                return synthesized;
+            }
         }
 
         // Compound requests often include a primary action plus optional follow-up intents (ex: confirmation/help text).
@@ -1753,6 +1835,37 @@ public class IntentHandlingStep implements PipelineStep {
             .nextSteps(Collections.unmodifiableList(nextSteps))
             .data(data)
             .build();
+    }
+
+    private boolean isReadEvidenceCompound(List<Intent> intents) {
+        if (intents == null || intents.size() < 2) {
+            return false;
+        }
+        for (Intent intent : intents) {
+            if (intent == null || intent.getType() == null) {
+                return false;
+            }
+            if (intent.getType() == ai.fabric.dto.IntentType.INFORMATION) {
+                continue;
+            }
+            if (intent.getType() != ai.fabric.dto.IntentType.ACTION) {
+                return false;
+            }
+            String actionName = StringUtils.hasText(intent.getAction()) ? intent.getAction() : intent.getIntent();
+            AIActionMetaData metadata = getMetadataForAction(actionName);
+            if (metadata == null
+                || metadata.getAccessMode() != ActionAccessMode.READ
+                || !metadata.isGroundingEligible()) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private boolean isGenerationEnabled() {
+        return aiServiceConfig == null
+            || aiServiceConfig.getFeatures() == null
+            || !Boolean.FALSE.equals(aiServiceConfig.getFeatures().getEnableGeneration());
     }
 
     // =========================================================================

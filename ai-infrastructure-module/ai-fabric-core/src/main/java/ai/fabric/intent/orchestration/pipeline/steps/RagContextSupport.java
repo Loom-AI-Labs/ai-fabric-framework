@@ -245,7 +245,22 @@ final class RagContextSupport {
         if (doc.getMetadata() != null && !doc.getMetadata().isEmpty()) {
             meta.putAll(doc.getMetadata());
         }
-        meta.put("vectorSpace", vectorSpace);
+        String queriedVectorSpace = normalizeVectorSpace(vectorSpace);
+        String actualVectorSpace = documentVectorSpace(doc);
+        if (StringUtils.hasText(queriedVectorSpace)) {
+            meta.put("queriedVectorSpace", queriedVectorSpace);
+        }
+        if (StringUtils.hasText(actualVectorSpace)) {
+            meta.put("vectorSpace", actualVectorSpace);
+        } else if (StringUtils.hasText(queriedVectorSpace)) {
+            // Providers that omit source metadata still inherit the already validated query scope.
+            meta.put("vectorSpace", queriedVectorSpace);
+        }
+        if (StringUtils.hasText(actualVectorSpace)
+            && StringUtils.hasText(queriedVectorSpace)
+            && !actualVectorSpace.equalsIgnoreCase(queriedVectorSpace)) {
+            meta.put("vectorSpaceMismatch", true);
+        }
 
         return RAGResponse.RAGDocument.builder()
             .id(doc.getId())
@@ -266,6 +281,29 @@ final class RagContextSupport {
             .wordCount(doc.getWordCount())
             .language(doc.getLanguage())
             .build();
+    }
+
+    static boolean hasVectorSpaceMismatch(RAGResponse.RAGDocument document) {
+        return document != null
+            && document.getMetadata() != null
+            && Boolean.TRUE.equals(document.getMetadata().get("vectorSpaceMismatch"));
+    }
+
+    private static String documentVectorSpace(RAGResponse.RAGDocument document) {
+        if (document == null) {
+            return null;
+        }
+        if (document.getMetadata() != null) {
+            Object value = document.getMetadata().get("vectorSpace");
+            if (value instanceof String text && StringUtils.hasText(text)) {
+                return text.trim();
+            }
+        }
+        return normalizeVectorSpace(document.getType());
+    }
+
+    private static String normalizeVectorSpace(String value) {
+        return StringUtils.hasText(value) ? value.trim() : null;
     }
 
     static Double bestDocumentScore(List<RAGResponse.RAGDocument> docs) {

@@ -11,6 +11,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -33,6 +34,22 @@ final class RAGSearchExecutor {
     private static final String HYBRID_MODE_FALLBACK_VECTOR = "fallback_vector";
     private static final String HYBRID_MODE_SEARCH_SOURCE = "search_source";
     private static final String HYBRID_MODE_NOT_REPORTED_BY_SOURCES = "not_reported_by_sources";
+    private static final List<String> SAFE_SEARCH_RESPONSE_DIAGNOSTIC_KEYS = List.of(
+        "queriedVectorSpace",
+        "rawResultsCount",
+        "filteredResultsCount",
+        "vectorSpaceMismatchCount"
+    );
+    private static final List<String> SAFE_RESOLUTION_DIAGNOSTIC_KEYS = List.of(
+        "sourceId",
+        "sourceType",
+        "adapterType",
+        "eligible",
+        "status",
+        "reason",
+        "requestedEntityType",
+        "configuredEntityTypes"
+    );
 
     private final VectorDatabaseService vectorDatabaseService;
     private final AISearchService searchService;
@@ -93,7 +110,20 @@ final class RAGSearchExecutor {
 
         List<SearchSource> sources = searchSourceRegistry.resolveSearchSources(ragRequest);
         if (sources == null || sources.isEmpty()) {
-            return SearchExecutionAggregate.empty(baseSearchRequest, ragRequest);
+            List<Map<String, Object>> resolutionDiagnostics = searchSourceRegistry.resolutionDiagnostics(ragRequest);
+            List<Map<String, Object>> safeDiagnostics = resolutionDiagnostics == null
+                ? List.of()
+                : resolutionDiagnostics.stream()
+                    .filter(java.util.Objects::nonNull)
+                    .map(this::safeResolutionDiagnostic)
+                    .toList();
+            SearchExecutionAggregate aggregate = SearchExecutionAggregate.empty(
+                baseSearchRequest,
+                ragRequest,
+                safeDiagnostics
+            );
+            searchSourceRegistry.recordSearchExecution(safeDiagnostics, false);
+            return aggregate;
         }
 
         long startTime = System.currentTimeMillis();
@@ -147,6 +177,7 @@ final class RAGSearchExecutor {
                 if (response.getMaxScore() != null) {
                     diagnostic.put("maxScore", response.getMaxScore());
                 }
+                appendSearchResponseDiagnostics(diagnostic, response.getDiagnostics());
                 if (hybridRequested && sourceSupportsHybrid) {
                     sourceHybridSucceeded = true;
                     diagnostic.put("hybridSearchUsed", true);
@@ -257,8 +288,48 @@ final class RAGSearchExecutor {
         return diagnostic;
     }
 
+    private void appendSearchResponseDiagnostics(Map<String, Object> target,
+                                                  Map<String, Object> responseDiagnostics) {
+        if (responseDiagnostics == null || responseDiagnostics.isEmpty()) {
+            return;
+        }
+        for (String key : SAFE_SEARCH_RESPONSE_DIAGNOSTIC_KEYS) {
+            Object value = responseDiagnostics.get(key);
+            if (value instanceof String text && StringUtils.hasText(text)) {
+                target.put(key, truncate(text.trim(), 120));
+            } else if (value instanceof Number || value instanceof Boolean) {
+                target.put(key, value);
+            }
+        }
+    }
+
     private Map<String, Object> immutableDiagnostic(Map<String, Object> diagnostic) {
         return Map.copyOf(new LinkedHashMap<>(diagnostic));
+    }
+
+    private Map<String, Object> safeResolutionDiagnostic(Map<String, Object> diagnostic) {
+        Map<String, Object> safe = new LinkedHashMap<>();
+        for (String key : SAFE_RESOLUTION_DIAGNOSTIC_KEYS) {
+            Object value = diagnostic.get(key);
+            if (value instanceof String text && StringUtils.hasText(text)) {
+                safe.put(key, truncate(text.trim(), 120));
+            } else if (value instanceof Boolean || value instanceof Number) {
+                safe.put(key, value);
+            } else if (value instanceof List<?> list) {
+                List<String> strings = list.stream()
+                    .filter(String.class::isInstance)
+                    .map(String.class::cast)
+                    .filter(StringUtils::hasText)
+                    .map(String::trim)
+                    .map(item -> truncate(item, 120))
+                    .limit(20)
+                    .toList();
+                if (!strings.isEmpty()) {
+                    safe.put(key, strings);
+                }
+            }
+        }
+        return Collections.unmodifiableMap(safe);
     }
 
     private void putIfText(Map<String, Object> target, String key, String value) {
@@ -344,7 +415,9 @@ final class RAGSearchExecutor {
             );
         }
 
-        static SearchExecutionAggregate empty(AISearchRequest request, RAGRequest ragRequest) {
+        static SearchExecutionAggregate empty(AISearchRequest request,
+                                              RAGRequest ragRequest,
+                                              List<Map<String, Object>> sourceDiagnostics) {
             boolean hybridRequested = Boolean.TRUE.equals(ragRequest.getEnableHybridSearch());
             return new SearchExecutionAggregate(
                 AISearchResponse.builder()
@@ -354,7 +427,7 @@ final class RAGSearchExecutor {
                     .query(request.getQuery())
                     .model(request.getEntityType())
                     .build(),
-                List.of(),
+                sourceDiagnostics == null ? List.of() : List.copyOf(sourceDiagnostics),
                 0,
                 0,
                 0,

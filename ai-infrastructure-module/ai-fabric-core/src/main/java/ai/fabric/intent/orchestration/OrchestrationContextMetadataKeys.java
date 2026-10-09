@@ -37,12 +37,18 @@ public final class OrchestrationContextMetadataKeys {
     public static final String RAG_MAX_CONTEXT_CHARS = "ragMaxContextChars";
 
     /**
-     * Request-scoped preferred RAG vector space/entity type.
+     * Trusted application-supplied preferred RAG vector space/entity type.
+     *
+     * <p>Runtime adapters must populate this key only from authenticated, server-owned
+     * configuration. Public request-context fields are not routing authority.</p>
      */
     public static final String RAG_VECTOR_SPACE_HINT = "ragVectorSpaceHint";
 
     /**
-     * Request-scoped ordered list of preferred RAG vector spaces/entity types.
+     * Trusted application-supplied ordered list of preferred RAG vector spaces/entity types.
+     *
+     * <p>Runtime adapters must populate this key only from authenticated, server-owned
+     * configuration. Public request-context fields are not routing authority.</p>
      */
     public static final String RAG_PREFERRED_VECTOR_SPACES = "ragPreferredVectorSpaces";
 

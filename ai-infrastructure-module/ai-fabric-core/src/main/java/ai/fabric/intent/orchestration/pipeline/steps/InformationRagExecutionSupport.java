@@ -215,6 +215,7 @@ final class InformationRagExecutionSupport {
         fanOutThreshold = advancedRagSupport.resolveSimilarityThreshold(ragBudgets, fanOutThreshold);
 
         Map<String, List<RAGResponse.RAGDocument>> docsBySpace = new LinkedHashMap<>();
+        List<Map<String, Object>> vectorSpaceMismatches = new java.util.ArrayList<>();
         for (String vectorSpace : vectorSpaces) {
             RAGRequest ragRequest = RAGRequest.builder()
                 .query(retrievalQuery)
@@ -233,12 +234,26 @@ final class InformationRagExecutionSupport {
                 ? ragResponse.getDocuments()
                 : List.of();
 
-            List<RAGResponse.RAGDocument> tagged = docs.stream()
+            List<RAGResponse.RAGDocument> taggedCandidates = docs.stream()
                 .filter(java.util.Objects::nonNull)
                 .map(doc -> RagContextSupport.tagDocumentWithVectorSpace(doc, vectorSpace))
                 .toList();
+            List<RAGResponse.RAGDocument> tagged = taggedCandidates.stream()
+                .filter(doc -> !RagContextSupport.hasVectorSpaceMismatch(doc))
+                .toList();
+
+            long mismatchCount = taggedCandidates.size() - tagged.size();
+            if (mismatchCount > 0) {
+                vectorSpaceMismatches.add(Map.of(
+                    "queriedVectorSpace", vectorSpace,
+                    "droppedDocuments", mismatchCount
+                ));
+            }
 
             docsBySpace.put(vectorSpace, tagged);
+        }
+        if (!vectorSpaceMismatches.isEmpty()) {
+            metadata.put("vectorSpaceMismatches", Collections.unmodifiableList(vectorSpaceMismatches));
         }
 
         List<RAGResponse.RAGDocument> merged = rankBasedMerger.mergeByRank(docsBySpace, topKPerSpace);

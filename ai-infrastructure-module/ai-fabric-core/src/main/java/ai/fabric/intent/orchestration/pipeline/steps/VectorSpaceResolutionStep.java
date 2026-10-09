@@ -112,19 +112,20 @@ public class VectorSpaceResolutionStep implements PipelineStep {
                     String prior = intent.getVectorSpace();
                     String resolved = String.join(",", normalization.normalizedValid());
                     intent.setVectorSpace(resolved);
-                    routingEvents.add(toNormalizationEvent(i, "REQUEST_CONTEXT_HINT", prior, resolved,
+                    routingEvents.add(toNormalizationEvent(i, "TRUSTED_SERVER_HINT", prior, resolved,
                         normalization.invalidTokens(), availableVectorSpaces));
                     anyUpdate = true;
                     continue;
                 }
                 if (normalization != null && !normalization.invalidTokens().isEmpty()) {
-                    routingEvents.add(toNormalizationEvent(i, "REQUEST_CONTEXT_HINT_INVALID", intent.getVectorSpace(), null,
+                    routingEvents.add(toNormalizationEvent(i, "TRUSTED_SERVER_HINT_INVALID", intent.getVectorSpace(), null,
                         normalization.invalidTokens(), availableVectorSpaces));
                 }
             }
 
-            // Validate LLM-provided vectorSpace against currently available knowledge base spaces.
-            // If the provided value is invalid, fall back to fan-out across all available spaces.
+            // Validate the model-provided vectorSpace against currently available knowledge-base spaces.
+            // An invalid recommendation is never broadened silently. A single allowlisted space is a
+            // deterministic policy fallback; otherwise the normal router/clarification path decides.
             if (hasText(intent.getVectorSpace())) {
                 if (availableVectorSpaces == null) {
                     availableVectorSpaces = resolveAllVectorSpaces();
@@ -135,22 +136,19 @@ public class VectorSpaceResolutionStep implements PipelineStep {
 	                    if (normalization != null && !normalization.invalidTokens().isEmpty()) {
 	                        String prior = intent.getVectorSpace();
 	                        if (normalization.normalizedValid().isEmpty()) {
-	                            List<String> fallbackSpaces = availableVectorSpaces;
-                                if (ragBudgets != null && ragBudgets.hasVectorSpaceAllowlist()) {
-                                    List<String> allowlist = ragBudgets.retrievalVectorSpacesAllowlist();
-                                    fallbackSpaces = fallbackSpaces.stream()
-                                        .filter(space -> allowlist.contains(space.toLowerCase(Locale.ROOT)))
-                                        .toList();
-                                }
-	                            if (ragBudgets != null
-	                                && ragBudgets.maxSpaces() != null
-	                                && ragBudgets.maxSpaces() > 0
-	                                && fallbackSpaces.size() > ragBudgets.maxSpaces()) {
-	                                fallbackSpaces = fallbackSpaces.subList(0, ragBudgets.maxSpaces());
-	                            }
-	                            intent.setVectorSpace(String.join(",", fallbackSpaces));
-	                            routingEvents.add(toNormalizationEvent(i, "INVALID_FALLBACK_FAN_OUT", prior, intent.getVectorSpace(),
-	                                normalization.invalidTokens(), availableVectorSpaces));
+	                            List<String> singletonFallback = resolveSingletonPolicyFallback(
+	                                availableVectorSpaces,
+	                                ragBudgets
+	                            );
+	                            intent.setVectorSpace(singletonFallback.isEmpty() ? null : singletonFallback.getFirst());
+	                            routingEvents.add(toNormalizationEvent(
+	                                i,
+	                                singletonFallback.isEmpty() ? "INVALID_REJECTED" : "POLICY_FALLBACK_SINGLETON",
+	                                prior,
+	                                intent.getVectorSpace(),
+	                                normalization.invalidTokens(),
+	                                availableVectorSpaces
+	                            ));
 	                        } else {
 	                            intent.setVectorSpace(String.join(",", normalization.normalizedValid()));
 	                            routingEvents.add(toNormalizationEvent(i, "INVALID_FILTERED", prior, intent.getVectorSpace(),
@@ -163,6 +161,15 @@ public class VectorSpaceResolutionStep implements PipelineStep {
                         routingEvents.add(toNormalizationEvent(i, "NORMALIZED", prior, intent.getVectorSpace(),
                             List.of(), availableVectorSpaces));
                         anyUpdate = true;
+                    } else if (normalization != null && !normalization.normalizedValid().isEmpty()) {
+                        routingEvents.add(toNormalizationEvent(
+                            i,
+                            "LLM_VALIDATED",
+                            intent.getVectorSpace(),
+                            intent.getVectorSpace(),
+                            List.of(),
+                            availableVectorSpaces
+                        ));
                     }
                 }
             }
@@ -274,6 +281,21 @@ public class VectorSpaceResolutionStep implements PipelineStep {
 	        return Math.max(1, maxDefault);
 	    }
 
+    private List<String> resolveSingletonPolicyFallback(List<String> availableVectorSpaces,
+                                                        OrchestrationPolicy.RagBudgets ragBudgets) {
+        if (availableVectorSpaces == null || availableVectorSpaces.isEmpty()
+            || ragBudgets == null || !ragBudgets.hasVectorSpaceAllowlist()) {
+            return List.of();
+        }
+        Set<String> allowed = new LinkedHashSet<>(ragBudgets.retrievalVectorSpacesAllowlist());
+        List<String> candidates = availableVectorSpaces.stream()
+            .filter(this::hasText)
+            .filter(space -> allowed.contains(space.trim().toLowerCase(Locale.ROOT)))
+            .distinct()
+            .toList();
+        return candidates.size() == 1 ? candidates : List.of();
+    }
+
 	    private List<String> resolveDeepFallbackVectorSpaces(int maxSpaces,
 	                                                        OrchestrationPolicy.RagBudgets ragBudgets) {
 	        KnowledgeBaseOverviewService overviewService = knowledgeBaseOverviewServiceProvider != null
@@ -340,16 +362,6 @@ public class VectorSpaceResolutionStep implements PipelineStep {
         LinkedHashSet<String> hints = new LinkedHashSet<>();
         collectHintValues(hints, metadata.get(OrchestrationContextMetadataKeys.RAG_PREFERRED_VECTOR_SPACES));
         collectHintValues(hints, metadata.get(OrchestrationContextMetadataKeys.RAG_VECTOR_SPACE_HINT));
-
-        Object requestContext = metadata.get("requestContext");
-        if (requestContext instanceof Map<?, ?> map) {
-            collectHintValues(hints, map.get("preferredVectorSpaces"));
-            collectHintValues(hints, map.get("vectorSpace"));
-            collectHintValues(hints, map.get("entityType"));
-            collectHintValues(hints, map.get("preferred_vector_spaces"));
-            collectHintValues(hints, map.get("vector_space"));
-            collectHintValues(hints, map.get("entity_type"));
-        }
 
         return hints.stream().toList();
     }

@@ -190,6 +190,52 @@ final class InformationGenerationResponseSupport {
         return ReadActionResolutionSupport.attachDiagnostics(result, resolutionOutcome);
     }
 
+    static OrchestrationResult collectReadActionEvidence(Intent intent,
+                                                          Map<String, Object> metadata,
+                                                          ReadActionResolutionService.ResolutionOutcome resolutionOutcome) {
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put(DATA_KEY_ANSWER, null);
+        data.put(DATA_KEY_DOCUMENTS, List.of());
+        data.put(DATA_KEY_RAG_RESPONSE, null);
+        data.put(DATA_KEY_REQUIRES_GENERATION, true);
+        data.put("requiresRetrieval", false);
+        data.put("evidenceCollectionOnly", true);
+        data.put("readActionResolution", resolutionOutcome != null ? resolutionOutcome.diagnostics() : Map.of());
+        if (metadata != null && !metadata.isEmpty()) {
+            data.put(DATA_KEY_METADATA, Collections.unmodifiableMap(new LinkedHashMap<>(metadata)));
+        }
+
+        OrchestrationResult result = OrchestrationResult.builder()
+            .type(OrchestrationResultType.INFORMATION_PROVIDED)
+            .success(resolutionOutcome != null && resolutionOutcome.hasGroundingEvidence())
+            .message("Evidence collection completed.")
+            .data(Collections.unmodifiableMap(data))
+            .nextSteps(extractNextSteps(intent))
+            .build();
+        return ReadActionResolutionSupport.attachDiagnostics(result, resolutionOutcome);
+    }
+
+    static OrchestrationResult collectGenerationOnly(Intent intent,
+                                                      Map<String, Object> metadata) {
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put(DATA_KEY_ANSWER, null);
+        data.put(DATA_KEY_DOCUMENTS, List.of());
+        data.put(DATA_KEY_RAG_RESPONSE, null);
+        data.put(DATA_KEY_REQUIRES_GENERATION, true);
+        data.put("requiresRetrieval", false);
+        data.put("evidenceCollectionOnly", true);
+        if (metadata != null && !metadata.isEmpty()) {
+            data.put(DATA_KEY_METADATA, Collections.unmodifiableMap(new LinkedHashMap<>(metadata)));
+        }
+        return OrchestrationResult.builder()
+            .type(OrchestrationResultType.INFORMATION_PROVIDED)
+            .success(true)
+            .message("Evidence collection completed.")
+            .data(Collections.unmodifiableMap(data))
+            .nextSteps(extractNextSteps(intent))
+            .build();
+    }
+
     private static List<NextStepRecommendation> extractNextSteps(Intent intent) {
         if (intent == null || intent.getNextStepRecommended() == null) {
             return List.of();

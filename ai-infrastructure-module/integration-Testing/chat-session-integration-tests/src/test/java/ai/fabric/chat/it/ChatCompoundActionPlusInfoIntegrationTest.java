@@ -93,8 +93,7 @@ class ChatCompoundActionPlusInfoIntegrationTest {
         OrchestrationResult result = pipeline.execute("Echo hello and say hi.", orch);
 
         assertThat(result).isNotNull();
-        // Normalization promotes COMPOUND_HANDLED to a stable top-level type (typically ACTION_EXECUTED here).
-        assertThat(result.getType()).isEqualTo(OrchestrationResultType.ACTION_EXECUTED);
+        assertThat(result.getType()).isEqualTo(OrchestrationResultType.INFORMATION_PROVIDED);
         assertThat(result.getChildren()).hasSize(2);
         assertThat(result.getChildren().stream().map(OrchestrationResult::getType).toList())
             .contains(OrchestrationResultType.ACTION_EXECUTED, OrchestrationResultType.INFORMATION_PROVIDED);

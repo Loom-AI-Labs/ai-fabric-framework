@@ -113,6 +113,50 @@ class IntentHandlingStepFanOutTest {
     }
 
     @Test
+    void shouldDropDocumentWhoseActualVectorSpaceDoesNotMatchFanOutBranch() {
+        RAGProvider ragProvider = mock(RAGProvider.class);
+        when(ragProvider.performRag(any(RAGRequest.class))).thenAnswer(invocation -> {
+            RAGRequest request = invocation.getArgument(0);
+            if ("faq".equals(request.getEntityType())) {
+                return RAGResponse.builder()
+                    .documents(List.of(RAGResponse.RAGDocument.builder()
+                        .id("wrong-policy")
+                        .type("policies")
+                        .content("Mismatched evidence")
+                        .score(0.9d)
+                        .metadata(Map.of("vectorSpace", "policies"))
+                        .build()))
+                    .success(true)
+                    .build();
+            }
+            return RAGResponse.builder()
+                .documents(List.of(doc("pol-1", 0.8d, "Policy one")))
+                .success(true)
+                .build();
+        });
+
+        IntentHandlingStep step = newStep(ragProvider, mock(AICoreService.class));
+        Intent intent = Intent.builder()
+            .type(IntentType.INFORMATION)
+            .intent("policy")
+            .vectorSpace("faq,policies")
+            .requiresGeneration(false)
+            .build();
+        PipelineContext context = PipelineContext.from("policy", OrchestrationContext.forUser("user"))
+            .toBuilder()
+            .intentResponse(MultiIntentResponse.builder().intents(List.of(intent)).build())
+            .build();
+
+        OrchestrationResult result = step.process(context).getIntentResult();
+
+        @SuppressWarnings("unchecked")
+        List<RAGResponse.RAGDocument> documents = (List<RAGResponse.RAGDocument>) result.getData().get("documents");
+        assertThat(documents).extracting(RAGResponse.RAGDocument::getId).containsExactly("pol-1");
+        RAGResponse ragResponse = (RAGResponse) result.getData().get("ragResponse");
+        assertThat(ragResponse.getMetadata()).containsKey("vectorSpaceMismatches");
+    }
+
+    @Test
     void shouldReturnClarificationWhenFanOutIsWeak() {
         RAGProvider ragProvider = mock(RAGProvider.class);
         when(ragProvider.performRag(any(RAGRequest.class))).thenReturn(
