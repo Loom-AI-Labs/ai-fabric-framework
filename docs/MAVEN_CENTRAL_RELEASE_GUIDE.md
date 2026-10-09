@@ -62,6 +62,12 @@ The `central` Maven profile (in `ai-infrastructure-module/pom.xml`) GPG-signs al
 uploads them through the `central-publishing-maven-plugin`. The `release` profile attaches the
 `-sources.jar` and `-javadoc.jar` Central requires.
 
+The publication workflow intentionally pins Maven `3.9.16` and verifies the
+Apache distribution SHA-512 before use. Sonatype Central Publishing Maven
+Plugin `0.11.0` does not produce a valid multi-module Central bundle under
+Maven `3.10.0`. Change this pin only after a complete test publication proves
+the generated bundle layout remains valid.
+
 Tag and create a GitHub Release; the release workflow publishes automatically:
 
 ```bash
