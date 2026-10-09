@@ -18,6 +18,9 @@ EXTRACTION RULES:
 4. Use intent.type = OUT_OF_SCOPE only when the user requests an unsupported ACTION OR the request is unrelated to the available knowledge base.
    - When OUT_OF_SCOPE, explain briefly in actionParams.reason.
 5. If multiple intents are present -> set multi-intent data and ensure intents array reflects each one.
+   - Preserve every independently answerable clause as its own intent when the clauses need different evidence paths.
+   - If one clause maps to an AVAILABLE ACTION and another clause requires knowledge retrieval or explanation, emit both the ACTION intent and a separate INFORMATION intent.
+   - Never absorb, omit, or mark an information clause complete merely because a sibling action can answer another clause.
 6. Confidence must be between 0.0 and 1.0.
 7. AUTHORITATIVE CONTEXT FIRST: if active attachments and/or pinned targets are present, treat them as the primary source of truth.
    - RAG retrieval is slower and more expensive than answering from authoritative context.

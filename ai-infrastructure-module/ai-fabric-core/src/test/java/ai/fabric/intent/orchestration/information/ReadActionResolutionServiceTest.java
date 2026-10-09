@@ -46,6 +46,80 @@ import static org.mockito.Mockito.when;
 class ReadActionResolutionServiceTest {
 
     @Test
+    void shouldPlanFromTheScopedCompoundObligationQuery() {
+        AICoreService aiCoreService = mock(AICoreService.class);
+        AIActionRegistry actionRegistry = mock(AIActionRegistry.class);
+        PromptTemplateResolver templateResolver = mock(PromptTemplateResolver.class);
+
+        AIActionMetaData searchInventory = AIActionMetaData.builder()
+            .name("search_inventory")
+            .description("Search current inventory.")
+            .category("inventory")
+            .accessMode(ActionAccessMode.READ)
+            .groundingEligible(true)
+            .readActionResolutionEligible(true)
+            .build();
+        AIActionHandler searchHandler = mock(AIActionHandler.class);
+        when(actionRegistry.getAllMetadata()).thenReturn(List.of(searchInventory));
+        when(actionRegistry.findHandler("search_inventory")).thenReturn(Optional.of(searchHandler));
+        when(templateResolver.resolve("orchestration/read-action-resolution", "system"))
+            .thenReturn(resolvedTemplate("system", ""));
+        when(templateResolver.resolve("orchestration/read-action-resolution", "user"))
+            .thenReturn(resolvedTemplate("user", "query={{query}}\nintent={{intent_json}}\nactions={{eligible_actions_json}}\n"
+                + "prior={{prior_evidence_json}}\nmax={{max_actions_per_iteration}}\ntotal={{max_total_actions}}\n"
+                + "rag={{rag_cooperation_mode}}\niteration={{iteration}}\niterations={{max_iterations}}\nmode={{mode}}"));
+        when(aiCoreService.generateContent(any(), eq(LlmPurpose.ORCHESTRATION)))
+            .thenReturn(AIGenerationResponse.builder()
+                .content("""
+                    {
+                      "decision": "USE_RAG_ONLY",
+                      "actions": [],
+                      "needsMoreSteps": false,
+                      "suggestedVectorSpaces": ["document"]
+                    }
+                    """)
+                .build());
+
+        ReadActionResolutionService service = new ReadActionResolutionService(
+            aiCoreService,
+            actionRegistry,
+            new IntentExtractionJsonSupport(new ObjectMapper()),
+            templateResolver,
+            new PromptRenderer()
+        );
+
+        service.resolve(
+            Intent.builder()
+                .type(IntentType.INFORMATION)
+                .intent("Explain the delivery policy.")
+                .optimizedQuery("dealership delivery policy charges requirements")
+                .requiresRetrieval(true)
+                .build(),
+            OrchestrationContext.forUser("user-1"),
+            PipelineContext.from(
+                    "What electric cars do you have, and what is your delivery policy?",
+                    OrchestrationContext.forUser("user-1")
+                )
+                .toBuilder()
+                .processedQuery("dealership delivery policy charges requirements")
+                .orchestrationPolicy(readActionPolicy(
+                    "compound_assistant",
+                    List.of("search_inventory"),
+                    OrchestrationProperties.ReadActionResolutionPlanningMode.SINGLE_PASS,
+                    OrchestrationProperties.ReadActionResolutionRagCooperationMode.RAG_IF_ACTIONS_INSUFFICIENT
+                ))
+                .build()
+        );
+
+        ArgumentCaptor<AIGenerationRequest> requestCaptor = ArgumentCaptor.forClass(AIGenerationRequest.class);
+        verify(aiCoreService).generateContent(requestCaptor.capture(), eq(LlmPurpose.ORCHESTRATION));
+        assertThat(requestCaptor.getValue().getPrompt())
+            .contains("query=dealership delivery policy charges requirements")
+            .doesNotContain("query=What electric cars do you have, and what is your delivery policy?");
+        verify(searchHandler, never()).executeAction(any(), any(ActionContext.class));
+    }
+
+    @Test
     void shouldOmitNullPlannerParamsWithoutFailingReadActionResolution() {
         AICoreService aiCoreService = mock(AICoreService.class);
         AIActionRegistry actionRegistry = mock(AIActionRegistry.class);

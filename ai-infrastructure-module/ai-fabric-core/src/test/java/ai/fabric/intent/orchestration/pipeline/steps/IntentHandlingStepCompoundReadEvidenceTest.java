@@ -28,6 +28,7 @@ import ai.fabric.intent.actiondraft.InMemoryActionDraftStore;
 import ai.fabric.intent.orchestration.OrchestrationContext;
 import ai.fabric.intent.orchestration.OrchestrationResult;
 import ai.fabric.intent.orchestration.OrchestrationResultType;
+import ai.fabric.intent.orchestration.information.ReadActionResolutionService;
 import ai.fabric.intent.orchestration.pipeline.PipelineContext;
 import ai.fabric.intent.vectorspace.RankBasedMerger;
 import ai.fabric.prompt.ClasspathPromptTemplateStore;
@@ -40,6 +41,7 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.core.io.DefaultResourceLoader;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.util.List;
 import java.util.Map;
@@ -56,6 +58,43 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class IntentHandlingStepCompoundReadEvidenceTest {
+
+    @Test
+    void scopesEachInformationPlannerToItsCompoundObligation() {
+        RAGProvider ragProvider = mock(RAGProvider.class);
+        when(ragProvider.performRag(any(RAGRequest.class))).thenReturn(response(document(
+            "evidence-1",
+            "document",
+            "knowledge-source",
+            "Grounded evidence."
+        )));
+        AICoreService aiCoreService = mock(AICoreService.class);
+        when(aiCoreService.generateTextResponse(anyString(), eq(LlmPurpose.GENERATION)))
+            .thenReturn(AIGenerationResponse.builder().content("Combined grounded answer.").build());
+        ReadActionResolutionService resolutionService = mock(ReadActionResolutionService.class);
+        when(resolutionService.resolve(any(), any(), any()))
+            .thenReturn(ReadActionResolutionService.ResolutionOutcome.skipped("NO_ELIGIBLE_READ_ACTIONS"));
+
+        IntentHandlingStep step = newStep(mock(AIActionRegistry.class), ragProvider, aiCoreService);
+        ReflectionTestUtils.setField(step, "readActionResolutionServiceProvider", providerOf(resolutionService));
+
+        Intent inventory = information("Find electric inventory", "dealer-vehicle");
+        inventory.setOptimizedQuery("available electric vehicle inventory");
+        Intent policy = information("Explain the delivery policy", "document");
+        policy.setOptimizedQuery("delivery policy charges requirements");
+        String originalQuery = "What electric cars do you have, and what is your delivery policy?";
+
+        step.process(context(originalQuery, inventory, policy));
+
+        ArgumentCaptor<PipelineContext> contextCaptor = ArgumentCaptor.forClass(PipelineContext.class);
+        verify(resolutionService, times(2)).resolve(any(), any(), contextCaptor.capture());
+        assertThat(contextCaptor.getAllValues())
+            .extracting(PipelineContext::getEffectiveQuery)
+            .containsExactly("available electric vehicle inventory", "delivery policy charges requirements");
+        assertThat(contextCaptor.getAllValues())
+            .extracting(PipelineContext::getOriginalQuery)
+            .containsOnly(originalQuery);
+    }
 
     @Test
     void synthesizesTwoInformationIntentsOnceAndPreservesPerIntentQueries() {

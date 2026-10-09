@@ -101,6 +101,8 @@ class DefaultCuratedPackTest {
         assertThat(readResource("prompts/intent-extraction/compound/v1-default-optimized/system.md"))
             .contains("RECENT CONVERSATION FOLLOW-UPS")
             .contains("POLICY/GUIDANCE DOCUMENT RULE")
+            .contains("emit both the ACTION intent and a separate INFORMATION intent")
+            .contains("Never absorb, omit, or mark an information clause complete")
             .contains("Do not ask the user for internal identifiers");
 
         assertThat(readResource("prompts/rag/generation/v1-default-optimized/answer-managed.md"))

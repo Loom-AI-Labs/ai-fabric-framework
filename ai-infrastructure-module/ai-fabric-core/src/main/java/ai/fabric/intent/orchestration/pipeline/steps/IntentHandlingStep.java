@@ -5,6 +5,7 @@ import ai.fabric.config.PostActionGenerationProperties;
 import ai.fabric.config.RelationshipQueryPostActionGenerationProperties;
 import ai.fabric.core.AICoreService;
 import ai.fabric.dto.Intent;
+import ai.fabric.dto.IntentType;
 import ai.fabric.dto.MultiIntentResponse;
 import ai.fabric.dto.NextStepRecommendation;
 import ai.fabric.intent.action.AIActionMetaData;
@@ -1789,10 +1790,13 @@ public class IntentHandlingStep implements PipelineStep {
         boolean readEvidenceCompound = isReadEvidenceCompound(response.getIntents());
 
         for (Intent intent : response.getIntents()) {
+            PipelineContext childContext = readEvidenceCompound
+                ? scopeReadEvidenceIntentContext(intent, pipelineContext)
+                : pipelineContext;
             OrchestrationResult child = handleSingleIntent(
                 intent,
                 context,
-                pipelineContext,
+                childContext,
                 readEvidenceCompound
             );
             if (child == null) {
@@ -1834,6 +1838,21 @@ public class IntentHandlingStep implements PipelineStep {
             .children(Collections.unmodifiableList(childResults))
             .nextSteps(Collections.unmodifiableList(nextSteps))
             .data(data)
+            .build();
+    }
+
+    private PipelineContext scopeReadEvidenceIntentContext(Intent intent, PipelineContext pipelineContext) {
+        if (pipelineContext == null || intent == null || intent.getType() != IntentType.INFORMATION) {
+            return pipelineContext;
+        }
+        String intentQuery = StringUtils.hasText(intent.getOptimizedQuery())
+            ? intent.getOptimizedQuery().trim()
+            : intent.getIntentOrAction();
+        if (!StringUtils.hasText(intentQuery)) {
+            return pipelineContext;
+        }
+        return pipelineContext.toBuilder()
+            .processedQuery(intentQuery.trim())
             .build();
     }
 
