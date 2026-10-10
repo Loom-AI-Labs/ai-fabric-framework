@@ -17,6 +17,10 @@ import java.util.Objects;
 @RequiredArgsConstructor
 public class RegisteredActionsAIActionProvider implements AIActionProvider {
 
+    private static final String TRUSTED_TARGET_REQUIREMENT =
+        "Requires a trusted current target from application context. Do not select this action when no current "
+            + "target is present; use information retrieval or another search action instead.";
+
     private final AIActionRegistry actionRegistry;
 
     @Override
@@ -28,7 +32,7 @@ public class RegisteredActionsAIActionProvider implements AIActionProvider {
             .filter(Objects::nonNull)
             .map(meta -> ActionInfo.builder()
                 .name(meta.getName())
-                .description(meta.getDescription())
+                .description(promptDescription(meta))
                 .category(meta.getCategory())
                 .parameters(publicParameters(meta))
                 .parameterSchemas(publicParameterSchemas(meta))
@@ -40,6 +44,60 @@ public class RegisteredActionsAIActionProvider implements AIActionProvider {
     @Override
     public String getProviderName() {
         return "registered-actions";
+    }
+
+    private String promptDescription(AIActionMetaData meta) {
+        String description = meta != null && StringUtils.hasText(meta.getDescription())
+            ? meta.getDescription().trim()
+            : "";
+        if (!hasRequiredAttachmentTarget(meta)) {
+            return description;
+        }
+        return description.isEmpty()
+            ? TRUSTED_TARGET_REQUIREMENT
+            : description + " " + TRUSTED_TARGET_REQUIREMENT;
+    }
+
+    private boolean hasRequiredAttachmentTarget(AIActionMetaData meta) {
+        if (meta == null
+            || meta.getAccessMode() != ActionAccessMode.READ
+            || !meta.isGroundingEligible()
+            || meta.getRequiredParameters() == null
+            || meta.getRequiredParameters().isEmpty()) {
+            return false;
+        }
+        return meta.getRequiredParameters().stream().anyMatch(parameter -> {
+            AIActionParamSchema schema = paramSchema(meta, parameter);
+            if (schema == null
+                || !Boolean.FALSE.equals(schema.getAskUser())
+                || !Boolean.TRUE.equals(schema.getEvidenceBound())
+                || schema.getResolveFrom() == null) {
+                return false;
+            }
+            Object source = schema.getResolveFrom().get("source");
+            return source != null && "ATTACHMENT_METADATA".equalsIgnoreCase(source.toString().trim());
+        });
+    }
+
+    private AIActionParamSchema paramSchema(AIActionMetaData meta, String name) {
+        if (meta == null
+            || meta.getParameterSchemas() == null
+            || meta.getParameterSchemas().isEmpty()
+            || !StringUtils.hasText(name)) {
+            return null;
+        }
+        AIActionParamSchema exact = meta.getParameterSchemas().get(name.trim());
+        if (exact != null) {
+            return exact;
+        }
+        for (Map.Entry<String, AIActionParamSchema> entry : meta.getParameterSchemas().entrySet()) {
+            if (entry != null
+                && StringUtils.hasText(entry.getKey())
+                && name.trim().equalsIgnoreCase(entry.getKey().trim())) {
+                return entry.getValue();
+            }
+        }
+        return null;
     }
 
     private Map<String, String> publicParameters(AIActionMetaData meta) {
