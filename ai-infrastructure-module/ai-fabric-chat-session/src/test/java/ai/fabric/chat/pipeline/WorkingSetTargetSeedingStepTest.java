@@ -4,6 +4,7 @@ import ai.fabric.chat.config.ChatSessionProperties;
 import ai.fabric.chat.domain.ChatSession;
 import ai.fabric.chat.domain.ChatTurn;
 import ai.fabric.chat.service.ChatSessionService;
+import ai.fabric.dto.AIChatMessage;
 import ai.fabric.dto.Intent;
 import ai.fabric.dto.IntentType;
 import ai.fabric.dto.MultiIntentResponse;
@@ -114,6 +115,95 @@ class WorkingSetTargetSeedingStepTest {
             .startsWith("PINNED TARGETS (previously pinned; selected for this target-dependent turn):");
         assertThat(updated.getMetadata().get("workingSetTargetSeeding"))
             .isEqualTo(Map.of("seeded", true, "count", 1, "source", "PINNED_TARGETS"));
+    }
+
+    @Test
+    void shouldActivatePersistedTargetsForStructuredReferentialFollowUpWhenModelMissesFlag() {
+        ChatSessionService service = mock(ChatSessionService.class);
+        ChatSession session = ChatSession.builder()
+            .id("conv-1")
+            .ownerId("user-1")
+            .turns(List.of(ChatTurn.builder().build(), ChatTurn.builder().build()))
+            .sessionMetadata(Map.of(
+                "lastResolvedTargetsTurnIndex", 1,
+                "lastResolvedTargets", List.of(Map.of(
+                    "id", "record-42",
+                    "vectorSpace", "catalog",
+                    "originSource", "ACTION_RESULT_ITEMS"
+                ))
+            ))
+            .createdAt(LocalDateTime.now())
+            .lastInteractionAt(LocalDateTime.now())
+            .build();
+        when(service.getSession("conv-1", "user-1")).thenReturn(session);
+
+        ChatSessionProperties properties = new ChatSessionProperties();
+        properties.setEnabled(true);
+        Intent referenced = Intent.builder()
+            .type(IntentType.INFORMATION)
+            .intent("Of those, which option has the lowest operating cost?")
+            .optimizedQuery("which of those options has the lowest operating cost")
+            .requiresTargetResolution(false)
+            .build();
+        Intent independent = Intent.builder()
+            .type(IntentType.INFORMATION)
+            .intent("Explain the delivery policy")
+            .optimizedQuery("delivery policy")
+            .requiresTargetResolution(false)
+            .build();
+        OrchestrationContext orchestrationContext = OrchestrationContext.builder()
+            .userId("user-1")
+            .conversationId("conv-1")
+            .build();
+        PipelineContext context = PipelineContext.from(
+                "Of those, which option has the lowest operating cost, and what is the delivery policy?",
+                orchestrationContext
+            )
+            .toBuilder()
+            .historyMessages(List.of(AIChatMessage.user("Show me the available options")))
+            .intentResponse(MultiIntentResponse.builder().intents(List.of(referenced, independent)).build())
+            .build();
+
+        PipelineContext updated = new WorkingSetTargetSeedingStep(service, properties).process(context);
+
+        assertThat(updated.getResolvedTargets()).extracting(target -> target.getId())
+            .containsExactly("record-42");
+        assertThat(referenced.getRequiresTargetResolution()).isTrue();
+        assertThat(independent.getRequiresTargetResolution()).isFalse();
+        assertThat(updated.getMetadata().get("workingSetTargetSeeding"))
+            .isEqualTo(Map.of(
+                "seeded", true,
+                "count", 1,
+                "source", "PINNED_TARGETS",
+                "activation", "STRUCTURED_REFERENTIAL_FALLBACK"
+            ));
+    }
+
+    @Test
+    void shouldNotActivatePersistedTargetsForBroadDiscoveryQuery() {
+        ChatSessionService service = mock(ChatSessionService.class);
+        ChatSessionProperties properties = new ChatSessionProperties();
+        properties.setEnabled(true);
+        Intent intent = Intent.builder()
+            .type(IntentType.INFORMATION)
+            .intent("Show all available options")
+            .requiresTargetResolution(false)
+            .build();
+        OrchestrationContext orchestrationContext = OrchestrationContext.builder()
+            .userId("user-1")
+            .conversationId("conv-1")
+            .build();
+        PipelineContext context = PipelineContext.from("Show all available options", orchestrationContext)
+            .toBuilder()
+            .historyMessages(List.of(AIChatMessage.user("Earlier request")))
+            .intentResponse(MultiIntentResponse.builder().intents(List.of(intent)).build())
+            .build();
+
+        PipelineContext updated = new WorkingSetTargetSeedingStep(service, properties).process(context);
+
+        assertThat(updated.getResolvedTargets()).isEmpty();
+        assertThat(intent.getRequiresTargetResolution()).isFalse();
+        verify(service, never()).getSession(anyString(), anyString());
     }
 
     @Test

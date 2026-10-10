@@ -56,12 +56,14 @@ final class CompoundReadEvidenceSupport {
         List<ObligationEvidence> obligations = collectObligations(intents, children);
         List<DocumentEvidence> returnedDocumentEvidence = roundRobinDocuments(
             obligations,
-            resolveReturnedDocumentLimit(pipelineContext)
+            resolveReturnedDocumentLimit(pipelineContext),
+            false
         );
         List<RAGResponse.RAGDocument> documents = returnedDocumentEvidence.stream()
             .map(DocumentEvidence::document)
             .toList();
         List<Map<String, Object>> actions = collectPublicActions(obligations);
+        Map<String, Object> readActionResolution = collectReadActionResolutionDiagnostics(obligations);
         List<Map<String, Object>> sources = collectSources(documents);
 
         String query = resolveQuery(pipelineContext);
@@ -70,7 +72,8 @@ final class CompoundReadEvidenceSupport {
         );
         List<DocumentEvidence> generationDocumentCandidates = roundRobinDocuments(
             obligations,
-            generationDocumentLimit
+            generationDocumentLimit,
+            true
         );
         GenerationContext generationContext = buildGenerationContext(
             obligations,
@@ -128,6 +131,9 @@ final class CompoundReadEvidenceSupport {
             generationSupport.responseGenerationMetadata(generationTrace)
         );
         metadata.put("compoundEvidence", diagnostics);
+        if (!readActionResolution.isEmpty()) {
+            metadata.put("readActionResolution", readActionResolution);
+        }
 
         RAGResponse ragResponse = RAGResponse.builder()
             .documents(documents)
@@ -148,6 +154,9 @@ final class CompoundReadEvidenceSupport {
         data.put("requiresGeneration", true);
         data.put("results", children);
         data.put("compoundEvidence", diagnostics);
+        if (!readActionResolution.isEmpty()) {
+            data.put("readActionResolution", readActionResolution);
+        }
         if (StringUtils.hasText(generationError)) {
             data.put("generationError", generationError);
         }
@@ -319,9 +328,21 @@ final class CompoundReadEvidenceSupport {
         return copy;
     }
 
-    private static List<DocumentEvidence> roundRobinDocuments(List<ObligationEvidence> obligations, int limit) {
+    private static List<DocumentEvidence> roundRobinDocuments(List<ObligationEvidence> obligations,
+                                                              int limit,
+                                                              boolean rankForGeneration) {
         if (obligations == null || obligations.isEmpty() || limit <= 0) {
             return List.of();
+        }
+        Map<Integer, List<DocumentEvidence>> documentsByObligation = new LinkedHashMap<>();
+        for (ObligationEvidence obligation : obligations) {
+            List<DocumentEvidence> evidence = obligation.documents().stream()
+                .map(document -> new DocumentEvidence(obligation.index(), document))
+                .toList();
+            documentsByObligation.put(
+                obligation.index(),
+                rankForGeneration ? rankDocumentEvidence(evidence, intentQuery(obligation.intent())) : evidence
+            );
         }
         List<DocumentEvidence> selected = new ArrayList<>();
         Set<String> seen = new LinkedHashSet<>();
@@ -330,14 +351,16 @@ final class CompoundReadEvidenceSupport {
         do {
             found = false;
             for (ObligationEvidence obligation : obligations) {
-                if (obligation.documents().size() <= offset) {
+                List<DocumentEvidence> evidence = documentsByObligation.getOrDefault(obligation.index(), List.of());
+                if (evidence.size() <= offset) {
                     continue;
                 }
                 found = true;
-                RAGResponse.RAGDocument document = obligation.documents().get(offset);
+                DocumentEvidence candidate = evidence.get(offset);
+                RAGResponse.RAGDocument document = candidate.document();
                 String key = documentKey(document);
                 if (seen.add(key)) {
-                    selected.add(new DocumentEvidence(obligation.index(), document));
+                    selected.add(candidate);
                     if (selected.size() >= limit) {
                         return List.copyOf(selected);
                     }
@@ -384,6 +407,100 @@ final class CompoundReadEvidenceSupport {
             }
         }
         return actions.isEmpty() ? List.of() : List.copyOf(actions);
+    }
+
+    private static Map<String, Object> collectReadActionResolutionDiagnostics(
+        List<ObligationEvidence> obligations
+    ) {
+        if (obligations == null || obligations.isEmpty()) {
+            return Map.of();
+        }
+
+        boolean attempted = false;
+        boolean useRag = false;
+        List<Map<String, Object>> executedActions = new ArrayList<>();
+        List<Map<String, Object>> intentResolutions = new ArrayList<>();
+        Set<String> seenExecutions = new LinkedHashSet<>();
+        long groundingUsableActionCount = 0;
+        long insufficientActionEvidenceCount = 0;
+
+        for (ObligationEvidence obligation : obligations) {
+            if (obligation == null || obligation.child() == null || obligation.child().getData() == null) {
+                continue;
+            }
+            Object rawResolution = obligation.child().getData().get("readActionResolution");
+            if (!(rawResolution instanceof Map<?, ?> rawMap) || rawMap.isEmpty()) {
+                continue;
+            }
+            Map<String, Object> resolution = copyStringKeyMap(rawMap);
+            attempted = attempted || Boolean.TRUE.equals(resolution.get("attempted"));
+            useRag = useRag || Boolean.TRUE.equals(resolution.get("useRag"));
+
+            Map<String, Object> intentResolution = new LinkedHashMap<>();
+            intentResolution.put("intentIndex", obligation.index());
+            copyIfPresent(resolution, intentResolution, "attempted");
+            copyIfPresent(resolution, intentResolution, "skipReason");
+            copyIfPresent(resolution, intentResolution, "planningMode");
+            copyIfPresent(resolution, intentResolution, "ragCooperationMode");
+            copyIfPresent(resolution, intentResolution, "executedActionsCount");
+            copyIfPresent(resolution, intentResolution, "groundingUsableActionCount");
+            copyIfPresent(resolution, intentResolution, "insufficientActionEvidenceCount");
+            copyIfPresent(resolution, intentResolution, "useRag");
+            intentResolutions.add(Collections.unmodifiableMap(intentResolution));
+
+            Object rawExecuted = resolution.get("executedActions");
+            if (!(rawExecuted instanceof List<?> actionList)) {
+                continue;
+            }
+            int actionIndex = 0;
+            for (Object rawAction : actionList) {
+                Map<String, Object> action = copyStringKeyMap(rawAction);
+                if (action.isEmpty()) {
+                    actionIndex++;
+                    continue;
+                }
+                String executionId = stringValue(action.get("actionExecutionId"));
+                String deduplicationKey = StringUtils.hasText(executionId)
+                    ? "execution\u0000" + executionId
+                    : "intent\u0000" + obligation.index() + "\u0000" + actionIndex + "\u0000"
+                        + String.valueOf(action.get("action"));
+                actionIndex++;
+                if (!seenExecutions.add(deduplicationKey)) {
+                    continue;
+                }
+                Map<String, Object> projected = new LinkedHashMap<>(action);
+                projected.putIfAbsent("intentIndex", obligation.index());
+                executedActions.add(Collections.unmodifiableMap(projected));
+                if (Boolean.TRUE.equals(action.get("groundingUsable"))) {
+                    groundingUsableActionCount++;
+                } else {
+                    insufficientActionEvidenceCount++;
+                }
+            }
+        }
+
+        if (intentResolutions.isEmpty() && executedActions.isEmpty()) {
+            return Map.of();
+        }
+        Map<String, Object> diagnostics = new LinkedHashMap<>();
+        diagnostics.put("enabled", true);
+        diagnostics.put("attempted", attempted);
+        diagnostics.put("compound", true);
+        diagnostics.put("intentResolutions", Collections.unmodifiableList(intentResolutions));
+        diagnostics.put("executedActions", Collections.unmodifiableList(executedActions));
+        diagnostics.put("executedActionsCount", executedActions.size());
+        diagnostics.put("groundingUsableActionCount", groundingUsableActionCount);
+        diagnostics.put("insufficientActionEvidenceCount", insufficientActionEvidenceCount);
+        diagnostics.put("useRag", useRag);
+        return Collections.unmodifiableMap(diagnostics);
+    }
+
+    private static void copyIfPresent(Map<String, Object> source,
+                                      Map<String, Object> target,
+                                      String key) {
+        if (source != null && target != null && source.containsKey(key) && source.get(key) != null) {
+            target.put(key, source.get(key));
+        }
     }
 
     private static List<Map<String, Object>> collectSources(List<RAGResponse.RAGDocument> documents) {
@@ -574,7 +691,7 @@ final class CompoundReadEvidenceSupport {
             documents.size(),
             Math.max(1, maxChars / MIN_DOCUMENT_CONTEXT_CHARS)
         );
-        List<DocumentEvidence> candidates = documents.subList(0, documentCount);
+        List<DocumentEvidence> candidates = rankDocumentEvidence(documents, query).subList(0, documentCount);
         StringBuilder context = new StringBuilder();
         List<DocumentEvidence> usedDocuments = new ArrayList<>();
 
@@ -594,6 +711,60 @@ final class CompoundReadEvidenceSupport {
             context.toString(),
             usedDocuments.isEmpty() ? List.of() : List.copyOf(usedDocuments)
         );
+    }
+
+    private static List<DocumentEvidence> rankDocumentEvidence(List<DocumentEvidence> documents,
+                                                               String query) {
+        if (documents == null || documents.size() < 2) {
+            return documents == null ? List.of() : List.copyOf(documents);
+        }
+        List<String> terms = queryTerms(query);
+        if (terms.isEmpty()) {
+            return List.copyOf(documents);
+        }
+
+        List<RankedDocumentEvidence> ranked = new ArrayList<>(documents.size());
+        for (int index = 0; index < documents.size(); index++) {
+            DocumentEvidence evidence = documents.get(index);
+            ranked.add(new RankedDocumentEvidence(
+                evidence,
+                documentRelevanceScore(evidence != null ? evidence.document() : null, terms),
+                index
+            ));
+        }
+        ranked.sort(
+            Comparator.comparingInt(RankedDocumentEvidence::relevanceScore).reversed()
+                .thenComparingInt(RankedDocumentEvidence::originalIndex)
+        );
+        return ranked.stream().map(RankedDocumentEvidence::evidence).toList();
+    }
+
+    private static int documentRelevanceScore(RAGResponse.RAGDocument document,
+                                              List<String> queryTerms) {
+        if (document == null || queryTerms == null || queryTerms.isEmpty()) {
+            return 0;
+        }
+        int score = 0;
+        score += matchedTermScore(document.getTitle(), queryTerms, 8);
+        score += matchedTermScore(document.getHighlightedContent(), queryTerms, 5);
+        score += matchedTermScore(document.getContent(), queryTerms, 2);
+        return score;
+    }
+
+    private static int matchedTermScore(String value,
+                                        List<String> queryTerms,
+                                        int weight) {
+        if (!StringUtils.hasText(value) || queryTerms == null || queryTerms.isEmpty()) {
+            return 0;
+        }
+        String normalized = value.toLowerCase(Locale.ROOT);
+        int score = 0;
+        for (String term : queryTerms) {
+            if (normalized.contains(term)) {
+                score += weight;
+            }
+        }
+        return score;
     }
 
     private static String renderDocumentEvidence(RAGResponse.RAGDocument document,
@@ -1044,6 +1215,13 @@ final class CompoundReadEvidenceSupport {
     }
 
     private record DocumentEvidence(int obligationIndex, RAGResponse.RAGDocument document) {
+    }
+
+    private record RankedDocumentEvidence(
+        DocumentEvidence evidence,
+        int relevanceScore,
+        int originalIndex
+    ) {
     }
 
     private record GenerationContext(String content, List<DocumentEvidence> usedDocuments) {

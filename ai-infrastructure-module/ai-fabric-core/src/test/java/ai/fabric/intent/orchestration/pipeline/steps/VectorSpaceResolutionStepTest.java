@@ -473,6 +473,69 @@ class VectorSpaceResolutionStepTest {
     }
 
     @Test
+    void shouldUseSingleServerAllowedVectorSpaceSharedByResolvedTargets() {
+        VectorSpaceRouter router = mock(VectorSpaceRouter.class);
+        VectorSpaceResolutionStep step = new VectorSpaceResolutionStep(
+            router,
+            new OrchestrationProperties(),
+            new VectorSpaceRoutingProperties(),
+            providerOf((KnowledgeBaseOverviewService) null)
+        );
+        Intent intent = Intent.builder()
+            .type(IntentType.INFORMATION)
+            .intent("Which of those is the best match?")
+            .requiresRetrieval(true)
+            .requiresTargetResolution(true)
+            .build();
+        PipelineContext context = PipelineContext.from(
+                "Which of those is the best match?",
+                OrchestrationContext.forUser("user")
+            )
+            .toBuilder()
+            .orchestrationPolicy(targetRoutingPolicy())
+            .intentResponse(MultiIntentResponse.builder().intents(List.of(intent)).build())
+            .resolvedTargets(List.of(
+                target("one", "dealer-vehicle"),
+                target("two", "dealer-vehicle")
+            ))
+            .build();
+
+        PipelineContext updated = step.process(context);
+
+        assertThat(updated.isShouldTerminate()).isFalse();
+        assertThat(intent.getVectorSpace()).isEqualTo("dealer-vehicle");
+        assertThat(String.valueOf(updated.getMetadata().get("vectorSpaceRouting")))
+            .contains("TARGET_CONTEXT");
+        verify(router, never()).route(any(), anyString());
+    }
+
+    @Test
+    void shouldNotUseTargetContextWhenTargetsDisagreeOrExceedPolicyBoundary() {
+        VectorSpaceRouter router = mock(VectorSpaceRouter.class);
+        VectorSpaceResolutionStep step = new VectorSpaceResolutionStep(
+            router,
+            new OrchestrationProperties(),
+            new VectorSpaceRoutingProperties(),
+            providerOf((KnowledgeBaseOverviewService) null)
+        );
+
+        PipelineContext mixed = targetRoutingContext(
+            List.of(target("one", "dealer-vehicle"), target("two", "document"))
+        );
+        PipelineContext mixedResult = step.process(mixed);
+        assertThat(mixedResult.isShouldTerminate()).isTrue();
+        assertThat(mixedResult.getEarlyTerminationResult().getType())
+            .isEqualTo(OrchestrationResultType.CLARIFICATION_REQUIRED);
+
+        PipelineContext disallowed = targetRoutingContext(List.of(target("one", "private-space")));
+        PipelineContext disallowedResult = step.process(disallowed);
+        assertThat(disallowedResult.isShouldTerminate()).isTrue();
+        assertThat(disallowedResult.getEarlyTerminationResult().getType())
+            .isEqualTo(OrchestrationResultType.CLARIFICATION_REQUIRED);
+        verify(router, never()).route(any(), anyString());
+    }
+
+    @Test
     void shouldRouteVectorSpaceEvenWhenResolvedTargetsPresent() {
         VectorSpaceRouter router = mock(VectorSpaceRouter.class);
         when(router.route(any(), anyString())).thenReturn(RoutingResult.builder()
@@ -522,6 +585,44 @@ class VectorSpaceResolutionStepTest {
         assertThat(updated.isShouldTerminate()).isFalse();
         assertThat(updated.getIntentResponse().getIntents().getFirst().getVectorSpace()).isEqualTo("product");
         verify(router).route(any(), anyString());
+    }
+
+    private PipelineContext targetRoutingContext(List<ResolvedTarget> targets) {
+        Intent intent = Intent.builder()
+            .type(IntentType.INFORMATION)
+            .intent("Which of those is the best match?")
+            .requiresRetrieval(true)
+            .requiresTargetResolution(true)
+            .build();
+        return PipelineContext.from("Which of those is the best match?", OrchestrationContext.forUser("user"))
+            .toBuilder()
+            .orchestrationPolicy(targetRoutingPolicy())
+            .intentResponse(MultiIntentResponse.builder().intents(List.of(intent)).build())
+            .resolvedTargets(targets)
+            .build();
+    }
+
+    private OrchestrationPolicy targetRoutingPolicy() {
+        return new OrchestrationPolicy(
+            OrchestrationProfile.PRODUCTION_CHAT,
+            "executor",
+            "search",
+            OrchestrationProperties.InformationMode.LLM_DRIVEN,
+            new OrchestrationPolicy.OrchestrationCapabilities(
+                true, true, false, false, false, true, false, true, true, true, false, false, false
+            ),
+            new OrchestrationPolicy.RagBudgets(
+                true, 2, null, null, null, null, List.of("dealer-vehicle", "document")
+            )
+        );
+    }
+
+    private ResolvedTarget target(String id, String vectorSpace) {
+        return ResolvedTarget.builder()
+            .id(id)
+            .vectorSpace(vectorSpace)
+            .source(ResolvedTargetSource.ACTION_RESULT_ITEMS)
+            .build();
     }
 
     @Test

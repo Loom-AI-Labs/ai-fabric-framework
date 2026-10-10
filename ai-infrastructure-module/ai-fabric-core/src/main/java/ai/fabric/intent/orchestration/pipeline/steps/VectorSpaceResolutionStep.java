@@ -12,6 +12,7 @@ import ai.fabric.intent.orchestration.OrchestrationResultType;
 import ai.fabric.intent.orchestration.pipeline.PipelineContext;
 import ai.fabric.intent.orchestration.pipeline.PipelineStep;
 import ai.fabric.intent.orchestration.policy.OrchestrationPolicy;
+import ai.fabric.intent.orchestration.targets.ResolvedTarget;
 import ai.fabric.config.VectorSpaceRoutingProperties;
 import ai.fabric.intent.vectorspace.RoutingResult;
 import ai.fabric.intent.vectorspace.VectorSpaceRouter;
@@ -211,6 +212,19 @@ public class VectorSpaceResolutionStep implements PipelineStep {
                 continue;
             }
 
+            String targetVectorSpace = resolveTargetVectorSpace(
+                intent,
+                context,
+                ragBudgets,
+                availableVectorSpaces
+            );
+            if (hasText(targetVectorSpace)) {
+                intent.setVectorSpace(targetVectorSpace);
+                routingEvents.add(toTargetContextEvent(i, targetVectorSpace, context));
+                anyUpdate = true;
+                continue;
+            }
+
             if (vectorSpaceSelectionRequired) {
                 List<String> candidates = resolvePolicySelectionCandidates(ragBudgets, availableVectorSpaces);
                 if (candidates.size() > 1) {
@@ -329,6 +343,50 @@ public class VectorSpaceResolutionStep implements PipelineStep {
             available = resolveAllVectorSpaces();
         }
         return available != null ? available : List.of();
+    }
+
+    private String resolveTargetVectorSpace(Intent intent,
+                                            PipelineContext context,
+                                            OrchestrationPolicy.RagBudgets ragBudgets,
+                                            List<String> availableVectorSpaces) {
+        if (intent == null
+            || !Boolean.TRUE.equals(intent.getRequiresTargetResolution())
+            || context == null
+            || context.getResolvedTargets() == null
+            || context.getResolvedTargets().isEmpty()) {
+            return null;
+        }
+
+        List<String> policyCandidates = resolvePolicySelectionCandidates(ragBudgets, availableVectorSpaces);
+        if (policyCandidates.isEmpty()) {
+            return null;
+        }
+        Map<String, String> allowedByLower = new LinkedHashMap<>();
+        for (String candidate : policyCandidates) {
+            if (hasText(candidate)) {
+                allowedByLower.put(candidate.trim().toLowerCase(Locale.ROOT), candidate.trim());
+            }
+        }
+        if (allowedByLower.isEmpty()) {
+            return null;
+        }
+
+        String selectedLower = null;
+        for (ResolvedTarget target : context.getResolvedTargets()) {
+            if (target == null || target.getSource() == null || !hasText(target.getVectorSpace())) {
+                return null;
+            }
+            String candidateLower = target.getVectorSpace().trim().toLowerCase(Locale.ROOT);
+            if (!allowedByLower.containsKey(candidateLower)) {
+                return null;
+            }
+            if (selectedLower == null) {
+                selectedLower = candidateLower;
+            } else if (!selectedLower.equals(candidateLower)) {
+                return null;
+            }
+        }
+        return selectedLower != null ? allowedByLower.get(selectedLower) : null;
     }
 
 	    private List<String> resolveDeepFallbackVectorSpaces(int maxSpaces,
@@ -538,6 +596,24 @@ public class VectorSpaceResolutionStep implements PipelineStep {
         event.put("strategy", "SELECTION_REQUIRED");
         event.put("rationale", "Vector-space selection is required by orchestration policy");
         event.put("candidateSpaces", candidates != null ? List.copyOf(candidates) : List.of());
+        return Collections.unmodifiableMap(event);
+    }
+
+    private Map<String, Object> toTargetContextEvent(int intentIndex,
+                                                     String vectorSpace,
+                                                     PipelineContext context) {
+        Map<String, Object> event = new LinkedHashMap<>();
+        event.put("intentIndex", intentIndex);
+        event.put("success", true);
+        event.put("strategy", "TARGET_CONTEXT");
+        event.put("rationale", "All resolved targets agree on one server-allowed vector space");
+        event.put("vectorSpace", vectorSpace);
+        event.put(
+            "targetCount",
+            context != null && context.getResolvedTargets() != null
+                ? context.getResolvedTargets().size()
+                : 0
+        );
         return Collections.unmodifiableMap(event);
     }
 

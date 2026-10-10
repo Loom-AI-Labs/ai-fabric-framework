@@ -31,6 +31,8 @@ import ai.fabric.intent.orchestration.OrchestrationResultType;
 import ai.fabric.intent.orchestration.information.ReadActionExecutionScope;
 import ai.fabric.intent.orchestration.information.ReadActionResolutionService;
 import ai.fabric.intent.orchestration.pipeline.PipelineContext;
+import ai.fabric.intent.orchestration.policy.OrchestrationPolicy;
+import ai.fabric.intent.orchestration.policy.OrchestrationProfile;
 import ai.fabric.intent.vectorspace.RankBasedMerger;
 import ai.fabric.prompt.ClasspathPromptTemplateStore;
 import ai.fabric.prompt.PromptRenderer;
@@ -462,6 +464,22 @@ class IntentHandlingStepCompoundReadEvidenceTest {
         Map<String, Object> diagnostics = (Map<String, Object>) result.getData().get("compoundEvidence");
         assertThat(diagnostics).containsEntry("emptyObligationCount", 1);
         assertThat((List<?>) diagnostics.get("actionExecutionIds")).isEmpty();
+        @SuppressWarnings("unchecked")
+        Map<String, Object> readActionResolution =
+            (Map<String, Object>) result.getData().get("readActionResolution");
+        assertThat(readActionResolution)
+            .containsEntry("compound", true)
+            .containsEntry("executedActionsCount", 1)
+            .containsEntry("groundingUsableActionCount", 0L)
+            .containsEntry("insufficientActionEvidenceCount", 1L);
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> executedActions =
+            (List<Map<String, Object>>) readActionResolution.get("executedActions");
+        assertThat(executedActions).hasSize(1);
+        assertThat(executedActions.getFirst())
+            .containsEntry("actionExecutionId", "read-action-rejected")
+            .containsEntry("intentIndex", 0);
+        assertThat(result.getMetadata()).containsEntry("readActionResolution", readActionResolution);
     }
 
     @Test
@@ -541,6 +559,81 @@ class IntentHandlingStepCompoundReadEvidenceTest {
             .containsExactly(2L, 2L);
         assertThat(result.getData().get("ragResponse")).isInstanceOf(RAGResponse.class);
         assertThat(((RAGResponse) result.getData().get("ragResponse")).getUsedDocuments()).isEqualTo(4);
+    }
+
+    @Test
+    void ranksAllAuthorizedDocumentsBeforeApplyingGlobalGenerationDocumentBudget() {
+        AICoreService aiCoreService = mock(AICoreService.class);
+        when(aiCoreService.generateTextResponse(anyString(), eq(LlmPurpose.GENERATION)))
+            .thenReturn(AIGenerationResponse.builder().content("Grounded compound answer.").build());
+        RagResponseGenerationSupport generationSupport = new RagResponseGenerationSupport(
+            aiCoreService,
+            mock(AIServiceConfig.class),
+            promptTemplateResolver(),
+            new PromptRenderer()
+        );
+        Intent policy = information("delivery charge distance handover", "document");
+        Intent inventory = information("available electric inventory", "dealer-vehicle");
+        List<RAGResponse.RAGDocument> policyDocuments = new java.util.ArrayList<>();
+        for (int index = 0; index < 5; index++) {
+            policyDocuments.add(document(
+                "unrelated-" + index,
+                "document",
+                "policies",
+                "General warranty and account administration reference " + index
+            ));
+        }
+        policyDocuments.add(document(
+            "delivery-policy",
+            "document",
+            "policies",
+            "Local delivery charge is GBP 49 within 25 miles; insurance is required before handover."
+        ));
+        OrchestrationResult policyEvidence = OrchestrationResult.builder()
+            .type(OrchestrationResultType.INFORMATION_PROVIDED)
+            .success(true)
+            .data(Map.of("documents", policyDocuments))
+            .build();
+        OrchestrationResult inventoryEvidence = OrchestrationResult.builder()
+            .type(OrchestrationResultType.INFORMATION_PROVIDED)
+            .success(true)
+            .data(Map.of("documents", List.of(document(
+                "vehicle-1", "dealer-vehicle", "inventory", "Aster E1 electric inventory is available."
+            ))))
+            .build();
+        OrchestrationPolicy policyWithTightBudget = new OrchestrationPolicy(
+            OrchestrationProfile.PRODUCTION_CHAT,
+            "executor",
+            "search",
+            OrchestrationProperties.InformationMode.LLM_DRIVEN,
+            OrchestrationPolicy.OrchestrationCapabilities.defaults(),
+            new OrchestrationPolicy.RagBudgets(true, 2, null, 10, 2, 1_600, List.of("document", "dealer-vehicle"))
+        );
+        PipelineContext pipelineContext = context(
+            "Which electric inventory is available and what are the delivery terms?",
+            policy,
+            inventory
+        ).toBuilder().orchestrationPolicy(policyWithTightBudget).build();
+
+        OrchestrationResult result = CompoundReadEvidenceSupport.synthesize(
+            List.of(policy, inventory),
+            List.of(policyEvidence, inventoryEvidence),
+            List.of(),
+            pipelineContext,
+            generationSupport,
+            true
+        );
+
+        ArgumentCaptor<String> prompt = ArgumentCaptor.forClass(String.class);
+        verify(aiCoreService).generateTextResponse(prompt.capture(), eq(LlmPurpose.GENERATION));
+        assertThat(prompt.getValue())
+            .contains("Local delivery charge is GBP 49", "Aster E1 electric inventory is available")
+            .doesNotContain("General warranty and account administration reference");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> diagnostics = (Map<String, Object>) result.getData().get("compoundEvidence");
+        assertThat(diagnostics)
+            .containsEntry("returnedDocumentCount", 7)
+            .containsEntry("usedDocumentCount", 2);
     }
 
     @Test

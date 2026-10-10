@@ -4,6 +4,7 @@ import ai.fabric.chat.config.ChatSessionProperties;
 import ai.fabric.chat.domain.ChatSession;
 import ai.fabric.chat.domain.ChatTurn;
 import ai.fabric.dto.Intent;
+import ai.fabric.dto.IntentType;
 import ai.fabric.dto.MultiIntentResponse;
 import ai.fabric.intent.orchestration.OrchestrationContext;
 import ai.fabric.intent.orchestration.pipeline.PipelineContext;
@@ -20,6 +21,7 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Pattern;
 
 /**
  * Seeds resolved targets from the conversation working set when the intent extraction layer indicates a
@@ -41,6 +43,17 @@ public class WorkingSetTargetSeedingStep implements PipelineStep {
     private static final int WORKING_SET_MAX_TARGETS = 4;
     private static final int PINNED_TARGET_MAX_TARGETS = 8;
     private static final int WORKING_SET_MAX_METADATA_FIELDS = 8;
+
+    private static final Pattern ORDINAL_TARGET_REFERENCE = Pattern.compile(
+        "(?iu)\\b(?:first|second|third|fourth|fifth|last|former|latter|next|previous)\\s+"
+            + "(?:one|ones|item|items|record|records|result|results|option|options|choice|choices)\\b"
+    );
+    private static final Pattern SET_TARGET_REFERENCE = Pattern.compile(
+        "(?iu)(?:\\b(?:of|among|between|from)\\s+(?:those|these|them)\\b)"
+            + "|(?:\\b(?:those|these)\\s+(?:ones|items|records|results|options|choices)\\b)"
+            + "|(?:\\bwhich\\s+(?:one|ones|item|record|result|option|choice)\\b)"
+            + "|(?:\\b(?:compare|summarize|summarise|explain|describe)\\s+(?:those|these|them)\\b)"
+    );
 
     private final ChatSessionService chatSessionService;
     private final ChatSessionProperties properties;
@@ -71,7 +84,10 @@ public class WorkingSetTargetSeedingStep implements PipelineStep {
         if (response == null || response.getIntents() == null || response.getIntents().isEmpty()) {
             return context;
         }
-        if (!anyIntentRequiresTargetResolution(response.getIntents())) {
+        boolean extractedTargetRequirement = anyIntentRequiresTargetResolution(response.getIntents());
+        boolean referentialFallback = !extractedTargetRequirement
+            && isHighConfidenceReferentialFollowUp(context, response.getIntents());
+        if (!extractedTargetRequirement && !referentialFallback) {
             return context;
         }
 
@@ -107,16 +123,27 @@ public class WorkingSetTargetSeedingStep implements PipelineStep {
             return context.withMetadata(METADATA_KEY_TARGET_SEEDING, Map.of("seeded", false));
         }
 
+        if (referentialFallback) {
+            markInformationIntentsAsTargetDependent(response.getIntents());
+        }
+
         PipelineContext updated = context.toBuilder()
             .resolvedTargets(targets)
             .pinnedTargetsContext(buildTargetContext(targets))
+            .intentResponse(response)
             .build();
 
-        return updated.withMetadata(METADATA_KEY_TARGET_SEEDING, Map.of(
-            "seeded", true,
-            "count", targets.size(),
-            "source", seed.source()
-        ));
+        Map<String, Object> diagnostics = new LinkedHashMap<>();
+        diagnostics.put("seeded", true);
+        diagnostics.put("count", targets.size());
+        diagnostics.put("source", seed.source());
+        if (referentialFallback) {
+            diagnostics.put("activation", "STRUCTURED_REFERENTIAL_FALLBACK");
+        }
+        return updated.withMetadata(
+            METADATA_KEY_TARGET_SEEDING,
+            Collections.unmodifiableMap(diagnostics)
+        );
     }
 
     private boolean anyIntentRequiresTargetResolution(List<Intent> intents) {
@@ -129,6 +156,65 @@ public class WorkingSetTargetSeedingStep implements PipelineStep {
             }
         }
         return false;
+    }
+
+    private boolean isHighConfidenceReferentialFollowUp(PipelineContext context,
+                                                        List<Intent> intents) {
+        if (context == null || context.getHistoryMessages() == null || context.getHistoryMessages().isEmpty()) {
+            return false;
+        }
+        List<Intent> informationIntents = intents == null
+            ? List.of()
+            : intents.stream()
+                .filter(intent -> intent != null && intent.getType() == IntentType.INFORMATION)
+                .toList();
+        if (informationIntents.isEmpty()) {
+            return false;
+        }
+        String query = context.getEffectiveQuery();
+        if (!StringUtils.hasText(query)) {
+            query = context.getOriginalQuery();
+        }
+        if (!containsStructuredTargetReference(query)) {
+            return false;
+        }
+        if (informationIntents.size() == 1) {
+            return true;
+        }
+        return informationIntents.stream().anyMatch(this::containsStructuredTargetReference);
+    }
+
+    private void markInformationIntentsAsTargetDependent(List<Intent> intents) {
+        if (intents == null || intents.isEmpty()) {
+            return;
+        }
+        List<Intent> informationIntents = intents.stream()
+            .filter(intent -> intent != null && intent.getType() == IntentType.INFORMATION)
+            .toList();
+        boolean singleInformationIntent = informationIntents.size() == 1;
+        for (Intent intent : intents) {
+            if (intent != null
+                && intent.getType() == IntentType.INFORMATION
+                && (singleInformationIntent || containsStructuredTargetReference(intent))) {
+                intent.setRequiresTargetResolution(true);
+            }
+        }
+    }
+
+    private boolean containsStructuredTargetReference(Intent intent) {
+        if (intent == null) {
+            return false;
+        }
+        if (containsStructuredTargetReference(intent.getOptimizedQuery())) {
+            return true;
+        }
+        return containsStructuredTargetReference(intent.getIntent());
+    }
+
+    private boolean containsStructuredTargetReference(String value) {
+        return StringUtils.hasText(value)
+            && (ORDINAL_TARGET_REFERENCE.matcher(value).find()
+                || SET_TARGET_REFERENCE.matcher(value).find());
     }
 
     private TargetSeed extractPersistedPinnedTargets(ChatSession session) {
