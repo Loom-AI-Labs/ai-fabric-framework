@@ -5,6 +5,7 @@ import ai.fabric.intent.action.AIActionMetaData;
 import ai.fabric.intent.action.AIActionParamSchema;
 import ai.fabric.intent.action.AIActionParamType;
 import ai.fabric.intent.action.PendingAction;
+import ai.fabric.intent.actiondraft.ActionDraftSubmission;
 import ai.fabric.intent.orchestration.OrchestrationContext;
 import ai.fabric.intent.orchestration.attachment.NormalizedAttachment;
 import ai.fabric.intent.orchestration.pipeline.PipelineContext;
@@ -114,6 +115,10 @@ class ActionEvidenceSupportTest {
     void shouldBuildEvidenceBundleFromUserHistoryPinnedTargetsAttachmentsAndPendingEvidence() {
         OrchestrationContext orchestrationContext = OrchestrationContext.builder()
             .userId("user")
+            .actionDraftSubmission(new ActionDraftSubmission(
+                "request_callback",
+                Map.of("name", "Confirmed Customer")
+            ))
             .attachmentsNormalized(List.of(NormalizedAttachment.builder()
                 .id("attachment-1")
                 .vectorSpace("catalog")
@@ -142,7 +147,11 @@ class ActionEvidenceSupportTest {
 
         ActionEvidenceSupport.EvidenceBundle evidence = ActionEvidenceSupport.buildEvidenceBundle(context);
 
-        assertThat(evidence.userEvidenceLower()).contains("add the phone", "previous user request");
+        assertThat(evidence.userEvidenceLower()).contains(
+            "add the phone",
+            "previous user request",
+            "confirmed customer"
+        );
         assertThat(evidence.userEvidenceLower()).doesNotContain("assistant text ignored");
         assertThat(evidence.pinnedEvidenceLower()).contains(
             "attachment-1",
@@ -156,6 +165,7 @@ class ActionEvidenceSupportTest {
             .containsEntry("cart_id", Set.of("cart-123"));
         assertThat(evidence.sourcesUsed())
             .containsEntry("user", true)
+            .containsEntry("structuredUserInput", true)
             .containsEntry("history", true)
             .containsEntry("pinned", true)
             .containsEntry("pendingConfirmationEvidence", true);

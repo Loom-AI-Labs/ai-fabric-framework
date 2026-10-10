@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import ai.fabric.config.PromptBundleProperties;
@@ -20,6 +21,7 @@ import ai.fabric.intent.action.AIActionParamSchema;
 import ai.fabric.intent.action.AIActionParamType;
 import ai.fabric.intent.action.AIActionRegistry;
 import ai.fabric.intent.actiondraft.ActionDraftContinuation;
+import ai.fabric.intent.actiondraft.ActionDraftSubmission;
 import ai.fabric.intent.orchestration.OrchestrationContext;
 import ai.fabric.intent.orchestration.pipeline.PipelineContext;
 import ai.fabric.llm.structured.DefaultStructuredJsonCallExecutor;
@@ -177,6 +179,90 @@ class ActionDraftContinuationAnalyzerTest {
             any(AIGenerationRequest.class),
             eq(LlmPurpose.ORCHESTRATION)
         );
+    }
+
+    @Test
+    void shouldUseBoundedStructuredUserInputWithoutCallingTheModel() {
+        PipelineContext context = context("The state or region is Bristol.")
+            .toBuilder()
+            .orchestrationContext(
+                context("ignored").getOrchestrationContext().toBuilder()
+                    .actionDraftSubmission(new ActionDraftSubmission(
+                        "update_address",
+                        Map.of(
+                            "city", "Bristol",
+                            "state", "Bristol",
+                            "postalCode", "BS1 1AA",
+                            "country", "United Kingdom"
+                        )
+                    ))
+                    .build()
+            )
+            .build();
+
+        ActionDraftContinuationAnalyzer.AnalysisOutcome outcome =
+            analyzer.analyze(context);
+
+        assertThat(outcome.continued()).isTrue();
+        assertThat(outcome.response().getOrchestrationStrategy())
+            .isEqualTo("ACTION_DRAFT_STRUCTURED_SUBMISSION");
+        assertThat(outcome.response().getIntents().getFirst().getActionParams())
+            .containsEntry("city", "Bristol")
+            .containsEntry("state", "Bristol")
+            .containsEntry("postalCode", "BS1 1AA")
+            .containsEntry("country", "United Kingdom");
+        assertThat(outcome.diagnostics())
+            .containsEntry("inputSource", "STRUCTURED_USER_INPUT")
+            .containsEntry("attempts", 0);
+        verifyNoInteractions(aiCoreService);
+    }
+
+    @Test
+    void shouldRejectHiddenStructuredParametersWithoutCallingTheModel() {
+        PipelineContext context = context("Continue with these values.")
+            .toBuilder()
+            .orchestrationContext(
+                context("ignored").getOrchestrationContext().toBuilder()
+                    .actionDraftSubmission(new ActionDraftSubmission(
+                        "update_address",
+                        Map.of("subscriptionId", "server-owned")
+                    ))
+                    .build()
+            )
+            .build();
+
+        ActionDraftContinuationAnalyzer.AnalysisOutcome outcome =
+            analyzer.analyze(context);
+
+        assertThat(outcome.continued()).isFalse();
+        assertThat(outcome.failureType())
+            .isEqualTo("STRUCTURED_SUBMISSION_PARAMETER_REJECTED");
+        assertThat(outcome.diagnostics())
+            .containsEntry("inputSource", "STRUCTURED_USER_INPUT");
+        verifyNoInteractions(aiCoreService);
+    }
+
+    @Test
+    void shouldRejectStructuredSubmissionForAnotherAction() {
+        PipelineContext context = context("Continue with these values.")
+            .toBuilder()
+            .orchestrationContext(
+                context("ignored").getOrchestrationContext().toBuilder()
+                    .actionDraftSubmission(new ActionDraftSubmission(
+                        "delete_account",
+                        Map.of("reason", "not relevant")
+                    ))
+                    .build()
+            )
+            .build();
+
+        ActionDraftContinuationAnalyzer.AnalysisOutcome outcome =
+            analyzer.analyze(context);
+
+        assertThat(outcome.continued()).isFalse();
+        assertThat(outcome.failureType())
+            .isEqualTo("STRUCTURED_SUBMISSION_ACTION_MISMATCH");
+        verifyNoInteractions(aiCoreService);
     }
 
     private PipelineContext context(String currentMessage) {

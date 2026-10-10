@@ -14,6 +14,7 @@ import ai.fabric.intent.action.AIActionMetaData;
 import ai.fabric.intent.action.AIActionNames;
 import ai.fabric.intent.action.AIActionRegistry;
 import ai.fabric.intent.actiondraft.ActionDraftContinuation;
+import ai.fabric.intent.actiondraft.ActionDraftSubmission;
 import ai.fabric.intent.orchestration.OrchestrationAuthContextResolver;
 import ai.fabric.intent.orchestration.pipeline.PipelineContext;
 import ai.fabric.llm.structured.StructuredJsonCallSpec;
@@ -80,6 +81,17 @@ public class ActionDraftContinuationAnalyzer {
         }
 
         Set<String> allowedParameters = publicParameterNames(metadata);
+        ActionDraftSubmission structuredSubmission = structuredSubmission(
+            context
+        );
+        if (structuredSubmission != null) {
+            return analyzeStructuredSubmission(
+                continuation,
+                metadata,
+                allowedParameters,
+                structuredSubmission
+            );
+        }
         var structuredOutput =
             SpringAiStructuredOutputSupport.bean(ContinuationDecision.class);
         String systemPrompt;
@@ -213,8 +225,74 @@ public class ActionDraftContinuationAnalyzer {
             response,
             suppliedParameters.keySet(),
             result.getAttempts(),
-            model
+            model,
+            "MODEL"
         );
+    }
+
+    private AnalysisOutcome analyzeStructuredSubmission(
+        ActionDraftContinuation continuation,
+        AIActionMetaData metadata,
+        Set<String> allowedParameters,
+        ActionDraftSubmission submission
+    ) {
+        if (!AIActionNames.normalize(continuation.action()).equals(
+            AIActionNames.normalize(submission.action())
+        )) {
+            return AnalysisOutcome.failed(
+                "STRUCTURED_SUBMISSION_ACTION_MISMATCH",
+                0,
+                "STRUCTURED_USER_INPUT"
+            );
+        }
+        for (String name : submission.parameters().keySet()) {
+            if (!containsIgnoreCase(allowedParameters, name)) {
+                return AnalysisOutcome.failed(
+                    "STRUCTURED_SUBMISSION_PARAMETER_REJECTED",
+                    0,
+                    "STRUCTURED_USER_INPUT"
+                );
+            }
+        }
+
+        Map<String, Object> suppliedParameters =
+            ActionDraftContinuationSupport.sanitizeAnalyzedParameters(
+                metadata,
+                submission.parameters(),
+                allowedParameters
+            );
+        Intent intent = Intent.builder()
+            .type(IntentType.ACTION)
+            .intent(continuation.action())
+            .action(continuation.action())
+            .actionParams(suppliedParameters)
+            .confidence(1.0d)
+            .requiresRetrieval(false)
+            .requiresGeneration(false)
+            .requiresTargetResolution(false)
+            .build();
+        MultiIntentResponse response = MultiIntentResponse.builder()
+            .intents(List.of(intent))
+            .orchestrationStrategy("ACTION_DRAFT_STRUCTURED_SUBMISSION")
+            .metadata(Map.of("structuredUserInput", true))
+            .build();
+        response.normalize();
+        return AnalysisOutcome.continued(
+            response,
+            suppliedParameters.keySet(),
+            0,
+            null,
+            "STRUCTURED_USER_INPUT"
+        );
+    }
+
+    private ActionDraftSubmission structuredSubmission(
+        PipelineContext context
+    ) {
+        return context != null
+            && context.getOrchestrationContext() != null
+            ? context.getOrchestrationContext().getActionDraftSubmission()
+            : null;
     }
 
     private void validateDecision(
@@ -433,7 +511,8 @@ public class ActionDraftContinuationAnalyzer {
         List<String> suppliedParameterNames,
         int attempts,
         String model,
-        String failureType
+        String failureType,
+        String inputSource
     ) {
         public AnalysisOutcome {
             suppliedParameterNames = suppliedParameterNames == null
@@ -443,7 +522,7 @@ public class ActionDraftContinuationAnalyzer {
 
         public static AnalysisOutcome notEvaluated() {
             return new AnalysisOutcome(
-                false, false, null, List.of(), 0, null, null
+                false, false, null, List.of(), 0, null, null, null
             );
         }
 
@@ -451,9 +530,17 @@ public class ActionDraftContinuationAnalyzer {
             String failureType,
             int attempts
         ) {
+            return failed(failureType, attempts, "MODEL");
+        }
+
+        public static AnalysisOutcome failed(
+            String failureType,
+            int attempts,
+            String inputSource
+        ) {
             return new AnalysisOutcome(
                 true, false, null, List.of(), attempts, null,
-                failureType
+                failureType, inputSource
             );
         }
 
@@ -462,7 +549,8 @@ public class ActionDraftContinuationAnalyzer {
             String model
         ) {
             return new AnalysisOutcome(
-                true, false, null, List.of(), attempts, model, null
+                true, false, null, List.of(), attempts, model, null,
+                "MODEL"
             );
         }
 
@@ -471,6 +559,22 @@ public class ActionDraftContinuationAnalyzer {
             Set<String> suppliedParameterNames,
             int attempts,
             String model
+        ) {
+            return continued(
+                response,
+                suppliedParameterNames,
+                attempts,
+                model,
+                "MODEL"
+            );
+        }
+
+        public static AnalysisOutcome continued(
+            MultiIntentResponse response,
+            Set<String> suppliedParameterNames,
+            int attempts,
+            String model,
+            String inputSource
         ) {
             return new AnalysisOutcome(
                 true,
@@ -481,7 +585,8 @@ public class ActionDraftContinuationAnalyzer {
                     : List.of(),
                 attempts,
                 model,
-                null
+                null,
+                inputSource
             );
         }
 
@@ -503,6 +608,9 @@ public class ActionDraftContinuationAnalyzer {
                     "fallback",
                     "NORMAL_INTENT_EXTRACTION"
                 );
+            }
+            if (StringUtils.hasText(inputSource)) {
+                diagnostics.put("inputSource", inputSource);
             }
             return Collections.unmodifiableMap(diagnostics);
         }

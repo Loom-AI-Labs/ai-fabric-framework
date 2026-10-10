@@ -6,11 +6,11 @@
 #
 # From repo root:
 # docker build -f examples/real-apps/chat-capabilities-demo/Dockerfile \
-#   --build-arg AI_FABRIC_VERSION=0.8.20 \
-#   -t ai-fabric-chat-capabilities-demo:0.8.20 \
+#   --build-arg AI_FABRIC_VERSION=0.8.21 \
+#   -t ai-fabric-chat-capabilities-demo:0.8.21 \
 #   examples/real-apps
 
-ARG AI_FABRIC_VERSION=0.8.20
+ARG AI_FABRIC_VERSION=0.8.21
 ARG APP_VERSION=1.0.0-SNAPSHOT
 ARG SOURCE_COMMIT=
 ARG SOURCE_BRANCH=

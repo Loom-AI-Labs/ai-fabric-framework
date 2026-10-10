@@ -5,6 +5,7 @@ import ai.fabric.dto.AIChatRole;
 import ai.fabric.intent.action.AIActionMetaData;
 import ai.fabric.intent.action.AIActionParamSchema;
 import ai.fabric.intent.action.PendingAction;
+import ai.fabric.intent.actiondraft.ActionDraftSubmission;
 import ai.fabric.intent.orchestration.OrchestrationContext;
 import ai.fabric.intent.orchestration.attachment.NormalizedAttachment;
 import ai.fabric.intent.orchestration.pipeline.PipelineContext;
@@ -73,6 +74,14 @@ final class ActionEvidenceSupport {
         Map<String, Set<String>> trustedValuesByKey = new LinkedHashMap<>();
 
         OrchestrationContext orchContext = pipelineContext.getOrchestrationContext();
+        ActionDraftSubmission structuredSubmission = orchContext != null
+            ? orchContext.getActionDraftSubmission()
+            : null;
+        boolean hasStructuredUserInput = appendStructuredUserEvidence(
+            userEvidence,
+            structuredSubmission
+        );
+        hasUser |= hasStructuredUserInput;
         List<NormalizedAttachment> attachments = orchContext != null ? orchContext.getAttachmentsNormalized() : null;
         if (attachments != null && !attachments.isEmpty()) {
             for (NormalizedAttachment attachment : attachments) {
@@ -144,6 +153,7 @@ final class ActionEvidenceSupport {
 
         Map<String, Object> sourcesUsed = Map.of(
             "user", hasUser,
+            "structuredUserInput", hasStructuredUserInput,
             "history", hasHistory,
             "pinned", hasPinned,
             "pendingConfirmationEvidence", hasPendingConfirmationEvidence
@@ -155,6 +165,39 @@ final class ActionEvidenceSupport {
             freezeTrustedEvidenceValues(trustedValuesByKey),
             sourcesUsed
         );
+    }
+
+    private static boolean appendStructuredUserEvidence(
+        StringBuilder target,
+        ActionDraftSubmission submission
+    ) {
+        if (target == null || submission == null
+            || submission.parameters().isEmpty()) {
+            return false;
+        }
+        int initialLength = target.length();
+        appendStructuredUserValue(target, submission.parameters());
+        return target.length() > initialLength;
+    }
+
+    private static void appendStructuredUserValue(
+        StringBuilder target,
+        Object value
+    ) {
+        if (value instanceof Map<?, ?> map) {
+            map.values().forEach(item -> appendStructuredUserValue(target, item));
+            return;
+        }
+        if (value instanceof Iterable<?> iterable) {
+            iterable.forEach(item -> appendStructuredUserValue(target, item));
+            return;
+        }
+        if (value != null) {
+            String normalized = String.valueOf(value).trim();
+            if (StringUtils.hasText(normalized)) {
+                target.append("\n").append(normalized);
+            }
+        }
     }
 
     static void addTrustedEvidenceValues(Map<String, Set<String>> trustedValuesByKey, Map<String, String> metadata) {

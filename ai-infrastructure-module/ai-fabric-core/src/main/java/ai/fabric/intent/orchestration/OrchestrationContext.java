@@ -9,6 +9,7 @@ import ai.fabric.dto.AIGenerationInputPart;
 import ai.fabric.intent.orchestration.conversation.ApprovedConversationSnapshot;
 import ai.fabric.intent.orchestration.attachment.NormalizedAttachment;
 import ai.fabric.intent.orchestration.attachment.OrchestrationAttachment;
+import ai.fabric.intent.actiondraft.ActionDraftSubmission;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 
 import java.util.ArrayList;
@@ -141,6 +142,16 @@ public class OrchestrationContext {
      */
     @JsonIgnore
     private ApprovedConversationSnapshot approvedConversationSnapshot;
+
+    /**
+     * Bounded user-supplied form values for continuing one open action draft.
+     *
+     * <p>The runtime maps this field explicitly from its public request DTO.
+     * It is not trusted application context and remains subject to all action
+     * schema, provenance, policy, confirmation, and execution checks.</p>
+     */
+    @JsonIgnore
+    private ActionDraftSubmission actionDraftSubmission;
 
     /**
      * True if an authenticated userId was provided.
