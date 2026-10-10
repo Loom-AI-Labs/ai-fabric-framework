@@ -36,6 +36,7 @@ import org.springframework.ai.embedding.EmbeddingModel;
 import org.springframework.ai.embedding.EmbeddingOptions;
 import org.springframework.ai.embedding.EmbeddingRequest;
 import org.springframework.ai.embedding.EmbeddingResponse;
+import org.springframework.ai.google.genai.text.GoogleGenAiTextEmbeddingOptions;
 import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.ai.tool.ToolCallback;
 
@@ -389,6 +390,42 @@ class SpringAiProviderAdapterTest {
 
         assertThat(readField(chatModel, "observationRegistry")).isSameAs(observationRegistry);
         assertThat(readField(embeddingModel, "observationRegistry")).isSameAs(observationRegistry);
+    }
+
+    @Test
+    void geminiEmbeddingUsesCurrentModelAndExplicitDimensions() {
+        AIProviderConfig config = new AIProviderConfig();
+        config.setEmbeddingProvider("gemini");
+        config.getGemini().setEnabled(true);
+        config.getGemini().setApiKey("test-key");
+        config.getGemini().setEmbeddingDimensions(512);
+        SpringAiModelResolver resolver = new SpringAiModelResolver(config);
+
+        GoogleGenAiTextEmbeddingOptions options = (GoogleGenAiTextEmbeddingOptions)
+            resolver.resolveEmbeddingOptions("gemini", AIEmbeddingRequest.builder()
+                .text("embed me")
+                .build());
+
+        assertThat(options.getModel()).isEqualTo("gemini-embedding-2");
+        assertThat(options.getDimensions()).isEqualTo(512);
+        assertThat(resolver.embeddingDimension("gemini")).isEqualTo(512);
+    }
+
+    @Test
+    void geminiEmbeddingFallsBackToSupportedDimensions() {
+        AIProviderConfig config = new AIProviderConfig();
+        config.getGemini().setEmbeddingDimensions(null);
+        SpringAiModelResolver resolver = new SpringAiModelResolver(config);
+
+        GoogleGenAiTextEmbeddingOptions options = (GoogleGenAiTextEmbeddingOptions)
+            resolver.resolveEmbeddingOptions("gemini", AIEmbeddingRequest.builder()
+                .text("embed me")
+                .model("gemini-embedding-001")
+                .build());
+
+        assertThat(options.getModel()).isEqualTo("gemini-embedding-001");
+        assertThat(options.getDimensions()).isEqualTo(768);
+        assertThat(resolver.embeddingDimension("gemini")).isEqualTo(768);
     }
 
     @Test

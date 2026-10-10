@@ -474,6 +474,7 @@ public class AIProviderConfig {
         private String baseUrl;
         private String model;
         private String embeddingModel;
+        private Integer embeddingDimensions = 768;
         private Integer maxTokens;
         private Double temperature;
         private Integer timeout;

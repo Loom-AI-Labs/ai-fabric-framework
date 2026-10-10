@@ -90,6 +90,7 @@ public class AIProviderConfigValidator {
                 case "openai" -> validateOpenAI(result, true, true);
                 case "anthropic" -> validateAnthropic(result);
                 case "cohere" -> validateCohere(result);
+                case "gemini" -> validateGemini(result, true, true);
                 case "azure" -> validateAzure(result, true, false, true);
                 default -> result.addWarning("ai.providers.llm-provider='" + provider
                     + "' is not a built-in provider. Skipping strict LLM provider validation.");
@@ -139,6 +140,7 @@ public class AIProviderConfigValidator {
             case "openai" -> validateOpenAI(result, true, !hasModelOverride);
             case "anthropic" -> validateAnthropic(result, !hasModelOverride);
             case "cohere" -> validateCohere(result, !hasModelOverride);
+            case "gemini" -> validateGemini(result, true, !hasModelOverride);
             case "azure" -> validateAzure(result, true, false, !hasModelOverride);
             default -> result.addWarning(configPrefix + ".llm-provider='" + provider
                 + "' is not a built-in provider. Skipping strict validation.");
@@ -155,6 +157,7 @@ public class AIProviderConfigValidator {
         switch (provider) {
             case "openai" -> validateOpenAI(result, false, false);
             case "azure" -> validateAzure(result, false, true, false);
+            case "gemini" -> validateGemini(result, false, false);
             case "onnx" -> validateOnnx(result);
             case "spring-ai-onnx" -> validateSpringAiOnnx(result);
             default -> result.addWarning("ai.providers.embedding-provider='" + provider
@@ -268,6 +271,36 @@ public class AIProviderConfigValidator {
 
         if (requireModel && isBlank(config.getModel())) {
             result.addError("ai.providers.cohere.model", "Cohere model is required when Cohere is selected.");
+        }
+    }
+
+    private void validateGemini(ValidationResult result, boolean isLlm, boolean requireModel) {
+        AIProviderConfig.GeminiConfig config = providerConfig.getGemini();
+
+        if (config == null) {
+            result.addError("ai.providers.gemini", "Gemini configuration block is missing");
+            return;
+        }
+        if (!config.isEnabled()) {
+            result.addError("ai.providers.gemini.enabled",
+                "Gemini is selected but ai.providers.gemini.enabled=false");
+            return;
+        }
+        if (isBlank(config.getApiKey())) {
+            result.addError("ai.providers.gemini.api-key",
+                "Gemini API key is required when Gemini is selected.");
+        }
+        if (isLlm && requireModel && isBlank(config.getModel())) {
+            result.addError("ai.providers.gemini.model",
+                "Gemini model is required when Gemini is the LLM provider.");
+        }
+        if (!isLlm && isBlank(config.getEmbeddingModel())) {
+            result.addError("ai.providers.gemini.embedding-model",
+                "Gemini embedding model is required when Gemini is the embedding provider.");
+        }
+        if (!isLlm && (config.getEmbeddingDimensions() == null || config.getEmbeddingDimensions() <= 0)) {
+            result.addError("ai.providers.gemini.embedding-dimensions",
+                "Gemini embedding dimensions must be positive when Gemini is selected.");
         }
     }
 

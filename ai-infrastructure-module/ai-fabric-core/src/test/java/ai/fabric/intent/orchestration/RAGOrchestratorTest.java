@@ -569,7 +569,10 @@ class RAGOrchestratorTest {
 
         assertThat(result.getType()).isEqualTo(OrchestrationResultType.OUT_OF_SCOPE);
         assertThat(result.isSuccess()).isTrue();
-        assertThat(result.getMessage()).contains("approved product", "order questions");
+        assertThat(result.getMessage())
+            .isEqualTo(
+                "I can help with requests supported by this application's configured knowledge and actions."
+            );
         assertThat(result.getMessage()).doesNotContain("legal advice");
     }
 

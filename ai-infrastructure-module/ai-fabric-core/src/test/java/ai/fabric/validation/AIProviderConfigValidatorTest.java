@@ -9,6 +9,24 @@ import static org.assertj.core.api.Assertions.assertThat;
 class AIProviderConfigValidatorTest {
 
     @Test
+    void rejectsInvalidGeminiEmbeddingDimensions() {
+        AIProviderConfig providerConfig = new AIProviderConfig();
+        providerConfig.setLlmProvider("none");
+        providerConfig.setEmbeddingProvider("gemini");
+        providerConfig.getGemini().setEnabled(true);
+        providerConfig.getGemini().setApiKey("test-key");
+        providerConfig.getGemini().setEmbeddingModel("gemini-embedding-2");
+        providerConfig.getGemini().setEmbeddingDimensions(0);
+
+        AIProviderConfigValidator.ValidationResult result =
+            new AIProviderConfigValidator(providerConfig, serviceConfig()).validate();
+
+        assertThat(result.errors())
+            .extracting(AIProviderConfigValidator.ValidationIssue::key)
+            .contains("ai.providers.gemini.embedding-dimensions");
+    }
+
+    @Test
     void shouldPassValidation_whenOpenAiLlmAndOnnxEmbeddingAreConfigured() {
         AIProviderConfig providerConfig = new AIProviderConfig();
         providerConfig.setLlmProvider("openai");

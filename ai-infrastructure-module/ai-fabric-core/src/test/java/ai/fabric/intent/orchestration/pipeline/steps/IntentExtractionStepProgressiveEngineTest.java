@@ -286,7 +286,7 @@ class IntentExtractionStepProgressiveEngineTest {
     }
 
     @Test
-    void generalRequestRetainsFallbackCompatibility() {
+    void generalRequestTerminatesOnVisibleProviderFailure() {
         IntentQueryExtractor extractor = mock(IntentQueryExtractor.class);
         ProgressiveIntentExtractionEngine engine =
             mock(ProgressiveIntentExtractionEngine.class);
@@ -329,8 +329,17 @@ class IntentExtractionStepProgressiveEngineTest {
             )
         );
 
-        assertThat(updated.isShouldTerminate()).isFalse();
-        assertThat(updated.getIntentResponse()).isSameAs(fallback);
+        assertThat(updated.isShouldTerminate()).isTrue();
+        assertThat(updated.getEarlyTerminationResult().getType())
+            .isEqualTo(ai.fabric.intent.orchestration.OrchestrationResultType.ERROR);
+        assertThat(updated.getEarlyTerminationResult().getErrorCode())
+            .isEqualTo("INTENT_PROVIDER_FAILED");
+        assertThat(updated.getEarlyTerminationResult().getMessage())
+            .isEqualTo(
+                "The configured AI provider could not complete intent analysis."
+            );
+        assertThat(updated.getMetadata().toString())
+            .doesNotContain("API key", "provider call failed");
     }
 
     @Test

@@ -46,7 +46,8 @@ public class SpringAiModelResolver implements DisposableBean {
     static final String DEFAULT_ANTHROPIC_BASE_URL = "https://api.anthropic.com";
     static final String DEFAULT_ANTHROPIC_MODEL = "claude-3-7-sonnet-latest";
     static final String DEFAULT_GEMINI_MODEL = "gemini-2.5-flash";
-    static final String DEFAULT_GEMINI_EMBEDDING_MODEL = "text-embedding-004";
+    static final String DEFAULT_GEMINI_EMBEDDING_MODEL = "gemini-embedding-2";
+    static final int DEFAULT_GEMINI_EMBEDDING_DIMENSIONS = 768;
     static final int DEFAULT_SPRING_AI_ONNX_DIMENSIONS = 384;
     private static final int DEFAULT_TIMEOUT_SECONDS = 60;
     private static final int DEFAULT_MAX_TOKENS = 1000;
@@ -108,7 +109,8 @@ public class SpringAiModelResolver implements DisposableBean {
             case AZURE -> azureEmbeddingOptions(azureEmbeddingDeployment(request),
                 azureEmbeddingApiVersion(request), azureNative(embeddingBaseUrl(family, request)));
             case GEMINI -> geminiEmbeddingOptions(firstText(request != null ? request.getModel() : null,
-                providerConfig.getGemini().getEmbeddingModel(), DEFAULT_GEMINI_EMBEDDING_MODEL));
+                providerConfig.getGemini().getEmbeddingModel(), DEFAULT_GEMINI_EMBEDDING_MODEL),
+                providerConfig.getGemini().getEmbeddingDimensions());
             case ANTHROPIC -> throw new UnsupportedOperationException("Anthropic embeddings are not supported by Spring AI.");
             case SPRING_AI_ONNX -> null;
         };
@@ -225,7 +227,10 @@ public class SpringAiModelResolver implements DisposableBean {
             return 1536;
         }
         if (SpringAiProviderFamily.GEMINI.equals(family)) {
-            return 768;
+            Integer configured = providerConfig.getGemini().getEmbeddingDimensions();
+            return configured != null && configured > 0
+                ? configured
+                : DEFAULT_GEMINI_EMBEDDING_DIMENSIONS;
         }
         if (SpringAiProviderFamily.SPRING_AI_ONNX.equals(family)) {
             Integer configured = providerConfig.getSpringAiOnnx().getDimensions();
@@ -407,9 +412,12 @@ public class SpringAiModelResolver implements DisposableBean {
         return builder.build();
     }
 
-    private GoogleGenAiTextEmbeddingOptions geminiEmbeddingOptions(String model) {
+    private GoogleGenAiTextEmbeddingOptions geminiEmbeddingOptions(String model, Integer dimensions) {
         GoogleGenAiTextEmbeddingOptions.Builder builder = GoogleGenAiTextEmbeddingOptions.builder();
         builder.model(model);
+        builder.dimensions(dimensions != null && dimensions > 0
+            ? dimensions
+            : DEFAULT_GEMINI_EMBEDDING_DIMENSIONS);
         return builder.build();
     }
 

@@ -148,7 +148,7 @@ public class IntentHandlingStep implements PipelineStep {
     private static final String ERROR_MSG_ACTION_NOT_PERMITTED_ANON = "Action not permitted for anonymous users.";
     private static final String ERROR_MSG_ACTION_NOT_PERMITTED_USER = "Action not permitted for this user.";
     private static final String MSG_OUT_OF_SCOPE =
-        "I can help with this store's approved product, policy, comparison, cart, and order questions.";
+        "I can help with requests supported by this application's configured knowledge and actions.";
     private static final String MSG_ALL_PROCESSED = "All intents processed successfully.";
     private static final String MSG_SOME_FAILED = "Some intents failed. See results for details.";
     
