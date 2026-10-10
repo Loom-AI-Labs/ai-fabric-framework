@@ -438,6 +438,18 @@ public class IntentHandlingStep implements PipelineStep {
                 .build();
         }
 
+        OrchestrationResult groundingScopeFallback = fallbackMismatchedReadActionToInformation(
+            intent,
+            meta,
+            context,
+            pipelineContext,
+            collectEvidenceOnly,
+            readActionExecutionScope
+        );
+        if (groundingScopeFallback != null) {
+            return groundingScopeFallback;
+        }
+
         if ((pipelineContext != null
                 ? pipelineContext.isAnonymous()
                 : context.isAnonymous())
@@ -975,6 +987,101 @@ public class IntentHandlingStep implements PipelineStep {
                 .nextSteps(extractNextSteps(intent))
                 .build();
         }
+    }
+
+    private OrchestrationResult fallbackMismatchedReadActionToInformation(
+        Intent intent,
+        AIActionMetaData metadata,
+        OrchestrationContext context,
+        PipelineContext pipelineContext,
+        boolean collectEvidenceOnly,
+        ReadActionExecutionScope readActionExecutionScope
+    ) {
+        if (!hasGroundingVectorSpaceMismatch(intent, metadata)) {
+            return null;
+        }
+
+        String actionName = StringUtils.hasText(intent.getAction())
+            ? intent.getAction().trim()
+            : intent.getIntent();
+        String fallbackQuery = StringUtils.hasText(intent.getOptimizedQuery())
+            ? intent.getOptimizedQuery().trim()
+            : (StringUtils.hasText(intent.getIntent())
+                ? intent.getIntent().trim()
+                : pipelineContext != null ? pipelineContext.getEffectiveQuery() : actionName);
+
+        Intent informationIntent = Intent.builder()
+            .type(IntentType.INFORMATION)
+            .intent(fallbackQuery)
+            .confidence(intent.getConfidence())
+            .vectorSpace(intent.getVectorSpace())
+            .requiresRetrieval(true)
+            .requiresGeneration(true)
+            .responseProfile(intent.getResponseProfile())
+            .requiresTargetResolution(intent.getRequiresTargetResolution())
+            .generationInstructions(intent.getGenerationInstructions())
+            .needsAdvancedRAG(intent.getNeedsAdvancedRAG())
+            .optimizedQuery(intent.getOptimizedQuery())
+            .nextStepRecommended(intent.getNextStepRecommended())
+            .build();
+        PipelineContext scopedContext = scopeReadEvidenceIntentContext(informationIntent, pipelineContext);
+        OrchestrationResult result = handleInformation(
+            informationIntent,
+            context,
+            scopedContext,
+            collectEvidenceOnly,
+            readActionExecutionScope,
+            null
+        );
+        if (result == null) {
+            return null;
+        }
+
+        Map<String, Object> mismatch = new LinkedHashMap<>();
+        mismatch.put("action", actionName);
+        mismatch.put("intentVectorSpaces", normalizedVectorSpaces(
+            RagContextSupport.parseVectorSpaces(intent.getVectorSpace())
+        ));
+        mismatch.put("actionGroundingVectorSpaces", normalizedVectorSpaces(
+            metadata.getGroundingVectorSpaces()
+        ));
+        mismatch.put("resolution", "RAG_FALLBACK");
+        Map<String, Object> resultMetadata = new LinkedHashMap<>();
+        if (result.getMetadata() != null) {
+            resultMetadata.putAll(result.getMetadata());
+        }
+        resultMetadata.put("actionGroundingScopeMismatch", Collections.unmodifiableMap(mismatch));
+        result.setMetadata(Collections.unmodifiableMap(resultMetadata));
+        return result;
+    }
+
+    private boolean hasGroundingVectorSpaceMismatch(Intent intent, AIActionMetaData metadata) {
+        if (intent == null
+            || metadata == null
+            || metadata.getAccessMode() == null
+            || !metadata.getAccessMode().isReadOnly()
+            || !metadata.isGroundingEligible()) {
+            return false;
+        }
+        List<String> intentVectorSpaces = normalizedVectorSpaces(
+            RagContextSupport.parseVectorSpaces(intent.getVectorSpace())
+        );
+        List<String> actionVectorSpaces = normalizedVectorSpaces(metadata.getGroundingVectorSpaces());
+        return !intentVectorSpaces.isEmpty()
+            && !actionVectorSpaces.isEmpty()
+            && actionVectorSpaces.stream().noneMatch(intentVectorSpaces::contains);
+    }
+
+    private List<String> normalizedVectorSpaces(List<String> vectorSpaces) {
+        if (vectorSpaces == null || vectorSpaces.isEmpty()) {
+            return List.of();
+        }
+        return vectorSpaces.stream()
+            .filter(StringUtils::hasText)
+            .map(String::trim)
+            .map(value -> value.toLowerCase(java.util.Locale.ROOT))
+            .distinct()
+            .toList();
     }
 
     private OrchestrationProperties.ActionParamProvenanceMode actionParamProvenanceMode() {

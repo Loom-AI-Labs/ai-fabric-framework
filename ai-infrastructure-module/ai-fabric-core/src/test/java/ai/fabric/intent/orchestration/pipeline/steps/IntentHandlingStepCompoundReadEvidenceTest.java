@@ -234,6 +234,83 @@ class IntentHandlingStepCompoundReadEvidenceTest {
     }
 
     @Test
+    void rejectsMismatchedDirectReadActionAndRetrievesTheValidatedObligationSpace() {
+        AIActionRegistry registry = mock(AIActionRegistry.class);
+        AIActionHandler handler = mock(AIActionHandler.class);
+        AIActionMetaData metadata = AIActionMetaData.builder()
+            .name("inventory_lookup")
+            .accessMode(ActionAccessMode.READ)
+            .groundingEligible(true)
+            .groundingVectorSpaces(List.of("dealer-vehicle"))
+            .build();
+        when(registry.findMetadata("inventory_lookup")).thenReturn(Optional.of(metadata));
+        when(registry.findHandler("inventory_lookup")).thenReturn(Optional.of(handler));
+        when(handler.validateActionAllowed(any())).thenReturn(true);
+        ActionResult actionResult = ActionResult.builder()
+            .success(true)
+            .message("Inventory lookup completed.")
+            .data(ActionResultContracts.object(Map.of("vehicle", "Aster E1")))
+            .build();
+        when(handler.executeAction(any(), any())).thenReturn(actionResult);
+        when(handler.buildPostActionLlmFacts(eq(actionResult), any())).thenReturn(Optional.of(Map.of(
+            "vehicle", "Aster E1"
+        )));
+
+        RAGProvider ragProvider = mock(RAGProvider.class);
+        when(ragProvider.performRag(any(RAGRequest.class))).thenReturn(response(document(
+            "policy-1",
+            "document",
+            "dealership-policy",
+            "Home delivery is available within 30 miles."
+        )));
+        AICoreService aiCoreService = mock(AICoreService.class);
+        when(aiCoreService.generateTextResponse(anyString(), eq(LlmPurpose.GENERATION)))
+            .thenReturn(AIGenerationResponse.builder()
+                .content("The Aster E1 is available and local delivery is supported.")
+                .build());
+
+        Intent inventory = Intent.builder()
+            .type(IntentType.ACTION)
+            .action("inventory_lookup")
+            .intent("Find available electric inventory")
+            .optimizedQuery("available electric vehicle inventory")
+            .vectorSpace("dealer-vehicle")
+            .build();
+        Intent misclassifiedPolicy = Intent.builder()
+            .type(IntentType.ACTION)
+            .action("inventory_lookup")
+            .intent("Explain the delivery policy")
+            .optimizedQuery("delivery policy charges requirements")
+            .vectorSpace("document")
+            .build();
+        IntentHandlingStep step = newStep(registry, ragProvider, aiCoreService);
+
+        OrchestrationResult result = step.process(context(
+            "Which electric cars are available and what is the delivery policy?",
+            inventory,
+            misclassifiedPolicy
+        )).getIntentResult();
+
+        assertThat(result.getType()).isEqualTo(OrchestrationResultType.INFORMATION_PROVIDED);
+        assertThat(result.getChildren()).hasSize(2);
+        assertThat(result.getChildren().get(1).getMetadata())
+            .containsKey("actionGroundingScopeMismatch");
+        @SuppressWarnings("unchecked")
+        List<RAGResponse.RAGDocument> documents =
+            (List<RAGResponse.RAGDocument>) result.getData().get("documents");
+        assertThat(documents).extracting(RAGResponse.RAGDocument::getId)
+            .containsExactly("policy-1");
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> actions = (List<Map<String, Object>>) result.getData().get("actions");
+        assertThat(actions).hasSize(1);
+        verify(handler, times(1)).executeAction(any(), any());
+        ArgumentCaptor<RAGRequest> requestCaptor = ArgumentCaptor.forClass(RAGRequest.class);
+        verify(ragProvider, times(1)).performRag(requestCaptor.capture());
+        assertThat(requestCaptor.getValue().getEntityType()).isEqualTo("document");
+        assertThat(requestCaptor.getValue().getQuery()).isEqualTo("delivery policy charges requirements");
+    }
+
+    @Test
     void retainsSuccessfulEvidenceAndMarksAnEmptyObligationExplicitly() {
         RAGProvider ragProvider = mock(RAGProvider.class);
         when(ragProvider.performRag(any(RAGRequest.class))).thenAnswer(invocation -> {

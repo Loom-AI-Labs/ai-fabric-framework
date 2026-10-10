@@ -46,6 +46,7 @@ import org.springframework.core.io.DefaultResourceLoader;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -222,7 +223,7 @@ class IntentHandlingStepReadProbeFallbackVisibilityTest {
     }
 
     @Test
-    void shouldConstrainIntentFallbackSpaceToReviewedActionContract() {
+    void shouldRejectMismatchedDirectActionAndRetainValidatedIntentSpace() {
         AIActionRegistry registry = mock(AIActionRegistry.class);
         AIActionHandler handler = mock(AIActionHandler.class);
         when(registry.findHandler("list_orders")).thenReturn(Optional.of(handler));
@@ -244,7 +245,7 @@ class IntentHandlingStepReadProbeFallbackVisibilityTest {
         when(registry.findMetadata("list_orders")).thenReturn(Optional.of(meta));
 
         RAGProvider ragProvider = mock(RAGProvider.class);
-        when(ragProvider.performRag(any())).thenReturn(RAGResponse.builder()
+        when(ragProvider.performRAGQuery(any())).thenReturn(RAGResponse.builder()
             .documents(List.of())
             .context("A nearby indexed alternative is available.")
             .success(true)
@@ -289,15 +290,20 @@ class IntentHandlingStepReadProbeFallbackVisibilityTest {
         OrchestrationResult result = step.process(context).getIntentResult();
 
         @SuppressWarnings("unchecked")
-        Map<String, Object> resolution = (Map<String, Object>) result.getData().get("readActionResolution");
-        assertThat(resolution)
-            .containsEntry("rejectedIntentVectorSpaces", List.of("document"));
+        Map<String, Object> mismatch = (Map<String, Object>) result.getMetadata()
+            .get("actionGroundingScopeMismatch");
+        assertThat(mismatch)
+            .containsEntry("action", "list_orders")
+            .containsEntry("intentVectorSpaces", List.of("document"))
+            .containsEntry("actionGroundingVectorSpaces", List.of("dealer-vehicle"))
+            .containsEntry("resolution", "RAG_FALLBACK");
+        verify(handler, never()).executeAction(any(), any());
         ArgumentCaptor<RAGRequest> requestCaptor = ArgumentCaptor.forClass(RAGRequest.class);
-        verify(ragProvider).performRag(requestCaptor.capture());
-        assertThat(requestCaptor.getValue().getEntityType()).isEqualTo("dealer-vehicle");
+        verify(ragProvider).performRAGQuery(requestCaptor.capture());
+        assertThat(requestCaptor.getValue().getEntityType()).isEqualTo("document");
         assertThat(requestCaptor.getValue().getMetadata())
-            .containsEntry("vectorSpacesSelectionSource", "ACTION_CONTRACT")
-            .containsEntry("vectorSpacesSelected", List.of("dealer-vehicle"));
+            .containsEntry("vectorSpacesSelectionSource", "LLM")
+            .containsEntry("vectorSpacesSelected", List.of("document"));
     }
 
     @Test
