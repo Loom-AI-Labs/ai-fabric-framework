@@ -292,9 +292,10 @@ Validate before exposing actions to the LLM:
 - `name`: non-empty, trimmed, stable identifier (recommended: `snake_case`; enforcement should be **optional/configurable**)
 - `accessMode`: must be one of `READ | READ_WRITE | WRITE_ONLY`
 - `readActionResolutionEligible`: allowed only when `accessMode=READ`
-- `groundingVectorSpaces`: optional reviewed evidence spaces for an insufficient
-  grounding-eligible `READ` result; invalid on side-effecting actions and still
-  bounded by the deployment retrieval allowlist
+- `groundingVectorSpaces`: optional reviewed evidence domains represented by a
+  grounding-eligible `READ` action; an already scoped information intent only
+  exposes intersecting actions, and insufficient-result fallback remains bounded
+  by the deployment retrieval allowlist; invalid on side-effecting actions
 - `params`: validate `required`, `pattern`, `allowedValues`, `min`, `max` using the same rules as the Java binder
 - `requiresConfirmation`: boolean
 - `confirmationMessage` (if present): validate template placeholders

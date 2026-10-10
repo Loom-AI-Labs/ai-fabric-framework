@@ -128,13 +128,19 @@ public class ReadActionResolutionService {
             return ResolutionOutcome.skipped("NON_INFORMATION_INTENT");
         }
 
-        List<EligibleReadAction> eligibleActions = resolveEligibleReadActions(
+        ReadActionEligibility eligibility = resolveEligibleReadActions(
+            intent,
             orchestrationContext,
             pipelineContext,
             readPolicy
         );
+        List<EligibleReadAction> eligibleActions = eligibility.eligibleActions();
         if (eligibleActions.isEmpty()) {
-            return ResolutionOutcome.skipped("NO_ELIGIBLE_READ_ACTIONS");
+            return ResolutionOutcome.skipped(
+                eligibility.scopeFilteredActionNames().isEmpty()
+                    ? "NO_ELIGIBLE_READ_ACTIONS"
+                    : "NO_ELIGIBLE_READ_ACTIONS_FOR_INTENT_SCOPE"
+            );
         }
 
         String query = resolvePlannerQuery(intent, pipelineContext);
@@ -233,6 +239,12 @@ public class ReadActionResolutionService {
         diagnostics.put("attempted", true);
         diagnostics.put("eligibleReadActionsCount", eligibleActions.size());
         diagnostics.put("eligibleReadActionNames", eligibleActions.stream().map(EligibleReadAction::name).toList());
+        if (!eligibility.intentVectorSpaces().isEmpty()) {
+            diagnostics.put("intentVectorSpaces", eligibility.intentVectorSpaces());
+        }
+        if (!eligibility.scopeFilteredActionNames().isEmpty()) {
+            diagnostics.put("scopeFilteredReadActionNames", eligibility.scopeFilteredActionNames());
+        }
         diagnostics.put("iterations", Collections.unmodifiableList(plannerIterations));
         diagnostics.put("executedActions", executedActions.stream().map(ExecutedReadAction::toDiagnosticMap).toList());
         diagnostics.put("executedActionsCount", executedActions.size());
@@ -266,18 +278,21 @@ public class ReadActionResolutionService {
         );
     }
 
-    private List<EligibleReadAction> resolveEligibleReadActions(
+    private ReadActionEligibility resolveEligibleReadActions(
+        Intent intent,
         OrchestrationContext context,
         PipelineContext pipelineContext,
         OrchestrationPolicy.ReadActionResolutionPolicy readPolicy
     ) {
         List<AIActionMetaData> actions =
             CapabilityAwareActionMetadataSupport.visibleActions(actionRegistry, context);
+        List<String> intentVectorSpaces = normalizeIntentVectorSpaces(intent);
         if (actions == null || actions.isEmpty()) {
-            return List.of();
+            return new ReadActionEligibility(List.of(), intentVectorSpaces, List.of());
         }
 
         Map<String, EligibleReadAction> eligible = new LinkedHashMap<>();
+        List<String> scopeFilteredActionNames = new ArrayList<>();
         for (AIActionMetaData metadata : actions) {
             if (metadata == null || !StringUtils.hasText(metadata.getName())) {
                 continue;
@@ -306,6 +321,10 @@ public class ReadActionResolutionService {
                 && !readPolicy.allowedReadActions().contains(normalizedName)) {
                 continue;
             }
+            if (!matchesIntentVectorSpaces(metadata, intentVectorSpaces)) {
+                scopeFilteredActionNames.add(metadata.getName());
+                continue;
+            }
             Optional<AIActionHandler> handler = actionRegistry.findHandler(metadata.getName());
             if (handler.isEmpty()) {
                 continue;
@@ -322,7 +341,29 @@ public class ReadActionResolutionService {
                 )
             );
         }
-        return eligible.isEmpty() ? List.of() : List.copyOf(eligible.values());
+        return new ReadActionEligibility(
+            eligible.isEmpty() ? List.of() : List.copyOf(eligible.values()),
+            intentVectorSpaces,
+            scopeFilteredActionNames.isEmpty() ? List.of() : List.copyOf(scopeFilteredActionNames)
+        );
+    }
+
+    private boolean matchesIntentVectorSpaces(AIActionMetaData metadata, List<String> intentVectorSpaces) {
+        if (metadata == null || intentVectorSpaces == null || intentVectorSpaces.isEmpty()) {
+            return true;
+        }
+        List<String> actionVectorSpaces = normalizeVectorSpaces(metadata.getGroundingVectorSpaces());
+        if (actionVectorSpaces.isEmpty()) {
+            return true;
+        }
+        return actionVectorSpaces.stream().anyMatch(intentVectorSpaces::contains);
+    }
+
+    private List<String> normalizeIntentVectorSpaces(Intent intent) {
+        if (intent == null || !StringUtils.hasText(intent.getVectorSpace())) {
+            return List.of();
+        }
+        return normalizeVectorSpaces(java.util.Arrays.asList(intent.getVectorSpace().split(",")));
     }
 
     private PlannerDecision planActions(String query,
@@ -1117,6 +1158,13 @@ public class ReadActionResolutionService {
         String name,
         AIActionMetaData metadata,
         AIActionHandler handler
+    ) {
+    }
+
+    private record ReadActionEligibility(
+        List<EligibleReadAction> eligibleActions,
+        List<String> intentVectorSpaces,
+        List<String> scopeFilteredActionNames
     ) {
     }
 

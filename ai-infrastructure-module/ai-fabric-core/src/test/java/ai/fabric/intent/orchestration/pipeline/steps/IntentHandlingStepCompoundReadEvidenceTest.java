@@ -465,6 +465,85 @@ class IntentHandlingStepCompoundReadEvidenceTest {
     }
 
     @Test
+    void fairlyPacksBoundedCompoundDocumentsAndReportsOnlyDocumentsActuallyUsed() {
+        AICoreService aiCoreService = mock(AICoreService.class);
+        when(aiCoreService.generateTextResponse(anyString(), eq(LlmPurpose.GENERATION)))
+            .thenReturn(AIGenerationResponse.builder()
+                .content("Delivery costs GBP 49 and matching inventory is available.")
+                .build());
+        RagResponseGenerationSupport generationSupport = new RagResponseGenerationSupport(
+            aiCoreService,
+            mock(AIServiceConfig.class),
+            promptTemplateResolver(),
+            new PromptRenderer()
+        );
+        Intent policy = information("delivery policy charge and distance", "document");
+        Intent inventory = information("electric inventory under GBP 40000", "dealer-vehicle");
+
+        String longIrrelevantPolicy = "Reservation information without delivery terms. ".repeat(80);
+        String relevantPolicy = "General operations. ".repeat(30)
+            + "\n\nStandard local delivery is available within 25 miles for GBP 49. "
+            + "Cleared funds and insurance are required before handover.\n\n"
+            + "Aftercare information. ".repeat(30);
+        OrchestrationResult policyEvidence = OrchestrationResult.builder()
+            .type(OrchestrationResultType.INFORMATION_PROVIDED)
+            .success(true)
+            .data(Map.of(
+                "documents", List.of(
+                    document("policy-reservation", "document", "policies", longIrrelevantPolicy),
+                    document("policy-delivery", "document", "policies", relevantPolicy),
+                    document("policy-warranty", "document", "policies", "Warranty information. ".repeat(80))
+                ),
+                "readActionResolution", Map.of(
+                    "executedActions", List.of(Map.of(
+                        "action", "unrelated_read",
+                        "success", true,
+                        "groundingUsable", true,
+                        "evidenceSummary", "Unrelated live evidence. ".repeat(40)
+                    ))
+                )
+            ))
+            .build();
+        OrchestrationResult inventoryEvidence = OrchestrationResult.builder()
+            .type(OrchestrationResultType.INFORMATION_PROVIDED)
+            .success(true)
+            .data(Map.of("documents", List.of(
+                document("vehicle-1", "dealer-vehicle", "inventory", "Aster E1 costs GBP 31950."),
+                document("vehicle-2", "dealer-vehicle", "inventory", "Morrow C2 costs GBP 22750."),
+                document("vehicle-3", "dealer-vehicle", "inventory", "Aster E2 costs GBP 39250.")
+            )))
+            .build();
+
+        OrchestrationResult result = CompoundReadEvidenceSupport.synthesize(
+            List.of(policy, inventory),
+            List.of(policyEvidence, inventoryEvidence),
+            List.of(),
+            context("Explain delivery and list electric inventory", policy, inventory),
+            generationSupport,
+            true
+        );
+
+        ArgumentCaptor<String> prompt = ArgumentCaptor.forClass(String.class);
+        verify(aiCoreService).generateTextResponse(prompt.capture(), eq(LlmPurpose.GENERATION));
+        assertThat(prompt.getValue())
+            .contains("Standard local delivery is available within 25 miles for GBP 49")
+            .contains("Aster E1 costs GBP 31950");
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> diagnostics = (Map<String, Object>) result.getData().get("compoundEvidence");
+        assertThat(diagnostics)
+            .containsEntry("returnedDocumentCount", 6)
+            .containsEntry("usedDocumentCount", 4);
+        assertThat(((Number) diagnostics.get("generationContextChars")).intValue()).isLessThanOrEqualTo(3_000);
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> obligations = (List<Map<String, Object>>) diagnostics.get("obligations");
+        assertThat(obligations).extracting(item -> item.get("documentsUsed"))
+            .containsExactly(2L, 2L);
+        assertThat(result.getData().get("ragResponse")).isInstanceOf(RAGResponse.class);
+        assertThat(((RAGResponse) result.getData().get("ragResponse")).getUsedDocuments()).isEqualTo(4);
+    }
+
+    @Test
     void retainsSuccessfulEvidenceWhenAnotherReadChildHasSoftExtractionFailure() {
         AIActionRegistry registry = mock(AIActionRegistry.class);
         AIActionMetaData metadata = AIActionMetaData.builder()

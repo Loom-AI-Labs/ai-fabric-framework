@@ -55,12 +55,14 @@ public class AIActionMetaData {
     private boolean groundingEligible;
 
     /**
-     * Server-owned evidence spaces that may complete grounding when this READ action
-     * returns an insufficient result.
+     * Server-owned evidence spaces represented by this READ action and available to
+     * complete grounding when the action returns an insufficient result.
      *
      * <p>The orchestration layer still validates these values against configured
-     * entity types and the effective deployment allowlist. Declaring a space here
-     * never grants retrieval access.</p>
+     * entity types and the effective deployment allowlist. When an information intent
+     * already has an effective vector scope, the read-action planner only exposes
+     * actions whose declared spaces intersect that scope. Declaring a space here never
+     * grants retrieval access.</p>
      */
     @Builder.Default
     private List<String> groundingVectorSpaces = Collections.emptyList();

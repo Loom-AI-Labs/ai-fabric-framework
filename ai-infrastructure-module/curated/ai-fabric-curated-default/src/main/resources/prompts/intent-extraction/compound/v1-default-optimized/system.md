@@ -19,6 +19,7 @@ EXTRACTION RULES:
    - If one clause maps to an AVAILABLE ACTION and another clause requires knowledge retrieval or explanation, emit both the ACTION intent and a separate INFORMATION intent.
    - Never absorb, omit, or mark an information clause complete merely because a sibling action can answer another clause.
    - For every emitted clause, preserve its exact subject, named entities, qualifiers, constraints, and requested facts in that intent's optimizedQuery. Do not reduce a specific clause to a generic category such as "policy" or "inventory".
+   - Each optimizedQuery must contain only its own clause. Exclude subjects, constraints, and requested facts assigned to sibling intents; never copy the complete compound request into more than one child query.
 6. Confidence must be between 0.0 and 1.0.
 7. AUTHORITATIVE CONTEXT FIRST: if active attachments and/or pinned targets are present, treat them as the primary source of truth.
    - RAG retrieval is slower and more expensive than answering from authoritative context.

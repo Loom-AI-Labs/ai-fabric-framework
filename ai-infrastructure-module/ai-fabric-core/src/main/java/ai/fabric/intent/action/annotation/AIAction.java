@@ -63,8 +63,10 @@ public @interface AIAction {
     boolean readActionResolutionEligible() default false;
 
     /**
-     * Evidence spaces that may complete grounding when this READ action returns
-     * an insufficient result. Values remain bounded by deployment policy.
+     * Evidence spaces represented by this READ action and available to complete
+     * grounding when it returns an insufficient result. A planner with an already
+     * scoped information intent only sees actions that intersect that scope. Values
+     * remain bounded by deployment policy.
      */
     String[] groundingVectorSpaces() default {};
 }

@@ -16,9 +16,11 @@ import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
@@ -31,6 +33,11 @@ final class CompoundReadEvidenceSupport {
 
     private static final int DEFAULT_MAX_RETURNED_DOCUMENTS = 10;
     private static final int MIN_OBLIGATION_CONTEXT_CHARS = 240;
+    private static final int MIN_DOCUMENT_CONTEXT_CHARS = 160;
+    private static final Set<String> CONTEXT_QUERY_STOP_WORDS = Set.of(
+        "and", "are", "can", "does", "for", "from", "have", "how", "into", "its", "the", "their",
+        "this", "those", "was", "what", "when", "where", "which", "who", "with", "would", "your"
+    );
     private static final String ERROR_CODE_ACTION_NOT_FOUND = "ACTION_NOT_FOUND";
     private static final String ERROR_CODE_GENERATION_FAILED = "GENERATION_FAILED";
     private CompoundReadEvidenceSupport() {
@@ -58,7 +65,18 @@ final class CompoundReadEvidenceSupport {
         List<Map<String, Object>> sources = collectSources(documents);
 
         String query = resolveQuery(pipelineContext);
-        String generationContext = buildGenerationContext(obligations, returnedDocumentEvidence, pipelineContext);
+        int generationDocumentLimit = RagContextSupport.resolveGenerationContextDocumentLimit(
+            resolveRagBudgets(pipelineContext)
+        );
+        List<DocumentEvidence> generationDocumentCandidates = roundRobinDocuments(
+            obligations,
+            generationDocumentLimit
+        );
+        GenerationContext generationContext = buildGenerationContext(
+            obligations,
+            generationDocumentCandidates,
+            pipelineContext
+        );
         Intent synthesisIntent = synthesisIntent(intents);
 
         ResponseGenerationTrace generationTrace = null;
@@ -72,7 +90,7 @@ final class CompoundReadEvidenceSupport {
                 generationTrace = generationSupport.generateRagAnswer(
                     synthesisIntent,
                     query,
-                    generationContext,
+                    generationContext.content(),
                     pipelineContext
                 );
                 answer = generationTrace != null ? generationTrace.content() : null;
@@ -97,9 +115,10 @@ final class CompoundReadEvidenceSupport {
 
         Map<String, Object> diagnostics = buildDiagnostics(
             obligations,
-            returnedDocumentEvidence,
+            generationContext.usedDocuments(),
+            returnedDocumentEvidence.size(),
             pipelineContext,
-            generationContext.length(),
+            generationContext.content().length(),
             synthesisAttempted,
             synthesisPerformed,
             generationEnabled,
@@ -113,10 +132,7 @@ final class CompoundReadEvidenceSupport {
         RAGResponse ragResponse = RAGResponse.builder()
             .documents(documents)
             .totalDocuments(documents.size())
-            .usedDocuments(Math.min(
-                RagContextSupport.resolveGenerationContextDocumentLimit(resolveRagBudgets(pipelineContext)),
-                documents.size()
-            ))
+            .usedDocuments(generationContext.usedDocuments().size())
             .success(generationError == null)
             .originalQuery(query)
             .entityType(joinEffectiveVectorSpaces(obligations))
@@ -424,11 +440,12 @@ final class CompoundReadEvidenceSupport {
         return null;
     }
 
-    private static String buildGenerationContext(List<ObligationEvidence> obligations,
-                                                 List<DocumentEvidence> selectedDocuments,
-                                                 PipelineContext pipelineContext) {
+    private static GenerationContext buildGenerationContext(List<ObligationEvidence> obligations,
+                                                            List<DocumentEvidence> selectedDocuments,
+                                                            PipelineContext pipelineContext) {
         int maxChars = RagContextSupport.resolveGenerationContextMaxChars(resolveRagBudgets(pipelineContext));
         StringBuilder context = new StringBuilder(Math.min(maxChars, 4096));
+        List<DocumentEvidence> usedDocuments = new ArrayList<>();
         appendWithinBudget(context, """
             COMPOUND READ EVIDENCE POLICY
             Answer every clause of the original request from the matching obligation evidence below.
@@ -444,10 +461,10 @@ final class CompoundReadEvidenceSupport {
             appendWithinBudget(context, truncate(pinnedTargets, Math.max(0, maxChars / 4)) + "\n\n", maxChars);
         }
 
-        Map<Integer, List<RAGResponse.RAGDocument>> documentsByObligation = new LinkedHashMap<>();
+        Map<Integer, List<DocumentEvidence>> documentsByObligation = new LinkedHashMap<>();
         for (DocumentEvidence selected : selectedDocuments) {
             documentsByObligation.computeIfAbsent(selected.obligationIndex(), ignored -> new ArrayList<>())
-                .add(selected.document());
+                .add(selected);
         }
 
         for (int i = 0; i < obligations.size() && context.length() < maxChars; i++) {
@@ -459,20 +476,24 @@ final class CompoundReadEvidenceSupport {
                 remainingChars / remainingObligations
             );
             obligationBudget = Math.min(obligationBudget, remainingChars);
-            String block = buildObligationContext(
+            ObligationContext block = buildObligationContext(
                 obligation,
                 documentsByObligation.getOrDefault(obligation.index(), List.of()),
                 obligationBudget
             );
-            appendWithinBudget(context, block, maxChars);
+            appendWithinBudget(context, block.content(), maxChars);
+            usedDocuments.addAll(block.usedDocuments());
         }
 
-        return context.length() == 0 ? RagContextSupport.NO_CONTEXT_MESSAGE : context.toString();
+        return new GenerationContext(
+            context.length() == 0 ? RagContextSupport.NO_CONTEXT_MESSAGE : context.toString(),
+            usedDocuments.isEmpty() ? List.of() : List.copyOf(usedDocuments)
+        );
     }
 
-    private static String buildObligationContext(ObligationEvidence obligation,
-                                                 List<RAGResponse.RAGDocument> documents,
-                                                 int maxChars) {
+    private static ObligationContext buildObligationContext(ObligationEvidence obligation,
+                                                            List<DocumentEvidence> documents,
+                                                            int maxChars) {
         StringBuilder block = new StringBuilder();
         block.append("OBLIGATION ").append(obligation.index() + 1).append('\n');
         String query = intentQuery(obligation.intent());
@@ -485,26 +506,238 @@ final class CompoundReadEvidenceSupport {
 
         if (!obligation.child().isSuccess()) {
             block.append("This obligation could not be completed. Do not infer an answer for it.\n\n");
-            return truncate(block.toString(), maxChars);
+            return new ObligationContext(truncate(block.toString(), maxChars), List.of());
         }
 
-        for (ActionEvidence action : obligation.actionEvidence()) {
-            block.append("Read action evidence");
-            if (StringUtils.hasText(action.action())) {
-                block.append(" (").append(action.action()).append(')');
+        int availableForEvidence = Math.max(0, maxChars - block.length() - 2);
+        boolean hasActions = !obligation.actionEvidence().isEmpty();
+        boolean hasDocuments = documents != null && !documents.isEmpty();
+        int actionBudget = hasActions
+            ? hasDocuments ? Math.max(MIN_OBLIGATION_CONTEXT_CHARS, availableForEvidence / 3) : availableForEvidence
+            : 0;
+        actionBudget = Math.min(actionBudget, availableForEvidence);
+        if (hasActions && actionBudget > 0) {
+            appendWithinBudget(
+                block,
+                buildActionEvidenceContext(obligation.actionEvidence(), actionBudget),
+                maxChars
+            );
+        }
+
+        List<DocumentEvidence> usedDocuments = List.of();
+        if (hasDocuments && block.length() < maxChars) {
+            String sectionLabel = "Retrieved document evidence:\n";
+            int remaining = Math.max(0, maxChars - block.length() - sectionLabel.length());
+            BoundedDocumentContext documentContext = buildBoundedDocumentContext(documents, query, remaining);
+            if (StringUtils.hasText(documentContext.content())) {
+                appendWithinBudget(block, sectionLabel, maxChars);
+                appendWithinBudget(block, documentContext.content(), maxChars);
+                usedDocuments = documentContext.usedDocuments();
             }
-            block.append(":\n").append(action.summary()).append('\n');
         }
-        if (documents != null && !documents.isEmpty()) {
-            int remaining = Math.max(MIN_OBLIGATION_CONTEXT_CHARS, maxChars - block.length());
-            block.append("Retrieved document evidence:\n")
-                .append(RagContextSupport.buildContextFromDocuments(documents, remaining));
-        }
-        if (obligation.actionEvidence().isEmpty() && (documents == null || documents.isEmpty())) {
+        if (!hasActions && !hasDocuments) {
             block.append("No sufficient grounded evidence was returned for this obligation.\n");
         }
-        block.append('\n');
-        return truncate(block.toString(), maxChars);
+        appendWithinBudget(block, "\n", maxChars);
+        return new ObligationContext(truncate(block.toString(), maxChars), usedDocuments);
+    }
+
+    private static String buildActionEvidenceContext(List<ActionEvidence> actions, int maxChars) {
+        if (actions == null || actions.isEmpty() || maxChars <= 0) {
+            return "";
+        }
+        StringBuilder context = new StringBuilder();
+        for (int index = 0; index < actions.size() && context.length() < maxChars; index++) {
+            ActionEvidence action = actions.get(index);
+            int remainingActions = actions.size() - index;
+            int itemBudget = Math.max(1, (maxChars - context.length()) / remainingActions);
+            StringBuilder item = new StringBuilder("Read action evidence");
+            if (StringUtils.hasText(action.action())) {
+                item.append(" (").append(action.action()).append(')');
+            }
+            item.append(":\n").append(action.summary()).append('\n');
+            String rendered = truncate(item.toString(), Math.max(1, itemBudget - 1));
+            appendWithinBudget(context, rendered, maxChars);
+            appendWithinBudget(context, "\n", maxChars);
+        }
+        return context.toString();
+    }
+
+    private static BoundedDocumentContext buildBoundedDocumentContext(List<DocumentEvidence> documents,
+                                                                      String query,
+                                                                      int maxChars) {
+        if (documents == null || documents.isEmpty() || maxChars <= 0) {
+            return new BoundedDocumentContext("", List.of());
+        }
+
+        int documentCount = Math.min(
+            documents.size(),
+            Math.max(1, maxChars / MIN_DOCUMENT_CONTEXT_CHARS)
+        );
+        List<DocumentEvidence> candidates = documents.subList(0, documentCount);
+        StringBuilder context = new StringBuilder();
+        List<DocumentEvidence> usedDocuments = new ArrayList<>();
+
+        for (int index = 0; index < candidates.size() && context.length() < maxChars; index++) {
+            int remainingDocuments = candidates.size() - index;
+            int documentBudget = Math.max(1, (maxChars - context.length()) / remainingDocuments);
+            DocumentEvidence evidence = candidates.get(index);
+            String rendered = renderDocumentEvidence(evidence.document(), query, documentBudget);
+            if (!StringUtils.hasText(rendered)) {
+                continue;
+            }
+            appendWithinBudget(context, rendered, maxChars);
+            usedDocuments.add(evidence);
+        }
+
+        return new BoundedDocumentContext(
+            context.toString(),
+            usedDocuments.isEmpty() ? List.of() : List.copyOf(usedDocuments)
+        );
+    }
+
+    private static String renderDocumentEvidence(RAGResponse.RAGDocument document,
+                                                 String query,
+                                                 int maxChars) {
+        if (document == null || maxChars <= 0) {
+            return "";
+        }
+        StringBuilder header = new StringBuilder();
+        String vectorSpace = documentVectorSpace(document);
+        if (StringUtils.hasText(vectorSpace) || StringUtils.hasText(document.getId())) {
+            header.append('[');
+            if (StringUtils.hasText(vectorSpace)) {
+                header.append("vectorSpace=").append(vectorSpace);
+            }
+            if (StringUtils.hasText(document.getId())) {
+                if (StringUtils.hasText(vectorSpace)) {
+                    header.append(' ');
+                }
+                header.append("id=").append(document.getId().trim());
+            }
+            header.append("]\n");
+        }
+        if (StringUtils.hasText(document.getTitle())) {
+            header.append(document.getTitle().trim()).append('\n');
+        }
+
+        int excerptBudget = Math.max(0, maxChars - header.length() - 5);
+        String sourceText = StringUtils.hasText(document.getHighlightedContent())
+            ? document.getHighlightedContent()
+            : document.getContent();
+        String excerpt = selectRelevantExcerpt(sourceText, query, excerptBudget);
+        if (!StringUtils.hasText(excerpt) && header.length() == 0) {
+            return "";
+        }
+
+        StringBuilder rendered = new StringBuilder(header);
+        if (StringUtils.hasText(excerpt)) {
+            rendered.append(excerpt.trim()).append('\n');
+        }
+        rendered.append("---\n");
+        return truncate(rendered.toString(), maxChars);
+    }
+
+    private static String selectRelevantExcerpt(String content, String query, int maxChars) {
+        if (!StringUtils.hasText(content) || maxChars <= 0) {
+            return "";
+        }
+        String normalizedContent = content.trim();
+        if (normalizedContent.length() <= maxChars) {
+            return normalizedContent;
+        }
+
+        List<String> queryTerms = queryTerms(query);
+        List<TextSegment> segments = textSegments(normalizedContent, queryTerms);
+        if (segments.isEmpty() || queryTerms.isEmpty()) {
+            return centeredExcerpt(normalizedContent, queryTerms, maxChars);
+        }
+
+        segments.sort(
+            Comparator.comparingInt(TextSegment::score).reversed()
+                .thenComparingInt(TextSegment::index)
+        );
+        StringBuilder excerpt = new StringBuilder();
+        for (TextSegment segment : segments) {
+            if (segment.score() <= 0 || excerpt.length() >= maxChars) {
+                break;
+            }
+            int remaining = maxChars - excerpt.length();
+            String value = centeredExcerpt(segment.text(), queryTerms, remaining);
+            if (!StringUtils.hasText(value)) {
+                continue;
+            }
+            if (excerpt.length() > 0 && remaining > 1) {
+                excerpt.append('\n');
+                remaining--;
+            }
+            appendWithinBudget(excerpt, value, maxChars);
+        }
+        return excerpt.length() > 0
+            ? excerpt.toString()
+            : centeredExcerpt(normalizedContent, queryTerms, maxChars);
+    }
+
+    private static List<TextSegment> textSegments(String content, List<String> queryTerms) {
+        String[] values = content.split("(?:\\R\\s*\\R+|(?<=[.!?])\\s+)");
+        List<TextSegment> segments = new ArrayList<>();
+        for (int index = 0; index < values.length; index++) {
+            String value = values[index] != null ? values[index].trim() : "";
+            if (!StringUtils.hasText(value)) {
+                continue;
+            }
+            String normalized = value.toLowerCase(Locale.ROOT);
+            int score = 0;
+            for (String term : queryTerms) {
+                if (normalized.contains(term)) {
+                    score++;
+                }
+            }
+            segments.add(new TextSegment(index, value, score));
+        }
+        return segments;
+    }
+
+    private static List<String> queryTerms(String query) {
+        if (!StringUtils.hasText(query)) {
+            return List.of();
+        }
+        LinkedHashSet<String> terms = new LinkedHashSet<>();
+        for (String value : query.toLowerCase(Locale.ROOT).split("[^\\p{L}\\p{N}]+")) {
+            if (value.length() >= 3 && !CONTEXT_QUERY_STOP_WORDS.contains(value)) {
+                terms.add(value);
+            }
+        }
+        return terms.isEmpty() ? List.of() : List.copyOf(terms);
+    }
+
+    private static String centeredExcerpt(String content, List<String> queryTerms, int maxChars) {
+        if (!StringUtils.hasText(content) || maxChars <= 0) {
+            return "";
+        }
+        String value = content.trim();
+        if (value.length() <= maxChars) {
+            return value;
+        }
+        String normalized = value.toLowerCase(Locale.ROOT);
+        int matchIndex = -1;
+        for (String term : queryTerms) {
+            int candidate = normalized.indexOf(term);
+            if (candidate >= 0 && (matchIndex < 0 || candidate < matchIndex)) {
+                matchIndex = candidate;
+            }
+        }
+        int start = matchIndex < 0 ? 0 : Math.max(0, matchIndex - Math.max(0, maxChars / 3));
+        start = Math.min(start, Math.max(0, value.length() - maxChars));
+        int end = Math.min(value.length(), start + maxChars);
+        String excerpt = value.substring(start, end);
+        if (start > 0 && excerpt.length() > 3) {
+            excerpt = "..." + excerpt.substring(3);
+        }
+        if (end < value.length() && excerpt.length() > 3) {
+            excerpt = excerpt.substring(0, excerpt.length() - 3) + "...";
+        }
+        return excerpt;
     }
 
     private static void appendWithinBudget(StringBuilder target, String value, int maxChars) {
@@ -516,7 +749,8 @@ final class CompoundReadEvidenceSupport {
     }
 
     private static Map<String, Object> buildDiagnostics(List<ObligationEvidence> obligations,
-                                                        List<DocumentEvidence> selectedDocuments,
+                                                        List<DocumentEvidence> usedDocuments,
+                                                        int returnedDocumentCount,
                                                         PipelineContext pipelineContext,
                                                         int generationContextChars,
                                                         boolean synthesisAttempted,
@@ -524,8 +758,8 @@ final class CompoundReadEvidenceSupport {
                                                         boolean generationEnabled,
                                                         String generationError) {
         Map<Integer, Long> usedDocumentsByObligation = new LinkedHashMap<>();
-        for (DocumentEvidence selectedDocument : selectedDocuments) {
-            usedDocumentsByObligation.merge(selectedDocument.obligationIndex(), 1L, Long::sum);
+        for (DocumentEvidence usedDocument : usedDocuments) {
+            usedDocumentsByObligation.merge(usedDocument.obligationIndex(), 1L, Long::sum);
         }
         Map<Integer, Map<String, Object>> routingEvents = routingEventsByIntent(pipelineContext);
         List<Map<String, Object>> obligationDiagnostics = new ArrayList<>();
@@ -592,7 +826,8 @@ final class CompoundReadEvidenceSupport {
         diagnostics.put("deniedObligationCount", 0);
         diagnostics.put("failedObligationCount", failed);
         diagnostics.put("actionExecutionIds", collectActionExecutionIds(obligations));
-        diagnostics.put("returnedDocumentCount", selectedDocuments.size());
+        diagnostics.put("returnedDocumentCount", returnedDocumentCount);
+        diagnostics.put("usedDocumentCount", usedDocuments.size());
         diagnostics.put("generationContextChars", generationContextChars);
         diagnostics.put("obligations", Collections.unmodifiableList(obligationDiagnostics));
         diagnostics.put("generationEnabled", generationEnabled);
@@ -809,5 +1044,17 @@ final class CompoundReadEvidenceSupport {
     }
 
     private record DocumentEvidence(int obligationIndex, RAGResponse.RAGDocument document) {
+    }
+
+    private record GenerationContext(String content, List<DocumentEvidence> usedDocuments) {
+    }
+
+    private record ObligationContext(String content, List<DocumentEvidence> usedDocuments) {
+    }
+
+    private record BoundedDocumentContext(String content, List<DocumentEvidence> usedDocuments) {
+    }
+
+    private record TextSegment(int index, String text, int score) {
     }
 }

@@ -217,6 +217,141 @@ class ReadActionResolutionServiceTest {
     }
 
     @Test
+    void shouldExposeOnlyReadActionsMatchingTheIntentVectorScope() {
+        AICoreService aiCoreService = mock(AICoreService.class);
+        AIActionRegistry actionRegistry = mock(AIActionRegistry.class);
+        PromptTemplateResolver templateResolver = mock(PromptTemplateResolver.class);
+
+        AIActionMetaData inventory = AIActionMetaData.builder()
+            .name("search_inventory")
+            .description("Search live inventory.")
+            .accessMode(ActionAccessMode.READ)
+            .groundingEligible(true)
+            .readActionResolutionEligible(true)
+            .groundingVectorSpaces(List.of("dealer-vehicle"))
+            .build();
+        AIActionMetaData policy = AIActionMetaData.builder()
+            .name("get_policy")
+            .description("Get an approved policy.")
+            .accessMode(ActionAccessMode.READ)
+            .groundingEligible(true)
+            .readActionResolutionEligible(true)
+            .groundingVectorSpaces(List.of("document"))
+            .build();
+        AIActionHandler inventoryHandler = mock(AIActionHandler.class);
+        AIActionHandler policyHandler = mock(AIActionHandler.class);
+        ActionResult policyResult = ActionResult.builder()
+            .success(true)
+            .message("Policy loaded.")
+            .data(ActionPayload.object(Map.of("deliveryCharge", "GBP 49")))
+            .build();
+
+        when(actionRegistry.getAllMetadata()).thenReturn(List.of(inventory, policy));
+        when(actionRegistry.findHandler("get_policy")).thenReturn(Optional.of(policyHandler));
+        when(actionRegistry.findMetadata("get_policy")).thenReturn(Optional.of(policy));
+        when(policyHandler.validateActionAllowed(any(ActionContext.class))).thenReturn(true);
+        when(policyHandler.executeAction(eq(Map.of()), any(ActionContext.class))).thenReturn(policyResult);
+        when(policyHandler.buildPostActionLlmFacts(eq(policyResult), any(ActionContext.class)))
+            .thenReturn(Optional.of(Map.of("deliveryCharge", "GBP 49")));
+        when(templateResolver.resolve("orchestration/read-action-resolution", "system"))
+            .thenReturn(resolvedTemplate("system", ""));
+        when(templateResolver.resolve("orchestration/read-action-resolution", "user"))
+            .thenReturn(resolvedTemplate("user", "query={{query}}\nactions={{eligible_actions_json}}"));
+        when(aiCoreService.generateContent(any(), eq(LlmPurpose.ORCHESTRATION)))
+            .thenReturn(AIGenerationResponse.builder().content("""
+                {
+                  "decision": "EXECUTE_READ_ACTIONS",
+                  "actions": [{"name": "get_policy", "params": {}, "priority": 1}],
+                  "needsMoreSteps": false
+                }
+                """).build());
+
+        ReadActionResolutionService service = new ReadActionResolutionService(
+            aiCoreService,
+            actionRegistry,
+            new IntentExtractionJsonSupport(new ObjectMapper()),
+            templateResolver,
+            new PromptRenderer()
+        );
+        OrchestrationContext context = OrchestrationContext.forUser("user-1");
+        ReadActionResolutionService.ResolutionOutcome outcome = service.resolve(
+            Intent.builder()
+                .type(IntentType.INFORMATION)
+                .intent("What is the delivery policy?")
+                .optimizedQuery("delivery policy charges")
+                .vectorSpace("document")
+                .build(),
+            context,
+            PipelineContext.from("What is the delivery policy?", context)
+                .toBuilder()
+                .orchestrationPolicy(readActionPolicy(
+                    "assistant",
+                    List.of("search_inventory", "get_policy"),
+                    OrchestrationProperties.ReadActionResolutionPlanningMode.SINGLE_PASS,
+                    OrchestrationProperties.ReadActionResolutionRagCooperationMode.RAG_IF_ACTIONS_INSUFFICIENT
+                ))
+                .build()
+        );
+
+        assertThat(outcome.executedActions()).extracting(ReadActionResolutionService.ExecutedReadAction::actionName)
+            .containsExactly("get_policy");
+        assertThat(outcome.diagnostics())
+            .containsEntry("intentVectorSpaces", List.of("document"))
+            .containsEntry("eligibleReadActionNames", List.of("get_policy"))
+            .containsEntry("scopeFilteredReadActionNames", List.of("search_inventory"));
+        ArgumentCaptor<AIGenerationRequest> request = ArgumentCaptor.forClass(AIGenerationRequest.class);
+        verify(aiCoreService).generateContent(request.capture(), eq(LlmPurpose.ORCHESTRATION));
+        assertThat(request.getValue().getPrompt())
+            .contains("get_policy")
+            .doesNotContain("search_inventory");
+        verify(inventoryHandler, never()).executeAction(any(), any(ActionContext.class));
+    }
+
+    @Test
+    void shouldSkipPlannerWhenAllReadActionsAreOutsideTheIntentVectorScope() {
+        AICoreService aiCoreService = mock(AICoreService.class);
+        AIActionRegistry actionRegistry = mock(AIActionRegistry.class);
+        AIActionMetaData inventory = AIActionMetaData.builder()
+            .name("search_inventory")
+            .accessMode(ActionAccessMode.READ)
+            .groundingEligible(true)
+            .readActionResolutionEligible(true)
+            .groundingVectorSpaces(List.of("dealer-vehicle"))
+            .build();
+        when(actionRegistry.getAllMetadata()).thenReturn(List.of(inventory));
+
+        ReadActionResolutionService service = new ReadActionResolutionService(
+            aiCoreService,
+            actionRegistry,
+            new IntentExtractionJsonSupport(new ObjectMapper()),
+            mock(PromptTemplateResolver.class),
+            new PromptRenderer()
+        );
+        OrchestrationContext context = OrchestrationContext.forUser("user-1");
+        ReadActionResolutionService.ResolutionOutcome outcome = service.resolve(
+            Intent.builder()
+                .type(IntentType.INFORMATION)
+                .intent("Explain the policy")
+                .vectorSpace("document")
+                .build(),
+            context,
+            PipelineContext.from("Explain the policy", context)
+                .toBuilder()
+                .orchestrationPolicy(readActionPolicy(
+                    "assistant",
+                    List.of("search_inventory"),
+                    OrchestrationProperties.ReadActionResolutionPlanningMode.SINGLE_PASS,
+                    OrchestrationProperties.ReadActionResolutionRagCooperationMode.RAG_IF_ACTIONS_INSUFFICIENT
+                ))
+                .build()
+        );
+
+        assertThat(outcome.attempted()).isFalse();
+        assertThat(outcome.skipReason()).isEqualTo("NO_ELIGIBLE_READ_ACTIONS_FOR_INTENT_SCOPE");
+        verify(aiCoreService, never()).generateContent(any(), any());
+    }
+
+    @Test
     void shouldOmitNullPlannerParamsWithoutFailingReadActionResolution() {
         AICoreService aiCoreService = mock(AICoreService.class);
         AIActionRegistry actionRegistry = mock(AIActionRegistry.class);
