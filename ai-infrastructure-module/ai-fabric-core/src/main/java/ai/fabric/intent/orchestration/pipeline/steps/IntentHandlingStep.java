@@ -72,6 +72,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -1112,16 +1113,8 @@ public class IntentHandlingStep implements PipelineStep {
             return null;
         }
 
-        List<String> vectorSpaces = RagContextSupport.parseVectorSpaces(intent != null ? intent.getVectorSpace() : null);
-        if (vectorSpaces.isEmpty()) {
-            OrchestrationPolicy.RagBudgets ragBudgets = policy != null ? policy.ragBudgets() : null;
-            List<String> allowlist = ragBudgets != null
-                ? ragBudgets.retrievalVectorSpacesAllowlist()
-                : List.of();
-            if (allowlist != null && allowlist.size() == 1) {
-                vectorSpaces = List.of(allowlist.getFirst());
-            }
-        }
+        ReadFallbackVectorSpaces fallbackVectorSpaces = resolveReadFallbackVectorSpaces(intent, meta, policy);
+        List<String> vectorSpaces = fallbackVectorSpaces.vectorSpaces();
         if (vectorSpaces.isEmpty()) {
             log.debug(
                 "Skipping insufficient read-action RAG fallback for '{}' because no unambiguous vector space was selected",
@@ -1144,8 +1137,6 @@ public class IntentHandlingStep implements PipelineStep {
             infoIntent.setOptimizedQuery(query);
             infoIntent.setIntent(query);
         }
-        infoIntent.setVectorSpace(String.join(",", vectorSpaces));
-
         ReadActionResolutionService.ResolutionOutcome directActionResolution =
             directReadActionFallbackResolution(
                 actionName,
@@ -1155,7 +1146,9 @@ public class IntentHandlingStep implements PipelineStep {
                 actionResult,
                 handler,
                 actionContext,
-                vectorSpaces
+                vectorSpaces,
+                fallbackVectorSpaces.source(),
+                fallbackVectorSpaces.rejectedIntentVectorSpaces()
             );
 
         OrchestrationResult result = handleInformation(
@@ -1186,6 +1179,14 @@ public class IntentHandlingStep implements PipelineStep {
                 probe.put("message", actionResult.getMessage());
             }
             probe.put("fallbackToRag", true);
+            probe.put("fallbackVectorSpaceSource", fallbackVectorSpaces.source());
+            probe.put("fallbackVectorSpaces", List.copyOf(vectorSpaces));
+            if (!fallbackVectorSpaces.rejectedIntentVectorSpaces().isEmpty()) {
+                probe.put(
+                    "fallbackIntentVectorSpacesRejected",
+                    fallbackVectorSpaces.rejectedIntentVectorSpaces()
+                );
+            }
 
             Map<String, Object> merged = new LinkedHashMap<>();
             if (result.getMetadata() != null && !result.getMetadata().isEmpty()) {
@@ -1198,6 +1199,70 @@ public class IntentHandlingStep implements PipelineStep {
         return result;
     }
 
+    private ReadFallbackVectorSpaces resolveReadFallbackVectorSpaces(Intent intent,
+                                                                     AIActionMetaData metadata,
+                                                                     OrchestrationPolicy policy) {
+        LinkedHashSet<String> actionContractSpaces = new LinkedHashSet<>();
+        if (metadata != null && metadata.getGroundingVectorSpaces() != null) {
+            for (String value : metadata.getGroundingVectorSpaces()) {
+                if (StringUtils.hasText(value)) {
+                    actionContractSpaces.add(value.trim());
+                }
+            }
+        }
+
+        List<String> intentSpaces = RagContextSupport.parseVectorSpaces(
+            intent != null ? intent.getVectorSpace() : null
+        );
+        if (!actionContractSpaces.isEmpty()) {
+            Map<String, String> contractByNormalizedName = new LinkedHashMap<>();
+            actionContractSpaces.forEach(value ->
+                contractByNormalizedName.putIfAbsent(value.toLowerCase(java.util.Locale.ROOT), value)
+            );
+            List<String> matched = intentSpaces.stream()
+                .filter(StringUtils::hasText)
+                .map(String::trim)
+                .map(value -> contractByNormalizedName.get(value.toLowerCase(java.util.Locale.ROOT)))
+                .filter(java.util.Objects::nonNull)
+                .distinct()
+                .toList();
+            List<String> rejected = intentSpaces.stream()
+                .filter(StringUtils::hasText)
+                .map(String::trim)
+                .filter(value -> !contractByNormalizedName.containsKey(value.toLowerCase(java.util.Locale.ROOT)))
+                .distinct()
+                .toList();
+            if (!matched.isEmpty()) {
+                return new ReadFallbackVectorSpaces(
+                    matched,
+                    "INTENT_CONSTRAINED_BY_ACTION_CONTRACT",
+                    rejected
+                );
+            }
+            return new ReadFallbackVectorSpaces(
+                List.copyOf(actionContractSpaces),
+                "ACTION_CONTRACT",
+                intentSpaces
+            );
+        }
+        if (!intentSpaces.isEmpty()) {
+            return new ReadFallbackVectorSpaces(intentSpaces, "INTENT", List.of());
+        }
+
+        OrchestrationPolicy.RagBudgets ragBudgets = policy != null ? policy.ragBudgets() : null;
+        List<String> allowlist = ragBudgets != null
+            ? ragBudgets.retrievalVectorSpacesAllowlist()
+            : List.of();
+        if (allowlist != null && allowlist.size() == 1) {
+            return new ReadFallbackVectorSpaces(
+                List.of(allowlist.getFirst()),
+                "ALLOWLIST_SINGLETON",
+                List.of()
+            );
+        }
+        return new ReadFallbackVectorSpaces(List.of(), "UNRESOLVED", List.of());
+    }
+
     private ReadActionResolutionService.ResolutionOutcome directReadActionFallbackResolution(
         String actionName,
         Map<String, Object> actionParams,
@@ -1206,7 +1271,9 @@ public class IntentHandlingStep implements PipelineStep {
         ActionResult actionResult,
         AIActionHandler handler,
         ActionContext actionContext,
-        List<String> vectorSpaces
+        List<String> vectorSpaces,
+        String vectorSpaceSource,
+        List<String> rejectedIntentVectorSpaces
     ) {
         String evidenceSummary = postActionGenerationSupport.buildReadActionExecutionObservation(
                 actionName,
@@ -1256,6 +1323,10 @@ public class IntentHandlingStep implements PipelineStep {
         diagnostics.put("insufficientActionEvidenceCount", 1);
         diagnostics.put("useRag", true);
         diagnostics.put("preferredVectorSpaces", List.copyOf(vectorSpaces));
+        diagnostics.put("preferredVectorSpacesSource", vectorSpaceSource);
+        if (rejectedIntentVectorSpaces != null && !rejectedIntentVectorSpaces.isEmpty()) {
+            diagnostics.put("rejectedIntentVectorSpaces", List.copyOf(rejectedIntentVectorSpaces));
+        }
 
         return ReadActionResolutionService.ResolutionOutcome.continueWithRagAfterInsufficientActions(
             evidenceContext.toString().trim(),
@@ -1263,6 +1334,20 @@ public class IntentHandlingStep implements PipelineStep {
             List.of(executed),
             Collections.unmodifiableMap(diagnostics)
         );
+    }
+
+    private record ReadFallbackVectorSpaces(
+        List<String> vectorSpaces,
+        String source,
+        List<String> rejectedIntentVectorSpaces
+    ) {
+        private ReadFallbackVectorSpaces {
+            vectorSpaces = vectorSpaces != null ? List.copyOf(vectorSpaces) : List.of();
+            source = StringUtils.hasText(source) ? source : "UNRESOLVED";
+            rejectedIntentVectorSpaces = rejectedIntentVectorSpaces != null
+                ? List.copyOf(rejectedIntentVectorSpaces)
+                : List.of();
+        }
     }
 
     private String fallbackReadActionEvidenceSummary(ActionResult actionResult) {

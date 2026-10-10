@@ -73,6 +73,8 @@ public class VectorSpaceResolutionStep implements PipelineStep {
         OrchestrationPolicy.OrchestrationCapabilities capabilities = policy != null ? policy.capabilities() : null;
         OrchestrationPolicy.RagBudgets ragBudgets = policy != null ? policy.ragBudgets() : null;
         boolean deepRetrievalEnabled = capabilities != null && capabilities.deepRetrievalEnabled();
+        boolean vectorSpaceSelectionRequired = capabilities != null
+            && capabilities.vectorSpaceSelectionRequired();
         boolean fanoutAllowed = ragBudgets == null
             || ragBudgets.fanoutEnabled() == null
             || Boolean.TRUE.equals(ragBudgets.fanoutEnabled());
@@ -209,6 +211,14 @@ public class VectorSpaceResolutionStep implements PipelineStep {
                 continue;
             }
 
+            if (vectorSpaceSelectionRequired) {
+                List<String> candidates = resolvePolicySelectionCandidates(ragBudgets, availableVectorSpaces);
+                if (candidates.size() > 1) {
+                    routingEvents.add(toSelectionRequiredEvent(i, candidates));
+                    return context.terminate(buildClarificationResult(candidates, context, routingEvents));
+                }
+            }
+
 	            RoutingResult routing = vectorSpaceRouter.route(intent, resolveRoutingQuery(intent, context));
 	            routingEvents.add(toRoutingEvent(i, routing));
 
@@ -307,6 +317,18 @@ public class VectorSpaceResolutionStep implements PipelineStep {
             .distinct()
             .toList();
         return candidates.size() == 1 ? candidates : List.of();
+    }
+
+    private List<String> resolvePolicySelectionCandidates(OrchestrationPolicy.RagBudgets ragBudgets,
+                                                          List<String> availableVectorSpaces) {
+        if (ragBudgets != null && ragBudgets.hasVectorSpaceAllowlist()) {
+            return ragBudgets.retrievalVectorSpacesAllowlist();
+        }
+        List<String> available = availableVectorSpaces;
+        if (available == null) {
+            available = resolveAllVectorSpaces();
+        }
+        return available != null ? available : List.of();
     }
 
 	    private List<String> resolveDeepFallbackVectorSpaces(int maxSpaces,
@@ -506,6 +528,16 @@ public class VectorSpaceResolutionStep implements PipelineStep {
         event.put("rationale", routing.getRationale());
         event.put("vectorSpace", routing.getVectorSpace());
         event.put("candidateSpaces", routing.getCandidateSpaces());
+        return Collections.unmodifiableMap(event);
+    }
+
+    private Map<String, Object> toSelectionRequiredEvent(int intentIndex, List<String> candidates) {
+        Map<String, Object> event = new LinkedHashMap<>();
+        event.put("intentIndex", intentIndex);
+        event.put("success", false);
+        event.put("strategy", "SELECTION_REQUIRED");
+        event.put("rationale", "Vector-space selection is required by orchestration policy");
+        event.put("candidateSpaces", candidates != null ? List.copyOf(candidates) : List.of());
         return Collections.unmodifiableMap(event);
     }
 

@@ -155,6 +155,9 @@ public class ConnectorActionDefinitionValidator {
         if (definition.llmFacts() != null) {
             throw new IllegalArgumentException("DB action registry does not support llmFacts for action '" + actionName + "'. Use the file-based action catalog.");
         }
+        if (definition.groundingVectorSpaces() != null && !definition.groundingVectorSpaces().isEmpty()) {
+            throw new IllegalArgumentException("DB action registry does not support groundingVectorSpaces for action '" + actionName + "'. Use the file-based action catalog or an annotated action.");
+        }
         if (StringUtils.hasText(definition.adapterType())
             || (definition.execution() != null && !definition.execution().isEmpty())
             || (definition.mcpServers() != null && !definition.mcpServers().isEmpty())) {

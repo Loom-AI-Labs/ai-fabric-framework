@@ -138,6 +138,22 @@ class AIActionRegistryTest {
     }
 
     @Test
+    void shouldExposeReviewedGroundingSpacesForAnnotatedReadAction() {
+        try (AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext()) {
+            context.register(AIActionRegistry.class);
+            context.register(GroundedReadAction.class);
+            context.refresh();
+
+            AIActionRegistry registry = context.getBean(AIActionRegistry.class);
+            AIActionMetaData meta = registry.findMetadata("search_inventory").orElseThrow();
+
+            assertThat(meta.getAccessMode()).isEqualTo(ActionAccessMode.READ);
+            assertThat(meta.isGroundingEligible()).isTrue();
+            assertThat(meta.getGroundingVectorSpaces()).containsExactly("dealer-vehicle");
+        }
+    }
+
+    @Test
     void shouldFailFastWhenActionHasNoExecuteMethod() {
         try (AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext()) {
             context.getEnvironment().setActiveProfiles("ai-action-registry-invalid");
@@ -189,6 +205,21 @@ class AIActionRegistryTest {
                     .contains("readActionResolutionEligible")
                     .contains("READ")
                     .contains("READ_WRITE"));
+        }
+    }
+
+    @Test
+    void shouldFailFastWhenNonReadActionDeclaresGroundingVectorSpaces() {
+        try (AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext()) {
+            context.getEnvironment().setActiveProfiles("ai-action-registry-invalid");
+            context.register(AIActionRegistry.class);
+            context.register(WriteActionWithGroundingVectorSpaces.class);
+
+            assertThatThrownBy(context::refresh)
+                .hasRootCauseInstanceOf(IllegalStateException.class)
+                .satisfies(ex -> assertThat(Throwables.getRootCause(ex).getMessage())
+                    .contains("groundingVectorSpaces")
+                    .contains("READ"));
         }
     }
 
@@ -447,6 +478,21 @@ class AIActionRegistryTest {
     }
 
     @AIAction(
+        name = "search_inventory",
+        description = "Search current inventory",
+        category = "inventory",
+        accessMode = ActionAccessMode.READ,
+        requiresConfirmation = false,
+        groundingVectorSpaces = {"dealer-vehicle"}
+    )
+    static class GroundedReadAction {
+        @ActionExecute
+        public ActionResult execute() {
+            return ActionResult.builder().success(true).message("ok").build();
+        }
+    }
+
+    @AIAction(
         name = "no_execute",
         description = "Invalid action without @ActionExecute",
         category = "test",
@@ -505,6 +551,22 @@ class AIActionRegistryTest {
     )
     @org.springframework.context.annotation.Profile("ai-action-registry-invalid")
     static class ReadWritePlannerEligibleAction {
+        @ActionExecute
+        public ActionResult execute() {
+            return ActionResult.builder().success(true).message("ok").build();
+        }
+    }
+
+    @AIAction(
+        name = "write_with_grounding_spaces",
+        description = "Invalid write action with grounding spaces",
+        category = "test",
+        accessMode = ActionAccessMode.WRITE_ONLY,
+        requiresConfirmation = true,
+        groundingVectorSpaces = {"document"}
+    )
+    @org.springframework.context.annotation.Profile("ai-action-registry-invalid")
+    static class WriteActionWithGroundingVectorSpaces {
         @ActionExecute
         public ActionResult execute() {
             return ActionResult.builder().success(true).message("ok").build();

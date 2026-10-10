@@ -292,9 +292,16 @@ Validate before exposing actions to the LLM:
 - `name`: non-empty, trimmed, stable identifier (recommended: `snake_case`; enforcement should be **optional/configurable**)
 - `accessMode`: must be one of `READ | READ_WRITE | WRITE_ONLY`
 - `readActionResolutionEligible`: allowed only when `accessMode=READ`
+- `groundingVectorSpaces`: optional reviewed evidence spaces for an insufficient
+  grounding-eligible `READ` result; invalid on side-effecting actions and still
+  bounded by the deployment retrieval allowlist
 - `params`: validate `required`, `pattern`, `allowedValues`, `min`, `max` using the same rules as the Java binder
 - `requiresConfirmation`: boolean
 - `confirmationMessage` (if present): validate template placeholders
+
+The database action registry does not persist `groundingVectorSpaces` in this
+release. Use a file-based connector catalog or an annotated action when this
+fallback contract is required.
 
 #### 3.4.3 Confirmation template rendering (escape-by-default)
 

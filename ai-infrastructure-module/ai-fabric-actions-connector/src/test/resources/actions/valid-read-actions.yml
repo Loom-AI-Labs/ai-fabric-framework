@@ -7,6 +7,8 @@ actions:
     requiresConfirmation: false
     anonymousAllowed: true
     groundingEligible: true
+    groundingVectorSpaces:
+      - policy
     readActionResolutionEligible: true
     llmFacts:
       rootPath: data

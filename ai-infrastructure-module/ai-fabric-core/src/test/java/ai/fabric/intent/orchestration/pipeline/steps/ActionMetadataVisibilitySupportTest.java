@@ -25,6 +25,7 @@ class ActionMetadataVisibilitySupportTest {
             .anonymousAllowed(true)
             .confirmationRequired(true)
             .groundingEligible(true)
+            .groundingVectorSpaces(List.of("document"))
             .readActionResolutionEligible(true)
             .parameters(Map.of(
                 "orderId", "Order id",
@@ -49,6 +50,7 @@ class ActionMetadataVisibilitySupportTest {
         assertThat(publicMetadata.isAnonymousAllowed()).isTrue();
         assertThat(publicMetadata.isConfirmationRequired()).isTrue();
         assertThat(publicMetadata.isGroundingEligible()).isTrue();
+        assertThat(publicMetadata.getGroundingVectorSpaces()).containsExactly("document");
         assertThat(publicMetadata.isReadActionResolutionEligible()).isTrue();
         assertThatThrownBy(() -> publicMetadata.getParameters().put("x", "y"))
             .isInstanceOf(UnsupportedOperationException.class);

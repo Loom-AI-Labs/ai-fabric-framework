@@ -155,6 +155,18 @@ class ConnectorActionDefinitionValidatorTest {
     }
 
     @Test
+    void validate_rejectsGroundingVectorSpacesUnsupportedByDbRegistry() {
+        ConnectorActionDefinition def = action(List.of(), builder ->
+            builder.groundingVectorSpaces = List.of("document")
+        );
+
+        assertThatThrownBy(() -> validator.validate(def))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("groundingVectorSpaces")
+            .hasMessageContaining("file-based action catalog");
+    }
+
+    @Test
     void validate_rejectsUnsupportedDisplayNameForDbRegistry() {
         ConnectorActionDefinition def = action(List.of(param("sku")), builder -> builder.displayName = "Create Order");
 
@@ -369,6 +381,7 @@ class ConnectorActionDefinitionValidatorTest {
         private String name = "a";
         private String displayName = "a";
         private List<ConnectorActionParamDefinition> params = List.of();
+        private List<String> groundingVectorSpaces = List.of();
         private List<ConnectorActionPostPolicyDefinition> postPolicies = List.of();
         private String adapterType;
         private Map<String, Object> execution = Map.of();
@@ -386,6 +399,7 @@ class ConnectorActionDefinitionValidatorTest {
                 params,
                 false,
                 true,
+                groundingVectorSpaces,
                 false,
                 ActionResultPresentationHint.DEFAULT,
                 null,

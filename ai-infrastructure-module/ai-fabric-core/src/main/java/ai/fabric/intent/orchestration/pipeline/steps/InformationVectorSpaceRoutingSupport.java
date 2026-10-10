@@ -48,10 +48,22 @@ final class InformationVectorSpaceRoutingSupport {
             && readActionResolution.attempted()
             && readActionResolution.preferredVectorSpaces() != null
             && !readActionResolution.preferredVectorSpaces().isEmpty()) {
-            vectorSpaces = readActionResolution.preferredVectorSpaces();
-            vectorSpacesSelectionSource = "READ_ACTION_PLANNER";
-            if (intent != null) {
-                intent.setVectorSpace(String.join(",", vectorSpaces));
+            RagContextSupport.VectorSpaceValidation preferredValidation =
+                RagContextSupport.validateRequestedVectorSpaces(
+                    readActionResolution.preferredVectorSpaces(),
+                    entityConfigurationLoader
+                );
+            if (preferredValidation != null && preferredValidation.hasInvalid()) {
+                metadata.put(
+                    "readActionVectorSpacesInvalidRequested",
+                    preferredValidation.invalid()
+                );
+            }
+            vectorSpaces = preferredValidation != null
+                ? preferredValidation.valid()
+                : readActionResolution.preferredVectorSpaces();
+            if (!vectorSpaces.isEmpty()) {
+                vectorSpacesSelectionSource = preferredVectorSpacesSource(readActionResolution);
             }
         }
 
@@ -151,6 +163,18 @@ final class InformationVectorSpaceRoutingSupport {
         }
 
         return new RoutedVectorSpaces(Collections.unmodifiableList(vectorSpaces), null);
+    }
+
+    private static String preferredVectorSpacesSource(
+        ReadActionResolutionService.ResolutionOutcome readActionResolution
+    ) {
+        if (readActionResolution != null && readActionResolution.diagnostics() != null) {
+            Object value = readActionResolution.diagnostics().get("preferredVectorSpacesSource");
+            if (value instanceof String text && StringUtils.hasText(text)) {
+                return text.trim();
+            }
+        }
+        return "READ_ACTION_PLANNER";
     }
 
     private static RoutedVectorSpaces clarification(String message, Map<String, Object> data, Intent intent) {

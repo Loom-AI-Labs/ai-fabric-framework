@@ -61,4 +61,10 @@ public @interface AIAction {
      * the action is explicitly reviewed and approved.</p>
      */
     boolean readActionResolutionEligible() default false;
+
+    /**
+     * Evidence spaces that may complete grounding when this READ action returns
+     * an insufficient result. Values remain bounded by deployment policy.
+     */
+    String[] groundingVectorSpaces() default {};
 }

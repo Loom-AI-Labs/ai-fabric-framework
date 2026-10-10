@@ -185,6 +185,7 @@ class ConnectorActionCatalogLoaderTest {
         assertThat(action.name()).isEqualTo("get_policy");
         assertThat(action.accessMode()).isEqualTo(ActionAccessMode.READ);
         assertThat(action.groundingEligible()).isTrue();
+        assertThat(action.groundingVectorSpaces()).containsExactly("policy");
         assertThat(action.readActionResolutionEligible()).isTrue();
         assertThat(action.llmFacts()).isNotNull();
         assertThat(action.llmFacts().rootPath()).isEqualTo("data");
@@ -199,6 +200,20 @@ class ConnectorActionCatalogLoaderTest {
         assertThat(list.constraints().rules().getFirst().type()).isEqualTo("PARAM_NUMERIC_UPPER_BOUND");
         assertThat(list.constraints().rules().getFirst().paramPath()).isEqualTo("maxScore");
         assertThat(list.summaries()).hasSize(1);
+    }
+
+    @Test
+    void loadActions_shouldRejectGroundingVectorSpacesForNonReadAction() {
+        ConnectorActionCatalogLoader loader = new ConnectorActionCatalogLoader(new DefaultResourceLoader());
+
+        AIActionCatalogProperties.ActionSourceProperties source = new AIActionCatalogProperties.ActionSourceProperties();
+        source.setType(AIActionCatalogProperties.ActionSourceType.FILE);
+        source.setPath("classpath:actions/invalid-write-grounding-vector-spaces.yml");
+
+        assertThatThrownBy(() -> loader.loadActions(List.of(source)))
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessageContaining("groundingVectorSpaces")
+            .hasMessageContaining("grounding-eligible READ");
     }
 
     @Test

@@ -247,7 +247,7 @@ public class EnrichedPromptBuilder {
                 : java.util.List.<String>of();
         if (!availableSpaces.isEmpty()) {
             prompt.append("- Available vectorSpace values: ").append(String.join(", ", availableSpaces)).append("\n");
-            prompt.append("  • vectorSpace MUST be one of these values (do NOT invent new vectorSpace names). If unsure, omit vectorSpace.\n");
+            prompt.append("  • vectorSpace MUST be one of these values (do NOT invent new vectorSpace names). Select the most relevant value for each retrieval intent; omit it only when mode policy permits omission.\n");
         }
         if (overview.getLastIndexUpdateTime() != null) {
             prompt.append("- Last index update: ").append(TIMESTAMP_FORMATTER.format(overview.getLastIndexUpdateTime())).append("\n");

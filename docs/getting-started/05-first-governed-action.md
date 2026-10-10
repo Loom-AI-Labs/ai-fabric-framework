@@ -57,6 +57,9 @@ Action design rules:
 - Do not ask the user for IDs the app already knows, such as the current user's subscription ID.
 - For side effects, set `requiresConfirmation = true`.
 - Use `readActionResolutionEligible = true` only for reviewed READ actions.
+- When a READ action can fall back to indexed evidence, declare its reviewed
+  `groundingVectorSpaces`; this scopes fallback but never grants retrieval
+  access beyond server policy.
 - Return domain-shaped results that a UI can render without dumping raw objects.
 - Fail closed when required parameters are missing.
 

@@ -26,6 +26,7 @@ public record ConnectorActionDefinition(
     List<ConnectorActionParamDefinition> params,
     boolean anonymousAllowed,
     boolean groundingEligible,
+    List<String> groundingVectorSpaces,
     boolean readActionResolutionEligible,
     ActionResultPresentationHint resultPresentationHint,
     String builtInModuleId,
@@ -39,6 +40,7 @@ public record ConnectorActionDefinition(
 ) {
     public ConnectorActionDefinition {
         params = params != null ? List.copyOf(params) : List.of();
+        groundingVectorSpaces = groundingVectorSpaces != null ? List.copyOf(groundingVectorSpaces) : List.of();
         postPolicies = postPolicies != null ? List.copyOf(postPolicies) : List.of();
         adapterType = adapterType != null && !adapterType.isBlank() ? adapterType.trim() : null;
         execution = execution != null && !execution.isEmpty() ? Map.copyOf(execution) : Map.of();
@@ -75,6 +77,7 @@ public record ConnectorActionDefinition(
             params,
             anonymousAllowed,
             groundingEligible,
+            List.of(),
             readActionResolutionEligible,
             resultPresentationHint,
             builtInModuleId,

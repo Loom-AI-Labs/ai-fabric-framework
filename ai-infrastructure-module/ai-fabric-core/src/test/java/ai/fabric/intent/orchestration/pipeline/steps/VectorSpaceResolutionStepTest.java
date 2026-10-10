@@ -429,6 +429,50 @@ class VectorSpaceResolutionStepTest {
     }
 
     @Test
+    void shouldRequireLlmSelectionBeforeHeuristicFanOutWhenPolicyRequiresIt() {
+        VectorSpaceRouter router = mock(VectorSpaceRouter.class);
+        OrchestrationPolicy policy = new OrchestrationPolicy(
+            OrchestrationProfile.PRODUCTION_CHAT,
+            "executor",
+            "search",
+            OrchestrationProperties.InformationMode.LLM_DRIVEN,
+            new OrchestrationPolicy.OrchestrationCapabilities(
+                true, true, false, false, false, true, false, true, true, true, false, false, false
+            ),
+            new OrchestrationPolicy.RagBudgets(
+                true, 2, null, null, null, null, List.of("dealer-vehicle", "document")
+            )
+        );
+        VectorSpaceResolutionStep step = new VectorSpaceResolutionStep(
+            router,
+            new OrchestrationProperties(),
+            new VectorSpaceRoutingProperties(),
+            providerOf((KnowledgeBaseOverviewService) null)
+        );
+        Intent intent = Intent.builder()
+            .type(IntentType.INFORMATION)
+            .intent("Explain delivery policy")
+            .optimizedQuery("delivery distance charge and handover requirements")
+            .requiresRetrieval(true)
+            .build();
+
+        PipelineContext updated = step.process(
+            PipelineContext.from("Explain delivery policy", OrchestrationContext.forUser("user"))
+                .toBuilder()
+                .orchestrationPolicy(policy)
+                .intentResponse(MultiIntentResponse.builder().intents(List.of(intent)).build())
+                .build()
+        );
+
+        assertThat(updated.isShouldTerminate()).isTrue();
+        assertThat(updated.getEarlyTerminationResult().getType())
+            .isEqualTo(OrchestrationResultType.CLARIFICATION_REQUIRED);
+        assertThat(updated.getEarlyTerminationResult().getData())
+            .containsEntry("candidateVectorSpaces", List.of("dealer-vehicle", "document"));
+        verify(router, never()).route(any(), anyString());
+    }
+
+    @Test
     void shouldRouteVectorSpaceEvenWhenResolvedTargetsPresent() {
         VectorSpaceRouter router = mock(VectorSpaceRouter.class);
         when(router.route(any(), anyString())).thenReturn(RoutingResult.builder()

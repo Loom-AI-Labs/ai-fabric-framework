@@ -8,6 +8,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -52,6 +53,17 @@ public class AIActionMetaData {
      * Whether this action's result is eligible to ground answer generation.
      */
     private boolean groundingEligible;
+
+    /**
+     * Server-owned evidence spaces that may complete grounding when this READ action
+     * returns an insufficient result.
+     *
+     * <p>The orchestration layer still validates these values against configured
+     * entity types and the effective deployment allowlist. Declaring a space here
+     * never grants retrieval access.</p>
+     */
+    @Builder.Default
+    private List<String> groundingVectorSpaces = Collections.emptyList();
 
     /**
      * Whether this READ action may be selected by the read-action resolution planner.
@@ -114,5 +126,11 @@ public class AIActionMetaData {
 
     public void setRequiredParameters(Set<String> requiredParameters) {
         this.requiredParameters = requiredParameters == null ? Collections.emptySet() : Set.copyOf(requiredParameters);
+    }
+
+    public void setGroundingVectorSpaces(List<String> groundingVectorSpaces) {
+        this.groundingVectorSpaces = groundingVectorSpaces == null
+            ? Collections.emptyList()
+            : List.copyOf(groundingVectorSpaces);
     }
 }

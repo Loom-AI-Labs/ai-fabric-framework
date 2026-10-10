@@ -58,6 +58,7 @@ public class ConnectorActionCatalogLoader {
     private static final String KEY_PARAMS = "params";
     private static final String KEY_ANONYMOUS_ALLOWED = "anonymousAllowed";
     private static final String KEY_GROUNDING_ELIGIBLE = "groundingEligible";
+    private static final String KEY_GROUNDING_VECTOR_SPACES = "groundingVectorSpaces";
     private static final String KEY_READ_ACTION_RESOLUTION_ELIGIBLE = "readActionResolutionEligible";
     private static final String KEY_RESULT_PRESENTATION_HINT = "resultPresentationHint";
     private static final String KEY_BUILT_IN_MODULE_ID = "builtInModuleId";
@@ -311,6 +312,8 @@ public class ConnectorActionCatalogLoader {
         boolean groundingEligible = raw.containsKey(KEY_GROUNDING_ELIGIBLE)
             ? readBoolean(raw, KEY_GROUNDING_ELIGIBLE, false)
             : defaultGroundingEligible(accessMode);
+        List<String> groundingVectorSpaces = readStringList(raw.get(KEY_GROUNDING_VECTOR_SPACES));
+        validateGroundingVectorSpaces(accessMode, groundingEligible, groundingVectorSpaces, label, name);
         boolean readActionResolutionEligible = readBoolean(raw, KEY_READ_ACTION_RESOLUTION_ELIGIBLE, false);
         validateReadActionResolutionEligibility(accessMode, readActionResolutionEligible, label, name);
         ActionResultPresentationHint resultPresentationHint = parseResultPresentationHint(
@@ -340,6 +343,7 @@ public class ConnectorActionCatalogLoader {
             params,
             anonymousAllowed,
             groundingEligible,
+            groundingVectorSpaces,
             readActionResolutionEligible,
             resultPresentationHint,
             StringUtils.hasText(builtInModuleId) ? builtInModuleId.trim() : null,
@@ -689,6 +693,21 @@ public class ConnectorActionCatalogLoader {
             throw new IllegalStateException("Invalid action contract in " + label
                 + " for action '" + actionName
                 + "': readActionResolutionEligible is only supported for READ actions.");
+        }
+    }
+
+    private void validateGroundingVectorSpaces(ActionAccessMode accessMode,
+                                               boolean groundingEligible,
+                                               List<String> groundingVectorSpaces,
+                                               String label,
+                                               String actionName) {
+        if (groundingVectorSpaces == null || groundingVectorSpaces.isEmpty()) {
+            return;
+        }
+        if (accessMode == null || !accessMode.isReadOnly() || !groundingEligible) {
+            throw new IllegalStateException("Invalid action contract in " + label
+                + " for action '" + actionName
+                + "': groundingVectorSpaces requires a grounding-eligible READ action.");
         }
     }
 

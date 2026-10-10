@@ -1,5 +1,6 @@
 package ai.fabric.intent.orchestration.pipeline.steps;
 
+import ai.fabric.config.AIEntityConfigurationLoader;
 import ai.fabric.dto.Intent;
 import ai.fabric.intent.orchestration.OrchestrationResult;
 import ai.fabric.intent.orchestration.OrchestrationResultType;
@@ -10,8 +11,11 @@ import org.junit.jupiter.api.Test;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 class InformationVectorSpaceRoutingSupportTest {
 
@@ -47,6 +51,80 @@ class InformationVectorSpaceRoutingSupportTest {
             .containsEntry("retrievalStrategy", "SINGLE_SPACE")
             .containsEntry("vectorSpacesSelectionSource", "READ_ACTION_PLANNER");
         assertThat(metadata.get("vectorSpacesSelected")).isEqualTo(List.of("policy"));
+    }
+
+    @Test
+    void shouldPreserveActionContractRoutingSource() {
+        Intent intent = Intent.builder().build();
+        Map<String, Object> metadata = new LinkedHashMap<>();
+        ReadActionResolutionService.ResolutionOutcome readActionResolution =
+            ReadActionResolutionService.ResolutionOutcome.continueWithRagAfterInsufficientActions(
+                "Insufficient read evidence",
+                List.of("dealer-vehicle"),
+                List.of(),
+                Map.of(
+                    "attempted", true,
+                    "preferredVectorSpacesSource", "ACTION_CONTRACT"
+                )
+            );
+
+        InformationVectorSpaceRoutingSupport.RoutedVectorSpaces routed =
+            InformationVectorSpaceRoutingSupport.route(
+                intent,
+                metadata,
+                new OrchestrationPolicy.RagBudgets(
+                    true, 2, null, null, null, null, List.of("dealer-vehicle", "document")
+                ),
+                true,
+                false,
+                true,
+                readActionResolution,
+                null,
+                supportWithoutCatalog()
+            );
+
+        assertThat(routed.terminalResult()).isNull();
+        assertThat(routed.vectorSpaces()).containsExactly("dealer-vehicle");
+        assertThat(metadata).containsEntry("vectorSpacesSelectionSource", "ACTION_CONTRACT");
+    }
+
+    @Test
+    void shouldRejectReadActionPreferredSpaceMissingFromEntityConfiguration() {
+        Intent intent = Intent.builder().build();
+        Map<String, Object> metadata = new LinkedHashMap<>();
+        AIEntityConfigurationLoader entityConfigurationLoader = mock(AIEntityConfigurationLoader.class);
+        when(entityConfigurationLoader.getSupportedEntityTypes()).thenReturn(Set.of("document", "policy"));
+        ReadActionResolutionService.ResolutionOutcome readActionResolution =
+            ReadActionResolutionService.ResolutionOutcome.continueWithRagAfterInsufficientActions(
+                "Insufficient read evidence",
+                List.of("dealer-vehicle"),
+                List.of(),
+                Map.of(
+                    "attempted", true,
+                    "preferredVectorSpacesSource", "ACTION_CONTRACT"
+                )
+            );
+
+        InformationVectorSpaceRoutingSupport.RoutedVectorSpaces routed =
+            InformationVectorSpaceRoutingSupport.route(
+                intent,
+                metadata,
+                new OrchestrationPolicy.RagBudgets(
+                    true, 2, null, null, null, null, List.of("document", "policy")
+                ),
+                true,
+                false,
+                true,
+                readActionResolution,
+                entityConfigurationLoader,
+                supportWithoutCatalog()
+            );
+
+        assertThat(routed.terminalResult()).isNotNull();
+        assertThat(routed.terminalResult().getType())
+            .isEqualTo(OrchestrationResultType.CLARIFICATION_REQUIRED);
+        assertThat(metadata)
+            .containsEntry("readActionVectorSpacesInvalidRequested", List.of("dealer-vehicle"));
     }
 
     @Test

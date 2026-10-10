@@ -1,0 +1,10 @@
+actions:
+  - name: create_ticket
+    description: "Create a support ticket"
+    category: "test"
+    accessMode: WRITE_ONLY
+    requiresConfirmation: true
+    groundingEligible: false
+    groundingVectorSpaces:
+      - policy
+    params: []

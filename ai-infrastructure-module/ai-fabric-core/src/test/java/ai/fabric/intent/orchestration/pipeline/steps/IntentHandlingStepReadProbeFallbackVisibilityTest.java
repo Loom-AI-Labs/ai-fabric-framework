@@ -142,6 +142,165 @@ class IntentHandlingStepReadProbeFallbackVisibilityTest {
     }
 
     @Test
+    void shouldUseActionContractVectorSpaceForInsufficientDirectReadAction() {
+        AIActionRegistry registry = mock(AIActionRegistry.class);
+        AIActionHandler handler = mock(AIActionHandler.class);
+        when(registry.findHandler("list_orders")).thenReturn(Optional.of(handler));
+        when(handler.validateActionAllowed(any())).thenReturn(true);
+        when(handler.requiresConfirmation()).thenReturn(false);
+        when(handler.executeAction(any(), any())).thenReturn(ActionResult.builder()
+            .success(true)
+            .message("No exact inventory match.")
+            .groundingSufficiency(ActionGroundingSufficiency.INSUFFICIENT)
+            .data(ActionListPayload.of(List.of()))
+            .build());
+        AIActionMetaData meta = AIActionMetaData.builder()
+            .name("list_orders")
+            .accessMode(ActionAccessMode.READ)
+            .groundingEligible(true)
+            .groundingVectorSpaces(List.of("dealer-vehicle"))
+            .readActionResolutionEligible(true)
+            .build();
+        when(registry.findMetadata("list_orders")).thenReturn(Optional.of(meta));
+
+        RAGProvider ragProvider = mock(RAGProvider.class);
+        when(ragProvider.performRag(any())).thenReturn(RAGResponse.builder()
+            .documents(List.of())
+            .context("A nearby indexed alternative is available.")
+            .success(true)
+            .build());
+        AIServiceConfig aiServiceConfig = new AIServiceConfig();
+        aiServiceConfig.getFeatures().setEnableGeneration(false);
+        IntentHandlingStep step = new IntentHandlingStep(
+            registry,
+            providerOf(ragProvider),
+            mock(AICoreService.class),
+            aiServiceConfig,
+            providerOf((AdvancedRAGProvider) null),
+            new VectorSpaceRoutingProperties(),
+            new RankBasedMerger(),
+            new RelationshipQueryPostActionGenerationProperties(),
+            new PostActionGenerationProperties(),
+            providerOf(new ObjectMapper()),
+            new OrchestrationProperties(),
+            providerOf((KnowledgeBaseOverviewService) null),
+            null,
+            new InMemoryPendingActionStore(),
+            new InMemoryActionDraftStore(),
+            promptTemplateResolver(),
+            new PromptRenderer()
+        );
+        Intent intent = Intent.builder()
+            .type(IntentType.ACTION)
+            .action("list_orders")
+            .actionParams(Map.of())
+            .optimizedQuery("diesel SUV under GBP 10,000")
+            .build();
+        PipelineContext context = PipelineContext.from(
+                "Do you have a diesel SUV under GBP 10,000?",
+                OrchestrationContext.forUser("user-1")
+            )
+            .toBuilder()
+            .intentResponse(MultiIntentResponse.builder().intents(List.of(intent)).build())
+            .orchestrationPolicy(actionsPreferredCooperativePolicy())
+            .build();
+
+        OrchestrationResult result = step.process(context).getIntentResult();
+
+        assertThat(result.getType()).isEqualTo(OrchestrationResultType.INFORMATION_PROVIDED);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> resolution = (Map<String, Object>) result.getData().get("readActionResolution");
+        assertThat(resolution)
+            .containsEntry("preferredVectorSpaces", List.of("dealer-vehicle"))
+            .containsEntry("preferredVectorSpacesSource", "ACTION_CONTRACT");
+        ArgumentCaptor<RAGRequest> requestCaptor = ArgumentCaptor.forClass(RAGRequest.class);
+        verify(ragProvider).performRag(requestCaptor.capture());
+        assertThat(requestCaptor.getValue().getEntityType()).isEqualTo("dealer-vehicle");
+        assertThat(requestCaptor.getValue().getMetadata())
+            .containsEntry("vectorSpacesSelectionSource", "ACTION_CONTRACT")
+            .containsEntry("vectorSpacesSelected", List.of("dealer-vehicle"));
+    }
+
+    @Test
+    void shouldConstrainIntentFallbackSpaceToReviewedActionContract() {
+        AIActionRegistry registry = mock(AIActionRegistry.class);
+        AIActionHandler handler = mock(AIActionHandler.class);
+        when(registry.findHandler("list_orders")).thenReturn(Optional.of(handler));
+        when(handler.validateActionAllowed(any())).thenReturn(true);
+        when(handler.requiresConfirmation()).thenReturn(false);
+        when(handler.executeAction(any(), any())).thenReturn(ActionResult.builder()
+            .success(true)
+            .message("No exact inventory match.")
+            .groundingSufficiency(ActionGroundingSufficiency.INSUFFICIENT)
+            .data(ActionListPayload.of(List.of()))
+            .build());
+        AIActionMetaData meta = AIActionMetaData.builder()
+            .name("list_orders")
+            .accessMode(ActionAccessMode.READ)
+            .groundingEligible(true)
+            .groundingVectorSpaces(List.of("dealer-vehicle"))
+            .readActionResolutionEligible(true)
+            .build();
+        when(registry.findMetadata("list_orders")).thenReturn(Optional.of(meta));
+
+        RAGProvider ragProvider = mock(RAGProvider.class);
+        when(ragProvider.performRag(any())).thenReturn(RAGResponse.builder()
+            .documents(List.of())
+            .context("A nearby indexed alternative is available.")
+            .success(true)
+            .build());
+        AIServiceConfig aiServiceConfig = new AIServiceConfig();
+        aiServiceConfig.getFeatures().setEnableGeneration(false);
+        IntentHandlingStep step = new IntentHandlingStep(
+            registry,
+            providerOf(ragProvider),
+            mock(AICoreService.class),
+            aiServiceConfig,
+            providerOf((AdvancedRAGProvider) null),
+            new VectorSpaceRoutingProperties(),
+            new RankBasedMerger(),
+            new RelationshipQueryPostActionGenerationProperties(),
+            new PostActionGenerationProperties(),
+            providerOf(new ObjectMapper()),
+            new OrchestrationProperties(),
+            providerOf((KnowledgeBaseOverviewService) null),
+            null,
+            new InMemoryPendingActionStore(),
+            new InMemoryActionDraftStore(),
+            promptTemplateResolver(),
+            new PromptRenderer()
+        );
+        Intent intent = Intent.builder()
+            .type(IntentType.ACTION)
+            .action("list_orders")
+            .actionParams(Map.of())
+            .optimizedQuery("diesel SUV under GBP 10,000")
+            .vectorSpace("document")
+            .build();
+        PipelineContext context = PipelineContext.from(
+                "Do you have a diesel SUV under GBP 10,000?",
+                OrchestrationContext.forUser("user-1")
+            )
+            .toBuilder()
+            .intentResponse(MultiIntentResponse.builder().intents(List.of(intent)).build())
+            .orchestrationPolicy(actionsPreferredCooperativePolicy())
+            .build();
+
+        OrchestrationResult result = step.process(context).getIntentResult();
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> resolution = (Map<String, Object>) result.getData().get("readActionResolution");
+        assertThat(resolution)
+            .containsEntry("rejectedIntentVectorSpaces", List.of("document"));
+        ArgumentCaptor<RAGRequest> requestCaptor = ArgumentCaptor.forClass(RAGRequest.class);
+        verify(ragProvider).performRag(requestCaptor.capture());
+        assertThat(requestCaptor.getValue().getEntityType()).isEqualTo("dealer-vehicle");
+        assertThat(requestCaptor.getValue().getMetadata())
+            .containsEntry("vectorSpacesSelectionSource", "ACTION_CONTRACT")
+            .containsEntry("vectorSpacesSelected", List.of("dealer-vehicle"));
+    }
+
+    @Test
     void shouldNotIncludeReadProbeMetadataByDefault() {
         AIActionRegistry registry = mock(AIActionRegistry.class);
         AIActionHandler handler = mock(AIActionHandler.class);

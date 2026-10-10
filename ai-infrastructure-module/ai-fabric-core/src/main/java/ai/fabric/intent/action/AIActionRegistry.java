@@ -377,6 +377,7 @@ public class AIActionRegistry {
             .anonymousAllowed(action.anonymousAllowed())
             .confirmationRequired(action.requiresConfirmation())
             .groundingEligible(defaultGroundingEligible(action.accessMode()))
+            .groundingVectorSpaces(normalizeGroundingVectorSpaces(action))
             .readActionResolutionEligible(action.readActionResolutionEligible())
             .sideEffectLevel(ActionSideEffectLevel.fromAccessMode(action.accessMode()))
             .resultPresentationHint(defaultPresentationHint(action.accessMode()))
@@ -390,6 +391,23 @@ public class AIActionRegistry {
             .parameterSchemas(Collections.unmodifiableMap(parameterSchemas))
             .requiredParameters(Collections.unmodifiableSet(requiredParameters))
             .build();
+    }
+
+    private List<String> normalizeGroundingVectorSpaces(AIAction action) {
+        if (action == null || action.groundingVectorSpaces() == null || action.groundingVectorSpaces().length == 0) {
+            return List.of();
+        }
+        if (action.accessMode() == null || !action.accessMode().isReadOnly()) {
+            throw new IllegalStateException("AIAction groundingVectorSpaces is only supported for READ actions: "
+                + action.name());
+        }
+        LinkedHashSet<String> normalized = new LinkedHashSet<>();
+        for (String value : action.groundingVectorSpaces()) {
+            if (StringUtils.hasText(value)) {
+                normalized.add(value.trim());
+            }
+        }
+        return List.copyOf(normalized);
     }
 
     private String humanizeActionName(String actionName) {
