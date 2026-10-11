@@ -75,9 +75,6 @@ class MultiStepIntentExtractionStrategyTest {
     @Test
     void shouldCountActionSelectionCallEvenWhenSelectionParsingFails() {
         when(actionHandlerRegistry.getAllMetadata()).thenReturn(List.of(AIActionMetaData.builder().name("cancel_subscription").build()));
-        when(validator.validate(any())).thenReturn(
-            new IntentExtractionValidator.ValidationResult(true, IntentExtractionValidator.ErrorCategory.NONE, List.of(), List.of())
-        );
 
         when(aiCoreService.generateContent(any(AIGenerationRequest.class), eq(LlmPurpose.ORCHESTRATION)))
             .thenReturn(AIGenerationResponse.builder().content(classificationWithAction()).build())
@@ -427,7 +424,7 @@ class MultiStepIntentExtractionStrategyTest {
         when(aiCoreService.generateContent(any(AIGenerationRequest.class), eq(LlmPurpose.ORCHESTRATION)))
             .thenReturn(AIGenerationResponse.builder().content(classificationWithcommerceCartAction()).build())
             .thenReturn(AIGenerationResponse.builder().content("""
-                {"mappings":[{"intentIndex":0,"selectedAction":"commerce_update_cart"}]}
+                {"mappings":[{"intentIndex":0,"resolution":"ACTION","selectedAction":"commerce_update_cart"}]}
                 """).build())
             .thenReturn(AIGenerationResponse.builder().content("""
                 {"mappings":[{"intentIndex":0,"actionParams":{"cart_update_confirmation":"Add 1 Selling Plans Ski Wax to your cart"}}]}
@@ -484,14 +481,6 @@ class MultiStepIntentExtractionStrategyTest {
                 .description("Search current inventory")
                 .build()
         ));
-        when(validator.validate(any())).thenReturn(
-            new IntentExtractionValidator.ValidationResult(
-                false,
-                IntentExtractionValidator.ErrorCategory.INCOMPLETE,
-                List.of(),
-                List.of("Action name is missing")
-            )
-        );
         when(aiCoreService.generateContent(any(AIGenerationRequest.class), eq(LlmPurpose.ORCHESTRATION)))
             .thenReturn(AIGenerationResponse.builder().content("""
                 {
@@ -508,7 +497,7 @@ class MultiStepIntentExtractionStrategyTest {
                 }
                 """).build())
             .thenReturn(AIGenerationResponse.builder().content("""
-                {"mappings":[{"intentIndex":0,"selectedAction":null}]}
+                {"mappings":[{"intentIndex":0,"resolution":"UNRESOLVED","selectedAction":null}]}
                 """).build());
 
         MultiStepIntentExtractionStrategy strategy = new MultiStepIntentExtractionStrategy(
@@ -526,7 +515,384 @@ class MultiStepIntentExtractionStrategyTest {
         );
 
         assertThat(attempt.isSuccess()).isFalse();
-        assertThat(attempt.getResponse().getIntents().getFirst().getAction()).isNull();
+        assertThat(attempt.getResponse()).isNull();
+        assertThat(attempt.getValidationResult().errorCategory())
+            .isEqualTo(IntentExtractionValidator.ErrorCategory.INCOMPLETE);
+        assertThat(attempt.getValidationResult().issues())
+            .extracting(IntentExtractionValidator.ValidationIssue::code)
+            .containsExactly(IntentExtractionValidator.IssueCode.ACTION_SELECTION_UNRESOLVED);
+    }
+
+    @Test
+    void explicitlyPermittedModelReplanPreservesSiblingActionAndProducesCompleteInformationIntent() {
+        when(actionHandlerRegistry.getAllMetadata()).thenReturn(List.of(
+            AIActionMetaData.builder()
+                .name("lookup_record")
+                .description("Read a current operational record")
+                .build()
+        ));
+        when(validator.validate(any())).thenReturn(
+            new IntentExtractionValidator.ValidationResult(
+                true,
+                IntentExtractionValidator.ErrorCategory.NONE,
+                List.of(),
+                List.of()
+            )
+        );
+        when(aiCoreService.generateContent(any(AIGenerationRequest.class), eq(LlmPurpose.ORCHESTRATION)))
+            .thenReturn(AIGenerationResponse.builder().content("""
+                {
+                  "intents": [
+                    {
+                      "obligationId": "obligation-live-record",
+                      "type": "ACTION",
+                      "intent": "read_current_record",
+                      "userGoal": "Obtain the current operational record",
+                      "actionHint": "look up the current record",
+                      "requiresRetrieval": false,
+                      "requiresGeneration": false,
+                      "requiresTargetResolution": false,
+                      "needsAdvancedRAG": false
+                    },
+                    {
+                      "obligationId": "obligation-policy",
+                      "type": "ACTION",
+                      "intent": "explain_applicable_policy",
+                      "userGoal": "Explain the approved policy for the record",
+                      "actionHint": "document",
+                      "requiresRetrieval": false,
+                      "requiresGeneration": true,
+                      "responseProfile": "STANDARD",
+                      "requiresTargetResolution": false,
+                      "needsAdvancedRAG": false
+                    }
+                  ],
+                  "metadata": {"retrievalQueryHint": null}
+                }
+                """).build())
+            .thenReturn(AIGenerationResponse.builder().content("""
+                {
+                  "mappings": [
+                    {
+                      "intentIndex": 0,
+                      "resolution": "ACTION",
+                      "selectedAction": "lookup_record"
+                    },
+                    {
+                      "intentIndex": 1,
+                      "resolution": "INFORMATION",
+                      "selectedAction": null,
+                      "informationIntent": "explain_applicable_policy",
+                      "informationRequiresRetrieval": true,
+                      "informationRequiresGeneration": true,
+                      "informationResponseProfile": "STANDARD",
+                      "informationRequiresTargetResolution": false,
+                      "informationDirectAnswer": null,
+                      "informationGenerationInstructions": "Explain the applicable approved policy.",
+                      "informationNeedsAdvancedRAG": false,
+                      "informationOptimizedQuery": "approved policy applicable to the current record",
+                      "informationVectorSpace": "document",
+                      "informationMissingInformation": [],
+                      "informationClarificationQuestion": null,
+                      "informationUncertaintyReason": null
+                    }
+                  ]
+                }
+                """).build());
+
+        IntentExtractionValidator.ValidationIssue rejectedAction =
+            new IntentExtractionValidator.ValidationIssue(
+                IntentExtractionValidator.IssueCode.ACTION_UNREGISTERED,
+                IntentExtractionValidator.Severity.ERROR,
+                1,
+                "action",
+                "No handler registered for the model-selected action"
+            );
+        ExtractionAttempt previous = ExtractionAttempt.builder()
+            .success(false)
+            .response(MultiIntentResponse.builder()
+                .intents(List.of(
+                    Intent.builder()
+                        .type(IntentType.ACTION)
+                        .intent("read_current_record")
+                        .action("lookup_record")
+                        .obligationId("obligation-live-record")
+                        .build(),
+                    Intent.builder()
+                        .type(IntentType.ACTION)
+                        .intent("explain_applicable_policy")
+                        .action("document")
+                        .obligationId("obligation-policy")
+                        .build()
+                ))
+                .build())
+            .validationResult(new IntentExtractionValidator.ValidationResult(
+                false,
+                IntentExtractionValidator.ErrorCategory.UNSAFE,
+                List.of(rejectedAction),
+                List.of(rejectedAction.message()),
+                List.of()
+            ))
+            .build();
+        SemanticRecoveryPolicy policy = new SemanticRecoveryPolicy(
+            null,
+            null,
+            null,
+            null,
+            OrchestrationProperties.UnknownActionRecovery.LLM_REPLAN_TO_INFORMATION,
+            null,
+            null
+        );
+        MultiStepIntentExtractionStrategy strategy = new MultiStepIntentExtractionStrategy(
+            aiCoreService,
+            actionHandlerRegistry,
+            jsonSupport,
+            validator,
+            promptRenderer,
+            promptTemplateResolver
+        );
+
+        ExtractionAttempt attempt = strategy.attemptExtract(
+            input("Get the current record and explain its policy"),
+            OrchestrationContext.forUser("user-policy-replan"),
+            previous,
+            policy
+        );
+
+        assertThat(attempt.isSuccess()).isTrue();
+        assertThat(attempt.getResponse().getIntents()).hasSize(2);
+        assertThat(attempt.getResponse().getIntents().get(0).getType()).isEqualTo(IntentType.ACTION);
+        assertThat(attempt.getResponse().getIntents().get(0).getAction()).isEqualTo("lookup_record");
+        Intent replanned = attempt.getResponse().getIntents().get(1);
+        assertThat(replanned.getType()).isEqualTo(IntentType.INFORMATION);
+        assertThat(replanned.getIntent()).isEqualTo("explain_applicable_policy");
+        assertThat(replanned.getObligationId()).isEqualTo("obligation-policy");
+        assertThat(replanned.getRequiresRetrieval()).isTrue();
+        assertThat(replanned.getRequiresGeneration()).isTrue();
+        assertThat(replanned.getVectorSpace()).isEqualTo("document");
+
+        ArgumentCaptor<AIGenerationRequest> requests =
+            ArgumentCaptor.forClass(AIGenerationRequest.class);
+        verify(aiCoreService, times(2)).generateContent(
+            requests.capture(),
+            eq(LlmPurpose.ORCHESTRATION)
+        );
+        assertThat(requests.getAllValues().get(1).getPrompt())
+            .contains("intentIndex=0")
+            .contains("informationReplanAllowed=false")
+            .contains("intentIndex=1")
+            .contains("informationReplanAllowed=true")
+            .contains("fresh semantic decision by you")
+            .contains("Never turn a vector-space name into an action");
+    }
+
+    @Test
+    void explicitlyPermittedInformationReplanStillRunsWhenNoActionsAreVisible() {
+        when(actionHandlerRegistry.getAllMetadata()).thenReturn(List.of());
+        when(validator.validate(any())).thenReturn(
+            new IntentExtractionValidator.ValidationResult(
+                true,
+                IntentExtractionValidator.ErrorCategory.NONE,
+                List.of(),
+                List.of()
+            )
+        );
+        when(aiCoreService.generateContent(any(AIGenerationRequest.class), eq(LlmPurpose.ORCHESTRATION)))
+            .thenReturn(AIGenerationResponse.builder().content("""
+                {
+                  "intents": [{
+                    "obligationId": "obligation-policy",
+                    "type": "ACTION",
+                    "intent": "explain_applicable_policy",
+                    "userGoal": "Explain the approved policy",
+                    "actionHint": "document",
+                    "requiresRetrieval": false,
+                    "requiresGeneration": true,
+                    "responseProfile": "STANDARD",
+                    "requiresTargetResolution": false,
+                    "needsAdvancedRAG": false
+                  }],
+                  "metadata": {"retrievalQueryHint": null}
+                }
+                """).build())
+            .thenReturn(AIGenerationResponse.builder().content("""
+                {
+                  "mappings": [{
+                    "intentIndex": 0,
+                    "resolution": "INFORMATION",
+                    "selectedAction": null,
+                    "informationIntent": "explain_applicable_policy",
+                    "informationRequiresRetrieval": true,
+                    "informationRequiresGeneration": true,
+                    "informationResponseProfile": "STANDARD",
+                    "informationRequiresTargetResolution": false,
+                    "informationDirectAnswer": null,
+                    "informationGenerationInstructions": "Explain the approved policy.",
+                    "informationNeedsAdvancedRAG": false,
+                    "informationOptimizedQuery": "approved policy",
+                    "informationVectorSpace": "document",
+                    "informationMissingInformation": [],
+                    "informationClarificationQuestion": null,
+                    "informationUncertaintyReason": null
+                  }]
+                }
+                """).build());
+        IntentExtractionValidator.ValidationIssue rejectedAction =
+            new IntentExtractionValidator.ValidationIssue(
+                IntentExtractionValidator.IssueCode.ACTION_UNREGISTERED,
+                IntentExtractionValidator.Severity.ERROR,
+                0,
+                "action",
+                "No handler registered for the model-selected action"
+            );
+        ExtractionAttempt previous = ExtractionAttempt.builder()
+            .success(false)
+            .response(MultiIntentResponse.builder()
+                .intents(List.of(Intent.builder()
+                    .type(IntentType.ACTION)
+                    .action("document")
+                    .obligationId("obligation-policy")
+                    .build()))
+                .build())
+            .validationResult(new IntentExtractionValidator.ValidationResult(
+                false,
+                IntentExtractionValidator.ErrorCategory.UNSAFE,
+                List.of(rejectedAction),
+                List.of(rejectedAction.message()),
+                List.of()
+            ))
+            .build();
+        SemanticRecoveryPolicy policy = new SemanticRecoveryPolicy(
+            null,
+            null,
+            null,
+            null,
+            OrchestrationProperties.UnknownActionRecovery.LLM_REPLAN_TO_INFORMATION,
+            null,
+            null
+        );
+        MultiStepIntentExtractionStrategy strategy = new MultiStepIntentExtractionStrategy(
+            aiCoreService,
+            actionHandlerRegistry,
+            jsonSupport,
+            validator,
+            promptRenderer,
+            promptTemplateResolver
+        );
+
+        ExtractionAttempt attempt = strategy.attemptExtract(
+            input("Explain the approved policy"),
+            OrchestrationContext.forUser("user-empty-action-catalog"),
+            previous,
+            policy
+        );
+
+        assertThat(attempt.isSuccess()).isTrue();
+        assertThat(attempt.getResponse().getIntents()).singleElement().satisfies(intent -> {
+            assertThat(intent.getType()).isEqualTo(IntentType.INFORMATION);
+            assertThat(intent.getIntent()).isEqualTo("explain_applicable_policy");
+            assertThat(intent.getVectorSpace()).isEqualTo("document");
+        });
+        verify(aiCoreService, times(2)).generateContent(
+            any(AIGenerationRequest.class),
+            eq(LlmPurpose.ORCHESTRATION)
+        );
+    }
+
+    @Test
+    void modelInformationReplanFailsClosedWhenServerPolicyDoesNotPermitIt() {
+        when(actionHandlerRegistry.getAllMetadata()).thenReturn(List.of(
+            AIActionMetaData.builder().name("lookup_record").build()
+        ));
+        when(aiCoreService.generateContent(any(AIGenerationRequest.class), eq(LlmPurpose.ORCHESTRATION)))
+            .thenReturn(AIGenerationResponse.builder().content("""
+                {
+                  "intents": [{
+                    "obligationId": "obligation-1",
+                    "type": "ACTION",
+                    "intent": "explain_policy",
+                    "userGoal": "Explain an approved policy",
+                    "actionHint": "document",
+                    "requiresRetrieval": false,
+                    "requiresGeneration": true,
+                    "responseProfile": "STANDARD",
+                    "requiresTargetResolution": false,
+                    "needsAdvancedRAG": false
+                  }],
+                  "metadata": {"retrievalQueryHint": null}
+                }
+                """).build())
+            .thenReturn(AIGenerationResponse.builder().content("""
+                {
+                  "mappings": [{
+                    "intentIndex": 0,
+                    "resolution": "INFORMATION",
+                    "selectedAction": null,
+                    "informationIntent": "explain_policy",
+                    "informationRequiresRetrieval": true,
+                    "informationRequiresGeneration": true,
+                    "informationResponseProfile": "STANDARD",
+                    "informationRequiresTargetResolution": false,
+                    "informationDirectAnswer": null,
+                    "informationGenerationInstructions": "Explain the policy.",
+                    "informationNeedsAdvancedRAG": false,
+                    "informationOptimizedQuery": "approved policy",
+                    "informationVectorSpace": "document",
+                    "informationMissingInformation": [],
+                    "informationClarificationQuestion": null,
+                    "informationUncertaintyReason": null
+                  }]
+                }
+                """).build());
+        IntentExtractionValidator.ValidationIssue rejectedAction =
+            new IntentExtractionValidator.ValidationIssue(
+                IntentExtractionValidator.IssueCode.ACTION_UNREGISTERED,
+                IntentExtractionValidator.Severity.ERROR,
+                0,
+                "action",
+                "No handler registered for the model-selected action"
+            );
+        ExtractionAttempt previous = ExtractionAttempt.builder()
+            .success(false)
+            .response(MultiIntentResponse.builder()
+                .intents(List.of(Intent.builder()
+                    .type(IntentType.ACTION)
+                    .action("document")
+                    .obligationId("obligation-1")
+                    .build()))
+                .build())
+            .validationResult(new IntentExtractionValidator.ValidationResult(
+                false,
+                IntentExtractionValidator.ErrorCategory.UNSAFE,
+                List.of(rejectedAction),
+                List.of(rejectedAction.message()),
+                List.of()
+            ))
+            .build();
+        MultiStepIntentExtractionStrategy strategy = new MultiStepIntentExtractionStrategy(
+            aiCoreService,
+            actionHandlerRegistry,
+            jsonSupport,
+            validator,
+            promptRenderer,
+            promptTemplateResolver
+        );
+
+        ExtractionAttempt attempt = strategy.attemptExtract(
+            input("Explain the approved policy"),
+            OrchestrationContext.forUser("user-policy-denied"),
+            previous,
+            SemanticRecoveryPolicy.strictDefaults()
+        );
+
+        assertThat(attempt.isSuccess()).isFalse();
+        assertThat(attempt.getResponse()).isNull();
+        assertThat(attempt.getValidationResult().errorCategory())
+            .isEqualTo(IntentExtractionValidator.ErrorCategory.UNSAFE);
+        assertThat(attempt.getValidationResult().issues())
+            .extracting(IntentExtractionValidator.ValidationIssue::code)
+            .containsExactly(IntentExtractionValidator.IssueCode.SEMANTIC_RECOVERY_NOT_ALLOWED);
+        verify(validator, times(0)).validate(any());
     }
 
     @Test
@@ -545,7 +911,7 @@ class MultiStepIntentExtractionStrategyTest {
         when(aiCoreService.generateContent(any(AIGenerationRequest.class), eq(LlmPurpose.ORCHESTRATION)))
             .thenReturn(AIGenerationResponse.builder().content(classificationWithAction()).build())
             .thenReturn(AIGenerationResponse.builder().content("""
-                {"mappings":[{"intentIndex":0,"selectedAction":"search_inventory"}]}
+                {"mappings":[{"intentIndex":0,"resolution":"ACTION","selectedAction":"search_inventory"}]}
                 """).build());
         EnrichedPromptBuilder enrichedPromptBuilder = org.mockito.Mockito.mock(EnrichedPromptBuilder.class);
         when(enrichedPromptBuilder.buildSemanticCatalogPrompt(any())).thenReturn("KNOWLEDGE BASE OVERVIEW:\n- document");

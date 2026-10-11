@@ -30,9 +30,12 @@ Output MUST be valid JSON and MUST match the following schema:
 
 Rules:
 - Preserve every user obligation. Give each intent a stable obligationId; this is mandatory when more than one intent is emitted.
+- `intent` and `userGoal` must always be non-empty model-authored semantic descriptions for that obligation. Never return null or an action/vector-space identifier as a substitute.
 - Set requiresRetrieval, requiresGeneration, requiresTargetResolution, and needsAdvancedRAG explicitly for every applicable intent.
 - When requiresRetrieval=true, choose vectorSpace only from the exact KNOWLEDGE BASE OVERVIEW catalog in the system prompt. If no safe decision is possible, leave it null and populate missingInformation, clarificationQuestion, and uncertaintyReason.
+- Never use an action name as vectorSpace. Read actions may return live or operational entities without being coupled to an indexed vector space.
 - Do NOT invent action names; for ACTION use actionHint only.
+- When the ORCHESTRATION POLICY states readActionResolutionEnabled=true, classify factual, lookup, search, list, show, get, or view requests as INFORMATION even when a matching READ action exists. The server may plan eligible READ actions after extraction. Reserve ACTION for explicit requested operations or direct operator commands, especially mutating flows.
 - Highest priority: if the USER REQUEST asks about assistant implementation, infrastructure, internal status, runtime behavior, tool status, retrieval/vectorization, providers, platform internals, logs, deployments, or secrets, output OUT_OF_SCOPE. Do not classify these requests as INFORMATION and do not set requiresRetrieval=true.
 - The USER REQUEST may include a "PENDING ACTION (requires confirmation)" section describing an action awaiting approval.
   - If the user is clearly approving/confirming the pending action, output a single intent with type=CONFIRMATION_POSITIVE.

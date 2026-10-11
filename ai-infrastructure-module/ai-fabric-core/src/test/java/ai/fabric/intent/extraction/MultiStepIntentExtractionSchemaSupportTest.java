@@ -20,8 +20,12 @@ class MultiStepIntentExtractionSchemaSupportTest {
         JsonNode intent = schema.at("/properties/intents/items");
 
         assertThat(intent.at("/properties/obligationId/type").asText()).isEqualTo("string");
+        assertThat(intent.at("/properties/intent/type").asText()).isEqualTo("string");
+        assertThat(intent.at("/properties/userGoal/type").asText()).isEqualTo("string");
         assertThat(intent.get("required")).extracting(JsonNode::asText).contains(
             "obligationId",
+            "intent",
+            "userGoal",
             "requiresRetrieval",
             "requiresGeneration",
             "requiresTargetResolution",
@@ -36,7 +40,8 @@ class MultiStepIntentExtractionSchemaSupportTest {
             MultiStepIntentExtractionSchemaSupport.actionSelectionSchema(
                 objectMapper,
                 List.of(1, 4),
-                List.of("search_inventory", "compare_inventory")
+                List.of("search_inventory", "compare_inventory"),
+                true
             )
         );
         JsonNode mappings = schema.at("/properties/mappings");
@@ -49,5 +54,54 @@ class MultiStepIntentExtractionSchemaSupportTest {
         assertThat(mappings.at("/items/properties/selectedAction/enum"))
             .extracting(JsonNode::isNull, JsonNode::asText)
             .hasSize(3);
+        assertThat(mappings.at("/items/properties/resolution/enum"))
+            .extracting(JsonNode::asText)
+            .containsExactly("ACTION", "INFORMATION", "UNRESOLVED");
+        assertThat(mappings.at("/items/required"))
+            .extracting(JsonNode::asText)
+            .contains(
+                "resolution",
+                "informationIntent",
+                "informationRequiresRetrieval",
+                "informationRequiresGeneration",
+                "informationVectorSpace"
+            );
+    }
+
+    @Test
+    void actionSelectionExcludesInformationWhenPolicyDoesNotPermitReplan() throws Exception {
+        JsonNode schema = objectMapper.readTree(
+            MultiStepIntentExtractionSchemaSupport.actionSelectionSchema(
+                objectMapper,
+                List.of(0),
+                List.of("search_inventory"),
+                false
+            )
+        );
+
+        assertThat(schema.at("/properties/mappings/items/properties/resolution/enum"))
+            .extracting(JsonNode::asText)
+            .containsExactly("ACTION", "UNRESOLVED");
+    }
+
+    @Test
+    void actionSelectionAllowsOnlyInformationOrUnresolvedWhenPermittedCatalogIsEmpty()
+        throws Exception {
+        JsonNode schema = objectMapper.readTree(
+            MultiStepIntentExtractionSchemaSupport.actionSelectionSchema(
+                objectMapper,
+                List.of(0),
+                List.of(),
+                true
+            )
+        );
+
+        assertThat(schema.at("/properties/mappings/items/properties/resolution/enum"))
+            .extracting(JsonNode::asText)
+            .containsExactly("INFORMATION", "UNRESOLVED");
+        assertThat(schema.at("/properties/mappings/items/properties/selectedAction/enum"))
+            .hasSize(1);
+        assertThat(schema.at("/properties/mappings/items/properties/selectedAction/enum/0").isNull())
+            .isTrue();
     }
 }

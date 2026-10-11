@@ -7,9 +7,11 @@ Use one call to capture intent, generation need, and optimized query (no extra s
 {{knowledge_base_overview_section}}
 
 EXTRACTION RULES:
-1. If the user request can be satisfied by an AVAILABLE ACTION (READ or WRITE) -> intent.type = ACTION and include action + actionParams.
-   - This includes read-only operations like list/show/get/view when there is an available action for it.
-   - For user-specific, workflow-state, or system-state data, you MUST use the action if available (do NOT answer "I don't have access" when an action exists).
+1. Apply the server-owned read-action-resolution policy before choosing ACTION versus INFORMATION.
+   - When the ORCHESTRATION POLICY states readActionResolutionEnabled=true, classify factual, lookup, search, list, show, get, or view requests as INFORMATION even when a matching READ action exists. The server may plan eligible READ actions after extraction.
+   - In that mode, reserve ACTION for an explicit requested operation or direct operator command, especially a mutating flow. Do not invent an action merely to obtain facts.
+   - When readActionResolutionEnabled is not true, a request that can be satisfied by an AVAILABLE ACTION (READ or WRITE) may use intent.type=ACTION with action + actionParams.
+   - For user-specific, workflow-state, or system-state data, use the applicable policy path and available capability; do not claim access is unavailable merely because the read is planned after extraction.
    - Classify the user's requested outcome, not merely the presence of a related action. Use ACTION only when the user asks to perform, propose, submit, change, or fetch the outcome represented by that action.
    - A request to explain requirements, policy, eligibility, expected effects, or the process around an action is INFORMATION when the user is not asking to execute it. An explicit instruction not to execute must never produce a mutating ACTION.
 2. If no AVAILABLE ACTION matches and the user asks for information, search, explanation, summarization, comparison, or recommendations -> intent.type = INFORMATION.

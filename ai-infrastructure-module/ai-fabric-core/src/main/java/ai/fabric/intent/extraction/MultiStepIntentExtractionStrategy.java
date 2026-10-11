@@ -1,5 +1,6 @@
 package ai.fabric.intent.extraction;
 
+import ai.fabric.config.OrchestrationProperties;
 import ai.fabric.core.AICoreService;
 import ai.fabric.core.LlmPurpose;
 import ai.fabric.dto.AIGenerationRequest;
@@ -87,11 +88,15 @@ public class MultiStepIntentExtractionStrategy implements IntentExtractionStrate
                                 Long processingTimeMs,
                                 Long providerProcessingTimeMs,
                                 String model) {}
-    record ActionSelectionResult(Map<Integer, String> mappings,
+    record ActionSelectionResult(Map<Integer, ActionResolution> resolutions,
                                  int llmCalls,
                                  Long processingTimeMs,
                                  Long providerProcessingTimeMs,
                                  String model) {}
+    record ActionResolution(ActionResolutionKind kind,
+                            String selectedAction,
+                            ActionMapping modelDecision,
+                            IntentExtractionValidator.IssueCode issueCode) {}
     record ActionParamsFillResult(Map<Integer, Map<String, Object>> paramsByIntentIndex,
                                   int llmCalls,
                                   Long processingTimeMs,
@@ -175,10 +180,38 @@ public class MultiStepIntentExtractionStrategy implements IntentExtractionStrate
                 input,
                 context,
                 classification,
-                recoveryPrompt
+                recoveryPrompt,
+                previousAttempt,
+                semanticRecoveryPolicy
             );
             llmCalls += selection.llmCalls();
-            Map<Integer, String> selectedActions = selection.mappings();
+            Map<Integer, ActionResolution> actionResolutions = selection.resolutions();
+
+            List<Integer> unresolvedActionIntents = unresolvedActionIntentIndexes(
+                classification,
+                actionResolutions
+            );
+            if (!unresolvedActionIntents.isEmpty()) {
+                return unresolvedActionSelectionAttempt(
+                    unresolvedActionIntents,
+                    actionResolutions,
+                    llmCalls,
+                    sumNonNull(
+                        classificationResult.processingTimeMs(),
+                        selection.processingTimeMs()
+                    ),
+                    sumNonNull(
+                        classificationResult.providerProcessingTimeMs(),
+                        selection.providerProcessingTimeMs()
+                    ),
+                    joinDistinctModels(
+                        classificationResult.model(),
+                        selection.model()
+                    )
+                );
+            }
+
+            Map<Integer, String> selectedActions = selectedActions(actionResolutions);
 
             ActionParamsFillResult paramFill = fillActionParamsIfNeeded(
                 currentUserMessage,
@@ -190,7 +223,12 @@ public class MultiStepIntentExtractionStrategy implements IntentExtractionStrate
             );
             llmCalls += paramFill.llmCalls();
 
-            MultiIntentResponse response = buildResponse(userQuery, classification, selectedActions, paramFill.paramsByIntentIndex());
+            MultiIntentResponse response = buildResponse(
+                userQuery,
+                classification,
+                actionResolutions,
+                paramFill.paramsByIntentIndex()
+            );
             IntentExtractionValidator.ValidationResult validation = validator.validate(response);
             if (!validation.valid() && log.isDebugEnabled()) {
                 log.debug(
@@ -326,7 +364,9 @@ public class MultiStepIntentExtractionStrategy implements IntentExtractionStrate
                                                         IntentExtractionInput input,
                                                         OrchestrationContext context,
                                                         ClassificationResponse classification,
-                                                        String recoveryPrompt) {
+                                                        String recoveryPrompt,
+                                                        ExtractionAttempt previousAttempt,
+                                                        SemanticRecoveryPolicy semanticRecoveryPolicy) {
         List<ClassificationIntent> actionIntents = new ArrayList<>();
         for (int i = 0; i < classification.getIntents().size(); i++) {
             ClassificationIntent intent = classification.getIntents().get(i);
@@ -339,12 +379,26 @@ public class MultiStepIntentExtractionStrategy implements IntentExtractionStrate
             return new ActionSelectionResult(Map.of(), 0, null, null, null);
         }
 
+        Map<Integer, Boolean> informationReplanPermissions = informationReplanPermissions(
+            actionIntents,
+            previousAttempt,
+            semanticRecoveryPolicy
+        );
+
         List<AIActionMetaData> actions = CapabilityAwareActionMetadataSupport.visibleActions(
             actionHandlerRegistry,
             context
         );
-        if (actions.isEmpty()) {
-            return new ActionSelectionResult(Map.of(), 0, null, null, null);
+        boolean anyInformationReplanAllowed = informationReplanPermissions.values().stream()
+            .anyMatch(Boolean.TRUE::equals);
+        if (actions.isEmpty() && !anyInformationReplanAllowed) {
+            return new ActionSelectionResult(
+                unresolvedResolutions(actionIntents),
+                0,
+                null,
+                null,
+                null
+            );
         }
 
         Map<String, String> allowedByNormalizedName = new LinkedHashMap<>();
@@ -362,7 +416,13 @@ public class MultiStepIntentExtractionStrategy implements IntentExtractionStrate
         StringBuilder actionHints = new StringBuilder();
         for (ClassificationIntent intent : actionIntents) {
             actionHints.append("- intentIndex=").append(intent.getIndex())
+                .append(" obligationId=").append(Objects.toString(intent.getObligationId(), ""))
+                .append(" intent=").append(Objects.toString(intent.getIntent(), ""))
+                .append(" userGoal=").append(Objects.toString(intent.getUserGoal(), ""))
                 .append(" actionHint=").append(intent.getActionHint() != null ? intent.getActionHint() : "")
+                .append(" vectorSpace=").append(Objects.toString(intent.getVectorSpace(), ""))
+                .append(" informationReplanAllowed=")
+                .append(Boolean.TRUE.equals(informationReplanPermissions.get(intent.getIndex())))
                 .append("\n");
         }
 
@@ -388,7 +448,8 @@ public class MultiStepIntentExtractionStrategy implements IntentExtractionStrate
                 MultiStepIntentExtractionSchemaSupport.actionSelectionSchema(
                     jsonSupport.objectMapper(),
                     actionIntents.stream().map(ClassificationIntent::getIndex).toList(),
-                    allowedByNormalizedName.values()
+                    allowedByNormalizedName.values(),
+                    anyInformationReplanAllowed
                 )
             ))
             .authContext(input.authContext(
@@ -408,7 +469,7 @@ public class MultiStepIntentExtractionStrategy implements IntentExtractionStrate
         String content = response != null ? response.getContent() : null;
         if (!StringUtils.hasText(content)) {
             return new ActionSelectionResult(
-                Map.of(),
+                unresolvedResolutions(actionIntents),
                 llmCalls,
                 elapsedMs,
                 response != null ? response.getProcessingTimeMs() : null,
@@ -422,7 +483,7 @@ public class MultiStepIntentExtractionStrategy implements IntentExtractionStrate
         } catch (Exception ex) {
             log.warn("Failed to parse action selection JSON: {}", ex.getMessage());
             return new ActionSelectionResult(
-                Map.of(),
+                unresolvedResolutions(actionIntents),
                 llmCalls,
                 elapsedMs,
                 response != null ? response.getProcessingTimeMs() : null,
@@ -432,7 +493,7 @@ public class MultiStepIntentExtractionStrategy implements IntentExtractionStrate
 
         if (parsed == null || CollectionUtils.isEmpty(parsed.getMappings())) {
             return new ActionSelectionResult(
-                Map.of(),
+                unresolvedResolutions(actionIntents),
                 llmCalls,
                 elapsedMs,
                 response != null ? response.getProcessingTimeMs() : null,
@@ -440,7 +501,9 @@ public class MultiStepIntentExtractionStrategy implements IntentExtractionStrate
             );
         }
 
-        Map<Integer, String> out = new LinkedHashMap<>();
+        Map<Integer, ActionResolution> out = new LinkedHashMap<>(
+            unresolvedResolutions(actionIntents)
+        );
         for (ActionMapping mapping : parsed.getMappings()) {
             if (mapping == null) {
                 continue;
@@ -449,10 +512,41 @@ public class MultiStepIntentExtractionStrategy implements IntentExtractionStrate
             if (idx == null || idx < 0) {
                 continue;
             }
-            String normalizedSelected = normalizeActionName(mapping.getSelectedAction());
-            String canonical = normalizedSelected != null ? allowedByNormalizedName.get(normalizedSelected) : null;
-            if (canonical != null) {
-                out.put(idx, canonical);
+            ActionResolutionKind resolution = parseResolution(mapping.getResolution());
+            if (resolution == ActionResolutionKind.ACTION) {
+                String normalizedSelected = normalizeActionName(mapping.getSelectedAction());
+                String canonical = normalizedSelected != null
+                    ? allowedByNormalizedName.get(normalizedSelected)
+                    : null;
+                if (canonical != null) {
+                    out.put(idx, new ActionResolution(
+                        ActionResolutionKind.ACTION,
+                        canonical,
+                        mapping,
+                        null
+                    ));
+                }
+                continue;
+            }
+            if (resolution == ActionResolutionKind.INFORMATION) {
+                boolean permitted = Boolean.TRUE.equals(informationReplanPermissions.get(idx));
+                if (permitted && completeInformationReplan(mapping)) {
+                    out.put(idx, new ActionResolution(
+                        ActionResolutionKind.INFORMATION,
+                        null,
+                        mapping,
+                        null
+                    ));
+                } else {
+                    out.put(idx, new ActionResolution(
+                        ActionResolutionKind.UNRESOLVED,
+                        null,
+                        mapping,
+                        permitted
+                            ? IntentExtractionValidator.IssueCode.ACTION_SELECTION_UNRESOLVED
+                            : IntentExtractionValidator.IssueCode.SEMANTIC_RECOVERY_NOT_ALLOWED
+                    ));
+                }
             }
         }
         return new ActionSelectionResult(
@@ -683,6 +777,221 @@ public class MultiStepIntentExtractionStrategy implements IntentExtractionStrate
         return models.isEmpty() ? null : String.join(", ", models);
     }
 
+    private Map<Integer, Boolean> informationReplanPermissions(
+        List<ClassificationIntent> actionIntents,
+        ExtractionAttempt previousAttempt,
+        SemanticRecoveryPolicy policy
+    ) {
+        Map<Integer, Boolean> permissions = new LinkedHashMap<>();
+        if (actionIntents == null || actionIntents.isEmpty()) {
+            return permissions;
+        }
+        actionIntents.forEach(intent -> permissions.put(intent.getIndex(), false));
+        if (previousAttempt == null
+            || previousAttempt.getResponse() == null
+            || previousAttempt.getResponse().getIntents() == null
+            || previousAttempt.getValidationResult() == null
+            || previousAttempt.getValidationResult().issues() == null) {
+            return Collections.unmodifiableMap(permissions);
+        }
+
+        SemanticRecoveryPolicy effectivePolicy = policy != null
+            ? policy
+            : SemanticRecoveryPolicy.strictDefaults();
+        List<Intent> previousIntents = previousAttempt.getResponse().getIntents();
+        for (ClassificationIntent actionIntent : actionIntents) {
+            int previousIndex = previousIntentIndex(actionIntent, previousIntents);
+            if (previousIndex < 0) {
+                continue;
+            }
+            boolean permitted = previousAttempt.getValidationResult().issues().stream()
+                .filter(Objects::nonNull)
+                .filter(issue -> issue.severity() == IntentExtractionValidator.Severity.ERROR)
+                .filter(issue -> issue.intentIndex() == previousIndex)
+                .anyMatch(issue ->
+                    (issue.code() == IntentExtractionValidator.IssueCode.ACTION_UNREGISTERED
+                        && effectivePolicy.unknownAction()
+                            == OrchestrationProperties.UnknownActionRecovery.LLM_REPLAN_TO_INFORMATION)
+                        || (issue.code()
+                            == IntentExtractionValidator.IssueCode.ACTION_GROUNDING_VECTOR_SPACE_MISMATCH
+                            && effectivePolicy.actionDomainMismatch()
+                                == OrchestrationProperties.ActionDomainMismatchRecovery.DENY_AND_LLM_REPLAN)
+                );
+            permissions.put(actionIntent.getIndex(), permitted);
+        }
+        return Collections.unmodifiableMap(permissions);
+    }
+
+    private int previousIntentIndex(ClassificationIntent current,
+                                    List<Intent> previousIntents) {
+        if (current == null || previousIntents == null || previousIntents.isEmpty()) {
+            return -1;
+        }
+        if (StringUtils.hasText(current.getObligationId())) {
+            String obligationId = current.getObligationId().trim();
+            for (int index = 0; index < previousIntents.size(); index++) {
+                Intent previous = previousIntents.get(index);
+                if (previous != null
+                    && StringUtils.hasText(previous.getObligationId())
+                    && obligationId.equals(previous.getObligationId().trim())) {
+                    return index;
+                }
+            }
+        }
+        return current.getIndex() != null && current.getIndex() >= 0
+            && current.getIndex() < previousIntents.size()
+            ? current.getIndex()
+            : -1;
+    }
+
+    private Map<Integer, ActionResolution> unresolvedResolutions(
+        List<ClassificationIntent> actionIntents
+    ) {
+        if (actionIntents == null || actionIntents.isEmpty()) {
+            return Map.of();
+        }
+        Map<Integer, ActionResolution> resolutions = new LinkedHashMap<>();
+        for (ClassificationIntent intent : actionIntents) {
+            if (intent == null || intent.getIndex() == null || intent.getIndex() < 0) {
+                continue;
+            }
+            resolutions.put(
+                intent.getIndex(),
+                new ActionResolution(
+                    ActionResolutionKind.UNRESOLVED,
+                    null,
+                    null,
+                    IntentExtractionValidator.IssueCode.ACTION_SELECTION_UNRESOLVED
+                )
+            );
+        }
+        return Collections.unmodifiableMap(resolutions);
+    }
+
+    private List<Integer> unresolvedActionIntentIndexes(
+        ClassificationResponse classification,
+        Map<Integer, ActionResolution> resolutions
+    ) {
+        if (classification == null || classification.getIntents() == null) {
+            return List.of();
+        }
+        List<Integer> unresolved = new ArrayList<>();
+        for (int index = 0; index < classification.getIntents().size(); index++) {
+            ClassificationIntent intent = classification.getIntents().get(index);
+            if (intent == null || !IntentType.ACTION.name().equalsIgnoreCase(intent.getType())) {
+                continue;
+            }
+            ActionResolution resolution = resolutions != null ? resolutions.get(index) : null;
+            if (resolution == null || resolution.kind() == ActionResolutionKind.UNRESOLVED) {
+                unresolved.add(index);
+            }
+        }
+        return List.copyOf(unresolved);
+    }
+
+    private ExtractionAttempt unresolvedActionSelectionAttempt(
+        List<Integer> unresolvedIndexes,
+        Map<Integer, ActionResolution> resolutions,
+        int llmCalls,
+        Long processingTimeMs,
+        Long providerProcessingTimeMs,
+        String model
+    ) {
+        List<IntentExtractionValidator.ValidationIssue> issues = unresolvedIndexes.stream()
+            .map(index -> {
+                ActionResolution resolution = resolutions != null ? resolutions.get(index) : null;
+                IntentExtractionValidator.IssueCode code = resolution != null
+                    && resolution.issueCode() != null
+                    ? resolution.issueCode()
+                    : IntentExtractionValidator.IssueCode.ACTION_SELECTION_UNRESOLVED;
+                String message = code == IntentExtractionValidator.IssueCode.SEMANTIC_RECOVERY_NOT_ALLOWED
+                    ? "Model requested an action-to-information replan that server policy does not allow"
+                    : "Model could not resolve the action obligation to an exact registered action or permitted information replan";
+                return new IntentExtractionValidator.ValidationIssue(
+                    code,
+                    IntentExtractionValidator.Severity.ERROR,
+                    index,
+                    "actionResolution",
+                    message
+                );
+            })
+            .toList();
+        IntentExtractionValidator.ValidationResult validation =
+            new IntentExtractionValidator.ValidationResult(
+                false,
+                issues.stream().anyMatch(issue ->
+                    issue.code() == IntentExtractionValidator.IssueCode.SEMANTIC_RECOVERY_NOT_ALLOWED)
+                    ? IntentExtractionValidator.ErrorCategory.UNSAFE
+                    : IntentExtractionValidator.ErrorCategory.INCOMPLETE,
+                issues,
+                issues.stream().map(IntentExtractionValidator.ValidationIssue::message).toList(),
+                List.of()
+            );
+        return ExtractionAttempt.builder()
+            .success(false)
+            .validationResult(validation)
+            .strategyName(getStrategyName())
+            .errorMessage("Multi-step action resolution remained unresolved")
+            .llmCalls(llmCalls)
+            .processingTimeMs(processingTimeMs)
+            .providerProcessingTimeMs(providerProcessingTimeMs)
+            .model(model)
+            .build();
+    }
+
+    private Map<Integer, String> selectedActions(
+        Map<Integer, ActionResolution> resolutions
+    ) {
+        if (resolutions == null || resolutions.isEmpty()) {
+            return Map.of();
+        }
+        Map<Integer, String> selected = new LinkedHashMap<>();
+        resolutions.forEach((index, resolution) -> {
+            if (index != null
+                && resolution != null
+                && resolution.kind() == ActionResolutionKind.ACTION
+                && StringUtils.hasText(resolution.selectedAction())) {
+                selected.put(index, resolution.selectedAction());
+            }
+        });
+        return Collections.unmodifiableMap(selected);
+    }
+
+    private ActionResolutionKind parseResolution(String value) {
+        if (!StringUtils.hasText(value)) {
+            return ActionResolutionKind.UNRESOLVED;
+        }
+        try {
+            return ActionResolutionKind.valueOf(value.trim().toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException ex) {
+            return ActionResolutionKind.UNRESOLVED;
+        }
+    }
+
+    private boolean completeInformationReplan(ActionMapping mapping) {
+        if (mapping == null
+            || !StringUtils.hasText(mapping.getInformationIntent())
+            || mapping.getInformationRequiresRetrieval() == null
+            || mapping.getInformationRequiresGeneration() == null
+            || mapping.getInformationRequiresTargetResolution() == null
+            || mapping.getInformationNeedsAdvancedRAG() == null) {
+            return false;
+        }
+        if (Boolean.TRUE.equals(mapping.getInformationRequiresGeneration())
+            && mapping.getInformationResponseProfile() == null) {
+            return false;
+        }
+        if (Boolean.TRUE.equals(mapping.getInformationRequiresRetrieval())) {
+            boolean hasVectorSpace = StringUtils.hasText(mapping.getInformationVectorSpace());
+            boolean hasClarification = mapping.getInformationMissingInformation() != null
+                && !mapping.getInformationMissingInformation().isEmpty()
+                && StringUtils.hasText(mapping.getInformationClarificationQuestion());
+            return hasVectorSpace || hasClarification;
+        }
+        return Boolean.TRUE.equals(mapping.getInformationRequiresGeneration())
+            || StringUtils.hasText(mapping.getInformationDirectAnswer());
+    }
+
     private String buildSystemPrompt(
         OrchestrationContext context,
         IntentExtractionInput input,
@@ -790,7 +1099,7 @@ public class MultiStepIntentExtractionStrategy implements IntentExtractionStrate
 
     private MultiIntentResponse buildResponse(String query,
                                               ClassificationResponse classification,
-                                              Map<Integer, String> selectedActions,
+                                              Map<Integer, ActionResolution> actionResolutions,
                                               Map<Integer, Map<String, Object>> filledParams) {
         List<Intent> intents = new ArrayList<>(classification.getIntents().size());
         for (int i = 0; i < classification.getIntents().size(); i++) {
@@ -800,37 +1109,72 @@ public class MultiStepIntentExtractionStrategy implements IntentExtractionStrate
             }
 
             IntentType type = parseIntentType(classified.getType());
-            String intentName = StringUtils.hasText(classified.getIntent())
-                ? classified.getIntent()
-                : structuralIntentName(type);
+            ActionResolution actionResolution = actionResolutions != null
+                ? actionResolutions.get(i)
+                : null;
+            ActionMapping informationReplan = type == IntentType.ACTION
+                && actionResolution != null
+                && actionResolution.kind() == ActionResolutionKind.INFORMATION
+                ? actionResolution.modelDecision()
+                : null;
+            IntentType effectiveType = informationReplan != null
+                ? IntentType.INFORMATION
+                : type;
+            String intentName = informationReplan != null
+                ? informationReplan.getInformationIntent()
+                : StringUtils.hasText(classified.getIntent())
+                    ? classified.getIntent()
+                    : structuralIntentName(effectiveType);
 
             Intent.IntentBuilder builder = Intent.builder()
-                .type(type)
+                .type(effectiveType)
                 .intent(intentName)
                 .confidence(classified.getConfidence())
-                .requiresRetrieval(classified.getRequiresRetrieval())
-                .requiresGeneration(classified.getRequiresGeneration())
-                .responseProfile(classified.getResponseProfile())
-                .requiresTargetResolution(classified.getRequiresTargetResolution())
-                .directAnswer(StringUtils.hasText(classified.getDirectAnswer()) ? classified.getDirectAnswer() : null)
-                .generationInstructions(StringUtils.hasText(classified.getGenerationInstructions()) ? classified.getGenerationInstructions() : null)
-                .needsAdvancedRAG(classified.getNeedsAdvancedRAG())
-                .optimizedQuery(StringUtils.hasText(classified.getOptimizedQuery()) ? classified.getOptimizedQuery() : null)
-                .vectorSpace(StringUtils.hasText(classified.getVectorSpace()) ? classified.getVectorSpace() : null)
+                .requiresRetrieval(informationReplan != null
+                    ? informationReplan.getInformationRequiresRetrieval()
+                    : classified.getRequiresRetrieval())
+                .requiresGeneration(informationReplan != null
+                    ? informationReplan.getInformationRequiresGeneration()
+                    : classified.getRequiresGeneration())
+                .responseProfile(informationReplan != null
+                    ? informationReplan.getInformationResponseProfile()
+                    : classified.getResponseProfile())
+                .requiresTargetResolution(informationReplan != null
+                    ? informationReplan.getInformationRequiresTargetResolution()
+                    : classified.getRequiresTargetResolution())
+                .directAnswer(informationReplan != null
+                    ? textOrNull(informationReplan.getInformationDirectAnswer())
+                    : textOrNull(classified.getDirectAnswer()))
+                .generationInstructions(informationReplan != null
+                    ? textOrNull(informationReplan.getInformationGenerationInstructions())
+                    : textOrNull(classified.getGenerationInstructions()))
+                .needsAdvancedRAG(informationReplan != null
+                    ? informationReplan.getInformationNeedsAdvancedRAG()
+                    : classified.getNeedsAdvancedRAG())
+                .optimizedQuery(informationReplan != null
+                    ? textOrNull(informationReplan.getInformationOptimizedQuery())
+                    : textOrNull(classified.getOptimizedQuery()))
+                .vectorSpace(informationReplan != null
+                    ? textOrNull(informationReplan.getInformationVectorSpace())
+                    : textOrNull(classified.getVectorSpace()))
                 .obligationId(StringUtils.hasText(classified.getObligationId()) ? classified.getObligationId() : null)
                 .userGoal(StringUtils.hasText(classified.getUserGoal()) ? classified.getUserGoal() : null)
-                .missingInformation(classified.getMissingInformation() != null
-                    ? classified.getMissingInformation()
-                    : List.of())
-                .clarificationQuestion(StringUtils.hasText(classified.getClarificationQuestion())
-                    ? classified.getClarificationQuestion()
-                    : null)
-                .uncertaintyReason(StringUtils.hasText(classified.getUncertaintyReason())
-                    ? classified.getUncertaintyReason()
-                    : null);
+                .missingInformation(informationReplan != null
+                    ? safeStrings(informationReplan.getInformationMissingInformation())
+                    : classified.getMissingInformation() != null
+                        ? classified.getMissingInformation()
+                        : List.of())
+                .clarificationQuestion(informationReplan != null
+                    ? textOrNull(informationReplan.getInformationClarificationQuestion())
+                    : textOrNull(classified.getClarificationQuestion()))
+                .uncertaintyReason(informationReplan != null
+                    ? textOrNull(informationReplan.getInformationUncertaintyReason())
+                    : textOrNull(classified.getUncertaintyReason()));
 
-            if (type == IntentType.ACTION) {
-                String selected = selectedActions != null ? selectedActions.get(i) : null;
+            if (effectiveType == IntentType.ACTION) {
+                String selected = actionResolution != null
+                    ? actionResolution.selectedAction()
+                    : null;
                 if (StringUtils.hasText(selected)) {
                     builder.action(selected);
                     Map<String, Object> params = filledParams != null ? filledParams.get(i) : null;
@@ -857,9 +1201,26 @@ public class MultiStepIntentExtractionStrategy implements IntentExtractionStrate
             .build();
     }
 
+    private String textOrNull(String value) {
+        return StringUtils.hasText(value) ? value.trim() : null;
+    }
+
+    private List<String> safeStrings(List<String> values) {
+        if (values == null || values.isEmpty()) {
+            return List.of();
+        }
+        return values.stream().filter(StringUtils::hasText).map(String::trim).toList();
+    }
+
     private enum SemanticStage {
         CLASSIFICATION,
         ACTION_SELECTION
+    }
+
+    private enum ActionResolutionKind {
+        ACTION,
+        INFORMATION,
+        UNRESOLVED
     }
 
     private IntentType parseIntentType(String raw) {
@@ -953,7 +1314,21 @@ public class MultiStepIntentExtractionStrategy implements IntentExtractionStrate
     @JsonIgnoreProperties(ignoreUnknown = true)
     static class ActionMapping {
         private Integer intentIndex;
+        private String resolution;
         private String selectedAction;
+        private String informationIntent;
+        private Boolean informationRequiresRetrieval;
+        private Boolean informationRequiresGeneration;
+        private ResponseGenerationProfile informationResponseProfile;
+        private Boolean informationRequiresTargetResolution;
+        private String informationDirectAnswer;
+        private String informationGenerationInstructions;
+        private Boolean informationNeedsAdvancedRAG;
+        private String informationOptimizedQuery;
+        private String informationVectorSpace;
+        private List<String> informationMissingInformation = new ArrayList<>();
+        private String informationClarificationQuestion;
+        private String informationUncertaintyReason;
     }
 
     @Data

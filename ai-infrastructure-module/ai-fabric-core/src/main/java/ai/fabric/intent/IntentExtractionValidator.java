@@ -433,6 +433,7 @@ public class IntentExtractionValidator {
         ACTION_MISSING_NAME,
         ACTION_REGISTRY_UNAVAILABLE,
         ACTION_UNREGISTERED,
+        ACTION_SELECTION_UNRESOLVED,
         ACTION_REQUIRED_PARAM_MISSING,
         ACTION_GROUNDING_VECTOR_SPACE_MISMATCH,
         SEMANTIC_RECOVERY_NOT_ALLOWED,
@@ -522,6 +523,7 @@ public class IntentExtractionValidator {
         }
         if (hasIssue(issues, Set.of(
             IssueCode.ACTION_REQUIRED_PARAM_MISSING,
+            IssueCode.ACTION_SELECTION_UNRESOLVED,
             IssueCode.ACTION_GROUNDING_VECTOR_SPACE_MISMATCH,
             IssueCode.RELATIONSHIP_QUERY_HINTED_TAIL_MISSING,
             IssueCode.INFORMATION_MISSING_VECTOR_SPACE,

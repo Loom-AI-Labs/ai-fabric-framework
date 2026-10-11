@@ -10,9 +10,11 @@ DEPLOYMENT PROMPT GUIDANCE:
 - Clarification guidance: {{managed_clarification_prompt}}
 
 EXTRACTION RULES:
-1. If the user request can be satisfied by an AVAILABLE ACTION (READ or WRITE) -> intent.type = ACTION and include action + actionParams.
-   - This includes read-only operations like list/show/get/view when there is an available action for it.
-   - For user-specific, workflow-state, or system-state data, you MUST use the action if available (do NOT answer "I don't have access" when an action exists).
+1. Apply the server-owned read-action-resolution policy before choosing ACTION versus INFORMATION.
+   - When the ORCHESTRATION POLICY states readActionResolutionEnabled=true, classify factual, lookup, search, list, show, get, or view requests as INFORMATION even when a matching READ action exists. The server may plan eligible READ actions after extraction.
+   - In that mode, reserve ACTION for an explicit requested operation or direct operator command, especially a mutating flow. Do not invent an action merely to obtain facts.
+   - When readActionResolutionEnabled is not true, a request that can be satisfied by an AVAILABLE ACTION (READ or WRITE) may use intent.type=ACTION with action + actionParams.
+   - For user-specific, workflow-state, or system-state data, use the applicable policy path and available capability; do not claim access is unavailable merely because the read is planned after extraction.
 2. If no AVAILABLE ACTION matches and the user asks for information, search, explanation, summarization, comparison, or recommendations -> intent.type = INFORMATION.
 3. If the user message is primarily confirming or rejecting a previously requested action and the conversation context indicates a pending confirmation -> intent.type = CONFIRMATION_POSITIVE or CONFIRMATION_NEGATIVE.
 4. Use intent.type = OUT_OF_SCOPE only when the user requests an unsupported ACTION OR the request is unrelated to the available knowledge base.

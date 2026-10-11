@@ -3,6 +3,8 @@ package ai.fabric.intent;
 import ai.fabric.dto.Intent;
 import ai.fabric.dto.IntentType;
 import ai.fabric.dto.MultiIntentResponse;
+import ai.fabric.intent.action.AIActionHandler;
+import ai.fabric.intent.action.AIActionMetaData;
 import ai.fabric.intent.action.AIActionRegistry;
 import org.junit.jupiter.api.Test;
 
@@ -164,6 +166,38 @@ class IntentExtractionValidatorTest {
         assertThat(result.issues())
             .extracting(IntentExtractionValidator.ValidationIssue::code)
             .contains(IntentExtractionValidator.IssueCode.INTENT_DUPLICATE_OBLIGATION_ID);
+    }
+
+    @Test
+    void readActionWithoutDeclaredGroundingVectorSpacesRemainsValid() {
+        AIActionRegistry registry = mock(AIActionRegistry.class);
+        AIActionHandler handler = mock(AIActionHandler.class);
+        AIActionMetaData metadata = AIActionMetaData.builder()
+            .name("read_live_record")
+            .description("Read a live operational entity")
+            .build();
+        when(registry.findMetadata("read_live_record")).thenReturn(Optional.of(metadata));
+        when(registry.findHandler("read_live_record")).thenReturn(Optional.of(handler));
+        IntentExtractionValidator validator = new IntentExtractionValidator(registry);
+
+        IntentExtractionValidator.ValidationResult result = validator.validate(
+            MultiIntentResponse.builder()
+                .intents(List.of(Intent.builder()
+                    .type(IntentType.ACTION)
+                    .intent("read_live_record")
+                    .action("read_live_record")
+                    .vectorSpace("document")
+                    .requiresRetrieval(false)
+                    .requiresGeneration(false)
+                    .requiresTargetResolution(false)
+                    .build()))
+                .build()
+        );
+
+        assertThat(result.valid()).isTrue();
+        assertThat(result.issues())
+            .extracting(IntentExtractionValidator.ValidationIssue::code)
+            .doesNotContain(IntentExtractionValidator.IssueCode.ACTION_GROUNDING_VECTOR_SPACE_MISMATCH);
     }
 
     private Intent completeInformationIntent(String obligationId, String name) {

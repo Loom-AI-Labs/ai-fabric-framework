@@ -38,7 +38,8 @@ final class MultiStepIntentExtractionSchemaSupport {
 
     static String actionSelectionSchema(ObjectMapper objectMapper,
                                         Collection<Integer> intentIndexes,
-                                        Collection<String> allowedActions) {
+                                        Collection<String> allowedActions,
+                                        boolean informationReplanAllowed) {
         ObjectMapper mapper = Objects.requireNonNull(objectMapper, "objectMapper is required");
         List<Integer> indexes = intentIndexes == null
             ? List.of()
@@ -51,7 +52,7 @@ final class MultiStepIntentExtractionSchemaSupport {
         if (indexes.isEmpty()) {
             throw new IllegalArgumentException("intentIndexes must not be empty");
         }
-        if (actions.isEmpty()) {
+        if (actions.isEmpty() && !informationReplanAllowed) {
             throw new IllegalArgumentException("allowedActions must not be empty");
         }
 
@@ -75,7 +76,34 @@ final class MultiStepIntentExtractionSchemaSupport {
         actions.forEach(actionValues::add);
         actionValues.addNull();
 
-        mapping.putArray("required").add("intentIndex").add("selectedAction");
+        List<String> resolutions = actions.isEmpty()
+            ? List.of("INFORMATION", "UNRESOLVED")
+            : informationReplanAllowed
+                ? List.of("ACTION", "INFORMATION", "UNRESOLVED")
+                : List.of("ACTION", "UNRESOLVED");
+        mappingProperties.set("resolution", enumSchema(mapper, resolutions, false));
+        mappingProperties.set("informationIntent", nullableStringSchema(mapper));
+        mappingProperties.set("informationRequiresRetrieval", nullableBooleanSchema(mapper));
+        mappingProperties.set("informationRequiresGeneration", nullableBooleanSchema(mapper));
+        mappingProperties.set("informationResponseProfile", enumSchema(
+            mapper,
+            List.of("CONCISE", "STANDARD", "DEEP"),
+            true
+        ));
+        mappingProperties.set("informationRequiresTargetResolution", nullableBooleanSchema(mapper));
+        mappingProperties.set("informationDirectAnswer", nullableStringSchema(mapper));
+        mappingProperties.set("informationGenerationInstructions", nullableStringSchema(mapper));
+        mappingProperties.set("informationNeedsAdvancedRAG", nullableBooleanSchema(mapper));
+        mappingProperties.set("informationOptimizedQuery", nullableStringSchema(mapper));
+        mappingProperties.set("informationVectorSpace", nullableStringSchema(mapper));
+        ObjectNode missingInformation = mappingProperties.putObject("informationMissingInformation");
+        missingInformation.put("type", "array");
+        missingInformation.set("items", stringSchema(mapper));
+        mappingProperties.set("informationClarificationQuestion", nullableStringSchema(mapper));
+        mappingProperties.set("informationUncertaintyReason", nullableStringSchema(mapper));
+
+        ArrayNode required = mapping.putArray("required");
+        mappingProperties.fieldNames().forEachRemaining(required::add);
         mappings.set("items", mapping);
         root.putArray("required").add("mappings");
         return write(mapper, root);
@@ -97,8 +125,8 @@ final class MultiStepIntentExtractionSchemaSupport {
             ),
             false
         ));
-        properties.set("intent", nullableStringSchema(mapper));
-        properties.set("userGoal", nullableStringSchema(mapper));
+        properties.set("intent", stringSchema(mapper));
+        properties.set("userGoal", stringSchema(mapper));
         properties.set("actionHint", nullableStringSchema(mapper));
 
         ObjectNode confidence = properties.putObject("confidence");
@@ -153,6 +181,12 @@ final class MultiStepIntentExtractionSchemaSupport {
     private static ObjectNode booleanSchema(ObjectMapper mapper) {
         ObjectNode schema = mapper.createObjectNode();
         schema.put("type", "boolean");
+        return schema;
+    }
+
+    private static ObjectNode nullableBooleanSchema(ObjectMapper mapper) {
+        ObjectNode schema = mapper.createObjectNode();
+        schema.putArray("type").add("boolean").add("null");
         return schema;
     }
 
