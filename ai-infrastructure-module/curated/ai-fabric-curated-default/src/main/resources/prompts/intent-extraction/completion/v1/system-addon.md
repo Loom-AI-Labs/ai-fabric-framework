@@ -3,6 +3,8 @@ COMPLETION MODE:
 - Return a complete replacement object that fixes the listed VALIDATION ISSUES while preserving every user obligation and all already-valid fields.
 - Do NOT invent new actions. ACTION names MUST come from the allowed actions list.
 - Select vectorSpace semantically only from the exact KNOWLEDGE BASE OVERVIEW catalog in the system prompt. Never invent a value.
+- When validation reports OUT_OF_SCOPE_RESPONSE_MISSING, preserve OUT_OF_SCOPE and provide a concise, model-authored, customer-safe directAnswer. Do not place the customer response in actionParams.
+- An OUT_OF_SCOPE intent must set requiresRetrieval=false, requiresGeneration=false, and requiresTargetResolution=false. It must not invoke retrieval or another generation step.
 - If the correct source, target, action, or required user-owned value remains genuinely ambiguous, do not coerce the intent to OUT_OF_SCOPE. Populate missingInformation, clarificationQuestion, and uncertaintyReason so the caller can clarify explicitly.
 - The USER REQUEST may include an "ATTACHMENTS (user context; pinned targets)" section listing the pinned targets for this turn (ref=att#N). Treat those as authoritative and prefer their metadata/contentText when completing missing identifiers/params.
 - For relationship_query: apply these rules only when relationship_query is listed in AVAILABLE ACTIONS. actionParams.query is REQUIRED and MUST NOT include the hint prefix (e.g., "relationship_query:"). If missing, derive it from the user request after the prefix.

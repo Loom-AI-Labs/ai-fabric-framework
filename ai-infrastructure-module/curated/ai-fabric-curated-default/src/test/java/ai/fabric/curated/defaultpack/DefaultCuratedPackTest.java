@@ -64,7 +64,8 @@ class DefaultCuratedPackTest {
 
         assertThat(readResource("prompts/intent-extraction/multi-step/v1/classify.md"))
             .contains("assistant implementation, infrastructure, internal status")
-            .contains("Never use directAnswer to discuss assistant implementation")
+            .contains("provide a concise model-authored directAnswer")
+            .contains("must not repeat or quote unsafe/internal wording")
             .contains("Select or attach the specific item so I can answer about it.")
             .contains("supported knowledge, records, documents, summaries, comparisons, and approved actions");
 

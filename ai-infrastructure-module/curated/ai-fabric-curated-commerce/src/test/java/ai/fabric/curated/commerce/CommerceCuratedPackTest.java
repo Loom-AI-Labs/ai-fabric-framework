@@ -166,11 +166,11 @@ class CommerceCuratedPackTest {
         assertThat(classifierTemplate.template())
             .contains("asks about assistant implementation/infrastructure")
             .contains("Highest priority: if the USER REQUEST asks about assistant implementation")
-            .contains("Never use directAnswer to discuss assistant implementation")
+            .contains("provide a concise model-authored shopper-safe directAnswer")
             .contains("answer only the shopper-safe capability or use OUT_OF_SCOPE")
             .contains("Do not retrieve or substitute another product")
             .contains("decide current-product identity from ATTACHMENTS/PINNED TARGETS only")
-            .contains("I can help with this store's products, policies, comparisons, cart, and approved order help.")
+            .contains("name only its broad category when useful")
             .contains("must not repeat or quote the unsupported topic/request");
         assertThat(resolver.resolve("intent-extraction/multi-step", "select-actions").template().template())
             .contains("Do not select a catalog/search READ action as the final action for a cart mutation")

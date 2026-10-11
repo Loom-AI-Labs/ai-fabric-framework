@@ -148,8 +148,10 @@ public class IntentHandlingStep implements PipelineStep {
     private static final String ERROR_MSG_NO_HANDLER = "No action handler registered for action '";
     private static final String ERROR_MSG_ACTION_NOT_PERMITTED_ANON = "Action not permitted for anonymous users.";
     private static final String ERROR_MSG_ACTION_NOT_PERMITTED_USER = "Action not permitted for this user.";
-    private static final String MSG_OUT_OF_SCOPE =
-        "I can help with requests supported by this application's configured knowledge and actions.";
+    private static final String ERROR_CODE_OUT_OF_SCOPE_RESPONSE_MISSING =
+        "OUT_OF_SCOPE_RESPONSE_MISSING";
+    private static final String ERROR_MSG_OUT_OF_SCOPE_RESPONSE_MISSING =
+        "Unable to produce a safe response for this request.";
     private static final String MSG_ALL_PROCESSED = "All intents processed successfully.";
     private static final String MSG_SOME_FAILED = "Some intents failed. See results for details.";
     
@@ -2249,30 +2251,20 @@ public class IntentHandlingStep implements PipelineStep {
     }
 
     private OrchestrationResult handleOutOfScope(Intent intent) {
-        Map<String, Object> data = new LinkedHashMap<>();
-        if (!CollectionUtils.isEmpty(intent.getActionParams())) {
-            data.put(DATA_KEY_DETAILS, intent.getActionParams());
+        if (intent == null || !StringUtils.hasText(intent.getDirectAnswer())) {
+            return OrchestrationResult.builder()
+                .type(OrchestrationResultType.ERROR)
+                .success(false)
+                .message(ERROR_MSG_OUT_OF_SCOPE_RESPONSE_MISSING)
+                .errorCode(ERROR_CODE_OUT_OF_SCOPE_RESPONSE_MISSING)
+                .build();
         }
-        String userMessage = outOfScopeUserMessage(intent);
         return OrchestrationResult.builder()
             .type(OrchestrationResultType.OUT_OF_SCOPE)
             .success(true)
-            .message(userMessage)
-            .data(Collections.unmodifiableMap(data))
+            .message(intent.getDirectAnswer().trim())
             .nextSteps(extractNextSteps(intent))
             .build();
-    }
-
-    private String outOfScopeUserMessage(Intent intent) {
-        if (intent != null && intent.getActionParams() != null && !intent.getActionParams().isEmpty()) {
-            for (String key : List.of("userMessage", "message", "answer", "response")) {
-                Object value = intent.getActionParams().get(key);
-                if (value != null && StringUtils.hasText(value.toString())) {
-                    return value.toString().trim();
-                }
-            }
-        }
-        return MSG_OUT_OF_SCOPE;
     }
 
     private OrchestrationResult handleCompoundIntents(MultiIntentResponse response, OrchestrationContext context, PipelineContext pipelineContext) {

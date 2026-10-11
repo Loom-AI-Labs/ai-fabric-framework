@@ -264,6 +264,46 @@ class MultiStepIntentExtractionStrategyTest {
     }
 
     @Test
+    void shouldPreserveModelAuthoredOutOfScopeResponse() {
+        when(validator.validate(any())).thenReturn(
+            new IntentExtractionValidator.ValidationResult(true, IntentExtractionValidator.ErrorCategory.NONE, List.of(), List.of())
+        );
+        when(aiCoreService.generateContent(any(AIGenerationRequest.class), eq(LlmPurpose.ORCHESTRATION)))
+            .thenReturn(AIGenerationResponse.builder().content("""
+                {
+                  "intents": [{
+                    "type": "OUT_OF_SCOPE",
+                    "intent": "unsupported_order_operation",
+                    "requiresRetrieval": false,
+                    "requiresGeneration": false,
+                    "requiresTargetResolution": false,
+                    "directAnswer": "I can help with approved order support, but I cannot make that change here."
+                  }]
+                }
+                """).build());
+
+        MultiStepIntentExtractionStrategy strategy = new MultiStepIntentExtractionStrategy(
+            aiCoreService,
+            actionHandlerRegistry,
+            jsonSupport,
+            validator,
+            promptRenderer,
+            promptTemplateResolver
+        );
+
+        ExtractionAttempt attempt = strategy.attemptExtract(
+            input("Change my order"),
+            OrchestrationContext.forUser("user-out-of-scope")
+        );
+
+        assertThat(attempt.isSuccess()).isTrue();
+        assertThat(attempt.getResponse().getIntents().getFirst().getType()).isEqualTo(IntentType.OUT_OF_SCOPE);
+        assertThat(attempt.getResponse().getIntents().getFirst().getDirectAnswer())
+            .isEqualTo("I can help with approved order support, but I cannot make that change here.");
+        verify(aiCoreService).generateContent(any(AIGenerationRequest.class), eq(LlmPurpose.ORCHESTRATION));
+    }
+
+    @Test
     void shouldExposeAndPreserveOptionalPresentationParamsDuringFill() {
         AIActionMetaData action = AIActionMetaData.builder()
             .name("commerce_update_cart")

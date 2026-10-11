@@ -221,6 +221,10 @@ class RAGIntegrationFlowTest {
                     .type(IntentType.OUT_OF_SCOPE)
                     .intent("out_of_scope")
                     .confidence(0.6)
+                    .requiresRetrieval(false)
+                    .requiresGeneration(false)
+                    .requiresTargetResolution(false)
+                    .directAnswer("I can help with requests supported by this application.")
                     .build()))
                 .build());
 

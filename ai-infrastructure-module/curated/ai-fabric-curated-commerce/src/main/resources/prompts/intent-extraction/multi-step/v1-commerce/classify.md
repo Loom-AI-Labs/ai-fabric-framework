@@ -10,8 +10,7 @@ Output MUST be valid JSON and MUST match the following schema:
       "requiresRetrieval": true,
       "requiresGeneration": false,
       "requiresTargetResolution": false,
-      "directAnswer": "required when type=INFORMATION and requiresRetrieval=false (short reply)",
-      "actionParams": {"userMessage": "required when type=OUT_OF_SCOPE; shopper-safe 1 sentence without implementation terms"},
+      "directAnswer": "required for OUT_OF_SCOPE and when INFORMATION requiresRetrieval=false (shopper-safe short reply)",
       "generationInstructions": "optional follow-up instruction when requiresGeneration is true",
       "needsAdvancedRAG": false,
       "optimizedQuery": "optional optimized query",
@@ -49,9 +48,11 @@ Rules:
   - This includes implicit target-dependent follow-ups like: "any negative reviews on them?", "return policy for this", "alternatives to these", even if the user does not include explicit identifiers.
 - Optional: set metadata.retrievalQueryHint with short keywords/identifiers (max 200 chars) that improve retrieval. Never include emails/phones/addresses.
 - Use OUT_OF_SCOPE only when the request is clearly unrelated to the store assistant, asks for an unsupported action, asks for professional/legal/medical/financial advice, asks whether a product can treat, cure, diagnose, or prevent a health condition, or asks about assistant implementation/infrastructure such as runtime behavior, tool status, vectorization, providers, platform internals, logs, deployments, or secrets.
-- When using OUT_OF_SCOPE, set actionParams.userMessage exactly to: "I can help with this store's products, policies, comparisons, cart, and approved order help."
-- OUT_OF_SCOPE userMessage must not repeat or quote the unsupported topic/request, and must not mention implementation terms, internal systems, retrieval, vector spaces, providers, or knowledge bases.
-- Never use directAnswer to discuss assistant implementation, infrastructure, internal status, tools, runtime, providers, platform systems, logs, deployments, or secrets.
+- When using OUT_OF_SCOPE, set requiresRetrieval=false, requiresGeneration=false, and requiresTargetResolution=false, and provide a concise model-authored shopper-safe directAnswer.
+- For an unsupported user-facing store operation, name only its broad category when useful (for example order help) and explain the approved help or handoff that is available. Never claim that an order, refund, or other action was found or changed.
+- For professional-advice, secret, or internal/infrastructure requests, directAnswer must not repeat or quote the unsupported topic/request. Redirect to this store's products, policies, comparisons, cart, or approved order help.
+- OUT_OF_SCOPE directAnswer must not mention implementation terms, internal systems, retrieval, vector spaces, providers, or knowledge bases.
+- Never use directAnswer to claim assistant implementation, infrastructure, internal status, tools, runtime, providers, platform systems, logs, deployments, or secrets are available, unavailable, working, or broken.
 - If a request mixes internal/infrastructure wording with a valid shopper capability question, answer only the shopper-safe capability or use OUT_OF_SCOPE; do not say the assistant, internal systems, tools, or runtimes are operational, working, broken, available, unavailable, enabled, or disabled.
 - For shopper-safe capability direct answers, use plain store language such as product search, product details, policy help, cart help, comparisons, and approved order help.
 - If the shopper asks about "this product", "this item", or "it", decide current-product identity from ATTACHMENTS/PINNED TARGETS only. If those sections do not include "Current product", productTitle, productHandle, productId, or a concrete attached product identifier, use INFORMATION with requiresRetrieval=false and directAnswer: "Open a product page or select a product so I can answer about that item." Do not retrieve or substitute another product.

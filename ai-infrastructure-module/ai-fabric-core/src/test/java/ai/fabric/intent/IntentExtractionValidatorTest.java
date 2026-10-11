@@ -78,4 +78,72 @@ class IntentExtractionValidatorTest {
         assertThat(result.errorCategory()).isEqualTo(IntentExtractionValidator.ErrorCategory.STRUCTURAL);
         assertThat(result.errors()).isNotEmpty();
     }
+
+    @Test
+    void shouldAcceptCompleteOutOfScopeIntent() {
+        AIActionRegistry registry = mock(AIActionRegistry.class);
+        IntentExtractionValidator validator = new IntentExtractionValidator(registry);
+
+        MultiIntentResponse response = MultiIntentResponse.builder()
+            .intents(List.of(Intent.builder()
+                .type(IntentType.OUT_OF_SCOPE)
+                .requiresRetrieval(false)
+                .requiresGeneration(false)
+                .requiresTargetResolution(false)
+                .directAnswer("I can help with approved account and policy requests.")
+                .build()))
+            .build();
+
+        IntentExtractionValidator.ValidationResult result = validator.validate(response);
+
+        assertThat(result.valid()).isTrue();
+        assertThat(result.errorCategory()).isEqualTo(IntentExtractionValidator.ErrorCategory.NONE);
+    }
+
+    @Test
+    void shouldRequireModelAuthoredOutOfScopeResponse() {
+        AIActionRegistry registry = mock(AIActionRegistry.class);
+        IntentExtractionValidator validator = new IntentExtractionValidator(registry);
+
+        MultiIntentResponse response = MultiIntentResponse.builder()
+            .intents(List.of(Intent.builder()
+                .type(IntentType.OUT_OF_SCOPE)
+                .requiresRetrieval(false)
+                .requiresGeneration(false)
+                .requiresTargetResolution(false)
+                .build()))
+            .build();
+
+        IntentExtractionValidator.ValidationResult result = validator.validate(response);
+
+        assertThat(result.valid()).isFalse();
+        assertThat(result.errorCategory()).isEqualTo(IntentExtractionValidator.ErrorCategory.INCOMPLETE);
+        assertThat(result.issues())
+            .extracting(IntentExtractionValidator.ValidationIssue::code)
+            .contains(IntentExtractionValidator.IssueCode.OUT_OF_SCOPE_RESPONSE_MISSING);
+    }
+
+    @Test
+    void shouldRejectOutOfScopeExecutionRequest() {
+        AIActionRegistry registry = mock(AIActionRegistry.class);
+        IntentExtractionValidator validator = new IntentExtractionValidator(registry);
+
+        MultiIntentResponse response = MultiIntentResponse.builder()
+            .intents(List.of(Intent.builder()
+                .type(IntentType.OUT_OF_SCOPE)
+                .requiresRetrieval(true)
+                .requiresGeneration(false)
+                .requiresTargetResolution(false)
+                .directAnswer("I can help with approved account and policy requests.")
+                .build()))
+            .build();
+
+        IntentExtractionValidator.ValidationResult result = validator.validate(response);
+
+        assertThat(result.valid()).isFalse();
+        assertThat(result.errorCategory()).isEqualTo(IntentExtractionValidator.ErrorCategory.INCOMPLETE);
+        assertThat(result.issues())
+            .extracting(IntentExtractionValidator.ValidationIssue::code)
+            .contains(IntentExtractionValidator.IssueCode.OUT_OF_SCOPE_EXECUTION_NOT_ALLOWED);
+    }
 }

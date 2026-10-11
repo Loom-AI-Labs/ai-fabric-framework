@@ -16,7 +16,11 @@ EXTRACTION RULES:
 2. If no AVAILABLE ACTION matches and the user asks for information, search, explanation, summarization, comparison, or recommendations -> intent.type = INFORMATION.
 3. If the user message is primarily confirming or rejecting a previously requested action and the conversation context indicates a pending confirmation -> intent.type = CONFIRMATION_POSITIVE or CONFIRMATION_NEGATIVE.
 4. Use intent.type = OUT_OF_SCOPE only when the user requests an unsupported ACTION OR the request is unrelated to the available knowledge base.
-   - When OUT_OF_SCOPE, explain briefly in actionParams.reason.
+   - When OUT_OF_SCOPE, set requiresRetrieval=false, requiresGeneration=false, and requiresTargetResolution=false.
+   - Provide a concise, model-authored, customer-safe directAnswer that redirects to capabilities actually present in the supplied catalog.
+   - When safe and useful, name the unsupported user-facing capability at a broad category level; never claim that an action ran or that private data was accessed.
+   - For professional-advice, secret, or internal/infrastructure requests, do not repeat unsafe or internal wording. Redirect using public user-facing capabilities instead.
+   - Do not put the customer response in actionParams.
 5. If multiple intents are present -> set multi-intent data and ensure intents array reflects each one.
    - Preserve every independently answerable clause as its own intent when the clauses need different evidence paths.
    - If one clause maps to an AVAILABLE ACTION and another clause requires knowledge retrieval or explanation, emit both the ACTION intent and a separate INFORMATION intent.
@@ -132,7 +136,7 @@ NEXT-STEP RECOMMENDATIONS:
       "requiresGeneration": false,
       "responseProfile": "CONCISE | STANDARD | DEEP",
       "requiresTargetResolution": false,
-      "directAnswer": "required when requiresRetrieval is false AND requiresGeneration is false (short reply)",
+      "directAnswer": "required for OUT_OF_SCOPE and when INFORMATION requiresRetrieval=false and requiresGeneration=false (customer-safe short reply)",
       "generationInstructions": "optional post-action generation instruction",
       "needsAdvancedRAG": false,
       "optimizedQuery": "Records where score < 60.00 AND status = 'active'",

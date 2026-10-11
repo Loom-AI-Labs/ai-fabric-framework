@@ -539,10 +539,7 @@ class RAGOrchestratorTest {
     void shouldHandleOutOfScopeIntent() {
         Intent intent = Intent.builder()
             .type(IntentType.OUT_OF_SCOPE)
-            .actionParams(Map.of(
-                "reason", "Unsupported domain",
-                "userMessage", "I can help with supported product and policy questions."
-            ))
+            .directAnswer("I can help with supported product and policy questions.")
             .build();
         when(intentQueryExtractor.extract(any(IntentExtractionInput.class), any(OrchestrationContext.class)))
             .thenReturn(MultiIntentResponse.builder().intents(List.of(intent)).build());
@@ -555,10 +552,10 @@ class RAGOrchestratorTest {
     }
 
     @Test
-    void shouldUseSafeDefaultForOutOfScopeWhenModelOnlyProvidesDirectAnswer() {
+    void shouldUseModelAuthoredDirectAnswerForOutOfScope() {
         Intent intent = Intent.builder()
             .type(IntentType.OUT_OF_SCOPE)
-            .directAnswer("I cannot provide legal advice.")
+            .directAnswer("I can help with supported product and policy questions.")
             .build();
         when(intentQueryExtractor.extract(any(IntentExtractionInput.class), any(OrchestrationContext.class)))
             .thenReturn(MultiIntentResponse.builder().intents(List.of(intent)).build());
@@ -567,11 +564,23 @@ class RAGOrchestratorTest {
 
         assertThat(result.getType()).isEqualTo(OrchestrationResultType.OUT_OF_SCOPE);
         assertThat(result.isSuccess()).isTrue();
-        assertThat(result.getMessage())
-            .isEqualTo(
-                "I can help with requests supported by this application's configured knowledge and actions."
-            );
-        assertThat(result.getMessage()).doesNotContain("legal advice");
+        assertThat(result.getMessage()).isEqualTo("I can help with supported product and policy questions.");
+    }
+
+    @Test
+    void shouldFailHonestlyWhenOutOfScopeResponseIsMissing() {
+        Intent intent = Intent.builder()
+            .type(IntentType.OUT_OF_SCOPE)
+            .build();
+        when(intentQueryExtractor.extract(any(IntentExtractionInput.class), any(OrchestrationContext.class)))
+            .thenReturn(MultiIntentResponse.builder().intents(List.of(intent)).build());
+
+        OrchestrationResult result = orchestrator.orchestrate("Unsupported request", ai.fabric.intent.orchestration.OrchestrationContext.forUser("user"));
+
+        assertThat(result.getType()).isEqualTo(OrchestrationResultType.ERROR);
+        assertThat(result.isSuccess()).isFalse();
+        assertThat(result.getErrorCode()).isEqualTo("OUT_OF_SCOPE_RESPONSE_MISSING");
+        assertThat(result.getMessage()).isEqualTo("Unable to produce a safe response for this request.");
     }
 
     @Test

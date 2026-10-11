@@ -136,6 +136,31 @@ public class IntentExtractionValidator {
             validateActionIntent(intent, index, issues, originalQuery);
         } else if (intent.getType() == IntentType.INFORMATION) {
             validateInformationIntent(intent, index, issues);
+        } else if (intent.getType() == IntentType.OUT_OF_SCOPE) {
+            validateOutOfScopeIntent(intent, index, issues);
+        }
+    }
+
+    private void validateOutOfScopeIntent(Intent intent,
+                                          int index,
+                                          List<ValidationIssue> issues) {
+        if (!StringUtils.hasText(intent.getDirectAnswer())) {
+            issues.add(ValidationIssue.error(
+                IssueCode.OUT_OF_SCOPE_RESPONSE_MISSING,
+                index,
+                "directAnswer",
+                "OUT_OF_SCOPE intent is missing a model-authored customer-safe directAnswer"
+            ));
+        }
+        if (Boolean.TRUE.equals(intent.getRequiresRetrieval())
+            || Boolean.TRUE.equals(intent.getRequiresGeneration())
+            || Boolean.TRUE.equals(intent.getRequiresTargetResolution())) {
+            issues.add(ValidationIssue.error(
+                IssueCode.OUT_OF_SCOPE_EXECUTION_NOT_ALLOWED,
+                index,
+                "requiresRetrieval",
+                "OUT_OF_SCOPE intent cannot request retrieval, generation, or target resolution"
+            ));
         }
     }
 
@@ -390,7 +415,9 @@ public class IntentExtractionValidator {
         INFORMATION_DIRECT_ANSWER_MISSING,
         INFORMATION_MISSING_VECTOR_SPACE,
         INFORMATION_INVALID_VECTOR_SPACE,
-        INFORMATION_MISSING_ADVANCED_RAG_DECISION
+        INFORMATION_MISSING_ADVANCED_RAG_DECISION,
+        OUT_OF_SCOPE_RESPONSE_MISSING,
+        OUT_OF_SCOPE_EXECUTION_NOT_ALLOWED
     }
 
     public record ValidationIssue(
@@ -475,6 +502,8 @@ public class IntentExtractionValidator {
             IssueCode.INFORMATION_MISSING_VECTOR_SPACE,
             IssueCode.INFORMATION_INVALID_VECTOR_SPACE,
             IssueCode.INFORMATION_MISSING_ADVANCED_RAG_DECISION,
+            IssueCode.OUT_OF_SCOPE_RESPONSE_MISSING,
+            IssueCode.OUT_OF_SCOPE_EXECUTION_NOT_ALLOWED,
             IssueCode.INTENT_MISSING_RETRIEVAL_DECISION,
             IssueCode.INTENT_MISSING_GENERATION_DECISION,
             IssueCode.INTENT_MISSING_TARGET_DECISION,

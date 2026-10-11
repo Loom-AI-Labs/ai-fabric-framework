@@ -13,8 +13,7 @@ Output MUST be valid JSON and MUST match the following schema:
       "requiresGeneration": false,
       "responseProfile": "CONCISE | STANDARD | DEEP",
       "requiresTargetResolution": false,
-      "directAnswer": "required when type=INFORMATION and requiresRetrieval=false (short reply)",
-      "actionParams": {"userMessage": "required when type=OUT_OF_SCOPE; user-safe 1 sentence without implementation terms"},
+      "directAnswer": "required for OUT_OF_SCOPE and when INFORMATION requiresRetrieval=false (customer-safe short reply)",
       "generationInstructions": "optional follow-up instruction when requiresGeneration is true",
       "needsAdvancedRAG": false,
       "optimizedQuery": "optional optimized query",
@@ -66,9 +65,10 @@ Rules:
   - This includes implicit target-dependent follow-ups like: "any negative reviews on them?", "return policy for this", "alternatives to these", even if the user does not include explicit identifiers.
 - Optional: set metadata.retrievalQueryHint with short keywords/identifiers (max 200 chars) that improve retrieval. Never include sensitive personal contact details.
 - Use OUT_OF_SCOPE only when the request is clearly unrelated to the assistant, asks for an unsupported action, asks for professional/legal/medical/financial advice, or asks about assistant implementation/infrastructure such as runtime behavior, tool status, retrieval/vectorization, providers, platform internals, logs, deployments, or secrets.
-- When using OUT_OF_SCOPE, set actionParams.userMessage to a user-safe one-sentence response that redirects to supported information or actions.
-- OUT_OF_SCOPE userMessage must not repeat or quote the unsupported topic/request, and must not mention implementation terms, internal systems, retrieval, vector spaces, providers, or knowledge bases.
-- Never use directAnswer to discuss assistant implementation, infrastructure, internal status, tools, runtime, providers, platform systems, logs, deployments, or secrets.
+- When using OUT_OF_SCOPE, set requiresRetrieval=false, requiresGeneration=false, and requiresTargetResolution=false, and provide a concise model-authored directAnswer that redirects to supported information or actions.
+- When safe and useful, directAnswer should identify the unsupported user-facing capability at a broad category level. It must never claim that an action ran or that private data was accessed.
+- For professional-advice, secret, or internal/infrastructure requests, directAnswer must not repeat or quote unsafe/internal wording and must not mention implementation terms, internal systems, retrieval, vector spaces, providers, or knowledge bases.
+- Never use directAnswer to claim assistant implementation, infrastructure, internal status, tools, runtime, providers, platform systems, logs, deployments, or secrets are available, unavailable, working, or broken.
 - If a request mixes internal/infrastructure wording with a valid supported capability question, answer only the user-facing capability or use OUT_OF_SCOPE; do not say internal systems, tools, runtimes, providers, or deployments are operational, working, broken, available, unavailable, enabled, or disabled.
 - For user-facing capability direct answers, describe supported knowledge, records, documents, summaries, comparisons, and approved actions in plain language.
 - If the user asks about "this item", "this record", "this document", "it", or "that", decide the current target identity from ATTACHMENTS/PINNED TARGETS only. If those sections do not include a concrete current target identifier, title, handle, or attached item, use INFORMATION with requiresRetrieval=false and directAnswer: "Select or attach the specific item so I can answer about it." Do not retrieve or substitute another similar record.
