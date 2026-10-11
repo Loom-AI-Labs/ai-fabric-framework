@@ -398,6 +398,51 @@ class SpringAiProviderAdapterTest {
     }
 
     @Test
+    void resolverKeepsSchemaGuidedJsonObjectHintsOutOfStrictOpenAiSchemaMode() {
+        AIProviderConfig config = new AIProviderConfig();
+        config.getOpenai().setApiKey("test-key");
+        SpringAiModelResolver resolver = new SpringAiModelResolver(config);
+
+        OpenAiChatOptions options = (OpenAiChatOptions) resolver.resolveChatOptions(
+            "openai",
+            AIGenerationRequest.builder()
+                .prompt("Return an intent decision")
+                .parameters(Map.of(
+                    "response_format", Map.of("type", "json_object"),
+                    "output_schema", "{\"type\":\"object\",\"additionalProperties\":true}"
+                ))
+                .build()
+        );
+
+        assertThat(options.getOutputSchema()).isNull();
+        assertThat(options.getResponseFormat()).isNotNull();
+        assertThat(options.getResponseFormat().getType().name()).isEqualTo("JSON_OBJECT");
+        assertThat(options.getResponseFormat().getJsonSchema()).isNull();
+    }
+
+    @Test
+    void resolverKeepsSchemaGuidedJsonObjectHintsOutOfGeminiNativeSchemaMode() {
+        AIProviderConfig config = new AIProviderConfig();
+        config.getGemini().setEnabled(true);
+        config.getGemini().setApiKey("test-key");
+        SpringAiModelResolver resolver = new SpringAiModelResolver(config);
+
+        GoogleGenAiChatOptions options = (GoogleGenAiChatOptions) resolver.resolveChatOptions(
+            "gemini",
+            AIGenerationRequest.builder()
+                .prompt("Return an intent decision")
+                .parameters(Map.of(
+                    "response_format", Map.of("type", "json_object"),
+                    "output_schema", "{\"type\":\"object\",\"additionalProperties\":true}"
+                ))
+                .build()
+        );
+
+        assertThat(options.getResponseMimeType()).isEqualTo("application/json");
+        assertThat(options.getResponseSchema()).isNull();
+    }
+
+    @Test
     void resolverMapsJsonSchemaHintsToGeminiNativeStructuredOutput() {
         AIProviderConfig config = new AIProviderConfig();
         config.getGemini().setEnabled(true);

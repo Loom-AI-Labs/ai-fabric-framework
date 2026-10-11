@@ -68,11 +68,11 @@ class IntentExtractionJsonSupportTest {
     }
 
     @Test
-    void jsonOnlyResponseParametersIncludeProviderNativeSchema() {
+    void jsonOnlyResponseParametersUseSchemaGuidedJsonObjectForDynamicIntentMaps() {
         assertThat(jsonSupport.jsonOnlyResponseParameters())
             .containsEntry(
                 StructuredJsonProviderHints.RESPONSE_FORMAT_PARAMETER,
-                java.util.Map.of("type", "json_schema")
+                java.util.Map.of("type", "json_object")
             );
         assertThat(jsonSupport.jsonOnlyResponseParameters())
             .containsKey(StructuredJsonProviderHints.OUTPUT_SCHEMA_PARAMETER);
@@ -80,6 +80,7 @@ class IntentExtractionJsonSupportTest {
             StructuredJsonProviderHints.OUTPUT_SCHEMA_PARAMETER
         )))
             .contains("intents")
-            .contains("requiresRetrieval");
+            .contains("requiresRetrieval")
+            .contains("Map_String.Object_");
     }
 }

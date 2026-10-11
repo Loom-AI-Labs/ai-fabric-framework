@@ -108,8 +108,11 @@ public class SpringAiModelResolver implements DisposableBean {
             return options;
         }
 
+        boolean schemaGuidedJsonObject = "json_object".equalsIgnoreCase(responseFormat);
+        boolean nativeSchemaRequested = hasText(outputSchema) && !schemaGuidedJsonObject;
+
         ChatOptions structured = options;
-        if (hasText(outputSchema) && options instanceof StructuredOutputChatOptions structuredOptions) {
+        if (nativeSchemaRequested && options instanceof StructuredOutputChatOptions structuredOptions) {
             structured = structuredOptions.mutate()
                 .outputSchema(outputSchema)
                 .build();
@@ -135,7 +138,7 @@ public class SpringAiModelResolver implements DisposableBean {
             && structured instanceof GoogleGenAiChatOptions geminiOptions) {
             GoogleGenAiChatOptions.Builder builder = geminiOptions.mutate()
                 .responseMimeType("application/json");
-            if (hasText(outputSchema)) {
+            if (nativeSchemaRequested) {
                 builder.responseSchema(outputSchema);
             }
             return builder.build();

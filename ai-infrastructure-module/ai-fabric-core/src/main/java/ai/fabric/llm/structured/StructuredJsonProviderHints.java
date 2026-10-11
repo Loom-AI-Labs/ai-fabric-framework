@@ -26,6 +26,25 @@ public final class StructuredJsonProviderHints {
     }
 
     /**
+     * Request provider-native JSON-object output while retaining the full
+     * schema for prompt guidance and framework validation.
+     *
+     * <p>This contract is selected before the provider call for output models
+     * that contain dynamic maps. Those maps cannot be represented by strict
+     * provider schemas without discarding valid application-owned keys. This
+     * is not a retry or a provider-failure fallback.</p>
+     */
+    public static Map<String, Object> schemaGuidedJsonObjectResponseParameters(String jsonSchema) {
+        if (!StringUtils.hasText(jsonSchema)) {
+            return jsonObjectResponseParameters();
+        }
+        Map<String, Object> parameters = new LinkedHashMap<>();
+        parameters.put(RESPONSE_FORMAT_PARAMETER, Map.of("type", "json_object"));
+        parameters.put(OUTPUT_SCHEMA_PARAMETER, jsonSchema.trim());
+        return Map.copyOf(parameters);
+    }
+
+    /**
      * Request provider-native JSON schema output while retaining a provider-
      * agnostic parameter contract at the AI Fabric boundary.
      */

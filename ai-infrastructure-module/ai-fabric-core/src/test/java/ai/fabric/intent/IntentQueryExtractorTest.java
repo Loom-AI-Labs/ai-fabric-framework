@@ -446,7 +446,7 @@ class IntentQueryExtractorTest {
         assertThat(responseFormat).isInstanceOf(Map.class);
         @SuppressWarnings("unchecked")
         Map<String, Object> responseFormatMap = (Map<String, Object>) responseFormat;
-        assertThat(responseFormatMap).containsEntry("type", "json_schema");
+        assertThat(responseFormatMap).containsEntry("type", "json_object");
         assertThat(sent.getParameters()).containsKey("output_schema");
         assertThat(String.valueOf(sent.getParameters().get("output_schema")))
             .contains("intents")

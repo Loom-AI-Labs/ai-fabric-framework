@@ -39,7 +39,7 @@ public class IntentExtractionJsonSupport {
             // Be tolerant here; schema validation happens after parsing.
             .configure(JsonReadFeature.ALLOW_JAVA_COMMENTS.mappedFeature(), true)
             .configure(JsonReadFeature.ALLOW_TRAILING_COMMA.mappedFeature(), true);
-        this.structuredResponseParameters = StructuredJsonProviderHints.jsonSchemaResponseParameters(
+        this.structuredResponseParameters = StructuredJsonProviderHints.schemaGuidedJsonObjectResponseParameters(
             SpringAiStructuredOutputSupport.bean(MultiIntentResponse.class).jsonSchema()
         );
     }
