@@ -3,9 +3,12 @@ package ai.fabric.intent.extraction;
 import ai.fabric.core.AICoreService;
 import ai.fabric.core.LlmPurpose;
 import ai.fabric.config.PromptBundleProperties;
+import ai.fabric.config.OrchestrationProperties;
 import ai.fabric.dto.AIGenerationRequest;
 import ai.fabric.dto.AIGenerationResponse;
+import ai.fabric.dto.Intent;
 import ai.fabric.dto.IntentType;
+import ai.fabric.dto.MultiIntentResponse;
 import ai.fabric.intent.EnrichedPromptBuilder;
 import ai.fabric.intent.IntentExtractionJsonSupport;
 import ai.fabric.intent.IntentExtractionValidator;
@@ -14,6 +17,7 @@ import ai.fabric.intent.action.AIActionParamType;
 import ai.fabric.intent.action.AIActionMetaData;
 import ai.fabric.intent.action.AIActionRegistry;
 import ai.fabric.intent.orchestration.OrchestrationContext;
+import ai.fabric.intent.orchestration.policy.SemanticRecoveryPolicy;
 import ai.fabric.prompt.ClasspathPromptTemplateStore;
 import ai.fabric.prompt.PromptRenderer;
 import ai.fabric.prompt.PromptTemplateResolver;
@@ -212,6 +216,97 @@ class MultiStepIntentExtractionStrategyTest {
         assertThat(request.getPrompt())
             .contains("What plan am I on?")
             .doesNotContain("INCOMPLETE ACTION DRAFT CONTEXT");
+    }
+
+    @Test
+    void shouldGiveTheModelTypedPolicyAndRejectedObligationsForSemanticReplan() {
+        when(validator.validate(any())).thenReturn(
+            new IntentExtractionValidator.ValidationResult(
+                true,
+                IntentExtractionValidator.ErrorCategory.NONE,
+                List.of(),
+                List.of()
+            )
+        );
+        when(aiCoreService.generateContent(
+            any(AIGenerationRequest.class),
+            eq(LlmPurpose.ORCHESTRATION)
+        )).thenReturn(
+            AIGenerationResponse.builder()
+                .content(classificationInformationOnly())
+                .build()
+        );
+        MultiStepIntentExtractionStrategy strategy =
+            new MultiStepIntentExtractionStrategy(
+                aiCoreService,
+                actionHandlerRegistry,
+                jsonSupport,
+                validator,
+                promptRenderer,
+                promptTemplateResolver
+            );
+        IntentExtractionValidator.ValidationIssue issue =
+            new IntentExtractionValidator.ValidationIssue(
+                IntentExtractionValidator.IssueCode.ACTION_UNREGISTERED,
+                IntentExtractionValidator.Severity.ERROR,
+                1,
+                "action",
+                "No handler registered for the model-selected action"
+            );
+        ExtractionAttempt previous = ExtractionAttempt.builder()
+            .success(false)
+            .response(MultiIntentResponse.builder()
+                .intents(List.of(
+                    Intent.builder()
+                        .type(IntentType.ACTION)
+                        .action("valid_action")
+                        .obligationId("obligation-1")
+                        .build(),
+                    Intent.builder()
+                        .type(IntentType.ACTION)
+                        .action("invented_action")
+                        .obligationId("obligation-2")
+                        .build()
+                ))
+                .build())
+            .validationResult(new IntentExtractionValidator.ValidationResult(
+                false,
+                IntentExtractionValidator.ErrorCategory.UNSAFE,
+                List.of(issue),
+                List.of(issue.message()),
+                List.of()
+            ))
+            .build();
+        SemanticRecoveryPolicy policy = new SemanticRecoveryPolicy(
+            null,
+            null,
+            null,
+            null,
+            OrchestrationProperties.UnknownActionRecovery.LLM_REPLAN_TO_INFORMATION,
+            null,
+            null
+        );
+
+        strategy.attemptExtract(
+            input("Find the current record and explain its policy"),
+            OrchestrationContext.forUser("user-recovery"),
+            previous,
+            policy
+        );
+
+        ArgumentCaptor<AIGenerationRequest> requestCaptor =
+            ArgumentCaptor.forClass(AIGenerationRequest.class);
+        verify(aiCoreService).generateContent(
+            requestCaptor.capture(),
+            eq(LlmPurpose.ORCHESTRATION)
+        );
+        assertThat(requestCaptor.getValue().getSystemPrompt())
+            .contains("BOUNDED SEMANTIC RECOVERY")
+            .contains("unknownAction=LLM_REPLAN_TO_INFORMATION")
+            .contains("code=ACTION_UNREGISTERED intentIndex=1")
+            .contains("invented_action")
+            .contains("Preserve the exact type and exact registered action ID")
+            .contains("Do not replace a rejected action with an unrelated action");
     }
 
     @Test

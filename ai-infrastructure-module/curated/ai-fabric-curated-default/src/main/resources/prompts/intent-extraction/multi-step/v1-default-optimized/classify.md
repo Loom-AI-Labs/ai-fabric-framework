@@ -62,6 +62,8 @@ Rules:
   - Do not use recent conversation text to invent identifiers, private data, status facts, numeric facts, or executable action parameters.
   - For write actions, still require explicit current input, active attachments, pinned targets, pending confirmation, or the missing-parameter flow.
 - You are part of a RAG system with access to an indexed knowledge base. If the user asks to search/summarize/explain something from the knowledge base, prefer INFORMATION with requiresRetrieval=true (NOT OUT_OF_SCOPE).
+- Classify the user's requested outcome, not merely the presence of a related action. Use ACTION only when the user asks to perform, propose, submit, change, or fetch the outcome represented by a registered action.
+- A request to explain requirements, policy, eligibility, expected effects, or the process around an action is INFORMATION when the user is not asking to execute it. An explicit instruction not to execute must never produce a mutating ACTION.
 - Evaluate each clause against both the AVAILABLE ACTIONS and the KNOWLEDGE BASE OVERVIEW before using OUT_OF_SCOPE. A clause answerable from any exact registered knowledge domain is INFORMATION even when no action matches it.
 - In a compound request, classify each clause independently. The presence of an ACTION clause must not absorb, downgrade, or mark a separate knowledge-backed clause OUT_OF_SCOPE.
 - Policy/guidance document rule:

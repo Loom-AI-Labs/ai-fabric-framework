@@ -18,6 +18,7 @@ import java.util.Map;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -394,8 +395,8 @@ class ProgressiveIntentExtractionEngineTest {
             .containsEntry("outcome", "VALIDATED");
 
         verify(repair, never()).attemptRepair(any(IntentExtractionInput.class), any(), any());
-        verify(completion, never()).attemptComplete(any(IntentExtractionInput.class), any(), any());
-        verify(multiStep, never()).attemptExtract(any(IntentExtractionInput.class), any());
+        verify(completion, never()).attemptComplete(any(IntentExtractionInput.class), any(), any(), any());
+        verify(multiStep, never()).attemptExtract(any(IntentExtractionInput.class), any(), any(), any());
     }
 
     @Test
@@ -471,8 +472,8 @@ class ProgressiveIntentExtractionEngineTest {
             .containsEntry("recoveryAttempted", true)
             .containsEntry("effectiveSource", "MODEL_REPAIR")
             .containsEntry("modelCalls", 2);
-        verify(completion, never()).attemptComplete(any(IntentExtractionInput.class), any(), any());
-        verify(multiStep, never()).attemptExtract(any(IntentExtractionInput.class), any());
+        verify(completion, never()).attemptComplete(any(IntentExtractionInput.class), any(), any(), any());
+        verify(multiStep, never()).attemptExtract(any(IntentExtractionInput.class), any(), any(), any());
     }
 
     @Test
@@ -539,7 +540,12 @@ class ProgressiveIntentExtractionEngineTest {
 
         when(compound.attemptExtract(any(IntentExtractionInput.class), any(OrchestrationContext.class))).thenReturn(compoundAttempt);
         when(repair.attemptRepair(any(IntentExtractionInput.class), any(OrchestrationContext.class), any(ExtractionAttempt.class))).thenReturn(repairAttempt);
-        when(multiStep.attemptExtract(any(IntentExtractionInput.class), any(OrchestrationContext.class))).thenReturn(multiStepAttempt);
+        when(multiStep.attemptExtract(
+            any(IntentExtractionInput.class),
+            any(OrchestrationContext.class),
+            nullable(ExtractionAttempt.class),
+            any(SemanticRecoveryPolicy.class)
+        )).thenReturn(multiStepAttempt);
         when(postProcessor.postProcess(any(MultiIntentResponse.class), anyString())).thenReturn(multiStepResponse);
         when(validator.validate(any(MultiIntentResponse.class), anyString()))
             .thenReturn(new IntentExtractionValidator.ValidationResult(true, IntentExtractionValidator.ErrorCategory.NONE, List.of(), List.of()));
@@ -560,7 +566,12 @@ class ProgressiveIntentExtractionEngineTest {
         assertThat(output.diagnostics()).containsEntry("extractionPath", "multi_step");
         assertThat(output.diagnostics()).containsEntry("llmCalls", 4);
         assertThat(output.diagnostics()).containsEntry("providerProcessingTimeMs", 325L);
-        verify(multiStep).attemptExtract(any(IntentExtractionInput.class), any(OrchestrationContext.class));
+        verify(multiStep).attemptExtract(
+            any(IntentExtractionInput.class),
+            any(OrchestrationContext.class),
+            nullable(ExtractionAttempt.class),
+            any(SemanticRecoveryPolicy.class)
+        );
     }
 
     @Test
@@ -599,7 +610,15 @@ class ProgressiveIntentExtractionEngineTest {
             .build();
 
         MultiIntentResponse completedResponse = MultiIntentResponse.builder()
-            .intents(List.of(Intent.builder().type(IntentType.INFORMATION).intent("refund_policy").build()))
+            .intents(List.of(Intent.builder()
+                .type(IntentType.ACTION)
+                .intent("relationship_query")
+                .action("relationship_query")
+                .actionParams(java.util.Map.of("query", "q"))
+                .requiresRetrieval(false)
+                .requiresGeneration(false)
+                .requiresTargetResolution(false)
+                .build()))
             .build();
 
         ExtractionAttempt rawCompletion = ExtractionAttempt.builder()
@@ -613,17 +632,32 @@ class ProgressiveIntentExtractionEngineTest {
             .build();
 
         when(compound.attemptExtract(any(IntentExtractionInput.class), any(OrchestrationContext.class))).thenReturn(rawCompound);
-        when(completion.attemptComplete(any(IntentExtractionInput.class), any(OrchestrationContext.class), any(ExtractionAttempt.class))).thenReturn(rawCompletion);
+        when(completion.attemptComplete(
+            any(IntentExtractionInput.class),
+            any(OrchestrationContext.class),
+            any(ExtractionAttempt.class),
+            any(SemanticRecoveryPolicy.class)
+        )).thenReturn(rawCompletion);
         when(postProcessor.postProcess(any(MultiIntentResponse.class), anyString()))
             .thenReturn(incomplete)
             .thenReturn(completedResponse);
 
-        IntentExtractionValidator.ValidationResult incompleteValidation = new IntentExtractionValidator.ValidationResult(
-            false,
-            IntentExtractionValidator.ErrorCategory.INCOMPLETE,
-            List.of("missing params"),
-            List.of()
-        );
+        IntentExtractionValidator.ValidationIssue incompleteIssue =
+            new IntentExtractionValidator.ValidationIssue(
+                IntentExtractionValidator.IssueCode.INTENT_MISSING_RETRIEVAL_DECISION,
+                IntentExtractionValidator.Severity.ERROR,
+                0,
+                "requiresRetrieval",
+                "Missing requiresRetrieval semantic decision"
+            );
+        IntentExtractionValidator.ValidationResult incompleteValidation =
+            new IntentExtractionValidator.ValidationResult(
+                false,
+                IntentExtractionValidator.ErrorCategory.INCOMPLETE,
+                List.of(incompleteIssue),
+                List.of(incompleteIssue.message()),
+                List.of()
+            );
         when(validator.validate(any(MultiIntentResponse.class), anyString()))
             .thenReturn(incompleteValidation)
             .thenReturn(new IntentExtractionValidator.ValidationResult(true, IntentExtractionValidator.ErrorCategory.NONE, List.of(), List.of()));
@@ -649,8 +683,408 @@ class ProgressiveIntentExtractionEngineTest {
             .containsEntry("effectiveSource", "MODEL_COMPLETION")
             .containsEntry("modelCalls", 2);
         verify(repair, never()).attemptRepair(any(IntentExtractionInput.class), any(), any());
-        verify(multiStep, never()).attemptExtract(any(IntentExtractionInput.class), any());
-        verify(completion).attemptComplete(any(IntentExtractionInput.class), any(), any());
+        verify(multiStep, never()).attemptExtract(any(IntentExtractionInput.class), any(), any(), any());
+        verify(completion).attemptComplete(any(IntentExtractionInput.class), any(), any(), any());
+    }
+
+    @Test
+    void rejectsUnknownActionReplanForOnlyTheFailedObligationUnderStrictPolicy() {
+        MultiIntentResponse candidate = validActionAndInformationCandidate();
+
+        RecoveryRun run = runUnknownActionRecovery(
+            candidate,
+            SemanticRecoveryPolicy.strictDefaults()
+        );
+
+        assertThat(run.output().response()).isNull();
+        assertThat(run.output().failure()).isNotNull();
+        assertThat(run.output().failure().issueCodes())
+            .contains(IntentExtractionValidator.IssueCode.SEMANTIC_RECOVERY_NOT_ALLOWED);
+        assertThat(recoveryTransitions(run.output()))
+            .singleElement()
+            .satisfies(transition -> {
+                assertThat(transition)
+                    .containsEntry("obligationId", "obligation-policy")
+                    .containsEntry("decision", "ACTION_UNREGISTERED")
+                    .containsEntry("outcome", "REJECTED")
+                    .containsEntry("policyOrReason", "LLM_REPAIR_THEN_FAIL");
+            });
+        verify(run.completion(), never()).attemptComplete(any(), any(), any(), any());
+    }
+
+    @Test
+    void allowsUnknownActionReplanForOnlyTheFailedObligationWhenPolicyPermitsIt() {
+        MultiIntentResponse candidate = validActionAndInformationCandidate();
+        SemanticRecoveryPolicy policy = new SemanticRecoveryPolicy(
+            null,
+            null,
+            null,
+            null,
+            OrchestrationProperties.UnknownActionRecovery.LLM_REPLAN_TO_INFORMATION,
+            null,
+            null
+        );
+
+        RecoveryRun run = runUnknownActionRecovery(candidate, policy);
+
+        assertThat(run.output().failure()).isNull();
+        assertThat(run.output().response()).isSameAs(candidate);
+        assertThat(run.output().diagnostics())
+            .containsEntry("extractionPath", "multi_step");
+        assertThat(recoveryTransitions(run.output()))
+            .singleElement()
+            .satisfies(transition -> {
+                assertThat(transition)
+                    .containsEntry("obligationId", "obligation-policy")
+                    .containsEntry("decision", "ACTION_UNREGISTERED")
+                    .containsEntry("outcome", "MODEL_REPLAN_TO_INFORMATION")
+                    .containsEntry("policyOrReason", "LLM_REPLAN_TO_INFORMATION");
+            });
+        verify(run.multiStep()).attemptExtract(any(), any(), any(), any());
+    }
+
+    @Test
+    void rejectsRecoveryThatChangesAnAlreadyValidSiblingAction() {
+        MultiIntentResponse candidate = MultiIntentResponse.builder()
+            .intents(List.of(
+                informationIntent("obligation-stock", "dealer-vehicle"),
+                informationIntent("obligation-policy", "document")
+            ))
+            .build();
+        SemanticRecoveryPolicy policy = new SemanticRecoveryPolicy(
+            null,
+            null,
+            null,
+            null,
+            OrchestrationProperties.UnknownActionRecovery.LLM_REPLAN_TO_INFORMATION,
+            null,
+            null
+        );
+
+        RecoveryRun run = runUnknownActionRecovery(candidate, policy);
+
+        assertThat(run.output().response()).isNull();
+        assertThat(run.output().failure()).isNotNull();
+        assertThat(recoveryTransitions(run.output()))
+            .singleElement()
+            .satisfies(transition -> {
+                assertThat(transition)
+                    .containsEntry("obligationId", "obligation-stock")
+                    .containsEntry("decision", "VALID_SIBLING_PRESERVATION")
+                    .containsEntry("outcome", "REJECTED");
+            });
+    }
+
+    @Test
+    void allowsActionDomainMismatchReplanOnlyWhenPolicyNamesModelReplan() {
+        MultiIntentResponse candidate = MultiIntentResponse.builder()
+            .intents(List.of(
+                actionIntent("obligation-stock", "search_inventory"),
+                informationIntent("obligation-policy", "document")
+            ))
+            .build();
+
+        RecoveryRun run = runActionDomainRecovery(
+            candidate,
+            SemanticRecoveryPolicy.strictDefaults()
+        );
+
+        assertThat(run.output().failure()).isNull();
+        assertThat(run.output().response()).isSameAs(candidate);
+        assertThat(recoveryTransitions(run.output()))
+            .singleElement()
+            .satisfies(transition -> assertThat(transition)
+                .containsEntry("obligationId", "obligation-policy")
+                .containsEntry(
+                    "decision",
+                    "ACTION_GROUNDING_VECTOR_SPACE_MISMATCH"
+                )
+                .containsEntry("outcome", "MODEL_REPLAN_TO_INFORMATION")
+                .containsEntry("policyOrReason", "DENY_AND_LLM_REPLAN"));
+        verify(run.multiStep()).attemptExtract(any(), any(), any(), any());
+    }
+
+    @Test
+    void doesNotInvokeModelReplanWhenActionDomainPolicyRequiresFailure() {
+        SemanticRecoveryPolicy policy = new SemanticRecoveryPolicy(
+            null,
+            null,
+            null,
+            null,
+            null,
+            OrchestrationProperties.ActionDomainMismatchRecovery.DENY_AND_FAIL,
+            null
+        );
+
+        RecoveryRun run = runActionDomainRecovery(
+            validActionAndInformationCandidate(),
+            policy
+        );
+
+        assertThat(run.output().failure()).isNull();
+        assertThat(run.output().diagnostics())
+            .containsEntry("extractionPath", "policy_recovery");
+        assertThat(semanticDecision(run.output()))
+            .containsEntry("decision", "ACTION_EVIDENCE_DOMAIN")
+            .containsEntry("recoveryPolicy", "DENY_AND_FAIL")
+            .containsEntry("effectiveValue", "DEFER_TO_ACTION_DOMAIN_POLICY");
+        verify(run.multiStep(), never()).attemptExtract(any(), any(), any(), any());
+    }
+
+    private RecoveryRun runUnknownActionRecovery(
+        MultiIntentResponse candidate,
+        SemanticRecoveryPolicy policy
+    ) {
+        ProgressiveIntentExtractionProperties properties =
+            new ProgressiveIntentExtractionProperties();
+        properties.setRepairEnabled(false);
+        properties.setCompletionEnabled(true);
+        properties.setMultiStepEnabled(true);
+        properties.setMaxTotalLlmCalls(4);
+
+        CompoundIntentExtractionStrategy compound =
+            mock(CompoundIntentExtractionStrategy.class);
+        RepairIntentExtractionStrategy repair =
+            mock(RepairIntentExtractionStrategy.class);
+        CompletionIntentExtractionStrategy completion =
+            mock(CompletionIntentExtractionStrategy.class);
+        MultiStepIntentExtractionStrategy multiStep =
+            mock(MultiStepIntentExtractionStrategy.class);
+        IntentExtractionPostProcessor postProcessor =
+            mock(IntentExtractionPostProcessor.class);
+        IntentExtractionValidator validator =
+            mock(IntentExtractionValidator.class);
+
+        MultiIntentResponse rejected = MultiIntentResponse.builder()
+            .intents(List.of(
+                actionIntent("obligation-stock", "search_inventory"),
+                actionIntent("obligation-policy", "invented_policy_action")
+            ))
+            .build();
+        IntentExtractionValidator.ValidationIssue unknownAction =
+            new IntentExtractionValidator.ValidationIssue(
+                IntentExtractionValidator.IssueCode.ACTION_UNREGISTERED,
+                IntentExtractionValidator.Severity.ERROR,
+                1,
+                "action",
+                "No handler registered for model-selected action"
+            );
+        IntentExtractionValidator.ValidationResult rejectedValidation =
+            new IntentExtractionValidator.ValidationResult(
+                false,
+                IntentExtractionValidator.ErrorCategory.UNSAFE,
+                List.of(unknownAction),
+                List.of(unknownAction.message()),
+                List.of()
+            );
+        IntentExtractionValidator.ValidationResult valid =
+            new IntentExtractionValidator.ValidationResult(
+                true,
+                IntentExtractionValidator.ErrorCategory.NONE,
+                List.of(),
+                List.of(),
+                List.of()
+            );
+
+        when(compound.attemptExtract(any(), any())).thenReturn(
+            ExtractionAttempt.builder()
+                .success(false)
+                .response(rejected)
+                .validationResult(rejectedValidation)
+                .strategyName("compound")
+                .llmCalls(1)
+                .build()
+        );
+        when(multiStep.attemptExtract(any(), any(), any(), any())).thenReturn(
+            ExtractionAttempt.builder()
+                .success(true)
+                .response(candidate)
+                .validationResult(valid)
+                .strategyName("multi_step")
+                .llmCalls(1)
+                .build()
+        );
+        when(postProcessor.postProcess(any(), anyString()))
+            .thenAnswer(invocation -> invocation.getArgument(0));
+        when(validator.validate(any(), anyString()))
+            .thenReturn(rejectedValidation, valid);
+
+        ProgressiveIntentExtractionEngine engine =
+            new ProgressiveIntentExtractionEngine(
+                properties,
+                compound,
+                repair,
+                completion,
+                multiStep,
+                postProcessor,
+                validator
+            );
+        ProgressiveIntentExtractionEngine.ExtractionOutput output = engine.extract(
+            new IntentExtractionInput("q", "q", List.of()),
+            OrchestrationContext.forUser("user"),
+            policy
+        );
+        return new RecoveryRun(output, completion, multiStep);
+    }
+
+    private RecoveryRun runActionDomainRecovery(
+        MultiIntentResponse candidate,
+        SemanticRecoveryPolicy policy
+    ) {
+        ProgressiveIntentExtractionProperties properties =
+            new ProgressiveIntentExtractionProperties();
+        properties.setRepairEnabled(false);
+        properties.setCompletionEnabled(true);
+        properties.setMultiStepEnabled(true);
+        properties.setMaxTotalLlmCalls(4);
+
+        CompoundIntentExtractionStrategy compound =
+            mock(CompoundIntentExtractionStrategy.class);
+        RepairIntentExtractionStrategy repair =
+            mock(RepairIntentExtractionStrategy.class);
+        CompletionIntentExtractionStrategy completion =
+            mock(CompletionIntentExtractionStrategy.class);
+        MultiStepIntentExtractionStrategy multiStep =
+            mock(MultiStepIntentExtractionStrategy.class);
+        IntentExtractionPostProcessor postProcessor =
+            mock(IntentExtractionPostProcessor.class);
+        IntentExtractionValidator validator =
+            mock(IntentExtractionValidator.class);
+
+        MultiIntentResponse rejected = MultiIntentResponse.builder()
+            .intents(List.of(
+                actionIntent("obligation-stock", "search_inventory"),
+                Intent.builder()
+                    .type(IntentType.ACTION)
+                    .intent("read_policy")
+                    .action("read_policy")
+                    .obligationId("obligation-policy")
+                    .userGoal("structured policy goal")
+                    .vectorSpace("dealer-vehicle")
+                    .requiresRetrieval(true)
+                    .requiresGeneration(true)
+                    .requiresTargetResolution(false)
+                    .needsAdvancedRAG(false)
+                    .build()
+            ))
+            .build();
+        IntentExtractionValidator.ValidationIssue mismatch =
+            new IntentExtractionValidator.ValidationIssue(
+                IntentExtractionValidator.IssueCode.ACTION_GROUNDING_VECTOR_SPACE_MISMATCH,
+                IntentExtractionValidator.Severity.ERROR,
+                1,
+                "vectorSpace",
+                "Selected vector space is outside the action evidence domain"
+            );
+        IntentExtractionValidator.ValidationResult rejectedValidation =
+            new IntentExtractionValidator.ValidationResult(
+                false,
+                IntentExtractionValidator.ErrorCategory.UNSAFE,
+                List.of(mismatch),
+                List.of(mismatch.message()),
+                List.of()
+            );
+        IntentExtractionValidator.ValidationResult valid =
+            new IntentExtractionValidator.ValidationResult(
+                true,
+                IntentExtractionValidator.ErrorCategory.NONE,
+                List.of(),
+                List.of(),
+                List.of()
+            );
+
+        when(compound.attemptExtract(any(), any())).thenReturn(
+            ExtractionAttempt.builder()
+                .success(false)
+                .response(rejected)
+                .validationResult(rejectedValidation)
+                .strategyName("compound")
+                .llmCalls(1)
+                .build()
+        );
+        when(multiStep.attemptExtract(any(), any(), any(), any())).thenReturn(
+            ExtractionAttempt.builder()
+                .success(true)
+                .response(candidate)
+                .validationResult(valid)
+                .strategyName("multi_step")
+                .llmCalls(1)
+                .build()
+        );
+        when(postProcessor.postProcess(any(), anyString()))
+            .thenAnswer(invocation -> invocation.getArgument(0));
+        when(validator.validate(any(), anyString()))
+            .thenReturn(rejectedValidation, valid);
+
+        ProgressiveIntentExtractionEngine engine =
+            new ProgressiveIntentExtractionEngine(
+                properties,
+                compound,
+                repair,
+                completion,
+                multiStep,
+                postProcessor,
+                validator
+            );
+        ProgressiveIntentExtractionEngine.ExtractionOutput output = engine.extract(
+            new IntentExtractionInput("q", "q", List.of()),
+            OrchestrationContext.forUser("user"),
+            policy
+        );
+        return new RecoveryRun(output, completion, multiStep);
+    }
+
+    private MultiIntentResponse validActionAndInformationCandidate() {
+        return MultiIntentResponse.builder()
+            .intents(List.of(
+                actionIntent("obligation-stock", "search_inventory"),
+                informationIntent("obligation-policy", "document")
+            ))
+            .build();
+    }
+
+    private Intent actionIntent(String obligationId, String actionId) {
+        return Intent.builder()
+            .type(IntentType.ACTION)
+            .intent(actionId)
+            .action(actionId)
+            .obligationId(obligationId)
+            .userGoal("structured action goal")
+            .requiresRetrieval(false)
+            .requiresGeneration(false)
+            .requiresTargetResolution(false)
+            .build();
+    }
+
+    private Intent informationIntent(String obligationId, String vectorSpace) {
+        return Intent.builder()
+            .type(IntentType.INFORMATION)
+            .intent("grounded_information")
+            .obligationId(obligationId)
+            .userGoal("structured information goal")
+            .vectorSpace(vectorSpace)
+            .requiresRetrieval(true)
+            .requiresGeneration(true)
+            .requiresTargetResolution(false)
+            .needsAdvancedRAG(false)
+            .build();
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<Map<String, Object>> recoveryTransitions(
+        ProgressiveIntentExtractionEngine.ExtractionOutput output
+    ) {
+        List<Map<String, Object>> attempts =
+            (List<Map<String, Object>>) output.diagnostics().get("attempts");
+        return (List<Map<String, Object>>) attempts.getLast()
+            .get("semanticRecoveryTransitions");
+    }
+
+    private record RecoveryRun(
+        ProgressiveIntentExtractionEngine.ExtractionOutput output,
+        CompletionIntentExtractionStrategy completion,
+        MultiStepIntentExtractionStrategy multiStep
+    ) {
     }
 
     @SuppressWarnings("unchecked")

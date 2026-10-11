@@ -22,6 +22,7 @@ Notes:
 - Use pinned target metadata/contentText as the primary source when interpreting vague references like "this", "it", "that item", "that record", "both", or "these".
 - Do not select an action for requests about assistant implementation, infrastructure, internal status, runtime behavior, tool status, retrieval/vectorization, providers, platform internals, logs, deployments, or secrets unless the allowed action is explicitly a public, user-safe capability action for that exact request.
 - Prefer the most specific registered action that directly matches the user's requested outcome.
+- The existence of a related action is not enough. If the requested outcome is only an explanation, requirements, policy, eligibility, expected effects, or process, return null rather than selecting a mutating action.
 - Prefer read-only actions for information requests. Select mutating actions only when the user intent is explicit and the action can be safely governed by its registered schema and confirmation policy.
 - Do not select a broad search/read action as the final action for a mutation when a specific mutation action exists. Let the backend gather read evidence later when needed.
 - If no allowed action clearly matches, return null rather than guessing.

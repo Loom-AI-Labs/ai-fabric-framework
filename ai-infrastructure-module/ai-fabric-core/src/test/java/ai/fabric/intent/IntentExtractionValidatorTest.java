@@ -146,4 +146,36 @@ class IntentExtractionValidatorTest {
             .extracting(IntentExtractionValidator.ValidationIssue::code)
             .contains(IntentExtractionValidator.IssueCode.OUT_OF_SCOPE_EXECUTION_NOT_ALLOWED);
     }
+
+    @Test
+    void shouldRejectDuplicateCompoundObligationIds() {
+        IntentExtractionValidator validator =
+            new IntentExtractionValidator(mock(AIActionRegistry.class));
+        Intent first = completeInformationIntent("obligation-1", "first");
+        Intent second = completeInformationIntent("obligation-1", "second");
+
+        IntentExtractionValidator.ValidationResult result = validator.validate(
+            MultiIntentResponse.builder().intents(List.of(first, second)).build()
+        );
+
+        assertThat(result.valid()).isFalse();
+        assertThat(result.errorCategory())
+            .isEqualTo(IntentExtractionValidator.ErrorCategory.INCOMPLETE);
+        assertThat(result.issues())
+            .extracting(IntentExtractionValidator.ValidationIssue::code)
+            .contains(IntentExtractionValidator.IssueCode.INTENT_DUPLICATE_OBLIGATION_ID);
+    }
+
+    private Intent completeInformationIntent(String obligationId, String name) {
+        return Intent.builder()
+            .type(IntentType.INFORMATION)
+            .intent(name)
+            .obligationId(obligationId)
+            .requiresRetrieval(false)
+            .requiresGeneration(false)
+            .requiresTargetResolution(false)
+            .needsAdvancedRAG(false)
+            .directAnswer("Complete response")
+            .build();
+    }
 }

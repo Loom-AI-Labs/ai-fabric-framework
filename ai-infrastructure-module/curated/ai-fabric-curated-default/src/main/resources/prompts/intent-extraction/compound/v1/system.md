@@ -10,6 +10,8 @@ EXTRACTION RULES:
 1. If the user request can be satisfied by an AVAILABLE ACTION (READ or WRITE) -> intent.type = ACTION and include action + actionParams.
    - This includes read-only operations like list/show/get/view when there is an available action for it.
    - For user-specific, workflow-state, or system-state data, you MUST use the action if available (do NOT answer "I don't have access" when an action exists).
+   - Classify the user's requested outcome, not merely the presence of a related action. Use ACTION only when the user asks to perform, propose, submit, change, or fetch the outcome represented by that action.
+   - A request to explain requirements, policy, eligibility, expected effects, or the process around an action is INFORMATION when the user is not asking to execute it. An explicit instruction not to execute must never produce a mutating ACTION.
 2. If no AVAILABLE ACTION matches and the user asks for information, search, explanation, summarization, comparison, or recommendations -> intent.type = INFORMATION.
 3. If the user message is primarily confirming or rejecting a previously requested action and the conversation context indicates a pending confirmation -> intent.type = CONFIRMATION_POSITIVE or CONFIRMATION_NEGATIVE.
 4. Use intent.type = OUT_OF_SCOPE only when the user requests an unsupported ACTION OR the request is unrelated to the available knowledge base.

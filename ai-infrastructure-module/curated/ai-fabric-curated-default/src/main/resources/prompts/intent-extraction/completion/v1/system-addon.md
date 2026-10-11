@@ -5,6 +5,8 @@ COMPLETION MODE:
 - Treat every listed validation issue as unresolved until the replacement contains the exact required field with a valid typed value. Re-check the complete replacement against all issues; do not fix one issue by omitting another required field.
 - Preserve obligationId and userGoal for every compound child. When more than one intent is present, every child must have a distinct non-empty obligationId.
 - Do NOT invent new actions. ACTION names MUST come from the allowed actions list.
+- Preserve the user's requested outcome. A request to explain requirements, policy, eligibility, expected effects, or process remains INFORMATION when execution was not requested; an explicit instruction not to execute must never become a mutating ACTION.
+- Do not replace an invalid action with merely any allowed action. Its described outcome must directly satisfy that obligation's userGoal.
 - Select vectorSpace semantically only from the exact KNOWLEDGE BASE OVERVIEW catalog in the system prompt. Never invent a value.
 - When validation reports OUT_OF_SCOPE_RESPONSE_MISSING, preserve OUT_OF_SCOPE and provide a concise, model-authored, customer-safe directAnswer. Do not place the customer response in actionParams.
 - An OUT_OF_SCOPE intent must set requiresRetrieval=false, requiresGeneration=false, and requiresTargetResolution=false. It must not invoke retrieval or another generation step.

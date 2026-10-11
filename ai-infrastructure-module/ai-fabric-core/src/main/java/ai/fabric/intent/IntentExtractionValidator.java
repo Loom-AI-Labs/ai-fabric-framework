@@ -66,8 +66,32 @@ public class IntentExtractionValidator {
                 response.getIntents().size() > 1
             );
         }
+        validateDistinctObligationIds(response.getIntents(), issues);
 
         return toResult(issues);
+    }
+
+    private void validateDistinctObligationIds(List<Intent> intents,
+                                               List<ValidationIssue> issues) {
+        if (intents == null || intents.size() < 2) {
+            return;
+        }
+        Set<String> seen = new java.util.LinkedHashSet<>();
+        for (int index = 0; index < intents.size(); index++) {
+            Intent intent = intents.get(index);
+            if (intent == null || !StringUtils.hasText(intent.getObligationId())) {
+                continue;
+            }
+            String obligationId = intent.getObligationId().trim();
+            if (!seen.add(obligationId)) {
+                issues.add(ValidationIssue.error(
+                    IssueCode.INTENT_DUPLICATE_OBLIGATION_ID,
+                    index,
+                    "obligationId",
+                    "Compound intent contains a duplicate obligationId"
+                ));
+            }
+        }
     }
 
     private void validateIntent(Intent intent,
@@ -404,6 +428,7 @@ public class IntentExtractionValidator {
         INTENT_MISSING_GENERATION_DECISION,
         INTENT_MISSING_TARGET_DECISION,
         INTENT_MISSING_OBLIGATION_ID,
+        INTENT_DUPLICATE_OBLIGATION_ID,
         INTENT_MISSING_CLARIFICATION_QUESTION,
         ACTION_MISSING_NAME,
         ACTION_REGISTRY_UNAVAILABLE,
@@ -508,6 +533,7 @@ public class IntentExtractionValidator {
             IssueCode.INTENT_MISSING_GENERATION_DECISION,
             IssueCode.INTENT_MISSING_TARGET_DECISION,
             IssueCode.INTENT_MISSING_OBLIGATION_ID,
+            IssueCode.INTENT_DUPLICATE_OBLIGATION_ID,
             IssueCode.INTENT_MISSING_CLARIFICATION_QUESTION
         ))) {
             return ErrorCategory.INCOMPLETE;

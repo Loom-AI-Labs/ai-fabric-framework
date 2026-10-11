@@ -13,6 +13,7 @@ import ai.fabric.intent.action.AIActionMetaData;
 import ai.fabric.intent.action.AIActionRegistry;
 import ai.fabric.intent.orchestration.OrchestrationContext;
 import ai.fabric.intent.orchestration.capability.CapabilityAwareActionMetadataSupport;
+import ai.fabric.intent.orchestration.policy.SemanticRecoveryPolicy;
 import ai.fabric.prompt.PromptRenderer;
 import ai.fabric.prompt.PromptTemplateResolver;
 import lombok.RequiredArgsConstructor;
@@ -60,7 +61,21 @@ public class CompletionIntentExtractionStrategy {
     private final PromptTemplateResolver promptTemplateResolver;
     private final PromptRenderer promptRenderer;
 
-    public ExtractionAttempt attemptComplete(IntentExtractionInput input, OrchestrationContext context, ExtractionAttempt previousAttempt) {
+    public ExtractionAttempt attemptComplete(IntentExtractionInput input,
+                                             OrchestrationContext context,
+                                             ExtractionAttempt previousAttempt) {
+        return attemptComplete(
+            input,
+            context,
+            previousAttempt,
+            SemanticRecoveryPolicy.strictDefaults()
+        );
+    }
+
+    public ExtractionAttempt attemptComplete(IntentExtractionInput input,
+                                             OrchestrationContext context,
+                                             ExtractionAttempt previousAttempt,
+                                             SemanticRecoveryPolicy semanticRecoveryPolicy) {
         String query = input != null ? input.userQuery() : null;
         String currentUserMessage = input != null ? input.currentUserMessage() : null;
 
@@ -99,6 +114,14 @@ public class CompletionIntentExtractionStrategy {
             systemPrompt,
             input
         );
+        String recoveryPrompt = SemanticRecoveryPromptSupport.buildPromptAddon(
+            previousAttempt,
+            semanticRecoveryPolicy,
+            jsonSupport
+        );
+        if (StringUtils.hasText(recoveryPrompt)) {
+            systemPrompt = systemPrompt.trim() + "\n\n" + recoveryPrompt;
+        }
 
         String allowedActions = buildAllowedActionsSpec(safeContext);
         String issuesPayload = formatIssues(errorIssues);

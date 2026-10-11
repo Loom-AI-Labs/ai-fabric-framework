@@ -6,6 +6,9 @@ import ai.fabric.intent.IntentExtractionValidator;
 import lombok.Builder;
 import lombok.Data;
 
+import java.util.List;
+import java.util.Map;
+
 /**
  * Result of a single intent extraction attempt.
  */
@@ -72,6 +75,13 @@ public class ExtractionAttempt {
      * Model used for this attempt when available.
      */
     private String model;
+
+    /**
+     * Safe structured diagnostics for model repairs/replans evaluated against
+     * the server-owned semantic recovery policy.
+     */
+    @Builder.Default
+    private List<Map<String, Object>> semanticRecoveryTransitions = List.of();
 
     public boolean isStructuralFailure() {
         return validationResult != null && validationResult.isStructuralFailure();
