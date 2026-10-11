@@ -22,9 +22,14 @@ apps_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../examples/real-apps" && pwd)
 work_dir="$(mktemp -d)"
 boot_timeout="${P1_REALAPP_SMOKE_BOOT_TIMEOUT:-90}"
 poll_timeout="${P1_REALAPP_SMOKE_POLL_TIMEOUT:-45}"
+request_attempts="${P1_REALAPP_SMOKE_REQUEST_ATTEMPTS:-3}"
+java_max_heap="${P1_REALAPP_SMOKE_JAVA_MAX_HEAP:-768m}"
 run_id="$(date +%s)-$$"
 current_pid=""
 current_log=""
+current_app=""
+current_port=""
+http_status=""
 
 cleanup() {
   if [[ -n "${current_pid}" ]] && kill -0 "${current_pid}" 2>/dev/null; then
@@ -77,6 +82,40 @@ stop_current_app() {
   fi
   current_pid=""
   current_log=""
+  current_app=""
+  current_port=""
+}
+
+fail_if_current_app_exited() {
+  if [[ -z "${current_pid}" ]] || kill -0 "${current_pid}" 2>/dev/null; then
+    return 0
+  fi
+
+  local exited_app="${current_app:-real app}"
+  local exit_code
+  if wait "${current_pid}" 2>/dev/null; then
+    exit_code=0
+  else
+    exit_code=$?
+  fi
+  current_pid=""
+  fail "${exited_app}: process exited unexpectedly (exit ${exit_code})"
+}
+
+wait_for_http_listener() {
+  local app="$1"
+  local port="$2"
+  local probe_url="http://127.0.0.1:${port}/actuator/health"
+
+  for _ in $(seq 1 10); do
+    fail_if_current_app_exited
+    if curl -sS --connect-timeout 1 --max-time 3 -o /dev/null "${probe_url}" 2>/dev/null; then
+      return 0
+    fi
+    sleep 1
+  done
+
+  fail "${app}: HTTP listener did not become reachable after startup"
 }
 
 start_app() {
@@ -89,8 +128,10 @@ start_app() {
   local jar
   jar="$(find_jar "${app}")"
   current_log="${work_dir}/${app}.log"
+  current_app="${app}"
+  current_port="${port}"
 
-  java -jar "${jar}" \
+  java -Xms64m "-Xmx${java_max_heap}" -jar "${jar}" \
     --spring.profiles.active=smoke \
     --server.port="${port}" \
     --spring.main.banner-mode=off \
@@ -99,6 +140,8 @@ start_app() {
 
   for _ in $(seq 1 "${boot_timeout}"); do
     if grep -qE "Started .*Application in" "${current_log}"; then
+      fail_if_current_app_exited
+      wait_for_http_listener "${app}" "${port}"
       echo "  ✓ ${app} started on port ${port}"
       return 0
     fi
@@ -114,6 +157,51 @@ start_app() {
   fail "${app}: startup did not complete within ${boot_timeout}s"
 }
 
+perform_http_request() {
+  local method="$1"
+  local url="$2"
+  local body="$3"
+  local output_file="$4"
+  local curl_exit=0
+  local attempt
+  local -a curl_args=(
+    -sS
+    --connect-timeout 3
+    --max-time 30
+    -o "${output_file}"
+    -w '%{http_code}'
+    -X "${method}"
+  )
+
+  if [[ -n "${body}" ]]; then
+    curl_args+=(
+      -H 'Content-Type: application/json'
+      --data "${body}"
+    )
+  fi
+
+  for attempt in $(seq 1 "${request_attempts}"); do
+    fail_if_current_app_exited
+    if http_status="$(curl "${curl_args[@]}" "${url}")"; then
+      return 0
+    else
+      curl_exit=$?
+    fi
+
+    fail_if_current_app_exited
+    # A refused connection means the request never reached the app. Other
+    # transport failures are ambiguous and must not replay a write request.
+    if [[ "${curl_exit}" -ne 7 ]]; then
+      fail "HTTP transport failed (curl exit ${curl_exit}) for ${method} ${url}"
+    fi
+    if [[ "${attempt}" -lt "${request_attempts}" ]]; then
+      sleep 1
+    fi
+  done
+
+  fail "HTTP transport failed after ${request_attempts} attempts (curl exit ${curl_exit}) for ${method} ${url}"
+}
+
 http_json() {
   local method="$1"
   local url="$2"
@@ -121,21 +209,8 @@ http_json() {
   local output_file="$4"
   local status
 
-  if [[ -n "${body}" ]]; then
-    status="$(
-      curl -sS -o "${output_file}" -w '%{http_code}' \
-        -X "${method}" \
-        -H 'Content-Type: application/json' \
-        --data "${body}" \
-        "${url}"
-    )"
-  else
-    status="$(
-      curl -sS -o "${output_file}" -w '%{http_code}' \
-        -X "${method}" \
-        "${url}"
-    )"
-  fi
+  perform_http_request "${method}" "${url}" "${body}" "${output_file}"
+  status="${http_status}"
 
   if [[ "${status}" -lt 200 || "${status}" -ge 300 ]]; then
     echo "HTTP ${status} from ${method} ${url}" >&2
@@ -149,7 +224,8 @@ http_get() {
   local output_file="$2"
   local status
 
-  status="$(curl -sS -o "${output_file}" -w '%{http_code}' "${url}")"
+  perform_http_request GET "${url}" "" "${output_file}"
+  status="${http_status}"
   if [[ "${status}" -lt 200 || "${status}" -ge 300 ]]; then
     echo "HTTP ${status} from GET ${url}" >&2
     cat "${output_file}" >&2 || true
