@@ -11,6 +11,7 @@ import ai.fabric.dto.IntentType;
 import ai.fabric.dto.MultiIntentResponse;
 import ai.fabric.dto.ResponseGenerationProfile;
 import ai.fabric.exception.AIServiceException;
+import ai.fabric.intent.action.AIActionHandler;
 import ai.fabric.intent.action.AIActionRegistry;
 import ai.fabric.intent.orchestration.OrchestrationContext;
 import ai.fabric.intent.extraction.IntentExtractionInput;
@@ -18,6 +19,7 @@ import ai.fabric.prompt.ClasspathPromptTemplateStore;
 import ai.fabric.prompt.PromptRenderer;
 import ai.fabric.prompt.PromptTemplateResolver;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
@@ -27,6 +29,7 @@ import org.springframework.core.io.DefaultResourceLoader;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -36,6 +39,8 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.mock;
 
 @ExtendWith(MockitoExtension.class)
 class IntentQueryExtractorTest {
@@ -55,6 +60,12 @@ class IntentQueryExtractorTest {
         return new IntentExtractionInput(userQuery, userQuery, List.of());
     }
 
+    @BeforeEach
+    void registerActionsUsedByExtractionFixtures() {
+        lenient().when(actionHandlerRegistry.findHandler(anyString()))
+            .thenReturn(Optional.of(mock(AIActionHandler.class)));
+    }
+
     @Test
     void shouldParseJsonResponseIntoMultiIntentResponse() {
         when(enrichedPromptBuilder.buildSystemPrompt(any(OrchestrationContext.class))).thenReturn("system-prompt");
@@ -68,7 +79,9 @@ class IntentQueryExtractorTest {
                   "confidence": 0.92,
                   "action": "cancel_subscription",
                   "actionParams": {"reason": "too expensive"},
-                  "requiresRetrieval": false
+                  "requiresRetrieval": false,
+                  "requiresGeneration": false,
+                  "requiresTargetResolution": false
                 }
               ],
               "orchestrationStrategy": null
@@ -110,7 +123,10 @@ class IntentQueryExtractorTest {
                 "intent": "account_readiness",
                 "confidence": 0.95,
                 "requiresRetrieval": true,
-                "requiresGeneration": true
+                "requiresGeneration": true,
+                "requiresTargetResolution": false,
+                "needsAdvancedRAG": false,
+                "vectorSpace": "accounts"
               }]
             }
             """).build());
@@ -170,7 +186,10 @@ class IntentQueryExtractorTest {
                 "intent": "account_readiness",
                 "confidence": 0.95,
                 "requiresRetrieval": true,
-                "requiresGeneration": true
+                "requiresGeneration": true,
+                "requiresTargetResolution": false,
+                "needsAdvancedRAG": false,
+                "vectorSpace": "accounts"
               }]
             }
             """).build());
@@ -220,7 +239,11 @@ class IntentQueryExtractorTest {
                   "type": "INFORMATION",
                   "intent": "refund_policy",
                   "confidence": 0.81,
-                  "requiresRetrieval": true
+                  "requiresRetrieval": true,
+                  "requiresGeneration": true,
+                  "requiresTargetResolution": false,
+                  "needsAdvancedRAG": false,
+                  "vectorSpace": "policies"
                 }
               ]
             }
@@ -259,7 +282,11 @@ class IntentQueryExtractorTest {
                   "type": "INFORMATION",
                   "intent": "refund_policy",
                   "confidence": 0.81,
-                  "requiresRetrieval": true
+                  "requiresRetrieval": true,
+                  "requiresGeneration": true,
+                  "requiresTargetResolution": false,
+                  "needsAdvancedRAG": false,
+                  "vectorSpace": "policies"
                 }
               ]
             }
@@ -304,6 +331,9 @@ class IntentQueryExtractorTest {
                   "confidence": 0.81,
                   "requiresRetrieval": true,
                   "requiresGeneration": true,
+                  "requiresTargetResolution": false,
+                  "needsAdvancedRAG": false,
+                  "vectorSpace": "products",
                   "responseProfile": "CONCISE"
                 }
               ]
@@ -344,6 +374,8 @@ class IntentQueryExtractorTest {
                   "action": "cancel_subscription",
                   "actionParams": {"reason": "too expensive"},
                   "requiresRetrieval": false,
+                  "requiresGeneration": false,
+                  "requiresTargetResolution": false,
                 }
               ],
               "orchestrationStrategy": null,
@@ -380,7 +412,9 @@ class IntentQueryExtractorTest {
                   "confidence": 0.92,
                   "action": "cancel_subscription",
                   "actionParams": {"reason": "too expensive"},
-                  "requiresRetrieval": false
+                  "requiresRetrieval": false,
+                  "requiresGeneration": false,
+                  "requiresTargetResolution": false
                 }
               ]
             }
@@ -412,7 +446,11 @@ class IntentQueryExtractorTest {
         assertThat(responseFormat).isInstanceOf(Map.class);
         @SuppressWarnings("unchecked")
         Map<String, Object> responseFormatMap = (Map<String, Object>) responseFormat;
-        assertThat(responseFormatMap).containsEntry("type", "json_object");
+        assertThat(responseFormatMap).containsEntry("type", "json_schema");
+        assertThat(sent.getParameters()).containsKey("output_schema");
+        assertThat(String.valueOf(sent.getParameters().get("output_schema")))
+            .contains("intents")
+            .contains("requiresRetrieval");
     }
 
     @Test
@@ -428,6 +466,8 @@ class IntentQueryExtractorTest {
                   "confidence": 0.81,
                   "requiresRetrieval": true,
                   "requiresGeneration": false,
+                  "requiresTargetResolution": false,
+                  "needsAdvancedRAG": false,
                   "optimizedQuery": "Policy documents where type = 'refund' and status = 'active'",
                   "vectorSpace": "policies"
                 }
@@ -469,6 +509,9 @@ class IntentQueryExtractorTest {
                   "type": "OUT_OF_SCOPE",
                   "intent": "out_of_scope",
                   "confidence": 0.55,
+                  "requiresRetrieval": false,
+                  "requiresGeneration": false,
+                  "requiresTargetResolution": false,
                   "actionParams": {"reason": "Unsupported domain"}
                 }
               ],
@@ -507,6 +550,9 @@ class IntentQueryExtractorTest {
                 {
                   "type": "OUT_OF_SCOPE",
                   "confidence": 1.0,
+                  "requiresRetrieval": false,
+                  "requiresGeneration": false,
+                  "requiresTargetResolution": false,
                   "actionParams": {"reason": "Unrelated to available knowledge base"}
                 }
               ]
@@ -547,6 +593,9 @@ class IntentQueryExtractorTest {
                   "intent": "update_payment_method",
                   "confidence": 0.77,
                   "action": "update_payment_method",
+                  "requiresRetrieval": false,
+                  "requiresGeneration": false,
+                  "requiresTargetResolution": false,
                   "nextStepRecommended": {
                     "intent": "view_billing_history",
                     "query": "Show my billing history",
@@ -636,7 +685,9 @@ class IntentQueryExtractorTest {
 	                  "intent": "cancel_subscription",
 	                  "confidence": 0.85,
 	                  "action": "cancel_subscription",
-	                  "requiresRetrieval": false
+	                  "requiresRetrieval": false,
+	                  "requiresGeneration": false,
+	                  "requiresTargetResolution": false
 	                }
 	              ]
 	            }
@@ -671,7 +722,10 @@ class IntentQueryExtractorTest {
                 {
                   "type": "INFORMATION",
                   "intent": "query about products",
-                  "requiresRetrieval": true
+                  "requiresRetrieval": true,
+                  "requiresGeneration": true,
+                  "requiresTargetResolution": false,
+                  "needsAdvancedRAG": false
                 }
               ]
             }
@@ -689,10 +743,11 @@ class IntentQueryExtractorTest {
             new PromptRenderer()
         );
 
-        MultiIntentResponse response = extractor.extract(input("Find products"), OrchestrationContext.forUser("user-123"));
-
-        assertThat(response.getIntents()).hasSize(1);
-        assertThat(response.getIntents().getFirst().getVectorSpace()).isNull();
+        assertThatThrownBy(() ->
+            extractor.extract(input("Find products"), OrchestrationContext.forUser("user-123"))
+        )
+            .isInstanceOf(AIServiceException.class)
+            .hasMessageContaining("vectorSpace");
     }
 
     private PromptTemplateResolver promptTemplateResolver() {

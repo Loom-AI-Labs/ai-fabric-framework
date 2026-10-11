@@ -393,6 +393,10 @@ public class RAGService implements RAGProvider {
         metadata.put(METADATA_KEY_EMBEDDING_CACHE_HIT, embeddingExecution.cacheHit());
         metadata.put(METADATA_KEY_EMBEDDING_PROVIDER_NAME, embeddingExecution.providerName());
         metadata.put(METADATA_KEY_EMBEDDING_MODEL, embeddingExecution.effectiveModel());
+        if (embeddingExecution.providerRecovery() != null
+            && !embeddingExecution.providerRecovery().isEmpty()) {
+            metadata.put("embeddingProviderRecovery", embeddingExecution.providerRecovery());
+        }
         metadata.put(METADATA_KEY_SEARCH_PROCESSING_TIME_MS, searchResponse.getProcessingTimeMs());
         if (StringUtils.hasText(searchResponse.getRequestId())) {
             metadata.put(METADATA_KEY_SEARCH_REQUEST_ID, searchResponse.getRequestId());

@@ -38,7 +38,7 @@ import static org.mockito.Mockito.when;
 class InformationAdvancedRagExecutionSupportTest {
 
     @Test
-    void shouldReturnNullWhenAdvancedProviderIsUnavailable() {
+    void shouldFailExplicitlyWhenAdvancedProviderIsUnavailable() {
         InformationAdvancedRagExecutionSupport support = newSupport(null, mock(AICoreService.class));
 
         OrchestrationResult result = support.execute(
@@ -52,7 +52,39 @@ class InformationAdvancedRagExecutionSupportTest {
             null
         );
 
-        assertThat(result).isNull();
+        assertThat(result.getType()).isEqualTo(OrchestrationResultType.ERROR);
+        assertThat(result.getErrorCode()).isEqualTo("ADVANCED_RAG_EXECUTION_FAILED");
+        assertThat(result.getData()).containsEntry("reason", "PROVIDER_UNAVAILABLE");
+        assertThat(String.valueOf(result.getMetadata()))
+            .contains("recoveryPolicy=FAIL")
+            .contains("recoveryAttempted=false");
+    }
+
+    @Test
+    void shouldNotSilentlyDowngradeWhenAdvancedProviderFails() {
+        AdvancedRAGProvider provider = mock(AdvancedRAGProvider.class);
+        when(provider.performAdvancedRAG(any())).thenReturn(
+            AdvancedRAGResponse.builder()
+                .success(false)
+                .errorMessage("provider unavailable")
+                .build()
+        );
+        InformationAdvancedRagExecutionSupport support = newSupport(provider, mock(AICoreService.class));
+
+        OrchestrationResult result = support.execute(
+            Intent.builder().vectorSpace("product").build(),
+            OrchestrationContext.forUser("user-1"),
+            PipelineContext.from("query", OrchestrationContext.forUser("user-1")),
+            false,
+            "query",
+            "query",
+            Map.of(),
+            null
+        );
+
+        assertThat(result.getType()).isEqualTo(OrchestrationResultType.ERROR);
+        assertThat(result.getErrorCode()).isEqualTo("ADVANCED_RAG_EXECUTION_FAILED");
+        assertThat(result.getData()).containsEntry("reason", "PROVIDER_REPORTED_FAILURE");
     }
 
     @Test

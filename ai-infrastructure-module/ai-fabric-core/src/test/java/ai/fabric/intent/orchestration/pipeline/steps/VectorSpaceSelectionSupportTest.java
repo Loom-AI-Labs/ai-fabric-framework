@@ -1,7 +1,6 @@
 package ai.fabric.intent.orchestration.pipeline.steps;
 
 import ai.fabric.config.AIEntityConfigurationLoader;
-import ai.fabric.config.VectorSpaceRoutingProperties;
 import ai.fabric.intent.KnowledgeBaseOverview;
 import ai.fabric.intent.KnowledgeBaseOverviewService;
 import ai.fabric.intent.orchestration.policy.OrchestrationPolicy;
@@ -34,7 +33,6 @@ class VectorSpaceSelectionSupportTest {
 
         VectorSpaceSelectionSupport support = new VectorSpaceSelectionSupport(
             providerOf(overviewService),
-            null,
             null
         );
 
@@ -49,8 +47,7 @@ class VectorSpaceSelectionSupportTest {
 
         VectorSpaceSelectionSupport support = new VectorSpaceSelectionSupport(
             providerOf((KnowledgeBaseOverviewService) null),
-            loader,
-            null
+            loader
         );
 
         assertThat(support.resolveAllVectorSpaces()).containsExactly("order", "product");
@@ -58,29 +55,8 @@ class VectorSpaceSelectionSupportTest {
     }
 
     @Test
-    void shouldCapDeterministicFallbackWithBudgetOrRoutingDefault() {
-        KnowledgeBaseOverviewService overviewService = mock(KnowledgeBaseOverviewService.class);
-        when(overviewService.getOverview()).thenReturn(KnowledgeBaseOverview.builder()
-            .entityTypes(List.of("product", "policy", "order", "faq"))
-            .build());
-        VectorSpaceRoutingProperties routingProperties = new VectorSpaceRoutingProperties();
-        routingProperties.setFanOutMaxSpaces(2);
-        VectorSpaceSelectionSupport support = new VectorSpaceSelectionSupport(
-            providerOf(overviewService),
-            null,
-            routingProperties
-        );
-
-        assertThat(support.resolveDeterministicFallbackVectorSpaces(null))
-            .containsExactly("product", "policy");
-        assertThat(support.resolveDeterministicFallbackVectorSpaces(
-            new OrchestrationPolicy.RagBudgets(null, 3, null, null, null, null, List.of(), null)
-        )).containsExactly("product", "policy", "order");
-    }
-
-    @Test
     void shouldCapExplicitVectorSpacesOnlyWhenBudgetIsPositive() {
-        VectorSpaceSelectionSupport support = new VectorSpaceSelectionSupport(null, null, null);
+        VectorSpaceSelectionSupport support = new VectorSpaceSelectionSupport(null, null);
         List<String> spaces = List.of("product", "policy", "order");
 
         assertThat(support.capVectorSpacesToBudget(spaces, null)).isSameAs(spaces);

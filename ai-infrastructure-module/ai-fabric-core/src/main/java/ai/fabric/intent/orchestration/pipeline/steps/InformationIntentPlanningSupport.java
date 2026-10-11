@@ -44,8 +44,8 @@ final class InformationIntentPlanningSupport {
             || ragBudgets.fanoutEnabled() == null
             || Boolean.TRUE.equals(ragBudgets.fanoutEnabled());
 
-        boolean requiresRetrieval = intent.requiresRetrievalOrDefault(true);
-        boolean llmRequiresGeneration = intent.requiresGenerationOrDefault(false);
+        boolean requiresRetrieval = Boolean.TRUE.equals(intent.getRequiresRetrieval());
+        boolean llmRequiresGeneration = Boolean.TRUE.equals(intent.getRequiresGeneration());
         boolean minimizeRagHeuristicEnabled = capabilities == null || capabilities.minimizeRagWhenPinnedTargetsCoverRequest();
 
         boolean forceRetrievalWhenTargetsPresent = capabilities != null && capabilities.forceRetrievalWhenTargetsPresent();

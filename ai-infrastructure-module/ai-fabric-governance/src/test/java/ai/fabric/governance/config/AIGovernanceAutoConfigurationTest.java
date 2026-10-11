@@ -3,6 +3,9 @@ package ai.fabric.governance.config;
 import ai.fabric.deletion.UserDataDeletionService;
 import ai.fabric.deletion.UserDataDeletionResult;
 import ai.fabric.deletion.policy.UserDataDeletionProvider;
+import ai.fabric.filter.AIContentFilterService;
+import ai.fabric.filter.ContentModerationProvider;
+import ai.fabric.filter.ContentModerationResult;
 import ai.fabric.governance.catalog.IndexCatalog;
 import ai.fabric.governance.catalog.disabled.DisabledIndexCatalog;
 import ai.fabric.governance.catalog.jpa.IndexCatalogRepository;
@@ -107,6 +110,35 @@ class AIGovernanceAutoConfigurationTest {
     }
 
     @Test
+    void contentFilterFailsStartupWhenEnabledWithoutTypedModerationProvider() {
+        contextRunner
+            .withPropertyValues(
+                "ai.governance.enabled=true",
+                "ai.governance.content-filter.enabled=true"
+            )
+            .run(context -> {
+                assertThat(context).hasFailed();
+                assertThat(context.getStartupFailure())
+                    .hasRootCauseInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("content-filter.primary-provider is required");
+            });
+    }
+
+    @Test
+    void contentFilterStartsWithSingleTypedModerationProvider() {
+        contextRunner
+            .withBean(ContentModerationProvider.class, TestContentModerationProvider::new)
+            .withPropertyValues(
+                "ai.governance.enabled=true",
+                "ai.governance.content-filter.enabled=true"
+            )
+            .run(context -> {
+                assertThat(context).hasNotFailed();
+                assertThat(context).hasSingleBean(AIContentFilterService.class);
+            });
+    }
+
+    @Test
     void vectorModeFailsFastWhenVectorDatabaseServiceIsMissing() {
         contextRunner
             .withPropertyValues(
@@ -204,6 +236,25 @@ class AIGovernanceAutoConfigurationTest {
         @Override
         public void notifyAfterDeletion(String userId) {
             // No-op test provider.
+        }
+    }
+
+    static class TestContentModerationProvider implements ContentModerationProvider {
+        @Override
+        public String providerId() {
+            return "test-moderation";
+        }
+
+        @Override
+        public ContentModerationResult moderate(ai.fabric.dto.AIContentFilterRequest request) {
+            return new ContentModerationResult(
+                false,
+                java.util.List.of(),
+                null,
+                0.0,
+                java.util.List.of(),
+                java.util.Map.of()
+            );
         }
     }
 }

@@ -16,11 +16,9 @@ import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
@@ -34,10 +32,6 @@ final class CompoundReadEvidenceSupport {
     private static final int DEFAULT_MAX_RETURNED_DOCUMENTS = 10;
     private static final int MIN_OBLIGATION_CONTEXT_CHARS = 240;
     private static final int MIN_DOCUMENT_CONTEXT_CHARS = 160;
-    private static final Set<String> CONTEXT_QUERY_STOP_WORDS = Set.of(
-        "and", "are", "can", "does", "for", "from", "have", "how", "into", "its", "the", "their",
-        "this", "those", "was", "what", "when", "where", "which", "who", "with", "would", "your"
-    );
     private static final String ERROR_CODE_ACTION_NOT_FOUND = "ACTION_NOT_FOUND";
     private static final String ERROR_CODE_GENERATION_FAILED = "GENERATION_FAILED";
     private CompoundReadEvidenceSupport() {
@@ -56,8 +50,7 @@ final class CompoundReadEvidenceSupport {
         List<ObligationEvidence> obligations = collectObligations(intents, children);
         List<DocumentEvidence> returnedDocumentEvidence = roundRobinDocuments(
             obligations,
-            resolveReturnedDocumentLimit(pipelineContext),
-            false
+            resolveReturnedDocumentLimit(pipelineContext)
         );
         List<RAGResponse.RAGDocument> documents = returnedDocumentEvidence.stream()
             .map(DocumentEvidence::document)
@@ -72,8 +65,7 @@ final class CompoundReadEvidenceSupport {
         );
         List<DocumentEvidence> generationDocumentCandidates = roundRobinDocuments(
             obligations,
-            generationDocumentLimit,
-            true
+            generationDocumentLimit
         );
         GenerationContext generationContext = buildGenerationContext(
             obligations,
@@ -329,8 +321,7 @@ final class CompoundReadEvidenceSupport {
     }
 
     private static List<DocumentEvidence> roundRobinDocuments(List<ObligationEvidence> obligations,
-                                                              int limit,
-                                                              boolean rankForGeneration) {
+                                                              int limit) {
         if (obligations == null || obligations.isEmpty() || limit <= 0) {
             return List.of();
         }
@@ -339,10 +330,7 @@ final class CompoundReadEvidenceSupport {
             List<DocumentEvidence> evidence = obligation.documents().stream()
                 .map(document -> new DocumentEvidence(obligation.index(), document))
                 .toList();
-            documentsByObligation.put(
-                obligation.index(),
-                rankForGeneration ? rankDocumentEvidence(evidence, intentQuery(obligation.intent())) : evidence
-            );
+            documentsByObligation.put(obligation.index(), evidence);
         }
         List<DocumentEvidence> selected = new ArrayList<>();
         Set<String> seen = new LinkedHashSet<>();
@@ -645,7 +633,7 @@ final class CompoundReadEvidenceSupport {
         if (hasDocuments && block.length() < maxChars) {
             String sectionLabel = "Retrieved document evidence:\n";
             int remaining = Math.max(0, maxChars - block.length() - sectionLabel.length());
-            BoundedDocumentContext documentContext = buildBoundedDocumentContext(documents, query, remaining);
+            BoundedDocumentContext documentContext = buildBoundedDocumentContext(documents, remaining);
             if (StringUtils.hasText(documentContext.content())) {
                 appendWithinBudget(block, sectionLabel, maxChars);
                 appendWithinBudget(block, documentContext.content(), maxChars);
@@ -681,7 +669,6 @@ final class CompoundReadEvidenceSupport {
     }
 
     private static BoundedDocumentContext buildBoundedDocumentContext(List<DocumentEvidence> documents,
-                                                                      String query,
                                                                       int maxChars) {
         if (documents == null || documents.isEmpty() || maxChars <= 0) {
             return new BoundedDocumentContext("", List.of());
@@ -691,7 +678,7 @@ final class CompoundReadEvidenceSupport {
             documents.size(),
             Math.max(1, maxChars / MIN_DOCUMENT_CONTEXT_CHARS)
         );
-        List<DocumentEvidence> candidates = rankDocumentEvidence(documents, query).subList(0, documentCount);
+        List<DocumentEvidence> candidates = List.copyOf(documents).subList(0, documentCount);
         StringBuilder context = new StringBuilder();
         List<DocumentEvidence> usedDocuments = new ArrayList<>();
 
@@ -699,7 +686,7 @@ final class CompoundReadEvidenceSupport {
             int remainingDocuments = candidates.size() - index;
             int documentBudget = Math.max(1, (maxChars - context.length()) / remainingDocuments);
             DocumentEvidence evidence = candidates.get(index);
-            String rendered = renderDocumentEvidence(evidence.document(), query, documentBudget);
+            String rendered = renderDocumentEvidence(evidence.document(), documentBudget);
             if (!StringUtils.hasText(rendered)) {
                 continue;
             }
@@ -713,62 +700,7 @@ final class CompoundReadEvidenceSupport {
         );
     }
 
-    private static List<DocumentEvidence> rankDocumentEvidence(List<DocumentEvidence> documents,
-                                                               String query) {
-        if (documents == null || documents.size() < 2) {
-            return documents == null ? List.of() : List.copyOf(documents);
-        }
-        List<String> terms = queryTerms(query);
-        if (terms.isEmpty()) {
-            return List.copyOf(documents);
-        }
-
-        List<RankedDocumentEvidence> ranked = new ArrayList<>(documents.size());
-        for (int index = 0; index < documents.size(); index++) {
-            DocumentEvidence evidence = documents.get(index);
-            ranked.add(new RankedDocumentEvidence(
-                evidence,
-                documentRelevanceScore(evidence != null ? evidence.document() : null, terms),
-                index
-            ));
-        }
-        ranked.sort(
-            Comparator.comparingInt(RankedDocumentEvidence::relevanceScore).reversed()
-                .thenComparingInt(RankedDocumentEvidence::originalIndex)
-        );
-        return ranked.stream().map(RankedDocumentEvidence::evidence).toList();
-    }
-
-    private static int documentRelevanceScore(RAGResponse.RAGDocument document,
-                                              List<String> queryTerms) {
-        if (document == null || queryTerms == null || queryTerms.isEmpty()) {
-            return 0;
-        }
-        int score = 0;
-        score += matchedTermScore(document.getTitle(), queryTerms, 8);
-        score += matchedTermScore(document.getHighlightedContent(), queryTerms, 5);
-        score += matchedTermScore(document.getContent(), queryTerms, 2);
-        return score;
-    }
-
-    private static int matchedTermScore(String value,
-                                        List<String> queryTerms,
-                                        int weight) {
-        if (!StringUtils.hasText(value) || queryTerms == null || queryTerms.isEmpty()) {
-            return 0;
-        }
-        String normalized = value.toLowerCase(Locale.ROOT);
-        int score = 0;
-        for (String term : queryTerms) {
-            if (normalized.contains(term)) {
-                score += weight;
-            }
-        }
-        return score;
-    }
-
     private static String renderDocumentEvidence(RAGResponse.RAGDocument document,
-                                                 String query,
                                                  int maxChars) {
         if (document == null || maxChars <= 0) {
             return "";
@@ -796,7 +728,7 @@ final class CompoundReadEvidenceSupport {
         String sourceText = StringUtils.hasText(document.getHighlightedContent())
             ? document.getHighlightedContent()
             : document.getContent();
-        String excerpt = selectRelevantExcerpt(sourceText, query, excerptBudget);
+        String excerpt = prefixExcerpt(sourceText, excerptBudget);
         if (!StringUtils.hasText(excerpt) && header.length() == 0) {
             return "";
         }
@@ -809,80 +741,7 @@ final class CompoundReadEvidenceSupport {
         return truncate(rendered.toString(), maxChars);
     }
 
-    private static String selectRelevantExcerpt(String content, String query, int maxChars) {
-        if (!StringUtils.hasText(content) || maxChars <= 0) {
-            return "";
-        }
-        String normalizedContent = content.trim();
-        if (normalizedContent.length() <= maxChars) {
-            return normalizedContent;
-        }
-
-        List<String> queryTerms = queryTerms(query);
-        List<TextSegment> segments = textSegments(normalizedContent, queryTerms);
-        if (segments.isEmpty() || queryTerms.isEmpty()) {
-            return centeredExcerpt(normalizedContent, queryTerms, maxChars);
-        }
-
-        segments.sort(
-            Comparator.comparingInt(TextSegment::score).reversed()
-                .thenComparingInt(TextSegment::index)
-        );
-        StringBuilder excerpt = new StringBuilder();
-        for (TextSegment segment : segments) {
-            if (segment.score() <= 0 || excerpt.length() >= maxChars) {
-                break;
-            }
-            int remaining = maxChars - excerpt.length();
-            String value = centeredExcerpt(segment.text(), queryTerms, remaining);
-            if (!StringUtils.hasText(value)) {
-                continue;
-            }
-            if (excerpt.length() > 0 && remaining > 1) {
-                excerpt.append('\n');
-                remaining--;
-            }
-            appendWithinBudget(excerpt, value, maxChars);
-        }
-        return excerpt.length() > 0
-            ? excerpt.toString()
-            : centeredExcerpt(normalizedContent, queryTerms, maxChars);
-    }
-
-    private static List<TextSegment> textSegments(String content, List<String> queryTerms) {
-        String[] values = content.split("(?:\\R\\s*\\R+|(?<=[.!?])\\s+)");
-        List<TextSegment> segments = new ArrayList<>();
-        for (int index = 0; index < values.length; index++) {
-            String value = values[index] != null ? values[index].trim() : "";
-            if (!StringUtils.hasText(value)) {
-                continue;
-            }
-            String normalized = value.toLowerCase(Locale.ROOT);
-            int score = 0;
-            for (String term : queryTerms) {
-                if (normalized.contains(term)) {
-                    score++;
-                }
-            }
-            segments.add(new TextSegment(index, value, score));
-        }
-        return segments;
-    }
-
-    private static List<String> queryTerms(String query) {
-        if (!StringUtils.hasText(query)) {
-            return List.of();
-        }
-        LinkedHashSet<String> terms = new LinkedHashSet<>();
-        for (String value : query.toLowerCase(Locale.ROOT).split("[^\\p{L}\\p{N}]+")) {
-            if (value.length() >= 3 && !CONTEXT_QUERY_STOP_WORDS.contains(value)) {
-                terms.add(value);
-            }
-        }
-        return terms.isEmpty() ? List.of() : List.copyOf(terms);
-    }
-
-    private static String centeredExcerpt(String content, List<String> queryTerms, int maxChars) {
+    private static String prefixExcerpt(String content, int maxChars) {
         if (!StringUtils.hasText(content) || maxChars <= 0) {
             return "";
         }
@@ -890,25 +749,10 @@ final class CompoundReadEvidenceSupport {
         if (value.length() <= maxChars) {
             return value;
         }
-        String normalized = value.toLowerCase(Locale.ROOT);
-        int matchIndex = -1;
-        for (String term : queryTerms) {
-            int candidate = normalized.indexOf(term);
-            if (candidate >= 0 && (matchIndex < 0 || candidate < matchIndex)) {
-                matchIndex = candidate;
-            }
+        if (maxChars <= 3) {
+            return value.substring(0, maxChars);
         }
-        int start = matchIndex < 0 ? 0 : Math.max(0, matchIndex - Math.max(0, maxChars / 3));
-        start = Math.min(start, Math.max(0, value.length() - maxChars));
-        int end = Math.min(value.length(), start + maxChars);
-        String excerpt = value.substring(start, end);
-        if (start > 0 && excerpt.length() > 3) {
-            excerpt = "..." + excerpt.substring(3);
-        }
-        if (end < value.length() && excerpt.length() > 3) {
-            excerpt = excerpt.substring(0, excerpt.length() - 3) + "...";
-        }
-        return excerpt;
+        return value.substring(0, maxChars - 3) + "...";
     }
 
     private static void appendWithinBudget(StringBuilder target, String value, int maxChars) {
@@ -953,6 +797,12 @@ final class CompoundReadEvidenceSupport {
             item.put("effectiveVectorSpaces", vectorSpaces);
             item.put("documentsRetrieved", obligation.documents().size());
             item.put("documentsUsed", usedDocumentsByObligation.getOrDefault(obligation.index(), 0L));
+            item.put("evidenceSelectionSource", evidenceSelectionSource(obligation));
+            item.put("providerScorePresent", hasProviderScore(obligation.documents()));
+            String retrievalProvider = retrievalProvider(obligation);
+            if (StringUtils.hasText(retrievalProvider)) {
+                item.put("retrievalProvider", retrievalProvider);
+            }
             item.put("readActionEvidenceCount", obligation.actionEvidence().size());
             item.put("actionCount", obligation.publicActions().size());
             item.put("searchedSourceIds", obligationSourceIds(obligation));
@@ -999,6 +849,16 @@ final class CompoundReadEvidenceSupport {
         diagnostics.put("actionExecutionIds", collectActionExecutionIds(obligations));
         diagnostics.put("returnedDocumentCount", returnedDocumentCount);
         diagnostics.put("usedDocumentCount", usedDocuments.size());
+        diagnostics.put("evidenceSelectionSources", obligations.stream()
+            .map(CompoundReadEvidenceSupport::evidenceSelectionSource)
+            .distinct()
+            .toList());
+        diagnostics.put("obligationInterleavingApplied", obligations.size() > 1 && returnedDocumentCount > 1);
+        int retrievedDocumentCount = obligations.stream().mapToInt(value -> value.documents().size()).sum();
+        diagnostics.put(
+            "documentBudgetTruncationApplied",
+            returnedDocumentCount < retrievedDocumentCount || usedDocuments.size() < returnedDocumentCount
+        );
         diagnostics.put("generationContextChars", generationContextChars);
         diagnostics.put("obligations", Collections.unmodifiableList(obligationDiagnostics));
         diagnostics.put("generationEnabled", generationEnabled);
@@ -1009,6 +869,54 @@ final class CompoundReadEvidenceSupport {
             diagnostics.put("finalSynthesisError", generationError);
         }
         return Collections.unmodifiableMap(diagnostics);
+    }
+
+    private static String evidenceSelectionSource(ObligationEvidence obligation) {
+        RAGResponse response = extractRagResponse(obligation);
+        if (response != null && response.getMetadata() != null) {
+            Object reranker = response.getMetadata().get("rerankingStrategy");
+            if (reranker != null && StringUtils.hasText(String.valueOf(reranker))) {
+                return "DECLARED_RERANKER";
+            }
+            if (Boolean.FALSE.equals(response.getMetadata().get("rankedOrderGuaranteed"))) {
+                return "UNRANKED_PROVIDER_ORDER_TRUNCATION";
+            }
+        }
+        return hasProviderScore(obligation != null ? obligation.documents() : List.of())
+            ? "VECTOR_PROVIDER_SCORE"
+            : "PROVIDER_RANKED_ORDER";
+    }
+
+    private static boolean hasProviderScore(List<RAGResponse.RAGDocument> documents) {
+        return documents != null && documents.stream()
+            .filter(java.util.Objects::nonNull)
+            .anyMatch(document -> document.getScore() != null || document.getSimilarity() != null);
+    }
+
+    private static String retrievalProvider(ObligationEvidence obligation) {
+        RAGResponse response = extractRagResponse(obligation);
+        if (response == null) {
+            return null;
+        }
+        if (StringUtils.hasText(response.getModel())) {
+            return response.getModel().trim();
+        }
+        if (response.getMetadata() == null) {
+            return null;
+        }
+        return firstText(
+            stringValue(response.getMetadata().get("provider")),
+            stringValue(response.getMetadata().get("retrievalProvider")),
+            stringValue(response.getMetadata().get("providerName"))
+        );
+    }
+
+    private static RAGResponse extractRagResponse(ObligationEvidence obligation) {
+        if (obligation == null || obligation.child() == null || obligation.child().getData() == null) {
+            return null;
+        }
+        Object response = obligation.child().getData().get("ragResponse");
+        return response instanceof RAGResponse ragResponse ? ragResponse : null;
     }
 
     private static List<String> collectActionExecutionIds(List<ObligationEvidence> obligations) {
@@ -1143,7 +1051,10 @@ final class CompoundReadEvidenceSupport {
         return Intent.builder()
             .type(IntentType.INFORMATION)
             .intent("compound_read_synthesis")
+            .requiresRetrieval(false)
             .requiresGeneration(true)
+            .requiresTargetResolution(false)
+            .needsAdvancedRAG(false)
             .responseProfile(profile)
             .build();
     }
@@ -1217,13 +1128,6 @@ final class CompoundReadEvidenceSupport {
     private record DocumentEvidence(int obligationIndex, RAGResponse.RAGDocument document) {
     }
 
-    private record RankedDocumentEvidence(
-        DocumentEvidence evidence,
-        int relevanceScore,
-        int originalIndex
-    ) {
-    }
-
     private record GenerationContext(String content, List<DocumentEvidence> usedDocuments) {
     }
 
@@ -1233,6 +1137,4 @@ final class CompoundReadEvidenceSupport {
     private record BoundedDocumentContext(String content, List<DocumentEvidence> usedDocuments) {
     }
 
-    private record TextSegment(int index, String text, int score) {
-    }
 }

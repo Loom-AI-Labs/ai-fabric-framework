@@ -21,7 +21,7 @@ import static org.mockito.Mockito.when;
 class IntentExtractionPostProcessorTargetBoundReadTest {
 
     @Test
-    void convertsGroundingReadWithoutTrustedTargetIntoInformationRetrieval() {
+    void preservesGroundingReadWithoutInventingInformationRetrieval() {
         AIActionRegistry registry = registryFor(targetBoundRead());
         IntentExtractionPostProcessor processor = new IntentExtractionPostProcessor(registry);
         Intent intent = actionIntent(false, Map.of());
@@ -32,15 +32,32 @@ class IntentExtractionPostProcessorTargetBoundReadTest {
         );
 
         Intent processed = result.getIntents().getFirst();
-        assertThat(processed.getType()).isEqualTo(IntentType.INFORMATION);
-        assertThat(processed.getAction()).isNull();
+        assertThat(processed.getType()).isEqualTo(IntentType.ACTION);
+        assertThat(processed.getAction()).isEqualTo("get_catalog_item");
         assertThat(processed.getActionParams()).isEmpty();
-        assertThat(processed.getRequiresRetrieval()).isTrue();
-        assertThat(processed.getRequiresGeneration()).isTrue();
-        assertThat(processed.getVectorSpace()).isEqualTo("catalog-item");
-        assertThat(processed.getOptimizedQuery()).isEqualTo("Which current options are suitable for commuting?");
-        assertThat(normalizationRules(result))
-            .contains("COERCE_UNAVAILABLE_TARGET_BOUND_READ_TO_INFORMATION");
+        assertThat(processed.getRequiresRetrieval()).isFalse();
+        assertThat(processed.getRequiresGeneration()).isFalse();
+        assertThat(processed.getVectorSpace()).isNull();
+        assertThat(result.getMetadata()).doesNotContainKey("normalization");
+    }
+
+    @Test
+    void preservesMissingRetrievalDecisionForSchemaValidation() {
+        AIActionRegistry registry = registryFor(targetBoundRead());
+        Intent intent = Intent.builder()
+            .type(IntentType.ACTION)
+            .intent("get_catalog_item")
+            .action("get_catalog_item")
+            .requiresGeneration(false)
+            .requiresTargetResolution(false)
+            .build();
+
+        new IntentExtractionPostProcessor(registry).postProcess(
+            MultiIntentResponse.builder().intents(List.of(intent)).build(),
+            "Show the selected item"
+        );
+
+        assertThat(intent.getRequiresRetrieval()).isNull();
     }
 
     @Test
@@ -148,8 +165,4 @@ class IntentExtractionPostProcessorTargetBoundReadTest {
             .build();
     }
 
-    private static List<String> normalizationRules(MultiIntentResponse response) {
-        Map<?, ?> normalization = (Map<?, ?>) response.getMetadata().get("normalization");
-        return ((List<?>) normalization.get("appliedRules")).stream().map(Object::toString).toList();
-    }
 }

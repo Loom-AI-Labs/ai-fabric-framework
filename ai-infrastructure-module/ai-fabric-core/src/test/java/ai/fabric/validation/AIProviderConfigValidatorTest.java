@@ -4,6 +4,9 @@ import ai.fabric.config.AIProviderConfig;
 import ai.fabric.config.AIServiceConfig;
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
+import java.util.Map;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 class AIProviderConfigValidatorTest {
@@ -186,6 +189,54 @@ class AIProviderConfigValidatorTest {
         assertThat(result.isValid()).isTrue();
         assertThat(result.errors()).isEmpty();
         assertThat(result.warnings()).isNotEmpty();
+    }
+
+    @Test
+    void rejectsEmbeddingFallbackWithoutMatchingEmbeddingCompatibilityGroup() {
+        AIProviderConfig providerConfig = configuredOpenAiLlm();
+        providerConfig.setEmbeddingProvider("onnx");
+        providerConfig.getOnnx().setEnabled(true);
+        providerConfig.getOnnx().setModelPath("classpath:/models/embeddings/all-MiniLM-L6-v2.onnx");
+        providerConfig.setEnableFallback(true);
+        providerConfig.setEmbeddingFallbackProviders(List.of("openai"));
+        providerConfig.setProviderDataPolicies(Map.of(
+            "onnx", "customer-data-eu",
+            "openai", "customer-data-eu"
+        ));
+        providerConfig.setEmbeddingCompatibilityGroups(Map.of(
+            "onnx", "local-space",
+            "openai", "remote-space"
+        ));
+
+        AIProviderConfigValidator.ValidationResult result =
+            new AIProviderConfigValidator(providerConfig, serviceConfig()).validate();
+
+        assertThat(result.errors())
+            .extracting(AIProviderConfigValidator.ValidationIssue::key)
+            .contains("ai.providers.embedding-fallback-providers[0]");
+    }
+
+    @Test
+    void acceptsExplicitDataAndEmbeddingCompatibleFallbackContract() {
+        AIProviderConfig providerConfig = configuredOpenAiLlm();
+        providerConfig.setEmbeddingProvider("onnx");
+        providerConfig.getOnnx().setEnabled(true);
+        providerConfig.getOnnx().setModelPath("classpath:/models/embeddings/all-MiniLM-L6-v2.onnx");
+        providerConfig.setEnableFallback(true);
+        providerConfig.setEmbeddingFallbackProviders(List.of("openai"));
+        providerConfig.setProviderDataPolicies(Map.of(
+            "onnx", "customer-data-eu",
+            "openai", "customer-data-eu"
+        ));
+        providerConfig.setEmbeddingCompatibilityGroups(Map.of(
+            "onnx", "catalog-space-v1",
+            "openai", "catalog-space-v1"
+        ));
+
+        AIProviderConfigValidator.ValidationResult result =
+            new AIProviderConfigValidator(providerConfig, serviceConfig()).validate();
+
+        assertThat(result.errors()).isEmpty();
     }
 
     private AIProviderConfig configuredOpenAiLlm() {

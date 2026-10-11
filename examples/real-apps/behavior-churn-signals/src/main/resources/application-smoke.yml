@@ -1,4 +1,6 @@
 ai:
+  providers:
+    llm-provider: behavior-local
   execution:
     async:
       encryption-secret: smoke-behavior-async-encryption-key-local-only-0001

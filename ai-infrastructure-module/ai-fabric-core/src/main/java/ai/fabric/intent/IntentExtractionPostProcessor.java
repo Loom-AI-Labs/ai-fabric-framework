@@ -6,9 +6,7 @@ import ai.fabric.dto.MultiIntentResponse;
 import ai.fabric.dto.NextStepRecommendation;
 import ai.fabric.exception.AIServiceException;
 import ai.fabric.intent.action.AIActionMetaData;
-import ai.fabric.intent.action.AIActionParamSchema;
 import ai.fabric.intent.action.AIActionRegistry;
-import ai.fabric.intent.action.ActionAccessMode;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -45,7 +43,6 @@ public class IntentExtractionPostProcessor {
         List<String> appliedRules = new ArrayList<>();
 
         response.normalize();
-        coerceMisclassifiedActionIntents(response, appliedRules);
         validateResponse(response, originalQuery, appliedRules);
         attachNormalizationDiagnostics(response, appliedRules);
 
@@ -54,49 +51,6 @@ public class IntentExtractionPostProcessor {
         }
 
         return response;
-    }
-
-    /**
-     * Provider-agnostic guardrail: some models mislabel "summarize / explain" requests as ACTION intents
-     * with an unregistered action name (e.g., "summarize"). When the intent also clearly requests RAG
-     * (requiresRetrieval + requiresGeneration + vectorSpace), treat it as INFORMATION instead so the
-     * pipeline can satisfy it via retrieval/generation rather than failing with ACTION_NOT_FOUND.
-     */
-    private void coerceMisclassifiedActionIntents(MultiIntentResponse response, List<String> appliedRules) {
-        if (response == null || response.getIntents() == null || response.getIntents().isEmpty()) {
-            return;
-        }
-
-        for (Intent intent : response.getIntents()) {
-            if (intent == null || intent.getType() != IntentType.ACTION) {
-                continue;
-            }
-
-            String actionName = intent.getIntentOrAction();
-            if (!StringUtils.hasText(actionName)) {
-                continue;
-            }
-
-            if (actionHandlerRegistry != null && actionHandlerRegistry.findHandler(actionName).isPresent()) {
-                continue;
-            }
-
-            boolean looksLikeRagRequest =
-                Boolean.TRUE.equals(intent.getRequiresRetrieval())
-                    && Boolean.TRUE.equals(intent.getRequiresGeneration())
-                    && StringUtils.hasText(intent.getVectorSpace());
-
-            if (looksLikeRagRequest) {
-                log.warn(
-                    "Intent extractor misclassified a RAG request as ACTION (action='{}', vectorSpace='{}'). Treating as INFORMATION.",
-                    actionName,
-                    intent.getVectorSpace()
-                );
-                intent.setType(IntentType.INFORMATION);
-                intent.setAction(null);
-                recordRule(appliedRules, "COERCE_MISCLASSIFIED_ACTION_TO_INFORMATION");
-            }
-        }
     }
 
     private void validateResponse(MultiIntentResponse response, String originalQuery, List<String> appliedRules) {
@@ -122,11 +76,7 @@ public class IntentExtractionPostProcessor {
                 }
             }
             canonicalizeActionName(intent, appliedRules);
-            coerceUnavailableTargetBoundReadAction(intent, originalQuery, appliedRules);
             validateRelationshipActionParams(intent, originalQuery, appliedRules);
-            if (intent.getRequiresRetrieval() == null) {
-                intent.setRequiresRetrieval(intent.getType() == IntentType.INFORMATION);
-            }
             if (Boolean.TRUE.equals(intent.getRequiresRetrieval()) && !StringUtils.hasText(intent.getVectorSpace())) {
                 log.debug("Intent requires retrieval but vectorSpace is missing; deferring routing to VectorSpaceResolutionStep");
             }
@@ -135,149 +85,6 @@ public class IntentExtractionPostProcessor {
         if (response.getOrchestrationStrategy() == null) {
             response.setOrchestrationStrategy(deriveOrchestrationStrategy(response));
         }
-    }
-
-    /**
-     * A grounding read that can only address a trusted current target is not a valid direct action when
-     * extraction found no target to resolve. Treat it as an information obligation so normal read-action
-     * planning or RAG can satisfy the request without asking the user for an internal identifier.
-     */
-    private void coerceUnavailableTargetBoundReadAction(Intent intent,
-                                                        String originalQuery,
-                                                        List<String> appliedRules) {
-        if (intent == null
-            || intent.getType() != IntentType.ACTION
-            || Boolean.TRUE.equals(intent.getRequiresTargetResolution())
-            || actionHandlerRegistry == null) {
-            return;
-        }
-
-        String actionName = StringUtils.hasText(intent.getAction()) ? intent.getAction() : intent.getIntent();
-        if (!StringUtils.hasText(actionName)) {
-            return;
-        }
-
-        var metadataOptional = actionHandlerRegistry.findMetadata(actionName);
-        AIActionMetaData metadata = metadataOptional != null ? metadataOptional.orElse(null) : null;
-        if (metadata == null
-            || metadata.getAccessMode() != ActionAccessMode.READ
-            || !metadata.isGroundingEligible()
-            || metadata.getRequiredParameters() == null
-            || metadata.getRequiredParameters().isEmpty()) {
-            return;
-        }
-
-        boolean missingTrustedTarget = false;
-        for (String required : metadata.getRequiredParameters()) {
-            if (!StringUtils.hasText(required) || hasMeaningfulActionParam(intent.getActionParams(), required)) {
-                continue;
-            }
-            AIActionParamSchema schema = paramSchema(metadata, required);
-            if (!isAttachmentTargetBound(schema)) {
-                // User-visible fields and other server-owned resolver contracts retain their normal handling.
-                return;
-            }
-            missingTrustedTarget = true;
-        }
-        if (!missingTrustedTarget) {
-            return;
-        }
-
-        String retrievalSpace = StringUtils.hasText(intent.getVectorSpace())
-            ? intent.getVectorSpace().trim()
-            : soleGroundingVectorSpace(metadata);
-        if (!StringUtils.hasText(retrievalSpace)) {
-            return;
-        }
-
-        intent.setType(IntentType.INFORMATION);
-        intent.setAction(null);
-        intent.setActionParams(Map.of());
-        intent.setRequiresRetrieval(true);
-        intent.setRequiresGeneration(true);
-        intent.setRequiresTargetResolution(false);
-        intent.setDirectAnswer(null);
-        intent.setVectorSpace(retrievalSpace);
-        if (!StringUtils.hasText(intent.getOptimizedQuery()) && StringUtils.hasText(originalQuery)) {
-            intent.setOptimizedQuery(originalQuery.trim());
-        }
-        recordRule(appliedRules, "COERCE_UNAVAILABLE_TARGET_BOUND_READ_TO_INFORMATION");
-        log.debug(
-            "Converted grounding read action '{}' without trusted target context into retrieval for vector space '{}'",
-            actionName,
-            retrievalSpace
-        );
-    }
-
-    private boolean hasMeaningfulActionParam(Map<String, Object> params, String required) {
-        if (params == null || params.isEmpty() || !StringUtils.hasText(required)) {
-            return false;
-        }
-        Object value = params.get(required.trim());
-        if (value == null) {
-            for (Map.Entry<String, Object> entry : params.entrySet()) {
-                if (entry != null
-                    && StringUtils.hasText(entry.getKey())
-                    && required.trim().equalsIgnoreCase(entry.getKey().trim())) {
-                    value = entry.getValue();
-                    break;
-                }
-            }
-        }
-        if (value instanceof String text) {
-            return StringUtils.hasText(text);
-        }
-        if (value instanceof java.util.Collection<?> collection) {
-            return !collection.isEmpty();
-        }
-        if (value instanceof Map<?, ?> map) {
-            return !map.isEmpty();
-        }
-        return value != null;
-    }
-
-    private AIActionParamSchema paramSchema(AIActionMetaData metadata, String parameter) {
-        if (metadata == null
-            || metadata.getParameterSchemas() == null
-            || metadata.getParameterSchemas().isEmpty()
-            || !StringUtils.hasText(parameter)) {
-            return null;
-        }
-        AIActionParamSchema exact = metadata.getParameterSchemas().get(parameter.trim());
-        if (exact != null) {
-            return exact;
-        }
-        for (Map.Entry<String, AIActionParamSchema> entry : metadata.getParameterSchemas().entrySet()) {
-            if (entry != null
-                && StringUtils.hasText(entry.getKey())
-                && parameter.trim().equalsIgnoreCase(entry.getKey().trim())) {
-                return entry.getValue();
-            }
-        }
-        return null;
-    }
-
-    private boolean isAttachmentTargetBound(AIActionParamSchema schema) {
-        if (schema == null
-            || !Boolean.FALSE.equals(schema.getAskUser())
-            || !Boolean.TRUE.equals(schema.getEvidenceBound())
-            || schema.getResolveFrom() == null) {
-            return false;
-        }
-        Object source = schema.getResolveFrom().get("source");
-        return source != null && "ATTACHMENT_METADATA".equalsIgnoreCase(source.toString().trim());
-    }
-
-    private String soleGroundingVectorSpace(AIActionMetaData metadata) {
-        if (metadata == null || metadata.getGroundingVectorSpaces() == null) {
-            return null;
-        }
-        List<String> spaces = metadata.getGroundingVectorSpaces().stream()
-            .filter(StringUtils::hasText)
-            .map(String::trim)
-            .distinct()
-            .toList();
-        return spaces.size() == 1 ? spaces.getFirst() : null;
     }
 
     private String deriveOrchestrationStrategy(MultiIntentResponse response) {

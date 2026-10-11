@@ -61,7 +61,7 @@ ai:
       enable-search: false
       enable-generation: true
   providers:
-    llm-provider: ${AI_LLM_PROVIDER:behavior-local}
+    llm-provider: ${AI_LLM_PROVIDER:openai}
     openai:
       enabled: ${OPENAI_ENABLED:false}
       api-key: ${OPENAI_API_KEY:}

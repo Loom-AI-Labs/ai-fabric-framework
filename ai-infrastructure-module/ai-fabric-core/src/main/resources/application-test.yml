@@ -47,7 +47,7 @@ ai:
   providers:
     llm-provider: ${LLM_PROVIDER:openai}
     embedding-provider: ${EMBEDDING_PROVIDER:onnx}
-    enable-fallback: true
+    enable-fallback: false
 
     onnx:
       enabled: ${ONNX_ENABLED:true}

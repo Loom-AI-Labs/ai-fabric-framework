@@ -6,6 +6,8 @@ import ai.fabric.intent.orchestration.OrchestrationResult;
 import ai.fabric.intent.orchestration.OrchestrationResultType;
 import ai.fabric.intent.orchestration.pipeline.PipelineContext;
 import ai.fabric.intent.orchestration.pipeline.PipelineStep;
+import ai.fabric.intent.orchestration.policy.OrchestrationPolicy;
+import ai.fabric.intent.orchestration.policy.SemanticRecoveryPolicy;
 import ai.fabric.intent.orchestration.targets.ResolvedTarget;
 import ai.fabric.intent.orchestration.targets.ResolvedTargetSource;
 import ai.fabric.dto.Intent;
@@ -90,14 +92,39 @@ public class TargetResolutionStep implements PipelineStep {
 
         // Fail-closed only when target resolution is explicitly required.
         if (requiresTargets && (updated.getResolvedTargets() == null || updated.getResolvedTargets().isEmpty())) {
-            return updated.terminate(OrchestrationResult.builder()
+            SemanticRecoveryPolicy recoveryPolicy = semanticRecoveryPolicy(updated);
+            Map<String, Object> semanticDecision = Map.of(
+                "decision", "TARGET_RESOLUTION",
+                "originalSource", "MODEL",
+                "originalValue", "TARGET_REQUIRED",
+                "validationStatus", "TARGET_NOT_RESOLVED",
+                "recoveryPolicy", recoveryPolicy.missingTarget().name(),
+                "recoveryAttempted", false,
+                "effectiveSource", "RECOVERY_POLICY",
+                "effectiveValue", "CLARIFICATION_REQUIRED"
+            );
+            PipelineContext withDecision = updated.withMetadata(
+                "semanticDecision",
+                semanticDecision
+            );
+            return withDecision.terminate(OrchestrationResult.builder()
                 .type(OrchestrationResultType.CLARIFICATION_REQUIRED)
                 .success(false)
                 .message(MSG_CLARIFICATION_REQUIRED)
                 .data(Map.of("reason", "TARGET_REQUIRED"))
+                .metadata(Map.of("semanticDecision", semanticDecision))
                 .build());
         }
         return updated;
+    }
+
+    private SemanticRecoveryPolicy semanticRecoveryPolicy(PipelineContext context) {
+        OrchestrationPolicy policy = context != null
+            ? context.getOrchestrationPolicy()
+            : null;
+        return policy != null && policy.semanticRecoveryPolicy() != null
+            ? policy.semanticRecoveryPolicy()
+            : SemanticRecoveryPolicy.strictDefaults();
     }
 
     private boolean anyIntentRequiresTargetResolution(List<Intent> intents) {

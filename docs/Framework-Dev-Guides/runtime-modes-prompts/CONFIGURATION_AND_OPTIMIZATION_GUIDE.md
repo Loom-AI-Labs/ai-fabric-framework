@@ -54,7 +54,7 @@ ai:
 
 ## 2) Vector Space Routing (Multi-Domain RAG Optimization)
 
-When intent extraction omits `vectorSpace` (or provides multiple candidate spaces), the pipeline can route in a deterministic and bounded way.
+When intent extraction omits `vectorSpace`, strict modes clarify by default. A deployment may explicitly permit bounded fan-out through its semantic recovery policy; an allowlist constrains that recovery but never proves relevance by itself.
 
 ### Configuration (`ai.rag.vectorspace-routing.*`)
 
@@ -62,7 +62,7 @@ When intent extraction omits `vectorSpace` (or provides multiple candidate space
 ai:
   rag:
     vectorspace-routing:
-      strategy: BOUNDED_FAN_OUT   # HEURISTIC | BOUNDED_FAN_OUT | CLARIFICATION
+      strategy: CLARIFICATION   # CLARIFICATION | BOUNDED_FAN_OUT
       fan-out-max-spaces: 3
       fan-out-top-k-per-space: 5
       fan-out-rag-threshold: 0.3
@@ -71,15 +71,14 @@ ai:
 
 **Key properties**
 - `strategy`
-  - `BOUNDED_FAN_OUT`: query multiple spaces, merge/rerank deterministically, ask clarification if weak.
-  - `HEURISTIC`: pick a single space deterministically (lowest cost; can misroute in multi-domain KBs).
-  - `CLARIFICATION`: always ask a question when routing is ambiguous.
+  - `CLARIFICATION`: ask a question when the validated model result does not select a domain.
+  - `BOUNDED_FAN_OUT`: expose bounded candidates only for a server-owned `BOUNDED_ALLOWED_FAN_OUT` recovery policy. It never inspects query wording.
 - `fan-out-max-spaces`: bounds fan-out breadth (cost + latency control).
 - `fan-out-top-k-per-space`: bounds documents fetched per space.
 - `fan-out-rag-threshold`: **per-space retrieval threshold** passed into each `RAGRequest.threshold`.
   - Increase to reduce low-quality matches and reduce context size.
   - Decrease if you’re seeing false “clarification required” due to sparse embeddings.
-- `clarification-threshold`: if best merged score is below this, the pipeline asks user to clarify the domain.
+- `clarification-threshold`: if the configured retrieval provider's best merged score is below this, the pipeline asks the user to clarify the domain.
 
 **Tuning guidance**
 - If you prioritize **precision**: increase `fan-out-rag-threshold` (e.g., `0.35–0.55`) and/or increase `clarification-threshold`.

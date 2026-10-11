@@ -10,610 +10,360 @@ import ai.fabric.intent.KnowledgeBaseOverviewService;
 import ai.fabric.intent.orchestration.OrchestrationContext;
 import ai.fabric.intent.orchestration.OrchestrationContextMetadataKeys;
 import ai.fabric.intent.orchestration.OrchestrationResultType;
-import ai.fabric.intent.orchestration.attachment.NormalizedAttachment;
 import ai.fabric.intent.orchestration.pipeline.PipelineContext;
-import ai.fabric.intent.orchestration.targets.ResolvedTarget;
-import ai.fabric.intent.orchestration.targets.ResolvedTargetSource;
 import ai.fabric.intent.orchestration.policy.OrchestrationPolicy;
 import ai.fabric.intent.orchestration.policy.OrchestrationProfile;
-import ai.fabric.intent.vectorspace.RoutingResult;
-import ai.fabric.intent.vectorspace.RoutingStrategy;
-import ai.fabric.intent.vectorspace.VectorSpaceRouter;
+import ai.fabric.intent.orchestration.policy.SemanticRecoveryPolicy;
+import ai.fabric.intent.orchestration.targets.ResolvedTarget;
+import ai.fabric.intent.orchestration.targets.ResolvedTargetSource;
+import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
-import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.ObjectProvider;
 
-import java.util.Map;
-import java.util.List;
-
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class VectorSpaceResolutionStepTest {
 
     @Test
-    void shouldSkipWhenVectorSpaceAlreadyPresent() {
-        VectorSpaceRouter router = mock(VectorSpaceRouter.class);
-        VectorSpaceResolutionStep step = new VectorSpaceResolutionStep(
-            router,
-            new OrchestrationProperties(),
-            new VectorSpaceRoutingProperties(),
-            providerOf((KnowledgeBaseOverviewService) null)
-        );
+    void preservesRegisteredModelDecision() {
+        VectorSpaceResolutionStep step = step(overview("policies", "faq"));
+        Intent intent = informationIntent("policies");
 
-        Intent intent = Intent.builder()
-            .type(IntentType.INFORMATION)
-            .intent("refund_policy")
-            .vectorSpace("policies")
-            .build();
-
-        PipelineContext context = PipelineContext.from("q", OrchestrationContext.forUser("user"))
-            .toBuilder()
-            .intentResponse(MultiIntentResponse.builder().intents(List.of(intent)).build())
-            .build();
-
-        PipelineContext updated = step.process(context);
+        PipelineContext updated = step.process(context(intent, null, OrchestrationContext.forUser("user")));
 
         assertThat(updated.isShouldTerminate()).isFalse();
-        assertThat(updated.getIntentResponse().getIntents().getFirst().getVectorSpace()).isEqualTo("policies");
-        verify(router, never()).route(any(), anyString());
+        assertThat(intent.getVectorSpace()).isEqualTo("policies");
+        assertThat(String.valueOf(updated.getMetadata().get("vectorSpaceRouting")))
+            .contains("LLM_VALIDATED");
     }
 
     @Test
-    void shouldNotBroadenInvalidVectorSpaceAcrossAllAvailableDomains() {
-        VectorSpaceRouter router = mock(VectorSpaceRouter.class);
+    void strictPolicyRejectsInvalidModelDecisionWithoutGuessingReplacement() {
+        VectorSpaceResolutionStep step = step(overview("policies", "faq"));
+        Intent intent = informationIntent("commerce");
 
-        KnowledgeBaseOverviewService overviewService = mock(KnowledgeBaseOverviewService.class);
-        when(overviewService.getOverview()).thenReturn(KnowledgeBaseOverview.builder()
-            .entityTypes(List.of("faq", "policies"))
-            .build());
+        PipelineContext updated = step.process(context(intent, null, OrchestrationContext.forUser("user")));
 
-        VectorSpaceResolutionStep step = new VectorSpaceResolutionStep(
-            router,
-            new OrchestrationProperties(),
-            new VectorSpaceRoutingProperties(),
-            providerOf(overviewService)
+        assertThat(updated.isShouldTerminate()).isTrue();
+        assertThat(updated.getEarlyTerminationResult().getType()).isEqualTo(OrchestrationResultType.ERROR);
+        assertThat(updated.getEarlyTerminationResult().getErrorCode()).isEqualTo("INVALID_VECTOR_SPACE_DECISION");
+        assertThat(intent.getVectorSpace()).isEqualTo("commerce");
+        assertThat(String.valueOf(updated.getEarlyTerminationResult().getMetadata()))
+            .contains("LLM_REPAIR_THEN_FAIL")
+            .contains("REJECTED_NOT_REGISTERED");
+    }
+
+    @Test
+    void explicitInvalidDecisionPolicyClarifiesWithoutSelectingAllowlistEntry() {
+        VectorSpaceResolutionStep step = step(overview("policy", "product"));
+        Intent intent = informationIntent("policies");
+        SemanticRecoveryPolicy recovery = new SemanticRecoveryPolicy(
+            null,
+            null,
+            null,
+            OrchestrationProperties.InvalidVectorSpaceRecovery.LLM_REPAIR_THEN_CLARIFY,
+            null,
+            null,
+            null
+        );
+        OrchestrationPolicy policy = policy(
+            new OrchestrationPolicy.RagBudgets(true, 2, null, null, null, null, List.of("policy")),
+            recovery
         );
 
-        Intent intent = Intent.builder()
-            .type(IntentType.INFORMATION)
-            .intent("search_products")
-            .requiresRetrieval(true)
-            .vectorSpace("commerce")
-            .build();
-
-        PipelineContext context = PipelineContext.from("smartphone", OrchestrationContext.forUser("user"))
-            .toBuilder()
-            .intentResponse(MultiIntentResponse.builder().intents(List.of(intent)).build())
-            .build();
-
-        PipelineContext updated = step.process(context);
+        PipelineContext updated = step.process(context(intent, policy, OrchestrationContext.forUser("user")));
 
         assertThat(updated.isShouldTerminate()).isTrue();
         assertThat(updated.getEarlyTerminationResult().getType())
             .isEqualTo(OrchestrationResultType.CLARIFICATION_REQUIRED);
-        assertThat(updated.getIntentResponse().getIntents().getFirst().getVectorSpace()).isNull();
-        verify(router).route(any(), anyString());
+        assertThat(updated.getEarlyTerminationResult().getData())
+            .containsEntry("candidateVectorSpaces", List.of("policy"));
+        assertThat(intent.getVectorSpace()).isEqualTo("policies");
     }
 
     @Test
-    void shouldFallbackToAllowlistWhenVectorSpaceInvalidAndAllowlistPresent() {
-        VectorSpaceRouter router = mock(VectorSpaceRouter.class);
-
-        KnowledgeBaseOverviewService overviewService = mock(KnowledgeBaseOverviewService.class);
-        when(overviewService.getOverview()).thenReturn(KnowledgeBaseOverview.builder()
-            .entityTypes(List.of("product", "review", "policy"))
-            .build());
-
-        VectorSpaceResolutionStep step = new VectorSpaceResolutionStep(
-            router,
-            new OrchestrationProperties(),
-            new VectorSpaceRoutingProperties(),
-            providerOf(overviewService)
-        );
-
-        OrchestrationPolicy policy = new OrchestrationPolicy(
-            OrchestrationProfile.DEFAULT,
-            "executor",
-            null,
-            OrchestrationProperties.InformationMode.LLM_DRIVEN,
-            OrchestrationPolicy.OrchestrationCapabilities.defaults(),
-            new OrchestrationPolicy.RagBudgets(true, null, null, null, null, null, List.of("policy"))
-        );
-
-        Intent intent = Intent.builder()
-            .type(IntentType.INFORMATION)
-            .intent("refund_policy")
-            .requiresRetrieval(true)
-            .vectorSpace("policies")
-            .build();
-
-        PipelineContext context = PipelineContext.from("refund policy", OrchestrationContext.forUser("user"))
-            .toBuilder()
-            .orchestrationPolicy(policy)
-            .intentResponse(MultiIntentResponse.builder().intents(List.of(intent)).build())
-            .build();
-
-        PipelineContext updated = step.process(context);
-
-        assertThat(updated.isShouldTerminate()).isFalse();
-        assertThat(updated.getIntentResponse().getIntents().getFirst().getVectorSpace()).isEqualTo("policy");
-        assertThat(updated.getMetadata()).containsKey("vectorSpaceRouting");
-        verify(router, never()).route(any(), anyString());
-    }
-
-    @Test
-    void shouldPreferTrustedVectorSpaceHintOverInvalidExtractedVectorSpace() {
-        VectorSpaceRouter router = mock(VectorSpaceRouter.class);
-
-        KnowledgeBaseOverviewService overviewService = mock(KnowledgeBaseOverviewService.class);
-        when(overviewService.getOverview()).thenReturn(KnowledgeBaseOverview.builder()
-            .entityTypes(List.of("primary-docs", "reference-docs"))
-            .build());
-
-        VectorSpaceResolutionStep step = new VectorSpaceResolutionStep(
-            router,
-            new OrchestrationProperties(),
-            new VectorSpaceRoutingProperties(),
-            providerOf(overviewService)
-        );
-
-        Intent intent = Intent.builder()
-            .type(IntentType.INFORMATION)
-            .intent("find_onboarding_checklist")
-            .requiresRetrieval(true)
-            .vectorSpace("wrong-space")
-            .build();
-
-        OrchestrationContext orchestrationContext = OrchestrationContext.builder()
+    void trustedServerHintMayProvideAnExactAllowedScope() {
+        VectorSpaceResolutionStep step = step(overview("primary-docs", "reference-docs"));
+        Intent intent = informationIntent("wrong-space");
+        OrchestrationContext request = OrchestrationContext.builder()
             .userId("user")
             .metadata(Map.of(
                 OrchestrationContextMetadataKeys.RAG_PREFERRED_VECTOR_SPACES,
                 List.of("primary-docs")
             ))
             .build();
-        PipelineContext context = PipelineContext.from("Find the onboarding checklist", orchestrationContext)
-            .toBuilder()
-            .intentResponse(MultiIntentResponse.builder().intents(List.of(intent)).build())
-            .build();
 
-        PipelineContext updated = step.process(context);
+        PipelineContext updated = step.process(context(intent, null, request));
 
         assertThat(updated.isShouldTerminate()).isFalse();
-        assertThat(updated.getIntentResponse().getIntents().getFirst().getVectorSpace()).isEqualTo("primary-docs");
-        assertThat(updated.getMetadata()).containsKey("vectorSpaceRouting");
-        verify(router, never()).route(any(), anyString());
+        assertThat(intent.getVectorSpace()).isEqualTo("primary-docs");
+        assertThat(String.valueOf(updated.getMetadata().get("vectorSpaceRouting")))
+            .contains("TRUSTED_SERVER_HINT");
     }
 
     @Test
-    void shouldIgnoreRawPublicRequestContextRoutingFields() {
-        VectorSpaceRouter router = mock(VectorSpaceRouter.class);
-        KnowledgeBaseOverviewService overviewService = mock(KnowledgeBaseOverviewService.class);
-        when(overviewService.getOverview()).thenReturn(KnowledgeBaseOverview.builder()
-            .entityTypes(List.of("dealer-vehicle", "document"))
-            .build());
+    void trustedServerHintCannotExceedTheModeAllowlist() {
+        VectorSpaceResolutionStep step = step(overview("dealer-vehicle", "document"));
+        Intent intent = informationIntent(null);
+        OrchestrationPolicy policy = policy(
+            new OrchestrationPolicy.RagBudgets(true, 2, null, null, null, null, List.of("document")),
+            SemanticRecoveryPolicy.strictDefaults()
+        );
+        OrchestrationContext request = OrchestrationContext.builder()
+            .userId("user")
+            .metadata(Map.of(
+                OrchestrationContextMetadataKeys.RAG_PREFERRED_VECTOR_SPACES,
+                List.of("dealer-vehicle")
+            ))
+            .build();
 
-        VectorSpaceResolutionStep step = new VectorSpaceResolutionStep(
-            router,
-            new OrchestrationProperties(),
-            new VectorSpaceRoutingProperties(),
-            providerOf(overviewService)
+        PipelineContext updated = step.process(context(intent, policy, request));
+
+        assertThat(updated.isShouldTerminate()).isTrue();
+        assertThat(updated.getEarlyTerminationResult().getType()).isEqualTo(OrchestrationResultType.ERROR);
+        assertThat(updated.getEarlyTerminationResult().getErrorCode())
+            .isEqualTo("INVALID_TRUSTED_VECTOR_SPACE_HINT");
+        assertThat(intent.getVectorSpace()).isNull();
+    }
+
+    @Test
+    void modelSelectedFanoutAboveTheConfiguredBoundRequiresClarification() {
+        VectorSpaceResolutionStep step = step(overview("dealer-vehicle", "document", "policy"));
+        Intent intent = informationIntent("dealer-vehicle,document,policy");
+        OrchestrationPolicy policy = policy(
+            new OrchestrationPolicy.RagBudgets(
+                true,
+                2,
+                null,
+                null,
+                null,
+                null,
+                List.of("dealer-vehicle", "document", "policy")
+            ),
+            SemanticRecoveryPolicy.strictDefaults()
         );
 
-        Intent intent = Intent.builder()
-            .type(IntentType.INFORMATION)
-            .intent("find_vehicle")
-            .requiresRetrieval(true)
-            .vectorSpace("dealer-vehicle")
-            .build();
-        OrchestrationContext orchestrationContext = OrchestrationContext.builder()
+        PipelineContext updated = step.process(context(intent, policy, OrchestrationContext.forUser("user")));
+
+        assertThat(updated.isShouldTerminate()).isTrue();
+        assertThat(updated.getEarlyTerminationResult().getType())
+            .isEqualTo(OrchestrationResultType.CLARIFICATION_REQUIRED);
+        assertThat(updated.getEarlyTerminationResult().getData())
+            .containsEntry("reason", "VECTOR_SPACE_FANOUT_LIMIT_EXCEEDED")
+            .containsEntry("maxSpaces", 2);
+        assertThat(intent.getVectorSpace()).isEqualTo("dealer-vehicle,document,policy");
+    }
+
+    @Test
+    void rawPublicRequestContextCannotDriveRetrievalScope() {
+        VectorSpaceResolutionStep step = step(overview("dealer-vehicle", "document"));
+        Intent intent = informationIntent("dealer-vehicle");
+        OrchestrationContext request = OrchestrationContext.builder()
             .userId("user")
             .metadata(Map.of("requestContext", Map.of(
                 "preferredVectorSpaces", List.of("document"),
-                "vectorSpace", "document",
-                "entityType", "document"
+                "vectorSpace", "document"
             )))
             .build();
 
-        PipelineContext updated = step.process(
-            PipelineContext.from("Find the vehicle", orchestrationContext)
-                .toBuilder()
-                .intentResponse(MultiIntentResponse.builder().intents(List.of(intent)).build())
-                .build()
-        );
+        PipelineContext updated = step.process(context(intent, null, request));
 
         assertThat(updated.isShouldTerminate()).isFalse();
-        assertThat(updated.getIntentResponse().getIntents().getFirst().getVectorSpace())
-            .isEqualTo("dealer-vehicle");
-        verify(router, never()).route(any(), anyString());
+        assertThat(intent.getVectorSpace()).isEqualTo("dealer-vehicle");
     }
 
     @Test
-    void shouldSkipWhenIntentDoesNotRequireRetrieval() {
-        VectorSpaceRouter router = mock(VectorSpaceRouter.class);
-        VectorSpaceResolutionStep step = new VectorSpaceResolutionStep(
-            router,
-            new OrchestrationProperties(),
-            new VectorSpaceRoutingProperties(),
-            providerOf((KnowledgeBaseOverviewService) null)
-        );
+    void strictPolicyClarifiesWhenModelOmitsRequiredScope() {
+        VectorSpaceResolutionStep step = step(overview("dealer-vehicle", "document"));
+        Intent intent = informationIntent(null);
 
-        Intent intent = Intent.builder()
-            .type(IntentType.INFORMATION)
-            .intent("refund_policy")
-            .requiresRetrieval(false)
-            .vectorSpace(null)
-            .build();
-
-        PipelineContext context = PipelineContext.from("q", OrchestrationContext.forUser("user"))
-            .toBuilder()
-            .intentResponse(MultiIntentResponse.builder().intents(List.of(intent)).build())
-            .build();
-
-        PipelineContext updated = step.process(context);
-
-        assertThat(updated.isShouldTerminate()).isFalse();
-        assertThat(updated.getIntentResponse().getIntents().getFirst().getVectorSpace()).isNull();
-        verify(router, never()).route(any(), anyString());
-    }
-
-    @Test
-    void shouldResolveSingleVectorSpace() {
-        VectorSpaceRouter router = mock(VectorSpaceRouter.class);
-        when(router.route(any(), anyString())).thenReturn(RoutingResult.builder()
-            .success(true)
-            .vectorSpace("policies")
-            .strategy(RoutingStrategy.HEURISTIC)
-            .confidence(0.5d)
-            .rationale("test")
-            .build());
-
-        VectorSpaceResolutionStep step = new VectorSpaceResolutionStep(
-            router,
-            new OrchestrationProperties(),
-            new VectorSpaceRoutingProperties(),
-            providerOf((KnowledgeBaseOverviewService) null)
-        );
-
-        Intent intent = Intent.builder()
-            .type(IntentType.INFORMATION)
-            .intent("refund_policy")
-            .vectorSpace(null)
-            .requiresRetrieval(true)
-            .build();
-
-        PipelineContext context = PipelineContext.from("q", OrchestrationContext.forUser("user"))
-            .toBuilder()
-            .intentResponse(MultiIntentResponse.builder().intents(List.of(intent)).build())
-            .build();
-
-        PipelineContext updated = step.process(context);
-
-        assertThat(updated.isShouldTerminate()).isFalse();
-        assertThat(updated.getIntentResponse().getIntents().getFirst().getVectorSpace()).isEqualTo("policies");
-        assertThat(updated.getMetadata()).containsKey("vectorSpaceRouting");
-    }
-
-    @Test
-    void shouldRouteEachCompoundIntentUsingItsOwnOptimizedQuery() {
-        VectorSpaceRouter router = mock(VectorSpaceRouter.class);
-        when(router.route(any(), anyString())).thenReturn(
-            RoutingResult.builder()
-                .success(true)
-                .vectorSpace("dealer-vehicle")
-                .strategy(RoutingStrategy.HEURISTIC)
-                .confidence(0.8d)
-                .build(),
-            RoutingResult.builder()
-                .success(true)
-                .vectorSpace("document")
-                .strategy(RoutingStrategy.HEURISTIC)
-                .confidence(0.8d)
-                .build()
-        );
-
-        VectorSpaceResolutionStep step = new VectorSpaceResolutionStep(
-            router,
-            new OrchestrationProperties(),
-            new VectorSpaceRoutingProperties(),
-            providerOf((KnowledgeBaseOverviewService) null)
-        );
-        Intent inventory = Intent.builder()
-            .type(IntentType.INFORMATION)
-            .intent("Find inventory")
-            .optimizedQuery("available electric vehicle inventory")
-            .requiresRetrieval(true)
-            .build();
-        Intent policy = Intent.builder()
-            .type(IntentType.INFORMATION)
-            .intent("Explain delivery")
-            .optimizedQuery("delivery distance charge handover requirements")
-            .requiresRetrieval(true)
-            .build();
-        String original = "Which electric vehicles are available and what are the delivery terms?";
-
-        PipelineContext updated = step.process(
-            PipelineContext.from(original, OrchestrationContext.forUser("user"))
-                .toBuilder()
-                .intentResponse(MultiIntentResponse.builder().intents(List.of(inventory, policy)).build())
-                .build()
-        );
-
-        assertThat(updated.isShouldTerminate()).isFalse();
-        assertThat(updated.getIntentResponse().getIntents())
-            .extracting(Intent::getVectorSpace)
-            .containsExactly("dealer-vehicle", "document");
-        ArgumentCaptor<String> queryCaptor = ArgumentCaptor.forClass(String.class);
-        verify(router, org.mockito.Mockito.times(2)).route(any(), queryCaptor.capture());
-        assertThat(queryCaptor.getAllValues()).containsExactly(
-            "available electric vehicle inventory",
-            "delivery distance charge handover requirements"
-        );
-    }
-
-    @Test
-    void shouldResolveFanOutIntoCommaSeparatedVectorSpace() {
-        VectorSpaceRouter router = mock(VectorSpaceRouter.class);
-        when(router.route(any(), anyString())).thenReturn(RoutingResult.builder()
-            .success(true)
-            .candidateSpaces(List.of("faq", "policies"))
-            .strategy(RoutingStrategy.FAN_OUT)
-            .confidence(0.5d)
-            .rationale("fan-out")
-            .build());
-
-        VectorSpaceResolutionStep step = new VectorSpaceResolutionStep(
-            router,
-            new OrchestrationProperties(),
-            new VectorSpaceRoutingProperties(),
-            providerOf((KnowledgeBaseOverviewService) null)
-        );
-
-        Intent intent = Intent.builder()
-            .type(IntentType.INFORMATION)
-            .intent("refund_policy")
-            .vectorSpace(null)
-            .requiresRetrieval(true)
-            .build();
-
-        PipelineContext context = PipelineContext.from("q", OrchestrationContext.forUser("user"))
-            .toBuilder()
-            .intentResponse(MultiIntentResponse.builder().intents(List.of(intent)).build())
-            .build();
-
-        PipelineContext updated = step.process(context);
-
-        assertThat(updated.isShouldTerminate()).isFalse();
-        assertThat(updated.getIntentResponse().getIntents().getFirst().getVectorSpace()).isEqualTo("faq,policies");
-    }
-
-    @Test
-    void shouldResolveSingleCandidateFanOutWithoutClarification() {
-        VectorSpaceRouter router = mock(VectorSpaceRouter.class);
-        when(router.route(any(), anyString())).thenReturn(RoutingResult.builder()
-            .success(true)
-            .candidateSpaces(List.of("faq"))
-            .strategy(RoutingStrategy.FAN_OUT)
-            .confidence(0.5d)
-            .rationale("single candidate")
-            .build());
-
-        VectorSpaceResolutionStep step = new VectorSpaceResolutionStep(
-            router,
-            new OrchestrationProperties(),
-            new VectorSpaceRoutingProperties(),
-            providerOf((KnowledgeBaseOverviewService) null)
-        );
-
-        Intent intent = Intent.builder()
-            .type(IntentType.INFORMATION)
-            .intent("refund_policy")
-            .vectorSpace(null)
-            .requiresRetrieval(true)
-            .build();
-
-        PipelineContext context = PipelineContext.from("q", OrchestrationContext.forUser("user"))
-            .toBuilder()
-            .intentResponse(MultiIntentResponse.builder().intents(List.of(intent)).build())
-            .build();
-
-        PipelineContext updated = step.process(context);
-
-        assertThat(updated.isShouldTerminate()).isFalse();
-        assertThat(updated.getIntentResponse().getIntents().getFirst().getVectorSpace()).isEqualTo("faq");
-    }
-
-    @Test
-    void shouldRequireLlmSelectionBeforeHeuristicFanOutWhenPolicyRequiresIt() {
-        VectorSpaceRouter router = mock(VectorSpaceRouter.class);
-        OrchestrationPolicy policy = new OrchestrationPolicy(
-            OrchestrationProfile.PRODUCTION_CHAT,
-            "executor",
-            "search",
-            OrchestrationProperties.InformationMode.LLM_DRIVEN,
-            new OrchestrationPolicy.OrchestrationCapabilities(
-                true, true, false, false, false, true, false, true, true, true, false, false, false
-            ),
-            new OrchestrationPolicy.RagBudgets(
-                true, 2, null, null, null, null, List.of("dealer-vehicle", "document")
-            )
-        );
-        VectorSpaceResolutionStep step = new VectorSpaceResolutionStep(
-            router,
-            new OrchestrationProperties(),
-            new VectorSpaceRoutingProperties(),
-            providerOf((KnowledgeBaseOverviewService) null)
-        );
-        Intent intent = Intent.builder()
-            .type(IntentType.INFORMATION)
-            .intent("Explain delivery policy")
-            .optimizedQuery("delivery distance charge and handover requirements")
-            .requiresRetrieval(true)
-            .build();
-
-        PipelineContext updated = step.process(
-            PipelineContext.from("Explain delivery policy", OrchestrationContext.forUser("user"))
-                .toBuilder()
-                .orchestrationPolicy(policy)
-                .intentResponse(MultiIntentResponse.builder().intents(List.of(intent)).build())
-                .build()
-        );
+        PipelineContext updated = step.process(context(intent, null, OrchestrationContext.forUser("user")));
 
         assertThat(updated.isShouldTerminate()).isTrue();
         assertThat(updated.getEarlyTerminationResult().getType())
             .isEqualTo(OrchestrationResultType.CLARIFICATION_REQUIRED);
         assertThat(updated.getEarlyTerminationResult().getData())
             .containsEntry("candidateVectorSpaces", List.of("dealer-vehicle", "document"));
-        verify(router, never()).route(any(), anyString());
+        assertThat(intent.getVectorSpace()).isNull();
     }
 
     @Test
-    void shouldUseSingleServerAllowedVectorSpaceSharedByResolvedTargets() {
-        VectorSpaceRouter router = mock(VectorSpaceRouter.class);
-        VectorSpaceResolutionStep step = new VectorSpaceResolutionStep(
-            router,
-            new OrchestrationProperties(),
-            new VectorSpaceRoutingProperties(),
-            providerOf((KnowledgeBaseOverviewService) null)
+    void boundedFanOutRunsOnlyWhenNamedRecoveryPolicyAllowsIt() {
+        KnowledgeBaseOverviewService overview = overview("product", "review", "policy");
+        when(overview.getOverview()).thenReturn(KnowledgeBaseOverview.builder()
+            .entityTypes(List.of("product", "review", "policy"))
+            .documentsByType(Map.of("review", 50L, "product", 100L, "policy", 10L))
+            .build());
+        VectorSpaceResolutionStep step = step(overview);
+        Intent intent = informationIntent(null);
+        SemanticRecoveryPolicy recovery = new SemanticRecoveryPolicy(
+            null,
+            null,
+            OrchestrationProperties.MissingVectorSpaceRecovery.BOUNDED_ALLOWED_FAN_OUT,
+            null,
+            null,
+            null,
+            null
         );
-        Intent intent = Intent.builder()
-            .type(IntentType.INFORMATION)
-            .intent("Which of those is the best match?")
-            .requiresRetrieval(true)
-            .requiresTargetResolution(true)
-            .build();
-        PipelineContext context = PipelineContext.from(
-                "Which of those is the best match?",
-                OrchestrationContext.forUser("user")
-            )
+        OrchestrationPolicy policy = policy(
+            new OrchestrationPolicy.RagBudgets(
+                true,
+                2,
+                null,
+                null,
+                null,
+                null,
+                List.of("product", "review", "policy")
+            ),
+            recovery
+        );
+
+        PipelineContext updated = step.process(context(intent, policy, OrchestrationContext.forUser("user")));
+
+        assertThat(updated.isShouldTerminate()).isFalse();
+        assertThat(intent.getVectorSpace()).isEqualTo("product,review");
+        assertThat(String.valueOf(updated.getMetadata().get("vectorSpaceRouting")))
+            .contains("EXPLICIT_BOUNDED_FAN_OUT")
+            .contains("BOUNDED_ALLOWED_FAN_OUT");
+    }
+
+    @Test
+    void namedFanOutRecoveryRequiresAnExplicitPositiveBudget() {
+        VectorSpaceResolutionStep step = step(overview("product", "policy"));
+        Intent intent = informationIntent(null);
+        SemanticRecoveryPolicy recovery = new SemanticRecoveryPolicy(
+            null,
+            null,
+            OrchestrationProperties.MissingVectorSpaceRecovery.BOUNDED_ALLOWED_FAN_OUT,
+            null,
+            null,
+            null,
+            null
+        );
+        OrchestrationPolicy policy = policy(
+            new OrchestrationPolicy.RagBudgets(
+                true, null, null, null, null, null, List.of("product", "policy")
+            ),
+            recovery
+        );
+
+        PipelineContext updated = step.process(context(intent, policy, OrchestrationContext.forUser("user")));
+
+        assertThat(updated.isShouldTerminate()).isTrue();
+        assertThat(updated.getEarlyTerminationResult().getType())
+            .isEqualTo(OrchestrationResultType.CLARIFICATION_REQUIRED);
+        assertThat(intent.getVectorSpace()).isNull();
+        assertThat(String.valueOf(updated.getEarlyTerminationResult().getMetadata()))
+            .contains("EXPLICIT_FAN_OUT_BUDGET_REQUIRED");
+    }
+
+    @Test
+    void trustedTargetScopeIsUsedOnlyAfterModelRequestsTargetResolution() {
+        VectorSpaceResolutionStep step = step(overview("dealer-vehicle", "document"));
+        Intent intent = informationIntent(null);
+        intent.setRequiresTargetResolution(true);
+        OrchestrationPolicy policy = policy(
+            new OrchestrationPolicy.RagBudgets(true, 2, null, null, null, null,
+                List.of("dealer-vehicle", "document")),
+            SemanticRecoveryPolicy.strictDefaults()
+        );
+        PipelineContext input = context(intent, policy, OrchestrationContext.forUser("user"))
             .toBuilder()
-            .orchestrationPolicy(targetRoutingPolicy())
-            .intentResponse(MultiIntentResponse.builder().intents(List.of(intent)).build())
             .resolvedTargets(List.of(
                 target("one", "dealer-vehicle"),
                 target("two", "dealer-vehicle")
             ))
             .build();
 
-        PipelineContext updated = step.process(context);
+        PipelineContext updated = step.process(input);
 
         assertThat(updated.isShouldTerminate()).isFalse();
         assertThat(intent.getVectorSpace()).isEqualTo("dealer-vehicle");
         assertThat(String.valueOf(updated.getMetadata().get("vectorSpaceRouting")))
             .contains("TARGET_CONTEXT");
-        verify(router, never()).route(any(), anyString());
     }
 
     @Test
-    void shouldNotUseTargetContextWhenTargetsDisagreeOrExceedPolicyBoundary() {
-        VectorSpaceRouter router = mock(VectorSpaceRouter.class);
-        VectorSpaceResolutionStep step = new VectorSpaceResolutionStep(
-            router,
-            new OrchestrationProperties(),
-            new VectorSpaceRoutingProperties(),
-            providerOf((KnowledgeBaseOverviewService) null)
+    void disagreeingTrustedTargetsDoNotCreateASemanticSelection() {
+        VectorSpaceResolutionStep step = step(overview("dealer-vehicle", "document"));
+        Intent intent = informationIntent(null);
+        intent.setRequiresTargetResolution(true);
+        OrchestrationPolicy policy = policy(
+            new OrchestrationPolicy.RagBudgets(true, 2, null, null, null, null,
+                List.of("dealer-vehicle", "document")),
+            SemanticRecoveryPolicy.strictDefaults()
         );
-
-        PipelineContext mixed = targetRoutingContext(
-            List.of(target("one", "dealer-vehicle"), target("two", "document"))
-        );
-        PipelineContext mixedResult = step.process(mixed);
-        assertThat(mixedResult.isShouldTerminate()).isTrue();
-        assertThat(mixedResult.getEarlyTerminationResult().getType())
-            .isEqualTo(OrchestrationResultType.CLARIFICATION_REQUIRED);
-
-        PipelineContext disallowed = targetRoutingContext(List.of(target("one", "private-space")));
-        PipelineContext disallowedResult = step.process(disallowed);
-        assertThat(disallowedResult.isShouldTerminate()).isTrue();
-        assertThat(disallowedResult.getEarlyTerminationResult().getType())
-            .isEqualTo(OrchestrationResultType.CLARIFICATION_REQUIRED);
-        verify(router, never()).route(any(), anyString());
-    }
-
-    @Test
-    void shouldRouteVectorSpaceEvenWhenResolvedTargetsPresent() {
-        VectorSpaceRouter router = mock(VectorSpaceRouter.class);
-        when(router.route(any(), anyString())).thenReturn(RoutingResult.builder()
-            .success(true)
-            .vectorSpace("product")
-            .strategy(RoutingStrategy.HEURISTIC)
-            .confidence(0.5d)
-            .rationale("test")
-            .build());
-
-        VectorSpaceResolutionStep step = new VectorSpaceResolutionStep(
-            router,
-            new OrchestrationProperties(),
-            new VectorSpaceRoutingProperties(),
-            providerOf((KnowledgeBaseOverviewService) null)
-        );
-
-        Intent intent = Intent.builder()
-            .type(IntentType.INFORMATION)
-            .intent("compare")
-            .requiresRetrieval(true)
-            .vectorSpace(null)
-            .build();
-
-        ResolvedTarget target = ResolvedTarget.builder()
-            .id("1")
-            .vectorSpace("product")
-            .source(ResolvedTargetSource.REQUEST_ATTACHMENTS)
-            .build();
-
-        OrchestrationContext orchContext = OrchestrationContext.builder()
-            .userId("user")
-            .attachmentsNormalized(List.of(NormalizedAttachment.builder()
-                .id("1")
-                .vectorSpace("product")
-                .build()))
-            .build();
-
-        PipelineContext context = PipelineContext.from("q", orchContext)
+        PipelineContext input = context(intent, policy, OrchestrationContext.forUser("user"))
             .toBuilder()
-            .intentResponse(MultiIntentResponse.builder().intents(List.of(intent)).build())
-            .resolvedTargets(List.of(target))
+            .resolvedTargets(List.of(
+                target("one", "dealer-vehicle"),
+                target("two", "document")
+            ))
             .build();
 
-        PipelineContext updated = step.process(context);
+        PipelineContext updated = step.process(input);
+
+        assertThat(updated.isShouldTerminate()).isTrue();
+        assertThat(updated.getEarlyTerminationResult().getType())
+            .isEqualTo(OrchestrationResultType.CLARIFICATION_REQUIRED);
+        assertThat(intent.getVectorSpace()).isNull();
+    }
+
+    @Test
+    void skipsScopeResolutionWhenRetrievalIsNotRequested() {
+        VectorSpaceResolutionStep step = step(null);
+        Intent intent = informationIntent(null);
+        intent.setRequiresRetrieval(false);
+
+        PipelineContext updated = step.process(context(intent, null, OrchestrationContext.forUser("user")));
 
         assertThat(updated.isShouldTerminate()).isFalse();
-        assertThat(updated.getIntentResponse().getIntents().getFirst().getVectorSpace()).isEqualTo("product");
-        verify(router).route(any(), anyString());
+        assertThat(intent.getVectorSpace()).isNull();
     }
 
-    private PipelineContext targetRoutingContext(List<ResolvedTarget> targets) {
-        Intent intent = Intent.builder()
+    private Intent informationIntent(String vectorSpace) {
+        return Intent.builder()
             .type(IntentType.INFORMATION)
-            .intent("Which of those is the best match?")
+            .intent("answer_request")
+            .userGoal("Answer the request")
+            .obligationId("obligation-1")
             .requiresRetrieval(true)
-            .requiresTargetResolution(true)
-            .build();
-        return PipelineContext.from("Which of those is the best match?", OrchestrationContext.forUser("user"))
-            .toBuilder()
-            .orchestrationPolicy(targetRoutingPolicy())
-            .intentResponse(MultiIntentResponse.builder().intents(List.of(intent)).build())
-            .resolvedTargets(targets)
+            .requiresGeneration(true)
+            .requiresTargetResolution(false)
+            .needsAdvancedRAG(false)
+            .vectorSpace(vectorSpace)
             .build();
     }
 
-    private OrchestrationPolicy targetRoutingPolicy() {
+    private PipelineContext context(
+        Intent intent,
+        OrchestrationPolicy policy,
+        OrchestrationContext orchestrationContext
+    ) {
+        return PipelineContext.from("q", orchestrationContext)
+            .toBuilder()
+            .orchestrationPolicy(policy)
+            .intentResponse(MultiIntentResponse.builder().intents(List.of(intent)).build())
+            .build();
+    }
+
+    private OrchestrationPolicy policy(
+        OrchestrationPolicy.RagBudgets ragBudgets,
+        SemanticRecoveryPolicy semanticRecoveryPolicy
+    ) {
         return new OrchestrationPolicy(
             OrchestrationProfile.PRODUCTION_CHAT,
             "executor",
             "search",
             OrchestrationProperties.InformationMode.LLM_DRIVEN,
-            new OrchestrationPolicy.OrchestrationCapabilities(
-                true, true, false, false, false, true, false, true, true, true, false, false, false
-            ),
-            new OrchestrationPolicy.RagBudgets(
-                true, 2, null, null, null, null, List.of("dealer-vehicle", "document")
-            )
+            OrchestrationPolicy.OrchestrationCapabilities.defaults(),
+            null,
+            ragBudgets,
+            null,
+            semanticRecoveryPolicy
         );
     }
 
@@ -625,137 +375,19 @@ class VectorSpaceResolutionStepTest {
             .build();
     }
 
-    @Test
-    void shouldTerminateWithClarificationWhenRoutingFailsWithCandidates() {
-        VectorSpaceRouter router = mock(VectorSpaceRouter.class);
-        when(router.route(any(), anyString())).thenReturn(RoutingResult.builder()
-            .success(false)
-            .candidateSpaces(List.of("faq", "policies"))
-            .strategy(RoutingStrategy.CLARIFICATION)
-            .confidence(0.0d)
-            .rationale("need clarification")
+    private KnowledgeBaseOverviewService overview(String... spaces) {
+        KnowledgeBaseOverviewService service = mock(KnowledgeBaseOverviewService.class);
+        when(service.getOverview()).thenReturn(KnowledgeBaseOverview.builder()
+            .entityTypes(List.of(spaces))
             .build());
-
-        VectorSpaceResolutionStep step = new VectorSpaceResolutionStep(
-            router,
-            new OrchestrationProperties(),
-            new VectorSpaceRoutingProperties(),
-            providerOf((KnowledgeBaseOverviewService) null)
-        );
-
-        Intent intent = Intent.builder()
-            .type(IntentType.INFORMATION)
-            .intent("refund_policy")
-            .vectorSpace(null)
-            .requiresRetrieval(true)
-            .build();
-
-        PipelineContext context = PipelineContext.from("q", OrchestrationContext.forUser("user"))
-            .toBuilder()
-            .intentResponse(MultiIntentResponse.builder().intents(List.of(intent)).build())
-            .build();
-
-        PipelineContext updated = step.process(context);
-
-        assertThat(updated.isShouldTerminate()).isTrue();
-        assertThat(updated.getEarlyTerminationResult()).isNotNull();
-        assertThat(updated.getEarlyTerminationResult().getType()).isEqualTo(OrchestrationResultType.CLARIFICATION_REQUIRED);
-        assertThat(updated.getEarlyTerminationResult().getData()).containsEntry("candidateVectorSpaces", List.of("faq", "policies"));
+        return service;
     }
 
-    @Test
-    void shouldTerminateWithClarificationWhenRoutingFailsWithoutCandidates() {
-        VectorSpaceRouter router = mock(VectorSpaceRouter.class);
-        when(router.route(any(), anyString())).thenReturn(RoutingResult.builder()
-            .success(false)
-            .candidateSpaces(List.of())
-            .strategy(RoutingStrategy.CLARIFICATION)
-            .confidence(0.0d)
-            .rationale("no overview")
-            .build());
-
-        VectorSpaceResolutionStep step = new VectorSpaceResolutionStep(
-            router,
-            new OrchestrationProperties(),
-            new VectorSpaceRoutingProperties(),
-            providerOf((KnowledgeBaseOverviewService) null)
-        );
-
-        Intent intent = Intent.builder()
-            .type(IntentType.INFORMATION)
-            .intent("refund_policy")
-            .vectorSpace(null)
-            .requiresRetrieval(true)
-            .build();
-
-        PipelineContext context = PipelineContext.from("q", OrchestrationContext.forUser("user"))
-            .toBuilder()
-            .intentResponse(MultiIntentResponse.builder().intents(List.of(intent)).build())
-            .build();
-
-        PipelineContext updated = step.process(context);
-
-        assertThat(updated.isShouldTerminate()).isTrue();
-        assertThat(updated.getEarlyTerminationResult()).isNotNull();
-        assertThat(updated.getEarlyTerminationResult().getType()).isEqualTo(OrchestrationResultType.CLARIFICATION_REQUIRED);
-        assertThat(updated.getEarlyTerminationResult().getData()).containsEntry("candidateVectorSpaces", List.of());
-    }
-
-    @Test
-    void shouldFallbackToDeepVectorSpacesWhenRoutingFailsInDeepMode() {
-        VectorSpaceRouter router = mock(VectorSpaceRouter.class);
-        when(router.route(any(), anyString())).thenReturn(RoutingResult.builder()
-            .success(false)
-            .candidateSpaces(List.of("faq"))
-            .strategy(RoutingStrategy.CLARIFICATION)
-            .confidence(0.0d)
-            .rationale("need clarification")
-            .build());
-
-        KnowledgeBaseOverviewService overviewService = mock(KnowledgeBaseOverviewService.class);
-        when(overviewService.getOverview()).thenReturn(KnowledgeBaseOverview.builder()
-            .entityTypes(List.of("product", "review", "policy"))
-            .documentsByType(Map.of(
-                "review", 50L,
-                "product", 100L,
-                "policy", 10L
-            ))
-            .build());
-
-        VectorSpaceResolutionStep step = new VectorSpaceResolutionStep(
-            router,
-            new OrchestrationProperties(),
+    private VectorSpaceResolutionStep step(KnowledgeBaseOverviewService overviewService) {
+        return new VectorSpaceResolutionStep(
             new VectorSpaceRoutingProperties(),
             providerOf(overviewService)
         );
-
-        Intent intent = Intent.builder()
-            .type(IntentType.INFORMATION)
-            .intent("compare")
-            .requiresRetrieval(true)
-            .vectorSpace(null)
-            .build();
-
-        OrchestrationPolicy policy = new OrchestrationPolicy(
-            OrchestrationProfile.DEFAULT,
-            "navigator_deep",
-            null,
-            OrchestrationProperties.InformationMode.LLM_DRIVEN,
-            new OrchestrationPolicy.OrchestrationCapabilities(true, true, true, true, false, false, true, false, false, true, false, false),
-            new OrchestrationPolicy.RagBudgets(true, 2, null, null, null, null, List.of())
-        );
-
-        PipelineContext context = PipelineContext.from("q", OrchestrationContext.forUser("user"))
-            .toBuilder()
-            .orchestrationPolicy(policy)
-            .intentResponse(MultiIntentResponse.builder().intents(List.of(intent)).build())
-            .build();
-
-        PipelineContext updated = step.process(context);
-
-        assertThat(updated.isShouldTerminate()).isFalse();
-        assertThat(updated.getIntentResponse().getIntents().getFirst().getVectorSpace()).isEqualTo("product,review");
-        assertThat(updated.getMetadata()).containsKey("vectorSpaceRouting");
     }
 
     private <T> ObjectProvider<T> providerOf(T value) {

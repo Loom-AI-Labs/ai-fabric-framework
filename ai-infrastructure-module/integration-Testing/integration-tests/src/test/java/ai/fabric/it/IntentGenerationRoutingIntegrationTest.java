@@ -112,6 +112,7 @@ class IntentGenerationRoutingIntegrationTest {
             .intent("find_products")
             .vectorSpace("product")
             .optimizedQuery("Product entities with price_usd < 60 and stock_status = 'in_stock'")
+            .requiresRetrieval(true)
             .requiresGeneration(false)
             .build();
         when(intentQueryExtractor.extract(any(IntentExtractionInput.class), any(OrchestrationContext.class)))
@@ -139,6 +140,7 @@ class IntentGenerationRoutingIntegrationTest {
             .intent("recommend_products")
             .vectorSpace("product")
             .optimizedQuery("Product entities with sentiment = 'positive'")
+            .requiresRetrieval(true)
             .requiresGeneration(true)
             .build();
         when(intentQueryExtractor.extract(any(IntentExtractionInput.class), any(OrchestrationContext.class)))

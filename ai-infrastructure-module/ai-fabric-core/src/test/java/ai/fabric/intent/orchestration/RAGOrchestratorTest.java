@@ -161,17 +161,6 @@ class RAGOrchestratorTest {
 
         var vectorSpaceRoutingProperties = new ai.fabric.config.VectorSpaceRoutingProperties();
         var rankBasedMerger = new ai.fabric.intent.vectorspace.RankBasedMerger();
-        var vectorSpaceRouter = mock(ai.fabric.intent.vectorspace.VectorSpaceRouter.class);
-        lenient().when(vectorSpaceRouter.route(any(), anyString())).thenReturn(
-            ai.fabric.intent.vectorspace.RoutingResult.builder()
-                .success(true)
-                .vectorSpace("policies")
-                .strategy(ai.fabric.intent.vectorspace.RoutingStrategy.HEURISTIC)
-                .confidence(0.5d)
-                .rationale("test default")
-                .build()
-        );
-
         ObjectProvider<ai.fabric.intent.extraction.ProgressiveIntentExtractionEngine> progressiveEngineProvider =
             mock(ObjectProvider.class);
         lenient().when(progressiveEngineProvider.getIfAvailable()).thenReturn(null);
@@ -191,7 +180,7 @@ class RAGOrchestratorTest {
 	            new SecurityAnalysisStep(securityService),
 	            new AccessControlStep(accessControlService),
 	            new IntentExtractionStep(intentQueryExtractor, progressiveEngineProvider),
-	            new VectorSpaceResolutionStep(vectorSpaceRouter, orchestrationProperties, vectorSpaceRoutingProperties, overviewProvider),
+	            new VectorSpaceResolutionStep(vectorSpaceRoutingProperties, overviewProvider),
 	            new IntentHandlingStep(actionHandlerRegistry, ragProviderProvider, aiCoreService, aiServiceConfig, advancedRagProvider,
 	                vectorSpaceRoutingProperties, rankBasedMerger,
 	                new ai.fabric.config.RelationshipQueryPostActionGenerationProperties(),
@@ -312,6 +301,7 @@ class RAGOrchestratorTest {
             .type(IntentType.INFORMATION)
             .intent("refund_policy")
             .vectorSpace("policies")
+            .requiresRetrieval(true)
             .requiresGeneration(true)
             .build();
         when(intentQueryExtractor.extract(any(IntentExtractionInput.class), any(OrchestrationContext.class)))
@@ -343,6 +333,7 @@ class RAGOrchestratorTest {
             .intent("product_recommendations")
             .vectorSpace("product")
             .optimizedQuery("Product entities where price_usd < 100 and stock_status = 'in_stock'")
+            .requiresRetrieval(true)
             .requiresGeneration(true)
             .build();
         when(intentQueryExtractor.extract(any(IntentExtractionInput.class), any(OrchestrationContext.class)))
@@ -376,6 +367,7 @@ class RAGOrchestratorTest {
             .intent("recommend_products")
             .vectorSpace("product")
             .optimizedQuery("Recommend the best audio gear for commuting with noise cancellation and battery life considerations.")
+            .requiresRetrieval(true)
             .requiresGeneration(true)
             .needsAdvancedRAG(true)
             .build();
@@ -421,6 +413,7 @@ class RAGOrchestratorTest {
             .intent("recommend_products")
             .vectorSpace("product")
             .optimizedQuery("Can you recommend a wireless headset with ANC, low latency, multi-device pairing, and long battery life?")
+            .requiresRetrieval(true)
             .requiresGeneration(true)
             .needsAdvancedRAG(false) // LLM explicitly says no
             .build();
@@ -463,6 +456,7 @@ class RAGOrchestratorTest {
             .intent("recommend_products")
             .vectorSpace("product")
             .optimizedQuery("Recommend audio gear for commuting with ANC, comfort, and battery life.")
+            .requiresRetrieval(true)
             .requiresGeneration(true)
             .needsAdvancedRAG(true)
             .build();
@@ -499,14 +493,16 @@ class RAGOrchestratorTest {
     }
 
     @Test
-    void shouldFallBackToHeuristicsWhenLlmDoesNotProvideAdvancedDecision() {
+    void shouldUseBasicRagWithoutInferringAdvancedDecisionFromQueryShape() {
         Intent intent = Intent.builder()
             .type(IntentType.INFORMATION)
             .intent("recommend_products")
             .vectorSpace("product")
             .optimizedQuery("Can you recommend a wireless headset with ANC, low latency, multi-device pairing, and long battery life?")
+            .requiresRetrieval(true)
             .requiresGeneration(true)
-            .build(); // needsAdvancedRAG is null (LLM did not provide)
+            .needsAdvancedRAG(false)
+            .build();
         when(intentQueryExtractor.extract(any(IntentExtractionInput.class), any(OrchestrationContext.class)))
             .thenReturn(MultiIntentResponse.builder().intents(List.of(intent)).build());
 
@@ -518,23 +514,25 @@ class RAGOrchestratorTest {
 
         AdvancedRAGProvider provider = mock(AdvancedRAGProvider.class);
         when(advancedRagProvider.getIfAvailable()).thenReturn(provider);
-        when(provider.performAdvancedRAG(any(AdvancedRAGRequest.class))).thenReturn(
-            AdvancedRAGResponse.builder()
-                .success(true)
-                .context("Advanced provider context.")
-                .response("Advanced provider answer.")
+        when(ragProvider.performRAGQuery(any(RAGRequest.class))).thenReturn(
+            RAGResponse.builder()
+                .context("Basic provider context.")
                 .documents(List.of())
+                .success(true)
                 .build()
+        );
+        when(aiCoreService.generateTextResponse(anyString(), any(LlmPurpose.class))).thenReturn(
+            AIGenerationResponse.builder().content("Basic provider answer.").build()
         );
 
         OrchestrationResult result = orchestrator.orchestrate("Recommend audio gear", ai.fabric.intent.orchestration.OrchestrationContext.forUser("user"));
 
         assertThat(result.getType()).isEqualTo(OrchestrationResultType.INFORMATION_PROVIDED);
-        assertThat(result.getMessage()).isEqualTo("Advanced provider answer.");
+        assertThat(result.getMessage()).isEqualTo("Basic provider answer.");
 
-        verify(provider).performAdvancedRAG(any(AdvancedRAGRequest.class));
-        verify(aiCoreService, never()).generateTextResponse(anyString(), any(LlmPurpose.class));
-        verify(ragProvider, never()).performRAGQuery(any(RAGRequest.class));
+        verify(provider, never()).performAdvancedRAG(any(AdvancedRAGRequest.class));
+        verify(aiCoreService).generateTextResponse(anyString(), any(LlmPurpose.class));
+        verify(ragProvider).performRAGQuery(any(RAGRequest.class));
     }
 
     @Test
@@ -602,6 +600,9 @@ class RAGOrchestratorTest {
         Intent infoIntent = Intent.builder()
             .type(IntentType.INFORMATION)
             .intent("refund_policy")
+            .vectorSpace("policies")
+            .requiresRetrieval(true)
+            .requiresGeneration(false)
             .build();
         MultiIntentResponse compound = MultiIntentResponse.builder()
             .intents(List.of(actionIntent, infoIntent))
@@ -614,14 +615,19 @@ class RAGOrchestratorTest {
         when(actionHandler.getConfirmationMessage(any(), any())).thenReturn("Confirm?");
         when(actionHandlerRegistry.findMetadata("cancel_subscription"))
             .thenReturn(Optional.of(executableMetadata("cancel_subscription")));
-        when(actionHandler.executeAction(any(), any()))
-            .thenReturn(ActionResult.builder().success(true).message("Cancelled").build());
         lenient().when(ragProvider.performRag(any())).thenReturn(RAGResponse.builder()
             .context("info")
             .success(true)
             .build());
 
-        OrchestrationResult result = orchestrator.orchestrate("Cancel and explain refund", ai.fabric.intent.orchestration.OrchestrationContext.forUser("user"));
+        OrchestrationContext conversationContext = OrchestrationContext.builder()
+            .userId("user")
+            .conversationId("conversation-compound")
+            .build();
+        OrchestrationResult result = orchestrator.orchestrate(
+            "Cancel and explain refund",
+            conversationContext
+        );
 
         // When compound children include pending clarification/confirmation, keep the compound visible.
         assertThat(result.getType()).isEqualTo(OrchestrationResultType.COMPOUND_HANDLED);

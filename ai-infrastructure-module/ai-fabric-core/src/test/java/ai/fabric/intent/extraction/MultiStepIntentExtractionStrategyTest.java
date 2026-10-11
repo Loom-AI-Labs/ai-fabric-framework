@@ -116,6 +116,47 @@ class MultiStepIntentExtractionStrategyTest {
     }
 
     @Test
+    void missingExecutableIntentNameRemainsInvalidInsteadOfUsingSyntheticName() {
+        when(aiCoreService.generateContent(any(AIGenerationRequest.class), eq(LlmPurpose.ORCHESTRATION)))
+            .thenReturn(AIGenerationResponse.builder().content("""
+                {
+                  "intents": [{
+                    "type": "INFORMATION",
+                    "requiresRetrieval": true,
+                    "requiresGeneration": true,
+                    "requiresTargetResolution": false,
+                    "needsAdvancedRAG": false,
+                    "vectorSpace": "policies"
+                  }]
+                }
+                """).build());
+        when(validator.validate(any())).thenReturn(
+            new IntentExtractionValidator.ValidationResult(
+                false,
+                IntentExtractionValidator.ErrorCategory.STRUCTURAL,
+                List.of("Missing intent name"),
+                List.of()
+            )
+        );
+        MultiStepIntentExtractionStrategy strategy = new MultiStepIntentExtractionStrategy(
+            aiCoreService,
+            actionHandlerRegistry,
+            jsonSupport,
+            validator,
+            promptRenderer,
+            promptTemplateResolver
+        );
+
+        ExtractionAttempt attempt = strategy.attemptExtract(
+            input("What is the policy?"),
+            OrchestrationContext.forUser("user-missing-name")
+        );
+
+        assertThat(attempt.isSuccess()).isFalse();
+        assertThat(attempt.getResponse().getIntents().getFirst().getIntent()).isNull();
+    }
+
+    @Test
     void shouldKeepTrustedRuntimeContextInSystemPromptOnly() {
         when(validator.validate(any())).thenReturn(
             new IntentExtractionValidator.ValidationResult(

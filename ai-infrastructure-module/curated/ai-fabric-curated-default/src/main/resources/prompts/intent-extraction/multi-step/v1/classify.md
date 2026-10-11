@@ -4,8 +4,10 @@ Output MUST be valid JSON and MUST match the following schema:
 {
   "intents": [
     {
+      "obligationId": "obligation-1",
       "type": "ACTION | INFORMATION | OUT_OF_SCOPE | CONFIRMATION_POSITIVE | CONFIRMATION_NEGATIVE",
       "intent": "canonical_intent_name",
+      "userGoal": "concise semantic goal",
       "actionHint": "short verb phrase (only when type=ACTION)",
       "requiresRetrieval": true,
       "requiresGeneration": false,
@@ -16,7 +18,10 @@ Output MUST be valid JSON and MUST match the following schema:
       "generationInstructions": "optional follow-up instruction when requiresGeneration is true",
       "needsAdvancedRAG": false,
       "optimizedQuery": "optional optimized query",
-      "vectorSpace": "optional domain hint"
+      "vectorSpace": "exact registered domain when retrieval is required",
+      "missingInformation": [],
+      "clarificationQuestion": null,
+      "uncertaintyReason": null
     }
   ],
   "metadata": {
@@ -25,7 +30,9 @@ Output MUST be valid JSON and MUST match the following schema:
 }
 
 Rules:
-- Keep it simple and deterministic.
+- Preserve every user obligation. Give each intent a stable obligationId; this is mandatory when more than one intent is emitted.
+- Set requiresRetrieval, requiresGeneration, requiresTargetResolution, and needsAdvancedRAG explicitly for every applicable intent.
+- When requiresRetrieval=true, choose vectorSpace only from the exact KNOWLEDGE BASE OVERVIEW catalog in the system prompt. If no safe decision is possible, leave it null and populate missingInformation, clarificationQuestion, and uncertaintyReason.
 - Do NOT invent action names; for ACTION use actionHint only.
 - Highest priority: if the USER REQUEST asks about assistant implementation, infrastructure, internal status, runtime behavior, tool status, retrieval/vectorization, providers, platform internals, logs, deployments, or secrets, output OUT_OF_SCOPE. Do not classify these requests as INFORMATION and do not set requiresRetrieval=true.
 - The USER REQUEST may include a "PENDING ACTION (requires confirmation)" section describing an action awaiting approval.
@@ -65,7 +72,7 @@ Rules:
 - If a request mixes internal/infrastructure wording with a valid supported capability question, answer only the user-facing capability or use OUT_OF_SCOPE; do not say internal systems, tools, runtimes, providers, or deployments are operational, working, broken, available, unavailable, enabled, or disabled.
 - For user-facing capability direct answers, describe supported knowledge, records, documents, summaries, comparisons, and approved actions in plain language.
 - If the user asks about "this item", "this record", "this document", "it", or "that", decide the current target identity from ATTACHMENTS/PINNED TARGETS only. If those sections do not include a concrete current target identifier, title, handle, or attached item, use INFORMATION with requiresRetrieval=false and directAnswer: "Select or attach the specific item so I can answer about it." Do not retrieve or substitute another similar record.
-- If unsure, prefer INFORMATION with requiresRetrieval=false and provide directAnswer.
+- If meaning remains genuinely ambiguous, preserve the likely intent type and request explicit clarification through missingInformation and clarificationQuestion. Do not manufacture a direct answer or OUT_OF_SCOPE result to hide uncertainty.
 
 USER REQUEST:
 {{user_query}}

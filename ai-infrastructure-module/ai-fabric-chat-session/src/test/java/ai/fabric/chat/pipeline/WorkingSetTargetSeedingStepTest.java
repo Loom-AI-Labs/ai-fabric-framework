@@ -114,11 +114,16 @@ class WorkingSetTargetSeedingStepTest {
         assertThat(updated.getPinnedTargetsContext())
             .startsWith("PINNED TARGETS (previously pinned; selected for this target-dependent turn):");
         assertThat(updated.getMetadata().get("workingSetTargetSeeding"))
-            .isEqualTo(Map.of("seeded", true, "count", 1, "source", "PINNED_TARGETS"));
+            .isEqualTo(Map.of(
+                "seeded", true,
+                "count", 1,
+                "source", "PINNED_TARGETS",
+                "activation", "MODEL_REQUESTED_TARGET_RESOLUTION"
+            ));
     }
 
     @Test
-    void shouldActivatePersistedTargetsForStructuredReferentialFollowUpWhenModelMissesFlag() {
+    void shouldNotInferTargetRequirementFromReferentialWordingWhenModelMissesFlag() {
         ChatSessionService service = mock(ChatSessionService.class);
         ChatSession session = ChatSession.builder()
             .id("conv-1")
@@ -166,17 +171,11 @@ class WorkingSetTargetSeedingStepTest {
 
         PipelineContext updated = new WorkingSetTargetSeedingStep(service, properties).process(context);
 
-        assertThat(updated.getResolvedTargets()).extracting(target -> target.getId())
-            .containsExactly("record-42");
-        assertThat(referenced.getRequiresTargetResolution()).isTrue();
+        assertThat(updated.getResolvedTargets()).isEmpty();
+        assertThat(referenced.getRequiresTargetResolution()).isFalse();
         assertThat(independent.getRequiresTargetResolution()).isFalse();
-        assertThat(updated.getMetadata().get("workingSetTargetSeeding"))
-            .isEqualTo(Map.of(
-                "seeded", true,
-                "count", 1,
-                "source", "PINNED_TARGETS",
-                "activation", "STRUCTURED_REFERENTIAL_FALLBACK"
-            ));
+        assertThat(updated.getMetadata()).doesNotContainKey("workingSetTargetSeeding");
+        verify(service, never()).getSession(anyString(), anyString());
     }
 
     @Test

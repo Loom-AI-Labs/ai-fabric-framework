@@ -13,12 +13,14 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentMatchers;
 import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.cache.Cache;
 import org.springframework.cache.CacheManager;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.context.annotation.Import;
+import org.springframework.context.annotation.Bean;
 
 import java.util.List;
 import java.util.Map;
@@ -27,11 +29,17 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
 
-@SpringBootTest(classes = TestApplication.class)
+@SpringBootTest(
+    classes = TestApplication.class,
+    properties = {
+        "ai.providers.embedding-provider=mock",
+        "ai.providers.enable-fallback=false"
+    }
+)
 @ActiveProfiles("dev")
-@Import(AICacheConfig.class)
+@Import({AICacheConfig.class, EmbeddingCachingIntegrationTest.MockEmbeddingProviderConfiguration.class})
 class EmbeddingCachingIntegrationTest {
 
     @Autowired
@@ -40,7 +48,8 @@ class EmbeddingCachingIntegrationTest {
     @Autowired
     private CacheManager cacheManager;
 
-    @MockitoBean
+    @Autowired
+    @Qualifier("mockEmbeddingProvider")
     private EmbeddingProvider embeddingProvider;
 
     private Cache cache;
@@ -92,7 +101,13 @@ class EmbeddingCachingIntegrationTest {
 
         AIEmbeddingResponse cachedResponse = embeddingService.generateEmbedding(request);
         assertEquals(1, invocationCounter.get(), "Second invocation should be served from cache");
-        assertSame(firstResponse, cachedResponse, "Cached response should be the same instance as original response");
+        assertNotSame(firstResponse, cachedResponse,
+            "Cache-hit diagnostics must not mutate the previously returned response");
+        assertEquals(firstResponse.getEmbedding(), cachedResponse.getEmbedding());
+        assertEquals(firstResponse.getRequestId(), cachedResponse.getRequestId());
+        Map<?, ?> providerRecovery = (Map<?, ?>) cachedResponse.getMetadata().get("providerRecovery");
+        List<?> attempts = (List<?>) providerRecovery.get("attempts");
+        assertEquals("CACHE_HIT", ((Map<?, ?>) attempts.getFirst()).get("status"));
 
         assertNotNull(cache, "Embeddings cache should be available");
         String cacheKey = request.getText() + "_" + request.getModel() + "_mock_";
@@ -105,5 +120,17 @@ class EmbeddingCachingIntegrationTest {
         assertEquals(1L, misses.get("mock"), "Cache misses should be tracked for provider");
 
         Mockito.verify(embeddingProvider, Mockito.times(1)).generateEmbedding(ArgumentMatchers.any());
+    }
+
+    @TestConfiguration(proxyBeanMethods = false)
+    static class MockEmbeddingProviderConfiguration {
+
+        @Bean("mockEmbeddingProvider")
+        EmbeddingProvider mockEmbeddingProvider() {
+            EmbeddingProvider provider = Mockito.mock(EmbeddingProvider.class);
+            Mockito.when(provider.getProviderName()).thenReturn("mock");
+            Mockito.when(provider.isAvailable()).thenReturn(true);
+            return provider;
+        }
     }
 }

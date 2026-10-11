@@ -156,7 +156,7 @@ final class RagResponseGenerationSupport {
     ) {}
 
     ResponseGenerationProfile resolveResponseGenerationProfile(Intent intent) {
-        if (intent == null || !intent.requiresGenerationOrDefault(false)) {
+        if (intent == null || !Boolean.TRUE.equals(intent.getRequiresGeneration())) {
             return ResponseGenerationProfile.STANDARD;
         }
         return intent.responseProfileOrDefault(ResponseGenerationProfile.STANDARD);

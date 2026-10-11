@@ -314,6 +314,56 @@ class OrchestrationPolicyResolutionStepTest {
         }
 
         @Test
+        @DisplayName("Should resolve global semantic recovery with explicit per-mode overrides")
+        void shouldResolveGlobalSemanticRecoveryWithExplicitPerModeOverrides() {
+            OrchestrationProperties properties = new OrchestrationProperties();
+            properties.getSemanticRecovery().setExtractionFailure(
+                OrchestrationProperties.ExtractionFailureRecovery.LLM_REPAIR_THEN_CLARIFY
+            );
+            properties.getSemanticRecovery().setActionDomainMismatch(
+                OrchestrationProperties.ActionDomainMismatchRecovery.DENY_AND_FAIL
+            );
+
+            OrchestrationProperties.ModeOverrides bounded = new OrchestrationProperties.ModeOverrides();
+            OrchestrationProperties.SemanticRecoveryProperties modeRecovery =
+                new OrchestrationProperties.SemanticRecoveryProperties();
+            modeRecovery.setMissingVectorSpace(
+                OrchestrationProperties.MissingVectorSpaceRecovery.BOUNDED_ALLOWED_FAN_OUT
+            );
+            bounded.setSemanticRecovery(modeRecovery);
+            properties.getModes().put("bounded", bounded);
+
+            PipelineContext output = new OrchestrationPolicyResolutionStep(properties).process(
+                PipelineContext.from(
+                    "find approved evidence",
+                    OrchestrationContext.forUser("user-123").toBuilder().mode("bounded").build()
+                )
+            );
+
+            assertThat(output.getOrchestrationPolicy().semanticRecoveryPolicy().extractionFailure())
+                .isEqualTo(OrchestrationProperties.ExtractionFailureRecovery.LLM_REPAIR_THEN_CLARIFY);
+            assertThat(output.getOrchestrationPolicy().semanticRecoveryPolicy().missingVectorSpace())
+                .isEqualTo(OrchestrationProperties.MissingVectorSpaceRecovery.BOUNDED_ALLOWED_FAN_OUT);
+            assertThat(output.getOrchestrationPolicy().semanticRecoveryPolicy().actionDomainMismatch())
+                .isEqualTo(OrchestrationProperties.ActionDomainMismatchRecovery.DENY_AND_FAIL);
+            assertThat(output.getOrchestrationPolicy().semanticRecoveryPolicy().unknownAction())
+                .isEqualTo(OrchestrationProperties.UnknownActionRecovery.LLM_REPAIR_THEN_FAIL);
+
+            @SuppressWarnings("unchecked")
+            Map<String, Object> policyMetadata =
+                (Map<String, Object>) output.getMetadataView().get("orchestrationPolicy");
+            assertThat(policyMetadata.get("semanticRecovery")).isEqualTo(Map.of(
+                "extractionFailure", "LLM_REPAIR_THEN_CLARIFY",
+                "missingTarget", "LLM_REPAIR_THEN_CLARIFY",
+                "missingVectorSpace", "BOUNDED_ALLOWED_FAN_OUT",
+                "invalidVectorSpace", "LLM_REPAIR_THEN_FAIL",
+                "unknownAction", "LLM_REPAIR_THEN_FAIL",
+                "actionDomainMismatch", "DENY_AND_FAIL",
+                "advancedNoEvidence", "RETURN_NO_EVIDENCE"
+            ));
+        }
+
+        @Test
         @DisplayName("Should keep a pre-resolved execution profile narrower than its mode")
         void shouldKeepPreResolvedExecutionProfileNarrowerThanMode() {
             OrchestrationProperties properties = new OrchestrationProperties();

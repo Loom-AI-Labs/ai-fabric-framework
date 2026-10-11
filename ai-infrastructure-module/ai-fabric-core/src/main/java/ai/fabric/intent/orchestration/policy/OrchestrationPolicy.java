@@ -22,7 +22,8 @@ public record OrchestrationPolicy(
     OrchestrationCapabilities capabilities,
     ReadActionResolutionPolicy readActionResolutionPolicy,
     RagBudgets ragBudgets,
-    ResponseGenerationBudgets responseGenerationBudgets
+    ResponseGenerationBudgets responseGenerationBudgets,
+    SemanticRecoveryPolicy semanticRecoveryPolicy
 ) {
 
     public OrchestrationPolicy(OrchestrationProfile profile,
@@ -31,7 +32,7 @@ public record OrchestrationPolicy(
                                OrchestrationProperties.InformationMode informationMode,
                                OrchestrationCapabilities capabilities,
                                RagBudgets ragBudgets) {
-        this(profile, mode, position, informationMode, capabilities, null, ragBudgets, null);
+        this(profile, mode, position, informationMode, capabilities, null, ragBudgets, null, null);
     }
 
     public OrchestrationPolicy(OrchestrationProfile profile,
@@ -41,7 +42,7 @@ public record OrchestrationPolicy(
                                OrchestrationCapabilities capabilities,
                                ReadActionResolutionPolicy readActionResolutionPolicy,
                                RagBudgets ragBudgets) {
-        this(profile, mode, position, informationMode, capabilities, readActionResolutionPolicy, ragBudgets, null);
+        this(profile, mode, position, informationMode, capabilities, readActionResolutionPolicy, ragBudgets, null, null);
     }
 
     public OrchestrationPolicy(OrchestrationProfile profile,
@@ -51,7 +52,19 @@ public record OrchestrationPolicy(
                                OrchestrationCapabilities capabilities,
                                RagBudgets ragBudgets,
                                ResponseGenerationBudgets responseGenerationBudgets) {
-        this(profile, mode, position, informationMode, capabilities, null, ragBudgets, responseGenerationBudgets);
+        this(profile, mode, position, informationMode, capabilities, null, ragBudgets, responseGenerationBudgets, null);
+    }
+
+    public OrchestrationPolicy(OrchestrationProfile profile,
+                               String mode,
+                               String position,
+                               OrchestrationProperties.InformationMode informationMode,
+                               OrchestrationCapabilities capabilities,
+                               ReadActionResolutionPolicy readActionResolutionPolicy,
+                               RagBudgets ragBudgets,
+                               ResponseGenerationBudgets responseGenerationBudgets) {
+        this(profile, mode, position, informationMode, capabilities, readActionResolutionPolicy, ragBudgets,
+            responseGenerationBudgets, null);
     }
 
     public OrchestrationPolicy {
@@ -67,6 +80,9 @@ public record OrchestrationPolicy(
         responseGenerationBudgets = responseGenerationBudgets != null
             ? responseGenerationBudgets
             : ResponseGenerationBudgets.defaults();
+        semanticRecoveryPolicy = semanticRecoveryPolicy != null
+            ? semanticRecoveryPolicy
+            : SemanticRecoveryPolicy.strictDefaults();
     }
 
     private static String normalize(String value) {

@@ -5,6 +5,7 @@ import ai.fabric.exception.AIServiceException;
 import ai.fabric.llm.structured.StructuredJsonExtraction;
 import ai.fabric.llm.structured.StructuredJsonExtractor;
 import ai.fabric.llm.structured.StructuredJsonProviderHints;
+import ai.fabric.llm.structured.springai.SpringAiStructuredOutputSupport;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.json.JsonReadFeature;
 import com.fasterxml.jackson.databind.DeserializationFeature;
@@ -24,6 +25,7 @@ public class IntentExtractionJsonSupport {
 
     private final ObjectMapper objectMapper;
     private final StructuredJsonExtractor structuredJsonExtractor;
+    private final Map<String, Object> structuredResponseParameters;
 
     @Autowired
     public IntentExtractionJsonSupport(ObjectMapper objectMapper, StructuredJsonExtractor structuredJsonExtractor) {
@@ -37,6 +39,9 @@ public class IntentExtractionJsonSupport {
             // Be tolerant here; schema validation happens after parsing.
             .configure(JsonReadFeature.ALLOW_JAVA_COMMENTS.mappedFeature(), true)
             .configure(JsonReadFeature.ALLOW_TRAILING_COMMA.mappedFeature(), true);
+        this.structuredResponseParameters = StructuredJsonProviderHints.jsonSchemaResponseParameters(
+            SpringAiStructuredOutputSupport.bean(MultiIntentResponse.class).jsonSchema()
+        );
     }
 
     public IntentExtractionJsonSupport(ObjectMapper objectMapper) {
@@ -80,6 +85,6 @@ public class IntentExtractionJsonSupport {
     }
 
     public Map<String, Object> jsonOnlyResponseParameters() {
-        return StructuredJsonProviderHints.jsonObjectResponseParameters();
+        return structuredResponseParameters;
     }
 }

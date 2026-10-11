@@ -110,5 +110,11 @@ class TargetResolutionStepTest {
         assertThat(updated.isShouldTerminate()).isTrue();
         assertThat(updated.getEarlyTerminationResult()).isNotNull();
         assertThat(updated.getEarlyTerminationResult().getType()).isEqualTo(OrchestrationResultType.CLARIFICATION_REQUIRED);
+        assertThat(updated.getMetadata()).containsKey("semanticDecision");
+        assertThat(updated.getEarlyTerminationResult().getMetadata().get("semanticDecision").toString())
+            .contains("TARGET_RESOLUTION")
+            .contains("TARGET_NOT_RESOLVED")
+            .contains("LLM_REPAIR_THEN_CLARIFY")
+            .contains("CLARIFICATION_REQUIRED");
     }
 }

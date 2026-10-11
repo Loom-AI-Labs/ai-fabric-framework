@@ -134,6 +134,10 @@ public final class ConfirmationInterceptionContext {
             .action(actionName)
             .actionParams(params != null ? params : Map.of())
             .confidence(1.0d)
+            .requiresRetrieval(false)
+            .requiresGeneration(false)
+            .requiresTargetResolution(false)
+            .needsAdvancedRAG(false)
             .build();
         return new InterceptionDecision(java.util.List.of(action), Set.of());
     }
@@ -144,6 +148,10 @@ public final class ConfirmationInterceptionContext {
             .action(actionName)
             .actionParams(params != null ? params : Map.of())
             .confidence(1.0d)
+            .requiresRetrieval(false)
+            .requiresGeneration(false)
+            .requiresTargetResolution(false)
+            .needsAdvancedRAG(false)
             .build();
         return new InterceptionDecision(java.util.List.of(action), Set.of(actionName));
     }
@@ -153,6 +161,8 @@ public final class ConfirmationInterceptionContext {
             .type(IntentType.INFORMATION)
             .requiresRetrieval(false)
             .requiresGeneration(false)
+            .requiresTargetResolution(false)
+            .needsAdvancedRAG(false)
             .directAnswer(message)
             .confidence(1.0d)
             .build();

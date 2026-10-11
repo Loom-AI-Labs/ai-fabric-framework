@@ -12,10 +12,9 @@ import ai.fabric.intent.orchestration.OrchestrationResultType;
 import ai.fabric.intent.orchestration.pipeline.PipelineContext;
 import ai.fabric.intent.orchestration.pipeline.PipelineStep;
 import ai.fabric.intent.orchestration.policy.OrchestrationPolicy;
+import ai.fabric.intent.orchestration.policy.SemanticRecoveryPolicy;
 import ai.fabric.intent.orchestration.targets.ResolvedTarget;
 import ai.fabric.config.VectorSpaceRoutingProperties;
-import ai.fabric.intent.vectorspace.RoutingResult;
-import ai.fabric.intent.vectorspace.VectorSpaceRouter;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.ObjectProvider;
@@ -48,8 +47,6 @@ public class VectorSpaceResolutionStep implements PipelineStep {
 
     private static final String MSG_CLARIFICATION_PREFIX = "Which knowledge base domain should I search?";
 
-    private final VectorSpaceRouter vectorSpaceRouter;
-    private final OrchestrationProperties orchestrationProperties;
     private final VectorSpaceRoutingProperties vectorSpaceRoutingProperties;
     private final ObjectProvider<KnowledgeBaseOverviewService> knowledgeBaseOverviewServiceProvider;
 
@@ -71,19 +68,22 @@ public class VectorSpaceResolutionStep implements PipelineStep {
         }
 
         OrchestrationPolicy policy = context.getOrchestrationPolicy();
-        OrchestrationPolicy.OrchestrationCapabilities capabilities = policy != null ? policy.capabilities() : null;
         OrchestrationPolicy.RagBudgets ragBudgets = policy != null ? policy.ragBudgets() : null;
-        boolean deepRetrievalEnabled = capabilities != null && capabilities.deepRetrievalEnabled();
-        boolean vectorSpaceSelectionRequired = capabilities != null
-            && capabilities.vectorSpaceSelectionRequired();
-        boolean fanoutAllowed = ragBudgets == null
+        SemanticRecoveryPolicy recoveryPolicy = policy != null
+            ? policy.semanticRecoveryPolicy()
+            : SemanticRecoveryPolicy.strictDefaults();
+        boolean boundedMissingSpaceRecoveryAllowed = recoveryPolicy.missingVectorSpace()
+            == OrchestrationProperties.MissingVectorSpaceRecovery.BOUNDED_ALLOWED_FAN_OUT;
+        boolean fanoutCapabilityAllowed = ragBudgets == null
             || ragBudgets.fanoutEnabled() == null
             || Boolean.TRUE.equals(ragBudgets.fanoutEnabled());
-        int maxSpacesBudget = resolveEffectiveMaxSpaces(ragBudgets, fanoutAllowed);
-        boolean deterministic = policy != null
-            ? policy.informationMode() == OrchestrationProperties.InformationMode.DETERMINISTIC_RAG_GENERATE
-            : (orchestrationProperties != null
-                && orchestrationProperties.getInformationMode() == OrchestrationProperties.InformationMode.DETERMINISTIC_RAG_GENERATE);
+        boolean boundedRecoveryConfigured = ragBudgets != null
+            && Boolean.TRUE.equals(ragBudgets.fanoutEnabled())
+            && ragBudgets.maxSpaces() != null
+            && ragBudgets.maxSpaces() > 0;
+        boolean missingSpaceFanoutAllowed = boundedMissingSpaceRecoveryAllowed
+            && boundedRecoveryConfigured;
+        int maxSpacesBudget = resolveEffectiveMaxSpaces(ragBudgets, fanoutCapabilityAllowed);
 
         List<Map<String, Object>> routingEvents = new ArrayList<>();
         boolean anyUpdate = false;
@@ -106,63 +106,96 @@ public class VectorSpaceResolutionStep implements PipelineStep {
             if (!requestHintSpaces.isEmpty()) {
                 if (availableVectorSpaces == null) {
                     availableVectorSpaces = resolveAllVectorSpaces();
-                    canonicalByLower = buildCanonicalByLower(availableVectorSpaces);
+                    canonicalByLower = buildCanonicalByLower(
+                        resolvePolicySelectionCandidates(ragBudgets, availableVectorSpaces)
+                    );
                 }
                 VectorSpaceNormalization normalization = canonicalByLower != null && !canonicalByLower.isEmpty()
                     ? normalizeVectorSpaces(String.join(",", requestHintSpaces), canonicalByLower)
                     : new VectorSpaceNormalization(requestHintSpaces, List.of(), false);
+                if (normalization != null && !normalization.invalidTokens().isEmpty()) {
+                    routingEvents.add(toNormalizationEvent(
+                        i,
+                        "TRUSTED_SERVER_HINT_REJECTED",
+                        String.join(",", requestHintSpaces),
+                        null,
+                        normalization.invalidTokens(),
+                        resolvePolicySelectionCandidates(ragBudgets, availableVectorSpaces)
+                    ));
+                    return context.terminate(buildInvalidTrustedHintResult(
+                        normalization.invalidTokens(),
+                        resolvePolicySelectionCandidates(ragBudgets, availableVectorSpaces),
+                        context,
+                        routingEvents
+                    ));
+                }
                 if (normalization != null && !normalization.normalizedValid().isEmpty()) {
                     String prior = intent.getVectorSpace();
                     String resolved = String.join(",", normalization.normalizedValid());
                     intent.setVectorSpace(resolved);
                     routingEvents.add(toNormalizationEvent(i, "TRUSTED_SERVER_HINT", prior, resolved,
-                        normalization.invalidTokens(), availableVectorSpaces));
+                        List.of(), resolvePolicySelectionCandidates(ragBudgets, availableVectorSpaces)));
+                    OrchestrationResult boundsViolation = selectionBoundsViolation(
+                        normalization.normalizedValid(),
+                        "TRUSTED_SERVER_HINT",
+                        fanoutCapabilityAllowed,
+                        maxSpacesBudget,
+                        context,
+                        routingEvents,
+                        i
+                    );
+                    if (boundsViolation != null) {
+                        return context.terminate(boundsViolation);
+                    }
                     anyUpdate = true;
                     continue;
                 }
-                if (normalization != null && !normalization.invalidTokens().isEmpty()) {
-                    routingEvents.add(toNormalizationEvent(i, "TRUSTED_SERVER_HINT_INVALID", intent.getVectorSpace(), null,
-                        normalization.invalidTokens(), availableVectorSpaces));
-                }
             }
 
-            // Validate the model-provided vectorSpace against currently available knowledge-base spaces.
-            // An invalid recommendation is never broadened silently. A single allowlisted space is a
-            // deterministic policy fallback; otherwise the normal router/clarification path decides.
+            // Validate the model-provided vectorSpace against trusted registered spaces. Validation may reject
+            // a semantic decision, but it must not invent a replacement.
             if (hasText(intent.getVectorSpace())) {
                 if (availableVectorSpaces == null) {
                     availableVectorSpaces = resolveAllVectorSpaces();
-                    canonicalByLower = buildCanonicalByLower(availableVectorSpaces);
+                    canonicalByLower = buildCanonicalByLower(
+                        resolvePolicySelectionCandidates(ragBudgets, availableVectorSpaces)
+                    );
                 }
                 if (availableVectorSpaces != null && !availableVectorSpaces.isEmpty() && canonicalByLower != null && !canonicalByLower.isEmpty()) {
                     VectorSpaceNormalization normalization = normalizeVectorSpaces(intent.getVectorSpace(), canonicalByLower);
-	                    if (normalization != null && !normalization.invalidTokens().isEmpty()) {
-	                        String prior = intent.getVectorSpace();
-	                        if (normalization.normalizedValid().isEmpty()) {
-	                            List<String> singletonFallback = resolveSingletonPolicyFallback(
-	                                availableVectorSpaces,
-	                                ragBudgets
-	                            );
-	                            intent.setVectorSpace(singletonFallback.isEmpty() ? null : singletonFallback.getFirst());
-	                            routingEvents.add(toNormalizationEvent(
-	                                i,
-	                                singletonFallback.isEmpty() ? "INVALID_REJECTED" : "POLICY_FALLBACK_SINGLETON",
-	                                prior,
-	                                intent.getVectorSpace(),
-	                                normalization.invalidTokens(),
-	                                availableVectorSpaces
-	                            ));
-	                        } else {
-	                            intent.setVectorSpace(String.join(",", normalization.normalizedValid()));
-	                            routingEvents.add(toNormalizationEvent(i, "INVALID_FILTERED", prior, intent.getVectorSpace(),
-                                normalization.invalidTokens(), availableVectorSpaces));
+                    if (normalization != null && !normalization.invalidTokens().isEmpty()) {
+                        routingEvents.add(toNormalizationEvent(
+                            i,
+                            "MODEL_DECISION_REJECTED",
+                            intent.getVectorSpace(),
+                            null,
+                            normalization.invalidTokens(),
+                            resolvePolicySelectionCandidates(ragBudgets, availableVectorSpaces)
+                        ));
+                        routingEvents.add(toRejectedDecisionEvent(
+                            i,
+                            "INVALID_VECTOR_SPACE",
+                            intent.getVectorSpace(),
+                            recoveryPolicy.invalidVectorSpace().name(),
+                            normalization.invalidTokens()
+                        ));
+                        List<String> candidates = resolvePolicySelectionCandidates(ragBudgets, availableVectorSpaces);
+                        if (recoveryPolicy.invalidVectorSpace()
+                            == OrchestrationProperties.InvalidVectorSpaceRecovery.LLM_REPAIR_THEN_CLARIFY) {
+                            return context.terminate(buildClarificationResult(candidates, context, routingEvents));
                         }
-                        anyUpdate = true;
+                        return context.terminate(buildInvalidVectorSpaceResult(
+                            normalization.invalidTokens(),
+                            candidates,
+                            context,
+                            routingEvents,
+                            recoveryPolicy
+                        ));
                     } else if (normalization != null && normalization.changed()) {
                         String prior = intent.getVectorSpace();
                         intent.setVectorSpace(String.join(",", normalization.normalizedValid()));
                         routingEvents.add(toNormalizationEvent(i, "NORMALIZED", prior, intent.getVectorSpace(),
-                            List.of(), availableVectorSpaces));
+                            List.of(), resolvePolicySelectionCandidates(ragBudgets, availableVectorSpaces)));
                         anyUpdate = true;
                     } else if (normalization != null && !normalization.normalizedValid().isEmpty()) {
                         routingEvents.add(toNormalizationEvent(
@@ -171,44 +204,26 @@ public class VectorSpaceResolutionStep implements PipelineStep {
                             intent.getVectorSpace(),
                             intent.getVectorSpace(),
                             List.of(),
-                            availableVectorSpaces
+                            resolvePolicySelectionCandidates(ragBudgets, availableVectorSpaces)
                         ));
                     }
                 }
             }
 
-            if (deterministic) {
-                if (!hasText(intent.getVectorSpace())) {
-                    RoutingResult routing = vectorSpaceRouter.route(intent, resolveRoutingQuery(intent, context));
-	                    routingEvents.add(toRoutingEvent(i, routing));
-
-	                    String resolvedVectorSpace = resolveVectorSpaceString(routing);
-	                    if (deepRetrievalEnabled && (routing == null || routing.requiresFanOut() || !hasText(resolvedVectorSpace))) {
-	                        List<String> fallback = resolveDeepFallbackVectorSpaces(maxSpacesBudget, ragBudgets);
-	                        if (!fallback.isEmpty()) {
-	                            resolvedVectorSpace = String.join(",", fallback);
-	                            routingEvents.add(toDeepFallbackEvent(i, resolvedVectorSpace, fallback));
-	                        }
-	                    }
-	                    if (!hasText(resolvedVectorSpace)
-	                        && routing != null
-	                        && routing.getCandidateSpaces() != null
-	                        && !routing.getCandidateSpaces().isEmpty()) {
-	                        // Deterministic mode: use router candidates instead of terminating for clarification.
-                        resolvedVectorSpace = String.join(",", routing.getCandidateSpaces());
-                    }
-
-                    if (hasText(resolvedVectorSpace)) {
-                        intent.setVectorSpace(resolvedVectorSpace);
-                        anyUpdate = true;
-                    }
-                    // Deterministic mode must not terminate with clarification; leave vectorSpace blank if unknown.
-                }
-                continue;
-            }
-
             if (hasText(intent.getVectorSpace())) {
-                // vectorSpace provided (and considered valid/normalized when knowledge base spaces are available).
+                List<String> selectedSpaces = parseVectorSpaces(intent.getVectorSpace());
+                OrchestrationResult boundsViolation = selectionBoundsViolation(
+                    selectedSpaces,
+                    "MODEL",
+                    fanoutCapabilityAllowed,
+                    maxSpacesBudget,
+                    context,
+                    routingEvents,
+                    i
+                );
+                if (boundsViolation != null) {
+                    return context.terminate(boundsViolation);
+                }
                 continue;
             }
 
@@ -225,55 +240,31 @@ public class VectorSpaceResolutionStep implements PipelineStep {
                 continue;
             }
 
-            if (vectorSpaceSelectionRequired) {
-                List<String> candidates = resolvePolicySelectionCandidates(ragBudgets, availableVectorSpaces);
-                if (candidates.size() > 1) {
-                    routingEvents.add(toSelectionRequiredEvent(i, candidates));
-                    return context.terminate(buildClarificationResult(candidates, context, routingEvents));
+            List<String> candidates = resolvePolicySelectionCandidates(ragBudgets, availableVectorSpaces);
+            if (missingSpaceFanoutAllowed) {
+                List<String> selected = resolveDeepFallbackVectorSpaces(maxSpacesBudget, ragBudgets);
+                if (!selected.isEmpty()) {
+                    String resolvedVectorSpace = String.join(",", selected);
+                    intent.setVectorSpace(resolvedVectorSpace);
+                    routingEvents.add(toExplicitRecoveryEvent(
+                        i,
+                        "MISSING_VECTOR_SPACE",
+                        recoveryPolicy.missingVectorSpace().name(),
+                        resolvedVectorSpace,
+                        selected
+                    ));
+                    anyUpdate = true;
+                    continue;
                 }
             }
-
-	            RoutingResult routing = vectorSpaceRouter.route(intent, resolveRoutingQuery(intent, context));
-	            routingEvents.add(toRoutingEvent(i, routing));
-
-	            if (routing == null || !routing.isSuccess()) {
-	                if (deepRetrievalEnabled) {
-	                    List<String> fallback = resolveDeepFallbackVectorSpaces(maxSpacesBudget, ragBudgets);
-	                    if (!fallback.isEmpty()) {
-	                        String resolvedVectorSpace = String.join(",", fallback);
-	                        intent.setVectorSpace(resolvedVectorSpace);
-	                        routingEvents.add(toDeepFallbackEvent(i, resolvedVectorSpace, fallback));
-	                        anyUpdate = true;
-	                        continue;
-	                    }
-	                }
-	                List<String> candidates = routing != null ? routing.getCandidateSpaces() : List.of();
-	                return context.terminate(buildClarificationResult(candidates, context, routingEvents));
-	            }
-
-	            String resolvedVectorSpace = resolveVectorSpaceString(routing);
-	            if (deepRetrievalEnabled && routing != null && routing.requiresFanOut()) {
-	                List<String> fallback = resolveDeepFallbackVectorSpaces(maxSpacesBudget, ragBudgets);
-	                if (!fallback.isEmpty()) {
-	                    resolvedVectorSpace = String.join(",", fallback);
-	                    routingEvents.add(toDeepFallbackEvent(i, resolvedVectorSpace, fallback));
-	                }
-	            }
-	            if (!hasText(resolvedVectorSpace)) {
-	                if (deepRetrievalEnabled) {
-	                    List<String> fallback = resolveDeepFallbackVectorSpaces(maxSpacesBudget, ragBudgets);
-	                    if (!fallback.isEmpty()) {
-	                        resolvedVectorSpace = String.join(",", fallback);
-	                        routingEvents.add(toDeepFallbackEvent(i, resolvedVectorSpace, fallback));
-	                    }
-	                }
-	                if (!hasText(resolvedVectorSpace)) {
-	                    return context.terminate(buildClarificationResult(List.of(), context, routingEvents));
-	                }
-	            }
-
-            intent.setVectorSpace(resolvedVectorSpace);
-            anyUpdate = true;
+            routingEvents.add(toSelectionRequiredEvent(
+                i,
+                candidates,
+                recoveryPolicy.missingVectorSpace().name(),
+                boundedMissingSpaceRecoveryAllowed,
+                boundedRecoveryConfigured
+            ));
+            return context.terminate(buildClarificationResult(candidates, context, routingEvents));
         }
 
         if (routingEvents.isEmpty() && !anyUpdate) {
@@ -293,19 +284,6 @@ public class VectorSpaceResolutionStep implements PipelineStep {
 	        return updated;
 	    }
 
-    private String resolveRoutingQuery(Intent intent, PipelineContext context) {
-        if (intent != null && hasText(intent.getOptimizedQuery())) {
-            return intent.getOptimizedQuery().trim();
-        }
-        if (intent != null && hasText(intent.getIntentOrAction())) {
-            return intent.getIntentOrAction().trim();
-        }
-        if (context != null && hasText(context.getEffectiveQuery())) {
-            return context.getEffectiveQuery().trim();
-        }
-        return context != null ? context.getOriginalQuery() : null;
-    }
-
 	    private int resolveEffectiveMaxSpaces(OrchestrationPolicy.RagBudgets ragBudgets, boolean fanoutAllowed) {
 	        if (!fanoutAllowed) {
 	            return 1;
@@ -317,21 +295,6 @@ public class VectorSpaceResolutionStep implements PipelineStep {
 	        int maxDefault = vectorSpaceRoutingProperties != null ? vectorSpaceRoutingProperties.getFanOutMaxSpaces() : 3;
 	        return Math.max(1, maxDefault);
 	    }
-
-    private List<String> resolveSingletonPolicyFallback(List<String> availableVectorSpaces,
-                                                        OrchestrationPolicy.RagBudgets ragBudgets) {
-        if (availableVectorSpaces == null || availableVectorSpaces.isEmpty()
-            || ragBudgets == null || !ragBudgets.hasVectorSpaceAllowlist()) {
-            return List.of();
-        }
-        Set<String> allowed = new LinkedHashSet<>(ragBudgets.retrievalVectorSpacesAllowlist());
-        List<String> candidates = availableVectorSpaces.stream()
-            .filter(this::hasText)
-            .filter(space -> allowed.contains(space.trim().toLowerCase(Locale.ROOT)))
-            .distinct()
-            .toList();
-        return candidates.size() == 1 ? candidates : List.of();
-    }
 
     private List<String> resolvePolicySelectionCandidates(OrchestrationPolicy.RagBudgets ragBudgets,
                                                           List<String> availableVectorSpaces) {
@@ -479,13 +442,22 @@ public class VectorSpaceResolutionStep implements PipelineStep {
         }
     }
 
-	    private Map<String, Object> toDeepFallbackEvent(int intentIndex,
-	                                                    String resolvedVectorSpace,
-	                                                    List<String> selectedSpaces) {
+	    private Map<String, Object> toExplicitRecoveryEvent(int intentIndex,
+	                                                        String decision,
+	                                                        String recoveryPolicy,
+	                                                        String resolvedVectorSpace,
+	                                                        List<String> selectedSpaces) {
 	        Map<String, Object> event = new LinkedHashMap<>();
 	        event.put("intentIndex", intentIndex);
 	        event.put("success", true);
-	        event.put("strategy", "DEEP_FALLBACK");
+	        event.put("decision", decision);
+	        event.put("originalSource", "MODEL");
+	        event.put("originalValue", null);
+	        event.put("validationStatus", "MISSING");
+	        event.put("recoveryPolicy", recoveryPolicy);
+	        event.put("recoveryAttempted", true);
+	        event.put("effectiveSource", "POLICY_RECOVERY");
+	        event.put("strategy", "EXPLICIT_BOUNDED_FAN_OUT");
 	        event.put("vectorSpace", resolvedVectorSpace);
 	        event.put("selectedSpaces", selectedSpaces != null ? selectedSpaces : List.of());
 	        return Collections.unmodifiableMap(event);
@@ -522,27 +494,6 @@ public class VectorSpaceResolutionStep implements PipelineStep {
             .toList();
     }
 
-    private String resolveVectorSpaceString(RoutingResult routing) {
-        if (routing == null) {
-            return null;
-        }
-        if (routing.requiresFanOut()) {
-            return String.join(",", routing.getCandidateSpaces());
-        }
-
-        // Provider-agnostic robustness: some routers return FAN_OUT strategy with a single candidate when fan-out is
-        // configured to max 1 space. Treat that single candidate as a resolved vectorSpace rather than forcing
-        // clarification due to routing.getVectorSpace() being null.
-        if (routing.getStrategy() == ai.fabric.intent.vectorspace.RoutingStrategy.FAN_OUT
-            && routing.getCandidateSpaces() != null
-            && routing.getCandidateSpaces().size() == 1) {
-            String only = routing.getCandidateSpaces().getFirst();
-            return hasText(only) ? only.trim() : null;
-        }
-
-        return routing.getVectorSpace();
-    }
-
     private OrchestrationResult buildClarificationResult(List<String> candidates,
                                                          PipelineContext context,
                                                          List<Map<String, Object>> routingEvents) {
@@ -570,32 +521,186 @@ public class VectorSpaceResolutionStep implements PipelineStep {
             .build();
     }
 
-    private Map<String, Object> toRoutingEvent(int intentIndex, RoutingResult routing) {
-        Map<String, Object> event = new LinkedHashMap<>();
-        event.put("intentIndex", intentIndex);
-        if (routing == null) {
-            event.put("success", false);
-            event.put("strategy", null);
-            event.put("confidence", 0.0d);
-            event.put("rationale", "Router returned null result");
-            return Collections.unmodifiableMap(event);
+    private OrchestrationResult buildInvalidVectorSpaceResult(
+        List<String> invalidSpaces,
+        List<String> candidates,
+        PipelineContext context,
+        List<Map<String, Object>> routingEvents,
+        SemanticRecoveryPolicy recoveryPolicy
+    ) {
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("invalidVectorSpaces", invalidSpaces != null ? List.copyOf(invalidSpaces) : List.of());
+        data.put("candidateVectorSpaces", candidates != null ? List.copyOf(candidates) : List.of());
+
+        Map<String, Object> metadata = new LinkedHashMap<>();
+        if (context != null && context.getMetadata() != null) {
+            metadata.putAll(context.getMetadata());
         }
-        event.put("success", routing.isSuccess());
-        event.put("strategy", routing.getStrategy() != null ? routing.getStrategy().name() : null);
-        event.put("confidence", routing.getConfidence());
-        event.put("rationale", routing.getRationale());
-        event.put("vectorSpace", routing.getVectorSpace());
-        event.put("candidateSpaces", routing.getCandidateSpaces());
-        return Collections.unmodifiableMap(event);
+        metadata.put(METADATA_KEY_ROUTING, Collections.unmodifiableList(new ArrayList<>(routingEvents)));
+        metadata.put("semanticDecision", Map.of(
+            "decision", "VECTOR_SPACE_SELECTION",
+            "originalSource", "MODEL",
+            "validationStatus", "REJECTED_NOT_REGISTERED",
+            "recoveryPolicy", recoveryPolicy.invalidVectorSpace().name(),
+            "recoveryAttempted", false,
+            "effectiveSource", "NONE"
+        ));
+        return OrchestrationResult.builder()
+            .type(OrchestrationResultType.ERROR)
+            .success(false)
+            .errorCode("INVALID_VECTOR_SPACE_DECISION")
+            .message("The AI-selected knowledge domain was not registered or allowed.")
+            .data(Collections.unmodifiableMap(data))
+            .metadata(Collections.unmodifiableMap(metadata))
+            .build();
     }
 
-    private Map<String, Object> toSelectionRequiredEvent(int intentIndex, List<String> candidates) {
+    private OrchestrationResult buildInvalidTrustedHintResult(
+        List<String> invalidSpaces,
+        List<String> candidates,
+        PipelineContext context,
+        List<Map<String, Object>> routingEvents
+    ) {
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("invalidVectorSpaces", invalidSpaces != null ? List.copyOf(invalidSpaces) : List.of());
+        data.put("allowedVectorSpaces", candidates != null ? List.copyOf(candidates) : List.of());
+
+        Map<String, Object> semanticDecision = new LinkedHashMap<>();
+        semanticDecision.put("decision", "VECTOR_SPACE_SELECTION");
+        semanticDecision.put("originalSource", "TRUSTED_SERVER_HINT");
+        semanticDecision.put("originalValue", invalidSpaces != null ? List.copyOf(invalidSpaces) : List.of());
+        semanticDecision.put("validationStatus", "REJECTED_NOT_ALLOWED");
+        semanticDecision.put("recoveryPolicy", "NONE");
+        semanticDecision.put("recoveryAttempted", false);
+        semanticDecision.put("effectiveSource", "NONE");
+        semanticDecision.put("effectiveValue", "FAILURE");
+
+        Map<String, Object> metadata = new LinkedHashMap<>();
+        if (context != null && context.getMetadata() != null) {
+            metadata.putAll(context.getMetadata());
+        }
+        metadata.put(METADATA_KEY_ROUTING, Collections.unmodifiableList(new ArrayList<>(routingEvents)));
+        metadata.put("semanticDecision", Collections.unmodifiableMap(semanticDecision));
+        return OrchestrationResult.builder()
+            .type(OrchestrationResultType.ERROR)
+            .success(false)
+            .errorCode("INVALID_TRUSTED_VECTOR_SPACE_HINT")
+            .message("The server-provided knowledge-domain hint is not registered or allowed by policy.")
+            .data(Collections.unmodifiableMap(data))
+            .metadata(Collections.unmodifiableMap(metadata))
+            .build();
+    }
+
+    private OrchestrationResult selectionBoundsViolation(
+        List<String> selectedSpaces,
+        String originalSource,
+        boolean fanoutAllowed,
+        int maxSpaces,
+        PipelineContext context,
+        List<Map<String, Object>> routingEvents,
+        int intentIndex
+    ) {
+        if (selectedSpaces == null || selectedSpaces.size() <= 1) {
+            return null;
+        }
+        String reason = !fanoutAllowed
+            ? "VECTOR_SPACE_FANOUT_DISABLED"
+            : selectedSpaces.size() > maxSpaces
+                ? "VECTOR_SPACE_FANOUT_LIMIT_EXCEEDED"
+                : null;
+        if (reason == null) {
+            return null;
+        }
+
         Map<String, Object> event = new LinkedHashMap<>();
         event.put("intentIndex", intentIndex);
         event.put("success", false);
+        event.put("decision", "VECTOR_SPACE_SELECTION");
+        event.put("originalSource", originalSource);
+        event.put("originalValue", List.copyOf(selectedSpaces));
+        event.put("validationStatus", reason);
+        event.put("recoveryPolicy", "NONE");
+        event.put("recoveryAttempted", false);
+        event.put("effectiveSource", "NONE");
+        event.put("effectiveValue", "CLARIFICATION_REQUIRED");
+        event.put("maxSpaces", maxSpaces);
+        routingEvents.add(Collections.unmodifiableMap(event));
+
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("reason", reason);
+        data.put("requestedVectorSpaces", List.copyOf(selectedSpaces));
+        data.put("maxSpaces", maxSpaces);
+
+        Map<String, Object> metadata = new LinkedHashMap<>();
+        if (context != null && context.getMetadata() != null) {
+            metadata.putAll(context.getMetadata());
+        }
+        metadata.put(METADATA_KEY_ROUTING, Collections.unmodifiableList(new ArrayList<>(routingEvents)));
+        metadata.put("semanticDecision", Collections.unmodifiableMap(event));
+
+        boolean serverOwned = "TRUSTED_SERVER_HINT".equals(originalSource);
+        return OrchestrationResult.builder()
+            .type(serverOwned ? OrchestrationResultType.ERROR : OrchestrationResultType.CLARIFICATION_REQUIRED)
+            .success(false)
+            .errorCode(serverOwned ? reason : null)
+            .message(serverOwned
+                ? "The server-provided knowledge-domain selection exceeds the configured retrieval policy."
+                : "This request needs more knowledge domains than this mode permits. Please narrow the request.")
+            .data(Collections.unmodifiableMap(data))
+            .metadata(Collections.unmodifiableMap(metadata))
+            .build();
+    }
+
+    private List<String> parseVectorSpaces(String value) {
+        if (!hasText(value)) {
+            return List.of();
+        }
+        return java.util.Arrays.stream(value.split(","))
+            .filter(this::hasText)
+            .map(String::trim)
+            .distinct()
+            .toList();
+    }
+
+    private Map<String, Object> toSelectionRequiredEvent(int intentIndex,
+                                                         List<String> candidates,
+                                                         String recoveryPolicy,
+                                                         boolean recoveryRequested,
+                                                         boolean recoveryConfigured) {
+        Map<String, Object> event = new LinkedHashMap<>();
+        event.put("intentIndex", intentIndex);
+        event.put("success", false);
+        event.put("decision", "MISSING_VECTOR_SPACE");
+        event.put("originalSource", "MODEL");
+        event.put("validationStatus", "MISSING");
+        event.put("recoveryPolicy", recoveryPolicy);
+        event.put("recoveryAttempted", false);
+        if (recoveryRequested && !recoveryConfigured) {
+            event.put("recoveryBlockedReason", "EXPLICIT_FAN_OUT_BUDGET_REQUIRED");
+        }
+        event.put("effectiveSource", "CLARIFICATION");
         event.put("strategy", "SELECTION_REQUIRED");
         event.put("rationale", "Vector-space selection is required by orchestration policy");
         event.put("candidateSpaces", candidates != null ? List.copyOf(candidates) : List.of());
+        return Collections.unmodifiableMap(event);
+    }
+
+    private Map<String, Object> toRejectedDecisionEvent(int intentIndex,
+                                                        String decision,
+                                                        String originalValue,
+                                                        String recoveryPolicy,
+                                                        List<String> invalidTokens) {
+        Map<String, Object> event = new LinkedHashMap<>();
+        event.put("intentIndex", intentIndex);
+        event.put("success", false);
+        event.put("decision", decision);
+        event.put("originalSource", "MODEL");
+        event.put("originalValue", originalValue);
+        event.put("validationStatus", "REJECTED_NOT_REGISTERED");
+        event.put("recoveryPolicy", recoveryPolicy);
+        event.put("recoveryAttempted", false);
+        event.put("effectiveSource", "NONE");
+        event.put("invalidTokens", invalidTokens != null ? List.copyOf(invalidTokens) : List.of());
         return Collections.unmodifiableMap(event);
     }
 

@@ -19,7 +19,15 @@ import static org.junit.jupiter.api.Assertions.*;
 /**
  * Verifies that {@link AIProviderManager} is operational within the integration-test context.
  */
-@SpringBootTest(classes = TestApplication.class)
+@SpringBootTest(
+    classes = TestApplication.class,
+    properties = {
+        "ai.providers.llm-provider=test-provider",
+        "ai.providers.embedding-provider=test-provider",
+        "ai.providers.enable-fallback=false",
+        "ai.service.features.enable-embeddings=false"
+    }
+)
 @ActiveProfiles("test")
 @Import(TestAIProvider.class)
 class ProviderManagerIntegrationTest {

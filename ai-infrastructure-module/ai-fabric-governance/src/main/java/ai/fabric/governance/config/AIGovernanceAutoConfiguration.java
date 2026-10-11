@@ -7,6 +7,7 @@ import ai.fabric.deletion.UserDataDeletionService;
 import ai.fabric.deletion.policy.UserDataDeletionProvider;
 import ai.fabric.deletion.port.BehaviorDeletionPort;
 import ai.fabric.filter.AIContentFilterService;
+import ai.fabric.filter.ContentModerationProvider;
 import ai.fabric.governance.catalog.IndexCatalog;
 import ai.fabric.governance.catalog.disabled.DisabledIndexCatalog;
 import ai.fabric.governance.catalog.jpa.IndexCatalogRepository;
@@ -38,6 +39,7 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.SmartInitializingSingleton;
 
 import java.time.Clock;
+import java.util.List;
 
 @AutoConfiguration
 @AutoConfigurationPackage(basePackages = "ai.fabric.governance")
@@ -173,11 +175,12 @@ public class AIGovernanceAutoConfiguration {
 
     @Bean
     @ConditionalOnProperty(prefix = "ai.governance.content-filter", name = "enabled", havingValue = "true")
-    @ConditionalOnBean(AICoreService.class)
-    public AIContentFilterService aiContentFilterService(AICoreService aiCoreService,
-                                                         PromptTemplateResolver promptTemplateResolver,
-                                                         PromptRenderer promptRenderer) {
-        return new AIContentFilterService(aiCoreService, promptTemplateResolver, promptRenderer);
+    public AIContentFilterService aiContentFilterService(
+        ObjectProvider<ContentModerationProvider> provider,
+        AIGovernanceProperties properties
+    ) {
+        List<ContentModerationProvider> providers = provider.orderedStream().toList();
+        return new AIContentFilterService(providers, properties.getContentFilter());
     }
 
     @Bean

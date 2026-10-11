@@ -82,7 +82,7 @@ class AIProviderManagerTest {
 
         assertThatThrownBy(() -> manager.generateContent(AIGenerationRequest.builder().prompt("hello").build()))
             .isInstanceOf(RuntimeException.class)
-            .hasMessageContaining("No AI providers available");
+            .hasMessage("Configured generation provider is not available: openai");
         assertThat(openai.calls).isZero();
     }
 
@@ -105,7 +105,7 @@ class AIProviderManagerTest {
 
         assertThatThrownBy(() -> manager.generateContent(request))
             .isInstanceOf(RuntimeException.class)
-            .hasMessageContaining("No AI providers available");
+            .hasMessage("Configured generation provider is not available: openai");
         assertThat(openai.calls).isZero();
     }
 
@@ -180,6 +180,16 @@ class AIProviderManagerTest {
         config.setLlmProvider("openai");
         config.setEmbeddingProvider("openai");
         config.setEnableFallback(true);
+        config.setGenerationFallbackProviders(List.of("fallback"));
+        config.setEmbeddingFallbackProviders(List.of("fallback"));
+        config.setProviderDataPolicies(Map.of(
+            "openai", "standard",
+            "fallback", "standard"
+        ));
+        config.setEmbeddingCompatibilityGroups(Map.of(
+            "openai", "test-space-v1",
+            "fallback", "test-space-v1"
+        ));
 
         Logger logger = (Logger) LoggerFactory.getLogger(AIProviderManager.class);
         ListAppender<ILoggingEvent> appender = new ListAppender<>();
@@ -194,12 +204,12 @@ class AIProviderManagerTest {
                 AIGenerationRequest.builder().prompt("hello").build()
             ))
                 .isInstanceOf(RuntimeException.class)
-                .hasMessage("All providers failed for content generation");
+                .hasMessage("Configured generation provider chain failed");
             assertThatThrownBy(() -> manager.generateEmbedding(
                 AIEmbeddingRequest.builder().text("hello").build()
             ))
                 .isInstanceOf(RuntimeException.class)
-                .hasMessage("All providers failed for embedding generation");
+                .hasMessage("Configured embedding provider chain failed");
 
             String loggedText = appender.list.stream()
                 .map(ILoggingEvent::getFormattedMessage)
@@ -220,6 +230,122 @@ class AIProviderManagerTest {
             logger.detachAppender(appender);
             appender.stop();
         }
+    }
+
+    @Test
+    void usesOnlyNamedDataPolicyCompatibleGenerationFallback() {
+        FailingProvider primary = new FailingProvider("primary", "primary unavailable");
+        CountingProvider allowed = new CountingProvider("allowed", true);
+        CountingProvider unnamed = new CountingProvider("unnamed", true);
+        AIProviderConfig config = new AIProviderConfig();
+        config.setLlmProvider("primary");
+        config.setEnableFallback(true);
+        config.setGenerationFallbackProviders(List.of("allowed"));
+        config.setProviderDataPolicies(Map.of(
+            "primary", "customer-data-eu",
+            "allowed", "customer-data-eu",
+            "unnamed", "customer-data-eu"
+        ));
+
+        AIProviderManager manager = new AIProviderManager(List.of(primary, allowed, unnamed), config);
+        manager.initialize();
+
+        AIGenerationResponse response = manager.generateContent(
+            AIGenerationRequest.builder().prompt("hello").build()
+        );
+
+        assertThat(response.getContent()).isEqualTo("allowed response");
+        assertThat(allowed.calls).isEqualTo(1);
+        assertThat(unnamed.calls).isZero();
+        assertThat(response.getMetadata()).containsKey("providerRecovery");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> recovery = (Map<String, Object>) response.getMetadata().get("providerRecovery");
+        assertThat(recovery)
+            .containsEntry("transitioned", true)
+            .containsEntry("originalProvider", "primary")
+            .containsEntry("effectiveProvider", "allowed")
+            .containsEntry("policy", "NAMED_COMPATIBLE_CHAIN");
+    }
+
+    @Test
+    void rejectsNamedFallbackWithDifferentDataPolicy() {
+        FailingProvider primary = new FailingProvider("primary", "primary unavailable");
+        CountingProvider incompatible = new CountingProvider("incompatible", true);
+        AIProviderConfig config = new AIProviderConfig();
+        config.setLlmProvider("primary");
+        config.setEnableFallback(true);
+        config.setGenerationFallbackProviders(List.of("incompatible"));
+        config.setProviderDataPolicies(Map.of(
+            "primary", "customer-data-eu",
+            "incompatible", "public-data"
+        ));
+
+        AIProviderManager manager = new AIProviderManager(List.of(primary, incompatible), config);
+        manager.initialize();
+
+        assertThatThrownBy(() -> manager.generateContent(
+            AIGenerationRequest.builder().prompt("hello").build()
+        ))
+            .isInstanceOf(RuntimeException.class)
+            .hasMessage("Configured generation provider chain failed");
+        assertThat(incompatible.calls).isZero();
+    }
+
+    @Test
+    void embeddingFallbackRequiresMatchingDataAndEmbeddingCompatibilityContracts() {
+        FailingProvider primary = new FailingProvider("primary", "primary unavailable");
+        CountingProvider fallback = new CountingProvider("fallback", true);
+        AIProviderConfig config = new AIProviderConfig();
+        config.setEmbeddingProvider("primary");
+        config.setEnableFallback(true);
+        config.setEmbeddingFallbackProviders(List.of("fallback"));
+        config.setProviderDataPolicies(Map.of(
+            "primary", "customer-data-eu",
+            "fallback", "customer-data-eu"
+        ));
+        config.setEmbeddingCompatibilityGroups(Map.of(
+            "primary", "catalog-v1",
+            "fallback", "catalog-v1"
+        ));
+
+        AIProviderManager manager = new AIProviderManager(List.of(primary, fallback), config);
+        manager.initialize();
+
+        AIEmbeddingResponse response = manager.generateEmbedding(
+            AIEmbeddingRequest.builder().text("hello").build()
+        );
+
+        assertThat(fallback.embeddingCalls).isEqualTo(1);
+        assertThat(response.getProvider()).isEqualTo("fallback");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> recovery = (Map<String, Object>) response.getMetadata().get("providerRecovery");
+        assertThat(recovery)
+            .containsEntry("transitioned", true)
+            .containsEntry("embeddingCompatibilityGroup", "catalog-v1");
+    }
+
+    @Test
+    void embeddingFallbackDoesNotUseSameDimensionProviderWithoutCompatibilityContract() {
+        FailingProvider primary = new FailingProvider("primary", "primary unavailable");
+        CountingProvider fallback = new CountingProvider("fallback", true);
+        AIProviderConfig config = new AIProviderConfig();
+        config.setEmbeddingProvider("primary");
+        config.setEnableFallback(true);
+        config.setEmbeddingFallbackProviders(List.of("fallback"));
+        config.setProviderDataPolicies(Map.of(
+            "primary", "customer-data-eu",
+            "fallback", "customer-data-eu"
+        ));
+
+        AIProviderManager manager = new AIProviderManager(List.of(primary, fallback), config);
+        manager.initialize();
+
+        assertThatThrownBy(() -> manager.generateEmbedding(
+            AIEmbeddingRequest.builder().text("hello").build()
+        ))
+            .isInstanceOf(RuntimeException.class)
+            .hasMessage("Configured embedding provider chain failed");
+        assertThat(fallback.embeddingCalls).isZero();
     }
 
     private static AIGenerationRequest requestWithConnectionOverride() {

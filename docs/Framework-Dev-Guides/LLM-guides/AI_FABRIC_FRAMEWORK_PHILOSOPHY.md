@@ -260,6 +260,37 @@ if (query.contains("limit 50")) {
 // Application's job: Provide execution constraints
 ```
 
+### Natural-Language Decisions Are Not String Matching
+
+The application must not try to make an LLM decision more reliable by matching
+words, substrings, regular expressions, token overlap, punctuation, query
+length, or phrase order. That includes intent, action, parameter, target,
+vector-space, knowledge-source, retrieval-mode, evidence, and policy-category
+selection.
+
+When the structured result is incomplete or wrong, improve the prompt, schema,
+catalog descriptions, examples, or model. A configured bounded LLM repair may
+produce a replacement structured result. If repair is unavailable or still
+invalid, clarify or fail honestly. We accept measured model imperfection while
+we improve it; we do not manufacture phrase-specific certainty in code.
+
+Deterministic code validates structure and authority. It may reject unknown
+IDs, intersect a proposal with an allowlist, enforce tenant/action policy, and
+apply bounds. It may not infer the intended replacement. Security can deny or
+constrain a decision but cannot silently reinterpret it.
+
+Semantic recovery is disabled unless a named server-owned allow-policy enables
+it. An allowed recovery must be bounded and must expose the original model
+decision, validation failure, selected policy, repair attempt, and effective
+decision. A mechanism that changes routing, evidence, or output is production
+behavior, not merely a diagnostic.
+
+This boundary does not prohibit JSON/schema parsing, exact ID and enum checks,
+authorization, formally declared detectors, or explicit retrieval algorithms
+such as vector similarity, BM25/hybrid search, and configured rerankers. It
+does prohibit an ad hoc token scorer or keyword list pretending to understand
+the user's request.
+
 **Philosophy:** Respect intelligence wherever it comes from—human users, LLMs, or domain experts.
 
 ---

@@ -18,14 +18,18 @@ import static org.mockito.Mockito.when;
 class BoundedFanOutRouterTest {
 
     @Test
-    void shouldAutoAssignWhenOnlyOneEntityTypeExists() {
+    void shouldAutoAssignSingleEntityTypeOnlyForExplicitBoundedFanOut() {
         KnowledgeBaseOverview overview = KnowledgeBaseOverview.builder()
             .entityTypes(List.of("policies"))
             .documentsByType(Map.of("policies", 10L))
             .build();
 
-        BoundedFanOutRouter router = new BoundedFanOutRouter(providerReturning(overviewServiceReturning(overview)),
-            new VectorSpaceRoutingProperties());
+        VectorSpaceRoutingProperties properties = new VectorSpaceRoutingProperties();
+        properties.setStrategy(VectorSpaceRoutingProperties.Strategy.BOUNDED_FAN_OUT);
+        BoundedFanOutRouter router = new BoundedFanOutRouter(
+            providerReturning(overviewServiceReturning(overview)),
+            properties
+        );
 
         RoutingResult result = router.route(Intent.builder().build(), "anything");
 
@@ -36,7 +40,7 @@ class BoundedFanOutRouterTest {
     }
 
     @Test
-    void shouldMatchByQueryMentionWhenEntityTypeMentioned() {
+    void shouldNotSelectSpaceFromQueryText() {
         KnowledgeBaseOverview overview = KnowledgeBaseOverview.builder()
             .entityTypes(List.of("policies", "faq"))
             .documentsByType(Map.of("policies", 10L, "faq", 5L))
@@ -47,9 +51,9 @@ class BoundedFanOutRouterTest {
 
         RoutingResult result = router.route(Intent.builder().build(), "Please search POLICIES for refund timeline");
 
-        assertThat(result.isSuccess()).isTrue();
-        assertThat(result.getVectorSpace()).isEqualTo("policies");
-        assertThat(result.getStrategy()).isEqualTo(RoutingStrategy.QUERY_MENTION);
+        assertThat(result.isSuccess()).isFalse();
+        assertThat(result.getVectorSpace()).isNull();
+        assertThat(result.getStrategy()).isEqualTo(RoutingStrategy.CLARIFICATION);
     }
 
     @Test
@@ -70,25 +74,6 @@ class BoundedFanOutRouterTest {
         assertThat(result.isSuccess()).isTrue();
         assertThat(result.getStrategy()).isEqualTo(RoutingStrategy.FAN_OUT);
         assertThat(result.getCandidateSpaces()).containsExactly("faq", "catalog");
-    }
-
-    @Test
-    void shouldPickLargestCountWhenHeuristicStrategySelected() {
-        KnowledgeBaseOverview overview = KnowledgeBaseOverview.builder()
-            .entityTypes(List.of("policies", "faq"))
-            .documentsByType(Map.of("policies", 10L, "faq", 99L))
-            .build();
-
-        VectorSpaceRoutingProperties props = new VectorSpaceRoutingProperties();
-        props.setStrategy(VectorSpaceRoutingProperties.Strategy.HEURISTIC);
-
-        BoundedFanOutRouter router = new BoundedFanOutRouter(providerReturning(overviewServiceReturning(overview)), props);
-
-        RoutingResult result = router.route(Intent.builder().build(), "no hints here");
-
-        assertThat(result.isSuccess()).isTrue();
-        assertThat(result.getVectorSpace()).isEqualTo("faq");
-        assertThat(result.getStrategy()).isEqualTo(RoutingStrategy.HEURISTIC);
     }
 
     @Test
@@ -137,4 +122,3 @@ class BoundedFanOutRouterTest {
         return service;
     }
 }
-

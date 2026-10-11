@@ -230,8 +230,11 @@ class RelationshipQueryWithSummarizationIntegrationTest {
                       "vectorSpace": null,
                       "requiresRetrieval": false,
                       "requiresGeneration": true,
+                      "requiresTargetResolution": false,
                       "generationInstructions": "Summarize the results in 1-2 sentences.",
                       "needsAdvancedRAG": false,
+                      "missingInformation": [],
+                      "clarificationQuestion": null,
                       "optimizedQuery": null,
                       "nextStepRecommended": null
                     }

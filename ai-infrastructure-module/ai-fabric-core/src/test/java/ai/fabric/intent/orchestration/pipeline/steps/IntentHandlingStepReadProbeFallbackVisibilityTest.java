@@ -122,7 +122,14 @@ class IntentHandlingStepReadProbeFallbackVisibilityTest {
 
         assertThat(result).isNotNull();
         assertThat(result.getType()).as("result=%s", result).isEqualTo(OrchestrationResultType.INFORMATION_PROVIDED);
-        assertThat(result.getMetadata()).containsKey("readProbe");
+        assertThat(result.getMetadata()).containsKey("readActionRecovery");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> recovery = (Map<String, Object>) result.getMetadata().get("readActionRecovery");
+        assertThat(recovery)
+            .containsEntry("decision", "READ_ACTION_EVIDENCE_SUFFICIENCY")
+            .containsEntry("recoveryPolicy", "RAG_IF_ACTIONS_INSUFFICIENT")
+            .containsEntry("recoveryAttempted", true)
+            .containsEntry("effectiveValue", "RAG");
         @SuppressWarnings("unchecked")
         Map<String, Object> resolution = (Map<String, Object>) result.getData().get("readActionResolution");
         assertThat(resolution)
@@ -223,6 +230,74 @@ class IntentHandlingStepReadProbeFallbackVisibilityTest {
     }
 
     @Test
+    void shouldNotTreatASingletonAllowlistAsRelevantReadActionGrounding() {
+        AIActionRegistry registry = mock(AIActionRegistry.class);
+        AIActionHandler handler = mock(AIActionHandler.class);
+        when(registry.findHandler("list_orders")).thenReturn(Optional.of(handler));
+        when(handler.validateActionAllowed(any())).thenReturn(true);
+        when(handler.requiresConfirmation()).thenReturn(false);
+        when(handler.executeAction(any(), any())).thenReturn(ActionResult.builder()
+            .success(true)
+            .message("No matching orders.")
+            .groundingSufficiency(ActionGroundingSufficiency.INSUFFICIENT)
+            .data(ActionListPayload.of(List.of()))
+            .build());
+        when(registry.findMetadata("list_orders")).thenReturn(Optional.of(
+            AIActionMetaData.builder()
+                .name("list_orders")
+                .accessMode(ActionAccessMode.READ)
+                .groundingEligible(true)
+                .readActionResolutionEligible(true)
+                .build()
+        ));
+
+        RAGProvider ragProvider = mock(RAGProvider.class);
+        AIServiceConfig aiServiceConfig = new AIServiceConfig();
+        aiServiceConfig.getFeatures().setEnableGeneration(false);
+        IntentHandlingStep step = new IntentHandlingStep(
+            registry,
+            providerOf(ragProvider),
+            mock(AICoreService.class),
+            aiServiceConfig,
+            providerOf((AdvancedRAGProvider) null),
+            new VectorSpaceRoutingProperties(),
+            new RankBasedMerger(),
+            new RelationshipQueryPostActionGenerationProperties(),
+            new PostActionGenerationProperties(),
+            providerOf(new ObjectMapper()),
+            new OrchestrationProperties(),
+            providerOf((KnowledgeBaseOverviewService) null),
+            null,
+            new InMemoryPendingActionStore(),
+            new InMemoryActionDraftStore(),
+            promptTemplateResolver(),
+            new PromptRenderer()
+        );
+        Intent intent = Intent.builder()
+            .type(IntentType.ACTION)
+            .action("list_orders")
+            .actionParams(Map.of())
+            .optimizedQuery("List my orders")
+            .build();
+        OrchestrationPolicy.RagBudgets budgets = new OrchestrationPolicy.RagBudgets(
+            true, 1, null, null, null, null, List.of("order")
+        );
+        PipelineContext context = PipelineContext.from("List my orders", OrchestrationContext.forUser("user-1"))
+            .toBuilder()
+            .intentResponse(MultiIntentResponse.builder().intents(List.of(intent)).build())
+            .orchestrationPolicy(actionsPreferredCooperativePolicy(budgets))
+            .build();
+
+        OrchestrationResult result = step.process(context).getIntentResult();
+
+        assertThat(result.getType()).isEqualTo(OrchestrationResultType.ACTION_EXECUTED);
+        assertThat(result.getMetadata()).doesNotContainKey("readActionRecovery");
+        verify(handler, times(1)).executeAction(any(), any());
+        verify(ragProvider, never()).performRag(any(RAGRequest.class));
+        verify(ragProvider, never()).performRAGQuery(any(RAGRequest.class));
+    }
+
+    @Test
     void shouldRejectMismatchedDirectActionAndRetainValidatedIntentSpace() {
         AIActionRegistry registry = mock(AIActionRegistry.class);
         AIActionHandler handler = mock(AIActionHandler.class);
@@ -291,23 +366,23 @@ class IntentHandlingStepReadProbeFallbackVisibilityTest {
 
         @SuppressWarnings("unchecked")
         Map<String, Object> mismatch = (Map<String, Object>) result.getMetadata()
-            .get("actionGroundingScopeMismatch");
+            .get("semanticDecision");
         assertThat(mismatch)
-            .containsEntry("action", "list_orders")
+            .containsEntry("originalAction", "list_orders")
             .containsEntry("intentVectorSpaces", List.of("document"))
             .containsEntry("actionGroundingVectorSpaces", List.of("dealer-vehicle"))
-            .containsEntry("resolution", "RAG_FALLBACK");
+            .containsEntry("validationStatus", "REJECTED_DOMAIN_MISMATCH")
+            .containsEntry("recoveryPolicy", "DENY_AND_LLM_REPLAN")
+            .containsEntry("recoveryAttempted", false)
+            .containsEntry("effectiveValue", "ACTION_DENIED");
+        assertThat(result.getType()).isEqualTo(OrchestrationResultType.ACTION_DENIED);
+        assertThat(result.getErrorCode()).isEqualTo("ACTION_DOMAIN_MISMATCH_REPLAN_REQUIRED");
         verify(handler, never()).executeAction(any(), any());
-        ArgumentCaptor<RAGRequest> requestCaptor = ArgumentCaptor.forClass(RAGRequest.class);
-        verify(ragProvider).performRAGQuery(requestCaptor.capture());
-        assertThat(requestCaptor.getValue().getEntityType()).isEqualTo("document");
-        assertThat(requestCaptor.getValue().getMetadata())
-            .containsEntry("vectorSpacesSelectionSource", "LLM")
-            .containsEntry("vectorSpacesSelected", List.of("document"));
+        verify(ragProvider, never()).performRAGQuery(any(RAGRequest.class));
     }
 
     @Test
-    void shouldNotIncludeReadProbeMetadataByDefault() {
+    void shouldReturnReadActionResultWithoutGroundingRecoveryByDefault() {
         AIActionRegistry registry = mock(AIActionRegistry.class);
         AIActionHandler handler = mock(AIActionHandler.class);
         when(registry.findHandler("list_orders")).thenReturn(Optional.of(handler));
@@ -373,12 +448,13 @@ class IntentHandlingStepReadProbeFallbackVisibilityTest {
         OrchestrationResult result = updated.getIntentResult();
 
         assertThat(result).isNotNull();
-        assertThat(result.getType()).as("result=%s", result).isEqualTo(OrchestrationResultType.INFORMATION_PROVIDED);
-        assertThat(result.getMetadata()).doesNotContainKey("readProbe");
+        assertThat(result.getType()).as("result=%s", result).isEqualTo(OrchestrationResultType.ACTION_EXECUTED);
+        assertThat(result.getMetadata()).doesNotContainKey("readActionRecovery");
+        verify(ragProvider, never()).performRag(any(RAGRequest.class));
     }
 
     @Test
-    void shouldExposeReadProbeMetadataWhenEnabled() {
+    void shouldNotTreatLegacyReadProbeVisibilityAsSemanticRecoveryPermission() {
         AIActionRegistry registry = mock(AIActionRegistry.class);
         AIActionHandler handler = mock(AIActionHandler.class);
         when(registry.findHandler("list_orders")).thenReturn(Optional.of(handler));
@@ -454,18 +530,10 @@ class IntentHandlingStepReadProbeFallbackVisibilityTest {
         OrchestrationResult result = updated.getIntentResult();
 
         assertThat(result).isNotNull();
-        assertThat(result.getType()).as("result=%s", result).isEqualTo(OrchestrationResultType.INFORMATION_PROVIDED);
+        assertThat(result.getType()).as("result=%s", result).isEqualTo(OrchestrationResultType.ACTION_EXECUTED);
         assertThat(result.getMetadata()).isNotNull();
-        assertThat(result.getMetadata()).containsKey("readProbe");
-        assertThat(result.getMetadata().get("readProbe")).isInstanceOf(Map.class);
-
-        @SuppressWarnings("unchecked")
-        Map<String, Object> probe = (Map<String, Object>) result.getMetadata().get("readProbe");
-        assertThat(probe.get("action")).isEqualTo("list_orders");
-        assertThat(probe.get("accessMode")).isEqualTo("READ");
-        assertThat(probe.get("success")).isEqualTo(true);
-        assertThat(probe.get("emptyPayload")).isEqualTo(true);
-        assertThat(probe.get("fallbackToRag")).isEqualTo(true);
+        assertThat(result.getMetadata()).doesNotContainKey("readActionRecovery");
+        verify(ragProvider, never()).performRag(any(RAGRequest.class));
     }
 
     private <T> ObjectProvider<T> providerOf(T value) {
@@ -483,6 +551,10 @@ class IntentHandlingStepReadProbeFallbackVisibilityTest {
     }
 
     private OrchestrationPolicy actionsPreferredCooperativePolicy() {
+        return actionsPreferredCooperativePolicy(OrchestrationPolicy.RagBudgets.defaults());
+    }
+
+    private OrchestrationPolicy actionsPreferredCooperativePolicy(OrchestrationPolicy.RagBudgets ragBudgets) {
         return new OrchestrationPolicy(
             OrchestrationProfile.PRODUCTION_CHAT,
             "executor",
@@ -517,7 +589,7 @@ class IntentHandlingStepReadProbeFallbackVisibilityTest {
                 OrchestrationProperties.ReadActionResolutionRagCooperationMode.RAG_IF_ACTIONS_INSUFFICIENT,
                 true
             ),
-            OrchestrationPolicy.RagBudgets.defaults()
+            ragBudgets
         );
     }
 }

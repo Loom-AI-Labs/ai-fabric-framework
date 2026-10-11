@@ -1,7 +1,7 @@
 ai:
   providers:
     llm-provider: incident-smoke
-    embedding-provider: simple
+    embedding-provider: smoke
   vector-db:
     lucene:
       index-path: ./target/incident-runbook-smoke-lucene

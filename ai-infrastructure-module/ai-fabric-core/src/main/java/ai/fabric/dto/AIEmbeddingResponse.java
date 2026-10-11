@@ -4,6 +4,7 @@ import lombok.Builder;
 import lombok.Data;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * Response DTO for AI embedding generation
@@ -24,4 +25,8 @@ public class AIEmbeddingResponse {
     private Long processingTimeMs;
     
     private String requestId;
+
+    private String provider;
+
+    private Map<String, Object> metadata;
 }

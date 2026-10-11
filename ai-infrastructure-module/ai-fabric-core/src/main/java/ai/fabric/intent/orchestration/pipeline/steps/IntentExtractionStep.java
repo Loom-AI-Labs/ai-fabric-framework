@@ -4,6 +4,7 @@ import ai.fabric.dto.Intent;
 import ai.fabric.dto.IntentType;
 import ai.fabric.dto.MultiIntentResponse;
 import ai.fabric.exception.AIServiceException;
+import ai.fabric.intent.IntentExtractionValidator;
 import ai.fabric.intent.IntentQueryExtractor;
 import ai.fabric.intent.extraction.ProgressiveIntentExtractionEngine;
 import ai.fabric.intent.extraction.IntentExtractionInput;
@@ -12,6 +13,9 @@ import ai.fabric.intent.orchestration.OrchestrationResultType;
 import ai.fabric.intent.orchestration.OrchestrationAuthContextResolver;
 import ai.fabric.intent.orchestration.pipeline.PipelineContext;
 import ai.fabric.intent.orchestration.pipeline.PipelineStep;
+import ai.fabric.intent.orchestration.policy.OrchestrationPolicy;
+import ai.fabric.intent.orchestration.policy.SemanticRecoveryPolicy;
+import ai.fabric.config.OrchestrationProperties;
 import ai.fabric.intent.orchestration.request.OrchestrationIntentPolicy;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -170,7 +174,8 @@ public class IntentExtractionStep implements PipelineStep {
             } else if (engine != null) {
                 ProgressiveIntentExtractionEngine.ExtractionOutput output = engine.extract(
                     input,
-                    context.getOrchestrationContext()
+                    context.getOrchestrationContext(),
+                    semanticRecoveryPolicy(context)
                 );
                 intentResponse = output != null ? output.response() : null;
                 extractionFailure = output != null ? output.failure() : null;
@@ -265,6 +270,14 @@ public class IntentExtractionStep implements PipelineStep {
                 )
             );
         }
+
+        PipelineContext clarification = terminateDeclaredClarification(
+            updatedContext,
+            intentResponse
+        );
+        if (clarification != null) {
+            return clarification;
+        }
         
         int intentCount = intentResponse.getIntents().size();
         boolean isCompound = intentCount > 1;
@@ -314,6 +327,8 @@ public class IntentExtractionStep implements PipelineStep {
             .confidence(1.0d)
             .requiresRetrieval(false)
             .requiresGeneration(false)
+            .requiresTargetResolution(false)
+            .needsAdvancedRAG(false)
             .build();
         MultiIntentResponse response = MultiIntentResponse.builder()
             .intents(List.of(intent))
@@ -381,6 +396,42 @@ public class IntentExtractionStep implements PipelineStep {
                     "AI intent analysis did not produce a valid result.",
                     false
                 );
+        SemanticRecoveryPolicy recoveryPolicy = semanticRecoveryPolicy(context);
+        TerminalRecoveryDecision recovery = terminalRecoveryDecision(
+            safeFailure.issueCodes(),
+            recoveryPolicy,
+            safeFailure
+        );
+        Map<String, Object> extractionDecision = extractionSemanticDecision(context);
+        boolean recoveryAttempted = Boolean.TRUE.equals(
+            extractionDecision.get("recoveryAttempted")
+        );
+        Map<String, Object> semanticDecision = new LinkedHashMap<>();
+        semanticDecision.put("decision", recovery.decision());
+        semanticDecision.put("originalSource", "MODEL");
+        Object originalValue = extractionDecision.get("originalValue");
+        if (originalValue != null) {
+            semanticDecision.put("originalValue", originalValue);
+        }
+        semanticDecision.put("validationStatus", "INVALID_OR_INCOMPLETE");
+        semanticDecision.put("issueCodes", safeFailure.issueCodes().stream()
+            .map(Enum::name)
+            .toList());
+        semanticDecision.put("recoveryPolicy", recovery.policy());
+        semanticDecision.put("recoveryAttempted", recoveryAttempted);
+        semanticDecision.put(
+            "effectiveSource",
+            recovery.clarify() ? "RECOVERY_POLICY" : "NONE"
+        );
+        semanticDecision.put(
+            "effectiveValue",
+            recovery.clarify() ? "CLARIFICATION_REQUIRED" : "FAILURE"
+        );
+        Object modelCalls = extractionDecision.get("modelCalls");
+        if (modelCalls != null) {
+            semanticDecision.put("modelCalls", modelCalls);
+        }
+
         PipelineContext withFailure = context.withMetadata(
             "intentExtractionError",
             Map.of(
@@ -388,19 +439,203 @@ public class IntentExtractionStep implements PipelineStep {
                 safeFailure.reason(),
                 "message",
                 safeFailure.publicMessage(),
-                "fallback",
-                false,
+                "semanticDecision",
+                Map.copyOf(semanticDecision),
                 "retryable",
                 safeFailure.retryable()
             )
         );
         return withFailure.terminate(
             OrchestrationResult.builder()
-                .type(OrchestrationResultType.ERROR)
+                .type(recovery.clarify()
+                    ? OrchestrationResultType.CLARIFICATION_REQUIRED
+                    : OrchestrationResultType.ERROR)
                 .success(false)
-                .errorCode(safeFailure.reason())
-                .message(safeFailure.publicMessage())
-                .metadata(Map.of("phase", "intent_extraction"))
+                .errorCode(recovery.errorCode())
+                .message(recovery.message())
+                .metadata(Map.of(
+                    "phase", "intent_extraction",
+                    "semanticDecision", Map.copyOf(semanticDecision)
+                ))
+                .build()
+        );
+    }
+
+    private TerminalRecoveryDecision terminalRecoveryDecision(
+        List<IntentExtractionValidator.IssueCode> issueCodes,
+        SemanticRecoveryPolicy policy,
+        ProgressiveIntentExtractionEngine.ExtractionFailure failure
+    ) {
+        List<IntentExtractionValidator.IssueCode> safeIssueCodes =
+            issueCodes != null ? issueCodes : List.of();
+        if (safeIssueCodes.contains(
+            IntentExtractionValidator.IssueCode.ACTION_GROUNDING_VECTOR_SPACE_MISMATCH
+        )) {
+            return new TerminalRecoveryDecision(
+                "ACTION_EVIDENCE_DOMAIN",
+                policy.actionDomainMismatch().name(),
+                false,
+                "INTENT_ACTION_DOMAIN_MISMATCH",
+                "The AI-selected action was not allowed for the selected evidence domain."
+            );
+        }
+        if (safeIssueCodes.contains(IntentExtractionValidator.IssueCode.ACTION_UNREGISTERED)) {
+            return new TerminalRecoveryDecision(
+                "ACTION_SELECTION",
+                policy.unknownAction().name(),
+                false,
+                "INTENT_ACTION_UNREGISTERED",
+                "The AI-selected action is not registered or allowed."
+            );
+        }
+        if (safeIssueCodes.contains(
+            IntentExtractionValidator.IssueCode.INFORMATION_INVALID_VECTOR_SPACE
+        )) {
+            boolean clarify = policy.invalidVectorSpace()
+                == OrchestrationProperties.InvalidVectorSpaceRecovery.LLM_REPAIR_THEN_CLARIFY;
+            return new TerminalRecoveryDecision(
+                "VECTOR_SPACE_SELECTION",
+                policy.invalidVectorSpace().name(),
+                clarify,
+                "INTENT_VECTOR_SPACE_DECISION_INVALID",
+                clarify
+                    ? "I could not validate the selected knowledge domain. Please clarify which approved domain to search."
+                    : "The AI-selected knowledge domain is not registered or allowed."
+            );
+        }
+        if (safeIssueCodes.contains(
+            IntentExtractionValidator.IssueCode.INFORMATION_MISSING_VECTOR_SPACE
+        )) {
+            boolean clarify = policy.missingVectorSpace()
+                == OrchestrationProperties.MissingVectorSpaceRecovery.LLM_REPAIR_THEN_CLARIFY;
+            return new TerminalRecoveryDecision(
+                "VECTOR_SPACE_SELECTION",
+                policy.missingVectorSpace().name(),
+                clarify,
+                "INTENT_VECTOR_SPACE_DECISION_MISSING",
+                clarify
+                    ? "I could not determine which approved knowledge domain to search. Please clarify the intended domain."
+                    : "No approved bounded knowledge-domain recovery could be completed."
+            );
+        }
+        if (safeIssueCodes.contains(
+            IntentExtractionValidator.IssueCode.INTENT_MISSING_TARGET_DECISION
+        )) {
+            return new TerminalRecoveryDecision(
+                "TARGET_RESOLUTION_REQUIREMENT",
+                policy.missingTarget().name(),
+                true,
+                "INTENT_TARGET_DECISION_MISSING",
+                "I could not determine whether this request refers to a specific item. Please clarify the intended item or goal."
+            );
+        }
+
+        boolean clarify = policy.extractionFailure()
+            == OrchestrationProperties.ExtractionFailureRecovery.LLM_REPAIR_THEN_CLARIFY;
+        return new TerminalRecoveryDecision(
+            "INTENT_EXTRACTION",
+            policy.extractionFailure().name(),
+            clarify,
+            failure.reason(),
+            clarify
+                ? "I could not determine a complete, authorized interpretation of the request. Please clarify the intended goal."
+                : failure.publicMessage()
+        );
+    }
+
+    private Map<String, Object> extractionSemanticDecision(PipelineContext context) {
+        if (context == null || context.getMetadata() == null) {
+            return Map.of();
+        }
+        Object diagnosticsValue = context.getMetadata().get(EXTRACTION_DIAGNOSTICS_KEY);
+        if (!(diagnosticsValue instanceof Map<?, ?> diagnostics)) {
+            return Map.of();
+        }
+        Object decisionValue = diagnostics.get("semanticDecision");
+        if (!(decisionValue instanceof Map<?, ?> decision)) {
+            return Map.of();
+        }
+        Map<String, Object> copy = new LinkedHashMap<>();
+        decision.forEach((key, value) -> {
+            if (key instanceof String textKey && value != null) {
+                copy.put(textKey, value);
+            }
+        });
+        return Map.copyOf(copy);
+    }
+
+    private record TerminalRecoveryDecision(
+        String decision,
+        String policy,
+        boolean clarify,
+        String errorCode,
+        String message
+    ) {
+    }
+
+    private SemanticRecoveryPolicy semanticRecoveryPolicy(PipelineContext context) {
+        OrchestrationPolicy policy = context != null ? context.getOrchestrationPolicy() : null;
+        return policy != null && policy.semanticRecoveryPolicy() != null
+            ? policy.semanticRecoveryPolicy()
+            : SemanticRecoveryPolicy.strictDefaults();
+    }
+
+    private PipelineContext terminateDeclaredClarification(
+        PipelineContext context,
+        MultiIntentResponse response
+    ) {
+        if (response == null || response.getIntents() == null) {
+            return null;
+        }
+        List<Map<String, Object>> obligations = new java.util.ArrayList<>();
+        String firstQuestion = null;
+        for (int index = 0; index < response.getIntents().size(); index++) {
+            Intent intent = response.getIntents().get(index);
+            if (intent == null
+                || intent.getMissingInformation() == null
+                || intent.getMissingInformation().isEmpty()
+                || !StringUtils.hasText(intent.getClarificationQuestion())) {
+                continue;
+            }
+            Map<String, Object> obligation = new LinkedHashMap<>();
+            obligation.put(
+                "obligationId",
+                StringUtils.hasText(intent.getObligationId())
+                    ? intent.getObligationId().trim()
+                    : "intent-" + index
+            );
+            obligation.put("missingInformation", List.copyOf(intent.getMissingInformation()));
+            obligation.put("clarificationQuestion", intent.getClarificationQuestion().trim());
+            obligations.add(Map.copyOf(obligation));
+            if (firstQuestion == null) {
+                firstQuestion = intent.getClarificationQuestion().trim();
+            }
+        }
+        if (obligations.isEmpty()) {
+            return null;
+        }
+
+        Map<String, Object> semanticDecision = Map.of(
+            "decision", "MISSING_INFORMATION",
+            "originalSource", "MODEL",
+            "validationStatus", "CLARIFICATION_REQUIRED",
+            "recoveryPolicy", "MODEL_DECLARED_CLARIFICATION",
+            "recoveryAttempted", false,
+            "effectiveSource", "MODEL",
+            "effectiveValue", "CLARIFICATION_REQUIRED"
+        );
+        PipelineContext withResponse = context
+            .withMetadata("semanticDecision", semanticDecision)
+            .toBuilder()
+            .intentResponse(response)
+            .build();
+        return withResponse.terminate(
+            OrchestrationResult.builder()
+                .type(OrchestrationResultType.CLARIFICATION_REQUIRED)
+                .success(false)
+                .message(firstQuestion)
+                .data(Map.of("obligations", List.copyOf(obligations)))
+                .metadata(Map.of("semanticDecision", semanticDecision))
                 .build()
         );
     }

@@ -37,6 +37,11 @@ import static org.junit.jupiter.api.Assertions.assertSame;
     properties = {
         "ai.providers.embedding-provider=openai",
         "ai.providers.enable-fallback=true",
+        "ai.providers.embedding-fallback-providers[0]=onnx",
+        "ai.providers.provider-data-policies.openai=test-approved",
+        "ai.providers.provider-data-policies.onnx=test-approved",
+        "ai.providers.embedding-compatibility-groups.openai=test-space-v1",
+        "ai.providers.embedding-compatibility-groups.onnx=test-space-v1",
         "ai.providers.openai.enabled=true",
         "ai.providers.openai.api-key=sk-test-key",
         "ai.providers.openai.base-url=https://api.openai.com/v1",

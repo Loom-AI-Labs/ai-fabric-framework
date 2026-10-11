@@ -8,6 +8,8 @@ import ai.fabric.provider.AIProvider;
 import ai.fabric.provider.ProviderConfig;
 import ai.fabric.provider.ProviderStatus;
 import org.springframework.stereotype.Component;
+import org.springframework.context.annotation.Profile;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
@@ -26,6 +28,8 @@ import java.util.regex.Pattern;
  * requests, keeping packaged real-app smokes independent of external LLM credentials.</p>
  */
 @Component
+@Profile("smoke")
+@ConditionalOnProperty(name = "ai.providers.llm-provider", havingValue = "chat-local")
 public class ChatLocalLlmProvider implements AIProvider {
 
     static final String PROVIDER_NAME = "chat-local";

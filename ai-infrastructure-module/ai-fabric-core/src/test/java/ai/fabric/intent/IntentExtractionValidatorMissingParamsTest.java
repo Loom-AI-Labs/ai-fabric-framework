@@ -39,6 +39,9 @@ class IntentExtractionValidatorMissingParamsTest {
                 .type(IntentType.ACTION)
                 .action("create_purchase_order")
                 .actionParams(Map.of("sku", "ELEC-PHONE-002", "quantity", 1))
+                .requiresRetrieval(false)
+                .requiresGeneration(false)
+                .requiresTargetResolution(false)
                 .build()))
             .build();
 

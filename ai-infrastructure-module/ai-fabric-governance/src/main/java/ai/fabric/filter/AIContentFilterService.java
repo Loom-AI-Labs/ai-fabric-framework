@@ -1,95 +1,209 @@
 package ai.fabric.filter;
 
+import ai.fabric.dto.AIAccessSubjectContext;
 import ai.fabric.dto.AIContentFilterRequest;
 import ai.fabric.dto.AIContentFilterResponse;
-import ai.fabric.dto.AIAccessSubjectContext;
-import ai.fabric.core.AICoreService;
-import ai.fabric.prompt.PromptRenderer;
-import ai.fabric.prompt.PromptTemplateResolver;
-import lombok.RequiredArgsConstructor;
+import ai.fabric.governance.config.AIGovernanceProperties;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
-import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.stream.Collectors;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 
 /**
- * AI Content Filter Service for content moderation and filtering
+ * Content-filter orchestration over typed moderation providers.
+ *
+ * <p>The framework validates provider identity and applies an explicitly configured recovery chain. It does
+ * not infer moderation categories from natural-language keywords. Provider exhaustion fails closed.</p>
  */
 @Slf4j
-@RequiredArgsConstructor
 public class AIContentFilterService {
 
-    private static final String TEMPLATE_FAMILY = "governance/content-filter";
-    private static final String TEMPLATE_ANALYZE_VIOLATIONS = "analyze-violations";
-    private static final String PLACEHOLDER_CONTENT = "content";
+    private static final String PROVIDER_ERROR = "MODERATION_PROVIDER_ERROR";
+    private static final String EMPTY_RESULT = "MODERATION_PROVIDER_EMPTY_RESULT";
 
-    private final AICoreService aiCoreService;
-    private final PromptTemplateResolver promptTemplateResolver;
-    private final PromptRenderer promptRenderer;
-    private final Map<String, List<String>> blockedContent = new ConcurrentHashMap<>();
-    private final Map<String, List<String>> allowedContent = new ConcurrentHashMap<>();
-    private final Map<String, Map<String, Object>> filterSettings = new ConcurrentHashMap<>();
+    private final Map<String, ContentModerationProvider> providers;
+    private final String primaryProviderId;
+    private final List<String> recoveryProviderIds;
 
-    /**
-     * Filter content based on policies and rules
-     */
+    public AIContentFilterService(
+        List<ContentModerationProvider> providers,
+        AIGovernanceProperties.ContentFilterProperties properties
+    ) {
+        Map<String, ContentModerationProvider> indexed = new LinkedHashMap<>();
+        if (providers != null) {
+            for (ContentModerationProvider provider : providers) {
+                if (provider == null || !StringUtils.hasText(provider.providerId())) {
+                    continue;
+                }
+                String id = normalizeProviderId(provider.providerId());
+                if (indexed.putIfAbsent(id, provider) != null) {
+                    throw new IllegalStateException("Duplicate ContentModerationProvider id: " + id);
+                }
+            }
+        }
+        this.providers = Collections.unmodifiableMap(indexed);
+        this.primaryProviderId = resolvePrimaryProviderId(properties, indexed);
+        this.recoveryProviderIds = resolveRecoveryProviderIds(properties, primaryProviderId, indexed);
+    }
+
     public AIContentFilterResponse filterContent(AIContentFilterRequest request) {
         Objects.requireNonNull(request, "content filter request must not be null");
-        log.info("Filtering content for subject: {}", resolveSubjectId(request));
-        
-        try {
-            long startTime = System.currentTimeMillis();
-            
-            // Analyze content for violations
-            List<String> violations = analyzeContentViolations(request);
-            
-            // Check content against blocked lists
-            boolean isBlocked = checkBlockedContent(request.getContent());
-            
-            // Check content against allowed lists
-            boolean isAllowed = checkAllowedContent(request.getContent());
-            
-            // Determine if content should be filtered
-            boolean shouldFilter = shouldFilterContent(violations, isBlocked, isAllowed, request);
-            
-            // Apply content sanitization if needed
-            String sanitizedContent = applyContentSanitization(request.getContent(), violations);
-            
-            // Generate filter recommendations
-            List<String> recommendations = generateFilterRecommendations(violations, shouldFilter);
-            
-            // Calculate content score
-            double contentScore = calculateContentScore(request.getContent(), violations);
-            
-            long processingTime = System.currentTimeMillis() - startTime;
-            
-            return AIContentFilterResponse.builder()
-                .requestId(request.getRequestId())
-                .subjectId(resolveSubjectId(request))
-                .violations(violations)
-                .isBlocked(isBlocked)
-                .isAllowed(isAllowed)
-                .shouldFilter(shouldFilter)
-                .sanitizedContent(sanitizedContent)
-                .contentScore(contentScore)
-                .recommendations(recommendations)
-                .processingTimeMs(processingTime)
-                .timestamp(LocalDateTime.now())
-                .success(true)
-                .build();
-                
-        } catch (Exception e) {
-            log.error("Error filtering content", e);
-            return AIContentFilterResponse.builder()
-                .requestId(request.getRequestId())
-                .subjectId(resolveSubjectId(request))
-                .shouldFilter(true) // Default to filtering on error
-                .success(false)
-                .errorMessage(e.getMessage())
-                .build();
+        long started = System.nanoTime();
+        List<Map<String, Object>> attempts = new ArrayList<>();
+
+        for (String providerId : providerChain()) {
+            ContentModerationProvider provider = providers.get(providerId);
+            if (provider == null) {
+                attempts.add(attempt(providerId, false, "PROVIDER_NOT_REGISTERED"));
+                continue;
+            }
+            try {
+                ContentModerationResult decision = provider.moderate(request);
+                if (decision == null) {
+                    attempts.add(attempt(providerId, false, EMPTY_RESULT));
+                    continue;
+                }
+                attempts.add(attempt(providerId, true, null));
+                return successfulResponse(request, decision, providerId, attempts, started);
+            } catch (Exception ex) {
+                log.warn(
+                    "Content moderation provider {} failed for request {} ({})",
+                    providerId,
+                    request.getRequestId(),
+                    ex.getClass().getSimpleName()
+                );
+                attempts.add(attempt(providerId, false, PROVIDER_ERROR));
+            }
         }
+
+        return AIContentFilterResponse.builder()
+            .requestId(request.getRequestId())
+            .subjectId(resolveSubjectId(request))
+            .violations(List.of(PROVIDER_ERROR))
+            .shouldFilter(true)
+            .success(false)
+            .errorMessage("No configured moderation provider produced a valid decision.")
+            .processingTimeMs(elapsedMillis(started))
+            .timestamp(LocalDateTime.now())
+            .contentAnalysis(diagnostics(null, attempts, false, Map.of()))
+            .build();
+    }
+
+    private AIContentFilterResponse successfulResponse(
+        AIContentFilterRequest request,
+        ContentModerationResult decision,
+        String effectiveProvider,
+        List<Map<String, Object>> attempts,
+        long started
+    ) {
+        return AIContentFilterResponse.builder()
+            .requestId(request.getRequestId())
+            .subjectId(resolveSubjectId(request))
+            .violations(decision.violations())
+            .shouldFilter(decision.shouldFilter())
+            .sanitizedContent(decision.sanitizedContent())
+            .contentScore(decision.contentScore())
+            .recommendations(decision.recommendations())
+            .processingTimeMs(elapsedMillis(started))
+            .timestamp(LocalDateTime.now())
+            .success(true)
+            .contentAnalysis(diagnostics(effectiveProvider, attempts, true, decision.metadata()))
+            .build();
+    }
+
+    private Map<String, Object> diagnostics(
+        String effectiveProvider,
+        List<Map<String, Object>> attempts,
+        boolean success,
+        Map<String, Object> providerMetadata
+    ) {
+        Map<String, Object> diagnostics = new LinkedHashMap<>();
+        diagnostics.put("decision", "CONTENT_MODERATION");
+        diagnostics.put("primaryProvider", primaryProviderId);
+        diagnostics.put("configuredRecoveryProviders", recoveryProviderIds);
+        diagnostics.put("attempts", List.copyOf(attempts));
+        diagnostics.put("recoveryAttempted", attempts.size() > 1);
+        diagnostics.put("success", success);
+        if (StringUtils.hasText(effectiveProvider)) {
+            diagnostics.put("effectiveProvider", effectiveProvider);
+        }
+        if (providerMetadata != null && !providerMetadata.isEmpty()) {
+            diagnostics.put("providerMetadata", Map.copyOf(providerMetadata));
+        }
+        return Collections.unmodifiableMap(diagnostics);
+    }
+
+    private Map<String, Object> attempt(String providerId, boolean success, String reason) {
+        Map<String, Object> attempt = new LinkedHashMap<>();
+        attempt.put("provider", providerId);
+        attempt.put("success", success);
+        if (StringUtils.hasText(reason)) {
+            attempt.put("reason", reason);
+        }
+        return Collections.unmodifiableMap(attempt);
+    }
+
+    private List<String> providerChain() {
+        List<String> chain = new ArrayList<>(1 + recoveryProviderIds.size());
+        chain.add(primaryProviderId);
+        chain.addAll(recoveryProviderIds);
+        return chain;
+    }
+
+    private static String resolvePrimaryProviderId(
+        AIGovernanceProperties.ContentFilterProperties properties,
+        Map<String, ContentModerationProvider> providers
+    ) {
+        String configured = properties != null ? properties.getPrimaryProvider() : null;
+        if (StringUtils.hasText(configured)) {
+            String normalized = normalizeProviderId(configured);
+            if (!providers.containsKey(normalized)) {
+                throw new IllegalStateException("Configured primary moderation provider is not registered: " + normalized);
+            }
+            return normalized;
+        }
+        if (providers.size() == 1) {
+            return providers.keySet().iterator().next();
+        }
+        throw new IllegalStateException(
+            "ai.governance.content-filter.primary-provider is required when zero or multiple moderation providers exist"
+        );
+    }
+
+    private static List<String> resolveRecoveryProviderIds(
+        AIGovernanceProperties.ContentFilterProperties properties,
+        String primaryProviderId,
+        Map<String, ContentModerationProvider> providers
+    ) {
+        List<String> configured = properties != null && properties.getRecoveryProviders() != null
+            ? properties.getRecoveryProviders()
+            : List.of();
+        LinkedHashSet<String> resolved = new LinkedHashSet<>();
+        for (String value : configured) {
+            if (!StringUtils.hasText(value)) {
+                continue;
+            }
+            String normalized = normalizeProviderId(value);
+            if (normalized.equals(primaryProviderId)) {
+                continue;
+            }
+            if (!providers.containsKey(normalized)) {
+                throw new IllegalStateException("Configured moderation recovery provider is not registered: " + normalized);
+            }
+            resolved.add(normalized);
+        }
+        return List.copyOf(resolved);
+    }
+
+    private static String normalizeProviderId(String value) {
+        return value.trim().toLowerCase(java.util.Locale.ROOT);
     }
 
     private String resolveSubjectId(AIContentFilterRequest request) {
@@ -97,149 +211,13 @@ public class AIContentFilterService {
             return null;
         }
         AIAccessSubjectContext authContext = request.getAuthContext();
-        if (authContext.getSubjectId() != null && !authContext.getSubjectId().isBlank()) {
+        if (StringUtils.hasText(authContext.getSubjectId())) {
             return authContext.getSubjectId();
         }
-        if (authContext.getSessionId() != null && !authContext.getSessionId().isBlank()) {
-            return authContext.getSessionId();
-        }
-        return null;
+        return StringUtils.hasText(authContext.getSessionId()) ? authContext.getSessionId() : null;
     }
 
-    /**
-     * Analyze content for violations using AI
-     */
-    private List<String> analyzeContentViolations(AIContentFilterRequest request) {
-        List<String> violations = new ArrayList<>();
-        
-        try {
-            String content = request.getContent() != null ? request.getContent() : "";
-            String prompt = promptRenderer.render(
-                promptTemplateResolver.resolve(TEMPLATE_FAMILY, TEMPLATE_ANALYZE_VIOLATIONS).template(),
-                Map.of(PLACEHOLDER_CONTENT, content)
-            );
-            
-            String response = aiCoreService.generateText(prompt);
-            violations = Arrays.stream(response.split("\n"))
-                .map(String::trim)
-                .filter(violation -> !violation.isEmpty() && !"NONE".equalsIgnoreCase(violation))
-                .collect(Collectors.toList());
-                
-        } catch (Exception e) {
-            log.warn("AI content analysis failed, using rule-based detection", e);
-            violations = detectRuleBasedViolations(request.getContent());
-        }
-        
-        return violations;
-    }
-
-    private List<String> detectRuleBasedViolations(String content) {
-        List<String> violations = new ArrayList<>();
-        
-        if (content == null) return violations;
-        
-        String lowerContent = content.toLowerCase();
-        
-        if (containsHateSpeech(lowerContent)) {
-            violations.add("HATE_SPEECH");
-        }
-        if (containsHarassment(lowerContent)) {
-            violations.add("HARASSMENT");
-        }
-        if (containsViolence(lowerContent)) {
-            violations.add("VIOLENCE");
-        }
-        if (containsExplicitContent(lowerContent)) {
-            violations.add("EXPLICIT_CONTENT");
-        }
-        if (containsSpam(lowerContent)) {
-            violations.add("SPAM");
-        }
-        
-        return violations;
-    }
-
-    private boolean containsHateSpeech(String content) {
-        return content.contains("hate") && content.contains("group");
-    }
-
-    private boolean containsHarassment(String content) {
-        return content.contains("idiot") || content.contains("stupid");
-    }
-
-    private boolean containsViolence(String content) {
-        return content.contains("kill") || content.contains("bomb");
-    }
-
-    private boolean containsExplicitContent(String content) {
-        return content.contains("explicit") || content.contains("nude");
-    }
-
-    private boolean containsSpam(String content) {
-        return content.contains("buy now") || content.contains("click here");
-    }
-
-    private boolean checkBlockedContent(String content) {
-        if (content == null) return false;
-        return blockedContent.values().stream()
-            .flatMap(List::stream)
-            .anyMatch(blocked -> content.toLowerCase().contains(blocked.toLowerCase()));
-    }
-
-    private boolean checkAllowedContent(String content) {
-        if (content == null) return false;
-        return allowedContent.values().stream()
-            .flatMap(List::stream)
-            .anyMatch(allowed -> content.toLowerCase().contains(allowed.toLowerCase()));
-    }
-
-    private boolean shouldFilterContent(List<String> violations, boolean isBlocked, boolean isAllowed, AIContentFilterRequest request) {
-        if (isAllowed) {
-            return false;
-        }
-        if (isBlocked) {
-            return true;
-        }
-        if (violations == null || violations.isEmpty()) {
-            return false;
-        }
-        return violations.size() > 0;
-    }
-
-    private String applyContentSanitization(String content, List<String> violations) {
-        if (content == null || violations == null || violations.isEmpty()) {
-            return content;
-        }
-        String sanitized = content;
-        if (violations.contains("EXPLICIT_CONTENT")) {
-            sanitized = sanitized.replaceAll("(?i)\\b(nude|explicit)\\b", "[REDACTED]");
-        }
-        if (violations.contains("VIOLENCE")) {
-            sanitized = sanitized.replaceAll("(?i)\\b(kill|bomb)\\b", "[REDACTED]");
-        }
-        return sanitized;
-    }
-
-    private List<String> generateFilterRecommendations(List<String> violations, boolean shouldFilter) {
-        if (violations == null || violations.isEmpty()) {
-            return List.of();
-        }
-        List<String> recommendations = new ArrayList<>();
-        if (shouldFilter) {
-            recommendations.add("Content should be filtered or moderated");
-        }
-        recommendations.addAll(violations.stream()
-            .map(v -> "Review policy for: " + v)
-            .toList());
-        return recommendations;
-    }
-
-    private double calculateContentScore(String content, List<String> violations) {
-        if (content == null) {
-            return 0.0;
-        }
-        int lengthPenalty = Math.min(50, content.length() / 200);
-        int violationPenalty = violations != null ? violations.size() * 15 : 0;
-        return Math.max(0.0, 100.0 - lengthPenalty - violationPenalty);
+    private long elapsedMillis(long started) {
+        return java.util.concurrent.TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started);
     }
 }

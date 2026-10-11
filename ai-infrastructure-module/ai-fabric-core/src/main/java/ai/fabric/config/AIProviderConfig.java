@@ -4,6 +4,11 @@ package ai.fabric.config;
 import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
 /**
  * Configuration properties for AI providers.
  *
@@ -106,7 +111,32 @@ public class AIProviderConfig {
     /**
      * Enable automatic fallback when the preferred provider fails.
      */
-    private Boolean enableFallback = true;
+    private Boolean enableFallback = false;
+
+    /**
+     * Ordered, explicitly named generation-provider recovery chain.
+     */
+    private List<String> generationFallbackProviders = new ArrayList<>();
+
+    /**
+     * Ordered, explicitly named embedding-provider recovery chain.
+     */
+    private List<String> embeddingFallbackProviders = new ArrayList<>();
+
+    /**
+     * Server-owned data-policy label per provider. A fallback transition is allowed only when
+     * the primary and recovery provider have the same non-blank label.
+     */
+    private Map<String, String> providerDataPolicies = new LinkedHashMap<>();
+
+    /**
+     * Server-owned embedding-space compatibility group per provider.
+     *
+     * <p>An embedding fallback transition is allowed only when both providers have the same
+     * non-blank group. Equal dimensions alone are not sufficient because vectors produced by
+     * different embedding models are generally not comparable.</p>
+     */
+    private Map<String, String> embeddingCompatibilityGroups = new LinkedHashMap<>();
 
     // Provider specific configuration blocks
     private final OpenAIConfig openai = new OpenAIConfig();
@@ -135,7 +165,7 @@ public class AIProviderConfig {
             case "azure" -> azure.toGenerationDefaults("azure");
             case "openai" ->
                 openai.toGenerationDefaults("openai");
-            default -> openai.toGenerationDefaults("openai");
+            default -> new GenerationDefaults(provider, null, null, null, null, null);
         };
     }
 
@@ -188,7 +218,7 @@ public class AIProviderConfig {
             case "onnx" ->
                 onnx.toEmbeddingDefaults("onnx");
             case "spring-ai-onnx" -> springAiOnnx.toEmbeddingDefaults("spring-ai-onnx");
-            default -> onnx.toEmbeddingDefaults("onnx");
+            default -> new EmbeddingDefaults(provider, null);
         };
     }
 
@@ -226,7 +256,7 @@ public class AIProviderConfig {
             case "gemini" -> gemini.toGenerationDefaults("gemini");
             case "azure" -> azure.toGenerationDefaults("azure");
             case "openai" -> openai.toGenerationDefaults("openai");
-            default -> openai.toGenerationDefaults("openai");
+            default -> new GenerationDefaults(provider, null, null, null, null, null);
         };
     }
 

@@ -21,7 +21,29 @@ configuration keys.
 |----------|---------|-------------|
 | `ai.providers.llm-provider` | `openai` | Name of the active `AIProvider` used for generation. Matches a provider's `getProviderName()`. |
 | `ai.providers.embedding-provider` | `onnx` | Name of the active `EmbeddingProvider`. Defaults to `onnx` when unset. |
-| `ai.providers.enable-fallback` | `true` | Allow falling back to another available provider. |
+| `ai.providers.enable-fallback` | `false` | Permit only the explicitly named, policy-compatible fallback chains below. |
+| `ai.providers.generation-fallback-providers` | `[]` | Ordered names of generation providers allowed as recovery candidates. |
+| `ai.providers.embedding-fallback-providers` | `[]` | Ordered names of embedding providers allowed as recovery candidates. |
+| `ai.providers.provider-data-policies` | `{}` | Provider-to-data-policy labels. Primary and fallback labels must match. |
+| `ai.providers.embedding-compatibility-groups` | `{}` | Provider-to-embedding-space labels. Embedding fallbacks additionally require matching nonblank labels. |
+
+Fallback is fail-closed by default. Generation fallback requires an explicitly named provider and a matching
+data-policy label. Embedding fallback additionally requires a matching embedding compatibility group because
+equal vector dimensions do not make two embedding models comparable.
+
+```yaml
+ai:
+  providers:
+    enable-fallback: true
+    generation-fallback-providers: [azure]
+    embedding-fallback-providers: [azure]
+    provider-data-policies:
+      openai: customer-data-eu
+      azure: customer-data-eu
+    embedding-compatibility-groups:
+      openai: catalog-embedding-v1
+      azure: catalog-embedding-v1
+```
 
 ### Per-provider settings
 
@@ -168,6 +190,60 @@ ai:
 The evaluation helpers are for tests and release gates. They wrap Spring AI relevancy and
 fact-checking evaluators, map `RAGResponse` documents into Spring AI `EvaluationRequest` supporting
 documents, and sanitize URL/path/secret-like metadata before evaluation.
+
+## Semantic recovery (`ai.orchestration.semantic-recovery.*`)
+
+AI Fabric treats validated structured model output as the semantic authority. Validation may reject
+unknown or unauthorized identifiers, but it does not infer a replacement from query words. A
+recovery that changes the model decision runs only when this server-owned policy explicitly permits
+it. The strict defaults repair through the configured progressive extraction budget and then fail or
+clarify without silently broadening authority.
+
+```yaml
+ai:
+  orchestration:
+    semantic-recovery:
+      extraction-failure: LLM_REPAIR_THEN_FAIL
+      missing-target: LLM_REPAIR_THEN_CLARIFY
+      missing-vector-space: LLM_REPAIR_THEN_CLARIFY
+      invalid-vector-space: LLM_REPAIR_THEN_FAIL
+      unknown-action: LLM_REPAIR_THEN_FAIL
+      action-domain-mismatch: DENY_AND_LLM_REPLAN
+      advanced-no-evidence: RETURN_NO_EVIDENCE
+    modes:
+      bounded-discovery:
+        semantic-recovery:
+          missing-vector-space: BOUNDED_ALLOWED_FAN_OUT
+        rag:
+          fanout-enabled: true
+          max-spaces: 2
+          retrieval-vector-spaces-allowlist:
+            - product
+            - policy
+```
+
+| Property | Strict default | Other supported value |
+|----------|----------------|-----------------------|
+| `extraction-failure` | `LLM_REPAIR_THEN_FAIL` | `LLM_REPAIR_THEN_CLARIFY` |
+| `missing-target` | `LLM_REPAIR_THEN_CLARIFY` | None; trusted pins are used only when the model requests target resolution. |
+| `missing-vector-space` | `LLM_REPAIR_THEN_CLARIFY` | `BOUNDED_ALLOWED_FAN_OUT` |
+| `invalid-vector-space` | `LLM_REPAIR_THEN_FAIL` | `LLM_REPAIR_THEN_CLARIFY` |
+| `unknown-action` | `LLM_REPAIR_THEN_FAIL` | `LLM_REPLAN_TO_INFORMATION` |
+| `action-domain-mismatch` | `DENY_AND_LLM_REPLAN` | `DENY_AND_FAIL`, `DENY_AND_ALLOWED_RAG` |
+| `advanced-no-evidence` | `RETURN_NO_EVIDENCE` | `BOUNDED_ALLOWED_SPACE_RECOVERY` |
+
+Mode values override only the fields they set; unspecified fields inherit the global policy. The
+effective policy is emitted under `orchestrationPolicy.semanticRecovery`. Recoveries also emit a
+bounded `semanticDecision` diagnostic containing the original source/value, validation status,
+selected policy, whether recovery ran, and the effective outcome. Client request context cannot
+enable these policies. Allowlisted actions and vector spaces remain ceilings, never relevance
+signals. `BOUNDED_ALLOWED_FAN_OUT` and `BOUNDED_ALLOWED_SPACE_RECOVERY` additionally require
+`rag.fanout-enabled=true` and a positive `rag.max-spaces` in the effective mode. Without both, the
+runtime reports the blocked recovery and preserves the strict clarification/no-evidence outcome.
+
+`DETERMINISTIC_RAG_GENERATE` controls whether an INFORMATION request must retrieve and generate;
+it does not select a vector space. Source selection remains model-driven or follows the explicit
+bounded recovery above.
 
 ## Relationship Query (`ai.infrastructure.relationship.*`)
 

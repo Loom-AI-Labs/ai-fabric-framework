@@ -26,8 +26,8 @@ final class InformationVectorSpaceRoutingSupport {
                                     Map<String, Object> metadata,
                                     OrchestrationPolicy.RagBudgets ragBudgets,
                                     boolean vectorSpaceSelectionRequired,
-                                    boolean deterministic,
                                     boolean fanoutAllowed,
+                                    boolean missingSpaceFanoutAllowed,
                                     ReadActionResolutionService.ResolutionOutcome readActionResolution,
                                     AIEntityConfigurationLoader entityConfigurationLoader,
                                     VectorSpaceSelectionSupport vectorSpaceSelectionSupport) {
@@ -70,50 +70,38 @@ final class InformationVectorSpaceRoutingSupport {
         if (intent != null) {
             intent.setVectorSpace(vectorSpaces.isEmpty() ? null : String.join(",", vectorSpaces));
         }
-        if (vectorSpaces.isEmpty()
-            && ragBudgets != null
-            && ragBudgets.hasVectorSpaceAllowlist()) {
-            List<String> allowlist = ragBudgets.retrievalVectorSpacesAllowlist();
-            if (vectorSpaceSelectionRequired && allowlist.size() > 1) {
-                Map<String, Object> data = new LinkedHashMap<>();
-                data.put("allowedVectorSpaces", allowlist);
-                data.put("reason", "VECTOR_SPACE_REQUIRED_BY_POLICY");
-                return clarification(
-                    "Which knowledge base domain should I search?",
-                    data,
-                    intent
-                );
-            }
-
-            vectorSpaces = allowlist;
-            if (intent != null) {
-                intent.setVectorSpace(String.join(",", vectorSpaces));
-            }
-            vectorSpacesSelectionSource = allowlist.size() == 1 ? "ALLOWLIST_SINGLETON" : "ALLOWLIST";
-        }
         if (vectorSpaces.isEmpty()) {
-            List<String> allSpaces = deterministic
-                ? vectorSpaceSelectionSupport.resolveDeterministicFallbackVectorSpaces(ragBudgets)
-                : vectorSpaceSelectionSupport.resolveAllVectorSpaces();
-            if (!allSpaces.isEmpty()) {
-                allSpaces = vectorSpaceSelectionSupport.capVectorSpacesToBudget(allSpaces, ragBudgets);
-                vectorSpaces = allSpaces;
+            List<String> policySelectedSpaces = List.of();
+            if (missingSpaceFanoutAllowed && hasExplicitFanOutBudget(ragBudgets)) {
+                policySelectedSpaces = ragBudgets != null && ragBudgets.hasVectorSpaceAllowlist()
+                    ? ragBudgets.retrievalVectorSpacesAllowlist()
+                    : vectorSpaceSelectionSupport.resolveAllVectorSpaces();
+                policySelectedSpaces = vectorSpaceSelectionSupport.capVectorSpacesToBudget(
+                    policySelectedSpaces,
+                    ragBudgets
+                );
+                vectorSpacesSelectionSource = "EXPLICIT_BOUNDED_FAN_OUT_RECOVERY";
+            }
+            if (!policySelectedSpaces.isEmpty()) {
+                vectorSpaces = policySelectedSpaces;
                 if (intent != null) {
-                    intent.setVectorSpace(String.join(",", allSpaces));
+                    intent.setVectorSpace(String.join(",", policySelectedSpaces));
                 }
-                vectorSpacesSelectionSource = deterministic ? "DETERMINISTIC_FALLBACK" : "KB_OVERVIEW";
             }
         }
 
-        if (!vectorSpaces.isEmpty()) {
-            vectorSpaces = vectorSpaceSelectionSupport.capVectorSpacesToBudget(vectorSpaces, ragBudgets);
-            if (vectorSpacesSelectionSource == null) {
-                vectorSpacesSelectionSource = "UNKNOWN";
-            }
-        }
         if (vectorSpaces.isEmpty()) {
             Map<String, Object> data = new LinkedHashMap<>();
             data.put(DATA_KEY_CANDIDATE_VECTOR_SPACES, List.of());
+            if (ragBudgets != null && ragBudgets.hasVectorSpaceAllowlist()) {
+                data.put("allowedVectorSpaces", ragBudgets.retrievalVectorSpacesAllowlist());
+            }
+            data.put(
+                "reason",
+                vectorSpaceSelectionRequired
+                    ? "VECTOR_SPACE_REQUIRED_BY_POLICY"
+                    : "VECTOR_SPACE_SELECTION_REQUIRED"
+            );
             return clarification(
                 "Which knowledge base domain should I search?",
                 data,
@@ -143,13 +131,33 @@ final class InformationVectorSpaceRoutingSupport {
         }
 
         if (!fanoutAllowed && vectorSpaces.size() > 1) {
-            metadata.put("fanoutSuppressed", true);
-            metadata.put("fanoutSuppressedReason", "POLICY");
-            metadata.put("fanoutSuppressedRequestedSpaces", vectorSpaces);
-            vectorSpaces = List.of(vectorSpaces.getFirst());
-            if (intent != null) {
-                intent.setVectorSpace(vectorSpaces.getFirst());
-            }
+            Map<String, Object> data = new LinkedHashMap<>();
+            data.put("reason", "VECTOR_SPACE_FANOUT_DISABLED");
+            data.put("requestedVectorSpaces", List.copyOf(vectorSpaces));
+            data.put("selectionSource", vectorSpacesSelectionSource);
+            return clarification(
+                "This request needs more than one knowledge domain, but this mode permits only one. Please narrow the request or enable approved fan-out.",
+                data,
+                intent
+            );
+        }
+
+        Integer maxSpaces = ragBudgets != null ? ragBudgets.maxSpaces() : null;
+        if (maxSpaces != null && maxSpaces > 0 && vectorSpaces.size() > maxSpaces) {
+            Map<String, Object> data = new LinkedHashMap<>();
+            data.put("reason", "VECTOR_SPACE_FANOUT_LIMIT_EXCEEDED");
+            data.put("requestedVectorSpaces", List.copyOf(vectorSpaces));
+            data.put("maxSpaces", maxSpaces);
+            data.put("selectionSource", vectorSpacesSelectionSource);
+            return clarification(
+                "This request needs more knowledge domains than this mode permits. Please narrow the request.",
+                data,
+                intent
+            );
+        }
+
+        if (vectorSpacesSelectionSource == null) {
+            vectorSpacesSelectionSource = "UNKNOWN";
         }
 
         metadata.put("retrievalStrategy", vectorSpaces.size() > 1 ? "FAN_OUT" : "SINGLE_SPACE");
@@ -163,6 +171,13 @@ final class InformationVectorSpaceRoutingSupport {
         }
 
         return new RoutedVectorSpaces(Collections.unmodifiableList(vectorSpaces), null);
+    }
+
+    private static boolean hasExplicitFanOutBudget(OrchestrationPolicy.RagBudgets ragBudgets) {
+        return ragBudgets != null
+            && Boolean.TRUE.equals(ragBudgets.fanoutEnabled())
+            && ragBudgets.maxSpaces() != null
+            && ragBudgets.maxSpaces() > 0;
     }
 
     private static String preferredVectorSpacesSource(

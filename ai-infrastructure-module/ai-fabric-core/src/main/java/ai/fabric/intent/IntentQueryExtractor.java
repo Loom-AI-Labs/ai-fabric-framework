@@ -136,7 +136,6 @@ public class IntentQueryExtractor {
         }
 
         response.normalize();
-        coerceMisclassifiedActionIntents(response);
         validateResponse(response, userQuery);
         if (!response.hasIntents()) {
             log.warn("Intent extractor returned no intents");
@@ -147,49 +146,6 @@ public class IntentQueryExtractor {
             providerProcessingTimeMs,
             model
         );
-    }
-
-    /**
-     * Provider-agnostic guardrail: some models mislabel "summarize / explain" requests as ACTION intents
-     * with an unregistered action name (e.g., "summarize"). When the intent also clearly requests RAG
-     * (requiresRetrieval + requiresGeneration + vectorSpace), treat it as INFORMATION instead so the
-     * pipeline can satisfy it via retrieval/generation rather than failing with ACTION_NOT_FOUND.
-     */
-    private void coerceMisclassifiedActionIntents(MultiIntentResponse response) {
-        if (response == null || response.getIntents() == null || response.getIntents().isEmpty()) {
-            return;
-        }
-
-        for (Intent intent : response.getIntents()) {
-            if (intent == null || intent.getType() != IntentType.ACTION) {
-                continue;
-            }
-
-            String actionName = StringUtils.hasText(intent.getAction()) ? intent.getAction() : intent.getIntent();
-            if (!StringUtils.hasText(actionName)) {
-                continue;
-            }
-
-            // If we already have a handler, keep it actionable.
-            if (actionHandlerRegistry != null && actionHandlerRegistry.findHandler(actionName).isPresent()) {
-                continue;
-            }
-
-            boolean looksLikeRagRequest =
-                Boolean.TRUE.equals(intent.getRequiresRetrieval())
-                    && Boolean.TRUE.equals(intent.getRequiresGeneration())
-                    && StringUtils.hasText(intent.getVectorSpace());
-
-            if (looksLikeRagRequest) {
-                log.warn(
-                    "Intent extractor misclassified a RAG request as ACTION (action='{}', vectorSpace='{}'). Treating as INFORMATION.",
-                    actionName,
-                    intent.getVectorSpace()
-                );
-                intent.setType(IntentType.INFORMATION);
-                intent.setAction(null);
-            }
-        }
     }
 
     private RepairTrace attemptRepair(AIGenerationRequest originalRequest,
@@ -282,30 +238,62 @@ public class IntentQueryExtractor {
             response.setIntents(List.of());
         }
 
-	        for (Intent intent : response.getIntents()) {
-	            if (!intent.hasValidType()) {
-	                throw new AIServiceException("Intent is missing a valid type attribute");
-	            }
-	            if (!intent.hasMeaningfulName()) {
-	                // Provider-agnostic tolerance: some models emit OUT_OF_SCOPE intents without a stable name.
-	                // For OUT_OF_SCOPE we do not require `intent` / `action` because execution does not depend on it.
-	                if (intent.getType() == IntentType.OUT_OF_SCOPE) {
-	                    intent.setIntent("out_of_scope");
-	                } else {
-	                    throw new AIServiceException("Intent is missing the 'intent' or 'action' field");
-	                }
-	            }
-	            validateRelationshipActionParams(intent, originalQuery);
-	            if (intent.getRequiresRetrieval() == null) {
-	                intent.setRequiresRetrieval(intent.getType() == IntentType.INFORMATION);
-	            }
-	            if (Boolean.TRUE.equals(intent.getRequiresRetrieval()) && !StringUtils.hasText(intent.getVectorSpace())) {
-                log.debug("Intent requires retrieval but vectorSpace is missing; deferring routing to VectorSpaceResolutionStep");
+        for (Intent intent : response.getIntents()) {
+            if (!intent.hasValidType()) {
+                throw new AIServiceException("Intent is missing a valid type attribute");
+            }
+            if (!intent.hasMeaningfulName()) {
+                // OUT_OF_SCOPE is a structural enum result; execution does not depend on a model-authored name.
+                if (intent.getType() == IntentType.OUT_OF_SCOPE) {
+                    intent.setIntent("out_of_scope");
+                } else {
+                    throw new AIServiceException("Intent is missing the 'intent' or 'action' field");
+                }
+            }
+            requireSemanticDecision(intent.getRequiresRetrieval(), "requiresRetrieval");
+            requireSemanticDecision(intent.getRequiresGeneration(), "requiresGeneration");
+            requireSemanticDecision(intent.getRequiresTargetResolution(), "requiresTargetResolution");
+            if (intent.getType() == IntentType.INFORMATION) {
+                requireSemanticDecision(intent.getNeedsAdvancedRAG(), "needsAdvancedRAG");
+                boolean hasDeclaredClarification = intent.getMissingInformation() != null
+                    && !intent.getMissingInformation().isEmpty()
+                    && StringUtils.hasText(intent.getClarificationQuestion());
+                if (Boolean.TRUE.equals(intent.getRequiresRetrieval())
+                    && !StringUtils.hasText(intent.getVectorSpace())
+                    && !hasDeclaredClarification) {
+                    throw new AIServiceException(
+                        "INFORMATION intent requires retrieval but is missing the 'vectorSpace' decision"
+                    );
+                }
+            }
+            if (intent.getType() == IntentType.ACTION && actionHandlerRegistry != null) {
+                String actionName = StringUtils.hasText(intent.getAction())
+                    ? intent.getAction()
+                    : intent.getIntent();
+                if (!StringUtils.hasText(actionName)
+                    || actionHandlerRegistry.findHandler(actionName).isEmpty()) {
+                    throw new AIServiceException("No handler registered for extracted action '" + actionName + "'");
+                }
+            }
+            validateRelationshipActionParams(intent, originalQuery);
+        }
+
+        if (response.getIntents().size() > 1) {
+            for (Intent intent : response.getIntents()) {
+                if (!StringUtils.hasText(intent.getObligationId())) {
+                    throw new AIServiceException("Compound intent is missing the 'obligationId' field");
+                }
             }
         }
 
         if (response.getOrchestrationStrategy() == null) {
             response.setOrchestrationStrategy(deriveOrchestrationStrategy(response));
+        }
+    }
+
+    private void requireSemanticDecision(Boolean value, String field) {
+        if (value == null) {
+            throw new AIServiceException("Intent is missing the '" + field + "' semantic decision");
         }
     }
 

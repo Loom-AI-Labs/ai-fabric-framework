@@ -60,6 +60,10 @@ public class CompoundConfirmationResolver extends ConfirmationResolverSupport {
                     .action(confirmed.action())
                     .actionParams(confirmed.actionParams() != null ? confirmed.actionParams() : Map.of())
                     .confidence(1.0d)
+                    .requiresRetrieval(false)
+                    .requiresGeneration(false)
+                    .requiresTargetResolution(false)
+                    .needsAdvancedRAG(false)
                     .build();
                 next.add(confirmedAction);
                 context = markConfirmed(context, confirmed);
@@ -72,6 +76,10 @@ public class CompoundConfirmationResolver extends ConfirmationResolverSupport {
                 next.add(Intent.builder()
                     .type(IntentType.CONFIRMATION_NEGATIVE)
                     .confidence(1.0d)
+                    .requiresRetrieval(false)
+                    .requiresGeneration(false)
+                    .requiresTargetResolution(false)
+                    .needsAdvancedRAG(false)
                     .build());
             }
         }

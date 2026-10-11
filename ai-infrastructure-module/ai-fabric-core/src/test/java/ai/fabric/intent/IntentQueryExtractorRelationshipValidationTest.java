@@ -8,6 +8,7 @@ import ai.fabric.dto.Intent;
 import ai.fabric.dto.IntentType;
 import ai.fabric.dto.MultiIntentResponse;
 import ai.fabric.intent.action.AIActionRegistry;
+import ai.fabric.intent.action.AIActionHandler;
 import ai.fabric.intent.action.AIActionMetaData;
 import ai.fabric.intent.orchestration.OrchestrationContext;
 import ai.fabric.intent.extraction.IntentExtractionInput;
@@ -31,6 +32,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.mock;
 
 /**
  * Tests for IntentQueryExtractor's relationship query parameter validation.
@@ -58,6 +61,8 @@ class IntentQueryExtractorRelationshipValidationTest {
     void setUp() {
         when(enrichedPromptBuilder.buildSystemPrompt(any(OrchestrationContext.class)))
             .thenReturn("system-prompt");
+        lenient().when(actionHandlerRegistry.findHandler(anyString()))
+            .thenReturn(Optional.of(mock(AIActionHandler.class)));
 
         extractor = new IntentQueryExtractor(
             aiCoreService,
@@ -87,6 +92,9 @@ class IntentQueryExtractorRelationshipValidationTest {
                   "type": "ACTION",
                   "intent": "relationship_query",
                   "action": "relationship_query",
+                  "requiresRetrieval": false,
+                  "requiresGeneration": false,
+                  "requiresTargetResolution": false,
                   "actionParams": {
                     "query": "find customers",
                     "entityTypes": ["CUSTOMER", "Order", "ProDuCt"]
@@ -126,6 +134,9 @@ class IntentQueryExtractorRelationshipValidationTest {
                   "type": "ACTION",
                   "intent": "relationship_query",
                   "action": "relationship_query",
+                  "requiresRetrieval": false,
+                  "requiresGeneration": false,
+                  "requiresTargetResolution": false,
                   "actionParams": {
                     "query": "find stuff"
                   }
@@ -168,6 +179,9 @@ class IntentQueryExtractorRelationshipValidationTest {
                   "type": "ACTION",
                   "intent": "relationship_query",
                   "action": "relationship_query",
+                  "requiresRetrieval": false,
+                  "requiresGeneration": false,
+                  "requiresTargetResolution": false,
                   "actionParams": {
                     "query": "find customers",
                     "entityTypes": "customer"
@@ -207,6 +221,9 @@ class IntentQueryExtractorRelationshipValidationTest {
                   "type": "ACTION",
                   "intent": "relationship_query",
                   "action": "relationship_query",
+                  "requiresRetrieval": false,
+                  "requiresGeneration": false,
+                  "requiresTargetResolution": false,
                   "actionParams": {
                     "query": "find stuff",
                     "entityTypes": ["customer", null, "", "  ", "order"]
@@ -246,6 +263,9 @@ class IntentQueryExtractorRelationshipValidationTest {
                   "type": "ACTION",
                   "intent": "relationship_query",
                   "action": "relationship_query",
+                  "requiresRetrieval": false,
+                  "requiresGeneration": false,
+                  "requiresTargetResolution": false,
                   "actionParams": {
                     "entityTypes": ["brand"],
                     "limit": 20
@@ -280,6 +300,9 @@ class IntentQueryExtractorRelationshipValidationTest {
                   "type": "ACTION",
                   "intent": "relationship_query",
                   "action": "relationship_query",
+                  "requiresRetrieval": false,
+                  "requiresGeneration": false,
+                  "requiresTargetResolution": false,
                   "actionParams": {
                     "query": "relationship query: find all brands",
                     "entityTypes": ["brand"],
@@ -318,6 +341,9 @@ class IntentQueryExtractorRelationshipValidationTest {
                   "type": "ACTION",
                   "intent": "relationship_query",
                   "action": "relationship query",
+                  "requiresRetrieval": false,
+                  "requiresGeneration": false,
+                  "requiresTargetResolution": false,
                   "actionParams": {
                     "entityTypes": ["transaction"]
                   }
@@ -352,6 +378,9 @@ class IntentQueryExtractorRelationshipValidationTest {
                   "type": "ACTION",
                   "intent": "relationship_query",
                   "action": "relationship_query",
+                  "requiresRetrieval": false,
+                  "requiresGeneration": false,
+                  "requiresTargetResolution": false,
                   "actionParams": {
                     "entityTypes": ["product"]
                   }
@@ -386,6 +415,9 @@ class IntentQueryExtractorRelationshipValidationTest {
                   "type": "ACTION",
                   "intent": "cancel_subscription",
                   "action": "cancel_subscription",
+                  "requiresRetrieval": false,
+                  "requiresGeneration": false,
+                  "requiresTargetResolution": false,
                   "actionParams": {
                     "reason": "too expensive"
                   }

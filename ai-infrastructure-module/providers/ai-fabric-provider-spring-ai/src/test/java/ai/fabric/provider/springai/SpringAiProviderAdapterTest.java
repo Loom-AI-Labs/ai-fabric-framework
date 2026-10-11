@@ -37,6 +37,7 @@ import org.springframework.ai.embedding.EmbeddingOptions;
 import org.springframework.ai.embedding.EmbeddingRequest;
 import org.springframework.ai.embedding.EmbeddingResponse;
 import org.springframework.ai.google.genai.text.GoogleGenAiTextEmbeddingOptions;
+import org.springframework.ai.google.genai.GoogleGenAiChatOptions;
 import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.ai.tool.ToolCallback;
 
@@ -371,6 +372,52 @@ class SpringAiProviderAdapterTest {
 
         assertThat(options.getMaxTokens()).isEqualTo(800);
         assertThat(options.getMaxCompletionTokens()).isNull();
+    }
+
+    @Test
+    void resolverMapsJsonSchemaHintsToOpenAiNativeStructuredOutput() {
+        AIProviderConfig config = new AIProviderConfig();
+        config.getOpenai().setApiKey("test-key");
+        SpringAiModelResolver resolver = new SpringAiModelResolver(config);
+
+        OpenAiChatOptions options = (OpenAiChatOptions) resolver.resolveChatOptions(
+            "openai",
+            AIGenerationRequest.builder()
+                .prompt("Return a decision")
+                .parameters(Map.of(
+                    "response_format", Map.of("type", "json_schema"),
+                    "output_schema", "{\"type\":\"object\",\"properties\":{\"approved\":{\"type\":\"boolean\"}}}"
+                ))
+                .build()
+        );
+
+        assertThat(options.getOutputSchema()).contains("approved");
+        assertThat(options.getResponseFormat()).isNotNull();
+        assertThat(options.getResponseFormat().getType().name()).isEqualTo("JSON_SCHEMA");
+        assertThat(options.getResponseFormat().getJsonSchema()).contains("approved");
+    }
+
+    @Test
+    void resolverMapsJsonSchemaHintsToGeminiNativeStructuredOutput() {
+        AIProviderConfig config = new AIProviderConfig();
+        config.getGemini().setEnabled(true);
+        config.getGemini().setApiKey("test-key");
+        SpringAiModelResolver resolver = new SpringAiModelResolver(config);
+
+        GoogleGenAiChatOptions options = (GoogleGenAiChatOptions) resolver.resolveChatOptions(
+            "gemini",
+            AIGenerationRequest.builder()
+                .prompt("Return a decision")
+                .parameters(Map.of(
+                    "response_format", Map.of("type", "json_schema"),
+                    "output_schema", "{\"type\":\"object\",\"properties\":{\"approved\":{\"type\":\"boolean\"}}}"
+                ))
+                .build()
+        );
+
+        assertThat(options.getOutputSchema()).contains("approved");
+        assertThat(options.getResponseMimeType()).isEqualTo("application/json");
+        assertThat(options.getResponseSchema()).contains("approved");
     }
 
     @Test

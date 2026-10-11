@@ -3,6 +3,7 @@ package ai.fabric.provider.springai;
 import ai.fabric.config.AIProviderConfig;
 import ai.fabric.dto.AIGenerationRequest;
 import ai.fabric.dto.AIEmbeddingRequest;
+import ai.fabric.llm.structured.StructuredJsonProviderHints;
 import ai.fabric.provider.ProviderConfig;
 import ai.fabric.provider.ProviderRequestOverrideSupport;
 import com.anthropic.models.messages.Model;
@@ -26,6 +27,7 @@ import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.ai.openai.OpenAiEmbeddingModel;
 import org.springframework.ai.openai.OpenAiEmbeddingOptions;
 import org.springframework.ai.transformers.TransformersEmbeddingModel;
+import org.springframework.ai.model.tool.StructuredOutputChatOptions;
 import org.springframework.beans.factory.DisposableBean;
 import org.springframework.core.retry.RetryTemplate;
 import org.springframework.util.StringUtils;
@@ -75,7 +77,7 @@ public class SpringAiModelResolver implements DisposableBean {
 
     public ChatOptions resolveChatOptions(String providerName, AIGenerationRequest request) {
         SpringAiProviderFamily family = requireFamily(providerName);
-        return switch (family) {
+        ChatOptions options = switch (family) {
             case OPENAI -> openAiChatOptions(chatModel(request), chatTemperature(request, providerConfig.getOpenai()),
                 chatMaxTokens(request, providerConfig.getOpenai()));
             case AZURE -> azureChatOptions(azureDeployment(request), chatTemperature(request, null),
@@ -91,6 +93,55 @@ public class SpringAiModelResolver implements DisposableBean {
                 chatMaxTokens(request, providerConfig.getGemini()));
             case SPRING_AI_ONNX -> throw new UnsupportedOperationException("Spring AI ONNX is embedding-only.");
         };
+        return applyStructuredOutputOptions(family, request, options);
+    }
+
+    private ChatOptions applyStructuredOutputOptions(SpringAiProviderFamily family,
+                                                     AIGenerationRequest request,
+                                                     ChatOptions options) {
+        if (request == null || options == null) {
+            return options;
+        }
+        String outputSchema = StructuredJsonProviderHints.outputSchema(request.getParameters());
+        String responseFormat = StructuredJsonProviderHints.responseFormatType(request.getParameters());
+        if (!hasText(outputSchema) && !hasText(responseFormat)) {
+            return options;
+        }
+
+        ChatOptions structured = options;
+        if (hasText(outputSchema) && options instanceof StructuredOutputChatOptions structuredOptions) {
+            structured = structuredOptions.mutate()
+                .outputSchema(outputSchema)
+                .build();
+        }
+
+        if ((family == SpringAiProviderFamily.OPENAI || family == SpringAiProviderFamily.AZURE)
+            && structured instanceof OpenAiChatOptions openAiOptions) {
+            OpenAiChatModel.ResponseFormat.Type type = "json_schema".equalsIgnoreCase(responseFormat)
+                && hasText(outputSchema)
+                ? OpenAiChatModel.ResponseFormat.Type.JSON_SCHEMA
+                : OpenAiChatModel.ResponseFormat.Type.JSON_OBJECT;
+            OpenAiChatModel.ResponseFormat.Builder formatBuilder = OpenAiChatModel.ResponseFormat.builder()
+                .type(type);
+            if (type == OpenAiChatModel.ResponseFormat.Type.JSON_SCHEMA) {
+                formatBuilder.jsonSchema(outputSchema);
+            }
+            return openAiOptions.mutate()
+                .responseFormat(formatBuilder.build())
+                .build();
+        }
+
+        if (family == SpringAiProviderFamily.GEMINI
+            && structured instanceof GoogleGenAiChatOptions geminiOptions) {
+            GoogleGenAiChatOptions.Builder builder = geminiOptions.mutate()
+                .responseMimeType("application/json");
+            if (hasText(outputSchema)) {
+                builder.responseSchema(outputSchema);
+            }
+            return builder.build();
+        }
+
+        return structured;
     }
 
     public EmbeddingModel resolveEmbeddingModel(String providerName, AIEmbeddingRequest request) {

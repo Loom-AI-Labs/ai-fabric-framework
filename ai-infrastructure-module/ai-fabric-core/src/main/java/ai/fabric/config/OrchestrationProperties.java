@@ -83,6 +83,11 @@ public class OrchestrationProperties {
     private RagProperties rag = new RagProperties();
 
     /**
+     * Named recoveries that are allowed to change a model semantic decision.
+     */
+    private SemanticRecoveryProperties semanticRecovery = new SemanticRecoveryProperties();
+
+    /**
      * Server-side routing from a UI position signal to an orchestration mode.
      *
      * <p>Used to allow the client to send a low-spoof-risk position signal while the server selects the mode.</p>
@@ -116,8 +121,9 @@ public class OrchestrationProperties {
         LLM_DRIVEN,
 
         /**
-         * Deterministic behavior: INFORMATION always performs retrieval (RAG) and generation.
-         * Missing vectorSpace triggers fan-out across all known vector spaces (when available).
+         * Explicit server behavior: INFORMATION always performs retrieval (RAG) and generation.
+         * This mode does not select a knowledge source. A missing vector-space decision still
+         * clarifies unless a named, bounded semantic-recovery policy is configured.
          */
         DETERMINISTIC_RAG_GENERATE
     }
@@ -227,7 +233,9 @@ public class OrchestrationProperties {
         /**
          * When true, the LLM must explicitly set {@code vectorSpace} for retrieval in this mode.
          *
-         * <p>When false, the server may default to the configured allowlist (when present) or the KB overview.</p>
+         * <p>When false, a trusted structured target or server hint may still supply the vector space. A configured
+         * allowlist or knowledge-base overview constrains valid choices but does not itself select one. Missing model
+         * selection otherwise follows the named semantic recovery policy.</p>
          */
         private Boolean vectorSpaceSelectionRequired;
 
@@ -281,6 +289,57 @@ public class OrchestrationProperties {
          * Optional mode override for planner-driven read-action resolution.
          */
         private ReadActionResolutionModeOverrides readActionResolution;
+
+        /**
+         * Optional per-mode semantic recovery overrides.
+         */
+        private SemanticRecoveryProperties semanticRecovery;
+    }
+
+    @Data
+    public static class SemanticRecoveryProperties {
+        private ExtractionFailureRecovery extractionFailure;
+        private MissingTargetRecovery missingTarget;
+        private MissingVectorSpaceRecovery missingVectorSpace;
+        private InvalidVectorSpaceRecovery invalidVectorSpace;
+        private UnknownActionRecovery unknownAction;
+        private ActionDomainMismatchRecovery actionDomainMismatch;
+        private AdvancedNoEvidenceRecovery advancedNoEvidence;
+    }
+
+    public enum ExtractionFailureRecovery {
+        LLM_REPAIR_THEN_FAIL,
+        LLM_REPAIR_THEN_CLARIFY
+    }
+
+    public enum MissingTargetRecovery {
+        LLM_REPAIR_THEN_CLARIFY
+    }
+
+    public enum MissingVectorSpaceRecovery {
+        LLM_REPAIR_THEN_CLARIFY,
+        BOUNDED_ALLOWED_FAN_OUT
+    }
+
+    public enum InvalidVectorSpaceRecovery {
+        LLM_REPAIR_THEN_FAIL,
+        LLM_REPAIR_THEN_CLARIFY
+    }
+
+    public enum UnknownActionRecovery {
+        LLM_REPAIR_THEN_FAIL,
+        LLM_REPLAN_TO_INFORMATION
+    }
+
+    public enum ActionDomainMismatchRecovery {
+        DENY_AND_FAIL,
+        DENY_AND_LLM_REPLAN,
+        DENY_AND_ALLOWED_RAG
+    }
+
+    public enum AdvancedNoEvidenceRecovery {
+        RETURN_NO_EVIDENCE,
+        BOUNDED_ALLOWED_SPACE_RECOVERY
     }
 
     @Data

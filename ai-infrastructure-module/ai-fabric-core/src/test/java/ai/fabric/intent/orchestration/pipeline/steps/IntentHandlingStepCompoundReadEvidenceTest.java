@@ -234,7 +234,7 @@ class IntentHandlingStepCompoundReadEvidenceTest {
     }
 
     @Test
-    void rejectsMismatchedDirectReadActionAndRetrievesTheValidatedObligationSpace() {
+    void rejectsMismatchedDirectReadActionWithoutImplicitRagRecovery() {
         AIActionRegistry registry = mock(AIActionRegistry.class);
         AIActionHandler handler = mock(AIActionHandler.class);
         AIActionMetaData metadata = AIActionMetaData.builder()
@@ -291,23 +291,20 @@ class IntentHandlingStepCompoundReadEvidenceTest {
             misclassifiedPolicy
         )).getIntentResult();
 
-        assertThat(result.getType()).isEqualTo(OrchestrationResultType.INFORMATION_PROVIDED);
+        assertThat(result.getType()).isEqualTo(OrchestrationResultType.COMPOUND_HANDLED);
         assertThat(result.getChildren()).hasSize(2);
-        assertThat(result.getChildren().get(1).getMetadata())
-            .containsKey("actionGroundingScopeMismatch");
+        OrchestrationResult denied = result.getChildren().get(1);
+        assertThat(denied.getType()).isEqualTo(OrchestrationResultType.ACTION_DENIED);
+        assertThat(denied.getErrorCode()).isEqualTo("ACTION_DOMAIN_MISMATCH_REPLAN_REQUIRED");
         @SuppressWarnings("unchecked")
-        List<RAGResponse.RAGDocument> documents =
-            (List<RAGResponse.RAGDocument>) result.getData().get("documents");
-        assertThat(documents).extracting(RAGResponse.RAGDocument::getId)
-            .containsExactly("policy-1");
-        @SuppressWarnings("unchecked")
-        List<Map<String, Object>> actions = (List<Map<String, Object>>) result.getData().get("actions");
-        assertThat(actions).hasSize(1);
+        Map<String, Object> decision = (Map<String, Object>) denied.getMetadata().get("semanticDecision");
+        assertThat(decision)
+            .containsEntry("validationStatus", "REJECTED_DOMAIN_MISMATCH")
+            .containsEntry("recoveryPolicy", "DENY_AND_LLM_REPLAN")
+            .containsEntry("recoveryAttempted", false)
+            .containsEntry("effectiveValue", "ACTION_DENIED");
         verify(handler, times(1)).executeAction(any(), any());
-        ArgumentCaptor<RAGRequest> requestCaptor = ArgumentCaptor.forClass(RAGRequest.class);
-        verify(ragProvider, times(1)).performRag(requestCaptor.capture());
-        assertThat(requestCaptor.getValue().getEntityType()).isEqualTo("document");
-        assertThat(requestCaptor.getValue().getQuery()).isEqualTo("delivery policy charges requirements");
+        verify(ragProvider, never()).performRag(any(RAGRequest.class));
     }
 
     @Test
@@ -560,7 +557,7 @@ class IntentHandlingStepCompoundReadEvidenceTest {
     }
 
     @Test
-    void fairlyPacksBoundedCompoundDocumentsAndReportsOnlyDocumentsActuallyUsed() {
+    void fairlyPacksProviderRankedCompoundDocumentsAndReportsOnlyDocumentsActuallyUsed() {
         AICoreService aiCoreService = mock(AICoreService.class);
         when(aiCoreService.generateTextResponse(anyString(), eq(LlmPurpose.GENERATION)))
             .thenReturn(AIGenerationResponse.builder()
@@ -576,8 +573,7 @@ class IntentHandlingStepCompoundReadEvidenceTest {
         Intent inventory = information("electric inventory under GBP 40000", "dealer-vehicle");
 
         String longIrrelevantPolicy = "Reservation information without delivery terms. ".repeat(80);
-        String relevantPolicy = "General operations. ".repeat(30)
-            + "\n\nStandard local delivery is available within 25 miles for GBP 49. "
+        String relevantPolicy = "Standard local delivery is available within 25 miles for GBP 49. "
             + "Cleared funds and insurance are required before handover.\n\n"
             + "Aftercare information. ".repeat(30);
         OrchestrationResult policyEvidence = OrchestrationResult.builder()
@@ -585,8 +581,8 @@ class IntentHandlingStepCompoundReadEvidenceTest {
             .success(true)
             .data(Map.of(
                 "documents", List.of(
-                    document("policy-reservation", "document", "policies", longIrrelevantPolicy),
                     document("policy-delivery", "document", "policies", relevantPolicy),
+                    document("policy-reservation", "document", "policies", longIrrelevantPolicy),
                     document("policy-warranty", "document", "policies", "Warranty information. ".repeat(80))
                 ),
                 "readActionResolution", Map.of(
@@ -628,7 +624,8 @@ class IntentHandlingStepCompoundReadEvidenceTest {
         Map<String, Object> diagnostics = (Map<String, Object>) result.getData().get("compoundEvidence");
         assertThat(diagnostics)
             .containsEntry("returnedDocumentCount", 6)
-            .containsEntry("usedDocumentCount", 4);
+            .containsEntry("usedDocumentCount", 4)
+            .containsEntry("evidenceSelectionSources", List.of("VECTOR_PROVIDER_SCORE"));
         assertThat(((Number) diagnostics.get("generationContextChars")).intValue()).isLessThanOrEqualTo(3_000);
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> obligations = (List<Map<String, Object>>) diagnostics.get("obligations");
@@ -639,7 +636,7 @@ class IntentHandlingStepCompoundReadEvidenceTest {
     }
 
     @Test
-    void ranksAllAuthorizedDocumentsBeforeApplyingGlobalGenerationDocumentBudget() {
+    void preservesProviderRankedOrderBeforeApplyingGlobalGenerationDocumentBudget() {
         AICoreService aiCoreService = mock(AICoreService.class);
         when(aiCoreService.generateTextResponse(anyString(), eq(LlmPurpose.GENERATION)))
             .thenReturn(AIGenerationResponse.builder().content("Grounded compound answer.").build());
@@ -652,6 +649,12 @@ class IntentHandlingStepCompoundReadEvidenceTest {
         Intent policy = information("delivery charge distance handover", "document");
         Intent inventory = information("available electric inventory", "dealer-vehicle");
         List<RAGResponse.RAGDocument> policyDocuments = new java.util.ArrayList<>();
+        policyDocuments.add(document(
+            "delivery-policy",
+            "document",
+            "policies",
+            "Local delivery charge is GBP 49 within 25 miles; insurance is required before handover."
+        ));
         for (int index = 0; index < 5; index++) {
             policyDocuments.add(document(
                 "unrelated-" + index,
@@ -660,12 +663,6 @@ class IntentHandlingStepCompoundReadEvidenceTest {
                 "General warranty and account administration reference " + index
             ));
         }
-        policyDocuments.add(document(
-            "delivery-policy",
-            "document",
-            "policies",
-            "Local delivery charge is GBP 49 within 25 miles; insurance is required before handover."
-        ));
         OrchestrationResult policyEvidence = OrchestrationResult.builder()
             .type(OrchestrationResultType.INFORMATION_PROVIDED)
             .success(true)
@@ -710,7 +707,8 @@ class IntentHandlingStepCompoundReadEvidenceTest {
         Map<String, Object> diagnostics = (Map<String, Object>) result.getData().get("compoundEvidence");
         assertThat(diagnostics)
             .containsEntry("returnedDocumentCount", 7)
-            .containsEntry("usedDocumentCount", 2);
+            .containsEntry("usedDocumentCount", 2)
+            .containsEntry("evidenceSelectionSources", List.of("VECTOR_PROVIDER_SCORE"));
     }
 
     @Test

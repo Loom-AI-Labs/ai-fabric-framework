@@ -4,6 +4,7 @@ set -euo pipefail
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 checks=(
+  "validate-semantic-decision-source-guard.sh"
   "validate-provider-registry.sh"
   "validate-workflow-test-policy.sh"
   "test-validate-release-doc-policy.sh"

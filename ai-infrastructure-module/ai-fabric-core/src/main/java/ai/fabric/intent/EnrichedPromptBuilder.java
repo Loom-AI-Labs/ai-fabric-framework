@@ -138,6 +138,28 @@ public class EnrichedPromptBuilder {
         );
     }
 
+    /**
+     * Catalog-only context for secondary model stages that already own their output schema.
+     */
+    public String buildSemanticCatalogPrompt(OrchestrationContext contextInput) {
+        SystemContext context = systemContextBuilder.buildContext(contextInput);
+        OrchestrationPolicy policy = contextInput != null ? contextInput.getOrchestrationPolicy() : null;
+        boolean actionsEnabled = policy == null
+            || policy.capabilities() == null
+            || policy.capabilities().actionsEnabled();
+        boolean retrievalEnabled = policy == null
+            || policy.capabilities() == null
+            || policy.capabilities().retrievalEnabled();
+        boolean overviewEnabled = policy == null
+            || policy.capabilities() == null
+            || policy.capabilities().knowledgeBaseOverviewEnabled();
+        String actions = actionsEnabled ? buildAvailableActionsSection(context) : "";
+        String knowledge = retrievalEnabled && overviewEnabled
+            ? buildKnowledgeBaseOverviewSection(context)
+            : "";
+        return (actions + "\n" + knowledge).trim();
+    }
+
     private String buildBehaviorContextSection(SystemContext context) {
         if (!context.hasBehaviorContext()) {
             return "";
@@ -162,6 +184,17 @@ public class EnrichedPromptBuilder {
             }
             if (action.getCategory() != null && !action.getCategory().isBlank()) {
                 prompt.append(" [category=").append(action.getCategory()).append("]");
+            }
+            if (action.getAccessMode() != null) {
+                prompt.append(" [accessMode=").append(action.getAccessMode().name()).append("]");
+            }
+            if (Boolean.TRUE.equals(action.getGroundingEligible())) {
+                prompt.append(" [groundingEligible=true]");
+            }
+            if (!CollectionUtils.isEmpty(action.getGroundingVectorSpaces())) {
+                prompt.append(" [groundingVectorSpaces=")
+                    .append(String.join(",", action.getGroundingVectorSpaces()))
+                    .append("]");
             }
             if (!CollectionUtils.isEmpty(action.getParameterSchemas())) {
                 String schemas = action.getParameterSchemas().entrySet().stream()

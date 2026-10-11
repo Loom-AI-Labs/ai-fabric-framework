@@ -13,16 +13,26 @@ class BehaviorLocalLlmProviderConditionTest {
         .withUserConfiguration(LocalProviderConfiguration.class);
 
     @Test
-    void registersLocalProviderWhenBehaviorLocalIsSelected() {
+    void registersLocalProviderOnlyWhenSmokeProfileAndBehaviorLocalAreSelected() {
         contextRunner
-            .withPropertyValues("ai.providers.llm-provider=behavior-local")
+            .withPropertyValues(
+                "spring.profiles.active=smoke",
+                "ai.providers.llm-provider=behavior-local"
+            )
             .run(context -> assertThat(context).hasSingleBean(BehaviorLocalLlmProvider.class));
     }
 
     @Test
-    void registersLocalProviderByDefaultForNoKeyLocalRuns() {
+    void doesNotRegisterLocalProviderInDefaultProfileEvenWhenSelected() {
         contextRunner
-            .run(context -> assertThat(context).hasSingleBean(BehaviorLocalLlmProvider.class));
+            .withPropertyValues("ai.providers.llm-provider=behavior-local")
+            .run(context -> assertThat(context).doesNotHaveBean(BehaviorLocalLlmProvider.class));
+    }
+
+    @Test
+    void doesNotRegisterLocalProviderByDefault() {
+        contextRunner
+            .run(context -> assertThat(context).doesNotHaveBean(BehaviorLocalLlmProvider.class));
     }
 
     @Test

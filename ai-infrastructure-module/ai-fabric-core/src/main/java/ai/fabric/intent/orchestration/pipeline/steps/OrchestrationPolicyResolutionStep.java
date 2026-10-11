@@ -8,6 +8,7 @@ import ai.fabric.intent.orchestration.pipeline.PipelineContext;
 import ai.fabric.intent.orchestration.pipeline.PipelineStep;
 import ai.fabric.intent.orchestration.policy.OrchestrationPolicy;
 import ai.fabric.intent.orchestration.policy.OrchestrationProfile;
+import ai.fabric.intent.orchestration.policy.SemanticRecoveryPolicy;
 import ai.fabric.intent.action.AIActionRegistry;
 import ai.fabric.intent.orchestration.capability.DefaultEffectiveCapabilitiesResolver;
 import ai.fabric.intent.orchestration.capability.EffectiveCapabilityPolicySupport;
@@ -253,6 +254,7 @@ public class OrchestrationPolicyResolutionStep implements PipelineStep {
                 OrchestrationContextMetadataKeys.RESPONSE_GENERATION_MAX_TOKENS_DEEP
             )
         );
+        SemanticRecoveryPolicy semanticRecoveryPolicy = resolveSemanticRecoveryPolicy(effectiveModeOverrides);
 
         OrchestrationPolicy policy = new OrchestrationPolicy(
             profile,
@@ -276,7 +278,8 @@ public class OrchestrationPolicyResolutionStep implements PipelineStep {
             ),
             readActionResolutionPolicy,
             ragBudgets,
-            responseGenerationBudgets
+            responseGenerationBudgets,
+            semanticRecoveryPolicy
         );
 
         OrchestrationContext updatedOrchestrationContext = orchestrationContext;
@@ -336,6 +339,16 @@ public class OrchestrationPolicyResolutionStep implements PipelineStep {
         debug.put("knowledgeBaseOverviewEnabled", policy.capabilities().knowledgeBaseOverviewEnabled());
         debug.put("retrievalAllowlistRequired", policy.capabilities().retrievalAllowlistRequired());
         debug.put("vectorSpaceSelectionRequired", policy.capabilities().vectorSpaceSelectionRequired());
+        SemanticRecoveryPolicy recovery = policy.semanticRecoveryPolicy();
+        debug.put("semanticRecovery", Map.of(
+            "extractionFailure", recovery.extractionFailure().name(),
+            "missingTarget", recovery.missingTarget().name(),
+            "missingVectorSpace", recovery.missingVectorSpace().name(),
+            "invalidVectorSpace", recovery.invalidVectorSpace().name(),
+            "unknownAction", recovery.unknownAction().name(),
+            "actionDomainMismatch", recovery.actionDomainMismatch().name(),
+            "advancedNoEvidence", recovery.advancedNoEvidence().name()
+        ));
         if (policy.readActionResolutionPolicy() != null) {
             OrchestrationPolicy.ReadActionResolutionPolicy readPolicy = policy.readActionResolutionPolicy();
             debug.put("readActionResolutionEnabled", readPolicy.enabled());
@@ -516,6 +529,40 @@ public class OrchestrationPolicyResolutionStep implements PipelineStep {
             }
         }
         return null;
+    }
+
+    private SemanticRecoveryPolicy resolveSemanticRecoveryPolicy(
+        OrchestrationProperties.ModeOverrides modeOverrides
+    ) {
+        OrchestrationProperties.SemanticRecoveryProperties global = orchestrationProperties != null
+            ? orchestrationProperties.getSemanticRecovery()
+            : null;
+        OrchestrationProperties.SemanticRecoveryProperties mode = modeOverrides != null
+            ? modeOverrides.getSemanticRecovery()
+            : null;
+        return new SemanticRecoveryPolicy(
+            mode != null && mode.getExtractionFailure() != null
+                ? mode.getExtractionFailure()
+                : global != null ? global.getExtractionFailure() : null,
+            mode != null && mode.getMissingTarget() != null
+                ? mode.getMissingTarget()
+                : global != null ? global.getMissingTarget() : null,
+            mode != null && mode.getMissingVectorSpace() != null
+                ? mode.getMissingVectorSpace()
+                : global != null ? global.getMissingVectorSpace() : null,
+            mode != null && mode.getInvalidVectorSpace() != null
+                ? mode.getInvalidVectorSpace()
+                : global != null ? global.getInvalidVectorSpace() : null,
+            mode != null && mode.getUnknownAction() != null
+                ? mode.getUnknownAction()
+                : global != null ? global.getUnknownAction() : null,
+            mode != null && mode.getActionDomainMismatch() != null
+                ? mode.getActionDomainMismatch()
+                : global != null ? global.getActionDomainMismatch() : null,
+            mode != null && mode.getAdvancedNoEvidence() != null
+                ? mode.getAdvancedNoEvidence()
+                : global != null ? global.getAdvancedNoEvidence() : null
+        );
     }
 
     private OrchestrationPolicy.RagBudgets mergeSimilarityThreshold(OrchestrationPolicy.RagBudgets ragBudgets,

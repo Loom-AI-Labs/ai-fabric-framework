@@ -49,7 +49,8 @@ public final class EffectiveCapabilityPolicySupport {
             capabilities,
             effective.readActionResolutionPolicy(),
             effective.ragBudgets(),
-            policy.responseGenerationBudgets()
+            policy.responseGenerationBudgets(),
+            policy.semanticRecoveryPolicy()
         );
     }
 }

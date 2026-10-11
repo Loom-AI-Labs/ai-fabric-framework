@@ -28,7 +28,7 @@ import static org.mockito.Mockito.mock;
 class AdvancedRagSupportTest {
 
     @Test
-    void shouldGateAdvancedRagByProviderFeaturesOverridesAndIntentDecisions() {
+    void shouldRequireStructuredDecisionOrTrustedOverrideForAdvancedRag() {
         AdvancedRAGProvider provider = mock(AdvancedRAGProvider.class);
         AdvancedRagSupport enabled = newSupport(provider, features(true, true), null);
 
@@ -38,7 +38,7 @@ class AdvancedRagSupportTest {
             "Which product policy applies to international warranty returns?",
             OrchestrationContext.forUser("user-1"),
             null
-        )).isTrue();
+        )).isFalse();
 
         assertThat(newSupport(null, features(true, true), null)
             .shouldUseAdvancedRag(null, true, "What is the return policy?", OrchestrationContext.forUser("user-1"), null))

@@ -1,9 +1,10 @@
 COMPLETION MODE:
 - You will receive a PARTIAL JSON response that is structurally valid but contract-incomplete.
-- Fix ONLY the missing/invalid contract fields listed in VALIDATION ISSUES.
+- Return a complete replacement object that fixes the listed VALIDATION ISSUES while preserving every user obligation and all already-valid fields.
 - Do NOT invent new actions. ACTION names MUST come from the allowed actions list.
-- Do NOT guess vectorSpace or other routing values. Leave them null/empty if not explicit.
+- Select vectorSpace semantically only from the exact KNOWLEDGE BASE OVERVIEW catalog in the system prompt. Never invent a value.
+- If the correct source, target, action, or required user-owned value remains genuinely ambiguous, do not coerce the intent to OUT_OF_SCOPE. Populate missingInformation, clarificationQuestion, and uncertaintyReason so the caller can clarify explicitly.
 - The USER REQUEST may include an "ATTACHMENTS (user context; pinned targets)" section listing the pinned targets for this turn (ref=att#N). Treat those as authoritative and prefer their metadata/contentText when completing missing identifiers/params.
 - For relationship_query: apply these rules only when relationship_query is listed in AVAILABLE ACTIONS. actionParams.query is REQUIRED and MUST NOT include the hint prefix (e.g., "relationship_query:"). If missing, derive it from the user request after the prefix.
-- If required info is missing from the user request, choose a safe fallback (OUT_OF_SCOPE) and include a helpful nextStepRecommended.query as an executable follow-up command/search query (not a question).
+- Do not change ACTION to INFORMATION or OUT_OF_SCOPE merely to satisfy validation. Such replanning is permitted only when the validation issue and server recovery policy explicitly request it.
 - Output MUST be a single JSON object matching the schema above. No markdown. No commentary.

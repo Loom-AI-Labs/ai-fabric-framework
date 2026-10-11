@@ -47,7 +47,6 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -85,6 +84,7 @@ class IntentHandlingStepFanOutTest {
             .type(IntentType.INFORMATION)
             .intent("refund_policy")
             .vectorSpace("faq,policies")
+            .requiresRetrieval(true)
             .requiresGeneration(false)
             .build();
 
@@ -140,6 +140,7 @@ class IntentHandlingStepFanOutTest {
             .type(IntentType.INFORMATION)
             .intent("policy")
             .vectorSpace("faq,policies")
+            .requiresRetrieval(true)
             .requiresGeneration(false)
             .build();
         PipelineContext context = PipelineContext.from("policy", OrchestrationContext.forUser("user"))
@@ -194,6 +195,7 @@ class IntentHandlingStepFanOutTest {
             .type(IntentType.INFORMATION)
             .intent("refund_policy")
             .vectorSpace("faq,policies")
+            .requiresRetrieval(true)
             .requiresGeneration(false)
             .build();
 
@@ -255,6 +257,7 @@ class IntentHandlingStepFanOutTest {
             .type(IntentType.INFORMATION)
             .intent("refund_policy")
             .vectorSpace("faq,policies")
+            .requiresRetrieval(true)
             .requiresGeneration(true)
             .build();
 
@@ -320,6 +323,7 @@ class IntentHandlingStepFanOutTest {
             .type(IntentType.INFORMATION)
             .intent("refund_policy")
             .vectorSpace("faq,policies")
+            .requiresRetrieval(true)
             .requiresGeneration(true)
             .responseProfile(ResponseGenerationProfile.CONCISE)
             .build();
@@ -377,6 +381,7 @@ class IntentHandlingStepFanOutTest {
             .type(IntentType.INFORMATION)
             .intent("catalog_summary")
             .vectorSpace("product")
+            .requiresRetrieval(true)
             .requiresGeneration(true)
             .build();
 
@@ -407,6 +412,7 @@ class IntentHandlingStepFanOutTest {
             .type(IntentType.INFORMATION)
             .intent("catalog_summary")
             .vectorSpace("product")
+            .requiresRetrieval(true)
             .requiresGeneration(false)
             .build();
 
@@ -433,7 +439,7 @@ class IntentHandlingStepFanOutTest {
     }
 
     @Test
-    void shouldNotFanOutWhenFanoutDisabledByPolicy() {
+    void shouldRejectModelFanoutWhenFanoutDisabledByPolicy() {
         RAGProvider ragProvider = mock(RAGProvider.class);
         when(ragProvider.performRag(any(RAGRequest.class))).thenReturn(
             RAGResponse.builder().documents(List.of()).success(true).build()
@@ -445,6 +451,7 @@ class IntentHandlingStepFanOutTest {
             .type(IntentType.INFORMATION)
             .intent("refund_policy")
             .vectorSpace("faq,policies")
+            .requiresRetrieval(true)
             .requiresGeneration(false)
             .build();
 
@@ -463,15 +470,19 @@ class IntentHandlingStepFanOutTest {
             .intentResponse(MultiIntentResponse.builder().intents(List.of(intent)).build())
             .build();
 
-        step.process(context);
+        PipelineContext updated = step.process(context);
 
-        ArgumentCaptor<RAGRequest> requestCaptor = ArgumentCaptor.forClass(RAGRequest.class);
-        verify(ragProvider, times(1)).performRag(requestCaptor.capture());
-        assertThat(requestCaptor.getValue().getEntityType()).isEqualTo("faq");
+        verify(ragProvider, never()).performRag(any(RAGRequest.class));
+        assertThat(updated.isShouldTerminate()).isFalse();
+        assertThat(updated.getIntentResult().getType())
+            .isEqualTo(OrchestrationResultType.CLARIFICATION_REQUIRED);
+        assertThat(updated.getIntentResult().getData())
+            .containsEntry("reason", "VECTOR_SPACE_FANOUT_DISABLED")
+            .containsEntry("requestedVectorSpaces", List.of("faq", "policies"));
     }
 
     @Test
-    void shouldUseMaxSpacesBudgetForDeterministicFallbackVectorSpaces() {
+    void shouldNotInferVectorSpacesFromDeterministicInformationMode() {
         RAGProvider ragProvider = mock(RAGProvider.class);
         when(ragProvider.performRAGQuery(any(RAGRequest.class))).thenReturn(
             RAGResponse.builder().documents(List.of()).context("").success(true).build()
@@ -540,13 +551,14 @@ class IntentHandlingStepFanOutTest {
             .intentResponse(MultiIntentResponse.builder().intents(List.of(intent)).build())
             .build();
 
-        step.process(context);
+        PipelineContext updated = step.process(context);
 
-        ArgumentCaptor<RAGRequest> requestCaptor = ArgumentCaptor.forClass(RAGRequest.class);
-        verify(ragProvider, times(4)).performRAGQuery(requestCaptor.capture());
-        assertThat(requestCaptor.getAllValues())
-            .extracting(RAGRequest::getEntityType)
-            .containsExactly("a", "b", "c", "d");
+        verify(ragProvider, never()).performRAGQuery(any(RAGRequest.class));
+        assertThat(updated.getIntentResult()).isNotNull();
+        assertThat(updated.getIntentResult().getType())
+            .isEqualTo(OrchestrationResultType.CLARIFICATION_REQUIRED);
+        assertThat(updated.getIntentResult().getData())
+            .containsEntry("reason", "VECTOR_SPACE_SELECTION_REQUIRED");
     }
 
     private IntentHandlingStep newStep(RAGProvider ragProvider, AICoreService aiCoreService) {

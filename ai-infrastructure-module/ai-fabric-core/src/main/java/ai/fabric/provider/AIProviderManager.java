@@ -6,6 +6,7 @@ import ai.fabric.dto.AIGenerationResponse;
 import ai.fabric.dto.AIEmbeddingRequest;
 import ai.fabric.dto.AIEmbeddingResponse;
 import ai.fabric.config.AIProviderConfig;
+import ai.fabric.exception.AIServiceException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -77,10 +78,19 @@ public class AIProviderManager {
             : providerConfig.getLlmProvider();
         AIProvider selectedProvider = selectPreferredProviderForRequest(request, configuredProvider, availableProviders);
         if (selectedProvider == null) {
-            if (availableProviders.isEmpty()) {
-                throw new RuntimeException("No AI providers available");
+            if (isFallbackEnabled()
+                && !TransientInputSupport.hasFileUrlInputs(request)
+                && providerConfig.getGenerationFallbackProviders() != null
+                && !providerConfig.getGenerationFallbackProviders().isEmpty()) {
+                return tryFallbackProviders(
+                    request,
+                    configuredProvider,
+                    new AIServiceException("Configured generation provider is unavailable")
+                );
             }
-            selectedProvider = selectProvider(availableProviders, "generation");
+            throw new AIServiceException(
+                "Configured generation provider is not available: " + configuredProvider
+            );
         }
         
         try {
@@ -99,7 +109,13 @@ public class AIProviderManager {
             // Update provider status
             updateProviderStatus(selectedProvider.getProviderName(), true);
             
-            return response;
+            return annotateGenerationResponse(
+                response,
+                selectedProvider.getProviderName(),
+                selectedProvider.getProviderName(),
+                false,
+                List.of(providerAttempt(selectedProvider.getProviderName(), "SUCCEEDED"))
+            );
             
         } catch (Exception e) {
             boolean fallbackAllowed = isFallbackEnabled()
@@ -116,7 +132,7 @@ public class AIProviderManager {
             if (!fallbackAllowed) {
                 throw e;
             }
-            return tryFallbackProviders(request, availableProviders, selectedProvider);
+            return tryFallbackProviders(request, selectedProvider.getProviderName(), e);
         }
     }
     
@@ -133,10 +149,18 @@ public class AIProviderManager {
         String configuredProvider = providerConfig.getEmbeddingProvider();
         AIProvider selectedProvider = selectPreferredProviderForRequest(request, configuredProvider, availableProviders);
         if (selectedProvider == null) {
-            if (availableProviders.isEmpty()) {
-                throw new RuntimeException("No AI providers available");
+            if (isFallbackEnabled()
+                && providerConfig.getEmbeddingFallbackProviders() != null
+                && !providerConfig.getEmbeddingFallbackProviders().isEmpty()) {
+                return tryFallbackEmbedding(
+                    request,
+                    configuredProvider,
+                    new AIServiceException("Configured embedding provider is unavailable")
+                );
             }
-            selectedProvider = selectProvider(availableProviders, "embedding");
+            throw new AIServiceException(
+                "Configured embedding provider is not available: " + configuredProvider
+            );
         }
         
         try {
@@ -146,7 +170,13 @@ public class AIProviderManager {
             // Update provider status
             updateProviderStatus(selectedProvider.getProviderName(), true);
             
-            return response;
+            return annotateEmbeddingResponse(
+                response,
+                selectedProvider.getProviderName(),
+                selectedProvider.getProviderName(),
+                false,
+                List.of(providerAttempt(selectedProvider.getProviderName(), "SUCCEEDED"))
+            );
             
         } catch (Exception e) {
             boolean fallbackAllowed = isFallbackEnabled();
@@ -162,7 +192,7 @@ public class AIProviderManager {
             if (!fallbackAllowed) {
                 throw e;
             }
-            return tryFallbackEmbedding(request, availableProviders, selectedProvider);
+            return tryFallbackEmbedding(request, selectedProvider.getProviderName(), e);
         }
     }
     
@@ -239,79 +269,6 @@ public class AIProviderManager {
     }
     
     /**
-     * Select the best provider based on strategy
-     * 
-     * @param availableProviders available providers
-     * @param operationType operation type (generation, embedding)
-     * @return selected provider
-     */
-    private AIProvider selectProvider(List<AIProvider> availableProviders, String operationType) {
-        if (availableProviders.isEmpty()) {
-            throw new RuntimeException("No providers available");
-        }
-        
-        // Strategy 1: Priority-based selection
-        AIProvider priorityProvider = selectByPriority(availableProviders);
-        if (priorityProvider != null) {
-            return priorityProvider;
-        }
-        
-        // Strategy 2: Health-based selection
-        AIProvider healthProvider = selectByHealth(availableProviders);
-        if (healthProvider != null) {
-            return healthProvider;
-        }
-        
-        // Strategy 3: Performance-based selection
-        AIProvider performanceProvider = selectByPerformance(availableProviders);
-        if (performanceProvider != null) {
-            return performanceProvider;
-        }
-        
-        // Fallback: Random selection
-        return availableProviders.get(new Random().nextInt(availableProviders.size()));
-    }
-    
-    /**
-     * Select provider by priority
-     * 
-     * @param providers available providers
-     * @return highest priority provider
-     */
-    private AIProvider selectByPriority(List<AIProvider> providers) {
-        return providers.stream()
-            .filter(p -> p.getConfig().getPriority() != null)
-            .max(Comparator.comparing(p -> p.getConfig().getPriority()))
-            .orElse(null);
-    }
-    
-    /**
-     * Select provider by health
-     * 
-     * @param providers available providers
-     * @return healthiest provider
-     */
-    private AIProvider selectByHealth(List<AIProvider> providers) {
-        return providers.stream()
-            .filter(p -> p.getStatus().isHealthy())
-            .max(Comparator.comparing(p -> p.getStatus().getSuccessRate()))
-            .orElse(null);
-    }
-    
-    /**
-     * Select provider by performance
-     * 
-     * @param providers available providers
-     * @return best performing provider
-     */
-    private AIProvider selectByPerformance(List<AIProvider> providers) {
-        return providers.stream()
-            .filter(p -> p.getStatus().getAverageResponseTime() > 0)
-            .min(Comparator.comparing(p -> p.getStatus().getAverageResponseTime()))
-            .orElse(null);
-    }
-    
-    /**
      * Try fallback providers for content generation
      * 
      * @param request generation request
@@ -319,30 +276,48 @@ public class AIProviderManager {
      * @param failedProvider failed provider
      * @return generation response
      */
-    private AIGenerationResponse tryFallbackProviders(AIGenerationRequest request, 
-                                                    List<AIProvider> availableProviders, 
-                                                    AIProvider failedProvider) {
-        List<AIProvider> fallbackProviders = availableProviders.stream()
-            .filter(p -> !p.getProviderName().equals(failedProvider.getProviderName()))
-            .collect(Collectors.toList());
-        
-        for (AIProvider provider : fallbackProviders) {
+    private AIGenerationResponse tryFallbackProviders(AIGenerationRequest request,
+                                                      String failedProviderName,
+                                                      Exception primaryFailure) {
+        List<Map<String, Object>> attempts = new ArrayList<>();
+        attempts.add(providerAttempt(failedProviderName, "FAILED"));
+        Exception lastFailure = primaryFailure;
+        for (AIProvider provider : resolveNamedFallbackProviders(
+            providerConfig.getGenerationFallbackProviders(),
+            failedProviderName,
+            false
+        )) {
             try {
                 log.debug("Trying fallback provider: {}", provider.getProviderName());
                 AIGenerationResponse response = provider.generateContent(request);
+                if (TransientInputSupport.requiresDocumentUsage(request)
+                    && !TransientInputSupport.hasDocumentUsage(response)) {
+                    attempts.add(providerAttempt(provider.getProviderName(), "REJECTED_DOCUMENT_USAGE_MISSING"));
+                    updateProviderStatus(provider.getProviderName(), false);
+                    continue;
+                }
                 updateProviderStatus(provider.getProviderName(), true);
-                return response;
+                attempts.add(providerAttempt(provider.getProviderName(), "SUCCEEDED"));
+                return annotateGenerationResponse(
+                    response,
+                    failedProviderName,
+                    provider.getProviderName(),
+                    true,
+                    attempts
+                );
             } catch (Exception e) {
+                lastFailure = e;
                 log.warn(
                     "Fallback provider {} failed for content generation; cause={}",
                     provider.getProviderName(),
                     e.getClass().getSimpleName()
                 );
                 updateProviderStatus(provider.getProviderName(), false);
+                attempts.add(providerAttempt(provider.getProviderName(), "FAILED"));
             }
         }
-        
-        throw new RuntimeException("All providers failed for content generation");
+
+        throw new AIServiceException("Configured generation provider chain failed", lastFailure);
     }
     
     /**
@@ -353,30 +328,195 @@ public class AIProviderManager {
      * @param failedProvider failed provider
      * @return embedding response
      */
-    private AIEmbeddingResponse tryFallbackEmbedding(AIEmbeddingRequest request, 
-                                                   List<AIProvider> availableProviders, 
-                                                   AIProvider failedProvider) {
-        List<AIProvider> fallbackProviders = availableProviders.stream()
-            .filter(p -> !p.getProviderName().equals(failedProvider.getProviderName()))
-            .collect(Collectors.toList());
-        
-        for (AIProvider provider : fallbackProviders) {
+    private AIEmbeddingResponse tryFallbackEmbedding(AIEmbeddingRequest request,
+                                                     String failedProviderName,
+                                                     Exception primaryFailure) {
+        List<Map<String, Object>> attempts = new ArrayList<>();
+        attempts.add(providerAttempt(failedProviderName, "FAILED"));
+        Exception lastFailure = primaryFailure;
+        for (AIProvider provider : resolveNamedFallbackProviders(
+            providerConfig.getEmbeddingFallbackProviders(),
+            failedProviderName,
+            true
+        )) {
             try {
                 log.debug("Trying fallback provider: {} for embedding", provider.getProviderName());
                 AIEmbeddingResponse response = provider.generateEmbedding(request);
                 updateProviderStatus(provider.getProviderName(), true);
-                return response;
+                attempts.add(providerAttempt(provider.getProviderName(), "SUCCEEDED"));
+                return annotateEmbeddingResponse(
+                    response,
+                    failedProviderName,
+                    provider.getProviderName(),
+                    true,
+                    attempts
+                );
             } catch (Exception e) {
+                lastFailure = e;
                 log.warn(
                     "Fallback provider {} failed for embedding generation; cause={}",
                     provider.getProviderName(),
                     e.getClass().getSimpleName()
                 );
                 updateProviderStatus(provider.getProviderName(), false);
+                attempts.add(providerAttempt(provider.getProviderName(), "FAILED"));
             }
         }
-        
-        throw new RuntimeException("All providers failed for embedding generation");
+
+        throw new AIServiceException("Configured embedding provider chain failed", lastFailure);
+    }
+
+    private List<AIProvider> resolveNamedFallbackProviders(List<String> configuredChain,
+                                                           String primaryProviderName,
+                                                           boolean requireEmbeddingCompatibility) {
+        if (!isFallbackEnabled()
+            || primaryProviderName == null
+            || configuredChain == null
+            || configuredChain.isEmpty()) {
+            return List.of();
+        }
+        LinkedHashSet<String> names = configuredChain.stream()
+            .filter(Objects::nonNull)
+            .map(String::trim)
+            .filter(name -> !name.isEmpty())
+            .filter(name -> !name.equalsIgnoreCase(primaryProviderName))
+            .collect(Collectors.toCollection(LinkedHashSet::new));
+        List<AIProvider> resolved = new ArrayList<>();
+        for (String name : names) {
+            AIProvider provider = findRegisteredProvider(name);
+            if (provider == null || !provider.isAvailable()) {
+                log.warn("Configured fallback provider '{}' is unavailable", name);
+                continue;
+            }
+            if (!hasCompatibleDataPolicy(primaryProviderName, provider.getProviderName())) {
+                log.warn(
+                    "Configured fallback transition {} -> {} denied because data-policy labels are absent or differ",
+                    primaryProviderName,
+                    provider.getProviderName()
+                );
+                continue;
+            }
+            if (requireEmbeddingCompatibility
+                && !hasCompatibleEmbeddingSpace(primaryProviderName, provider.getProviderName())) {
+                log.warn(
+                    "Configured embedding fallback transition {} -> {} denied because embedding compatibility groups are absent or differ",
+                    primaryProviderName,
+                    provider.getProviderName()
+                );
+                continue;
+            }
+            resolved.add(provider);
+        }
+        return List.copyOf(resolved);
+    }
+
+    private boolean hasCompatibleDataPolicy(String primaryProvider, String fallbackProvider) {
+        Map<String, String> labels = providerConfig.getProviderDataPolicies();
+        if (labels == null || labels.isEmpty()) {
+            return false;
+        }
+        String primary = dataPolicyLabel(labels, primaryProvider);
+        String fallback = dataPolicyLabel(labels, fallbackProvider);
+        return primary != null && primary.equals(fallback);
+    }
+
+    private boolean hasCompatibleEmbeddingSpace(String primaryProvider, String fallbackProvider) {
+        Map<String, String> groups = providerConfig.getEmbeddingCompatibilityGroups();
+        if (groups == null || groups.isEmpty()) {
+            return false;
+        }
+        String primary = dataPolicyLabel(groups, primaryProvider);
+        String fallback = dataPolicyLabel(groups, fallbackProvider);
+        return primary != null && primary.equals(fallback);
+    }
+
+    private String dataPolicyLabel(Map<String, String> labels, String providerName) {
+        if (labels == null || labels.isEmpty() || providerName == null) {
+            return null;
+        }
+        return labels.entrySet().stream()
+            .filter(entry -> entry.getKey() != null && entry.getValue() != null)
+            .filter(entry -> providerName.equalsIgnoreCase(entry.getKey().trim()))
+            .map(Map.Entry::getValue)
+            .map(String::trim)
+            .filter(value -> !value.isEmpty())
+            .findFirst()
+            .orElse(null);
+    }
+
+    private AIGenerationResponse annotateGenerationResponse(AIGenerationResponse response,
+                                                            String originalProvider,
+                                                            String effectiveProvider,
+                                                            boolean transitioned,
+                                                            List<Map<String, Object>> attempts) {
+        if (response == null) {
+            throw new AIServiceException("AI provider returned no generation response");
+        }
+        Map<String, Object> metadata = new LinkedHashMap<>();
+        if (response.getMetadata() != null) {
+            metadata.putAll(response.getMetadata());
+        }
+        metadata.put("providerRecovery", providerRecovery(
+            originalProvider,
+            effectiveProvider,
+            transitioned,
+            attempts
+        ));
+        response.setMetadata(Collections.unmodifiableMap(metadata));
+        return response;
+    }
+
+    private AIEmbeddingResponse annotateEmbeddingResponse(AIEmbeddingResponse response,
+                                                          String originalProvider,
+                                                          String effectiveProvider,
+                                                          boolean transitioned,
+                                                          List<Map<String, Object>> attempts) {
+        if (response == null) {
+            throw new AIServiceException("AI provider returned no embedding response");
+        }
+        response.setProvider(effectiveProvider);
+        Map<String, Object> metadata = new LinkedHashMap<>();
+        if (response.getMetadata() != null) {
+            metadata.putAll(response.getMetadata());
+        }
+        Map<String, Object> recovery = new LinkedHashMap<>(providerRecovery(
+            originalProvider,
+            effectiveProvider,
+            transitioned,
+            attempts
+        ));
+        if (transitioned) {
+            String compatibilityGroup = dataPolicyLabel(
+                providerConfig.getEmbeddingCompatibilityGroups(),
+                effectiveProvider
+            );
+            if (compatibilityGroup != null) {
+                recovery.put("embeddingCompatibilityGroup", compatibilityGroup);
+            }
+        }
+        metadata.put("providerRecovery", Collections.unmodifiableMap(recovery));
+        response.setMetadata(Collections.unmodifiableMap(metadata));
+        return response;
+    }
+
+    private Map<String, Object> providerRecovery(String originalProvider,
+                                                 String effectiveProvider,
+                                                 boolean transitioned,
+                                                 List<Map<String, Object>> attempts) {
+        Map<String, Object> recovery = new LinkedHashMap<>();
+        recovery.put("policy", transitioned ? "NAMED_COMPATIBLE_CHAIN" : "PRIMARY_ONLY");
+        recovery.put("originalProvider", originalProvider);
+        recovery.put("effectiveProvider", effectiveProvider);
+        recovery.put("transitioned", transitioned);
+        recovery.put("attempts", attempts != null ? List.copyOf(attempts) : List.of());
+        return Collections.unmodifiableMap(recovery);
+    }
+
+    private Map<String, Object> providerAttempt(String provider, String status) {
+        return Map.of(
+            "provider", provider != null ? provider : "unknown",
+            "status", status
+        );
     }
     
     private AIProvider findPreferredProvider(List<AIProvider> availableProviders, String preferredName) {
@@ -449,7 +589,7 @@ public class AIProviderManager {
     }
 
     private boolean isFallbackEnabled() {
-        return providerConfig.getEnableFallback() == null || providerConfig.getEnableFallback();
+        return Boolean.TRUE.equals(providerConfig.getEnableFallback());
     }
 
     /**

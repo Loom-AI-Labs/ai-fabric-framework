@@ -13,7 +13,6 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
@@ -52,6 +51,21 @@ public class BoundedFanOutRouter implements VectorSpaceRouter {
                 .build();
         }
 
+        VectorSpaceRoutingProperties.Strategy strategy = properties != null
+            ? properties.getStrategy()
+            : VectorSpaceRoutingProperties.Strategy.CLARIFICATION;
+
+        if (strategy != VectorSpaceRoutingProperties.Strategy.BOUNDED_FAN_OUT) {
+            return RoutingResult.builder()
+                .success(false)
+                .candidateSpaces(selectTopNCandidates(entityTypes, overview.getDocumentsByType(),
+                    properties != null ? properties.getFanOutMaxSpaces() : 3))
+                .strategy(RoutingStrategy.CLARIFICATION)
+                .confidence(0.0d)
+                .rationale("Vector-space selection requires a model decision or explicitly authorized bounded fan-out")
+                .build();
+        }
+
         if (entityTypes.size() == 1) {
             String only = entityTypes.getFirst();
             return RoutingResult.builder()
@@ -59,44 +73,7 @@ public class BoundedFanOutRouter implements VectorSpaceRouter {
                 .vectorSpace(only)
                 .strategy(RoutingStrategy.AUTO_ASSIGN)
                 .confidence(1.0d)
-                .rationale("Only one entity type available")
-                .build();
-        }
-
-        String mentionMatch = tryQueryMentionMatch(entityTypes, originalQuery);
-        if (mentionMatch != null) {
-            return RoutingResult.builder()
-                .success(true)
-                .vectorSpace(mentionMatch)
-                .strategy(RoutingStrategy.QUERY_MENTION)
-                .confidence(0.8d)
-                .rationale("Matched entity type '" + mentionMatch + "' mentioned in query")
-                .build();
-        }
-
-        VectorSpaceRoutingProperties.Strategy strategy = properties != null
-            ? properties.getStrategy()
-            : VectorSpaceRoutingProperties.Strategy.BOUNDED_FAN_OUT;
-
-        if (strategy == VectorSpaceRoutingProperties.Strategy.CLARIFICATION) {
-            return RoutingResult.builder()
-                .success(false)
-                .candidateSpaces(selectTopNCandidates(entityTypes, overview.getDocumentsByType(),
-                    properties != null ? properties.getFanOutMaxSpaces() : 3))
-                .strategy(RoutingStrategy.CLARIFICATION)
-                .confidence(0.0d)
-                .rationale("Multiple entity types present; configured to require clarification")
-                .build();
-        }
-
-        if (strategy == VectorSpaceRoutingProperties.Strategy.HEURISTIC) {
-            String chosen = heuristicPick(entityTypes, overview.getDocumentsByType());
-            return RoutingResult.builder()
-                .success(true)
-                .vectorSpace(chosen)
-                .strategy(RoutingStrategy.HEURISTIC)
-                .confidence(0.5d)
-                .rationale("Heuristic selection due to missing vectorSpace")
+                .rationale("Explicit bounded fan-out contains one allowed entity type")
                 .build();
         }
 
@@ -122,58 +99,6 @@ public class BoundedFanOutRouter implements VectorSpaceRouter {
             log.warn("Failed to read knowledge base overview for vectorSpace routing: {}", ex.getMessage());
             return null;
         }
-    }
-
-    private String tryQueryMentionMatch(List<String> entityTypes, String originalQuery) {
-        if (originalQuery == null || originalQuery.isBlank()) {
-            return null;
-        }
-        String queryLower = originalQuery.toLowerCase(Locale.ROOT);
-        for (String type : entityTypes) {
-            if (type == null || type.isBlank()) {
-                continue;
-            }
-            if (queryMentionsType(queryLower, type)) {
-                return type;
-            }
-        }
-        return null;
-    }
-
-    private boolean queryMentionsType(String queryLower, String type) {
-        String normalized = type.toLowerCase(Locale.ROOT);
-        if (queryLower.contains(normalized)) {
-            return true;
-        }
-
-        String[] tokens = normalized.split("[^a-z0-9]+");
-        for (String token : tokens) {
-            if (token == null) {
-                continue;
-            }
-            String trimmed = token.trim();
-            if (trimmed.length() < 3) {
-                continue;
-            }
-            if ("test".equals(trimmed) || "kb".equals(trimmed) || "doc".equals(trimmed) || "docs".equals(trimmed)) {
-                continue;
-            }
-            if (queryLower.contains(trimmed) || queryLower.contains(trimmed + "s")) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private String heuristicPick(List<String> entityTypes, Map<String, Long> counts) {
-        if (counts != null && !counts.isEmpty()) {
-            return counts.entrySet().stream()
-                .filter(entry -> entry.getKey() != null && !entry.getKey().isBlank())
-                .max(Map.Entry.comparingByValue())
-                .map(Map.Entry::getKey)
-                .orElse(entityTypes.getFirst());
-        }
-        return entityTypes.getFirst();
     }
 
     private List<String> selectTopNCandidates(List<String> entityTypes, Map<String, Long> counts, int maxSpaces) {
@@ -204,4 +129,3 @@ public class BoundedFanOutRouter implements VectorSpaceRouter {
         return out;
     }
 }
-

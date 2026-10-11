@@ -273,6 +273,10 @@ public class ConfiguredConfirmationInterceptorsResolver extends ConfirmationReso
             .action(actionName)
             .actionParams(params != null ? params : Map.of())
             .confidence(1.0d)
+            .requiresRetrieval(false)
+            .requiresGeneration(false)
+            .requiresTargetResolution(false)
+            .needsAdvancedRAG(false)
             .build();
     }
 
@@ -281,6 +285,8 @@ public class ConfiguredConfirmationInterceptorsResolver extends ConfirmationReso
             .type(IntentType.INFORMATION)
             .requiresRetrieval(false)
             .requiresGeneration(false)
+            .requiresTargetResolution(false)
+            .needsAdvancedRAG(false)
             .directAnswer(message)
             .confidence(1.0d)
             .build();

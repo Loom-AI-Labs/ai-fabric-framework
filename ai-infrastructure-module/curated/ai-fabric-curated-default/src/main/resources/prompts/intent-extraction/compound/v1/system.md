@@ -15,12 +15,15 @@ EXTRACTION RULES:
 4. Use intent.type = OUT_OF_SCOPE only when the user requests an unsupported ACTION OR the request is unrelated to the available knowledge base.
    - When OUT_OF_SCOPE, explain briefly in actionParams.reason.
 5. If multiple intents are present -> set multi-intent data and ensure intents array reflects each one.
+   - Give every intent a stable obligationId (for example "obligation-1") and a concise userGoal. obligationId is mandatory when more than one intent is emitted.
    - Preserve every independently answerable clause as its own intent when the clauses need different evidence paths.
    - If one clause maps to an AVAILABLE ACTION and another clause requires knowledge retrieval or explanation, emit both the ACTION intent and a separate INFORMATION intent.
    - Never absorb, omit, or mark an information clause complete merely because a sibling action can answer another clause.
    - For every emitted clause, preserve its exact subject, named entities, qualifiers, constraints, and requested facts in that intent's optimizedQuery. Do not reduce a specific clause to a generic category such as "policy" or "inventory".
    - Each optimizedQuery must contain only its own clause. Exclude subjects, constraints, and requested facts assigned to sibling intents; never copy the complete compound request into more than one child query.
 6. Confidence must be between 0.0 and 1.0.
+   - If uncertainty prevents a safe source, target, or action decision, do not guess. Populate missingInformation, clarificationQuestion, and uncertaintyReason.
+   - Use an empty missingInformation array and null clarificationQuestion when no clarification is required.
 7. AUTHORITATIVE CONTEXT FIRST: if active attachments and/or pinned targets are present, treat them as the primary source of truth.
    - RAG retrieval is slower and more expensive than answering from authoritative context.
    - If sufficient to answer from authoritative context -> requiresRetrieval=false.
@@ -51,11 +54,12 @@ EXTRACTION RULES:
    - Set requiresTargetResolution=true when the user refers to a specific item/entity but does NOT provide an explicit identifier (e.g., "buy it", "compare both", "add this").
    - Set requiresTargetResolution=false for standalone questions that do not depend on a specific target.
 11. vectorSpace rules for INFORMATION intents:
-   - vectorSpace is OPTIONAL.
+   - When requiresRetrieval=true and the KNOWLEDGE BASE OVERVIEW lists available vectorSpace values, vectorSpace is REQUIRED and MUST contain the exact applicable value or comma-separated exact values.
    - If the KNOWLEDGE BASE OVERVIEW lists available vectorSpace values, you MUST choose from that list (case-insensitive). Do NOT invent new values.
-   - If unsure which space applies, omit vectorSpace; the system will route or fan-out.
+   - If the request genuinely spans multiple listed domains, include each applicable exact value. Do not silently collapse a compound request into one domain.
+   - If you cannot decide safely, leave vectorSpace null and populate missingInformation plus a direct clarificationQuestion. The system will surface that uncertainty; it will not guess a replacement.
    - For a grounding-eligible READ action, set vectorSpace only when the KNOWLEDGE BASE OVERVIEW provides one exact, semantically matching indexed space that can supplement an empty or insufficient action result. Never set a fallback vectorSpace for WRITE actions and never guess one.
-12. If requiresGeneration=true, decide if advanced RAG is needed (needsAdvancedRAG = true when query is multi-faceted/ambiguous and would benefit from query expansion + re-ranking + context optimization).
+12. For every INFORMATION intent, set needsAdvancedRAG explicitly. Use true only when the request would benefit from query expansion, provider-supported reranking, or context optimization; otherwise use false.
 13. Action selection MUST be grounded in AVAILABLE ACTIONS and the user's request:
    - Only return intent.type=ACTION when the user's request clearly matches one of the AVAILABLE ACTIONS.
    - Choose the closest matching action by meaning; never pick an unrelated action just because it's available.
@@ -104,8 +108,10 @@ NEXT-STEP RECOMMENDATIONS:
 	{
 	  "intents": [
 	    {
+	      "obligationId": "obligation-1",
 	      "type": "ACTION | INFORMATION | OUT_OF_SCOPE | CONFIRMATION_POSITIVE | CONFIRMATION_NEGATIVE",
 	      "intent": "canonical_intent_name",
+	      "userGoal": "concise semantic goal for this obligation",
 	      "confidence": 0.95,
 	      "action": "action_name_if_applicable",
 	      "actionParams": {"key": "value"},
@@ -118,6 +124,9 @@ NEXT-STEP RECOMMENDATIONS:
       "generationInstructions": "optional post-action generation instruction",
       "needsAdvancedRAG": false,
       "optimizedQuery": "Records where score < 60.00 AND status = 'active'",
+      "missingInformation": [],
+      "clarificationQuestion": null,
+      "uncertaintyReason": null,
       "nextStepRecommended": {
         "intent": "potential_follow_up_intent",
         "query": "Executable follow-up command or search query",

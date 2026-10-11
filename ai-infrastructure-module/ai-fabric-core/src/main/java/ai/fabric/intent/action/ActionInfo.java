@@ -8,6 +8,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
@@ -36,6 +37,16 @@ public class ActionInfo {
      * Logical grouping (e.g. {@code subscription}, {@code payment}).
      */
     private String category;
+
+    /**
+     * Declared access mode and evidence domains exposed to the intent model.
+     */
+    private ActionAccessMode accessMode;
+
+    private Boolean groundingEligible;
+
+    @Builder.Default
+    private List<String> groundingVectorSpaces = Collections.emptyList();
 
     /**
      * Map of parameter names to a human readable description or type.
@@ -71,6 +82,11 @@ public class ActionInfo {
             .name(name != null ? name.trim() : null)
             .description(description != null ? description.trim() : null)
             .category(category != null ? category.trim() : null)
+            .accessMode(accessMode)
+            .groundingEligible(groundingEligible)
+            .groundingVectorSpaces(groundingVectorSpaces == null
+                ? Collections.emptyList()
+                : groundingVectorSpaces)
             .confirmationMessageKey(confirmationMessageKey != null ? confirmationMessageKey.trim() : null)
             .parameters(parameters == null ? Collections.emptyMap() : parameters)
             .parameterSchemas(parameterSchemas == null ? Collections.emptyMap() : parameterSchemas)

@@ -58,7 +58,7 @@ final class InformationAdvancedRagExecutionSupport {
                                 ReadActionResolutionService.ResolutionOutcome readActionResolution) {
         AdvancedRAGProvider provider = advancedRagSupport.provider();
         if (provider == null) {
-            return null;
+            return advancedExecutionFailure("PROVIDER_UNAVAILABLE");
         }
 
         try {
@@ -75,14 +75,14 @@ final class InformationAdvancedRagExecutionSupport {
             if (advancedResponse == null) {
                 log.warn("Advanced RAG returned null response for request {}",
                     pipelineContext != null ? pipelineContext.getRequestId() : "unknown");
-                return null;
+                return advancedExecutionFailure("NULL_PROVIDER_RESPONSE");
             }
 
             if (Boolean.FALSE.equals(advancedResponse.getSuccess())) {
                 log.warn("Advanced RAG failed for request {}: {}",
                     pipelineContext != null ? pipelineContext.getRequestId() : "unknown",
                     advancedResponse.getErrorMessage());
-                return null;
+                return advancedExecutionFailure("PROVIDER_REPORTED_FAILURE");
             }
 
             List<RAGResponse.RAGDocument> documents = advancedRagSupport.convertToRagDocuments(advancedResponse.getDocuments());
@@ -134,7 +134,7 @@ final class InformationAdvancedRagExecutionSupport {
                         errorData.put(DATA_KEY_DOCUMENTS, documents);
                         errorData.put(DATA_KEY_RAG_RESPONSE, ragResponse);
                         errorData.put(DATA_KEY_REQUIRES_GENERATION, true);
-                        errorData.put(DATA_KEY_GENERATION_ERROR, ex.getMessage());
+                        errorData.put(DATA_KEY_GENERATION_ERROR, "GENERATION_PROVIDER_FAILED");
                         errorData.put(DATA_KEY_EXPANDED_QUERIES, advancedResponse.getExpandedQueries());
                         errorData.put(DATA_KEY_CONFIDENCE_SCORE, advancedResponse.getConfidenceScore());
                         errorData.put(DATA_KEY_RERANKING_STRATEGY, advancedResponse.getRerankingStrategy());
@@ -143,7 +143,8 @@ final class InformationAdvancedRagExecutionSupport {
                         return OrchestrationResult.builder()
                             .type(OrchestrationResultType.ERROR)
                             .success(false)
-                            .message("Failed to generate response: " + ex.getMessage())
+                            .errorCode("ADVANCED_RAG_GENERATION_FAILED")
+                            .message("The advanced retrieval response could not be generated.")
                             .data(Collections.unmodifiableMap(errorData))
                             .nextSteps(extractNextSteps(intent))
                             .build();
@@ -174,12 +175,32 @@ final class InformationAdvancedRagExecutionSupport {
                 .nextSteps(extractNextSteps(intent))
                 .build();
         } catch (Exception ex) {
-            log.error("Advanced RAG failed for request {}, falling back to basic RAG: {}",
+            log.error("Advanced RAG failed for request {}; implicit basic-RAG fallback is disabled: {}",
                 pipelineContext != null ? pipelineContext.getRequestId() : "unknown",
                 ex.getMessage(),
                 ex);
-            return null;
+            return advancedExecutionFailure("PROVIDER_EXCEPTION");
         }
+    }
+
+    private OrchestrationResult advancedExecutionFailure(String reason) {
+        Map<String, Object> decision = new LinkedHashMap<>();
+        decision.put("decision", "ADVANCED_RAG_EXECUTION");
+        decision.put("originalSource", "STRUCTURED_MODEL_OR_TRUSTED_MODE");
+        decision.put("validationStatus", reason);
+        decision.put("recoveryPolicy", "FAIL");
+        decision.put("recoveryAttempted", false);
+        decision.put("effectiveSource", "NONE");
+        decision.put("effectiveValue", "ERROR");
+
+        return OrchestrationResult.builder()
+            .type(OrchestrationResultType.ERROR)
+            .success(false)
+            .errorCode("ADVANCED_RAG_EXECUTION_FAILED")
+            .message("Advanced retrieval could not complete.")
+            .data(Map.of("reason", reason))
+            .metadata(Map.of("semanticDecision", Collections.unmodifiableMap(decision)))
+            .build();
     }
 
     private static List<NextStepRecommendation> extractNextSteps(Intent intent) {

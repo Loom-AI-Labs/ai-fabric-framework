@@ -155,7 +155,7 @@ public class AIInfrastructureAutoConfiguration {
             .filter(provider -> requestedProvider == null
                 || provider.getProviderName().equalsIgnoreCase(requestedProvider))
             .findFirst()
-            .orElseGet(() -> embeddingProviders.isEmpty() ? null : embeddingProviders.get(0));
+            .orElse(null);
 
         String providerName = selectedProvider != null ? selectedProvider.getProviderName() : "null";
         log.info("Creating AIEmbeddingService with embedding provider '{}' (requested '{}')",
@@ -163,17 +163,28 @@ public class AIInfrastructureAutoConfiguration {
             requestedProvider != null ? requestedProvider : "unspecified");
 
         if (selectedProvider == null) {
-            log.warn("No embedding provider matched request '{}'. Available providers: {}",
-                requestedProvider,
-                embeddingProviders.stream()
-                    .filter(Objects::nonNull)
-                    .map(EmbeddingProvider::getProviderName)
-                    .collect(Collectors.joining(", ")));
+            String availableProviders = embeddingProviders.stream()
+                .filter(Objects::nonNull)
+                .map(EmbeddingProvider::getProviderName)
+                .filter(Objects::nonNull)
+                .collect(Collectors.joining(", "));
+            throw new IllegalStateException(
+                "Configured embedding provider is unavailable: "
+                    + (requestedProvider != null ? requestedProvider : "unspecified")
+                    + ". Available providers: "
+                    + (availableProviders.isBlank() ? "none" : availableProviders)
+            );
         }
         
         CacheManager cacheManager = cacheManagerProvider.getIfUnique(NoOpCacheManager::new);
         EmbeddingProvider fallbackEmbeddingProvider = fallbackProvider != null ? fallbackProvider.getIfAvailable() : null;
-        return new AIEmbeddingService(config, selectedProvider, cacheManager, fallbackEmbeddingProvider);
+        return new AIEmbeddingService(
+            config,
+            selectedProvider,
+            cacheManager,
+            fallbackEmbeddingProvider,
+            embeddingProviders
+        );
     }
     
     @Bean

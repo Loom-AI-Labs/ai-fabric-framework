@@ -9,6 +9,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
@@ -104,8 +105,8 @@ public class Intent {
     /**
      * Whether this intent needs advanced RAG (query expansion, re-ranking, context optimization).
      *
-     * <p>This value is expected to be produced by the intent extractor LLM. When absent (null),
-     * the orchestrator may fall back to heuristic complexity checks if configured.</p>
+     * <p>This value is expected to be produced by the intent extractor LLM. A missing value remains
+     * incomplete structured output; orchestration does not infer it from query shape.</p>
      */
     @JsonAlias({"needs_advanced_rag", "needsAdvancedRAG"})
     private Boolean needsAdvancedRAG;
@@ -114,6 +115,32 @@ public class Intent {
      * Optimized, system-terminology aligned query for embeddings.
      */
     private String optimizedQuery;
+
+    /**
+     * Stable identifier assigned by the model to this user obligation within a compound request.
+     */
+    private String obligationId;
+
+    /**
+     * Concise semantic goal for this obligation.
+     */
+    private String userGoal;
+
+    /**
+     * Structured facts that are still needed before this obligation can be completed.
+     */
+    @Builder.Default
+    private List<String> missingInformation = List.of();
+
+    /**
+     * Model-authored clarification question when missing information prevents safe execution.
+     */
+    private String clarificationQuestion;
+
+    /**
+     * Brief model-authored reason for uncertainty; never treated as private reasoning.
+     */
+    private String uncertaintyReason;
 
     /**
      * Optional recommendation that should be surfaced after handling this intent.
@@ -150,20 +177,8 @@ public class Intent {
         return confidence != null ? confidence : fallback;
     }
 
-    public boolean requiresRetrievalOrDefault(boolean fallback) {
-        return requiresRetrieval != null ? requiresRetrieval : fallback;
-    }
-
-    public boolean requiresGenerationOrDefault(boolean fallback) {
-        return requiresGeneration != null ? requiresGeneration : fallback;
-    }
-
     public ResponseGenerationProfile responseProfileOrDefault(ResponseGenerationProfile fallback) {
         return responseProfile != null ? responseProfile : fallback;
-    }
-
-    public boolean requiresTargetResolutionOrDefault(boolean fallback) {
-        return requiresTargetResolution != null ? requiresTargetResolution : fallback;
     }
 
     public Boolean getNeedsAdvancedRAG() {
@@ -172,10 +187,6 @@ public class Intent {
 
     public void setNeedsAdvancedRAG(Boolean needsAdvancedRAG) {
         this.needsAdvancedRAG = needsAdvancedRAG;
-    }
-
-    public boolean needsAdvancedRagOrDefault(boolean fallback) {
-        return needsAdvancedRAG != null ? needsAdvancedRAG : fallback;
     }
 
     public String getIntentOrAction() {
@@ -189,20 +200,11 @@ public class Intent {
         if (confidence != null) {
             confidence = Math.max(0.0d, Math.min(1.0d, confidence));
         }
-        if (requiresRetrieval == null) {
-            requiresRetrieval = type == IntentType.INFORMATION;
-        }
-        if (requiresGeneration == null) {
-            requiresGeneration = Boolean.FALSE;
-        }
-        if (!Boolean.TRUE.equals(requiresGeneration)) {
+        if (Boolean.FALSE.equals(requiresGeneration)) {
             responseProfile = null;
         }
-        if (requiresTargetResolution == null) {
-            requiresTargetResolution = Boolean.FALSE;
-        }
-        // needsAdvancedRAG is intentionally NOT defaulted here. When null it indicates
-        // the LLM did not provide an explicit decision (allowing heuristic fallback).
+        // Semantic booleans intentionally remain null when the model omitted them. The extraction validator
+        // can then request bounded model repair instead of silently inventing a decision.
         if (actionParams == null) {
             actionParams = Collections.emptyMap();
         } else {
@@ -223,6 +225,16 @@ public class Intent {
             } else {
                 generationInstructions = trimmed;
             }
+        }
+        if (missingInformation == null || missingInformation.isEmpty()) {
+            missingInformation = List.of();
+        } else {
+            missingInformation = missingInformation.stream()
+                .filter(Objects::nonNull)
+                .map(String::trim)
+                .filter(value -> !value.isEmpty())
+                .distinct()
+                .toList();
         }
         if (nextStepRecommended != null && nextStepRecommended.getConfidence() != null) {
             double value = Math.max(0.0d, Math.min(1.0d, nextStepRecommended.getConfidence()));

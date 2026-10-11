@@ -27,9 +27,6 @@ final class AdvancedRagSupport {
     private static final String CONTEXT_METADATA_KEY_ADVANCED_RERANKING_STRATEGY = "advancedRagRerankingStrategy";
     private static final String CONTEXT_METADATA_KEY_ADVANCED_CONTEXT_OPTIMIZATION_LEVEL = "advancedRagContextOptimizationLevel";
 
-    private static final int ADVANCED_QUERY_LENGTH_THRESHOLD = 50;
-    private static final int ADVANCED_QUERY_WORD_THRESHOLD = 8;
-
     private final ObjectProvider<AdvancedRAGProvider> advancedRagProvider;
     private final AIServiceConfig aiServiceConfig;
     private final OrchestrationProperties orchestrationProperties;
@@ -88,9 +85,7 @@ final class AdvancedRagSupport {
             return llmDecision;
         }
 
-        boolean autoEnable = features != null
-            && Boolean.TRUE.equals(features.getAutoEnableAdvancedRAGForComplexQueries());
-        return autoEnable && isComplexQuery(query);
+        return false;
     }
 
     AdvancedRAGRequest buildAdvancedRagRequest(Intent intent,
@@ -144,20 +139,6 @@ final class AdvancedRagSupport {
             return ragBudgets.similarityThreshold();
         }
         return defaultThreshold;
-    }
-
-    boolean isComplexQuery(String query) {
-        if (!StringUtils.hasText(query)) {
-            return false;
-        }
-        if (query.length() >= ADVANCED_QUERY_LENGTH_THRESHOLD) {
-            return true;
-        }
-        if (query.contains("?")) {
-            return true;
-        }
-        int words = query.trim().split("\\s+").length;
-        return words >= ADVANCED_QUERY_WORD_THRESHOLD;
     }
 
     Integer readInteger(Map<String, Object> metadata, String key) {

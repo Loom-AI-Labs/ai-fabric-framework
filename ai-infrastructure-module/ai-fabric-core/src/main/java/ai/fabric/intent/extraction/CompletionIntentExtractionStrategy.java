@@ -5,6 +5,7 @@ import ai.fabric.core.LlmPurpose;
 import ai.fabric.dto.AIGenerationRequest;
 import ai.fabric.dto.AIGenerationResponse;
 import ai.fabric.dto.MultiIntentResponse;
+import ai.fabric.exception.AIServiceException;
 import ai.fabric.intent.EnrichedPromptBuilder;
 import ai.fabric.intent.IntentExtractionJsonSupport;
 import ai.fabric.intent.IntentExtractionValidator;
@@ -20,7 +21,6 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -102,7 +102,18 @@ public class CompletionIntentExtractionStrategy {
 
         String allowedActions = buildAllowedActionsSpec(safeContext);
         String issuesPayload = formatIssues(errorIssues);
-        String partialJson = toJson(previousAttempt.getResponse());
+        String partialJson;
+        try {
+            partialJson = toJson(previousAttempt.getResponse());
+        } catch (AIServiceException ex) {
+            return ExtractionAttempt.builder()
+                .success(false)
+                .strategyName(getStrategyName())
+                .errorMessage(IntentExtractionFailureSanitizer.diagnosticMessage(ex))
+                .exception(ex)
+                .llmCalls(0)
+                .build();
+        }
         String prompt = promptRenderer.render(
             promptTemplateResolver.resolve(TEMPLATE_FAMILY, TEMPLATE_USER).template(),
             Map.of(
@@ -203,8 +214,12 @@ public class CompletionIntentExtractionStrategy {
                         .filter(e -> e.getKey() != null && e.getValue() != null)
                         .map(e -> e.getKey() + ":" + e.getValue())
                         .collect(Collectors.joining(", "));
+                String groundingText = meta.getGroundingVectorSpaces() == null
+                    || meta.getGroundingVectorSpaces().isEmpty()
+                    ? ""
+                    : " groundingVectorSpaces=" + meta.getGroundingVectorSpaces();
                 String desc = StringUtils.hasText(meta.getDescription()) ? " - " + meta.getDescription().trim() : "";
-                return "- " + meta.getName().trim() + desc + requiredText + paramsText;
+                return "- " + meta.getName().trim() + desc + requiredText + paramsText + groundingText;
             })
             .collect(Collectors.joining("\n"));
     }
@@ -226,14 +241,10 @@ public class CompletionIntentExtractionStrategy {
         try {
             return jsonSupport.objectMapper().writeValueAsString(response);
         } catch (Exception ex) {
-            Map<String, Object> fallback = new LinkedHashMap<>();
-            fallback.put("intents", List.of());
-            fallback.put("metadata", Map.of("serializationError", ex.getMessage()));
-            try {
-                return jsonSupport.objectMapper().writeValueAsString(fallback);
-            } catch (Exception ignored) {
-                return "{}";
-            }
+            throw new AIServiceException(
+                "Unable to serialize the original intent extraction result for model completion",
+                ex
+            );
         }
     }
 }

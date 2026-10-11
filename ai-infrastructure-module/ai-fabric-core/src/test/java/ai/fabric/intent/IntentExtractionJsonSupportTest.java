@@ -68,8 +68,18 @@ class IntentExtractionJsonSupportTest {
     }
 
     @Test
-    void jsonOnlyResponseParametersComeFromStructuredHints() {
+    void jsonOnlyResponseParametersIncludeProviderNativeSchema() {
         assertThat(jsonSupport.jsonOnlyResponseParameters())
-            .isEqualTo(StructuredJsonProviderHints.jsonObjectResponseParameters());
+            .containsEntry(
+                StructuredJsonProviderHints.RESPONSE_FORMAT_PARAMETER,
+                java.util.Map.of("type", "json_schema")
+            );
+        assertThat(jsonSupport.jsonOnlyResponseParameters())
+            .containsKey(StructuredJsonProviderHints.OUTPUT_SCHEMA_PARAMETER);
+        assertThat(String.valueOf(jsonSupport.jsonOnlyResponseParameters().get(
+            StructuredJsonProviderHints.OUTPUT_SCHEMA_PARAMETER
+        )))
+            .contains("intents")
+            .contains("requiresRetrieval");
     }
 }

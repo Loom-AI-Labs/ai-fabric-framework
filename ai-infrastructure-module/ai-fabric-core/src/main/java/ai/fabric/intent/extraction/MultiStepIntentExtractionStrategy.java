@@ -9,6 +9,7 @@ import ai.fabric.dto.IntentType;
 import ai.fabric.dto.MultiIntentResponse;
 import ai.fabric.dto.ResponseGenerationProfile;
 import ai.fabric.intent.OrchestrationPolicyPromptConstraints;
+import ai.fabric.intent.EnrichedPromptBuilder;
 import ai.fabric.intent.SpecialistPromptInstructionSupport;
 import ai.fabric.intent.IntentExtractionJsonSupport;
 import ai.fabric.intent.IntentExtractionValidator;
@@ -26,6 +27,7 @@ import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
 
@@ -74,6 +76,9 @@ public class MultiStepIntentExtractionStrategy implements IntentExtractionStrate
     private final IntentExtractionValidator validator;
     private final PromptRenderer promptRenderer;
     private final PromptTemplateResolver promptTemplateResolver;
+
+    @Autowired(required = false)
+    private EnrichedPromptBuilder enrichedPromptBuilder;
 
     record ClassificationResult(ClassificationResponse response,
                                 int llmCalls,
@@ -615,6 +620,13 @@ public class MultiStepIntentExtractionStrategy implements IntentExtractionStrate
             prompt = (StringUtils.hasText(base) ? base.trim() + "\n\n" : "")
                 + addon;
         }
+        String catalog = enrichedPromptBuilder != null
+            ? enrichedPromptBuilder.buildSemanticCatalogPrompt(context)
+            : null;
+        if (StringUtils.hasText(catalog)) {
+            prompt = (StringUtils.hasText(prompt) ? prompt.trim() + "\n\n" : "")
+                + catalog;
+        }
         return IntentExtractionSystemContextSupport.append(
             SpecialistPromptInstructionSupport.appendToSystemPrompt(
                 prompt,
@@ -696,7 +708,7 @@ public class MultiStepIntentExtractionStrategy implements IntentExtractionStrate
             IntentType type = parseIntentType(classified.getType());
             String intentName = StringUtils.hasText(classified.getIntent())
                 ? classified.getIntent()
-                : defaultIntentName(type);
+                : structuralIntentName(type);
 
             Intent.IntentBuilder builder = Intent.builder()
                 .type(type)
@@ -710,23 +722,25 @@ public class MultiStepIntentExtractionStrategy implements IntentExtractionStrate
                 .generationInstructions(StringUtils.hasText(classified.getGenerationInstructions()) ? classified.getGenerationInstructions() : null)
                 .needsAdvancedRAG(classified.getNeedsAdvancedRAG())
                 .optimizedQuery(StringUtils.hasText(classified.getOptimizedQuery()) ? classified.getOptimizedQuery() : null)
-                .vectorSpace(StringUtils.hasText(classified.getVectorSpace()) ? classified.getVectorSpace() : null);
+                .vectorSpace(StringUtils.hasText(classified.getVectorSpace()) ? classified.getVectorSpace() : null)
+                .obligationId(StringUtils.hasText(classified.getObligationId()) ? classified.getObligationId() : null)
+                .userGoal(StringUtils.hasText(classified.getUserGoal()) ? classified.getUserGoal() : null)
+                .missingInformation(classified.getMissingInformation() != null
+                    ? classified.getMissingInformation()
+                    : List.of())
+                .clarificationQuestion(StringUtils.hasText(classified.getClarificationQuestion())
+                    ? classified.getClarificationQuestion()
+                    : null)
+                .uncertaintyReason(StringUtils.hasText(classified.getUncertaintyReason())
+                    ? classified.getUncertaintyReason()
+                    : null);
 
             if (type == IntentType.ACTION) {
                 String selected = selectedActions != null ? selectedActions.get(i) : null;
                 if (!StringUtils.hasText(selected)) {
-                    // Multi-step is a fallback path; treat unresolvable "ACTION" classifications as an INFORMATION
-                    // request rather than deflecting to OUT_OF_SCOPE. This avoids non-deterministic OUT_OF_SCOPE
-                    // outcomes for retrieval-style queries that the model misclassified as ACTION.
-                    builder.type(IntentType.INFORMATION);
-                    builder.intent("information_request");
-                    builder.action(null);
-                    builder.actionParams(Map.of(
-                        "reason",
-                        "No registered action matched '" + safeActionHint(classified.getActionHint()) + "'. Treating as information request."
-                    ));
-                    builder.requiresRetrieval(true);
-                    builder.requiresGeneration(true);
+                    builder.action(StringUtils.hasText(classified.getActionHint())
+                        ? classified.getActionHint().trim()
+                        : null);
                 } else {
                     builder.action(selected);
                     Map<String, Object> params = filledParams != null ? filledParams.get(i) : null;
@@ -734,17 +748,6 @@ public class MultiStepIntentExtractionStrategy implements IntentExtractionStrate
                         builder.actionParams(params);
                     }
                 }
-            } else if (type == IntentType.OUT_OF_SCOPE) {
-                // Same rationale: multi-step fallback should bias toward INFORMATION over OUT_OF_SCOPE so the
-                // orchestration layer can attempt vector routing + RAG rather than hard deflecting.
-                builder.type(IntentType.INFORMATION);
-                builder.intent("information_request");
-                builder.actionParams(Map.of(
-                    "reason",
-                    "Classified as out of scope by multi-step fallback. Treating as information request."
-                ));
-                builder.requiresRetrieval(true);
-                builder.requiresGeneration(true);
             }
 
             intents.add(builder.build());
@@ -764,29 +767,24 @@ public class MultiStepIntentExtractionStrategy implements IntentExtractionStrate
             .build();
     }
 
-    private String safeActionHint(String value) {
-        return value != null ? value : "";
-    }
-
     private IntentType parseIntentType(String raw) {
         if (!StringUtils.hasText(raw)) {
-            return IntentType.OUT_OF_SCOPE;
+            return null;
         }
         String normalized = raw.trim().toUpperCase(Locale.ROOT);
         try {
             return IntentType.valueOf(normalized);
         } catch (Exception ex) {
-            return IntentType.OUT_OF_SCOPE;
+            return null;
         }
     }
 
-    private String defaultIntentName(IntentType type) {
+    private String structuralIntentName(IntentType type) {
         if (type == null) {
-            return "unknown";
+            return null;
         }
         return switch (type) {
-            case ACTION -> "action_request";
-            case INFORMATION -> "information_request";
+            case ACTION, INFORMATION -> null;
             case OUT_OF_SCOPE -> "out_of_scope";
             case CONFIRMATION_POSITIVE -> "confirmation_positive";
             case CONFIRMATION_NEGATIVE -> "confirmation_negative";
@@ -817,6 +815,11 @@ public class MultiStepIntentExtractionStrategy implements IntentExtractionStrate
         private Boolean needsAdvancedRAG;
         private String optimizedQuery;
         private String vectorSpace;
+        private String obligationId;
+        private String userGoal;
+        private List<String> missingInformation = new ArrayList<>();
+        private String clarificationQuestion;
+        private String uncertaintyReason;
 
         ClassificationIntent withIndex(int idx) {
             ClassificationIntent copy = new ClassificationIntent();
@@ -834,6 +837,13 @@ public class MultiStepIntentExtractionStrategy implements IntentExtractionStrate
             copy.needsAdvancedRAG = this.needsAdvancedRAG;
             copy.optimizedQuery = this.optimizedQuery;
             copy.vectorSpace = this.vectorSpace;
+            copy.obligationId = this.obligationId;
+            copy.userGoal = this.userGoal;
+            copy.missingInformation = this.missingInformation != null
+                ? new ArrayList<>(this.missingInformation)
+                : new ArrayList<>();
+            copy.clarificationQuestion = this.clarificationQuestion;
+            copy.uncertaintyReason = this.uncertaintyReason;
             return copy;
         }
     }

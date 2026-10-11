@@ -7,6 +7,7 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Validates AI provider configuration at application startup.
@@ -70,8 +71,94 @@ public class AIProviderConfigValidator {
             result.addWarning("ai.service.features.enable-embeddings=false. Skipping embedding provider validation.");
         }
         validateServiceConfig(result);
+        validateFallbackPolicy(result);
 
         return result;
+    }
+
+    private void validateFallbackPolicy(ValidationResult result) {
+        List<String> generationChain = providerConfig.getGenerationFallbackProviders();
+        List<String> embeddingChain = providerConfig.getEmbeddingFallbackProviders();
+        if (!Boolean.TRUE.equals(providerConfig.getEnableFallback())) {
+            if ((generationChain != null && !generationChain.isEmpty())
+                || (embeddingChain != null && !embeddingChain.isEmpty())) {
+                result.addWarning(
+                    "Provider fallback chains are configured but ai.providers.enable-fallback=false; no transition will run."
+                );
+            }
+            return;
+        }
+
+        validateFallbackChain(
+            "ai.providers.generation-fallback-providers",
+            providerConfig.getLlmProvider(),
+            generationChain,
+            false,
+            result
+        );
+        validateFallbackChain(
+            "ai.providers.embedding-fallback-providers",
+            providerConfig.getEmbeddingProvider(),
+            embeddingChain,
+            true,
+            result
+        );
+    }
+
+    private void validateFallbackChain(String key,
+                                       String primaryProvider,
+                                       List<String> configuredChain,
+                                       boolean embeddingChain,
+                                       ValidationResult result) {
+        if (configuredChain == null || configuredChain.isEmpty()) {
+            return;
+        }
+        String primary = normalize(primaryProvider);
+        for (int index = 0; index < configuredChain.size(); index++) {
+            String fallback = normalize(configuredChain.get(index));
+            String entryKey = key + "[" + index + "]";
+            if (fallback.isBlank()) {
+                result.addError(entryKey, "Fallback provider name must not be blank.");
+                continue;
+            }
+            if (fallback.equals(primary)) {
+                result.addError(entryKey, "Fallback provider must differ from the primary provider.");
+                continue;
+            }
+            if (!labelsMatch(providerConfig.getProviderDataPolicies(), primary, fallback)) {
+                result.addError(
+                    entryKey,
+                    "Primary and fallback providers require the same non-blank provider-data-policy label."
+                );
+            }
+            if (embeddingChain
+                && !labelsMatch(providerConfig.getEmbeddingCompatibilityGroups(), primary, fallback)) {
+                result.addError(
+                    entryKey,
+                    "Embedding fallback requires the same non-blank embedding-compatibility-group label."
+                );
+            }
+        }
+    }
+
+    private boolean labelsMatch(Map<String, String> labels, String primary, String fallback) {
+        String primaryLabel = providerLabel(labels, primary);
+        String fallbackLabel = providerLabel(labels, fallback);
+        return primaryLabel != null && primaryLabel.equals(fallbackLabel);
+    }
+
+    private String providerLabel(Map<String, String> labels, String provider) {
+        if (labels == null || labels.isEmpty() || provider == null || provider.isBlank()) {
+            return null;
+        }
+        return labels.entrySet().stream()
+            .filter(entry -> entry.getKey() != null && entry.getValue() != null)
+            .filter(entry -> provider.equals(normalize(entry.getKey())))
+            .map(Map.Entry::getValue)
+            .map(String::trim)
+            .filter(value -> !value.isEmpty())
+            .findFirst()
+            .orElse(null);
     }
 
     private void validateLlmProvider(ValidationResult result) {

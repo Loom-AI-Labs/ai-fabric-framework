@@ -54,6 +54,10 @@ public class SingleConfirmationPositiveResolver extends ConfirmationResolverSupp
             .action(confirmed.action())
             .actionParams(confirmed.actionParams() != null ? confirmed.actionParams() : Map.of())
             .confidence(1.0d)
+            .requiresRetrieval(false)
+            .requiresGeneration(false)
+            .requiresTargetResolution(false)
+            .needsAdvancedRAG(false)
             .build();
 
         MultiIntentResponse updated = MultiIntentResponse.builder()

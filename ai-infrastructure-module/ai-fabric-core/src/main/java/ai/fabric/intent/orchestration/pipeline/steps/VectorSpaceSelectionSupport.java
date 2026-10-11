@@ -1,7 +1,6 @@
 package ai.fabric.intent.orchestration.pipeline.steps;
 
 import ai.fabric.config.AIEntityConfigurationLoader;
-import ai.fabric.config.VectorSpaceRoutingProperties;
 import ai.fabric.intent.KnowledgeBaseOverview;
 import ai.fabric.intent.KnowledgeBaseOverviewService;
 import ai.fabric.intent.orchestration.policy.OrchestrationPolicy;
@@ -20,14 +19,10 @@ final class VectorSpaceSelectionSupport {
 
     private final ObjectProvider<KnowledgeBaseOverviewService> knowledgeBaseOverviewServiceProvider;
     private final AIEntityConfigurationLoader entityConfigurationLoader;
-    private final VectorSpaceRoutingProperties vectorSpaceRoutingProperties;
-
     VectorSpaceSelectionSupport(ObjectProvider<KnowledgeBaseOverviewService> knowledgeBaseOverviewServiceProvider,
-                                AIEntityConfigurationLoader entityConfigurationLoader,
-                                VectorSpaceRoutingProperties vectorSpaceRoutingProperties) {
+                                AIEntityConfigurationLoader entityConfigurationLoader) {
         this.knowledgeBaseOverviewServiceProvider = knowledgeBaseOverviewServiceProvider;
         this.entityConfigurationLoader = entityConfigurationLoader;
-        this.vectorSpaceRoutingProperties = vectorSpaceRoutingProperties;
     }
 
     List<String> resolveAllVectorSpaces() {
@@ -94,24 +89,6 @@ final class VectorSpaceSelectionSupport {
             .distinct()
             .sorted()
             .toList();
-    }
-
-    List<String> resolveDeterministicFallbackVectorSpaces(OrchestrationPolicy.RagBudgets ragBudgets) {
-        List<String> spaces = resolveAllVectorSpaces();
-        if (spaces.isEmpty()) {
-            return spaces;
-        }
-
-        Integer maxOverride = ragBudgets != null ? ragBudgets.maxSpaces() : null;
-        if (maxOverride != null && maxOverride > 0) {
-            return spaces.size() > maxOverride ? spaces.subList(0, maxOverride) : spaces;
-        }
-
-        int maxDefault = vectorSpaceRoutingProperties != null ? vectorSpaceRoutingProperties.getFanOutMaxSpaces() : 3;
-        if (maxDefault <= 0) {
-            return spaces;
-        }
-        return spaces.size() > maxDefault ? spaces.subList(0, maxDefault) : spaces;
     }
 
     List<String> capVectorSpacesToBudget(List<String> vectorSpaces, OrchestrationPolicy.RagBudgets ragBudgets) {

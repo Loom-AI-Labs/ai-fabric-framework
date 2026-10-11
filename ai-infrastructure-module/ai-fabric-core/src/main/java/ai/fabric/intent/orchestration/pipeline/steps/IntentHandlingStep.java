@@ -51,6 +51,7 @@ import ai.fabric.intent.orchestration.pipeline.steps.ConfirmationResolutionSuppo
 import ai.fabric.intent.orchestration.pipeline.steps.PostActionGenerationSupport.PostActionGenerationOutcome;
 import ai.fabric.intent.orchestration.pipeline.steps.PostActionGenerationSupport.ResolvedPostActionGeneration;
 import ai.fabric.intent.orchestration.policy.OrchestrationPolicy;
+import ai.fabric.intent.orchestration.policy.SemanticRecoveryPolicy;
 import ai.fabric.intent.orchestration.rag.EmbeddingQueryComposer;
 import ai.fabric.config.AIEntityConfigurationLoader;
 import ai.fabric.config.OrchestrationProperties;
@@ -233,8 +234,7 @@ public class IntentHandlingStep implements PipelineStep {
         );
         this.vectorSpaceSelectionSupport = new VectorSpaceSelectionSupport(
             knowledgeBaseOverviewServiceProvider,
-            entityConfigurationLoader,
-            vectorSpaceRoutingProperties
+            entityConfigurationLoader
         );
         this.informationRagExecutionSupport = new InformationRagExecutionSupport(
             ragProvider,
@@ -438,7 +438,7 @@ public class IntentHandlingStep implements PipelineStep {
                 .build();
         }
 
-        OrchestrationResult groundingScopeFallback = fallbackMismatchedReadActionToInformation(
+        OrchestrationResult groundingScopeFallback = handleMismatchedReadActionDomain(
             intent,
             meta,
             context,
@@ -989,7 +989,7 @@ public class IntentHandlingStep implements PipelineStep {
         }
     }
 
-    private OrchestrationResult fallbackMismatchedReadActionToInformation(
+    private OrchestrationResult handleMismatchedReadActionDomain(
         Intent intent,
         AIActionMetaData metadata,
         OrchestrationContext context,
@@ -1010,6 +1010,41 @@ public class IntentHandlingStep implements PipelineStep {
                 ? intent.getIntent().trim()
                 : pipelineContext != null ? pipelineContext.getEffectiveQuery() : actionName);
 
+        SemanticRecoveryPolicy recoveryPolicy = semanticRecoveryPolicy(pipelineContext);
+        OrchestrationProperties.ActionDomainMismatchRecovery recovery =
+            recoveryPolicy.actionDomainMismatch();
+
+        Map<String, Object> mismatch = new LinkedHashMap<>();
+        mismatch.put("decision", "ACTION_EVIDENCE_DOMAIN");
+        mismatch.put("originalSource", "MODEL");
+        mismatch.put("originalAction", actionName);
+        mismatch.put("intentVectorSpaces", normalizedVectorSpaces(
+            RagContextSupport.parseVectorSpaces(intent.getVectorSpace())
+        ));
+        mismatch.put("actionGroundingVectorSpaces", normalizedVectorSpaces(
+            metadata.getGroundingVectorSpaces()
+        ));
+        mismatch.put("validationStatus", "REJECTED_DOMAIN_MISMATCH");
+        mismatch.put("recoveryPolicy", recovery.name());
+
+        if (recovery != OrchestrationProperties.ActionDomainMismatchRecovery.DENY_AND_ALLOWED_RAG) {
+            mismatch.put("recoveryAttempted", false);
+            mismatch.put("effectiveSource", "SECURITY_POLICY");
+            mismatch.put("effectiveValue", "ACTION_DENIED");
+            String errorCode = recovery
+                == OrchestrationProperties.ActionDomainMismatchRecovery.DENY_AND_LLM_REPLAN
+                ? "ACTION_DOMAIN_MISMATCH_REPLAN_REQUIRED"
+                : "ACTION_DOMAIN_MISMATCH";
+            return OrchestrationResult.builder()
+                .type(OrchestrationResultType.ACTION_DENIED)
+                .success(false)
+                .errorCode(errorCode)
+                .message("The selected action is not authorized to provide evidence for the selected knowledge domain.")
+                .metadata(Map.of("semanticDecision", Collections.unmodifiableMap(mismatch)))
+                .nextSteps(extractNextSteps(intent))
+                .build();
+        }
+
         Intent informationIntent = Intent.builder()
             .type(IntentType.INFORMATION)
             .intent(fallbackQuery)
@@ -1018,9 +1053,9 @@ public class IntentHandlingStep implements PipelineStep {
             .requiresRetrieval(true)
             .requiresGeneration(true)
             .responseProfile(intent.getResponseProfile())
-            .requiresTargetResolution(intent.getRequiresTargetResolution())
+            .requiresTargetResolution(Boolean.TRUE.equals(intent.getRequiresTargetResolution()))
             .generationInstructions(intent.getGenerationInstructions())
-            .needsAdvancedRAG(intent.getNeedsAdvancedRAG())
+            .needsAdvancedRAG(Boolean.TRUE.equals(intent.getNeedsAdvancedRAG()))
             .optimizedQuery(intent.getOptimizedQuery())
             .nextStepRecommended(intent.getNextStepRecommended())
             .build();
@@ -1037,20 +1072,14 @@ public class IntentHandlingStep implements PipelineStep {
             return null;
         }
 
-        Map<String, Object> mismatch = new LinkedHashMap<>();
-        mismatch.put("action", actionName);
-        mismatch.put("intentVectorSpaces", normalizedVectorSpaces(
-            RagContextSupport.parseVectorSpaces(intent.getVectorSpace())
-        ));
-        mismatch.put("actionGroundingVectorSpaces", normalizedVectorSpaces(
-            metadata.getGroundingVectorSpaces()
-        ));
-        mismatch.put("resolution", "RAG_FALLBACK");
+        mismatch.put("recoveryAttempted", true);
+        mismatch.put("effectiveSource", "EXPLICIT_RECOVERY_POLICY");
+        mismatch.put("effectiveValue", "INFORMATION_RAG");
         Map<String, Object> resultMetadata = new LinkedHashMap<>();
         if (result.getMetadata() != null) {
             resultMetadata.putAll(result.getMetadata());
         }
-        resultMetadata.put("actionGroundingScopeMismatch", Collections.unmodifiableMap(mismatch));
+        resultMetadata.put("semanticDecision", Collections.unmodifiableMap(mismatch));
         result.setMetadata(Collections.unmodifiableMap(resultMetadata));
         return result;
     }
@@ -1204,10 +1233,7 @@ public class IntentHandlingStep implements PipelineStep {
             return null;
         }
         OrchestrationPolicy policy = pipelineContext != null ? pipelineContext.getOrchestrationPolicy() : null;
-        if (policy != null
-            && policy.capabilities() != null
-            && policy.capabilities().actionsPreferred()
-            && !allowsCooperativeReadFallback(meta, policy)) {
+        if (!allowsCooperativeReadFallback(meta, policy)) {
             return null;
         }
         if (actionResult == null || !actionResult.isSuccess()) {
@@ -1220,7 +1246,7 @@ public class IntentHandlingStep implements PipelineStep {
             return null;
         }
 
-        ReadFallbackVectorSpaces fallbackVectorSpaces = resolveReadFallbackVectorSpaces(intent, meta, policy);
+        ReadFallbackVectorSpaces fallbackVectorSpaces = resolveReadFallbackVectorSpaces(intent, meta);
         List<String> vectorSpaces = fallbackVectorSpaces.vectorSpaces();
         if (vectorSpaces.isEmpty()) {
             log.debug(
@@ -1270,45 +1296,48 @@ public class IntentHandlingStep implements PipelineStep {
             return null;
         }
 
-        boolean exposeProbe = policy != null
-            && policy.capabilities() != null
-            && policy.capabilities().exposeReadProbeFallbackAttempt();
-
-        if (exposeProbe) {
-            Map<String, Object> probe = new LinkedHashMap<>();
-            probe.put("action", meta.getName());
-            if (meta.getAccessMode() != null) {
-                probe.put("accessMode", meta.getAccessMode().name());
-            }
-            probe.put("success", true);
-            probe.put("emptyPayload", true);
-            if (StringUtils.hasText(actionResult.getMessage())) {
-                probe.put("message", actionResult.getMessage());
-            }
-            probe.put("fallbackToRag", true);
-            probe.put("fallbackVectorSpaceSource", fallbackVectorSpaces.source());
-            probe.put("fallbackVectorSpaces", List.copyOf(vectorSpaces));
-            if (!fallbackVectorSpaces.rejectedIntentVectorSpaces().isEmpty()) {
-                probe.put(
-                    "fallbackIntentVectorSpacesRejected",
-                    fallbackVectorSpaces.rejectedIntentVectorSpaces()
-                );
-            }
-
-            Map<String, Object> merged = new LinkedHashMap<>();
-            if (result.getMetadata() != null && !result.getMetadata().isEmpty()) {
-                merged.putAll(result.getMetadata());
-            }
-            merged.put("readProbe", Collections.unmodifiableMap(probe));
-            result.setMetadata(Collections.unmodifiableMap(merged));
+        Map<String, Object> probe = new LinkedHashMap<>();
+        probe.put("decision", "READ_ACTION_EVIDENCE_SUFFICIENCY");
+        probe.put("originalSource", "ACTION_RESULT");
+        probe.put("action", meta.getName());
+        if (meta.getAccessMode() != null) {
+            probe.put("accessMode", meta.getAccessMode().name());
         }
+        probe.put("success", true);
+        probe.put("insufficientGrounding", true);
+        if (StringUtils.hasText(actionResult.getMessage())) {
+            probe.put("message", actionResult.getMessage());
+        }
+        probe.put(
+            "recoveryPolicy",
+            policy != null && policy.readActionResolutionPolicy() != null
+                ? policy.readActionResolutionPolicy().ragCooperationMode().name()
+                : OrchestrationProperties.ReadActionResolutionRagCooperationMode.NONE.name()
+        );
+        probe.put("recoveryAttempted", true);
+        probe.put("effectiveSource", "RAG_COOPERATION_POLICY");
+        probe.put("effectiveValue", "RAG");
+        probe.put("fallbackVectorSpaceSource", fallbackVectorSpaces.source());
+        probe.put("fallbackVectorSpaces", List.copyOf(vectorSpaces));
+        if (!fallbackVectorSpaces.rejectedIntentVectorSpaces().isEmpty()) {
+            probe.put(
+                "fallbackIntentVectorSpacesRejected",
+                fallbackVectorSpaces.rejectedIntentVectorSpaces()
+            );
+        }
+
+        Map<String, Object> merged = new LinkedHashMap<>();
+        if (result.getMetadata() != null && !result.getMetadata().isEmpty()) {
+            merged.putAll(result.getMetadata());
+        }
+        merged.put("readActionRecovery", Collections.unmodifiableMap(probe));
+        result.setMetadata(Collections.unmodifiableMap(merged));
 
         return result;
     }
 
     private ReadFallbackVectorSpaces resolveReadFallbackVectorSpaces(Intent intent,
-                                                                     AIActionMetaData metadata,
-                                                                     OrchestrationPolicy policy) {
+                                                                     AIActionMetaData metadata) {
         LinkedHashSet<String> actionContractSpaces = new LinkedHashSet<>();
         if (metadata != null && metadata.getGroundingVectorSpaces() != null) {
             for (String value : metadata.getGroundingVectorSpaces()) {
@@ -1356,17 +1385,6 @@ public class IntentHandlingStep implements PipelineStep {
             return new ReadFallbackVectorSpaces(intentSpaces, "INTENT", List.of());
         }
 
-        OrchestrationPolicy.RagBudgets ragBudgets = policy != null ? policy.ragBudgets() : null;
-        List<String> allowlist = ragBudgets != null
-            ? ragBudgets.retrievalVectorSpacesAllowlist()
-            : List.of();
-        if (allowlist != null && allowlist.size() == 1) {
-            return new ReadFallbackVectorSpaces(
-                List.of(allowlist.getFirst()),
-                "ALLOWLIST_SINGLETON",
-                List.of()
-            );
-        }
         return new ReadFallbackVectorSpaces(List.of(), "UNRESOLVED", List.of());
     }
 
@@ -1557,6 +1575,10 @@ public class IntentHandlingStep implements PipelineStep {
             .type(ai.fabric.dto.IntentType.ACTION)
             .action(pending.action())
             .actionParams(pending.actionParams() != null ? pending.actionParams() : Map.of())
+            .requiresRetrieval(false)
+            .requiresGeneration(false)
+            .requiresTargetResolution(false)
+            .needsAdvancedRAG(false)
             .build();
 
         PipelineContext base = pipelineContext != null ? pipelineContext : PipelineContext.from("confirm", context);
@@ -1662,6 +1684,10 @@ public class IntentHandlingStep implements PipelineStep {
             .action(configuredDecision.action().trim())
             .actionParams(resolvedParams)
             .confidence(1.0d)
+            .requiresRetrieval(false)
+            .requiresGeneration(false)
+            .requiresTargetResolution(false)
+            .needsAdvancedRAG(false)
             .build();
 
         PipelineContext effectiveContext = pipelineContext;
@@ -1929,8 +1955,10 @@ public class IntentHandlingStep implements PipelineStep {
                 metadata,
                 ragBudgets,
                 vectorSpaceSelectionRequired,
-                deterministic,
                 fanoutAllowed,
+                semanticRecoveryPolicy(pipelineContext).missingVectorSpace()
+                    == OrchestrationProperties.MissingVectorSpaceRecovery.BOUNDED_ALLOWED_FAN_OUT
+                    && hasExplicitBoundedFanOutBudget(ragBudgets),
                 readActionResolution,
                 entityConfigurationLoader,
                 vectorSpaceSelectionSupport
@@ -1994,25 +2022,43 @@ public class IntentHandlingStep implements PipelineStep {
                     advancedQuery,
                     metadata,
                     readActionResolution
-                );
+            );
             if (advanced != null) {
-                if (deepRetrievalEnabled
-                    && fanoutAllowed
+                boolean allowNoEvidenceRecovery = semanticRecoveryPolicy(pipelineContext).advancedNoEvidence()
+                    == OrchestrationProperties.AdvancedNoEvidenceRecovery.BOUNDED_ALLOWED_SPACE_RECOVERY;
+                boolean noEvidence = advanced.getType() == OrchestrationResultType.INFORMATION_PROVIDED
+                    && advanced.isSuccess()
                     && RagResultSummarySupport.isNoEvidenceRagResult(
                         advanced,
                         DATA_KEY_DOCUMENTS,
                         DATA_KEY_RAG_RESPONSE,
                         DATA_KEY_CONFIDENCE_SCORE,
                         RAG_NO_CONTEXT_MESSAGE
-                    )) {
-                    List<String> fallbackSpaces = vectorSpaceSelectionSupport.resolveAllVectorSpaces();
+                    );
+                if (allowNoEvidenceRecovery && noEvidence) {
+                    String recoveryBlockedReason = advancedRecoveryBlockedReason(
+                        deepRetrievalEnabled,
+                        fanoutAllowed,
+                        ragBudgets
+                    );
+                    if (recoveryBlockedReason != null) {
+                        attachAdvancedRecoveryDiagnostics(
+                            advanced,
+                            advancedRecoveryDiagnostics(false, recoveryBlockedReason, List.of())
+                        );
+                        return ReadActionResolutionSupport.attachDiagnostics(advanced, readActionResolution);
+                    }
+
+                    List<String> fallbackSpaces = ragBudgets != null && ragBudgets.hasVectorSpaceAllowlist()
+                        ? ragBudgets.retrievalVectorSpacesAllowlist()
+                        : vectorSpaceSelectionSupport.resolveAllVectorSpaces();
                     fallbackSpaces = vectorSpaceSelectionSupport.capVectorSpacesToBudget(fallbackSpaces, ragBudgets);
                     if (fallbackSpaces.size() > 1) {
-                        // Deep mode: when Advanced RAG returns no documents/confidence, broaden retrieval across
-                        // all configured spaces instead of returning a potentially
-                        // ungrounded generated answer.
+                        Map<String, Object> recoveryDiagnostics =
+                            advancedRecoveryDiagnostics(true, null, fallbackSpaces);
                         metadata.put("advancedRagFallback", true);
                         metadata.put("advancedRagFallbackReason", "NO_RELEVANT_RESULTS");
+                        metadata.put("advancedRagRecovery", recoveryDiagnostics);
 
                         vectorSpaces = fallbackSpaces;
                         intent.setVectorSpace(String.join(",", vectorSpaces));
@@ -2020,23 +2066,26 @@ public class IntentHandlingStep implements PipelineStep {
                         metadata.put("vectorSpacesSelected", vectorSpaces);
                         metadata.put("vectorSpacesSelectionSource", "ADVANCED_FALLBACK_FAN_OUT");
 
-                        return ReadActionResolutionSupport.attachDiagnostics(
-                            informationRagExecutionSupport.fanOut(
-                                intent,
-                                context,
-                                pipelineContext,
-                                deterministic,
-                                executeGeneration,
-                                generationQuery,
-                                retrievalQuery,
-                                metadata,
-                                vectorSpaces,
-                                ragBudgets,
-                                readActionResolution
-                            ),
+                        OrchestrationResult recovered = informationRagExecutionSupport.fanOut(
+                            intent,
+                            context,
+                            pipelineContext,
+                            deterministic,
+                            executeGeneration,
+                            generationQuery,
+                            retrievalQuery,
+                            metadata,
+                            vectorSpaces,
+                            ragBudgets,
                             readActionResolution
                         );
+                        attachAdvancedRecoveryDiagnostics(recovered, recoveryDiagnostics);
+                        return ReadActionResolutionSupport.attachDiagnostics(recovered, readActionResolution);
                     }
+                    attachAdvancedRecoveryDiagnostics(
+                        advanced,
+                        advancedRecoveryDiagnostics(false, "NO_ADDITIONAL_ALLOWED_SPACES", fallbackSpaces)
+                    );
                 }
                 return ReadActionResolutionSupport.attachDiagnostics(advanced, readActionResolution);
             }
@@ -2054,6 +2103,79 @@ public class IntentHandlingStep implements PipelineStep {
             readActionResolution
         );
         return ReadActionResolutionSupport.attachDiagnostics(result, readActionResolution);
+    }
+
+    private SemanticRecoveryPolicy semanticRecoveryPolicy(PipelineContext pipelineContext) {
+        OrchestrationPolicy policy = pipelineContext != null
+            ? pipelineContext.getOrchestrationPolicy()
+            : null;
+        return policy != null && policy.semanticRecoveryPolicy() != null
+            ? policy.semanticRecoveryPolicy()
+            : SemanticRecoveryPolicy.strictDefaults();
+    }
+
+    private boolean hasExplicitBoundedFanOutBudget(OrchestrationPolicy.RagBudgets ragBudgets) {
+        return ragBudgets != null
+            && Boolean.TRUE.equals(ragBudgets.fanoutEnabled())
+            && ragBudgets.maxSpaces() != null
+            && ragBudgets.maxSpaces() > 0;
+    }
+
+    private String advancedRecoveryBlockedReason(boolean deepRetrievalEnabled,
+                                                 boolean fanoutAllowed,
+                                                 OrchestrationPolicy.RagBudgets ragBudgets) {
+        if (!deepRetrievalEnabled) {
+            return "DEEP_RETRIEVAL_DISABLED";
+        }
+        if (!fanoutAllowed) {
+            return "FAN_OUT_DISABLED";
+        }
+        if (!hasExplicitBoundedFanOutBudget(ragBudgets)) {
+            return "EXPLICIT_FAN_OUT_BUDGET_REQUIRED";
+        }
+        return null;
+    }
+
+    private Map<String, Object> advancedRecoveryDiagnostics(boolean attempted,
+                                                            String blockedReason,
+                                                            List<String> selectedSpaces) {
+        Map<String, Object> diagnostics = new LinkedHashMap<>();
+        diagnostics.put("decision", "ADVANCED_RAG_NO_EVIDENCE");
+        diagnostics.put("originalSource", "ADVANCED_RAG_PROVIDER");
+        diagnostics.put("validationStatus", "NO_EVIDENCE");
+        diagnostics.put(
+            "recoveryPolicy",
+            OrchestrationProperties.AdvancedNoEvidenceRecovery.BOUNDED_ALLOWED_SPACE_RECOVERY.name()
+        );
+        diagnostics.put("recoveryAttempted", attempted);
+        diagnostics.put(
+            "effectiveSource",
+            attempted ? "EXPLICIT_RECOVERY_POLICY" : "ADVANCED_RAG_PROVIDER"
+        );
+        diagnostics.put(
+            "effectiveValue",
+            attempted ? "BOUNDED_ALLOWED_SPACE_FAN_OUT" : "NO_EVIDENCE"
+        );
+        if (blockedReason != null) {
+            diagnostics.put("recoveryBlockedReason", blockedReason);
+        }
+        if (selectedSpaces != null && !selectedSpaces.isEmpty()) {
+            diagnostics.put("selectedSpaces", List.copyOf(selectedSpaces));
+        }
+        return Collections.unmodifiableMap(diagnostics);
+    }
+
+    private void attachAdvancedRecoveryDiagnostics(OrchestrationResult result,
+                                                   Map<String, Object> diagnostics) {
+        if (result == null || diagnostics == null) {
+            return;
+        }
+        Map<String, Object> merged = new LinkedHashMap<>();
+        if (result.getMetadata() != null && !result.getMetadata().isEmpty()) {
+            merged.putAll(result.getMetadata());
+        }
+        merged.put("advancedRagRecovery", diagnostics);
+        result.setMetadata(Collections.unmodifiableMap(merged));
     }
 
     // Retrieval queries must always be derived from the user's actual query (PII-processed if enabled),

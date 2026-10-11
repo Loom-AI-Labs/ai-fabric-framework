@@ -134,5 +134,16 @@ public class AIGovernanceProperties {
          * Enables content filtering services.
          */
         private boolean enabled = false;
+
+        /**
+         * Stable identifier of the primary {@link ai.fabric.filter.ContentModerationProvider}.
+         * May be omitted only when exactly one provider bean exists.
+         */
+        private String primaryProvider;
+
+        /**
+         * Ordered, explicitly named recovery providers. Empty means fail closed without failover.
+         */
+        private List<String> recoveryProviders = List.of();
     }
 }

@@ -14,8 +14,12 @@ import org.springframework.lang.Nullable;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.UUID;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
@@ -44,8 +48,29 @@ public class AIEmbeddingService {
         String providerName,
         String effectiveModel,
         Long providerProcessingTimeMs,
-        Long serviceProcessingTimeMs
+        Long serviceProcessingTimeMs,
+        Map<String, Object> providerRecovery
     ) {
+        public EmbeddingExecution {
+            providerRecovery = providerRecovery != null ? Map.copyOf(providerRecovery) : Map.of();
+        }
+
+        public EmbeddingExecution(AIEmbeddingResponse response,
+                                  boolean cacheHit,
+                                  String providerName,
+                                  String effectiveModel,
+                                  Long providerProcessingTimeMs,
+                                  Long serviceProcessingTimeMs) {
+            this(
+                response,
+                cacheHit,
+                providerName,
+                effectiveModel,
+                providerProcessingTimeMs,
+                serviceProcessingTimeMs,
+                Map.of()
+            );
+        }
     }
 
     private record GeneratedEmbedding(
@@ -57,8 +82,7 @@ public class AIEmbeddingService {
     private final AIProviderConfig config;
     private final EmbeddingProvider embeddingProvider;
     private final CacheManager cacheManager;
-    private final EmbeddingProvider fallbackEmbeddingProvider;
-    private final boolean fallbackEnabled;
+    private final Map<String, EmbeddingProvider> embeddingProvidersByName;
     
     // Performance metrics
     private final AtomicLong totalEmbeddingsGenerated = new AtomicLong(0);
@@ -70,11 +94,32 @@ public class AIEmbeddingService {
                               EmbeddingProvider embeddingProvider,
                               CacheManager cacheManager,
                               @Nullable EmbeddingProvider fallbackEmbeddingProvider) {
+        this(
+            config,
+            embeddingProvider,
+            cacheManager,
+            fallbackEmbeddingProvider,
+            fallbackEmbeddingProvider != null
+                ? List.of(embeddingProvider, fallbackEmbeddingProvider)
+                : List.of(embeddingProvider)
+        );
+    }
+
+    public AIEmbeddingService(AIProviderConfig config,
+                              EmbeddingProvider embeddingProvider,
+                              CacheManager cacheManager,
+                              @Nullable EmbeddingProvider fallbackEmbeddingProvider,
+                              List<EmbeddingProvider> embeddingProviders) {
         this.config = config;
         this.embeddingProvider = embeddingProvider;
         this.cacheManager = cacheManager;
-        this.fallbackEmbeddingProvider = fallbackEmbeddingProvider;
-        this.fallbackEnabled = config.getEnableFallback() != null ? config.getEnableFallback() : true;
+        LinkedHashMap<String, EmbeddingProvider> providers = new LinkedHashMap<>();
+        registerProvider(providers, embeddingProvider);
+        if (embeddingProviders != null) {
+            embeddingProviders.forEach(provider -> registerProvider(providers, provider));
+        }
+        registerProvider(providers, fallbackEmbeddingProvider);
+        this.embeddingProvidersByName = Map.copyOf(providers);
     }
     
     /**
@@ -98,66 +143,113 @@ public class AIEmbeddingService {
         AIEmbeddingResponse cachedResponse = getFromCache(cache, cacheKey);
         if (cachedResponse != null) {
             recordCacheHit(providerName);
+            Map<String, Object> recovery = providerRecovery(providerName, providerName, false, List.of(
+                providerAttempt(providerName, "CACHE_HIT")
+            ));
             return new EmbeddingExecution(
-                cachedResponse,
+                withProviderDiagnostics(cachedResponse, providerName, recovery),
                 true,
                 providerName,
                 effectiveModel,
                 null,
-                0L
+                0L,
+                recovery
             );
         }
 
         try {
             GeneratedEmbedding generated = generateAndCache(request, embeddingProvider, cache, cacheKey);
             AIEmbeddingResponse response = generated.response();
+            Map<String, Object> recovery = providerRecovery(providerName, providerName, false, List.of(
+                providerAttempt(providerName, "SUCCEEDED")
+            ));
             return new EmbeddingExecution(
-                response,
+                withProviderDiagnostics(response, providerName, recovery),
                 false,
                 providerName,
                 effectiveModel,
                 response != null ? response.getProcessingTimeMs() : null,
-                generated.serviceProcessingTimeMs()
+                generated.serviceProcessingTimeMs(),
+                recovery
             );
-        } catch (AIServiceException primaryException) {
-            log.warn("Primary embedding provider {} failed: {}", providerName, primaryException.getMessage());
-            if (!fallbackEnabled || fallbackEmbeddingProvider == null || !fallbackEmbeddingProvider.isAvailable()) {
-                throw primaryException;
+        } catch (RuntimeException primaryException) {
+            log.warn(
+                "Primary embedding provider {} failed; cause={}",
+                providerName,
+                primaryException.getClass().getSimpleName()
+            );
+            List<EmbeddingProvider> fallbackProviders = resolveFallbackProviders(providerName);
+            if (fallbackProviders.isEmpty()) {
+                throw embeddingFailure("Primary embedding provider failed", primaryException);
             }
 
-            String fallbackName = fallbackEmbeddingProvider.getProviderName();
-            log.info("Falling back to embedding provider: {}", fallbackName);
+            List<Map<String, Object>> attempts = new ArrayList<>();
+            attempts.add(providerAttempt(providerName, "FAILED"));
+            RuntimeException lastFailure = primaryException;
+            for (EmbeddingProvider fallbackProvider : fallbackProviders) {
+                String fallbackName = fallbackProvider.getProviderName();
+                log.info("Trying configured embedding fallback provider: {}", fallbackName);
+                String fallbackEffectiveModel = resolveEffectiveModel(request, fallbackName);
+                String fallbackCacheKey = buildCacheKey(request, fallbackEffectiveModel, fallbackName);
+                AIEmbeddingResponse fallbackCached = getFromCache(cache, fallbackCacheKey);
+                if (fallbackCached != null) {
+                    recordCacheHit(fallbackName);
+                    attempts.add(providerAttempt(fallbackName, "CACHE_HIT"));
+                    Map<String, Object> recovery = providerRecovery(
+                        providerName,
+                        fallbackName,
+                        true,
+                        attempts
+                    );
+                    return new EmbeddingExecution(
+                        withProviderDiagnostics(fallbackCached, fallbackName, recovery),
+                        true,
+                        fallbackName,
+                        fallbackEffectiveModel,
+                        null,
+                        0L,
+                        recovery
+                    );
+                }
 
-            String fallbackEffectiveModel = resolveEffectiveModel(request, fallbackName);
-            String fallbackCacheKey = buildCacheKey(request, fallbackEffectiveModel, fallbackName);
-            AIEmbeddingResponse fallbackCached = getFromCache(cache, fallbackCacheKey);
-            if (fallbackCached != null) {
-                recordCacheHit(fallbackName);
-                return new EmbeddingExecution(
-                    fallbackCached,
-                    true,
-                    fallbackName,
-                    fallbackEffectiveModel,
-                    null,
-                    0L
-                );
+                try {
+                    GeneratedEmbedding generated = generateAndCache(
+                        request,
+                        fallbackProvider,
+                        cache,
+                        fallbackCacheKey
+                    );
+                    AIEmbeddingResponse fallbackResponse = generated.response();
+                    attempts.add(providerAttempt(fallbackName, "SUCCEEDED"));
+                    Map<String, Object> recovery = providerRecovery(
+                        providerName,
+                        fallbackName,
+                        true,
+                        attempts
+                    );
+                    return new EmbeddingExecution(
+                        withProviderDiagnostics(fallbackResponse, fallbackName, recovery),
+                        false,
+                        fallbackName,
+                        fallbackEffectiveModel,
+                        fallbackResponse != null ? fallbackResponse.getProcessingTimeMs() : null,
+                        generated.serviceProcessingTimeMs(),
+                        recovery
+                    );
+                } catch (RuntimeException fallbackException) {
+                    log.warn(
+                        "Embedding fallback provider {} failed; cause={}",
+                        fallbackName,
+                        fallbackException.getClass().getSimpleName()
+                    );
+                    attempts.add(providerAttempt(fallbackName, "FAILED"));
+                    if (lastFailure != fallbackException) {
+                        fallbackException.addSuppressed(lastFailure);
+                    }
+                    lastFailure = fallbackException;
+                }
             }
-
-            try {
-                GeneratedEmbedding generated = generateAndCache(request, fallbackEmbeddingProvider, cache, fallbackCacheKey);
-                AIEmbeddingResponse fallbackResponse = generated.response();
-                return new EmbeddingExecution(
-                    fallbackResponse,
-                    false,
-                    fallbackName,
-                    fallbackEffectiveModel,
-                    fallbackResponse != null ? fallbackResponse.getProcessingTimeMs() : null,
-                    generated.serviceProcessingTimeMs()
-                );
-            } catch (AIServiceException fallbackException) {
-                log.error("Fallback embedding provider {} also failed", fallbackName, fallbackException);
-                throw fallbackException;
-            }
+            throw new AIServiceException("Configured embedding provider chain failed", lastFailure);
         }
     }
     
@@ -171,6 +263,7 @@ public class AIEmbeddingService {
      * @return list of embedding responses
      */
     public List<AIEmbeddingResponse> generateEmbeddings(List<String> texts, String entityType) {
+        String primaryName = embeddingProvider != null ? embeddingProvider.getProviderName() : "unknown";
         try {
             if (embeddingProvider == null || !embeddingProvider.isAvailable()) {
                 throw new AIServiceException("Embedding provider is not available");
@@ -192,12 +285,55 @@ public class AIEmbeddingService {
             
             log.debug("Successfully generated {} embeddings in {}ms using {} provider", 
                 responses.size(), processingTime, embeddingProvider.getProviderName());
-            
-            return responses;
-                
-        } catch (Exception e) {
-            log.error("Error generating batch embeddings", e);
-            throw new AIServiceException("Failed to generate batch embeddings", e);
+
+            Map<String, Object> recovery = providerRecovery(primaryName, primaryName, false, List.of(
+                providerAttempt(primaryName, "SUCCEEDED")
+            ));
+            return withProviderDiagnostics(responses, primaryName, recovery);
+        } catch (RuntimeException primaryException) {
+            log.warn(
+                "Primary batch embedding provider {} failed; cause={}",
+                primaryName,
+                primaryException.getClass().getSimpleName()
+            );
+            List<EmbeddingProvider> fallbackProviders = resolveFallbackProviders(primaryName);
+            if (fallbackProviders.isEmpty()) {
+                throw embeddingFailure("Failed to generate batch embeddings", primaryException);
+            }
+
+            List<Map<String, Object>> attempts = new ArrayList<>();
+            attempts.add(providerAttempt(primaryName, "FAILED"));
+            RuntimeException lastFailure = primaryException;
+            for (EmbeddingProvider fallbackProvider : fallbackProviders) {
+                String fallbackName = fallbackProvider.getProviderName();
+                try {
+                    long startTime = System.currentTimeMillis();
+                    List<AIEmbeddingResponse> responses = fallbackProvider.generateEmbeddings(texts);
+                    long processingTime = System.currentTimeMillis() - startTime;
+                    totalEmbeddingsGenerated.addAndGet(texts.size());
+                    totalProcessingTime.addAndGet(processingTime);
+                    attempts.add(providerAttempt(fallbackName, "SUCCEEDED"));
+                    Map<String, Object> recovery = providerRecovery(
+                        primaryName,
+                        fallbackName,
+                        true,
+                        attempts
+                    );
+                    return withProviderDiagnostics(responses, fallbackName, recovery);
+                } catch (RuntimeException fallbackException) {
+                    log.warn(
+                        "Batch embedding fallback provider {} failed; cause={}",
+                        fallbackName,
+                        fallbackException.getClass().getSimpleName()
+                    );
+                    attempts.add(providerAttempt(fallbackName, "FAILED"));
+                    if (lastFailure != fallbackException) {
+                        fallbackException.addSuppressed(lastFailure);
+                    }
+                    lastFailure = fallbackException;
+                }
+            }
+            throw new AIServiceException("Configured batch embedding provider chain failed", lastFailure);
         }
     }
     
@@ -212,11 +348,10 @@ public class AIEmbeddingService {
             return "";
         }
         
-        // Basic text preprocessing
-        return text.trim()
+        String normalized = text.trim()
             .replaceAll("\\s+", " ") // Replace multiple spaces with single space
-            .replaceAll("[\\r\\n]+", " ") // Replace line breaks with spaces
-            .substring(0, Math.min(text.length(), 8000)); // Limit to 8000 characters
+            .replaceAll("[\\r\\n]+", " "); // Replace line breaks with spaces
+        return normalized.substring(0, Math.min(normalized.length(), 8000));
     }
     
     /**
@@ -399,5 +534,162 @@ public class AIEmbeddingService {
             request != null ? request.getParameters() : null
         );
         return text + "_" + model + "_" + provider + "_" + connection;
+    }
+
+    private List<EmbeddingProvider> resolveFallbackProviders(String primaryProviderName) {
+        if (config == null
+            || !Boolean.TRUE.equals(config.getEnableFallback())
+            || primaryProviderName == null
+            || config.getEmbeddingFallbackProviders() == null
+            || config.getEmbeddingFallbackProviders().isEmpty()) {
+            return List.of();
+        }
+
+        LinkedHashSet<String> configuredNames = config.getEmbeddingFallbackProviders().stream()
+            .filter(Objects::nonNull)
+            .map(String::trim)
+            .filter(name -> !name.isEmpty())
+            .filter(name -> !name.equalsIgnoreCase(primaryProviderName))
+            .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
+        List<EmbeddingProvider> resolved = new ArrayList<>();
+        for (String configuredName : configuredNames) {
+            EmbeddingProvider provider = embeddingProvidersByName.get(normalizeProviderName(configuredName));
+            if (provider == null || !provider.isAvailable()) {
+                log.warn("Configured embedding fallback provider '{}' is unavailable", configuredName);
+                continue;
+            }
+            if (!hasCompatibleDataPolicy(primaryProviderName, provider.getProviderName())) {
+                log.warn(
+                    "Embedding fallback transition {} -> {} denied because data-policy labels are absent or differ",
+                    primaryProviderName,
+                    provider.getProviderName()
+                );
+                continue;
+            }
+            if (!hasCompatibleEmbeddingSpace(primaryProviderName, provider.getProviderName())) {
+                log.warn(
+                    "Embedding fallback transition {} -> {} denied because embedding compatibility groups are absent or differ",
+                    primaryProviderName,
+                    provider.getProviderName()
+                );
+                continue;
+            }
+            resolved.add(provider);
+        }
+        return List.copyOf(resolved);
+    }
+
+    private boolean hasCompatibleDataPolicy(String primaryProviderName, String fallbackProviderName) {
+        Map<String, String> labels = config.getProviderDataPolicies();
+        String primary = providerLabel(labels, primaryProviderName);
+        String fallback = providerLabel(labels, fallbackProviderName);
+        return primary != null && primary.equals(fallback);
+    }
+
+    private boolean hasCompatibleEmbeddingSpace(String primaryProviderName, String fallbackProviderName) {
+        Map<String, String> groups = config.getEmbeddingCompatibilityGroups();
+        String primary = providerLabel(groups, primaryProviderName);
+        String fallback = providerLabel(groups, fallbackProviderName);
+        return primary != null && primary.equals(fallback);
+    }
+
+    private String providerLabel(Map<String, String> labels, String providerName) {
+        if (labels == null || labels.isEmpty() || providerName == null) {
+            return null;
+        }
+        return labels.entrySet().stream()
+            .filter(entry -> entry.getKey() != null && entry.getValue() != null)
+            .filter(entry -> providerName.equalsIgnoreCase(entry.getKey().trim()))
+            .map(Map.Entry::getValue)
+            .map(String::trim)
+            .filter(value -> !value.isEmpty())
+            .findFirst()
+            .orElse(null);
+    }
+
+    private void registerProvider(Map<String, EmbeddingProvider> providers, EmbeddingProvider provider) {
+        if (providers == null || provider == null || provider.getProviderName() == null) {
+            return;
+        }
+        String normalizedName = normalizeProviderName(provider.getProviderName());
+        if (!normalizedName.isEmpty()) {
+            providers.putIfAbsent(normalizedName, provider);
+        }
+    }
+
+    private String normalizeProviderName(String providerName) {
+        return providerName == null ? "" : providerName.trim().toLowerCase(java.util.Locale.ROOT);
+    }
+
+    private Map<String, Object> providerRecovery(String originalProvider,
+                                                 String effectiveProvider,
+                                                 boolean transitioned,
+                                                 List<Map<String, Object>> attempts) {
+        Map<String, Object> recovery = new LinkedHashMap<>();
+        recovery.put("policy", transitioned ? "NAMED_COMPATIBLE_CHAIN" : "PRIMARY_ONLY");
+        recovery.put("originalProvider", originalProvider);
+        recovery.put("effectiveProvider", effectiveProvider);
+        recovery.put("transitioned", transitioned);
+        if (transitioned) {
+            String compatibilityGroup = providerLabel(
+                config != null ? config.getEmbeddingCompatibilityGroups() : null,
+                effectiveProvider
+            );
+            if (compatibilityGroup != null) {
+                recovery.put("embeddingCompatibilityGroup", compatibilityGroup);
+            }
+        }
+        recovery.put("attempts", attempts != null ? List.copyOf(attempts) : List.of());
+        return Map.copyOf(recovery);
+    }
+
+    private Map<String, Object> providerAttempt(String provider, String status) {
+        return Map.of(
+            "provider", provider != null ? provider : "unknown",
+            "status", status
+        );
+    }
+
+    private List<AIEmbeddingResponse> withProviderDiagnostics(
+        List<AIEmbeddingResponse> responses,
+        String providerName,
+        Map<String, Object> recovery
+    ) {
+        if (responses == null || responses.isEmpty()) {
+            return List.of();
+        }
+        return responses.stream()
+            .map(response -> withProviderDiagnostics(response, providerName, recovery))
+            .toList();
+    }
+
+    private AIEmbeddingResponse withProviderDiagnostics(
+        AIEmbeddingResponse response,
+        String providerName,
+        Map<String, Object> recovery
+    ) {
+        if (response == null) {
+            throw new AIServiceException("Embedding provider returned a null response");
+        }
+        Map<String, Object> metadata = new LinkedHashMap<>();
+        if (response.getMetadata() != null) {
+            metadata.putAll(response.getMetadata());
+        }
+        metadata.put("providerRecovery", recovery != null ? Map.copyOf(recovery) : Map.of());
+        return AIEmbeddingResponse.builder()
+            .embedding(response.getEmbedding())
+            .model(response.getModel())
+            .dimensions(response.getDimensions())
+            .processingTimeMs(response.getProcessingTimeMs())
+            .requestId(response.getRequestId())
+            .provider(providerName)
+            .metadata(Map.copyOf(metadata))
+            .build();
+    }
+
+    private AIServiceException embeddingFailure(String message, RuntimeException cause) {
+        return cause instanceof AIServiceException aiServiceException
+            ? aiServiceException
+            : new AIServiceException(message, cause);
     }
 }

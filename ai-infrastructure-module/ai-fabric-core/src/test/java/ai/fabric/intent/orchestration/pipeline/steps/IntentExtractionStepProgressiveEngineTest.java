@@ -8,11 +8,13 @@ import ai.fabric.execution.context.ExecutionPrincipalType;
 import ai.fabric.execution.context.ExecutionSource;
 import ai.fabric.execution.context.ExecutionSubjectRef;
 import ai.fabric.execution.context.TrustedExecutionContext;
+import ai.fabric.intent.IntentExtractionValidator;
 import ai.fabric.intent.IntentQueryExtractor;
 import ai.fabric.intent.extraction.IntentExtractionInput;
 import ai.fabric.intent.extraction.ProgressiveIntentExtractionEngine;
 import ai.fabric.intent.orchestration.OrchestrationContext;
 import ai.fabric.intent.orchestration.pipeline.PipelineContext;
+import ai.fabric.intent.orchestration.policy.SemanticRecoveryPolicy;
 import ai.fabric.intent.orchestration.request.ConversationPersistencePolicy;
 import ai.fabric.intent.orchestration.request.OrchestrationIntentPolicy;
 import ai.fabric.intent.orchestration.request.OrchestrationRequest;
@@ -117,7 +119,8 @@ class IntentExtractionStepProgressiveEngineTest {
             .build();
         when(engine.extract(
             any(IntentExtractionInput.class),
-            any(OrchestrationContext.class)
+            any(OrchestrationContext.class),
+            any(SemanticRecoveryPolicy.class)
         )).thenReturn(
             new ProgressiveIntentExtractionEngine.ExtractionOutput(
                 response,
@@ -182,7 +185,8 @@ class IntentExtractionStepProgressiveEngineTest {
             .build();
         when(engine.extract(
             any(IntentExtractionInput.class),
-            any(OrchestrationContext.class)
+            any(OrchestrationContext.class),
+            any(SemanticRecoveryPolicy.class)
         )).thenReturn(
             new ProgressiveIntentExtractionEngine.ExtractionOutput(
                 response,
@@ -227,7 +231,8 @@ class IntentExtractionStepProgressiveEngineTest {
             .build();
         when(engine.extract(
             any(IntentExtractionInput.class),
-            any(OrchestrationContext.class)
+            any(OrchestrationContext.class),
+            any(SemanticRecoveryPolicy.class)
         )).thenReturn(
             new ProgressiveIntentExtractionEngine.ExtractionOutput(
                 fallback,
@@ -306,7 +311,8 @@ class IntentExtractionStepProgressiveEngineTest {
             .build();
         when(engine.extract(
             any(IntentExtractionInput.class),
-            any(OrchestrationContext.class)
+            any(OrchestrationContext.class),
+            any(SemanticRecoveryPolicy.class)
         )).thenReturn(
             new ProgressiveIntentExtractionEngine.ExtractionOutput(
                 fallback,
@@ -343,6 +349,59 @@ class IntentExtractionStepProgressiveEngineTest {
     }
 
     @Test
+    void missingTargetDecisionUsesTheTypedClarificationPolicy() {
+        PipelineContext updated = processTypedFailure(
+            IntentExtractionValidator.IssueCode.INTENT_MISSING_TARGET_DECISION
+        );
+
+        assertThat(updated.getEarlyTerminationResult().getType())
+            .isEqualTo(ai.fabric.intent.orchestration.OrchestrationResultType.CLARIFICATION_REQUIRED);
+        assertThat(updated.getEarlyTerminationResult().getErrorCode())
+            .isEqualTo("INTENT_TARGET_DECISION_MISSING");
+        assertThat(semanticDecision(updated))
+            .containsEntry("decision", "TARGET_RESOLUTION_REQUIREMENT")
+            .containsEntry("recoveryPolicy", "LLM_REPAIR_THEN_CLARIFY")
+            .containsEntry("recoveryAttempted", true)
+            .containsEntry("modelCalls", 2);
+    }
+
+    @Test
+    void missingVectorSpaceDecisionUsesTheTypedClarificationPolicy() {
+        PipelineContext updated = processTypedFailure(
+            IntentExtractionValidator.IssueCode.INFORMATION_MISSING_VECTOR_SPACE
+        );
+
+        assertThat(updated.getEarlyTerminationResult().getType())
+            .isEqualTo(ai.fabric.intent.orchestration.OrchestrationResultType.CLARIFICATION_REQUIRED);
+        assertThat(updated.getEarlyTerminationResult().getErrorCode())
+            .isEqualTo("INTENT_VECTOR_SPACE_DECISION_MISSING");
+        assertThat(semanticDecision(updated))
+            .containsEntry("decision", "VECTOR_SPACE_SELECTION")
+            .containsEntry("recoveryPolicy", "LLM_REPAIR_THEN_CLARIFY")
+            .containsEntry(
+                "issueCodes",
+                List.of("INFORMATION_MISSING_VECTOR_SPACE")
+            );
+    }
+
+    @Test
+    void invalidVectorSpaceDecisionFailsUnderTheStrictTypedPolicy() {
+        PipelineContext updated = processTypedFailure(
+            IntentExtractionValidator.IssueCode.INFORMATION_INVALID_VECTOR_SPACE
+        );
+
+        assertThat(updated.getEarlyTerminationResult().getType())
+            .isEqualTo(ai.fabric.intent.orchestration.OrchestrationResultType.ERROR);
+        assertThat(updated.getEarlyTerminationResult().getErrorCode())
+            .isEqualTo("INTENT_VECTOR_SPACE_DECISION_INVALID");
+        assertThat(semanticDecision(updated))
+            .containsEntry("decision", "VECTOR_SPACE_SELECTION")
+            .containsEntry("recoveryPolicy", "LLM_REPAIR_THEN_FAIL")
+            .containsEntry("effectiveSource", "NONE")
+            .containsEntry("effectiveValue", "FAILURE");
+    }
+
+    @Test
     void shouldUseProgressiveEngineWhenAvailableAndAttachDiagnostics() {
         IntentQueryExtractor extractor = mock(IntentQueryExtractor.class);
         ProgressiveIntentExtractionEngine engine = mock(ProgressiveIntentExtractionEngine.class);
@@ -358,7 +417,11 @@ class IntentExtractionStepProgressiveEngineTest {
         ProgressiveIntentExtractionEngine.ExtractionOutput output =
             new ProgressiveIntentExtractionEngine.ExtractionOutput(response, Map.of("extractionPath", "compound"));
 
-        when(engine.extract(any(IntentExtractionInput.class), any(OrchestrationContext.class))).thenReturn(output);
+        when(engine.extract(
+            any(IntentExtractionInput.class),
+            any(OrchestrationContext.class),
+            any(SemanticRecoveryPolicy.class)
+        )).thenReturn(output);
 
         IntentExtractionStep step = new IntentExtractionStep(extractor, provider);
         PipelineContext ctx = PipelineContext.from("q", OrchestrationContext.forUser("user"));
@@ -408,7 +471,8 @@ class IntentExtractionStepProgressiveEngineTest {
         );
         verify(engine, never()).extract(
             any(IntentExtractionInput.class),
-            any(OrchestrationContext.class)
+            any(OrchestrationContext.class),
+            any(SemanticRecoveryPolicy.class)
         );
         verify(extractor, never()).extractWithTrace(
             any(IntentExtractionInput.class),
@@ -477,7 +541,8 @@ class IntentExtractionStepProgressiveEngineTest {
             .build();
         when(engine.extract(
             any(IntentExtractionInput.class),
-            any(OrchestrationContext.class)
+            any(OrchestrationContext.class),
+            any(SemanticRecoveryPolicy.class)
         )).thenReturn(
             new ProgressiveIntentExtractionEngine.ExtractionOutput(
                 response,
@@ -508,10 +573,61 @@ class IntentExtractionStepProgressiveEngineTest {
 
         ArgumentCaptor<IntentExtractionInput> input =
             ArgumentCaptor.forClass(IntentExtractionInput.class);
-        verify(engine).extract(input.capture(), any(OrchestrationContext.class));
+        verify(engine).extract(
+            input.capture(),
+            any(OrchestrationContext.class),
+            any(SemanticRecoveryPolicy.class)
+        );
         assertThat(input.getValue().resolvedAuthContext().getSubjectId())
             .isEqualTo("account-42");
         assertThat(input.getValue().resolvedAuthContext().getCallerType())
             .isEqualTo("SERVICE");
+    }
+
+    private PipelineContext processTypedFailure(
+        IntentExtractionValidator.IssueCode issueCode
+    ) {
+        IntentQueryExtractor extractor = mock(IntentQueryExtractor.class);
+        ProgressiveIntentExtractionEngine engine =
+            mock(ProgressiveIntentExtractionEngine.class);
+        @SuppressWarnings("unchecked")
+        ObjectProvider<ProgressiveIntentExtractionEngine> provider =
+            mock(ObjectProvider.class);
+        when(provider.getIfAvailable()).thenReturn(engine);
+        Map<String, Object> originalValue = Map.of(
+            "strategy", "compound",
+            "issueCodes", List.of(issueCode.name())
+        );
+        when(engine.extract(
+            any(IntentExtractionInput.class),
+            any(OrchestrationContext.class),
+            any(SemanticRecoveryPolicy.class)
+        )).thenReturn(new ProgressiveIntentExtractionEngine.ExtractionOutput(
+            null,
+            Map.of(
+                "extractionPath", "failed",
+                "semanticDecision", Map.of(
+                    "originalValue", originalValue,
+                    "recoveryAttempted", true,
+                    "modelCalls", 2
+                )
+            ),
+            new ProgressiveIntentExtractionEngine.ExtractionFailure(
+                "INTENT_EXTRACTION_FAILED",
+                "AI intent analysis did not produce a valid result.",
+                false,
+                List.of(issueCode)
+            )
+        ));
+        return new IntentExtractionStep(extractor, provider).process(
+            PipelineContext.from("q", OrchestrationContext.forUser("user"))
+        );
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> semanticDecision(PipelineContext context) {
+        return (Map<String, Object>) context.getEarlyTerminationResult()
+            .getMetadata()
+            .get("semanticDecision");
     }
 }

@@ -19,7 +19,7 @@ public class VectorSpaceRoutingProperties {
     /**
      * Routing strategy.
      */
-    private Strategy strategy = Strategy.BOUNDED_FAN_OUT;
+    private Strategy strategy = Strategy.CLARIFICATION;
 
     /**
      * Maximum number of spaces to consider in fan-out mode.
@@ -56,7 +56,6 @@ public class VectorSpaceRoutingProperties {
     private double clarificationThreshold = 0.4d;
 
     public enum Strategy {
-        HEURISTIC,
         BOUNDED_FAN_OUT,
         CLARIFICATION
     }

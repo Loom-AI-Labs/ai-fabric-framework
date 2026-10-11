@@ -5,6 +5,8 @@ import ai.fabric.dto.IntentType;
 import ai.fabric.dto.MultiIntentResponse;
 import ai.fabric.intent.action.AIActionMetaData;
 import ai.fabric.intent.action.AIActionRegistry;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
@@ -27,6 +29,9 @@ import java.util.Set;
 public class IntentExtractionValidator {
 
     private final AIActionRegistry actionHandlerRegistry;
+
+    @Autowired(required = false)
+    private ObjectProvider<KnowledgeBaseOverviewService> knowledgeBaseOverviewServiceProvider;
 
     public ValidationResult validate(MultiIntentResponse response) {
         return validate(response, null);
@@ -53,13 +58,23 @@ public class IntentExtractionValidator {
         }
 
         for (int i = 0; i < response.getIntents().size(); i++) {
-            validateIntent(response.getIntents().get(i), i, issues, originalQuery);
+            validateIntent(
+                response.getIntents().get(i),
+                i,
+                issues,
+                originalQuery,
+                response.getIntents().size() > 1
+            );
         }
 
         return toResult(issues);
     }
 
-    private void validateIntent(Intent intent, int index, List<ValidationIssue> issues, String originalQuery) {
+    private void validateIntent(Intent intent,
+                                int index,
+                                List<ValidationIssue> issues,
+                                String originalQuery,
+                                boolean compound) {
         if (intent == null) {
             issues.add(ValidationIssue.error(IssueCode.INTENT_NULL, index, null, "Intent is null"));
             return;
@@ -72,6 +87,49 @@ public class IntentExtractionValidator {
         // Provider-agnostic tolerance: OUT_OF_SCOPE intents may omit intent/action names.
         if (!intent.hasMeaningfulName() && intent.getType() != IntentType.OUT_OF_SCOPE) {
             issues.add(ValidationIssue.error(IssueCode.INTENT_MISSING_NAME, index, "intent", "Missing intent name (intent or action field)"));
+        }
+
+        if (intent.getRequiresRetrieval() == null) {
+            issues.add(ValidationIssue.error(
+                IssueCode.INTENT_MISSING_RETRIEVAL_DECISION,
+                index,
+                "requiresRetrieval",
+                "Missing requiresRetrieval semantic decision"
+            ));
+        }
+        if (intent.getRequiresGeneration() == null) {
+            issues.add(ValidationIssue.error(
+                IssueCode.INTENT_MISSING_GENERATION_DECISION,
+                index,
+                "requiresGeneration",
+                "Missing requiresGeneration semantic decision"
+            ));
+        }
+        if (intent.getRequiresTargetResolution() == null) {
+            issues.add(ValidationIssue.error(
+                IssueCode.INTENT_MISSING_TARGET_DECISION,
+                index,
+                "requiresTargetResolution",
+                "Missing requiresTargetResolution semantic decision"
+            ));
+        }
+        if (compound && !StringUtils.hasText(intent.getObligationId())) {
+            issues.add(ValidationIssue.error(
+                IssueCode.INTENT_MISSING_OBLIGATION_ID,
+                index,
+                "obligationId",
+                "Compound intent is missing an obligationId"
+            ));
+        }
+        if (intent.getMissingInformation() != null
+            && !intent.getMissingInformation().isEmpty()
+            && !StringUtils.hasText(intent.getClarificationQuestion())) {
+            issues.add(ValidationIssue.error(
+                IssueCode.INTENT_MISSING_CLARIFICATION_QUESTION,
+                index,
+                "clarificationQuestion",
+                "Intent declares missing information without a clarificationQuestion"
+            ));
         }
 
         if (intent.getType() == IntentType.ACTION) {
@@ -105,6 +163,8 @@ public class IntentExtractionValidator {
             issues.add(ValidationIssue.error(IssueCode.ACTION_UNREGISTERED, index, "action", "No handler registered for action '" + canonical + "'"));
             return;
         }
+
+        validateActionGroundingScope(intent, meta, index, issues);
 
         if ("relationship_query".equalsIgnoreCase(canonical)) {
             validateRelationshipQueryPostActionContract(intent, index, originalQuery, issues);
@@ -196,6 +256,14 @@ public class IntentExtractionValidator {
     }
 
     private void validateInformationIntent(Intent intent, int index, List<ValidationIssue> issues) {
+        if (intent.getNeedsAdvancedRAG() == null) {
+            issues.add(ValidationIssue.error(
+                IssueCode.INFORMATION_MISSING_ADVANCED_RAG_DECISION,
+                index,
+                "needsAdvancedRAG",
+                "INFORMATION intent is missing needsAdvancedRAG semantic decision"
+            ));
+        }
         if (Boolean.FALSE.equals(intent.getRequiresRetrieval())) {
             if (!StringUtils.hasText(intent.getDirectAnswer())) {
                 issues.add(ValidationIssue.warn(
@@ -207,14 +275,85 @@ public class IntentExtractionValidator {
             }
             return;
         }
-        if (Boolean.TRUE.equals(intent.getRequiresRetrieval()) && !StringUtils.hasText(intent.getVectorSpace())) {
-            issues.add(ValidationIssue.warn(
+        if (Boolean.TRUE.equals(intent.getRequiresRetrieval())
+            && !StringUtils.hasText(intent.getVectorSpace())
+            && !hasDeclaredClarification(intent)) {
+            issues.add(ValidationIssue.error(
                 IssueCode.INFORMATION_MISSING_VECTOR_SPACE,
                 index,
                 "vectorSpace",
                 "INFORMATION intent requires retrieval but vectorSpace is missing"
             ));
+        } else if (Boolean.TRUE.equals(intent.getRequiresRetrieval())
+            && StringUtils.hasText(intent.getVectorSpace())) {
+            validateRegisteredVectorSpaces(intent, index, issues);
         }
+    }
+
+    private boolean hasDeclaredClarification(Intent intent) {
+        return intent != null
+            && intent.getMissingInformation() != null
+            && !intent.getMissingInformation().isEmpty()
+            && StringUtils.hasText(intent.getClarificationQuestion());
+    }
+
+    private void validateActionGroundingScope(Intent intent,
+                                              AIActionMetaData metadata,
+                                              int index,
+                                              List<ValidationIssue> issues) {
+        if (intent == null
+            || metadata == null
+            || metadata.getGroundingVectorSpaces() == null
+            || metadata.getGroundingVectorSpaces().isEmpty()
+            || !StringUtils.hasText(intent.getVectorSpace())) {
+            return;
+        }
+        Set<String> actionSpaces = normalizeVectorSpaces(metadata.getGroundingVectorSpaces());
+        Set<String> selectedSpaces = normalizeVectorSpaces(List.of(intent.getVectorSpace().split(",")));
+        if (!actionSpaces.isEmpty()
+            && !selectedSpaces.isEmpty()
+            && actionSpaces.stream().noneMatch(selectedSpaces::contains)) {
+            issues.add(ValidationIssue.error(
+                IssueCode.ACTION_GROUNDING_VECTOR_SPACE_MISMATCH,
+                index,
+                "vectorSpace",
+                "Selected action cannot provide evidence for the selected vector space"
+            ));
+        }
+    }
+
+    private void validateRegisteredVectorSpaces(Intent intent,
+                                                int index,
+                                                List<ValidationIssue> issues) {
+        KnowledgeBaseOverviewService service = knowledgeBaseOverviewServiceProvider != null
+            ? knowledgeBaseOverviewServiceProvider.getIfAvailable()
+            : null;
+        KnowledgeBaseOverview overview = service != null ? service.getOverview() : null;
+        if (overview == null || overview.getEntityTypes() == null || overview.getEntityTypes().isEmpty()) {
+            return;
+        }
+        Set<String> registered = normalizeVectorSpaces(overview.getEntityTypes());
+        Set<String> selected = normalizeVectorSpaces(List.of(intent.getVectorSpace().split(",")));
+        List<String> invalid = selected.stream().filter(space -> !registered.contains(space)).toList();
+        if (!invalid.isEmpty()) {
+            issues.add(ValidationIssue.error(
+                IssueCode.INFORMATION_INVALID_VECTOR_SPACE,
+                index,
+                "vectorSpace",
+                "INFORMATION intent selected unregistered vector space(s): " + String.join(", ", invalid)
+            ));
+        }
+    }
+
+    private Set<String> normalizeVectorSpaces(java.util.Collection<String> values) {
+        if (values == null || values.isEmpty()) {
+            return Set.of();
+        }
+        return values.stream()
+            .filter(StringUtils::hasText)
+            .map(String::trim)
+            .map(value -> value.toLowerCase(Locale.ROOT))
+            .collect(java.util.stream.Collectors.toCollection(java.util.LinkedHashSet::new));
     }
 
     public enum ErrorCategory {
@@ -236,13 +375,22 @@ public class IntentExtractionValidator {
         INTENT_NULL,
         INTENT_MISSING_TYPE,
         INTENT_MISSING_NAME,
+        INTENT_MISSING_RETRIEVAL_DECISION,
+        INTENT_MISSING_GENERATION_DECISION,
+        INTENT_MISSING_TARGET_DECISION,
+        INTENT_MISSING_OBLIGATION_ID,
+        INTENT_MISSING_CLARIFICATION_QUESTION,
         ACTION_MISSING_NAME,
         ACTION_REGISTRY_UNAVAILABLE,
         ACTION_UNREGISTERED,
         ACTION_REQUIRED_PARAM_MISSING,
+        ACTION_GROUNDING_VECTOR_SPACE_MISMATCH,
+        SEMANTIC_RECOVERY_NOT_ALLOWED,
         RELATIONSHIP_QUERY_HINTED_TAIL_MISSING,
         INFORMATION_DIRECT_ANSWER_MISSING,
-        INFORMATION_MISSING_VECTOR_SPACE
+        INFORMATION_MISSING_VECTOR_SPACE,
+        INFORMATION_INVALID_VECTOR_SPACE,
+        INFORMATION_MISSING_ADVANCED_RAG_DECISION
     }
 
     public record ValidationIssue(
@@ -305,25 +453,45 @@ public class IntentExtractionValidator {
             return ErrorCategory.NONE;
         }
 
-        for (ValidationIssue issue : issues) {
-            if (issue == null || issue.code() == null || issue.severity() != Severity.ERROR) {
-                continue;
-            }
-            switch (issue.code()) {
-                case RESPONSE_NULL, INTENT_NULL, INTENT_MISSING_TYPE, INTENT_MISSING_NAME, ACTION_MISSING_NAME -> {
-                    return ErrorCategory.STRUCTURAL;
-                }
-                case ACTION_UNREGISTERED -> {
-                    return ErrorCategory.UNSAFE;
-                }
-                case ACTION_REQUIRED_PARAM_MISSING, RELATIONSHIP_QUERY_HINTED_TAIL_MISSING -> {
-                    return ErrorCategory.INCOMPLETE;
-                }
-                default -> {
-                    // keep scanning
-                }
-            }
+        if (hasIssue(issues, Set.of(
+            IssueCode.RESPONSE_NULL,
+            IssueCode.INTENT_NULL,
+            IssueCode.INTENT_MISSING_TYPE,
+            IssueCode.INTENT_MISSING_NAME,
+            IssueCode.ACTION_MISSING_NAME
+        ))) {
+            return ErrorCategory.STRUCTURAL;
+        }
+        if (hasIssue(issues, Set.of(
+            IssueCode.ACTION_UNREGISTERED,
+            IssueCode.SEMANTIC_RECOVERY_NOT_ALLOWED
+        ))) {
+            return ErrorCategory.UNSAFE;
+        }
+        if (hasIssue(issues, Set.of(
+            IssueCode.ACTION_REQUIRED_PARAM_MISSING,
+            IssueCode.ACTION_GROUNDING_VECTOR_SPACE_MISMATCH,
+            IssueCode.RELATIONSHIP_QUERY_HINTED_TAIL_MISSING,
+            IssueCode.INFORMATION_MISSING_VECTOR_SPACE,
+            IssueCode.INFORMATION_INVALID_VECTOR_SPACE,
+            IssueCode.INFORMATION_MISSING_ADVANCED_RAG_DECISION,
+            IssueCode.INTENT_MISSING_RETRIEVAL_DECISION,
+            IssueCode.INTENT_MISSING_GENERATION_DECISION,
+            IssueCode.INTENT_MISSING_TARGET_DECISION,
+            IssueCode.INTENT_MISSING_OBLIGATION_ID,
+            IssueCode.INTENT_MISSING_CLARIFICATION_QUESTION
+        ))) {
+            return ErrorCategory.INCOMPLETE;
         }
         return ErrorCategory.OTHER;
+    }
+
+    private boolean hasIssue(List<ValidationIssue> issues, Set<IssueCode> codes) {
+        return issues.stream().anyMatch(issue ->
+            issue != null
+                && issue.severity() == Severity.ERROR
+                && issue.code() != null
+                && codes.contains(issue.code())
+        );
     }
 }

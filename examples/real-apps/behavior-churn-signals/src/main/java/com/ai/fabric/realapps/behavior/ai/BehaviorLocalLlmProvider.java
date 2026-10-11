@@ -10,6 +10,7 @@ import ai.fabric.provider.ProviderStatus;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
+import org.springframework.context.annotation.Profile;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -25,7 +26,8 @@ import java.util.UUID;
  */
 @Slf4j
 @Component
-@ConditionalOnProperty(name = "ai.providers.llm-provider", havingValue = "behavior-local", matchIfMissing = true)
+@Profile("smoke")
+@ConditionalOnProperty(name = "ai.providers.llm-provider", havingValue = "behavior-local")
 public class BehaviorLocalLlmProvider implements AIProvider {
 
     public static final String PROVIDER_NAME = "behavior-local";
