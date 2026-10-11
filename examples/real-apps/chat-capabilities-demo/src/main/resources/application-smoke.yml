@@ -7,7 +7,14 @@ spring:
 
 ai:
   providers:
-    llm-provider: smoke
+    # This app's packaged scenario smoke exercises typed intent and suggestion
+    # contracts. Keep both LLM purposes on the app-local deterministic provider;
+    # the generic smoke provider is only a boot-wiring fallback.
+    llm-provider: chat-local
+    orchestration:
+      llm-provider: chat-local
+    generation:
+      llm-provider: chat-local
     embedding-provider: smoke
 
   vector-db:
