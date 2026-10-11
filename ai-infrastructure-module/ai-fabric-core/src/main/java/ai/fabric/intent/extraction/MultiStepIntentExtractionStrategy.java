@@ -37,6 +37,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
@@ -155,6 +156,17 @@ public class MultiStepIntentExtractionStrategy implements IntentExtractionStrate
 
             MultiIntentResponse response = buildResponse(userQuery, classification, selectedActions, paramFill.paramsByIntentIndex());
             IntentExtractionValidator.ValidationResult validation = validator.validate(response);
+            if (!validation.valid() && log.isDebugEnabled()) {
+                log.debug(
+                    "Multi-step extraction validation rejected issueCodes={}",
+                    validation.issues().stream()
+                        .filter(Objects::nonNull)
+                        .map(IntentExtractionValidator.ValidationIssue::code)
+                        .filter(Objects::nonNull)
+                        .distinct()
+                        .toList()
+                );
+            }
 
             return ExtractionAttempt.builder()
                 .success(validation.valid())
@@ -216,10 +228,12 @@ public class MultiStepIntentExtractionStrategy implements IntentExtractionStrate
             .entityId("intent-" + UUID.randomUUID())
             .entityType(ENTITY_TYPE)
             .generationType(GENERATION_TYPE + "_classify")
-            .systemPrompt(buildSystemPrompt(context, input))
+            .systemPrompt(buildSystemPrompt(context, input, SemanticStage.CLASSIFICATION))
             .prompt(prompt)
             .messages(input != null ? input.historyMessages() : List.of())
-            .parameters(jsonSupport.jsonOnlyResponseParameters())
+            .parameters(jsonSupport.jsonSchemaResponseParameters(
+                MultiStepIntentExtractionSchemaSupport.classificationSchema(jsonSupport.objectMapper())
+            ))
             .authContext(input.authContext(
                 context != null ? context : OrchestrationContext.anonymous()
             ))
@@ -317,10 +331,16 @@ public class MultiStepIntentExtractionStrategy implements IntentExtractionStrate
             .entityId("intent-" + UUID.randomUUID())
             .entityType(ENTITY_TYPE)
             .generationType(GENERATION_TYPE + "_select_actions")
-            .systemPrompt(buildSystemPrompt(context, input))
+            .systemPrompt(buildSystemPrompt(context, input, SemanticStage.ACTION_SELECTION))
             .prompt(prompt)
             .messages(input != null ? input.historyMessages() : List.of())
-            .parameters(jsonSupport.jsonOnlyResponseParameters())
+            .parameters(jsonSupport.jsonSchemaResponseParameters(
+                MultiStepIntentExtractionSchemaSupport.actionSelectionSchema(
+                    jsonSupport.objectMapper(),
+                    actionIntents.stream().map(ClassificationIntent::getIndex).toList(),
+                    allowedByNormalizedName.values()
+                )
+            ))
             .authContext(input.authContext(
                 context != null ? context : OrchestrationContext.anonymous()
             ))
@@ -490,10 +510,10 @@ public class MultiStepIntentExtractionStrategy implements IntentExtractionStrate
             .entityId("intent-" + UUID.randomUUID())
             .entityType(ENTITY_TYPE)
             .generationType(GENERATION_TYPE + "_fill_params")
-            .systemPrompt(buildSystemPrompt(context, input))
+            .systemPrompt(buildSystemPrompt(context, input, SemanticStage.ACTION_SELECTION))
             .prompt(prompt)
             .messages(input != null ? input.historyMessages() : List.of())
-            .parameters(jsonSupport.jsonOnlyResponseParameters())
+            .parameters(jsonSupport.jsonOnlyResponseParameters(ActionParamsFillResponse.class))
             .authContext(input.authContext(
                 context != null ? context : OrchestrationContext.anonymous()
             ))
@@ -609,7 +629,8 @@ public class MultiStepIntentExtractionStrategy implements IntentExtractionStrate
 
     private String buildSystemPrompt(
         OrchestrationContext context,
-        IntentExtractionInput input
+        IntentExtractionInput input,
+        SemanticStage stage
     ) {
         String base = renderTemplate(TEMPLATE_SYSTEM, Map.of());
         String addon = OrchestrationPolicyPromptConstraints.buildSystemAddon(
@@ -626,6 +647,18 @@ public class MultiStepIntentExtractionStrategy implements IntentExtractionStrate
         if (StringUtils.hasText(catalog)) {
             prompt = (StringUtils.hasText(prompt) ? prompt.trim() + "\n\n" : "")
                 + catalog;
+        }
+        String deploymentGuidance = switch (stage) {
+            case CLASSIFICATION -> enrichedPromptBuilder != null
+                ? enrichedPromptBuilder.buildIntentClassificationGuidance(context)
+                : null;
+            case ACTION_SELECTION -> enrichedPromptBuilder != null
+                ? enrichedPromptBuilder.buildActionSelectionGuidance(context)
+                : null;
+        };
+        if (StringUtils.hasText(deploymentGuidance)) {
+            prompt = (StringUtils.hasText(prompt) ? prompt.trim() + "\n\n" : "")
+                + deploymentGuidance;
         }
         return IntentExtractionSystemContextSupport.append(
             SpecialistPromptInstructionSupport.appendToSystemPrompt(
@@ -737,11 +770,7 @@ public class MultiStepIntentExtractionStrategy implements IntentExtractionStrate
 
             if (type == IntentType.ACTION) {
                 String selected = selectedActions != null ? selectedActions.get(i) : null;
-                if (!StringUtils.hasText(selected)) {
-                    builder.action(StringUtils.hasText(classified.getActionHint())
-                        ? classified.getActionHint().trim()
-                        : null);
-                } else {
+                if (StringUtils.hasText(selected)) {
                     builder.action(selected);
                     Map<String, Object> params = filledParams != null ? filledParams.get(i) : null;
                     if (params != null && !params.isEmpty()) {
@@ -765,6 +794,11 @@ public class MultiStepIntentExtractionStrategy implements IntentExtractionStrate
             .intents(intents)
             .metadata(Collections.unmodifiableMap(responseMetadata))
             .build();
+    }
+
+    private enum SemanticStage {
+        CLASSIFICATION,
+        ACTION_SELECTION
     }
 
     private IntentType parseIntentType(String raw) {

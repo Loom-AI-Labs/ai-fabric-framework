@@ -16,6 +16,8 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 
 /**
  * Shared parsing/sanitization utilities for intent extraction JSON payloads.
@@ -26,6 +28,8 @@ public class IntentExtractionJsonSupport {
     private final ObjectMapper objectMapper;
     private final StructuredJsonExtractor structuredJsonExtractor;
     private final Map<String, Object> structuredResponseParameters;
+    private final ConcurrentMap<Class<?>, Map<String, Object>> structuredResponseParametersByType =
+        new ConcurrentHashMap<>();
 
     @Autowired
     public IntentExtractionJsonSupport(ObjectMapper objectMapper, StructuredJsonExtractor structuredJsonExtractor) {
@@ -86,5 +90,32 @@ public class IntentExtractionJsonSupport {
 
     public Map<String, Object> jsonOnlyResponseParameters() {
         return structuredResponseParameters;
+    }
+
+    /**
+     * Request JSON-object output using the schema for the payload actually
+     * parsed by the caller. Dynamic maps remain valid in this mode.
+     */
+    public Map<String, Object> jsonOnlyResponseParameters(Class<?> responseType) {
+        if (responseType == null) {
+            throw new IllegalArgumentException("responseType is required");
+        }
+        return structuredResponseParametersByType.computeIfAbsent(
+            responseType,
+            type -> StructuredJsonProviderHints.schemaGuidedJsonObjectResponseParameters(
+                SpringAiStructuredOutputSupport.bean(type).jsonSchema()
+            )
+        );
+    }
+
+    /**
+     * Request provider-native JSON Schema output for a closed payload contract.
+     * Callers must not use this for application-owned dynamic maps.
+     */
+    public Map<String, Object> jsonSchemaResponseParameters(String jsonSchema) {
+        if (!StringUtils.hasText(jsonSchema)) {
+            throw new IllegalArgumentException("jsonSchema is required");
+        }
+        return StructuredJsonProviderHints.jsonSchemaResponseParameters(jsonSchema);
     }
 }

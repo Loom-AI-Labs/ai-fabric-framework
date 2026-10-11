@@ -190,5 +190,29 @@ class EnrichedPromptBuilderTest {
             .contains("explicit item name or identifier")
             .doesNotContain("PREVIEW SYSTEM OVERRIDE")
             .doesNotContain("You are the intent extraction engine powering our Retrieval-Augmented Generation (RAG) assistant.");
+
+        OrchestrationContext context = OrchestrationContext.builder()
+            .userId("user-123")
+            .metadata(Map.of(
+                "promptPreview",
+                Map.of(
+                    "systemPrompt", "Custom system role.",
+                    "intentExtractionPrompt", "Classify with custom guidance.",
+                    "actionSelectionPrompt", "Use actions only when they are safe."
+                )
+            ))
+            .build();
+        assertThat(promptBuilder.buildIntentClassificationGuidance(context))
+            .contains("DEPLOYMENT SYSTEM GUIDANCE")
+            .contains("Custom system role.")
+            .contains("DEPLOYMENT INTENT CLASSIFICATION GUIDANCE")
+            .contains("Classify with custom guidance.")
+            .doesNotContain("Use actions only when they are safe.");
+        assertThat(promptBuilder.buildActionSelectionGuidance(context))
+            .contains("DEPLOYMENT SYSTEM GUIDANCE")
+            .contains("Custom system role.")
+            .contains("DEPLOYMENT ACTION SELECTION GUIDANCE")
+            .contains("Use actions only when they are safe.")
+            .doesNotContain("Classify with custom guidance.");
     }
 }

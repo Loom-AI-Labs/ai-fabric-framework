@@ -6,6 +6,7 @@ import ai.fabric.config.PromptBundleProperties;
 import ai.fabric.dto.AIGenerationRequest;
 import ai.fabric.dto.AIGenerationResponse;
 import ai.fabric.dto.IntentType;
+import ai.fabric.intent.EnrichedPromptBuilder;
 import ai.fabric.intent.IntentExtractionJsonSupport;
 import ai.fabric.intent.IntentExtractionValidator;
 import ai.fabric.intent.action.AIActionParamSchema;
@@ -24,6 +25,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.core.io.DefaultResourceLoader;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.util.List;
 import java.util.Map;
@@ -361,6 +363,125 @@ class MultiStepIntentExtractionStrategyTest {
             .contains("cart_update_confirmation: string - Presentation-only shopper-facing confirmation phrase")
             .contains("Fill optional parameters when the paramsSchema/description says they improve presentation")
             .contains("For search/read actions with a valid required `query` parameter");
+        assertThat(requestCaptor.getAllValues().get(0).getParameters())
+            .containsEntry("response_format", Map.of("type", "json_schema"));
+        assertThat(String.valueOf(requestCaptor.getAllValues().get(0).getParameters().get("output_schema")))
+            .contains("requiresTargetResolution")
+            .contains("obligationId");
+        assertThat(requestCaptor.getAllValues().get(1).getParameters())
+            .containsEntry("response_format", Map.of("type", "json_schema"));
+        assertThat(String.valueOf(requestCaptor.getAllValues().get(1).getParameters().get("output_schema")))
+            .contains("commerce_update_cart")
+            .contains("selectedAction")
+            .doesNotContain("cancel_subscription");
+        assertThat(requestCaptor.getAllValues().get(2).getParameters())
+            .containsEntry("response_format", Map.of("type", "json_object"));
+        assertThat(String.valueOf(requestCaptor.getAllValues().get(2).getParameters().get("output_schema")))
+            .contains("actionParams")
+            .doesNotContain("intents");
+    }
+
+    @Test
+    void unresolvedActionHintNeverBecomesAnExecutableActionIdentifier() {
+        when(actionHandlerRegistry.getAllMetadata()).thenReturn(List.of(
+            AIActionMetaData.builder()
+                .name("dealership_search_inventory")
+                .description("Search current inventory")
+                .build()
+        ));
+        when(validator.validate(any())).thenReturn(
+            new IntentExtractionValidator.ValidationResult(
+                false,
+                IntentExtractionValidator.ErrorCategory.INCOMPLETE,
+                List.of(),
+                List.of("Action name is missing")
+            )
+        );
+        when(aiCoreService.generateContent(any(AIGenerationRequest.class), eq(LlmPurpose.ORCHESTRATION)))
+            .thenReturn(AIGenerationResponse.builder().content("""
+                {
+                  "intents": [{
+                    "type": "ACTION",
+                    "intent": "inventory_search",
+                    "actionHint": "search for electric cars",
+                    "requiresRetrieval": false,
+                    "requiresGeneration": false,
+                    "requiresTargetResolution": false,
+                    "needsAdvancedRAG": false
+                  }],
+                  "metadata": {"retrievalQueryHint": null}
+                }
+                """).build())
+            .thenReturn(AIGenerationResponse.builder().content("""
+                {"mappings":[{"intentIndex":0,"selectedAction":null}]}
+                """).build());
+
+        MultiStepIntentExtractionStrategy strategy = new MultiStepIntentExtractionStrategy(
+            aiCoreService,
+            actionHandlerRegistry,
+            jsonSupport,
+            validator,
+            promptRenderer,
+            promptTemplateResolver
+        );
+
+        ExtractionAttempt attempt = strategy.attemptExtract(
+            input("Find electric cars"),
+            OrchestrationContext.forUser("user-unresolved-action")
+        );
+
+        assertThat(attempt.isSuccess()).isFalse();
+        assertThat(attempt.getResponse().getIntents().getFirst().getAction()).isNull();
+    }
+
+    @Test
+    void progressiveFallbackReceivesDeploymentOwnedStageGuidance() {
+        when(actionHandlerRegistry.getAllMetadata()).thenReturn(List.of(
+            AIActionMetaData.builder().name("search_inventory").build()
+        ));
+        when(validator.validate(any())).thenReturn(
+            new IntentExtractionValidator.ValidationResult(
+                true,
+                IntentExtractionValidator.ErrorCategory.NONE,
+                List.of(),
+                List.of()
+            )
+        );
+        when(aiCoreService.generateContent(any(AIGenerationRequest.class), eq(LlmPurpose.ORCHESTRATION)))
+            .thenReturn(AIGenerationResponse.builder().content(classificationWithAction()).build())
+            .thenReturn(AIGenerationResponse.builder().content("""
+                {"mappings":[{"intentIndex":0,"selectedAction":"search_inventory"}]}
+                """).build());
+        EnrichedPromptBuilder enrichedPromptBuilder = org.mockito.Mockito.mock(EnrichedPromptBuilder.class);
+        when(enrichedPromptBuilder.buildSemanticCatalogPrompt(any())).thenReturn("KNOWLEDGE BASE OVERVIEW:\n- document");
+        when(enrichedPromptBuilder.buildIntentClassificationGuidance(any())).thenReturn("DEPLOYMENT CLASSIFICATION RULE");
+        when(enrichedPromptBuilder.buildActionSelectionGuidance(any())).thenReturn("DEPLOYMENT ACTION RULE");
+
+        MultiStepIntentExtractionStrategy strategy = new MultiStepIntentExtractionStrategy(
+            aiCoreService,
+            actionHandlerRegistry,
+            jsonSupport,
+            validator,
+            promptRenderer,
+            promptTemplateResolver
+        );
+        ReflectionTestUtils.setField(strategy, "enrichedPromptBuilder", enrichedPromptBuilder);
+
+        strategy.attemptExtract(
+            input("Search current inventory"),
+            OrchestrationContext.forUser("user-stage-guidance")
+        );
+
+        ArgumentCaptor<AIGenerationRequest> requests = ArgumentCaptor.forClass(AIGenerationRequest.class);
+        verify(aiCoreService, times(2)).generateContent(requests.capture(), eq(LlmPurpose.ORCHESTRATION));
+        assertThat(requests.getAllValues().get(0).getSystemPrompt())
+            .contains("KNOWLEDGE BASE OVERVIEW")
+            .contains("DEPLOYMENT CLASSIFICATION RULE")
+            .doesNotContain("DEPLOYMENT ACTION RULE");
+        assertThat(requests.getAllValues().get(1).getSystemPrompt())
+            .contains("KNOWLEDGE BASE OVERVIEW")
+            .contains("DEPLOYMENT ACTION RULE")
+            .doesNotContain("DEPLOYMENT CLASSIFICATION RULE");
     }
 
     private String classificationWithAction() {

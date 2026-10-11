@@ -684,6 +684,12 @@ class ReadActionResolutionServiceTest {
             .contains("APPLICATION-OWNED SPECIALIST CONTRACT")
             .contains("Objective: Assess current account readiness.")
             .contains("Always read current profile facts before deciding.");
+        assertThat(plannerRequest.getValue().getParameters())
+            .containsEntry("response_format", Map.of("type", "json_object"));
+        assertThat(String.valueOf(plannerRequest.getValue().getParameters().get("output_schema")))
+            .contains("needsMoreSteps")
+            .contains("suggestedVectorSpaces")
+            .doesNotContain("intents");
     }
 
     @Test

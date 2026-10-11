@@ -160,6 +160,54 @@ public class EnrichedPromptBuilder {
         return (actions + "\n" + knowledge).trim();
     }
 
+    /**
+     * Deployment-owned guidance for the classification stage of a progressive
+     * extraction fallback. The generic stage remains responsible for its output
+     * schema and the server remains responsible for enforcement.
+     */
+    public String buildIntentClassificationGuidance(OrchestrationContext contextInput) {
+        return buildManagedSemanticGuidance(
+            contextInput,
+            "intentExtractionPrompt",
+            "DEPLOYMENT INTENT CLASSIFICATION GUIDANCE"
+        );
+    }
+
+    /** Deployment-owned guidance for action selection and parameter filling. */
+    public String buildActionSelectionGuidance(OrchestrationContext contextInput) {
+        return buildManagedSemanticGuidance(
+            contextInput,
+            "actionSelectionPrompt",
+            "DEPLOYMENT ACTION SELECTION GUIDANCE"
+        );
+    }
+
+    private String buildManagedSemanticGuidance(OrchestrationContext contextInput,
+                                                String stageKey,
+                                                String stageHeading) {
+        Map<String, String> overlay = PromptPreviewOverlaySupport.extract(
+            contextInput != null ? contextInput.getMetadata() : null
+        );
+        if (overlay.isEmpty()) {
+            return "";
+        }
+        StringBuilder guidance = new StringBuilder(256);
+        String system = overlay.get("systemPrompt");
+        if (StringUtils.hasText(system)) {
+            guidance.append("DEPLOYMENT SYSTEM GUIDANCE:\n")
+                .append(system.trim());
+        }
+        String stage = overlay.get(stageKey);
+        if (StringUtils.hasText(stage)) {
+            if (!guidance.isEmpty()) {
+                guidance.append("\n\n");
+            }
+            guidance.append(stageHeading).append(":\n")
+                .append(stage.trim());
+        }
+        return guidance.toString();
+    }
+
     private String buildBehaviorContextSection(SystemContext context) {
         if (!context.hasBehaviorContext()) {
             return "";

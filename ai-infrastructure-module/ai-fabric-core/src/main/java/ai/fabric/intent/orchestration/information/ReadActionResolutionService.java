@@ -411,7 +411,7 @@ public class ReadActionResolutionService {
                     .generationType("read_action_resolution")
                     .systemPrompt(systemPrompt)
                     .prompt(userPrompt)
-                    .parameters(jsonSupport.jsonOnlyResponseParameters())
+                    .parameters(jsonSupport.jsonOnlyResponseParameters(PlannerPayload.class))
                     .authContext(OrchestrationAuthContextResolver.from(orchestrationContext))
                     .build(),
                 LlmPurpose.ORCHESTRATION

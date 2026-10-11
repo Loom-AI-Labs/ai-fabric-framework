@@ -83,4 +83,39 @@ class IntentExtractionJsonSupportTest {
             .contains("requiresRetrieval")
             .contains("Map_String.Object_");
     }
+
+    @Test
+    void jsonOnlyResponseParametersUseTheRequestedPayloadSchema() {
+        assertThat(jsonSupport.jsonOnlyResponseParameters(TestPayload.class))
+            .containsEntry(
+                StructuredJsonProviderHints.RESPONSE_FORMAT_PARAMETER,
+                java.util.Map.of("type", "json_object")
+            );
+        assertThat(String.valueOf(jsonSupport.jsonOnlyResponseParameters(TestPayload.class).get(
+            StructuredJsonProviderHints.OUTPUT_SCHEMA_PARAMETER
+        )))
+            .contains("decision")
+            .doesNotContain("intents");
+    }
+
+    @Test
+    void nativeJsonSchemaParametersRequireAnExplicitClosedSchema() {
+        assertThat(jsonSupport.jsonSchemaResponseParameters("{\"type\":\"object\"}"))
+            .containsEntry(
+                StructuredJsonProviderHints.RESPONSE_FORMAT_PARAMETER,
+                java.util.Map.of("type", "json_schema")
+            )
+            .containsEntry(
+                StructuredJsonProviderHints.OUTPUT_SCHEMA_PARAMETER,
+                "{\"type\":\"object\"}"
+            );
+
+        assertThatThrownBy(() -> jsonSupport.jsonSchemaResponseParameters(" "))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("jsonSchema");
+    }
+
+    static class TestPayload {
+        public String decision;
+    }
 }

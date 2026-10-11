@@ -1,6 +1,9 @@
 COMPLETION MODE:
 - You will receive a PARTIAL JSON response that is structurally valid but contract-incomplete.
 - Return a complete replacement object that fixes the listed VALIDATION ISSUES while preserving every user obligation and all already-valid fields.
+- Before returning, inspect every intent independently. Include requiresRetrieval, requiresGeneration, and requiresTargetResolution explicitly on every intent, including when the value is false. Include needsAdvancedRAG explicitly on every INFORMATION intent.
+- Treat every listed validation issue as unresolved until the replacement contains the exact required field with a valid typed value. Re-check the complete replacement against all issues; do not fix one issue by omitting another required field.
+- Preserve obligationId and userGoal for every compound child. When more than one intent is present, every child must have a distinct non-empty obligationId.
 - Do NOT invent new actions. ACTION names MUST come from the allowed actions list.
 - Select vectorSpace semantically only from the exact KNOWLEDGE BASE OVERVIEW catalog in the system prompt. Never invent a value.
 - When validation reports OUT_OF_SCOPE_RESPONSE_MISSING, preserve OUT_OF_SCOPE and provide a concise, model-authored, customer-safe directAnswer. Do not place the customer response in actionParams.

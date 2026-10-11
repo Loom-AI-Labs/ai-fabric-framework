@@ -21,7 +21,6 @@ import org.junit.jupiter.api.TestFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
-import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;
@@ -53,7 +52,6 @@ import static org.assertj.core.api.Assertions.assertThat;
     }
 )
 @ActiveProfiles("real-api-test")
-@Transactional
 public class RealAPIProgressiveMultiStepComplexScenariosIntegrationTest {
 
     static {
