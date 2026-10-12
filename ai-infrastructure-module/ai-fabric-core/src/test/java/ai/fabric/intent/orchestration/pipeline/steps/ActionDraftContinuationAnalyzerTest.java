@@ -51,6 +51,8 @@ class ActionDraftContinuationAnalyzerTest {
         actionRegistry = mock(AIActionRegistry.class);
         when(actionRegistry.findMetadata("update_address"))
             .thenReturn(Optional.of(actionMetadata()));
+        when(actionRegistry.findMetadata("update_payment_method"))
+            .thenReturn(Optional.of(paymentMetadata()));
         PromptBundleProperties properties = new PromptBundleProperties();
         analyzer = new ActionDraftContinuationAnalyzer(
             aiCoreService,
@@ -234,11 +236,14 @@ class ActionDraftContinuationAnalyzerTest {
         ActionDraftContinuationAnalyzer.AnalysisOutcome outcome =
             analyzer.analyze(context);
 
-        assertThat(outcome.continued()).isFalse();
+        assertThat(outcome.continued()).isTrue();
         assertThat(outcome.failureType())
             .isEqualTo("STRUCTURED_SUBMISSION_PARAMETER_REJECTED");
+        assertThat(outcome.response().getIntents().getFirst().getActionParams())
+            .isEmpty();
         assertThat(outcome.diagnostics())
-            .containsEntry("inputSource", "STRUCTURED_USER_INPUT");
+            .containsEntry("inputSource", "STRUCTURED_USER_INPUT")
+            .doesNotContainKey("fallback");
         verifyNoInteractions(aiCoreService);
     }
 
@@ -259,9 +264,48 @@ class ActionDraftContinuationAnalyzerTest {
         ActionDraftContinuationAnalyzer.AnalysisOutcome outcome =
             analyzer.analyze(context);
 
-        assertThat(outcome.continued()).isFalse();
+        assertThat(outcome.continued()).isTrue();
         assertThat(outcome.failureType())
             .isEqualTo("STRUCTURED_SUBMISSION_ACTION_MISMATCH");
+        assertThat(outcome.response().getIntents().getFirst().getAction())
+            .isEqualTo("update_address");
+        assertThat(outcome.response().getIntents().getFirst().getActionParams())
+            .isEmpty();
+        verifyNoInteractions(aiCoreService);
+    }
+
+    @Test
+    void shouldRejectStructuredValuesThatViolateTheActionContract() {
+        PipelineContext base = context("Continue with these values.");
+        PipelineContext context = base.toBuilder()
+            .actionDraftContinuation(
+                new ActionDraftContinuation(
+                    "update_payment_method",
+                    Map.of(),
+                    List.of("last4")
+                )
+            )
+            .orchestrationContext(
+                base.getOrchestrationContext().toBuilder()
+                    .actionDraftSubmission(new ActionDraftSubmission(
+                        "update_payment_method",
+                        Map.of("last4", "12")
+                    ))
+                    .build()
+            )
+            .build();
+
+        ActionDraftContinuationAnalyzer.AnalysisOutcome outcome =
+            analyzer.analyze(context);
+
+        assertThat(outcome.continued()).isTrue();
+        assertThat(outcome.failureType())
+            .isEqualTo("STRUCTURED_SUBMISSION_PARAMETER_INVALID");
+        assertThat(outcome.response().getIntents().getFirst().getActionParams())
+            .isEmpty();
+        assertThat(outcome.diagnostics())
+            .containsEntry("inputSource", "STRUCTURED_USER_INPUT")
+            .containsEntry("rejectedParameterNames", List.of("last4"));
         verifyNoInteractions(aiCoreService);
     }
 
@@ -329,6 +373,23 @@ class ActionDraftContinuationAnalyzerTest {
                 "country",
                 "subscriptionId"
             ))
+            .build();
+    }
+
+    private AIActionMetaData paymentMetadata() {
+        return AIActionMetaData.builder()
+            .name("update_payment_method")
+            .parameters(Map.of("last4", "Last four card digits"))
+            .parameterSchemas(Map.of(
+                "last4",
+                AIActionParamSchema.builder()
+                    .type(AIActionParamType.STRING)
+                    .pattern("\\d{4}")
+                    .required(true)
+                    .askUser(true)
+                    .build()
+            ))
+            .requiredParameters(Set.of("last4"))
             .build();
     }
 }

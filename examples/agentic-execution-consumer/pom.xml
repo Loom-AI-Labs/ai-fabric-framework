@@ -19,7 +19,7 @@
 
     <properties>
         <java.version>21</java.version>
-        <ai-fabric.version>0.8.30</ai-fabric.version>
+        <ai-fabric.version>0.8.31</ai-fabric.version>
     </properties>
 
     <dependencyManagement>

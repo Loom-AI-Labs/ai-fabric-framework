@@ -13,6 +13,8 @@ import ai.fabric.dto.MultiIntentResponse;
 import ai.fabric.intent.action.AIActionMetaData;
 import ai.fabric.intent.action.AIActionNames;
 import ai.fabric.intent.action.AIActionRegistry;
+import ai.fabric.intent.action.ActionParameterContractValidator;
+import ai.fabric.intent.action.ActionParameterContractValidator.ActionParameterContractException;
 import ai.fabric.intent.actiondraft.ActionDraftContinuation;
 import ai.fabric.intent.actiondraft.ActionDraftSubmission;
 import ai.fabric.intent.orchestration.OrchestrationAuthContextResolver;
@@ -175,6 +177,7 @@ public class ActionDraftContinuationAnalyzer {
                         validateDecision(
                             decision,
                             continuation,
+                            metadata,
                             allowedParameters
                         )
                     )
@@ -239,32 +242,70 @@ public class ActionDraftContinuationAnalyzer {
         if (!AIActionNames.normalize(continuation.action()).equals(
             AIActionNames.normalize(submission.action())
         )) {
-            return AnalysisOutcome.failed(
+            return AnalysisOutcome.rejected(
+                structuredSubmissionResponse(continuation.action(), Map.of()),
                 "STRUCTURED_SUBMISSION_ACTION_MISMATCH",
-                0,
-                "STRUCTURED_USER_INPUT"
+                Set.of()
             );
         }
         for (String name : submission.parameters().keySet()) {
             if (!containsIgnoreCase(allowedParameters, name)) {
-                return AnalysisOutcome.failed(
+                return AnalysisOutcome.rejected(
+                    structuredSubmissionResponse(
+                        continuation.action(),
+                        Map.of()
+                    ),
                     "STRUCTURED_SUBMISSION_PARAMETER_REJECTED",
-                    0,
-                    "STRUCTURED_USER_INPUT"
+                    Set.of(name)
                 );
             }
+        }
+        Map<String, Object> canonicalParameters = canonicalParameters(
+            allowedParameters,
+            submission.parameters()
+        );
+        try {
+            ActionParameterContractValidator.validateProvided(
+                metadata,
+                canonicalParameters
+            );
+        } catch (ActionParameterContractException ex) {
+            return AnalysisOutcome.rejected(
+                structuredSubmissionResponse(continuation.action(), Map.of()),
+                "STRUCTURED_SUBMISSION_PARAMETER_INVALID",
+                StringUtils.hasText(ex.path())
+                    ? Set.of(ex.path())
+                    : Set.of()
+            );
         }
 
         Map<String, Object> suppliedParameters =
             ActionDraftContinuationSupport.sanitizeAnalyzedParameters(
                 metadata,
-                submission.parameters(),
+                canonicalParameters,
                 allowedParameters
             );
+        MultiIntentResponse response = structuredSubmissionResponse(
+            continuation.action(),
+            suppliedParameters
+        );
+        return AnalysisOutcome.continued(
+            response,
+            suppliedParameters.keySet(),
+            0,
+            null,
+            "STRUCTURED_USER_INPUT"
+        );
+    }
+
+    private MultiIntentResponse structuredSubmissionResponse(
+        String action,
+        Map<String, Object> suppliedParameters
+    ) {
         Intent intent = Intent.builder()
             .type(IntentType.ACTION)
-            .intent(continuation.action())
-            .action(continuation.action())
+            .intent(action)
+            .action(action)
             .actionParams(suppliedParameters)
             .confidence(1.0d)
             .requiresRetrieval(false)
@@ -277,13 +318,7 @@ public class ActionDraftContinuationAnalyzer {
             .metadata(Map.of("structuredUserInput", true))
             .build();
         response.normalize();
-        return AnalysisOutcome.continued(
-            response,
-            suppliedParameters.keySet(),
-            0,
-            null,
-            "STRUCTURED_USER_INPUT"
-        );
+        return response;
     }
 
     private ActionDraftSubmission structuredSubmission(
@@ -298,6 +333,7 @@ public class ActionDraftContinuationAnalyzer {
     private void validateDecision(
         ContinuationDecision decision,
         ActionDraftContinuation continuation,
+        AIActionMetaData metadata,
         Set<String> allowedParameters
     ) {
         if (decision == null || decision.continuesDraft() == null) {
@@ -324,6 +360,19 @@ public class ActionDraftContinuationAnalyzer {
                     "providedParams contains an unknown or hidden field"
                 );
             }
+        }
+        try {
+            ActionParameterContractValidator.validateProvided(
+                metadata,
+                canonicalParameters(
+                    allowedParameters,
+                    decision.providedParams()
+                )
+            );
+        } catch (ActionParameterContractException ex) {
+            throw new IllegalArgumentException(
+                "providedParams violates the declared parameter contract"
+            );
         }
     }
 
@@ -467,6 +516,30 @@ public class ActionDraftContinuationAnalyzer {
         );
     }
 
+    private Map<String, Object> canonicalParameters(
+        Set<String> allowedNames,
+        Map<String, Object> parameters
+    ) {
+        if (parameters == null || parameters.isEmpty()) {
+            return Map.of();
+        }
+        Map<String, Object> canonical = new LinkedHashMap<>();
+        parameters.forEach((rawName, value) -> {
+            if (!StringUtils.hasText(rawName)) {
+                return;
+            }
+            allowedNames.stream()
+                .filter(StringUtils::hasText)
+                .map(String::trim)
+                .filter(name -> name.equalsIgnoreCase(rawName.trim()))
+                .findFirst()
+                .ifPresent(name -> canonical.put(name, value));
+        });
+        return canonical.isEmpty()
+            ? Map.of()
+            : Collections.unmodifiableMap(canonical);
+    }
+
     private double normalizeConfidence(Double confidence) {
         if (confidence == null) {
             return 0.8d;
@@ -512,17 +585,22 @@ public class ActionDraftContinuationAnalyzer {
         int attempts,
         String model,
         String failureType,
-        String inputSource
+        String inputSource,
+        List<String> rejectedParameterNames
     ) {
         public AnalysisOutcome {
             suppliedParameterNames = suppliedParameterNames == null
                 ? List.of()
                 : List.copyOf(suppliedParameterNames);
+            rejectedParameterNames = rejectedParameterNames == null
+                ? List.of()
+                : List.copyOf(rejectedParameterNames);
         }
 
         public static AnalysisOutcome notEvaluated() {
             return new AnalysisOutcome(
-                false, false, null, List.of(), 0, null, null, null
+                false, false, null, List.of(), 0, null, null, null,
+                List.of()
             );
         }
 
@@ -538,9 +616,26 @@ public class ActionDraftContinuationAnalyzer {
             int attempts,
             String inputSource
         ) {
+            return failed(
+                failureType,
+                attempts,
+                inputSource,
+                Set.of()
+            );
+        }
+
+        public static AnalysisOutcome failed(
+            String failureType,
+            int attempts,
+            String inputSource,
+            Set<String> rejectedParameterNames
+        ) {
             return new AnalysisOutcome(
                 true, false, null, List.of(), attempts, null,
-                failureType, inputSource
+                failureType, inputSource,
+                rejectedParameterNames != null
+                    ? List.copyOf(rejectedParameterNames)
+                    : List.of()
             );
         }
 
@@ -550,7 +645,27 @@ public class ActionDraftContinuationAnalyzer {
         ) {
             return new AnalysisOutcome(
                 true, false, null, List.of(), attempts, model, null,
-                "MODEL"
+                "MODEL", List.of()
+            );
+        }
+
+        public static AnalysisOutcome rejected(
+            MultiIntentResponse response,
+            String failureType,
+            Set<String> rejectedParameterNames
+        ) {
+            return new AnalysisOutcome(
+                true,
+                true,
+                response,
+                List.of(),
+                0,
+                null,
+                failureType,
+                "STRUCTURED_USER_INPUT",
+                rejectedParameterNames != null
+                    ? List.copyOf(rejectedParameterNames)
+                    : List.of()
             );
         }
 
@@ -586,7 +701,8 @@ public class ActionDraftContinuationAnalyzer {
                 attempts,
                 model,
                 null,
-                inputSource
+                inputSource,
+                List.of()
             );
         }
 
@@ -604,9 +720,17 @@ public class ActionDraftContinuationAnalyzer {
             }
             if (StringUtils.hasText(failureType)) {
                 diagnostics.put("failureType", failureType);
+                if (!continued) {
+                    diagnostics.put(
+                        "fallback",
+                        "NORMAL_INTENT_EXTRACTION"
+                    );
+                }
+            }
+            if (!rejectedParameterNames.isEmpty()) {
                 diagnostics.put(
-                    "fallback",
-                    "NORMAL_INTENT_EXTRACTION"
+                    "rejectedParameterNames",
+                    rejectedParameterNames
                 );
             }
             if (StringUtils.hasText(inputSource)) {
