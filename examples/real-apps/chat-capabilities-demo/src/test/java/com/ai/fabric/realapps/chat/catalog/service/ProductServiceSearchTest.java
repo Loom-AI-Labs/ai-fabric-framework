@@ -73,6 +73,33 @@ class ProductServiceSearchTest {
         verify(productRepository).findFirstByNameIgnoreCaseOrderByIdAsc("Alienware M18 R2 Gaming Laptop");
     }
 
+    @Test
+    void findBySkuOrNameAcceptsOneUnambiguousTitleFragment() {
+        Product product = product(1L, "SKU-LAP-9001");
+        product.setName("Alienware M18 R2 Gaming Laptop");
+        when(productRepository.findBySku("alienwarem18r2")).thenReturn(Optional.empty());
+        when(productRepository.findBySkuIgnoreCase("alienwarem18r2")).thenReturn(Optional.empty());
+        when(productRepository.findFirstByNameIgnoreCaseOrderByIdAsc("Alienware M18 R2"))
+            .thenReturn(Optional.empty());
+        when(productRepository.findTop2ByNameContainingIgnoreCaseOrderByIdAsc("Alienware M18 R2"))
+            .thenReturn(List.of(product));
+
+        assertThat(service.findBySkuOrName("Alienware M18 R2")).containsSame(product);
+    }
+
+    @Test
+    void findBySkuOrNameRejectsAnAmbiguousTitleFragment() {
+        Product first = product(1L, "SKU-LAP-9001");
+        Product second = product(2L, "SKU-LAP-9002");
+        when(productRepository.findBySku("laptop")).thenReturn(Optional.empty());
+        when(productRepository.findBySkuIgnoreCase("laptop")).thenReturn(Optional.empty());
+        when(productRepository.findFirstByNameIgnoreCaseOrderByIdAsc("Laptop")).thenReturn(Optional.empty());
+        when(productRepository.findTop2ByNameContainingIgnoreCaseOrderByIdAsc("Laptop"))
+            .thenReturn(List.of(first, second));
+
+        assertThat(service.findBySkuOrName("Laptop")).isEmpty();
+    }
+
     private static Product product(long id, String sku) {
         Product product = new Product();
         product.setId(id);

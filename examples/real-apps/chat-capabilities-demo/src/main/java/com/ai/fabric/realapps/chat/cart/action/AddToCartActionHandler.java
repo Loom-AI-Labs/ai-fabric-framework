@@ -21,7 +21,7 @@ import org.springframework.util.StringUtils;
 
 @AIAction(
     name = "add_to_cart",
-    description = "Add one or more products to my active cart using product SKUs or exact product titles from attached product cards",
+    description = "Add one or more products to my active cart using canonical product SKUs, exact titles, or an unambiguous title fragment from attached product cards",
     category = "commerce",
     accessMode = ActionAccessMode.WRITE_ONLY,
     requiresConfirmation = true

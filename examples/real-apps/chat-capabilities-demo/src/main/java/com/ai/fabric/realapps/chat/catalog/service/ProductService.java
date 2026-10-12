@@ -59,8 +59,14 @@ public class ProductService {
         }
         String trimmed = productReference.trim();
 
-        return findBySku(trimmed)
+        Optional<Product> exact = findBySku(trimmed)
             .or(() -> productRepository.findFirstByNameIgnoreCaseOrderByIdAsc(trimmed));
+        if (exact.isPresent()) {
+            return exact;
+        }
+
+        List<Product> partialMatches = productRepository.findTop2ByNameContainingIgnoreCaseOrderByIdAsc(trimmed);
+        return partialMatches.size() == 1 ? Optional.of(partialMatches.getFirst()) : Optional.empty();
     }
 
     @Transactional

@@ -1,6 +1,7 @@
 package com.ai.fabric.realapps.chat.catalog.repo;
 
 import com.ai.fabric.realapps.chat.catalog.domain.Product;
+import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
 
@@ -11,6 +12,8 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
     Optional<Product> findBySkuIgnoreCase(String sku);
 
     Optional<Product> findFirstByNameIgnoreCaseOrderByIdAsc(String name);
+
+    List<Product> findTop2ByNameContainingIgnoreCaseOrderByIdAsc(String name);
 
     boolean existsBySku(String sku);
 
