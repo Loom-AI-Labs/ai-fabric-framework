@@ -744,7 +744,7 @@ class ProgressiveIntentExtractionEngineTest {
     }
 
     @Test
-    void rejectsRecoveryThatChangesAnAlreadyValidSiblingAction() {
+    void preservesAnAlreadyValidSiblingWhenModelRecoveryChangesIt() {
         MultiIntentResponse candidate = MultiIntentResponse.builder()
             .intents(List.of(
                 informationIntent("obligation-stock", "dealer-vehicle"),
@@ -763,16 +763,119 @@ class ProgressiveIntentExtractionEngineTest {
 
         RecoveryRun run = runUnknownActionRecovery(candidate, policy);
 
-        assertThat(run.output().response()).isNull();
-        assertThat(run.output().failure()).isNotNull();
+        assertThat(run.output().failure()).isNull();
+        assertThat(run.output().response().getIntents())
+            .satisfiesExactly(
+                intent -> {
+                    assertThat(intent.getType()).isEqualTo(IntentType.ACTION);
+                    assertThat(intent.getAction()).isEqualTo("search_inventory");
+                    assertThat(intent.getObligationId()).isEqualTo("obligation-stock");
+                },
+                intent -> {
+                    assertThat(intent.getType()).isEqualTo(IntentType.INFORMATION);
+                    assertThat(intent.getVectorSpace()).isEqualTo("document");
+                }
+            );
         assertThat(recoveryTransitions(run.output()))
-            .singleElement()
-            .satisfies(transition -> {
-                assertThat(transition)
-                    .containsEntry("obligationId", "obligation-stock")
-                    .containsEntry("decision", "VALID_SIBLING_PRESERVATION")
-                    .containsEntry("outcome", "REJECTED");
-            });
+            .anySatisfy(transition -> assertThat(transition)
+                .containsEntry("obligationId", "obligation-stock")
+                .containsEntry("decision", "VALID_SIBLING_PRESERVATION")
+                .containsEntry("modelProposedType", "INFORMATION")
+                .containsEntry("effectiveType", "ACTION")
+                .containsEntry("effectiveActionId", "search_inventory")
+                .containsEntry("outcome", "SERVER_PRESERVED_VALID_SIBLING"));
+    }
+
+    @Test
+    void preservesValidSiblingSemanticsWhileAcceptingRecoveredObligationIds() {
+        Intent originalStock = actionIntent(null, "search_inventory");
+        originalStock.setActionParams(Map.of("fuelType", "Electric", "maxPrice", 40_000));
+        MultiIntentResponse rejected = MultiIntentResponse.builder()
+            .intents(List.of(
+                originalStock,
+                actionIntent(null, "invented_policy_action")
+            ))
+            .build();
+        IntentExtractionValidator.ValidationIssue stockObligationId =
+            new IntentExtractionValidator.ValidationIssue(
+                IntentExtractionValidator.IssueCode.INTENT_MISSING_OBLIGATION_ID,
+                IntentExtractionValidator.Severity.ERROR,
+                0,
+                "obligationId",
+                "Compound intent is missing an obligationId"
+            );
+        IntentExtractionValidator.ValidationIssue policyObligationId =
+            new IntentExtractionValidator.ValidationIssue(
+                IntentExtractionValidator.IssueCode.INTENT_MISSING_OBLIGATION_ID,
+                IntentExtractionValidator.Severity.ERROR,
+                1,
+                "obligationId",
+                "Compound intent is missing an obligationId"
+            );
+        IntentExtractionValidator.ValidationIssue unknownAction =
+            new IntentExtractionValidator.ValidationIssue(
+                IntentExtractionValidator.IssueCode.ACTION_UNREGISTERED,
+                IntentExtractionValidator.Severity.ERROR,
+                1,
+                "action",
+                "No handler registered for model-selected action"
+            );
+        IntentExtractionValidator.ValidationResult rejectedValidation =
+            new IntentExtractionValidator.ValidationResult(
+                false,
+                IntentExtractionValidator.ErrorCategory.UNSAFE,
+                List.of(stockObligationId, policyObligationId, unknownAction),
+                List.of(
+                    stockObligationId.message(),
+                    policyObligationId.message(),
+                    unknownAction.message()
+                ),
+                List.of()
+            );
+        MultiIntentResponse candidate = MultiIntentResponse.builder()
+            .intents(List.of(
+                informationIntent("obligation-stock", "dealer-vehicle"),
+                informationIntent("obligation-policy", "document")
+            ))
+            .build();
+        SemanticRecoveryPolicy policy = new SemanticRecoveryPolicy(
+            null,
+            null,
+            null,
+            null,
+            OrchestrationProperties.UnknownActionRecovery.LLM_REPLAN_TO_INFORMATION,
+            null,
+            null
+        );
+
+        RecoveryRun run = runUnknownActionRecovery(
+            rejected,
+            rejectedValidation,
+            candidate,
+            policy
+        );
+
+        assertThat(run.output().failure()).isNull();
+        assertThat(run.output().response().getIntents())
+            .satisfiesExactly(
+                intent -> {
+                    assertThat(intent.getType()).isEqualTo(IntentType.ACTION);
+                    assertThat(intent.getAction()).isEqualTo("search_inventory");
+                    assertThat(intent.getActionParams()).containsExactlyInAnyOrderEntriesOf(
+                        Map.of("fuelType", "Electric", "maxPrice", 40_000)
+                    );
+                    assertThat(intent.getObligationId()).isEqualTo("obligation-stock");
+                },
+                intent -> {
+                    assertThat(intent.getType()).isEqualTo(IntentType.INFORMATION);
+                    assertThat(intent.getVectorSpace()).isEqualTo("document");
+                    assertThat(intent.getObligationId()).isEqualTo("obligation-policy");
+                }
+            );
+        assertThat(recoveryTransitions(run.output()))
+            .anySatisfy(transition -> assertThat(transition)
+                .containsEntry("decision", "VALID_SIBLING_PRESERVATION")
+                .containsEntry("outcome", "SERVER_PRESERVED_VALID_SIBLING"));
     }
 
     @Test
@@ -835,26 +938,6 @@ class ProgressiveIntentExtractionEngineTest {
         MultiIntentResponse candidate,
         SemanticRecoveryPolicy policy
     ) {
-        ProgressiveIntentExtractionProperties properties =
-            new ProgressiveIntentExtractionProperties();
-        properties.setRepairEnabled(false);
-        properties.setCompletionEnabled(true);
-        properties.setMultiStepEnabled(true);
-        properties.setMaxTotalLlmCalls(4);
-
-        CompoundIntentExtractionStrategy compound =
-            mock(CompoundIntentExtractionStrategy.class);
-        RepairIntentExtractionStrategy repair =
-            mock(RepairIntentExtractionStrategy.class);
-        CompletionIntentExtractionStrategy completion =
-            mock(CompletionIntentExtractionStrategy.class);
-        MultiStepIntentExtractionStrategy multiStep =
-            mock(MultiStepIntentExtractionStrategy.class);
-        IntentExtractionPostProcessor postProcessor =
-            mock(IntentExtractionPostProcessor.class);
-        IntentExtractionValidator validator =
-            mock(IntentExtractionValidator.class);
-
         MultiIntentResponse rejected = MultiIntentResponse.builder()
             .intents(List.of(
                 actionIntent("obligation-stock", "search_inventory"),
@@ -877,6 +960,40 @@ class ProgressiveIntentExtractionEngineTest {
                 List.of(unknownAction.message()),
                 List.of()
             );
+        return runUnknownActionRecovery(
+            rejected,
+            rejectedValidation,
+            candidate,
+            policy
+        );
+    }
+
+    private RecoveryRun runUnknownActionRecovery(
+        MultiIntentResponse rejected,
+        IntentExtractionValidator.ValidationResult rejectedValidation,
+        MultiIntentResponse candidate,
+        SemanticRecoveryPolicy policy
+    ) {
+        ProgressiveIntentExtractionProperties properties =
+            new ProgressiveIntentExtractionProperties();
+        properties.setRepairEnabled(false);
+        properties.setCompletionEnabled(true);
+        properties.setMultiStepEnabled(true);
+        properties.setMaxTotalLlmCalls(4);
+
+        CompoundIntentExtractionStrategy compound =
+            mock(CompoundIntentExtractionStrategy.class);
+        RepairIntentExtractionStrategy repair =
+            mock(RepairIntentExtractionStrategy.class);
+        CompletionIntentExtractionStrategy completion =
+            mock(CompletionIntentExtractionStrategy.class);
+        MultiStepIntentExtractionStrategy multiStep =
+            mock(MultiStepIntentExtractionStrategy.class);
+        IntentExtractionPostProcessor postProcessor =
+            mock(IntentExtractionPostProcessor.class);
+        IntentExtractionValidator validator =
+            mock(IntentExtractionValidator.class);
+
         IntentExtractionValidator.ValidationResult valid =
             new IntentExtractionValidator.ValidationResult(
                 true,
@@ -907,7 +1024,7 @@ class ProgressiveIntentExtractionEngineTest {
         when(postProcessor.postProcess(any(), anyString()))
             .thenAnswer(invocation -> invocation.getArgument(0));
         when(validator.validate(any(), anyString()))
-            .thenReturn(rejectedValidation, valid);
+            .thenReturn(rejectedValidation, valid, valid);
 
         ProgressiveIntentExtractionEngine engine =
             new ProgressiveIntentExtractionEngine(

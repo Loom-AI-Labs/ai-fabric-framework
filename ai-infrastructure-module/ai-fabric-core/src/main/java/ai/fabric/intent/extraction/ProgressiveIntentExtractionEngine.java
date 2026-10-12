@@ -193,7 +193,8 @@ public class ProgressiveIntentExtractionEngine {
                 ExtractionAttempt repairAttempt = enforceSemanticRecoveryPolicy(
                     assessAttempt(rawRepairAttempt, userQuery),
                     attempts,
-                    recoveryPolicy
+                    recoveryPolicy,
+                    userQuery
                 );
                 attemptEvents.add(toAttemptEvent(repairAttempt));
                 attempts.add(repairAttempt);
@@ -251,7 +252,8 @@ public class ProgressiveIntentExtractionEngine {
                 ExtractionAttempt completed = enforceSemanticRecoveryPolicy(
                     assessAttempt(rawCompletionAttempt, userQuery),
                     attempts,
-                    recoveryPolicy
+                    recoveryPolicy,
+                    userQuery
                 );
                 attemptEvents.add(toAttemptEvent(completed));
                 attempts.add(completed);
@@ -315,7 +317,8 @@ public class ProgressiveIntentExtractionEngine {
             ExtractionAttempt multiStepAttempt = enforceSemanticRecoveryPolicy(
                 assessAttempt(rawMultiStepAttempt, userQuery),
                 attempts,
-                recoveryPolicy
+                recoveryPolicy,
+                userQuery
             );
             attemptEvents.add(toAttemptEvent(multiStepAttempt));
             attempts.add(multiStepAttempt);
@@ -573,7 +576,8 @@ public class ProgressiveIntentExtractionEngine {
     private ExtractionAttempt enforceSemanticRecoveryPolicy(
         ExtractionAttempt candidate,
         List<ExtractionAttempt> priorAttempts,
-        SemanticRecoveryPolicy policy
+        SemanticRecoveryPolicy policy,
+        String originalQuery
     ) {
         if (candidate == null || !candidate.isSuccess() || candidate.getResponse() == null) {
             return candidate;
@@ -593,8 +597,8 @@ public class ProgressiveIntentExtractionEngine {
             : SemanticRecoveryPolicy.strictDefaults();
         List<Intent> originalIntents = origin.getResponse().getIntents();
         List<Intent> candidateIntents = candidate.getResponse().getIntents() != null
-            ? candidate.getResponse().getIntents()
-            : List.of();
+            ? new ArrayList<>(candidate.getResponse().getIntents())
+            : new ArrayList<>();
         List<IntentExtractionValidator.ValidationIssue> sourceIssues =
             origin.getValidationResult().issues().stream()
                 .filter(Objects::nonNull)
@@ -637,20 +641,39 @@ public class ProgressiveIntentExtractionEngine {
                     intentIssues
                 );
                 if (preservationFailure != null) {
-                    transitions.add(recoveryTransition(
+                    int candidateIndex = correspondingIntentIndex(
+                        originalIntent,
+                        originalIndex,
+                        candidateIntents
+                    );
+                    if (candidateIndex < 0) {
+                        transitions.add(recoveryTransition(
+                            originalIndex,
+                            originalIntent,
+                            effectiveIntent,
+                            "VALID_SIBLING_PRESERVATION",
+                            "REJECTED",
+                            preservationFailure
+                        ));
+                        return rejectedSemanticRecovery(
+                            candidate,
+                            originalIndex,
+                            preservationFailure,
+                            transitions
+                        );
+                    }
+                    Intent preservedIntent = preserveValidatedSibling(
+                        originalIntent,
+                        effectiveIntent
+                    );
+                    candidateIntents.set(candidateIndex, preservedIntent);
+                    transitions.add(siblingPreservationTransition(
                         originalIndex,
                         originalIntent,
                         effectiveIntent,
-                        "VALID_SIBLING_PRESERVATION",
-                        "REJECTED",
+                        preservedIntent,
                         preservationFailure
                     ));
-                    return rejectedSemanticRecovery(
-                        candidate,
-                        originalIndex,
-                        preservationFailure,
-                        transitions
-                    );
                 }
                 continue;
             }
@@ -713,8 +736,36 @@ public class ProgressiveIntentExtractionEngine {
             }
         }
 
-        candidate.setSemanticRecoveryTransitions(List.copyOf(transitions));
-        return candidate;
+        if (candidateIntents.equals(candidate.getResponse().getIntents())) {
+            candidate.setSemanticRecoveryTransitions(List.copyOf(transitions));
+            return candidate;
+        }
+
+        MultiIntentResponse effectiveResponse = MultiIntentResponse.builder()
+            .intents(candidateIntents)
+            .orchestrationStrategy(candidate.getResponse().getOrchestrationStrategy())
+            .metadata(candidate.getResponse().getMetadata())
+            .build();
+        effectiveResponse.normalize();
+        IntentExtractionValidator.ValidationResult effectiveValidation =
+            validator.validate(effectiveResponse, originalQuery);
+        return ExtractionAttempt.builder()
+            .success(effectiveValidation.valid())
+            .response(effectiveResponse)
+            .validationResult(effectiveValidation)
+            .rawContent(candidate.getRawContent())
+            .generationRequest(candidate.getGenerationRequest())
+            .errorMessage(effectiveValidation.valid()
+                ? candidate.getErrorMessage()
+                : "Server-preserved semantic recovery result did not validate")
+            .exception(candidate.getException())
+            .strategyName(candidate.getStrategyName())
+            .llmCalls(candidate.getLlmCalls())
+            .processingTimeMs(candidate.getProcessingTimeMs())
+            .providerProcessingTimeMs(candidate.getProviderProcessingTimeMs())
+            .model(candidate.getModel())
+            .semanticRecoveryTransitions(List.copyOf(transitions))
+            .build();
     }
 
     private boolean semanticReplanPermitted(ExtractionAttempt origin,
@@ -792,19 +843,62 @@ public class ProgressiveIntentExtractionEngine {
     private Intent correspondingIntent(Intent original,
                                        int originalIndex,
                                        List<Intent> candidates) {
+        int index = correspondingIntentIndex(original, originalIndex, candidates);
+        return index >= 0 ? candidates.get(index) : null;
+    }
+
+    private int correspondingIntentIndex(Intent original,
+                                         int originalIndex,
+                                         List<Intent> candidates) {
         if (original == null || candidates == null || candidates.isEmpty()) {
-            return null;
+            return -1;
         }
         if (StringUtils.hasText(original.getObligationId())) {
             String obligationId = original.getObligationId().trim();
-            return candidates.stream()
-                .filter(Objects::nonNull)
-                .filter(intent -> StringUtils.hasText(intent.getObligationId()))
-                .filter(intent -> obligationId.equals(intent.getObligationId().trim()))
-                .findFirst()
-                .orElse(null);
+            for (int index = 0; index < candidates.size(); index++) {
+                Intent candidate = candidates.get(index);
+                if (candidate != null
+                    && StringUtils.hasText(candidate.getObligationId())
+                    && obligationId.equals(candidate.getObligationId().trim())) {
+                    return index;
+                }
+            }
+            return -1;
         }
-        return originalIndex < candidates.size() ? candidates.get(originalIndex) : null;
+        return originalIndex >= 0 && originalIndex < candidates.size()
+            ? originalIndex
+            : -1;
+    }
+
+    private Intent preserveValidatedSibling(Intent original,
+                                            Intent modelProposal) {
+        String obligationId = StringUtils.hasText(original.getObligationId())
+            ? original.getObligationId().trim()
+            : modelProposal != null && StringUtils.hasText(modelProposal.getObligationId())
+                ? modelProposal.getObligationId().trim()
+                : null;
+        return Intent.builder()
+            .type(original.getType())
+            .intent(original.getIntent())
+            .confidence(original.getConfidence())
+            .action(original.getAction())
+            .actionParams(original.getActionParams())
+            .vectorSpace(original.getVectorSpace())
+            .requiresRetrieval(original.getRequiresRetrieval())
+            .requiresGeneration(original.getRequiresGeneration())
+            .responseProfile(original.getResponseProfile())
+            .requiresTargetResolution(original.getRequiresTargetResolution())
+            .directAnswer(original.getDirectAnswer())
+            .generationInstructions(original.getGenerationInstructions())
+            .needsAdvancedRAG(original.getNeedsAdvancedRAG())
+            .optimizedQuery(original.getOptimizedQuery())
+            .obligationId(obligationId)
+            .userGoal(original.getUserGoal())
+            .missingInformation(original.getMissingInformation())
+            .clarificationQuestion(original.getClarificationQuestion())
+            .uncertaintyReason(original.getUncertaintyReason())
+            .nextStepRecommended(original.getNextStepRecommended())
+            .build();
     }
 
     private String siblingPreservationFailure(
@@ -877,6 +971,43 @@ public class ProgressiveIntentExtractionEngine {
         }
         transition.put("outcome", outcome);
         transition.put("policyOrReason", policyOrReason);
+        return Collections.unmodifiableMap(transition);
+    }
+
+    private Map<String, Object> siblingPreservationTransition(
+        int intentIndex,
+        Intent original,
+        Intent modelProposal,
+        Intent effective,
+        String reason
+    ) {
+        Map<String, Object> transition = new LinkedHashMap<>();
+        transition.put("intentIndex", intentIndex);
+        if (effective != null && StringUtils.hasText(effective.getObligationId())) {
+            transition.put("obligationId", effective.getObligationId().trim());
+        }
+        transition.put("decision", "VALID_SIBLING_PRESERVATION");
+        transition.put("originalType", original != null && original.getType() != null
+            ? original.getType().name()
+            : "MISSING");
+        if (StringUtils.hasText(actionId(original))) {
+            transition.put("originalActionId", actionId(original));
+        }
+        transition.put("modelProposedType", modelProposal != null
+                && modelProposal.getType() != null
+            ? modelProposal.getType().name()
+            : "MISSING");
+        if (StringUtils.hasText(actionId(modelProposal))) {
+            transition.put("modelProposedActionId", actionId(modelProposal));
+        }
+        transition.put("effectiveType", effective != null && effective.getType() != null
+            ? effective.getType().name()
+            : "MISSING");
+        if (StringUtils.hasText(actionId(effective))) {
+            transition.put("effectiveActionId", actionId(effective));
+        }
+        transition.put("outcome", "SERVER_PRESERVED_VALID_SIBLING");
+        transition.put("policyOrReason", reason);
         return Collections.unmodifiableMap(transition);
     }
 
