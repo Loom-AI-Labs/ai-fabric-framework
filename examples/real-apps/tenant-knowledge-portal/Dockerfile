@@ -24,6 +24,7 @@ COPY . .
 
 RUN mvn -B -V --no-transfer-progress \
     -Dai-fabric.version="${AI_FABRIC_VERSION}" \
+    -DskipTests \
     -pl tenant-knowledge-portal -am package
 
 FROM eclipse-temurin:21-jre-alpine

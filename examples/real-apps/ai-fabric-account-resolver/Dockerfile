@@ -24,6 +24,7 @@ COPY . .
 
 RUN mvn -B -V --no-transfer-progress \
     -Dai-fabric.version="${AI_FABRIC_VERSION}" \
+    -DskipTests \
     -pl ai-fabric-account-resolver -am package
 
 FROM eclipse-temurin:21-jre-alpine

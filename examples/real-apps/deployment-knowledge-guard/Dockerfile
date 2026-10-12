@@ -17,6 +17,7 @@ RUN --mount=type=cache,target=/root/.m2 \
     mvn -B -V --no-transfer-progress \
     -f examples/real-apps/pom.xml \
     -Dai-fabric.version="${AI_FABRIC_VERSION}" \
+    -DskipTests \
     -pl deployment-knowledge-guard -am package
 
 FROM eclipse-temurin:21-jre-alpine

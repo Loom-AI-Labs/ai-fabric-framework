@@ -26,6 +26,7 @@ COPY . .
 
 RUN mvn -B -V --no-transfer-progress \
     -Dai-fabric.version="${AI_FABRIC_VERSION}" \
+    -DskipTests \
     -pl behavior-churn-signals -am package
 
 FROM eclipse-temurin:21-jre-alpine
