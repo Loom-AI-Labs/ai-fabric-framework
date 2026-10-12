@@ -127,15 +127,19 @@ class ChatSessionPendingActionStoreTest {
             "Update cart?",
             Instant.parse("2026-06-18T08:30:00Z"),
             Map.of(),
-            Set.of("shopperSessionId")
+            Set.of("shopperSessionId"),
+            Set.of("_RetentionOfferOffered")
         );
 
         store.pushPendingAction("conv-1", "user-1", pending);
 
         assertThat(store.peekPendingAction("conv-1", "user-1"))
             .get()
-            .satisfies(restored -> assertThat(restored.trustedResolvedParameters())
-                .containsExactly("shopperSessionId"));
+            .satisfies(restored -> {
+                assertThat(restored.trustedResolvedParameters()).containsExactly("shopperSessionId");
+                assertThat(restored.confirmationInterceptorGuards()).containsExactly("_retentionofferoffered");
+                assertThat(restored.actionParams()).doesNotContainKey("_retentionofferoffered");
+            });
     }
 
     private PendingAction pending(String action) {

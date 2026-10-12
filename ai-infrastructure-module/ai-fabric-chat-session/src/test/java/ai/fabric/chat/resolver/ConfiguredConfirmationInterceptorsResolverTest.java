@@ -52,7 +52,8 @@ class ConfiguredConfirmationInterceptorsResolverTest {
 
         PendingAction top = store.peekPendingAction("conv-1", "demo-user").orElseThrow();
         assertThat(top.action()).isEqualTo("cancel_purchase_order");
-        assertThat(top.actionParams()).containsEntry("_retentionofferoffered", true);
+        assertThat(top.actionParams()).doesNotContainKey("_retentionofferoffered");
+        assertThat(top.confirmationInterceptorGuards()).containsExactly("_retentionofferoffered");
         assertThat(resolver.canResolve(confirmation(IntentType.CONFIRMATION_POSITIVE), Map.of(), context)).isFalse();
     }
 
@@ -106,7 +107,10 @@ class ConfiguredConfirmationInterceptorsResolverTest {
             "cancel_purchase_order",
             Map.of("orderNumber", "PO-9", "orderId", 42),
             null,
-            Instant.now()
+            Instant.now(),
+            Map.of(),
+            Set.of(),
+            Set.of("_retentionOfferOffered")
         ));
         store.pushPendingAction("conv-3", "demo-user", new PendingAction(
             "offer_order_discount",
@@ -123,7 +127,8 @@ class ConfiguredConfirmationInterceptorsResolverTest {
         assertThat(updatedIntent.getAction()).isEqualTo("cancel_purchase_order");
         assertThat(updatedIntent.getActionParams())
             .containsEntry("orderNumber", "PO-9")
-            .containsEntry("orderId", 42);
+            .containsEntry("orderId", 42)
+            .doesNotContainKey("_retentionofferoffered");
         assertThat(updated.getConfirmedActions()).containsExactly("cancel_purchase_order");
         assertThat(updated.getConfirmedActionTrustedResolvedParameters())
             .doesNotContainKey("cancel_purchase_order");
@@ -203,9 +208,12 @@ class ConfiguredConfirmationInterceptorsResolverTest {
         PipelineContext context = context("conv-5");
         store.pushPendingAction("conv-5", "demo-user", new PendingAction(
             "cancel_purchase_order",
-            Map.of("orderNumber", "PO-5", "_retentionofferoffered", true),
+            Map.of("orderNumber", "PO-5"),
             null,
-            Instant.now()
+            Instant.now(),
+            Map.of(),
+            Set.of(),
+            Set.of("_retentionofferoffered")
         ));
 
         assertThat(resolver.canResolve(confirmation(IntentType.CONFIRMATION_POSITIVE), Map.of(), context)).isFalse();

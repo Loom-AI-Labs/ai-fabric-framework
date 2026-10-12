@@ -15,7 +15,6 @@ import ai.fabric.intent.orchestration.pipeline.PipelineContext;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -165,20 +164,10 @@ public class AnnotatedConfirmationInterceptorsResolver extends ConfirmationResol
         if (current == null) {
             return;
         }
-        Map<String, Object> params = current.actionParams();
-        if (ConfirmationInterceptorParamSupport.isBooleanFlagSet(params, normalizedKey)) {
+        if (ConfirmationInterceptorParamSupport.isGuardSet(current, normalizedKey)) {
             return;
         }
-        Map<String, Object> next = params != null ? new HashMap<>(params) : new HashMap<>();
-        next.put(normalizedKey, true);
-        PendingAction updated = new PendingAction(
-            current.action(),
-            Map.copyOf(next),
-            current.description(),
-            current.createdAt(),
-            current.trustedEvidenceValuesByKey(),
-            current.trustedResolvedParameters()
-        );
+        PendingAction updated = ConfirmationInterceptorParamSupport.withGuardSet(current, normalizedKey);
         popPending(context);
         pushPending(context, updated);
     }
@@ -221,7 +210,7 @@ public class AnnotatedConfirmationInterceptorsResolver extends ConfirmationResol
             if (!handler.pendingActions.contains(actionName)) {
                 continue;
             }
-            if (ConfirmationInterceptorParamSupport.isBooleanFlagSet(pending.actionParams(), handler.onceParam)) {
+            if (ConfirmationInterceptorParamSupport.isGuardSet(pending, handler.onceParam)) {
                 continue;
             }
             return handler;

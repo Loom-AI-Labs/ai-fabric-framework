@@ -1657,7 +1657,10 @@ public class IntentHandlingStep implements PipelineStep {
             ? ConfirmationInterceptorParamSupport.normalizeOnceParam(rule.trigger().onceParam())
             : null;
         if (StringUtils.hasText(onceParam) && !workingStack.isEmpty()) {
-            workingStack.set(0, ConfiguredConfirmationSupport.withBooleanPendingParam(workingStack.getFirst(), onceParam, true));
+            workingStack.set(
+                0,
+                ConfiguredConfirmationSupport.withConfirmationInterceptorGuard(workingStack.getFirst(), onceParam)
+            );
         }
 
         ConfirmationInterceptorDecision configuredDecision = rule.decision();

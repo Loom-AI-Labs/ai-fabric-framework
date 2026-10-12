@@ -5,8 +5,8 @@ import ai.fabric.dto.MultiIntentResponse;
 import ai.fabric.dto.IntentType;
 import ai.fabric.intent.action.PendingAction;
 import ai.fabric.intent.action.PendingActionStore;
+import ai.fabric.intent.action.confirmation.ConfirmationInterceptorParamSupport;
 import ai.fabric.intent.orchestration.pipeline.PipelineContext;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -92,10 +92,7 @@ public final class ConfirmationInterceptionContext {
         pendingActionStore.replacePendingActionStack(conversationId(), ownerId(), stackTopFirst);
     }
 
-    /**
-     * Sets a boolean guard flag on the current top pending action.
-     */
-    public void setTopPendingParamTrue(String key) {
+    public void setTopPendingGuard(String key) {
         if (!StringUtils.hasText(key)) {
             return;
         }
@@ -103,29 +100,30 @@ public final class ConfirmationInterceptionContext {
         if (top == null) {
             return;
         }
-        Map<String, Object> params = top.actionParams();
-        Map<String, Object> next = params != null ? new HashMap<>(params) : new HashMap<>();
-        next.put(key, true);
-        replaceTopPending(new PendingAction(
-            top.action(),
-            Map.copyOf(next),
-            top.description(),
-            top.createdAt(),
-            top.trustedEvidenceValuesByKey(),
-            top.trustedResolvedParameters()
-        ));
+        replaceTopPending(ConfirmationInterceptorParamSupport.withGuardSet(top, key));
     }
 
-    public boolean isTopPendingParamTrue(String key) {
+    public boolean isTopPendingGuardSet(String key) {
         if (!StringUtils.hasText(key)) {
             return false;
         }
-        PendingAction top = peekPending();
-        if (top == null) {
-            return false;
-        }
-        Map<String, Object> params = top.actionParams();
-        return params != null && Boolean.TRUE.equals(params.get(key));
+        return ConfirmationInterceptorParamSupport.isGuardSet(peekPending(), key);
+    }
+
+    /**
+     * @deprecated Interceptor guards are internal state, not action parameters.
+     */
+    @Deprecated(forRemoval = true)
+    public void setTopPendingParamTrue(String key) {
+        setTopPendingGuard(key);
+    }
+
+    /**
+     * @deprecated Interceptor guards are internal state, not action parameters.
+     */
+    @Deprecated(forRemoval = true)
+    public boolean isTopPendingParamTrue(String key) {
+        return isTopPendingGuardSet(key);
     }
 
     public InterceptionDecision promptAction(String actionName, Map<String, Object> params) {

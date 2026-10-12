@@ -19,7 +19,8 @@ public record PendingAction(
     String description,
     Instant createdAt,
     Map<String, List<String>> trustedEvidenceValuesByKey,
-    Set<String> trustedResolvedParameters
+    Set<String> trustedResolvedParameters,
+    Set<String> confirmationInterceptorGuards
 ) {
 
     public static final String TRUSTED_EVIDENCE_METADATA_KEY = "__trustedActionEvidenceValuesByKey";
@@ -30,7 +31,7 @@ public record PendingAction(
         String description,
         Instant createdAt
     ) {
-        this(action, actionParams, description, createdAt, Map.of(), Set.of());
+        this(action, actionParams, description, createdAt, Map.of(), Set.of(), Set.of());
     }
 
     public PendingAction(
@@ -40,12 +41,32 @@ public record PendingAction(
         Instant createdAt,
         Map<String, List<String>> trustedEvidenceValuesByKey
     ) {
-        this(action, actionParams, description, createdAt, trustedEvidenceValuesByKey, Set.of());
+        this(action, actionParams, description, createdAt, trustedEvidenceValuesByKey, Set.of(), Set.of());
+    }
+
+    public PendingAction(
+        String action,
+        Map<String, Object> actionParams,
+        String description,
+        Instant createdAt,
+        Map<String, List<String>> trustedEvidenceValuesByKey,
+        Set<String> trustedResolvedParameters
+    ) {
+        this(
+            action,
+            actionParams,
+            description,
+            createdAt,
+            trustedEvidenceValuesByKey,
+            trustedResolvedParameters,
+            Set.of()
+        );
     }
 
     public PendingAction {
         trustedEvidenceValuesByKey = freezeTrustedEvidenceValues(trustedEvidenceValuesByKey);
         trustedResolvedParameters = freezeTrustedResolvedParameters(trustedResolvedParameters);
+        confirmationInterceptorGuards = freezeConfirmationInterceptorGuards(confirmationInterceptorGuards);
     }
 
     public Map<String, Object> toMap() {
@@ -59,6 +80,9 @@ public record PendingAction(
             : Collections.emptyMap());
         out.put("trustedResolvedParameters", trustedResolvedParameters != null
             ? trustedResolvedParameters
+            : Collections.emptySet());
+        out.put("confirmationInterceptorGuards", confirmationInterceptorGuards != null
+            ? confirmationInterceptorGuards
             : Collections.emptySet());
         return Collections.unmodifiableMap(out);
     }
@@ -87,6 +111,9 @@ public record PendingAction(
         }
         Map<String, List<String>> trustedEvidenceValuesByKey = parseTrustedEvidence(raw.get("trustedEvidenceValuesByKey"));
         Set<String> trustedResolvedParameters = parseTrustedResolvedParameters(raw.get("trustedResolvedParameters"));
+        Set<String> confirmationInterceptorGuards = parseConfirmationInterceptorGuards(
+            raw.get("confirmationInterceptorGuards")
+        );
 
         if (!StringUtils.hasText(action)) {
             return null;
@@ -97,8 +124,22 @@ public record PendingAction(
             description,
             createdAt,
             trustedEvidenceValuesByKey,
-            trustedResolvedParameters
+            trustedResolvedParameters,
+            confirmationInterceptorGuards
         );
+    }
+
+    private static Set<String> parseConfirmationInterceptorGuards(Object raw) {
+        if (!(raw instanceof Iterable<?> iterable)) {
+            return Set.of();
+        }
+        LinkedHashSet<String> out = new LinkedHashSet<>();
+        for (Object value : iterable) {
+            if (value != null && StringUtils.hasText(value.toString())) {
+                out.add(normalizeConfirmationInterceptorGuard(value.toString()));
+            }
+        }
+        return out.isEmpty() ? Set.of() : Collections.unmodifiableSet(out);
     }
 
     private static Set<String> parseTrustedResolvedParameters(Object raw) {
@@ -173,5 +214,22 @@ public record PendingAction(
             }
         }
         return out.isEmpty() ? Set.of() : Collections.unmodifiableSet(out);
+    }
+
+    private static Set<String> freezeConfirmationInterceptorGuards(Set<String> raw) {
+        if (raw == null || raw.isEmpty()) {
+            return Set.of();
+        }
+        LinkedHashSet<String> out = new LinkedHashSet<>();
+        for (String value : raw) {
+            if (StringUtils.hasText(value)) {
+                out.add(normalizeConfirmationInterceptorGuard(value));
+            }
+        }
+        return out.isEmpty() ? Set.of() : Collections.unmodifiableSet(out);
+    }
+
+    private static String normalizeConfirmationInterceptorGuard(String value) {
+        return value.trim().toLowerCase(java.util.Locale.ROOT);
     }
 }

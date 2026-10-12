@@ -16,6 +16,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -44,7 +45,15 @@ class ConfiguredConfirmationSupportTest {
             ConfirmationResolutionDecision.NEGATIVE
         )).isSameAs(rule);
 
-        PendingAction alreadyHandled = pending("cancel_order", Map.of("handled", true));
+        PendingAction alreadyHandled = new PendingAction(
+            "cancel_order",
+            Map.of("orderId", "ord-1"),
+            "description",
+            Instant.parse("2026-01-01T00:00:00Z"),
+            Map.of(),
+            Set.of(),
+            Set.of("handled")
+        );
         assertThat(ConfiguredConfirmationSupport.findMatchingConfiguredConfirmationRule(
             List.of(rule),
             alreadyHandled,
@@ -120,10 +129,11 @@ class ConfiguredConfirmationSupportTest {
         );
         assertThat(noPopCurrent).extracting(PendingAction::action).containsExactly("current_action", "older_action");
 
-        PendingAction marked = ConfiguredConfirmationSupport.withBooleanPendingParam(current, "handled", true);
-        assertThat(marked.actionParams()).containsEntry("handled", true);
+        PendingAction marked = ConfiguredConfirmationSupport.withConfirmationInterceptorGuard(current, "handled");
+        assertThat(marked.actionParams()).isEmpty();
+        assertThat(marked.confirmationInterceptorGuards()).containsExactly("handled");
         assertThat(marked.action()).isEqualTo(current.action());
-        assertThatThrownBy(() -> marked.actionParams().put("other", true))
+        assertThatThrownBy(() -> marked.confirmationInterceptorGuards().add("other"))
             .isInstanceOf(UnsupportedOperationException.class);
     }
 

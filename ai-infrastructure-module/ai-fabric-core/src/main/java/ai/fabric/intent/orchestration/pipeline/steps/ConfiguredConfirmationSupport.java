@@ -11,9 +11,7 @@ import ai.fabric.intent.orchestration.pipeline.steps.ConfirmationDecisionSupport
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.util.StringUtils;
 
-import java.time.Instant;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -67,7 +65,7 @@ final class ConfiguredConfirmationSupport {
             if (!containsNormalizedConfirmationValue(trigger.pendingActions(), actionName)) {
                 continue;
             }
-            if (ConfirmationInterceptorParamSupport.isBooleanFlagSet(pending.actionParams(), trigger.onceParam())) {
+            if (ConfirmationInterceptorParamSupport.isGuardSet(pending, trigger.onceParam())) {
                 continue;
             }
             return rule;
@@ -238,19 +236,8 @@ final class ConfiguredConfirmationSupport {
         }
     }
 
-    static PendingAction withBooleanPendingParam(PendingAction pendingAction, String key, boolean value) {
-        Map<String, Object> params = pendingAction != null && pendingAction.actionParams() != null
-            ? new LinkedHashMap<>(pendingAction.actionParams())
-            : new LinkedHashMap<>();
-        params.put(key, value);
-        return new PendingAction(
-            pendingAction.action(),
-            Collections.unmodifiableMap(new LinkedHashMap<>(params)),
-            pendingAction.description(),
-            pendingAction.createdAt() != null ? pendingAction.createdAt() : Instant.now(),
-            pendingAction.trustedEvidenceValuesByKey(),
-            pendingAction.trustedResolvedParameters()
-        );
+    static PendingAction withConfirmationInterceptorGuard(PendingAction pendingAction, String key) {
+        return ConfirmationInterceptorParamSupport.withGuardSet(pendingAction, key);
     }
 
     static boolean containsNormalizedConfirmationValue(List<String> values, String candidate) {

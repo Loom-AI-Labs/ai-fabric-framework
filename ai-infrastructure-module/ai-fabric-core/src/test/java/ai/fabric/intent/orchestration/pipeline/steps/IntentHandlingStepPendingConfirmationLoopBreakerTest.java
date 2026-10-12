@@ -549,9 +549,12 @@ class IntentHandlingStepPendingConfirmationLoopBreakerTest {
 
         pendingActionStore.pushPendingAction("chat-retention-guard", "user-1", new PendingAction(
             "cancel_purchase_order",
-            Map.of("orderNumber", "PO-1", "_RetentionOfferOffered", true),
+            Map.of("orderNumber", "PO-1"),
             null,
-            java.time.Instant.now()
+            java.time.Instant.now(),
+            Map.of(),
+            Set.of(),
+            Set.of("_RetentionOfferOffered")
         ));
 
         Intent cancelIntent = Intent.builder()

@@ -15,9 +15,7 @@ import ai.fabric.intent.action.confirmation.ConfirmationInterceptorRule;
 import ai.fabric.intent.action.confirmation.ConfirmationInterceptorStackPolicy;
 import ai.fabric.intent.action.confirmation.ConfirmationInterceptorTrigger;
 import ai.fabric.intent.orchestration.pipeline.PipelineContext;
-import java.time.Instant;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -87,7 +85,7 @@ public class ConfiguredConfirmationInterceptorsResolver extends ConfirmationReso
             ? ConfirmationInterceptorParamSupport.normalizeOnceParam(rule.trigger().onceParam())
             : null;
         if (StringUtils.hasText(onceParam) && !workingStack.isEmpty()) {
-            workingStack.set(0, withBooleanParam(workingStack.get(0), onceParam, true));
+            workingStack.set(0, ConfirmationInterceptorParamSupport.withGuardSet(workingStack.get(0), onceParam));
         }
 
         InterceptionDecision decision = toDecision(rule.decision(), stackSnapshot);
@@ -165,7 +163,7 @@ public class ConfiguredConfirmationInterceptorsResolver extends ConfirmationReso
             if (!containsNormalized(trigger.pendingActions(), actionName)) {
                 continue;
             }
-            if (ConfirmationInterceptorParamSupport.isBooleanFlagSet(pending.actionParams(), trigger.onceParam())) {
+            if (ConfirmationInterceptorParamSupport.isGuardSet(pending, trigger.onceParam())) {
                 continue;
             }
             return rule;
@@ -456,21 +454,6 @@ public class ConfiguredConfirmationInterceptorsResolver extends ConfirmationReso
                 }
             }
         }
-    }
-
-    private PendingAction withBooleanParam(PendingAction pendingAction, String key, boolean value) {
-        Map<String, Object> params = pendingAction.actionParams() != null
-            ? new LinkedHashMap<>(pendingAction.actionParams())
-            : new LinkedHashMap<>();
-        params.put(key, value);
-        return new PendingAction(
-            pendingAction.action(),
-            Collections.unmodifiableMap(new LinkedHashMap<>(params)),
-            pendingAction.description(),
-            pendingAction.createdAt() != null ? pendingAction.createdAt() : Instant.now(),
-            pendingAction.trustedEvidenceValuesByKey(),
-            pendingAction.trustedResolvedParameters()
-        );
     }
 
     private boolean containsNormalized(List<String> values, String candidate) {

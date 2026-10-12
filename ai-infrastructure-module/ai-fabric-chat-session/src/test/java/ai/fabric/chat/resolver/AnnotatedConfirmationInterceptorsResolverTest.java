@@ -63,7 +63,8 @@ class AnnotatedConfirmationInterceptorsResolverTest {
 
         PendingAction top = store.peekPendingAction("conv-1", "demo-user").orElseThrow();
         assertThat(top.action()).isEqualTo("cancel_purchase_order");
-        assertThat(top.actionParams()).containsEntry("_offered", true);
+        assertThat(top.actionParams()).doesNotContainKey("_offered");
+        assertThat(top.confirmationInterceptorGuards()).containsExactly("_offered");
 
         // Guard prevents repeated offering loops.
         assertThat(resolver.canResolve(response, Map.of(), context)).isFalse();
@@ -148,7 +149,8 @@ class AnnotatedConfirmationInterceptorsResolverTest {
             .containsExactly("offer_order_discount", "show_orders");
 
         PendingAction top = store.peekPendingAction("conv-3", "demo-user").orElseThrow();
-        assertThat(top.actionParams()).containsEntry("_retentionofferoffered", true);
+        assertThat(top.actionParams()).doesNotContainKey("_retentionofferoffered");
+        assertThat(top.confirmationInterceptorGuards()).containsExactly("_retentionofferoffered");
     }
 
     @Test
@@ -208,9 +210,12 @@ class AnnotatedConfirmationInterceptorsResolverTest {
 
         store.pushPendingAction("conv-5", "demo-user", new PendingAction(
             "cancel_subscription",
-            Map.of("orderNumber", "PO-99", "_retentionofferoffered", true),
+            Map.of("orderNumber", "PO-99"),
             null,
-            Instant.now()
+            Instant.now(),
+            Map.of(),
+            Set.of(),
+            Set.of("_retentionofferoffered")
         ));
 
         MultiIntentResponse response = MultiIntentResponse.builder()
