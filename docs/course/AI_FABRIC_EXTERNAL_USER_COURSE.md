@@ -287,7 +287,7 @@ The complete course is a set of selectable tracks, not an eight-hour promise for
 | Quickstart | 60-90 minutes | Run a standalone app and prove a first semantic search |
 | Core course | 7-9 hours | Build search, RAG, actions, memory, security, and tests in one app |
 | Production track | 6-8 hours | Add providers, lifecycle, quality, diagnostics, and release checks |
-| Real-app case studies | 4-6 hours | Reproduce six deployed application shapes |
+| Real-app case studies | 4-6 hours | Reproduce six selected deployed application shapes |
 | Coding-assistant track | 1-2 hours | Use an assistant without inventing APIs or bypassing policy |
 | Capstone | 4-8 hours | Build and defend a complete AI Fabric vertical slice |
 

@@ -5,6 +5,7 @@ import com.ai.fabric.realapps.chat.orders.service.PurchaseOrderService;
 import ai.fabric.intent.action.ActionAccessMode;
 import ai.fabric.intent.action.ActionResultContracts;
 import ai.fabric.intent.action.ActionContext;
+import ai.fabric.intent.action.ActionGroundingSufficiency;
 import ai.fabric.intent.action.ActionResult;
 import ai.fabric.intent.action.annotation.AIAction;
 import ai.fabric.intent.action.annotation.ActionExecute;
@@ -53,6 +54,7 @@ public class ListOrdersActionHandler {
                 .success(true)
                 .message(payload.isEmpty() ? "No orders found" : "Orders")
                 .data(ActionResultContracts.list(payload))
+                .groundingSufficiency(ActionGroundingSufficiency.SUFFICIENT)
                 .build();
         } catch (Exception e) {
             log.error("List orders failed for user {}", userId, e);

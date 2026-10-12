@@ -18,7 +18,8 @@ import java.util.Set;
     category = "incident-service-health",
     accessMode = ActionAccessMode.READ,
     requiresConfirmation = false,
-    readActionResolutionEligible = true
+    readActionResolutionEligible = true,
+    groundingVectorSpaces = {"incident-runbook"}
 )
 public class ReadIncidentAlertsActionHandler {
 

@@ -122,7 +122,7 @@ public class AccountResolverController {
     public record UpdatePaymentMethodRequest(
         PaymentMethod.PaymentType type,
         @NotBlank String provider,
-        @NotBlank @Pattern(regexp = ".*\\d{4}.*") String last4
+        @NotBlank @Pattern(regexp = "\\d{4}") String last4
     ) { }
 
     public record UpdateAddressRequest(

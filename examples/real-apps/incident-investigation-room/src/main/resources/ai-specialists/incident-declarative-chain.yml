@@ -68,6 +68,14 @@ spec:
             valuePointer: /selectionReason
           - name: sourceRevision
             valuePointer: /sourceRevision
+          - name: plannerIterations
+            valuePointer: /plannerIterations
+          - name: rejectedActionProposalCount
+            valuePointer: /rejectedActionProposalCount
+          - name: repairApplied
+            valuePointer: /repairApplied
+          - name: readActionExecutionIds
+            valuePointer: /readActionExecutionIds
         evidenceReferences: ALL_APPROVED
       transitions:
         delegationAllowed: true
@@ -101,6 +109,14 @@ spec:
             valuePointer: /selectionReason
           - name: sourceRevision
             valuePointer: /sourceRevision
+          - name: plannerIterations
+            valuePointer: /plannerIterations
+          - name: rejectedActionProposalCount
+            valuePointer: /rejectedActionProposalCount
+          - name: repairApplied
+            valuePointer: /repairApplied
+          - name: readActionExecutionIds
+            valuePointer: /readActionExecutionIds
         evidenceReferences: ALL_APPROVED
       transitions:
         delegationAllowed: true

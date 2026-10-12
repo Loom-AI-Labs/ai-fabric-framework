@@ -236,7 +236,7 @@ tracks:
           - operations-release-readiness
   - id: case-studies
     title: Real-App Case Studies
-    description: Reproduce six deployed applications and connect their visible behavior to backend framework proof.
+    description: Reproduce six selected deployed applications and connect their visible behavior to backend framework proof.
     required: false
     lessons:
       - id: case-01

@@ -83,7 +83,7 @@ class AccountResolverActionHandlerTest {
             .build(), null);
 
         assertThat(handler.allowed(context)).isTrue();
-        assertThat(handler.confirm("Visa", "4242")).contains("Visa").contains("4242");
+        assertThat(handler.confirm("4242")).contains("stored card").contains("4242");
 
         ActionResult result = handler.execute("4242", context);
 

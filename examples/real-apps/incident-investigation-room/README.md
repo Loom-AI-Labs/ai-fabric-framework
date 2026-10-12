@@ -119,6 +119,11 @@ normal application write/action intent. Their `read-action-resolution` blocks
 remain enabled and independently allowlist the operational READ actions that a
 specialist may request. `incident-change` additionally enables only the
 `incident-runbook` vector space and uses parallel action/RAG cooperation.
+Every incident READ action declares `groundingVectorSpaces = {"incident-runbook"}` so the
+framework can keep action eligibility aligned with the specialist's evidence scope. The projected
+result includes canonical planner iterations, rejected-proposal count, bounded-repair status,
+READ execution IDs, and approved evidence IDs; these values come from framework diagnostics rather
+than model-authored summary text.
 
 ## Scenarios
 
@@ -133,7 +138,9 @@ specialist may request. `incident-change` additionally enables only the
 The Smart Investigation prompt chips additionally prove health-only routing,
 adaptive selection, independent parallel selection, clarification, completion
 without a worker, terminal handoff, invented-target denial, exact replay, and
-trusted-boundary attack rejection.
+trusted-boundary attack rejection. The `Bounded repair` prompt deliberately requests a window and
+limit outside the action schemas, allowing the UI to show whether the planner rejected and repaired
+the proposal or failed visibly.
 
 ## API Flow
 

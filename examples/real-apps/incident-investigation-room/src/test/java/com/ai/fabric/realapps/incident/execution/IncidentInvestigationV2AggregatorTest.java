@@ -61,10 +61,20 @@ class IncidentInvestigationV2AggregatorTest {
 
     private PlanStepOutputs outputs(String risk, String suspectedChange) {
         List<IncidentDataSourceUsage> healthSources = List.of(
-            new IncidentDataSourceUsage("read_service_metrics", 2, true)
+            new IncidentDataSourceUsage(
+                "read_service_metrics",
+                2,
+                true,
+                "action-health-1"
+            )
         );
         List<IncidentDataSourceUsage> changeSources = List.of(
-            new IncidentDataSourceUsage("read_recent_deployments", 2, true)
+            new IncidentDataSourceUsage(
+                "read_recent_deployments",
+                2,
+                true,
+                "action-change-1"
+            )
         );
         return new PlanStepOutputs(Map.of(
             IncidentPlans.SERVICE_HEALTH_STEP,
@@ -76,7 +86,11 @@ class IncidentInvestigationV2AggregatorTest {
                 healthSources,
                 2,
                 "Current health evidence",
-                "revision-1"
+                "revision-1",
+                "1",
+                "0",
+                "false",
+                "action-health-1"
             ),
             IncidentPlans.CHANGE_RISK_STEP,
             new ChangeRiskInvestigationFinding(
@@ -88,7 +102,11 @@ class IncidentInvestigationV2AggregatorTest {
                 changeSources,
                 2,
                 "Current change evidence",
-                "revision-1"
+                "revision-1",
+                "2",
+                "1",
+                "true",
+                "action-change-1"
             )
         ));
     }

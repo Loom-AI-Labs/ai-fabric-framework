@@ -34,6 +34,8 @@ The seeded demo users are:
 - Action authorization through `@ActionAllowed`.
 - Action confirmation through `@ActionConfirmation`.
 - Post-action readiness evidence returned as structured `ActionResult` payloads after write actions.
+- Typed payment and address form continuation through `ActionDraftSubmission`.
+- Strict parameter contracts for four-digit card identifiers, positive refund amounts, closed address/resolution values, and unknown-field rejection.
 - Policy-backed resolver behavior without hardcoded frontend business logic.
 - AI Fabric chat-session conversation memory for follow-up turns and confirmation context.
 - Annotation-assisted indexing over subscription plans.

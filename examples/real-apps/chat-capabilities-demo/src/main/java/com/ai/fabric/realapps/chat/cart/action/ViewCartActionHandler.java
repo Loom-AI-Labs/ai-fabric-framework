@@ -20,7 +20,8 @@ import lombok.extern.slf4j.Slf4j;
     description = "View my current active cart and its items",
     category = "commerce",
     accessMode = ActionAccessMode.READ,
-    requiresConfirmation = false
+    requiresConfirmation = false,
+    readActionResolutionEligible = true
 )
 @RequiredArgsConstructor
 @Slf4j

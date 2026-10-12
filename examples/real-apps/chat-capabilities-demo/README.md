@@ -15,13 +15,16 @@ library integration.
 - Chat-session storage, turn recording, conversation listing, and conversation deletion.
 - Conversation-aware orchestration across multiple turns.
 - Product CRUD plus AI Fabric indexing into Lucene.
-- RAG over product/catalog data.
+- Compound live product-state plus policy/review RAG answers.
+- Cross-turn references such as `which of those` resolved from backend-owned chat memory.
+- Reviewed READ-action planning with explicit product grounding sufficiency, execution IDs, and exact-once diagnostics.
 - Curated commerce modes: `navigator`, `navigator_deep`, `executor`, and `cart_assistant`.
 - Local `@AIAction` handlers for catalog, cart, order, review, support, address, shipment, and account
   workflows.
 - Action confirmation for write actions.
 - Pending-action yes/no flow.
 - Confirmation-interceptor behavior for cancellation/retention paths.
+- Typed UI continuation through `ActionDraftSubmission`; forms do not rebuild values into natural-language text.
 - Runtime data-sync endpoints for product/policy/review payloads from an external domain app.
 - Runtime vector probe endpoint that exposes raw retrieval evidence for pushed data.
 - Browser-oriented request contract and CORS configuration.

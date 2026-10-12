@@ -162,11 +162,37 @@ final class IncidentActionCitationValidation {
             source.put("action", observation.action());
             source.put("candidateCount", observation.candidateIds().size());
             source.put("groundingUsable", true);
+            if (!observation.actionExecutionId().isBlank()) {
+                source.put(
+                    "actionExecutionId",
+                    observation.actionExecutionId()
+                );
+            }
             candidateCount += observation.candidateIds().size();
         }
+        ResolutionTrace resolutionTrace = resolutionTrace(
+            context.sourceResult(),
+            observations
+        );
         normalized.set("dataSources", dataSources);
         normalized.put("candidateEventCount", candidateCount);
         normalized.put("sourceRevision", sourceRevisions.iterator().next());
+        normalized.put(
+            "plannerIterations",
+            Integer.toString(resolutionTrace.plannerIterations())
+        );
+        normalized.put(
+            "rejectedActionProposalCount",
+            Integer.toString(resolutionTrace.rejectedActionProposalCount())
+        );
+        normalized.put(
+            "repairApplied",
+            Boolean.toString(resolutionTrace.repairApplied())
+        );
+        normalized.put(
+            "readActionExecutionIds",
+            resolutionTrace.readActionExecutionIds()
+        );
         return normalized;
     }
 
@@ -201,14 +227,22 @@ final class IncidentActionCitationValidation {
             if (!(rawSummary instanceof String summary) || summary.isBlank()) {
                 continue;
             }
-            observations.put(actionName, parseObservation(actionName, summary));
+            observations.put(
+                actionName,
+                parseObservation(
+                    actionName,
+                    summary,
+                    optionalText(action.get("actionExecutionId"))
+                )
+            );
         }
         return Collections.unmodifiableMap(observations);
     }
 
     private ActionObservation parseObservation(
         String expectedAction,
-        String summary
+        String summary,
+        String actionExecutionId
     ) {
         try {
             JsonNode facts = objectMapper.readTree(summary);
@@ -224,7 +258,8 @@ final class IncidentActionCitationValidation {
                 requiredTextSet(
                     facts.path("candidateEventIds"),
                     "candidateEventIds"
-                )
+                ),
+                actionExecutionId
             );
         } catch (JsonProcessingException exception) {
             throw new IllegalArgumentException(
@@ -258,6 +293,80 @@ final class IncidentActionCitationValidation {
         }
     }
 
+    private ResolutionTrace resolutionTrace(
+        OrchestrationResult result,
+        Map<String, ActionObservation> observations
+    ) {
+        Map<?, ?> resolution = findResolution(
+            result,
+            Collections.newSetFromMap(new IdentityHashMap<>())
+        );
+        int plannerIterations = listSize(
+            resolution != null ? resolution.get("iterations") : null
+        );
+        int rejectedCount = integerValue(
+            resolution != null
+                ? resolution.get("rejectedActionProposalsCount")
+                : null
+        );
+        if (rejectedCount == 0 && resolution != null) {
+            rejectedCount = listSize(
+                resolution.get("rejectedActionProposals")
+            );
+        }
+        String executionIds = observations.values().stream()
+            .map(ActionObservation::actionExecutionId)
+            .filter(value -> value != null && !value.isBlank())
+            .distinct()
+            .collect(java.util.stream.Collectors.joining(","));
+        return new ResolutionTrace(
+            plannerIterations,
+            rejectedCount,
+            rejectedCount > 0 && !executionIds.isBlank(),
+            executionIds
+        );
+    }
+
+    private Map<?, ?> findResolution(
+        OrchestrationResult result,
+        Set<OrchestrationResult> visited
+    ) {
+        if (result == null || !visited.add(result)) {
+            return null;
+        }
+        Map<String, Object> data = result.getData();
+        if (data != null
+            && data.get("readActionResolution") instanceof Map<?, ?> value) {
+            return value;
+        }
+        if (result.getChildren() != null) {
+            for (OrchestrationResult child : result.getChildren()) {
+                Map<?, ?> nested = findResolution(child, visited);
+                if (nested != null) {
+                    return nested;
+                }
+            }
+        }
+        return null;
+    }
+
+    private int listSize(Object value) {
+        return value instanceof List<?> list ? list.size() : 0;
+    }
+
+    private int integerValue(Object value) {
+        if (value instanceof Number number) {
+            return Math.max(0, number.intValue());
+        }
+        return 0;
+    }
+
+    private String optionalText(Object value) {
+        return value instanceof String text && !text.isBlank()
+            ? text.trim()
+            : "";
+    }
+
     private Set<String> requiredTextSet(JsonNode value, String field) {
         if (!value.isArray() || value.isEmpty()) {
             throw new IllegalArgumentException(field + " is required");
@@ -289,6 +398,14 @@ final class IncidentActionCitationValidation {
     private record ActionObservation(
         String action,
         String sourceRevision,
-        Set<String> candidateIds
+        Set<String> candidateIds,
+        String actionExecutionId
+    ) {}
+
+    private record ResolutionTrace(
+        int plannerIterations,
+        int rejectedActionProposalCount,
+        boolean repairApplied,
+        String readActionExecutionIds
     ) {}
 }

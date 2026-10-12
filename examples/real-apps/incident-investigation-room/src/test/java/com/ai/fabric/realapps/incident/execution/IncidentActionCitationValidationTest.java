@@ -112,6 +112,14 @@ class IncidentActionCitationValidationTest {
             .isOne();
         assertThat(normalized.path("sourceRevision").asText())
             .isEqualTo("revision-1");
+        assertThat(normalized.path("plannerIterations").asInt()).isOne();
+        assertThat(normalized.path("rejectedActionProposalCount").asInt())
+            .isZero();
+        assertThat(normalized.path("repairApplied").asBoolean()).isFalse();
+        assertThat(normalized.path("readActionExecutionIds").asText())
+            .isEqualTo("action-execution-1");
+        assertThat(normalized.at("/dataSources/0/actionExecutionId").asText())
+            .isEqualTo("action-execution-1");
         assertThatCode(() -> validation.validateChange(
             new SpecialistFinalOutputValidationContext(
                 normalized,
@@ -119,6 +127,30 @@ class IncidentActionCitationValidationTest {
                 modelOutput.evidence()
             )
         )).doesNotThrowAnyException();
+    }
+
+    @Test
+    void exposesBoundedPlannerRejectionAndRepairDiagnostics() throws Exception {
+        var modelOutput = context(
+            "read_recent_deployments",
+            List.of("change-1"),
+            changeOutput(1, "runbook-1"),
+            List.of(runbook("runbook-1")),
+            1
+        );
+
+        var normalized = validation.normalizeChange(
+            new SpecialistOutputNormalizationContext(
+                modelOutput.output(),
+                modelOutput.sourceResult(),
+                modelOutput.evidence()
+            )
+        );
+
+        assertThat(normalized.path("plannerIterations").asInt()).isEqualTo(2);
+        assertThat(normalized.path("rejectedActionProposalCount").asInt())
+            .isOne();
+        assertThat(normalized.path("repairApplied").asBoolean()).isTrue();
     }
 
     @Test
@@ -156,21 +188,42 @@ class IncidentActionCitationValidationTest {
         String output,
         List<AIEvidenceReference> evidence
     ) throws Exception {
+        return context(action, candidateIds, output, evidence, 0);
+    }
+
+    private SpecialistFinalOutputValidationContext context(
+        String action,
+        List<String> candidateIds,
+        String output,
+        List<AIEvidenceReference> evidence,
+        int rejectedProposalCount
+    ) throws Exception {
         String facts = objectMapper.writeValueAsString(Map.of(
             "action", action,
             "sourceRevision", "revision-1",
             "candidateEventIds", candidateIds
         ));
+        List<Map<String, Object>> iterations = rejectedProposalCount > 0
+            ? List.of(
+                Map.of("iteration", 1, "status", "PLANNED"),
+                Map.of("iteration", 2, "status", "PLANNED")
+            )
+            : List.of(Map.of("iteration", 1, "status", "PLANNED"));
         OrchestrationResult source = OrchestrationResult.builder()
             .type(OrchestrationResultType.INFORMATION_PROVIDED)
             .success(true)
             .data(Map.of(
                 "readActionResolution",
-                Map.of("executedActions", List.of(Map.of(
-                    "action", action,
-                    "groundingUsable", true,
-                    "evidenceSummary", facts
-                )))
+                Map.of(
+                    "iterations", iterations,
+                    "rejectedActionProposalsCount", rejectedProposalCount,
+                    "executedActions", List.of(Map.of(
+                        "actionExecutionId", "action-execution-1",
+                        "action", action,
+                        "groundingUsable", true,
+                        "evidenceSummary", facts
+                    ))
+                )
             ))
             .build();
         return new SpecialistFinalOutputValidationContext(

@@ -5,6 +5,7 @@ import com.ai.fabric.realapps.chat.catalog.service.ProductService;
 import ai.fabric.intent.action.ActionAccessMode;
 import ai.fabric.intent.action.ActionResultContracts;
 import ai.fabric.intent.action.ActionContext;
+import ai.fabric.intent.action.ActionGroundingSufficiency;
 import ai.fabric.intent.action.ActionResult;
 import ai.fabric.intent.action.annotation.AIAction;
 import ai.fabric.intent.action.annotation.ActionExecute;
@@ -18,10 +19,12 @@ import lombok.extern.slf4j.Slf4j;
 
 @AIAction(
     name = "search_products",
-    description = "Search products by keyword (matches product title + category). Falls back to trending products.",
+    description = "Search current products by keyword across product title and category",
     category = "commerce",
     accessMode = ActionAccessMode.READ,
-    requiresConfirmation = false
+    requiresConfirmation = false,
+    readActionResolutionEligible = true,
+    groundingVectorSpaces = {"product"}
 )
 @RequiredArgsConstructor
 @Slf4j
@@ -36,10 +39,6 @@ public class SearchProductsActionHandler {
     ) {
         try {
             List<Product> results = productService.searchByNameAndCategory(query, 10);
-            boolean matched = !results.isEmpty();
-            if (!matched) {
-                results = productService.trending(10);
-            }
 
             List<Map<String, Object>> payload = results.stream()
                 .map(SearchProductsActionHandler::toPayload)
@@ -49,8 +48,11 @@ public class SearchProductsActionHandler {
                 .success(true)
                 .message(payload.isEmpty()
                     ? "No products found"
-                    : (matched ? "Matching products" : "Trending products"))
+                    : "Matching products")
                 .data(ActionResultContracts.list(payload))
+                .groundingSufficiency(payload.isEmpty()
+                    ? ActionGroundingSufficiency.INSUFFICIENT
+                    : ActionGroundingSufficiency.SUFFICIENT)
                 .build();
         } catch (Exception e) {
             String userId = context != null ? context.userId() : null;

@@ -18,7 +18,8 @@ import java.util.Set;
     category = "incident-change-risk",
     accessMode = ActionAccessMode.READ,
     requiresConfirmation = false,
-    readActionResolutionEligible = true
+    readActionResolutionEligible = true,
+    groundingVectorSpaces = {"incident-runbook"}
 )
 public class ReadChangeApprovalsActionHandler {
 

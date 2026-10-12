@@ -58,6 +58,16 @@ public final class IncidentChangeChainResultProjector
                 .collect(java.util.stream.Collectors.joining(","))
         );
         facts.put("sourceRevision", finding.sourceRevision());
+        facts.put("plannerIterations", finding.plannerIterations());
+        facts.put(
+            "rejectedActionProposalCount",
+            finding.rejectedActionProposalCount()
+        );
+        facts.put("repairApplied", finding.repairApplied());
+        facts.put(
+            "readActionExecutionIds",
+            finding.readActionExecutionIds()
+        );
         return new SpecialistChainResultProjection(
             finding.summary(),
             facts,

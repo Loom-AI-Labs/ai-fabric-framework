@@ -14,6 +14,7 @@ import ai.fabric.intent.orchestration.attachment.OrchestrationAttachment;
 import ai.fabric.intent.orchestration.RAGOrchestrator;
 import ai.fabric.intent.action.AIActionMetaData;
 import ai.fabric.intent.action.AIActionRegistry;
+import ai.fabric.intent.actiondraft.ActionDraftSubmission;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.validation.Valid;
@@ -235,6 +236,9 @@ public class ChatController {
 
         if (request.getAttachments() != null && !request.getAttachments().isEmpty()) {
             builder.attachments(request.getAttachments());
+        }
+        if (request.getActionDraftSubmission() != null) {
+            builder.actionDraftSubmission(request.getActionDraftSubmission());
         }
 
         if (StringUtils.hasText(userId)) {
@@ -510,6 +514,7 @@ public class ChatController {
         private String position;
         private String mode;
         private List<OrchestrationAttachment> attachments;
+        private ActionDraftSubmission actionDraftSubmission;
     }
 
     @Data

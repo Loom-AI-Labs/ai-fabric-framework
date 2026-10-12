@@ -288,6 +288,11 @@ These are deployed Spring Boot applications from `examples/real-apps`, not mocke
 | [Tenant Guard](https://ai-fabric.dev/demos/ai-fabric-tenant-guard) | Tenant-filtered evidence, role visibility, governed writes, scoped deletion | [`tenant-knowledge-portal`](examples/real-apps/tenant-knowledge-portal) |
 | [Privacy Shield](https://ai-fabric.dev/demos/ai-fabric-privacy-shield) | PII detection, redacted persistence, safe indexing, sanitized retrieval | [`privacy-first-customer-facing-support`](examples/real-apps/privacy-first-customer-facing-support) |
 | [Live Data Sync](https://ai-fabric.dev/demos/ai-fabric-live-data-sync) | Annotation-driven create/update/delete synchronization and current RAG evidence | [`ai-fabric-live-data-sync`](examples/real-apps/ai-fabric-live-data-sync) |
+| [Agentic AI Action Resolver](https://ai-fabric.dev/demos/ai-fabric-agentic-action-resolver) | Adaptive specialist chains, typed waits, governed receipts, review, and durable replay | [`agentic-ai-action-resolver`](examples/real-apps/agentic-ai-action-resolver) |
+| [Deployment Knowledge Guard](https://ai-fabric.dev/demos/ai-fabric-deployment-knowledge-guard) | Trusted tenant/deployment retrieval, typed specialist output, citations, and leakage canaries | [`deployment-knowledge-guard`](examples/real-apps/deployment-knowledge-guard) |
+| [Incident Investigation Room](https://ai-fabric.dev/demos/ai-fabric-incident-investigation) | Adaptive specialist chains, specialist-selected READ actions, runbook RAG, bounded repair, and durable lineage | [`incident-investigation-room`](examples/real-apps/incident-investigation-room) |
+| [MCP Operations](https://ai-fabric.dev/demos/ai-fabric-mcp-operations) | Authenticated remote MCP reads, confirmed writes, exact binding, and replay-safe receipts | [`mcp-operations-assistant`](examples/real-apps/mcp-operations-assistant) |
+| [Document Knowledge Operations](https://ai-fabric.dev/demos/ai-fabric-document-knowledge-operations) | Trusted preview, index, retrieve, replace, and exact-delete document lifecycle | [`document-ingestion-workbench`](examples/real-apps/document-ingestion-workbench) |
 
 Use the [Real-App Capability Matrix](examples/real-apps/REAL_APP_CAPABILITIES.md) to find additional
 examples for provider routing, DB action registries, MCP, document ingestion, migration, vector

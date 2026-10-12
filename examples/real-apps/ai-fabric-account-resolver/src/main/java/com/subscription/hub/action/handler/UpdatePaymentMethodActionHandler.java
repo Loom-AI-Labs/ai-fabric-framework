@@ -55,17 +55,15 @@ public class UpdatePaymentMethodActionHandler extends BaseActionHandler {
 
     @ActionConfirmation
     public String confirm(
-        @Param(value = "provider", description = "Payment provider or stored payment method label") String provider,
-        @Param(value = "last4", description = "Last four digits of the stored payment method") String last4
+        @Param(value = "last4", required = true, description = "Exactly four digits identifying the stored payment method", pattern = "\\d{4}") String last4
     ) {
-        String brand = provider != null && !provider.isBlank() ? provider.trim() : "stored card";
         String safeLast4 = last4 != null && !last4.isBlank() ? last4.trim() : "provided digits";
-        return "Use " + brand + " ending in " + safeLast4 + " as the verified payment method for this account?";
+        return "Use the stored card ending in " + safeLast4 + " as the verified payment method for this account?";
     }
 
     @ActionExecute
     public ActionResult execute(
-        @Param(value = "last4", required = true, description = "Last four digits of the stored payment method to use", pattern = ".*\\d{4}.*") String last4,
+        @Param(value = "last4", required = true, description = "Exactly four digits identifying the stored payment method to use", pattern = "\\d{4}") String last4,
         ActionContext context
     ) {
         try {

@@ -12,13 +12,16 @@ they are executable evidence that a framework capability works in a realistic Sp
 | --- | --- |
 | No-key smoke boot and deterministic local providers | `smoke-support`, most apps under `--spring.profiles.active=smoke` |
 | Config-driven entity indexing and local semantic search | `smart-faq-assistant`, `sub-management-hub-simple`, `migration-enabled-product-catalog` |
-| Annotation-assisted indexing | `ai-fabric-account-resolver`, `cloud-qdrant-openai-vector-search` |
+| Annotation-driven live indexing | `ai-fabric-live-data-sync`, `ai-fabric-account-resolver`, `cloud-qdrant-openai-vector-search` |
 | RAG and retrieval evidence | `smart-faq-assistant`, `chat-capabilities-demo` |
 | RAG quality gates and golden questions | `smart-faq-assistant` |
 | Migration/backfill indexing | `migration-enabled-product-catalog` |
 | PII detection/redaction | `privacy-first-customer-facing-support`, `chat-capabilities-demo` |
 | Governance deletion/catalog evidence | `privacy-first-customer-facing-support`, `tenant-knowledge-portal`, `vector-readiness-playground` |
 | Chat sessions and conversation-aware orchestration | `chat-capabilities-demo` |
+| Typed action-draft continuation | `chat-capabilities-demo`, `ai-fabric-account-resolver` |
+| Read-action planning, exact execution IDs, and bounded repair | `chat-capabilities-demo`, `incident-investigation-room` |
+| Declarative specialists, plans, chains, and durable replay | `agentic-ai-action-resolver`, `incident-investigation-room`, `deployment-knowledge-guard` |
 | Local `@AIAction` discovery/execution | `chat-capabilities-demo`, `it-support-action-bot`, `ai-fabric-account-resolver`, `sub-management-hub-simple` |
 | Action confirmation and pending-action flows | `chat-capabilities-demo`, `it-support-action-bot`, `customer-runtime-demo`, `db-action-registry-lab` |
 | Connector action execution | `customer-runtime-demo`, `db-action-registry-lab`, `mcp-operations-assistant` |
@@ -165,6 +168,9 @@ retention action pattern.
 - Local actions for cart, orders, reviews, support, addresses, shipments, and account reads.
 - Confirmation-required write actions and pending-action handling.
 - Confirmation interceptor behavior for cancellation/retention paths.
+- Structured `ActionDraftSubmission` continuation for typed UI forms without reconstructing natural language.
+- Compound live-state plus policy-RAG answers and backend-owned cross-turn target continuity.
+- Reviewed READ-action planning with explicit grounding sufficiency, execution IDs, and deduplication diagnostics.
 - Runtime vector probe endpoint for raw retrieval evidence.
 - CORS and UI request contract support for a browser client.
 
@@ -175,6 +181,88 @@ annotations, confirmation policy, curated commerce behavior, data-sync runtime e
 configuration.
 
 **Best used for:** broad product demo of AI Fabric as a chat/runtime layer.
+
+### `ai-fabric-live-data-sync`
+
+**Scenario:** Edit or delete JPA products, policies, and troubleshooting guides and observe the same
+revision move through authoritative database rows, indexing work, vectors, retrieval, and generated answers.
+
+**Capabilities proved:**
+
+- `@AICapable`, `@AIIdentity`, `@AISearchable`, and `@AIContext` entity mapping across three types.
+- `@AIProcess` create, update, and delete synchronization without controller-owned vector writes.
+- Durable indexing-work IDs and independent database/vector revision proof.
+- Exact stale-vector removal after an entity delete.
+- Evidence-grounded chat through the reusable `ai-fabric-chat-ui` integration.
+
+**AI Fabric surfaces:** data sync, annotation metadata, indexing lifecycle, Lucene, OpenAI embeddings
+and generation, RAG evidence, reusable chat transport.
+
+**Runtime posture:** local smoke profile or live OpenAI-backed deployment with isolated demo workspaces.
+
+**Best used for:** proving that application data changes remain synchronized with the evidence visible
+to an LLM.
+
+### `agentic-ai-action-resolver`
+
+**Scenario:** Resolve an account request through exact-version specialists, bounded plans or adaptive
+chains, then execute a governed write with a durable receipt and optional human review.
+
+**Capabilities proved:**
+
+- Declarative specialist manifests with typed input/output and approved capability sets.
+- Interactive, event, schedule, and application execution sources.
+- Typed wait/resume, sequential and independent-parallel plans, adaptive chains, and terminal handoff.
+- Durable JDBC checkpoints, idempotent replay, confirmed writes, reconciliation, and review tasks.
+- Application-owned identity, authority, projection, and system-of-record boundaries.
+
+**AI Fabric surfaces:** execution gateway, specialist manifests, plan and chain runtimes, receipts,
+review tasks, chat-session snapshots, action governance.
+
+**Runtime posture:** smoke profile for deterministic tests; live OpenAI deployment for manager and
+specialist decisions.
+
+**Best used for:** the broadest end-to-end proof of AI Fabric's bounded agentic execution model.
+
+### `deployment-knowledge-guard`
+
+**Scenario:** Answer a deployment question from evidence constrained by trusted tenant, deployment,
+subject, and scope boundaries.
+
+**Capabilities proved:**
+
+- Exact-version read-only specialist with structured output and validated citations.
+- Server-owned retrieval metadata that removes spoofable caller identity fields.
+- Tenant and deployment filters preserved through specialist RAG.
+- Cross-tenant, cross-deployment, and fabricated-citation canaries that fail closed.
+
+**AI Fabric surfaces:** specialist execution, effective capability policy, trusted context, filtered
+Lucene retrieval, evidence projection and validation.
+
+**Runtime posture:** deterministic smoke coverage plus a live OpenAI/Lucene deployment.
+
+**Best used for:** proving that model intelligence cannot widen an application's evidence boundary.
+
+### `incident-investigation-room`
+
+**Scenario:** A bounded manager chooses service-health and change-risk specialists for an operational
+incident; each specialist chooses approved READ actions and returns only validated evidence.
+
+**Capabilities proved:**
+
+- Declarative adaptive chain, independent parallel fan-out, fixed-plan parity, and durable replay.
+- Specialist-selected READ actions with declared grounding vector spaces and scoped runbook RAG.
+- Parameter-contract rejection and bounded iterative repair with visible planner diagnostics.
+- Canonical action execution IDs, selected evidence IDs, source revision, and safe result projection.
+- Backend-owned incident conversation, cancellation, deadline, delegation, and terminal handoff proof.
+
+**AI Fabric surfaces:** specialist-chain manifests, read-action resolution, action parameter schemas,
+RAG, evidence validators, JDBC chain state, chat-session snapshots.
+
+**Runtime posture:** deterministic smoke provider for CI; live OpenAI for manager and specialist choices.
+
+**Best used for:** demonstrating multi-specialist reasoning without giving the model unbounded tools,
+data, or transition authority.
 
 ### `customer-runtime-demo`
 
@@ -264,20 +352,21 @@ optional for provider-only behavior.
 
 ### `mcp-operations-assistant`
 
-**Scenario:** MCP-style operations tools execute behind AI Fabric action governance.
+**Scenario:** Authenticated remote MCP operations tools execute behind AI Fabric action governance.
 
 **Capabilities proved:**
 
-- `McpActionExecutor` bridge contract.
+- Spring AI MCP bridge with exact server and tool binding.
 - Read/write action access modes.
 - Confirmation policy for write/destructive operations.
-- Unknown tool and connector failure handling.
+- Durable receipt replay plus explicit authentication, outage, and unknown-tool failures.
 - Hidden connector context stripped from user-facing tool output.
 
 **AI Fabric surfaces:** `ai-fabric-actions-connector`, MCP executor abstraction, action access modes,
 confirmation policy, sanitized action results.
 
-**Runtime posture:** local deterministic executor; no external MCP server required.
+**Runtime posture:** local tests can use deterministic fixtures; the live demo calls the separately
+deployed authenticated `mcp-operations-reference-server` over Streamable HTTP.
 
 **Best used for:** explaining how Spring AI/MCP tool capability can be governed by AI Fabric action
 policy.
@@ -334,6 +423,8 @@ governed subscription, payment, address, and refund/account-credit actions.
 - Account resolver actions such as payment-method update and refund/account-credit request.
 - `@ActionAllowed` authorization hooks.
 - `@ActionConfirmation` on write actions.
+- Structured action-draft continuation for payment and address forms.
+- Strict action schemas: exact four-digit card identifiers, positive refund amounts, closed resolution/address values, and rejected unknown parameters.
 - Sync and async indexing validation endpoints.
 
 **AI Fabric surfaces:** `ai-fabric-starter`, action annotations, indexing queue, Lucene vector

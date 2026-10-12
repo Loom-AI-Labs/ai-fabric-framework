@@ -67,9 +67,14 @@ spec:
             action: {type: string, enum: [read_service_metrics, read_incident_alerts]}
             candidateCount: {type: integer, minimum: 1, maximum: 6}
             groundingUsable: {type: boolean, const: true}
+            actionExecutionId: {type: string, minLength: 1, maxLength: 200}
       candidateEventCount: {type: integer, minimum: 1, maximum: 12}
       selectionReason: {type: string, minLength: 1, maxLength: 700}
       sourceRevision: {type: string, minLength: 1, maxLength: 160}
+      plannerIterations: {type: string, pattern: "^[0-4]$"}
+      rejectedActionProposalCount: {type: string, pattern: "^(?:[0-8])$"}
+      repairApplied: {type: string, enum: ["true", "false"]}
+      readActionExecutionIds: {type: string, maxLength: 1000}
 ---
 apiVersion: ai.fabric/v1
 kind: SpecialistSchema
@@ -129,9 +134,14 @@ spec:
             action: {type: string, enum: [read_recent_deployments, read_change_approvals]}
             candidateCount: {type: integer, minimum: 1, maximum: 6}
             groundingUsable: {type: boolean, const: true}
+            actionExecutionId: {type: string, minLength: 1, maxLength: 200}
       candidateEventCount: {type: integer, minimum: 1, maximum: 12}
       selectionReason: {type: string, minLength: 1, maxLength: 700}
       sourceRevision: {type: string, minLength: 1, maxLength: 160}
+      plannerIterations: {type: string, pattern: "^[0-4]$"}
+      rejectedActionProposalCount: {type: string, pattern: "^(?:[0-8])$"}
+      repairApplied: {type: string, enum: ["true", "false"]}
+      readActionExecutionIds: {type: string, maxLength: 1000}
 ---
 apiVersion: ai.fabric/v1
 kind: SpecialistPromptProfile

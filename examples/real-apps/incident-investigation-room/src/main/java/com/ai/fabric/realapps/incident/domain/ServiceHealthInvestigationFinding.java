@@ -10,5 +10,9 @@ public record ServiceHealthInvestigationFinding(
     List<IncidentDataSourceUsage> dataSources,
     int candidateEventCount,
     String selectionReason,
-    String sourceRevision
+    String sourceRevision,
+    String plannerIterations,
+    String rejectedActionProposalCount,
+    String repairApplied,
+    String readActionExecutionIds
 ) {}

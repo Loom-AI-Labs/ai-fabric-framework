@@ -19,7 +19,9 @@ import org.springframework.util.StringUtils;
     description = "Get full product details by SKU or exact product title",
     category = "commerce",
     accessMode = ActionAccessMode.READ,
-    requiresConfirmation = false
+    requiresConfirmation = false,
+    readActionResolutionEligible = true,
+    groundingVectorSpaces = {"product"}
 )
 @RequiredArgsConstructor
 @Slf4j

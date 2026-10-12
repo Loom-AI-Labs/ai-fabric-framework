@@ -49,15 +49,16 @@ Live UI-backed backend apps:
 | `https://ai-fabric.dev/demos/ai-fabric-privacy-shield` | `privacy-first-customer-facing-support` | `https://ai-fabric-privacy-shield.46.224.145.148.sslip.io` | PII detection, redacted persistence, safe indexing, and sanitized retrieval |
 | `https://ai-fabric.dev/demos/ai-fabric-live-data-sync` | `ai-fabric-live-data-sync` | `https://ai-fabric-live-data-sync.46.224.145.148.sslip.io` | Annotation-driven create/update/delete indexing, authoritative indexing-work lifecycle, independent database/vector revision proof, and evidence-grounded chat |
 
-Implemented deployment candidates whose public routes and backends must be deployed together:
+Additional live UI-backed applications:
 
-| `aifabric` route | Backend app | Deployment shape | What it proves |
+| `aifabric` route | Backend app | Public backend | What it proves |
 | --- | --- | --- | --- |
-| `/demos/ai-fabric-agentic-action-resolver` | `agentic-ai-action-resolver` | One new backend | Typed waits, manifest specialists, fixed plans, durable reads, governed writes, receipt replay, and backend conversation |
-| `/demos/ai-fabric-agentic-action-resolver/review` | `agentic-ai-action-resolver` | Same resolver backend | Durable human-review tasks, authority-aware decisions, immutable timeline, and linked action receipt |
-| `/demos/ai-fabric-deployment-knowledge-guard` | `deployment-knowledge-guard` | One new backend | Trusted tenant/deployment retrieval, effective capabilities, evidence lineage, and fail-closed security canaries |
-| `/demos/ai-fabric-incident-investigation` | `incident-investigation-room` | Upgraded backend | Model-selected specialists, specialist-selected READ actions and evidence, scoped runbook RAG, validated decision traces, plan parity, bounded transitions, and backend conversation memory |
-| `/demos/ai-fabric-mcp-operations` | `mcp-operations-assistant` plus `mcp-operations-reference-server` | Two authenticated services | Real remote MCP reads, confirmed write, exact server binding, durable receipt replay, and explicit outage/authentication failures |
+| `https://ai-fabric.dev/demos/ai-fabric-agentic-action-resolver` | `agentic-ai-action-resolver` | `https://ai-fabric-agentic-action-resolver.46.224.145.148.sslip.io` | Typed waits, manifest specialists, fixed plans, durable reads, governed writes, receipt replay, and backend conversation |
+| `https://ai-fabric.dev/demos/ai-fabric-agentic-action-resolver/review` | `agentic-ai-action-resolver` | Same resolver backend | Durable human-review tasks, authority-aware decisions, immutable timeline, and linked action receipt |
+| `https://ai-fabric.dev/demos/ai-fabric-deployment-knowledge-guard` | `deployment-knowledge-guard` | `https://ai-fabric-deployment-knowledge-guard.46.224.145.148.sslip.io` | Trusted tenant/deployment retrieval, effective capabilities, evidence lineage, and fail-closed security canaries |
+| `https://ai-fabric.dev/demos/ai-fabric-incident-investigation` | `incident-investigation-room` | `https://ai-fabric-incident-investigation.46.224.145.148.sslip.io` | Model-selected specialists, specialist-selected READ actions and evidence, scoped runbook RAG, planner repair diagnostics, plan parity, bounded transitions, and backend conversation memory |
+| `https://ai-fabric.dev/demos/ai-fabric-mcp-operations` | `mcp-operations-assistant` plus `mcp-operations-reference-server` | `https://ai-fabric-mcp-operations.46.224.145.148.sslip.io` | Real remote MCP reads, confirmed write, exact server binding, durable receipt replay, and explicit outage/authentication failures |
+| `https://ai-fabric.dev/demos/ai-fabric-document-knowledge-operations` | `document-ingestion-workbench` | `https://ai-fabric-document-knowledge-operations.46.224.145.148.sslip.io` | Trusted preview, index, retrieve, replace, and exact-delete document lifecycle |
 
 The implementation and verification status for this portfolio is tracked in
 [`0019-ai-fabric-0-5-live-demo-verification-plan.md`](../../docs/planning/0019-ai-fabric-0-5-live-demo-verification-plan.md).
@@ -67,7 +68,6 @@ UI pages that exist on `aifabric` but are not live backend clients yet:
 | `aifabric` route | Runnable backend candidate | Current status |
 | --- | --- | --- |
 | `https://ai-fabric.dev/demos/smart-faq-assistant` | `smart-faq-assistant` | Static/explanatory UI page; backend README documents how to run the FAQ RAG service |
-| `https://ai-fabric.dev/demos/document-intelligence-hub` | `document-ingestion-workbench` | Static/explanatory UI page; backend README documents how to run trusted document ingestion |
 | `https://ai-fabric.dev/demos/product-discovery-engine` | Covered live by `chat-capabilities-demo` | Concept page; the live shopping demo is the current product-discovery proof |
 | `https://ai-fabric.dev/demos/code-documentation-search` | None in this repo | Concept page only |
 | `https://ai-fabric.dev/demos/meeting-notes-analyzer` | None in this repo | Concept page only |
@@ -80,6 +80,11 @@ Public demo backends:
 - Tenant Guard: `https://ai-fabric-tenant-guard.46.224.145.148.sslip.io`
 - Privacy Shield: `https://ai-fabric-privacy-shield.46.224.145.148.sslip.io`
 - Live Data Sync: `https://ai-fabric-live-data-sync.46.224.145.148.sslip.io`
+- Agentic AI Action Resolver: `https://ai-fabric-agentic-action-resolver.46.224.145.148.sslip.io`
+- Deployment Knowledge Guard: `https://ai-fabric-deployment-knowledge-guard.46.224.145.148.sslip.io`
+- Incident Investigation Room: `https://ai-fabric-incident-investigation.46.224.145.148.sslip.io`
+- MCP Operations: `https://ai-fabric-mcp-operations.46.224.145.148.sslip.io`
+- Document Knowledge Operations: `https://ai-fabric-document-knowledge-operations.46.224.145.148.sslip.io`
 
 To run the Behavior Signals backend locally from the repository root:
 

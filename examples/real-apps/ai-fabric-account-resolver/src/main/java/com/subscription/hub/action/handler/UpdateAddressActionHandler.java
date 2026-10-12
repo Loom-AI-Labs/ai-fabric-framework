@@ -55,7 +55,7 @@ public class UpdateAddressActionHandler extends BaseActionHandler {
     }
 
     @ActionConfirmation
-    public String confirm(@Param(value = "addressType", description = "BILLING or SHIPPING") String addressType) {
+    public String confirm(@Param(value = "addressType", description = "BILLING or SHIPPING", allowedValues = {"BILLING", "SHIPPING"}) String addressType) {
         String type = addressType != null && !addressType.isBlank() ? addressType : "BILLING";
         return String.format(
             "Are you sure you want to update your %s address?",
@@ -65,7 +65,7 @@ public class UpdateAddressActionHandler extends BaseActionHandler {
 
     @ActionExecute
     public ActionResult execute(
-        @Param(value = "addressType", description = "BILLING or SHIPPING") String addressType,
+        @Param(value = "addressType", description = "BILLING or SHIPPING", allowedValues = {"BILLING", "SHIPPING"}) String addressType,
         @Param(value = "streetAddress", required = true, description = "Street address") String streetAddress,
         @Param(value = "city", required = true, description = "City") String city,
         @Param(value = "state", required = true, description = "State/Province") String state,

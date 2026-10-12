@@ -4,12 +4,14 @@ import ai.fabric.intent.orchestration.OrchestrationContext;
 import ai.fabric.intent.orchestration.OrchestrationResult;
 import ai.fabric.intent.orchestration.OrchestrationResultType;
 import ai.fabric.intent.orchestration.RAGOrchestrator;
+import ai.fabric.intent.actiondraft.ActionDraftSubmission;
 import org.mockito.ArgumentCaptor;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.ResponseEntity;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.util.List;
+import java.util.Map;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -59,5 +61,43 @@ class NaturalLanguageControllerTest {
         assertThat(context.getSessionId()).isEqualTo("session-1");
         assertThat(context.getConversationId()).isEqualTo("resolver-session-1");
         assertThat(context.getMetadata()).doesNotContainKey("resolverChatHistory");
+    }
+
+    @Test
+    void queryMapsStructuredActionDraftWithoutReconstructingNaturalLanguage() {
+        RAGOrchestrator ragOrchestrator = mock(RAGOrchestrator.class);
+        when(ragOrchestrator.orchestrate(eq("Continue with the payment details I entered."), any(OrchestrationContext.class)))
+            .thenReturn(OrchestrationResult.builder()
+                .type(OrchestrationResultType.CONFIRMATION_REQUIRED)
+                .success(true)
+                .message("Confirm payment update")
+                .build());
+
+        NaturalLanguageController.QueryRequest request = new NaturalLanguageController.QueryRequest();
+        request.setQuery("Continue with the payment details I entered.");
+        request.setUserId("92");
+        request.setSessionId("session-structured");
+        request.setConversationId("resolver-session-structured");
+        request.setActionDraftSubmission(new ActionDraftSubmission(
+            "update_payment_method",
+            Map.of("last4", "4242")
+        ));
+
+        NaturalLanguageController controller = new NaturalLanguageController();
+        ReflectionTestUtils.setField(controller, "ragOrchestrator", ragOrchestrator);
+
+        controller.query(request);
+
+        ArgumentCaptor<OrchestrationContext> contextCaptor = ArgumentCaptor.forClass(OrchestrationContext.class);
+        verify(ragOrchestrator).orchestrate(
+            eq("Continue with the payment details I entered."),
+            contextCaptor.capture()
+        );
+
+        assertThat(contextCaptor.getValue().getActionDraftSubmission())
+            .isEqualTo(new ActionDraftSubmission(
+                "update_payment_method",
+                Map.of("last4", "4242")
+            ));
     }
 }

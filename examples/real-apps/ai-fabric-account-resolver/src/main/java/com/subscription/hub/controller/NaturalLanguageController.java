@@ -4,6 +4,7 @@ import ai.fabric.intent.orchestration.OrchestrationContext;
 import ai.fabric.intent.orchestration.OrchestrationResult;
 import ai.fabric.intent.orchestration.RAGOrchestrator;
 import ai.fabric.intent.orchestration.attachment.OrchestrationAttachment;
+import ai.fabric.intent.actiondraft.ActionDraftSubmission;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import lombok.Data;
@@ -64,6 +65,9 @@ public class NaturalLanguageController {
         if (request.getAttachments() != null && !request.getAttachments().isEmpty()) {
             builder.attachments(request.getAttachments());
         }
+        if (request.getActionDraftSubmission() != null) {
+            builder.actionDraftSubmission(request.getActionDraftSubmission());
+        }
 
         OrchestrationContext context = userId != null && !userId.isBlank()
             ? builder.userId(userId).sessionId(sessionId).build()
@@ -84,6 +88,7 @@ public class NaturalLanguageController {
         private String position;
         private String mode;
         private List<OrchestrationAttachment> attachments;
+        private ActionDraftSubmission actionDraftSubmission;
         private List<ChatHistoryMessage> historyMessages;
     }
 
