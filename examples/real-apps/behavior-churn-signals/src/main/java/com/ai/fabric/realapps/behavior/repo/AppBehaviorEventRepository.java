@@ -13,6 +13,8 @@ public interface AppBehaviorEventRepository extends JpaRepository<AppBehaviorEve
 
     List<AppBehaviorEvent> findByUserIdOrderByEventTimestampAsc(String userId);
 
+    boolean existsByUserId(String userId);
+
     List<AppBehaviorEvent> findByUserIdAndEventTimestampAfterOrderByEventTimestampAsc(
         String userId,
         LocalDateTime eventTimestamp

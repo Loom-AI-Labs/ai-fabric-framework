@@ -13,6 +13,7 @@ import org.junit.jupiter.api.Test;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentCaptor.forClass;
@@ -116,6 +117,24 @@ class BehaviorDemoScenarioServiceTest {
             any(LocalDateTime.class)
         );
         verify(behaviorAnalysisService).analyzeUser("behavior-demo-user-browser-session-1-user-1001");
+    }
+
+    @Test
+    void reopeningSessionPreservesExistingEventsAndApprovedInsight() {
+        String userId = "behavior-demo-user-browser-session-1-user-1001";
+        BehaviorInsights approvedInsight = insight(userId, "RETENTION_OFFER");
+        when(eventRepository.existsByUserId(anyString())).thenReturn(true);
+        when(insightsRepository.findByUserId(userId)).thenReturn(Optional.of(approvedInsight));
+        when(insightsRepository.findAll()).thenReturn(List.of(approvedInsight));
+
+        BehaviorDemoScenarioService.DemoSessionResponse response = service.createSession(
+            new BehaviorDemoScenarioService.CreateDemoSessionRequest("browser-session-1", false)
+        );
+
+        assertThat(response.dashboard().scenarios().getFirst().insight()).isNotNull();
+        assertThat(response.dashboard().scenarios().getFirst().insight().userId()).isEqualTo(userId);
+        verify(seeder, never()).seedScenario(anyString(), anyString(), anyString(), any(LocalDateTime.class));
+        verify(behaviorAnalysisService, never()).analyzeUser(anyString());
     }
 
     @Test

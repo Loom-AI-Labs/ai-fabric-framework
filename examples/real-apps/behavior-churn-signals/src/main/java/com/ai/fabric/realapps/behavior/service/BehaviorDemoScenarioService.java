@@ -104,7 +104,7 @@ public class BehaviorDemoScenarioService {
             ? normalizeSessionId(request.sessionId())
             : "behavior-session-" + UUID.randomUUID();
         boolean analyze = request != null && Boolean.TRUE.equals(request.analyze());
-        List<DemoScenarioDefinition> scenarios = seedSessionScenarios(sessionId);
+        List<DemoScenarioDefinition> scenarios = ensureSessionScenarios(sessionId);
         if (analyze) {
             scenarios.forEach(scenario -> behaviorAnalysisService.analyzeUser(scenario.userId()));
         }
@@ -656,6 +656,23 @@ public class BehaviorDemoScenarioService {
                 base.plusMinutes(Math.abs(definition.id().hashCode() % 60))
             ))
             .toList();
+    }
+
+    private List<DemoScenarioDefinition> ensureSessionScenarios(String sessionId) {
+        String normalized = normalizeSessionId(sessionId);
+        LocalDateTime base = LocalDateTime.now().minusHours(2);
+        List<DemoScenarioDefinition> scenarios = SCENARIOS.values().stream()
+            .map(definition -> cloneForSession(definition, normalized))
+            .toList();
+        scenarios.stream()
+            .filter(definition -> !eventRepository.existsByUserId(definition.userId()))
+            .forEach(definition -> seeder.seedScenario(
+                definition.userId(),
+                definition.id(),
+                "demo-session",
+                base.plusMinutes(Math.abs(definition.id().hashCode() % 60))
+            ));
+        return scenarios;
     }
 
     private List<DemoScenarioDefinition> scenariosForSession(String sessionId) {

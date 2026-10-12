@@ -99,6 +99,14 @@ class DurableBehaviorAnalysisIntegrationTest {
 
         var projectedReplay = durableService.find(sessionId, first.invocationId());
         assertThat(projectedReplay.projectionStatus()).isEqualTo("APPLIED");
+        var reopened = scenarioService.createSession(
+            new CreateDemoSessionRequest(sessionId, false)
+        );
+        assertThat(reopened.dashboard().scenarios())
+            .filteredOn(scenario -> userId.equals(scenario.userId()))
+            .singleElement()
+            .extracting(BehaviorDemoScenarioService.DemoScenarioSummary::insight)
+            .isNotNull();
         assertThatThrownBy(() -> durableService.find("another-session", first.invocationId()))
             .isInstanceOf(IllegalArgumentException.class)
             .hasMessageContaining("does not belong");
