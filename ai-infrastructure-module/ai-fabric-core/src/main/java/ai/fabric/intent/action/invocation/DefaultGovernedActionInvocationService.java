@@ -3,6 +3,8 @@ package ai.fabric.intent.action.invocation;
 import ai.fabric.intent.action.AIActionHandler;
 import ai.fabric.intent.action.AIActionMetaData;
 import ai.fabric.intent.action.AIActionRegistry;
+import ai.fabric.intent.action.ActionParameterContractValidator;
+import ai.fabric.intent.action.ActionParameterContractValidator.ActionParameterContractException;
 import ai.fabric.intent.action.ActionContext;
 import ai.fabric.intent.action.ActionPayload;
 import ai.fabric.intent.action.ActionResult;
@@ -90,6 +92,15 @@ public final class DefaultGovernedActionInvocationService
                 "ACTION_REQUIRED_PARAMETERS_MISSING",
                 "Required action parameters are missing: " + String.join(", ", missing)
             );
+        }
+
+        try {
+            ActionParameterContractValidator.validateProvided(
+                metadata,
+                invocation.parameters()
+            );
+        } catch (ActionParameterContractException ex) {
+            return invalid(ex.reason(), ex.getMessage());
         }
 
         try {

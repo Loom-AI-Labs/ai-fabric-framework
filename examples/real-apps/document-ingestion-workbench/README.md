@@ -129,9 +129,9 @@ are consumed:
 ```bash
 docker build \
   -f document-ingestion-workbench/Dockerfile \
-  --build-arg AI_FABRIC_VERSION=0.8.28 \
+  --build-arg AI_FABRIC_VERSION=0.8.29 \
   --build-arg SOURCE_COMMIT="$(git rev-parse HEAD)" \
-  -t ai-fabric-document-knowledge-operations:0.8.28 \
+  -t ai-fabric-document-knowledge-operations:0.8.29 \
   .
 ```
 

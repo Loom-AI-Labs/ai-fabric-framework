@@ -15,6 +15,8 @@ import ai.fabric.intent.action.ActionAccessMode;
 import ai.fabric.intent.action.ActionContext;
 import ai.fabric.intent.action.ActionGroundingSupport;
 import ai.fabric.intent.action.ActionGroundingSufficiency;
+import ai.fabric.intent.action.ActionParameterContractValidator;
+import ai.fabric.intent.action.ActionParameterContractValidator.ActionParameterContractException;
 import ai.fabric.intent.action.ActionPayload;
 import ai.fabric.intent.action.ActionResult;
 import ai.fabric.intent.orchestration.capability.CapabilityAwareActionMetadataSupport;
@@ -155,6 +157,7 @@ public class ReadActionResolutionService {
         List<ExecutedReadAction> executedActions = new ArrayList<>();
         List<Map<String, Object>> plannerIterations = new ArrayList<>();
         List<Map<String, Object>> deduplicatedActions = new ArrayList<>();
+        List<Map<String, Object>> rejectedActionProposals = new ArrayList<>();
         Set<String> executionKeys = new LinkedHashSet<>();
         PlannerDecision lastDecision = null;
 
@@ -166,6 +169,7 @@ public class ReadActionResolutionService {
                 readPolicy,
                 eligibleActions,
                 executedActions,
+                rejectedActionProposals,
                 iteration,
                 maxIterations
             );
@@ -180,6 +184,7 @@ public class ReadActionResolutionService {
             lastDecision = decision;
             plannerIterations.add(decision.diagnostics());
 
+            int rejectedBeforeApproval = rejectedActionProposals.size();
             List<PlannerActionProposal> approved = approveActionProposals(
                 decision,
                 eligibleActions,
@@ -187,11 +192,15 @@ public class ReadActionResolutionService {
                 readPolicy,
                 executionKeys,
                 executionScope,
-                deduplicatedActions
+                deduplicatedActions,
+                rejectedActionProposals,
+                iteration
             );
+            boolean rejectedThisIteration = rejectedActionProposals.size() > rejectedBeforeApproval;
             if (approved.isEmpty()) {
                 if (readPolicy.planningMode() != ai.fabric.config.OrchestrationProperties.ReadActionResolutionPlanningMode.ITERATIVE
-                    || !Boolean.TRUE.equals(decision.needsMoreSteps)) {
+                    || iteration >= maxIterations
+                    || (!Boolean.TRUE.equals(decision.needsMoreSteps) && !rejectedThisIteration)) {
                     break;
                 }
                 continue;
@@ -212,7 +221,8 @@ public class ReadActionResolutionService {
             }
 
             if (readPolicy.planningMode() != ai.fabric.config.OrchestrationProperties.ReadActionResolutionPlanningMode.ITERATIVE
-                || !Boolean.TRUE.equals(decision.needsMoreSteps)) {
+                || iteration >= maxIterations
+                || (!Boolean.TRUE.equals(decision.needsMoreSteps) && !rejectedThisIteration)) {
                 break;
             }
         }
@@ -251,6 +261,13 @@ public class ReadActionResolutionService {
         diagnostics.put("deduplicatedActionsCount", deduplicatedActions.size());
         if (!deduplicatedActions.isEmpty()) {
             diagnostics.put("deduplicatedActions", Collections.unmodifiableList(deduplicatedActions));
+        }
+        diagnostics.put("rejectedActionProposalsCount", rejectedActionProposals.size());
+        if (!rejectedActionProposals.isEmpty()) {
+            diagnostics.put(
+                "rejectedActionProposals",
+                Collections.unmodifiableList(rejectedActionProposals)
+            );
         }
         diagnostics.put("groundingUsableActionCount", executedActions.stream().filter(ExecutedReadAction::groundingUsable).count());
         diagnostics.put("insufficientActionEvidenceCount", insufficientActionEvidenceCount);
@@ -372,6 +389,7 @@ public class ReadActionResolutionService {
                                         OrchestrationPolicy.ReadActionResolutionPolicy readPolicy,
                                         List<EligibleReadAction> eligibleActions,
                                         List<ExecutedReadAction> executedActions,
+                                        List<Map<String, Object>> rejectedActionProposals,
                                         int iteration,
                                         int maxIterations) {
         try {
@@ -395,7 +413,10 @@ public class ReadActionResolutionService {
                     PLACEHOLDER_QUERY, query,
                     PLACEHOLDER_INTENT_JSON, writeJson(buildIntentPromptModel(intent)),
                     PLACEHOLDER_ELIGIBLE_ACTIONS_JSON, writeJson(buildEligibleActionsPromptModel(eligibleActions)),
-                    PLACEHOLDER_PRIOR_EVIDENCE_JSON, writeJson(buildPriorEvidencePromptModel(executedActions)),
+                    PLACEHOLDER_PRIOR_EVIDENCE_JSON, writeJson(buildPriorEvidencePromptModel(
+                        executedActions,
+                        rejectedActionProposals
+                    )),
                     PLACEHOLDER_MAX_ACTIONS_PER_ITERATION, String.valueOf(readPolicy.maxActionsPerIteration()),
                     PLACEHOLDER_MAX_TOTAL_ACTIONS, String.valueOf(readPolicy.maxTotalActions()),
                     PLACEHOLDER_RAG_COOPERATION_MODE, readPolicy.ragCooperationMode().name(),
@@ -469,7 +490,9 @@ public class ReadActionResolutionService {
                                                                OrchestrationPolicy.ReadActionResolutionPolicy readPolicy,
                                                                Set<String> executionKeys,
                                                                ReadActionExecutionScope executionScope,
-                                                               List<Map<String, Object>> deduplicatedActions) {
+                                                               List<Map<String, Object>> deduplicatedActions,
+                                                               List<Map<String, Object>> rejectedActionProposals,
+                                                               int iteration) {
         if (decision == null || decision.actions == null || decision.actions.isEmpty()) {
             return List.of();
         }
@@ -493,9 +516,38 @@ public class ReadActionResolutionService {
             }
             EligibleReadAction eligible = eligibleByName.get(proposal.name().trim().toLowerCase(Locale.ROOT));
             if (eligible == null) {
+                rejectedActionProposals.add(rejectedProposal(
+                    proposal,
+                    iteration,
+                    "ACTION_NOT_ELIGIBLE",
+                    null,
+                    "The proposed action is not eligible for this request."
+                ));
                 continue;
             }
             if (!hasRequiredParams(eligible.metadata(), proposal.params())) {
+                rejectedActionProposals.add(rejectedProposal(
+                    proposal,
+                    iteration,
+                    "ACTION_REQUIRED_PARAMETERS_MISSING",
+                    null,
+                    "Required action parameters are missing."
+                ));
+                continue;
+            }
+            try {
+                ActionParameterContractValidator.validateProvided(
+                    eligible.metadata(),
+                    proposal.params()
+                );
+            } catch (ActionParameterContractException ex) {
+                rejectedActionProposals.add(rejectedProposal(
+                    proposal,
+                    iteration,
+                    ex.reason(),
+                    ex.path(),
+                    ex.getMessage()
+                ));
                 continue;
             }
             String executionKey = ReadActionExecutionScope.executionKey(eligible.name(), proposal.params());
@@ -519,6 +571,29 @@ public class ReadActionResolutionService {
             approved.add(new PlannerActionProposal(eligible.name(), proposal.params(), proposal.priority()));
         }
         return approved.isEmpty() ? List.of() : List.copyOf(approved);
+    }
+
+    private Map<String, Object> rejectedProposal(PlannerActionProposal proposal,
+                                                 int iteration,
+                                                 String reason,
+                                                 String path,
+                                                 String message) {
+        Map<String, Object> rejected = new LinkedHashMap<>();
+        rejected.put("iteration", iteration);
+        rejected.put("status", "REJECTED");
+        rejected.put("action", proposal != null ? proposal.name() : null);
+        rejected.put(
+            "params",
+            proposal != null ? immutableNonNullParams(proposal.params()) : Map.of()
+        );
+        rejected.put("reason", reason);
+        if (StringUtils.hasText(path)) {
+            rejected.put("path", path);
+        }
+        if (StringUtils.hasText(message)) {
+            rejected.put("message", message);
+        }
+        return Collections.unmodifiableMap(rejected);
     }
 
     private ExecutedReadAction executeAction(PlannerActionProposal proposal,
@@ -1075,13 +1150,20 @@ public class ReadActionResolutionService {
         return null;
     }
 
-    private List<Map<String, Object>> buildPriorEvidencePromptModel(List<ExecutedReadAction> executedActions) {
-        if (executedActions == null || executedActions.isEmpty()) {
-            return List.of();
+    private List<Map<String, Object>> buildPriorEvidencePromptModel(
+        List<ExecutedReadAction> executedActions,
+        List<Map<String, Object>> rejectedActionProposals
+    ) {
+        List<Map<String, Object>> prior = new ArrayList<>();
+        if (executedActions != null && !executedActions.isEmpty()) {
+            prior.addAll(executedActions.stream()
+                .map(ExecutedReadAction::toDiagnosticMap)
+                .toList());
         }
-        return executedActions.stream()
-            .map(ExecutedReadAction::toDiagnosticMap)
-            .toList();
+        if (rejectedActionProposals != null && !rejectedActionProposals.isEmpty()) {
+            prior.addAll(rejectedActionProposals);
+        }
+        return prior.isEmpty() ? List.of() : List.copyOf(prior);
     }
 
     private List<String> normalizeVectorSpaces(List<String> values) {

@@ -5,10 +5,13 @@ import ai.fabric.dto.IntentType;
 import ai.fabric.dto.MultiIntentResponse;
 import ai.fabric.intent.action.AIActionHandler;
 import ai.fabric.intent.action.AIActionMetaData;
+import ai.fabric.intent.action.AIActionParamSchema;
+import ai.fabric.intent.action.AIActionParamType;
 import ai.fabric.intent.action.AIActionRegistry;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -198,6 +201,48 @@ class IntentExtractionValidatorTest {
         assertThat(result.issues())
             .extracting(IntentExtractionValidator.ValidationIssue::code)
             .doesNotContain(IntentExtractionValidator.IssueCode.ACTION_GROUNDING_VECTOR_SPACE_MISMATCH);
+    }
+
+    @Test
+    void shouldRejectOutOfContractActionParametersForModelRepair() {
+        AIActionRegistry registry = mock(AIActionRegistry.class);
+        AIActionHandler handler = mock(AIActionHandler.class);
+        AIActionMetaData metadata = AIActionMetaData.builder()
+            .name("search_inventory")
+            .parameterSchemas(Map.of(
+                "limit",
+                AIActionParamSchema.builder()
+                    .name("limit")
+                    .type(AIActionParamType.INTEGER)
+                    .min(1L)
+                    .max(24L)
+                    .build()
+            ))
+            .build();
+        when(registry.findMetadata("search_inventory")).thenReturn(Optional.of(metadata));
+        when(registry.findHandler("search_inventory")).thenReturn(Optional.of(handler));
+        IntentExtractionValidator validator = new IntentExtractionValidator(registry);
+
+        IntentExtractionValidator.ValidationResult result = validator.validate(
+            MultiIntentResponse.builder()
+                .intents(List.of(Intent.builder()
+                    .type(IntentType.ACTION)
+                    .intent("search_inventory")
+                    .action("search_inventory")
+                    .actionParams(Map.of("limit", 50))
+                    .requiresRetrieval(false)
+                    .requiresGeneration(true)
+                    .requiresTargetResolution(false)
+                    .build()))
+                .build()
+        );
+
+        assertThat(result.valid()).isFalse();
+        assertThat(result.errorCategory())
+            .isEqualTo(IntentExtractionValidator.ErrorCategory.INCOMPLETE);
+        assertThat(result.issues())
+            .extracting(IntentExtractionValidator.ValidationIssue::code)
+            .contains(IntentExtractionValidator.IssueCode.ACTION_PARAMETER_CONTRACT_INVALID);
     }
 
     private Intent completeInformationIntent(String obligationId, String name) {

@@ -8,6 +8,8 @@ import static org.mockito.Mockito.when;
 
 import ai.fabric.intent.action.AIActionHandler;
 import ai.fabric.intent.action.AIActionMetaData;
+import ai.fabric.intent.action.AIActionParamSchema;
+import ai.fabric.intent.action.AIActionParamType;
 import ai.fabric.intent.action.AIActionRegistry;
 import ai.fabric.intent.action.ActionAccessMode;
 import ai.fabric.intent.action.ActionContext;
@@ -119,6 +121,41 @@ class DefaultGovernedActionInvocationServiceTest {
         assertThat(outcome.status()).isEqualTo(GovernedActionInvocationStatus.INVALID);
         assertThat(outcome.publicFailure().reason())
             .isEqualTo("ACTION_REQUIRED_PARAMETERS_MISSING");
+        verify(handler, never()).executeAction(
+            org.mockito.ArgumentMatchers.anyMap(),
+            org.mockito.ArgumentMatchers.any()
+        );
+    }
+
+    @Test
+    void rejectsOutOfRangeParametersBeforeCallingTheHandler() {
+        AIActionMetaData readMetadata = AIActionMetaData.builder()
+            .name("update_payment")
+            .accessMode(ActionAccessMode.READ)
+            .confirmationRequired(false)
+            .parameterSchemas(Map.of(
+                "limit",
+                AIActionParamSchema.builder()
+                    .name("limit")
+                    .type(AIActionParamType.INTEGER)
+                    .min(1L)
+                    .max(24L)
+                    .build()
+            ))
+            .build();
+        when(registry.findMetadata("update_payment"))
+            .thenReturn(Optional.of(readMetadata));
+        when(handler.requiresConfirmation()).thenReturn(false);
+
+        GovernedActionInvocationOutcome outcome = service.invoke(invocation(
+            profile(Set.of("update_payment"), Set.of()),
+            ActionConfirmationState.CONFIRMED,
+            Map.of("limit", 50)
+        ));
+
+        assertThat(outcome.status()).isEqualTo(GovernedActionInvocationStatus.INVALID);
+        assertThat(outcome.publicFailure().reason()).isEqualTo("ACTION_PARAMETER_INVALID");
+        assertThat(outcome.actionResult().getErrorCode()).isEqualTo("ACTION_PARAMETER_INVALID");
         verify(handler, never()).executeAction(
             org.mockito.ArgumentMatchers.anyMap(),
             org.mockito.ArgumentMatchers.any()

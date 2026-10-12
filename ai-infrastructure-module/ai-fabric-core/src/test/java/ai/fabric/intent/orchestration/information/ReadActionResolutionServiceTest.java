@@ -10,6 +10,8 @@ import ai.fabric.dto.IntentType;
 import ai.fabric.intent.IntentExtractionJsonSupport;
 import ai.fabric.intent.action.AIActionHandler;
 import ai.fabric.intent.action.AIActionMetaData;
+import ai.fabric.intent.action.AIActionParamSchema;
+import ai.fabric.intent.action.AIActionParamType;
 import ai.fabric.intent.action.AIActionRegistry;
 import ai.fabric.intent.action.ActionAccessMode;
 import ai.fabric.intent.action.ActionContext;
@@ -45,6 +47,134 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class ReadActionResolutionServiceTest {
+
+    @Test
+    void shouldRepairRejectedPlannerParametersBeforeExecutingReadAction() {
+        AICoreService aiCoreService = mock(AICoreService.class);
+        AIActionRegistry actionRegistry = mock(AIActionRegistry.class);
+        PromptTemplateResolver templateResolver = mock(PromptTemplateResolver.class);
+        AIActionMetaData metadata = AIActionMetaData.builder()
+            .name("search_inventory")
+            .description("Search current inventory.")
+            .category("inventory")
+            .accessMode(ActionAccessMode.READ)
+            .groundingEligible(true)
+            .readActionResolutionEligible(true)
+            .requiredParameters(Set.of("query"))
+            .parameterSchemas(Map.of(
+                "query",
+                AIActionParamSchema.builder()
+                    .name("query")
+                    .type(AIActionParamType.STRING)
+                    .required(true)
+                    .build(),
+                "limit",
+                AIActionParamSchema.builder()
+                    .name("limit")
+                    .type(AIActionParamType.INTEGER)
+                    .min(1L)
+                    .max(24L)
+                    .build()
+            ))
+            .build();
+        AIActionHandler handler = mock(AIActionHandler.class);
+        ActionResult actionResult = ActionResult.builder()
+            .success(true)
+            .message("One vehicle found.")
+            .data(ActionPayload.list(List.of(Map.of("id", "vehicle-1"))))
+            .build();
+        when(handler.validateActionAllowed(any(ActionContext.class))).thenReturn(true);
+        when(handler.executeAction(
+            eq(Map.of("query", "electric", "limit", 10)),
+            any(ActionContext.class)
+        )).thenReturn(actionResult);
+        when(handler.buildPostActionLlmFacts(eq(actionResult), any(ActionContext.class)))
+            .thenReturn(Optional.of(Map.of(
+                "items", List.of(Map.of("id", "vehicle-1")),
+                "itemsCount", 1
+            )));
+        when(actionRegistry.getAllMetadata()).thenReturn(List.of(metadata));
+        when(actionRegistry.findHandler("search_inventory")).thenReturn(Optional.of(handler));
+        when(actionRegistry.findMetadata("search_inventory")).thenReturn(Optional.of(metadata));
+        when(templateResolver.resolve("orchestration/read-action-resolution", "system"))
+            .thenReturn(resolvedTemplate("system", ""));
+        when(templateResolver.resolve("orchestration/read-action-resolution", "user"))
+            .thenReturn(resolvedTemplate(
+                "user",
+                "query={{query}}\nactions={{eligible_actions_json}}\nprior={{prior_evidence_json}}"
+            ));
+        when(aiCoreService.generateContent(any(), eq(LlmPurpose.ORCHESTRATION)))
+            .thenReturn(AIGenerationResponse.builder().content("""
+                {
+                  "decision": "EXECUTE_READ_ACTIONS",
+                  "actions": [
+                    {"name": "search_inventory", "params": {"query": "electric", "limit": 50}, "priority": 1}
+                  ],
+                  "needsMoreSteps": false
+                }
+                """).build())
+            .thenReturn(AIGenerationResponse.builder().content("""
+                {
+                  "decision": "EXECUTE_READ_ACTIONS",
+                  "actions": [
+                    {"name": "search_inventory", "params": {"query": "electric", "limit": 10}, "priority": 1}
+                  ],
+                  "needsMoreSteps": false
+                }
+                """).build());
+
+        ReadActionResolutionService service = new ReadActionResolutionService(
+            aiCoreService,
+            actionRegistry,
+            new IntentExtractionJsonSupport(new ObjectMapper()),
+            templateResolver,
+            new PromptRenderer()
+        );
+        OrchestrationContext context = OrchestrationContext.forUser("user-1");
+        ReadActionResolutionService.ResolutionOutcome outcome = service.resolve(
+            Intent.builder()
+                .type(IntentType.INFORMATION)
+                .intent("Find electric vehicles")
+                .optimizedQuery("electric")
+                .build(),
+            context,
+            PipelineContext.from("Find electric vehicles", context)
+                .toBuilder()
+                .orchestrationPolicy(readActionPolicy(
+                    "inventory_assistant",
+                    List.of("search_inventory"),
+                    OrchestrationProperties.ReadActionResolutionPlanningMode.ITERATIVE,
+                    OrchestrationProperties.ReadActionResolutionRagCooperationMode.RAG_IF_ACTIONS_INSUFFICIENT
+                ))
+                .build()
+        );
+
+        assertThat(outcome.executedActions()).hasSize(1);
+        assertThat(outcome.executedActions().getFirst().params())
+            .containsEntry("limit", 10);
+        assertThat(outcome.diagnostics())
+            .containsEntry("rejectedActionProposalsCount", 1);
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> rejected =
+            (List<Map<String, Object>>) outcome.diagnostics().get("rejectedActionProposals");
+        assertThat(rejected.getFirst())
+            .containsEntry("action", "search_inventory")
+            .containsEntry("reason", "ACTION_PARAMETER_INVALID")
+            .containsEntry("path", "limit");
+        ArgumentCaptor<AIGenerationRequest> requests =
+            ArgumentCaptor.forClass(AIGenerationRequest.class);
+        verify(aiCoreService, times(2)).generateContent(
+            requests.capture(),
+            eq(LlmPurpose.ORCHESTRATION)
+        );
+        assertThat(requests.getAllValues().get(1).getPrompt())
+            .contains("ACTION_PARAMETER_INVALID")
+            .contains("limit");
+        verify(handler, times(1)).executeAction(
+            eq(Map.of("query", "electric", "limit", 10)),
+            any(ActionContext.class)
+        );
+    }
 
     @Test
     void shouldExecuteSameReadActionAndParamsOnlyOnceWithinRequestScope() {

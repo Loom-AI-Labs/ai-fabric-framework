@@ -5,6 +5,8 @@ import ai.fabric.dto.IntentType;
 import ai.fabric.dto.MultiIntentResponse;
 import ai.fabric.intent.action.AIActionMetaData;
 import ai.fabric.intent.action.AIActionRegistry;
+import ai.fabric.intent.action.ActionParameterContractValidator;
+import ai.fabric.intent.action.ActionParameterContractValidator.ActionParameterContractException;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import lombok.RequiredArgsConstructor;
@@ -214,6 +216,20 @@ public class IntentExtractionValidator {
         }
 
         validateActionGroundingScope(intent, meta, index, issues);
+
+        try {
+            ActionParameterContractValidator.validateProvided(meta, intent.getActionParams());
+        } catch (ActionParameterContractException ex) {
+            String field = StringUtils.hasText(ex.path())
+                ? "actionParams." + ex.path()
+                : "actionParams";
+            issues.add(ValidationIssue.error(
+                IssueCode.ACTION_PARAMETER_CONTRACT_INVALID,
+                index,
+                field,
+                ex.getMessage()
+            ));
+        }
 
         if ("relationship_query".equalsIgnoreCase(canonical)) {
             validateRelationshipQueryPostActionContract(intent, index, originalQuery, issues);
@@ -435,6 +451,7 @@ public class IntentExtractionValidator {
         ACTION_UNREGISTERED,
         ACTION_SELECTION_UNRESOLVED,
         ACTION_REQUIRED_PARAM_MISSING,
+        ACTION_PARAMETER_CONTRACT_INVALID,
         ACTION_GROUNDING_VECTOR_SPACE_MISMATCH,
         SEMANTIC_RECOVERY_NOT_ALLOWED,
         RELATIONSHIP_QUERY_HINTED_TAIL_MISSING,
@@ -523,6 +540,7 @@ public class IntentExtractionValidator {
         }
         if (hasIssue(issues, Set.of(
             IssueCode.ACTION_REQUIRED_PARAM_MISSING,
+            IssueCode.ACTION_PARAMETER_CONTRACT_INVALID,
             IssueCode.ACTION_SELECTION_UNRESOLVED,
             IssueCode.ACTION_GROUNDING_VECTOR_SPACE_MISMATCH,
             IssueCode.RELATIONSHIP_QUERY_HINTED_TAIL_MISSING,
