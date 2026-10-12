@@ -340,7 +340,10 @@ Tests are layered deliberately:
 - keyed provider suites exercise real LLM, embedding, and managed-vector integrations.
 
 See [Testing and Verification](docs/getting-started/11-testing-and-verification.md) and the
-[CI Pipeline Guide](docs/Framework-Dev-Guides/testing-verification/CI_PIPELINE_GUIDE.md).
+[CI Pipeline Guide](docs/Framework-Dev-Guides/testing-verification/CI_PIPELINE_GUIDE.md). Before
+tagging or publishing, apply the
+[Release Safety Checklist](docs/Framework-Dev-Guides/testing-verification/RELEASE_SAFETY_CHECKLIST.md)
+as the mandatory evidence-backed release gate.
 
 ## Repository Layout
 
