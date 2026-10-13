@@ -19,6 +19,7 @@ they are executable evidence that a framework capability works in a realistic Sp
 | PII detection/redaction | `privacy-first-customer-facing-support`, `chat-capabilities-demo` |
 | Governance deletion/catalog evidence | `privacy-first-customer-facing-support`, `tenant-knowledge-portal`, `vector-readiness-playground` |
 | Chat sessions and conversation-aware orchestration | `chat-capabilities-demo` |
+| Temporary human conversation handover and AI authority leases | `conversation-handover-demo` |
 | Typed action-draft continuation | `chat-capabilities-demo`, `ai-fabric-account-resolver` |
 | Read-action planning, exact execution IDs, and bounded repair | `chat-capabilities-demo`, `incident-investigation-room` |
 | Declarative specialists, plans, chains, and durable replay | `agentic-ai-action-resolver`, `incident-investigation-room`, `deployment-knowledge-guard` |

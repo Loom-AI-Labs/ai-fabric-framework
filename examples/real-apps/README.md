@@ -13,6 +13,7 @@ The apps are intentionally scenario-focused:
 - `relationship-query-crm-insights`: natural language relationship query with an offline deterministic LLM.
 - `behavior-churn-signals`: behavior analytics with manifest-defined, durable specialist execution, previous-insight plus new-event analysis, and local or live OpenAI providers.
 - `chat-capabilities-demo`: chat-session storage, conversation-aware orchestration, staged RAG readiness, and the AI Shopping Experience demo.
+- `conversation-handover-demo`: durable AI/human conversation authority, participant messages, AI turn blocking, and explicit return to AI in one standalone app.
 - `ai-fabric-live-data-sync`: annotation-driven JPA create/update/delete synchronization with vector revision and live RAG proof.
 - `customer-runtime-demo`: customer-owned domain fixture with data-sync, tenant-scoped retrieval, and governed actions.
 - `db-action-registry-lab`: DB-backed connector action registration, approval, discovery, execution, and deregistration.

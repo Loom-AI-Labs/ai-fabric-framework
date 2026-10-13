@@ -103,6 +103,9 @@ jobs:
       - name: Smoke boot-test real apps (offline 'smoke' profile)
         run: .github/scripts/smoke-boot-realapps.sh
 
+      - name: Smoke conversation authority and human handover lifecycle
+        run: .github/scripts/smoke-conversation-handover-demo.sh
+
       - name: Smoke data-sync between ecommerce and chat runtime
         run: .github/scripts/smoke-ecommerce-chat-datasync.sh
 

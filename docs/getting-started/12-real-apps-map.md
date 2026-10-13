@@ -16,6 +16,7 @@ Use real apps as templates. They are the best evidence of how AI Fabric modules 
 | Deployment Knowledge Guard | `examples/real-apps/deployment-knowledge-guard` | Trusted tenant/deployment context, scoped RAG evidence, and boundary canaries. |
 | Incident Investigation Room | `examples/real-apps/incident-investigation-room` | Model-selected specialists, specialist-selected READ actions and evidence, scoped runbook RAG, validated citations, fixed plans, bounded transitions, and backend conversation memory. |
 | MCP Operations Assistant | `examples/real-apps/mcp-operations-assistant` | Authenticated remote MCP discovery, reads, confirmed writes, durable receipts, and outage visibility. |
+| Conversation Handover | `examples/real-apps/conversation-handover-demo` | Durable AI/human authority, ordered participant messages, AI turn blocking, and explicit return to AI. |
 
 ## Smaller Capability Apps
 
@@ -42,6 +43,7 @@ Use real apps as templates. They are the best evidence of how AI Fabric modules 
 - Need deployment- and tenant-scoped RAG: `deployment-knowledge-guard`.
 - Need bounded multi-specialist investigation with observable tool and evidence choice: `incident-investigation-room`.
 - Need a real remote MCP boundary: `mcp-operations-assistant` plus `mcp-operations-reference-server`.
+- Need temporary AI-to-human conversation authority: `conversation-handover-demo`.
 - Need action registry: `db-action-registry-lab`.
 
 ## Verification Rule

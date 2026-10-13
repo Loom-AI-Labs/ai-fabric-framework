@@ -18,6 +18,7 @@
         <module>chat-capabilities-demo</module>
         <module>ai-fabric-live-data-sync</module>
         <module>cloud-qdrant-openai-vector-search</module>
+        <module>conversation-handover-demo</module>
         <module>customer-runtime-demo</module>
         <module>db-action-registry-lab</module>
         <module>deployment-knowledge-guard</module>

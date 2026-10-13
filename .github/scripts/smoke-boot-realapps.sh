@@ -15,6 +15,7 @@ apps=(
   behavior-churn-signals
   chat-capabilities-demo
   cloud-qdrant-openai-vector-search
+  conversation-handover-demo
   ecommerce-store
   it-support-action-bot
   migration-enabled-product-catalog

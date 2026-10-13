@@ -1,0 +1,78 @@
+:root {
+  color: #13243a;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-synthesis: none;
+}
+
+* { box-sizing: border-box; }
+body { background: #f4f7fb; margin: 0; min-height: 100vh; }
+button, input, textarea { font: inherit; }
+button { background: #165be8; border: 1px solid #165be8; border-radius: 6px; color: #fff; cursor: pointer; font-size: 13px; font-weight: 700; min-height: 40px; padding: 0 14px; }
+button.secondary { background: #fff; border-color: #aebbd0; color: #18304d; }
+button:disabled { cursor: not-allowed; opacity: 0.48; }
+button[hidden], [hidden] { display: none !important; }
+
+.page-header { align-items: end; background: #fff; border-bottom: 1px solid #d9e1ed; display: flex; justify-content: space-between; padding: 34px clamp(20px, 5vw, 72px) 28px; }
+.page-header p, .surface header p { color: #165be8; font-size: 11px; font-weight: 800; letter-spacing: 0; margin: 0 0 8px; text-transform: uppercase; }
+.page-header h1 { font-size: clamp(28px, 4vw, 48px); letter-spacing: 0; line-height: 1.06; margin: 0 0 12px; max-width: 800px; }
+.page-header span { color: #5c6b7d; display: block; font-size: 14px; line-height: 1.5; max-width: 760px; }
+.page-header a { border: 1px solid #aebbd0; border-radius: 6px; color: #18304d; font-size: 12px; font-weight: 700; padding: 10px 14px; text-decoration: none; }
+
+.proof-layout { display: grid; gap: 20px; grid-template-columns: minmax(0, 0.92fr) minmax(0, 1.08fr); margin: 24px auto; max-width: 1500px; padding: 0 24px; }
+.surface { background: #fff; border: 1px solid #d5dfec; border-radius: 8px; min-height: 620px; overflow: hidden; }
+.surface > header { align-items: center; border-bottom: 1px solid #d9e1ed; display: flex; justify-content: space-between; min-height: 76px; padding: 14px 18px; }
+.surface header p { margin-bottom: 4px; }
+.surface h2 { font-size: 20px; margin: 0; }
+.state { background: #edf3ff; border-radius: 999px; color: #164ba8; font-size: 11px; font-weight: 800; padding: 7px 10px; text-transform: uppercase; }
+.state[data-state="HUMAN_ACTIVE"] { background: #e2f5e9; color: #17603b; }
+.state[data-state="HUMAN_PENDING"], .state[data-state="AI_RESUME_PENDING"] { background: #fff2ce; color: #76530d; }
+.authority-note { background: #f4f7fb; border-bottom: 1px solid #d9e1ed; color: #52647a; font-size: 12px; line-height: 1.5; padding: 10px 18px; }
+.messages { display: flex; flex-direction: column; gap: 10px; height: 390px; overflow-y: auto; padding: 18px; }
+.message { align-self: flex-start; background: #eef2f7; border-radius: 7px; max-width: 82%; padding: 10px 12px; }
+.message[data-role="USER"] { align-self: flex-end; background: #e5efff; }
+.message[data-role="HUMAN"] { background: #123b35; color: #fff; }
+.message[data-role="SYSTEM"] { align-self: center; background: transparent; color: #68798c; max-width: 100%; padding-block: 3px; text-align: center; }
+.message-meta { display: flex; font-size: 10px; font-weight: 700; gap: 12px; justify-content: space-between; margin-bottom: 5px; opacity: 0.7; }
+.message p { font-size: 13px; line-height: 1.45; margin: 0; overflow-wrap: anywhere; white-space: pre-wrap; }
+.visitor-controls, .operator-actions { border-top: 1px solid #d9e1ed; display: flex; gap: 8px; min-height: 58px; padding: 9px 14px; }
+.composer { align-items: end; background: #f8fafc; border-top: 1px solid #d9e1ed; display: grid; gap: 9px; grid-template-columns: 1fr auto; padding: 12px 14px; }
+textarea, input { background: #fff; border: 1px solid #aebbd0; border-radius: 6px; color: #13243a; padding: 10px 11px; width: 100%; }
+textarea { max-height: 120px; resize: vertical; }
+
+.operator-login { margin: 90px auto 0; max-width: 430px; padding: 24px; }
+.operator-login label { display: block; font-size: 13px; font-weight: 750; margin-bottom: 7px; }
+.operator-login > div { display: grid; gap: 8px; grid-template-columns: 1fr auto; }
+.operator-login small { color: #68798c; display: block; font-size: 11px; line-height: 1.45; margin-top: 9px; }
+.operator-workspace { display: grid; grid-template-columns: 240px minmax(0, 1fr); min-height: 543px; }
+.operator-workspace aside { border-right: 1px solid #d9e1ed; }
+.queue-heading { align-items: center; border-bottom: 1px solid #d9e1ed; display: flex; justify-content: space-between; min-height: 55px; padding: 8px 11px 8px 14px; }
+.icon-button { background: transparent; border: 0; color: #165be8; font-size: 11px; min-height: 34px; padding: 0 6px; }
+.queue-item { background: #fff; border: 0; border-bottom: 1px solid #e4e9f1; border-radius: 0; color: #13243a; display: block; padding: 12px 14px; text-align: left; width: 100%; }
+.queue-item:hover, .queue-item.selected { background: #edf3ff; }
+.queue-item strong, .queue-item small { display: block; }
+.queue-item strong { font-size: 12px; }
+.queue-item small { color: #68798c; font-size: 10px; margin-top: 5px; }
+.operator-detail { min-width: 0; }
+.operator-empty { align-items: center; color: #68798c; display: flex; height: 540px; justify-content: center; padding: 20px; text-align: center; }
+.operator-detail .messages { height: 416px; }
+.operator-actions { min-height: 58px; }
+.operator-detail .composer { padding-block: 10px; }
+footer { color: #52647a; display: flex; font-size: 12px; gap: 12px; justify-content: center; padding: 6px 24px 28px; }
+footer strong { color: #13243a; }
+.toast { background: #8d2d25; border-radius: 6px; bottom: 18px; color: #fff; font-size: 12px; left: 50%; max-width: calc(100vw - 36px); padding: 11px 14px; position: fixed; transform: translateX(-50%); }
+.visually-hidden { height: 1px; margin: -1px; overflow: hidden; padding: 0; position: absolute; width: 1px; clip: rect(0 0 0 0); }
+
+@media (max-width: 900px) {
+  .page-header { align-items: start; flex-direction: column; gap: 18px; }
+  .proof-layout { grid-template-columns: 1fr; padding: 0 12px; }
+  .surface { min-height: 580px; }
+}
+
+@media (max-width: 560px) {
+  .operator-workspace { grid-template-columns: 1fr; }
+  .operator-workspace aside { border-bottom: 1px solid #d9e1ed; border-right: 0; max-height: 180px; overflow-y: auto; }
+  .operator-detail .messages { height: 300px; }
+  .operator-empty { height: 320px; }
+  .message { max-width: 94%; }
+  footer { flex-direction: column; }
+}

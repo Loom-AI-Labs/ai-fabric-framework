@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>AI Fabric Conversation Handover</title>
+    <link rel="stylesheet" href="/app.css" />
+  </head>
+  <body>
+    <header class="page-header">
+      <div>
+        <p>AI Fabric real application</p>
+        <h1>Conversation authority, visible end to end.</h1>
+        <span>This standalone app uses the public AI Fabric chat-session module. LoomAI services are not in this path.</span>
+      </div>
+      <a href="/api/demo/health">Proof status</a>
+    </header>
+
+    <main class="proof-layout">
+      <section class="surface visitor-surface">
+        <header>
+          <div>
+            <p>Visitor view</p>
+            <h2>Customer conversation</h2>
+          </div>
+          <span class="state" id="visitor-state">Starting</span>
+        </header>
+        <div class="authority-note" id="visitor-authority">Creating a deployment-local conversation...</div>
+        <div class="messages" id="visitor-messages" aria-live="polite"></div>
+        <div class="visitor-controls">
+          <button class="secondary" id="request-human" type="button">Talk to a person</button>
+          <button class="secondary" id="cancel-human" type="button" hidden>Cancel request</button>
+        </div>
+        <form class="composer" id="visitor-form">
+          <label class="visually-hidden" for="visitor-message">Message</label>
+          <textarea id="visitor-message" rows="2" placeholder="Send a message as the customer"></textarea>
+          <button type="submit">Send</button>
+        </form>
+      </section>
+
+      <section class="surface operator-surface">
+        <header>
+          <div>
+            <p>Application-owned operator view</p>
+            <h2>Human support</h2>
+          </div>
+          <span class="state" id="operator-state">Signed out</span>
+        </header>
+        <form class="operator-login" id="operator-login">
+          <label for="operator-code">Demo operator access code</label>
+          <div>
+            <input id="operator-code" type="password" autocomplete="current-password" value="demo-handover" />
+            <button type="submit">Open inbox</button>
+          </div>
+          <small>This small demo login is host-owned. It is not an enterprise workforce identity model.</small>
+        </form>
+        <div class="operator-workspace" id="operator-workspace" hidden>
+          <aside>
+            <div class="queue-heading"><strong>Queue</strong><button class="icon-button" id="refresh-queue" type="button" aria-label="Refresh queue">Refresh</button></div>
+            <div id="operator-queue"></div>
+          </aside>
+          <div class="operator-detail">
+            <div class="operator-empty" id="operator-empty">Select a waiting conversation.</div>
+            <div id="operator-conversation" hidden>
+              <div class="messages" id="operator-messages"></div>
+              <div class="operator-actions">
+                <button id="claim" type="button">Claim</button>
+                <button class="secondary" id="return-ai" type="button" hidden>Return to AI</button>
+                <button class="secondary" id="close" type="button" hidden>Close</button>
+              </div>
+              <form class="composer" id="operator-form">
+                <label class="visually-hidden" for="operator-message">Human reply</label>
+                <textarea id="operator-message" rows="2" placeholder="Claim the conversation to reply" disabled></textarea>
+                <button type="submit" disabled>Reply</button>
+              </form>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <strong>What this proves</strong>
+      <span>Durable control state · versioned transitions · AI turn leases · participant ordering · explicit return to AI</span>
+    </footer>
+    <div class="toast" id="toast" hidden></div>
+    <script src="/app.js" defer></script>
+  </body>
+</html>
