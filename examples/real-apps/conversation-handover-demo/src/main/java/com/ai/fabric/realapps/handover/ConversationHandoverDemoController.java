@@ -158,7 +158,8 @@ class ConversationHandoverDemoController {
             "status", "UP",
             "service", "conversation-handover-demo",
             "aiFabricVersion", "0.8.32",
-            "proof", "AI Fabric conversation control and participant messages"
+            "proof", "Model-selected governed handover action plus AI Fabric conversation control",
+            "handoverAction", "request_conversation_handover"
         );
     }
 

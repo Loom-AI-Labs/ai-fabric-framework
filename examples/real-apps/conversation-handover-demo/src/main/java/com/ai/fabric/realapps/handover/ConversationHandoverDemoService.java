@@ -12,6 +12,9 @@ import ai.fabric.chat.control.ConversationMessageCommand;
 import ai.fabric.chat.control.ConversationParticipantRole;
 import ai.fabric.chat.control.ConversationScope;
 import ai.fabric.chat.control.ConversationTurnLease;
+import ai.fabric.intent.orchestration.OrchestrationContext;
+import ai.fabric.intent.orchestration.OrchestrationResult;
+import ai.fabric.intent.orchestration.RAGOrchestrator;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
@@ -32,13 +35,16 @@ class ConversationHandoverDemoService {
 
     private final ConversationControlGateway gateway;
     private final DemoConversationRegistry registry;
+    private final RAGOrchestrator orchestrator;
 
     ConversationHandoverDemoService(
         ConversationControlGateway gateway,
-        DemoConversationRegistry registry
+        DemoConversationRegistry registry,
+        RAGOrchestrator orchestrator
     ) {
         this.gateway = gateway;
         this.registry = registry;
+        this.orchestrator = orchestrator;
     }
 
     ConversationView create(String ownerId) {
@@ -68,6 +74,23 @@ class ConversationHandoverDemoService {
 
         ConversationControlSnapshot status = gateway.status(scope);
         if (status.state() == ConversationControlState.AI_ACTIVE) {
+            String requestId = "handover-turn-" + key;
+            OrchestrationResult result = orchestrator.orchestrate(
+                safeText,
+                OrchestrationContext.builder()
+                    .requestId(requestId)
+                    .sessionId(ownerId)
+                    .conversationId(conversationId)
+                    .position("conversation")
+                    .mode("handover")
+                    .build()
+            );
+
+            ConversationControlSnapshot afterOrchestration = gateway.status(scope);
+            if (afterOrchestration.state() != ConversationControlState.AI_ACTIVE) {
+                return view(scope);
+            }
+
             ConversationTurnLease lease = gateway.acquireAiTurnLease(scope, Duration.ofMinutes(1));
             try {
                 append(
@@ -76,14 +99,72 @@ class ConversationHandoverDemoService {
                     "demo-ai",
                     "ai-" + key,
                     "ai-" + key,
-                    "AI is active and received your message. Request a person to transfer response authority.",
-                    lease
+                    responseText(result),
+                    lease,
+                    Map.of(
+                        "demo", true,
+                        "orchestrationResultType", result != null && result.getType() != null
+                            ? result.getType().name()
+                            : "UNKNOWN",
+                        "requestId", requestId
+                    )
                 );
             } catch (ConversationControlViolationException ignored) {
                 // A concurrent handover correctly invalidated this AI turn.
             }
         }
         return view(scope);
+    }
+
+    boolean canRequestHuman(String ownerId, String conversationId) {
+        if (!StringUtils.hasText(ownerId) || !StringUtils.hasText(conversationId)) {
+            return false;
+        }
+        try {
+            ConversationScope scope = ownerScope(ownerId, conversationId);
+            return gateway.status(scope).state() == ConversationControlState.AI_ACTIVE;
+        } catch (RuntimeException ignored) {
+            return false;
+        }
+    }
+
+    HandoverAdmission requestHumanFromAi(
+        String ownerId,
+        String conversationId,
+        String requestId,
+        HandoverRequestProvenance provenance
+    ) {
+        ConversationScope scope = ownerScope(ownerId, conversationId);
+        ConversationControlSnapshot current = gateway.status(scope);
+        String idempotencyKey = requiredKey(
+            StringUtils.hasText(requestId) ? requestId : "handover-ai-" + UUID.randomUUID()
+        );
+        TransitionRequest request = new TransitionRequest(current.version(), idempotencyKey);
+        ConversationControlResult result = transition(
+            scope,
+            ConversationControlCommandType.REQUEST_HUMAN,
+            request,
+            ownerId,
+            "AI_SELECTED_HANDOVER",
+            "handover-" + idempotencyKey,
+            CHANNEL_ID
+        );
+        Map<String, Object> metadata = new java.util.LinkedHashMap<>();
+        metadata.put("demo", true);
+        metadata.put("action", "request_conversation_handover");
+        metadata.put("selectedBy", "AI_FABRIC_ORCHESTRATOR");
+        metadata.put("requestProvenance", provenance.name());
+        append(
+            scope,
+            ConversationParticipantRole.SYSTEM,
+            "system",
+            "event-" + idempotencyKey,
+            null,
+            "AI Fabric selected the governed handover action. Human support was requested and AI responses are paused.",
+            null,
+            Map.copyOf(metadata)
+        );
+        return new HandoverAdmission(result.snapshot().state(), result.snapshot().version());
     }
 
     ConversationView requestHuman(
@@ -248,6 +329,19 @@ class ConversationHandoverDemoService {
         String content,
         ConversationTurnLease lease
     ) {
+        append(scope, role, actor, messageId, clientMessageId, content, lease, Map.of("demo", true));
+    }
+
+    private void append(
+        ConversationScope scope,
+        ConversationParticipantRole role,
+        String actor,
+        String messageId,
+        String clientMessageId,
+        String content,
+        ConversationTurnLease lease,
+        Map<String, Object> metadata
+    ) {
         gateway.appendMessage(new ConversationMessageCommand(
             scope,
             messageIdentity(scope, messageId),
@@ -255,8 +349,15 @@ class ConversationHandoverDemoService {
             role,
             actor,
             content,
-            Map.of("demo", true)
+            metadata
         ), lease);
+    }
+
+    private String responseText(OrchestrationResult result) {
+        if (result != null && StringUtils.hasText(result.getMessage())) {
+            return result.getMessage().trim();
+        }
+        return "The AI provider returned no response for this turn.";
     }
 
     private String messageIdentity(ConversationScope scope, String localMessageId) {
@@ -289,6 +390,8 @@ class ConversationHandoverDemoService {
     record TransitionRequest(long expectedVersion, String idempotencyKey) {}
 
     record MessageRequest(String text, String clientMessageId) {}
+
+    record HandoverAdmission(ConversationControlState controlState, long controlVersion) {}
 
     record ConversationView(
         ConversationControlSnapshot control,

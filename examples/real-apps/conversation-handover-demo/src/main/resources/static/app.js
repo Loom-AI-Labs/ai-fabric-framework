@@ -53,6 +53,12 @@ function renderMessages(root, messages) {
     const content = document.createElement("p");
     content.textContent = message.content;
     article.append(meta, content);
+    if (message.metadata?.action) {
+      const proof = document.createElement("div");
+      proof.className = "action-proof";
+      proof.textContent = `AI action · ${message.metadata.action}`;
+      article.append(proof);
+    }
     root.append(article);
   });
   root.scrollTop = root.scrollHeight;
@@ -70,6 +76,9 @@ function renderVisitor() {
   const closed = control.state === "CLOSED" || control.state === "AI_RESUME_PENDING";
   $("visitor-message").disabled = closed;
   $("visitor-form").querySelector("button").disabled = closed;
+  $("visitor-message").placeholder = control.state === "AI_ACTIVE"
+    ? "Ask AI a question or request a human operator"
+    : "Continue the conversation with the human operator";
 }
 
 function authorityCopy(controlState, version, epoch) {

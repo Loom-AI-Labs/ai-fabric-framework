@@ -1,6 +1,9 @@
 package com.ai.fabric.realapps.handover;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -8,7 +11,14 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import ai.fabric.intent.action.ActionContext;
+import ai.fabric.intent.action.ActionResult;
+import ai.fabric.intent.orchestration.OrchestrationContext;
+import ai.fabric.intent.orchestration.OrchestrationResult;
+import ai.fabric.intent.orchestration.OrchestrationResultType;
+import ai.fabric.intent.orchestration.RAGOrchestrator;
 import java.util.UUID;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -16,16 +26,31 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.mock.web.MockHttpSession;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 @SpringBootTest(properties = {
     "spring.datasource.url=jdbc:h2:mem:handover-test;DB_CLOSE_DELAY=-1",
-    "app.demo.operator-access-code=test-operator-code"
+    "app.demo.operator-access-code=test-operator-code",
+    "ai.enabled=false"
 })
 @AutoConfigureMockMvc
 class ConversationHandoverDemoHttpTest {
 
     @Autowired MockMvc mvc;
     @Autowired ObjectMapper objectMapper;
+    @Autowired RequestConversationHandoverAction handoverAction;
+
+    @MockitoBean RAGOrchestrator orchestrator;
+
+    @BeforeEach
+    void modelAnswersOrdinaryTurns() {
+        when(orchestrator.orchestrate(anyString(), any(OrchestrationContext.class)))
+            .thenReturn(OrchestrationResult.builder()
+                .type(OrchestrationResultType.INFORMATION_PROVIDED)
+                .success(true)
+                .message("The AI assistant is available.")
+                .build());
+    }
 
     @Test
     void frameworkOwnsTheCompleteAiHumanAiAuthorityLifecycle() throws Exception {
@@ -113,6 +138,42 @@ class ConversationHandoverDemoHttpTest {
             .andExpect(status().isForbidden());
         mvc.perform(get("/api/demo/operator/conversations").session(new MockHttpSession()))
             .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void governedActionTransfersAnExplicitUserRequestWithoutRedundantConfirmation() throws Exception {
+        MvcResult created = mvc.perform(post("/api/demo/session").contentType("application/json").content("{}"))
+            .andExpect(status().isOk())
+            .andReturn();
+        MockHttpSession session = (MockHttpSession) created.getRequest().getSession(false);
+        String conversationId = json(created).path("conversationId").asText();
+        String ownerId = String.valueOf(session.getAttribute("demo.owner"));
+        ActionContext context = new ActionContext(
+            OrchestrationContext.builder()
+                .requestId("action-test-" + UUID.randomUUID())
+                .sessionId(ownerId)
+                .conversationId(conversationId)
+                .mode("handover")
+                .position("conversation")
+                .build(),
+            null
+        );
+
+        assertThat(handoverAction.allowed(context)).isTrue();
+        assertThat(handoverAction.confirmationRequired(HandoverRequestProvenance.EXPLICIT_USER_REQUEST)).isFalse();
+        assertThat(handoverAction.confirmationRequired(HandoverRequestProvenance.MODEL_RECOMMENDATION)).isTrue();
+
+        ActionResult result = handoverAction.execute(
+            HandoverRequestProvenance.EXPLICIT_USER_REQUEST,
+            context
+        );
+
+        assertThat(result.isSuccess()).isTrue();
+        mvc.perform(get("/api/demo/conversations/{id}", conversationId).session(session))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.control.state").value("HUMAN_PENDING"))
+            .andExpect(jsonPath("$.messages[1].metadata.action").value("request_conversation_handover"))
+            .andExpect(jsonPath("$.messages[1].metadata.selectedBy").value("AI_FABRIC_ORCHESTRATOR"));
     }
 
     @Test

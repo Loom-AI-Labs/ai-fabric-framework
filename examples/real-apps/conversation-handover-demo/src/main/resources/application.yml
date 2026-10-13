@@ -9,16 +9,49 @@ server:
 spring:
   application:
     name: ai-fabric-conversation-handover-demo
-  autoconfigure:
-    exclude:
-      - ai.fabric.config.AIInfrastructureAutoConfiguration
-      - org.springframework.boot.data.jpa.autoconfigure.DataJpaRepositoriesAutoConfiguration
-      - org.springframework.boot.hibernate.autoconfigure.HibernateJpaAutoConfiguration
   datasource:
     url: ${DATABASE_URL:jdbc:h2:file:./data/conversation-handover;DB_CLOSE_ON_EXIT=FALSE}
     username: ${DATABASE_USERNAME:sa}
     password: ${DATABASE_PASSWORD:}
     driver-class-name: org.h2.Driver
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: update
+
+ai:
+  providers:
+    llm-provider: openai
+    openai:
+      enabled: ${OPENAI_ENABLED:false}
+      api-key: ${OPENAI_API_KEY:}
+      base-url: ${OPENAI_BASE_URL:https://api.openai.com/v1}
+      model: ${OPENAI_MODEL:gpt-4o-mini}
+      timeout: ${OPENAI_TIMEOUT:60}
+  service:
+    features:
+      enable-generation: true
+      enable-embeddings: false
+      enable-search: false
+      enable-rag: false
+  vector-db:
+    type: false
+  orchestration:
+    action-param-provenance-mode: WARN
+    default-mode: handover
+    strict-mode-routing: true
+    modes:
+      handover:
+        actions-enabled: true
+        actions-preferred: true
+        retrieval-enabled: false
+        information-mode: LLM_DRIVEN
+  chat:
+    enabled: false
+  behavior:
+    enabled: false
+  pii-detection:
+    enabled: false
 management:
   endpoints:
     web:

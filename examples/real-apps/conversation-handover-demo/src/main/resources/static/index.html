@@ -10,8 +10,8 @@
     <header class="page-header">
       <div>
         <p>AI Fabric real application</p>
-        <h1>Conversation authority, visible end to end.</h1>
-        <span>This standalone app uses the public AI Fabric chat-session module. LoomAI services are not in this path.</span>
+        <h1>AI-selected handover, visible end to end.</h1>
+        <span>Ask the model for a person and AI Fabric selects a governed application action. The same transition is also available through an explicit UI control.</span>
       </div>
       <a href="/api/demo/health">Proof status</a>
     </header>
@@ -33,7 +33,7 @@
         </div>
         <form class="composer" id="visitor-form">
           <label class="visually-hidden" for="visitor-message">Message</label>
-          <textarea id="visitor-message" rows="2" placeholder="Send a message as the customer"></textarea>
+          <textarea id="visitor-message" rows="2" placeholder="Ask AI a question or request a human operator"></textarea>
           <button type="submit">Send</button>
         </form>
       </section>
@@ -81,7 +81,7 @@
 
     <footer>
       <strong>What this proves</strong>
-      <span>Durable control state · versioned transitions · AI turn leases · participant ordering · explicit return to AI</span>
+      <span>Model-selected @AIAction · durable control state · AI turn leases · human-only authority · explicit return to AI</span>
     </footer>
     <div class="toast" id="toast" hidden></div>
     <script src="/app.js" defer></script>
