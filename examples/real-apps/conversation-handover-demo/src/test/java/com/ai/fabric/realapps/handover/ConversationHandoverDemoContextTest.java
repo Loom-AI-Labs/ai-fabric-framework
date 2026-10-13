@@ -2,8 +2,11 @@ package com.ai.fabric.realapps.handover;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import ai.fabric.access.policy.EntityAccessPolicy;
+import ai.fabric.dto.AIAccessSubjectContext;
 import ai.fabric.intent.action.AIActionRegistry;
 import ai.fabric.intent.orchestration.RAGOrchestrator;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -18,6 +21,7 @@ class ConversationHandoverDemoContextTest {
 
     @Autowired RAGOrchestrator orchestrator;
     @Autowired AIActionRegistry actionRegistry;
+    @Autowired EntityAccessPolicy accessPolicy;
 
     @Test
     void realOrchestrationGraphStartsWithTheHandoverActionRegistered() {
@@ -25,5 +29,27 @@ class ConversationHandoverDemoContextTest {
         assertThat(actionRegistry.getAllMetadata())
                 .extracting(metadata -> metadata.getName())
                 .contains("request_conversation_handover");
+    }
+
+    @Test
+    void demoPolicyAllowsOnlySessionOwnedOrchestrationEntry() {
+        AIAccessSubjectContext subject = AIAccessSubjectContext.builder()
+            .subjectId("demo-owner")
+            .sessionId("demo-owner")
+            .subjectType("ANONYMOUS_SESSION")
+            .build();
+
+        assertThat(accessPolicy.canAccess(subject, Map.of(
+            "resourceId", "rag:intent",
+            "operationType", "READ"
+        ))).isTrue();
+        assertThat(accessPolicy.canAccess(subject, Map.of(
+            "resourceId", "unrelated-resource",
+            "operationType", "READ"
+        ))).isFalse();
+        assertThat(accessPolicy.canAccess(subject, Map.of(
+            "resourceId", "rag:intent",
+            "operationType", "WRITE"
+        ))).isFalse();
     }
 }
