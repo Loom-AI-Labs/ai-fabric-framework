@@ -15,7 +15,7 @@ import java.util.Map;
 
 @AIAction(
     name = "request_conversation_handover",
-    description = "Transfer response authority for this conversation to a human operator. Select this action only when the user explicitly asks to speak with a person or when the user accepts a proposed human escalation.",
+    description = "Begin a governed transfer of this conversation to a human operator. Select this action only when the user explicitly asks to speak with a person or accepts a proposed human escalation. The host application presents required contact intake after selection; never invent or collect contact details in action parameters.",
     category = "conversation-control",
     accessMode = ActionAccessMode.WRITE_ONLY,
     requiresConfirmation = true,
@@ -74,13 +74,29 @@ class RequestConversationHandoverAction {
             );
 
             Map<String, Object> data = new LinkedHashMap<>();
+            data.put("outcome", admission.admission().outcome().name());
             data.put("conversationId", context.conversationId());
             data.put("controlState", admission.controlState().name());
             data.put("controlVersion", admission.controlVersion());
             data.put("requestProvenance", effectiveProvenance.name());
+            data.put("intakeSchema", Map.of(
+                "schemaVersion", admission.admission().intakeSchema().schemaVersion(),
+                "anonymousAllowed", admission.admission().intakeSchema().anonymousAllowed(),
+                "fields", admission.admission().intakeSchema().fields().stream()
+                    .map(field -> Map.of(
+                        "key", field.key(),
+                        "label", field.label(),
+                        "type", field.type().name(),
+                        "required", field.required(),
+                        "maxLength", field.maxLength(),
+                        "purpose", field.purpose(),
+                        "consentRequired", field.consentRequired()
+                    ))
+                    .toList()
+            ));
             return ActionResult.builder()
                 .success(true)
-                .message("Response authority was transferred to the human support queue.")
+                .message(admission.admission().message())
                 .data(ActionResultContracts.object(data))
                 .build();
         } catch (RuntimeException exception) {

@@ -56,8 +56,28 @@ textarea { max-height: 120px; resize: vertical; }
 .operator-detail { min-width: 0; }
 .operator-empty { align-items: center; color: #68798c; display: flex; height: 540px; justify-content: center; padding: 20px; text-align: center; }
 .operator-detail .messages { height: 416px; }
+.operator-contact { background: #eef7f3; border-bottom: 1px solid #b9d8cb; display: grid; gap: 8px; grid-template-columns: repeat(3, minmax(0, 1fr)); padding: 11px 14px; }
+.operator-contact > div { min-width: 0; }
+.operator-contact span, .operator-contact strong { display: block; }
+.operator-contact span { color: #557068; font-size: 9px; font-weight: 800; text-transform: uppercase; }
+.operator-contact strong { color: #143d33; font-size: 11px; margin-top: 3px; overflow-wrap: anywhere; }
+.operator-contact:not([hidden]) + .messages { height: 351px; }
 .operator-actions { min-height: 58px; }
 .operator-detail .composer { padding-block: 10px; }
+.intake-overlay { align-items: center; background: rgb(15 29 48 / 58%); display: flex; inset: 0; justify-content: center; padding: 18px; position: fixed; z-index: 20; }
+.intake-dialog { background: #fff; border: 1px solid #c9d5e5; border-radius: 8px; box-shadow: 0 24px 70px rgb(11 28 51 / 28%); max-height: calc(100vh - 36px); max-width: 520px; overflow-y: auto; width: 100%; }
+.intake-dialog > header { align-items: center; border-bottom: 1px solid #d9e1ed; display: flex; justify-content: space-between; padding: 16px 18px; }
+.intake-dialog header p { color: #165be8; font-size: 10px; font-weight: 800; margin: 0 0 4px; text-transform: uppercase; }
+.intake-dialog h2 { font-size: 20px; margin: 0; }
+.intake-dialog .close-intake { color: #52647a; }
+.intake-intro { color: #52647a; font-size: 12px; line-height: 1.55; margin: 0; padding: 14px 18px 0; }
+.intake-dialog form { display: grid; gap: 8px; padding: 14px 18px 18px; }
+.intake-dialog form > label:not(.consent) { font-size: 12px; font-weight: 750; margin-top: 4px; }
+.intake-dialog form > label span { color: #68798c; font-size: 10px; font-weight: 650; margin-left: 4px; }
+.intake-dialog form > small { color: #68798c; font-size: 10px; margin-top: -3px; }
+.intake-dialog .consent { align-items: start; color: #52647a; display: grid; font-size: 11px; gap: 8px; grid-template-columns: 16px 1fr; line-height: 1.45; margin: 2px 0 5px; }
+.intake-dialog .consent input { margin: 2px 0 0; width: auto; }
+.intake-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 9px; }
 footer { color: #52647a; display: flex; font-size: 12px; gap: 12px; justify-content: center; padding: 6px 24px 28px; }
 footer strong { color: #13243a; }
 .toast { background: #8d2d25; border-radius: 6px; bottom: 18px; color: #fff; font-size: 12px; left: 50%; max-width: calc(100vw - 36px); padding: 11px 14px; position: fixed; transform: translateX(-50%); }
@@ -73,7 +93,11 @@ footer strong { color: #13243a; }
   .operator-workspace { grid-template-columns: 1fr; }
   .operator-workspace aside { border-bottom: 1px solid #d9e1ed; border-right: 0; max-height: 180px; overflow-y: auto; }
   .operator-detail .messages { height: 300px; }
+  .operator-contact { grid-template-columns: 1fr; }
+  .operator-contact:not([hidden]) + .messages { height: 240px; }
   .operator-empty { height: 320px; }
   .message { max-width: 94%; }
+  .intake-actions { flex-direction: column-reverse; }
+  .intake-actions button { width: 100%; }
   footer { flex-direction: column; }
 }

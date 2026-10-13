@@ -13,6 +13,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import ai.fabric.intent.action.ActionContext;
 import ai.fabric.intent.action.ActionResult;
+import ai.fabric.intent.action.annotation.AIAction;
 import ai.fabric.intent.orchestration.OrchestrationContext;
 import ai.fabric.intent.orchestration.OrchestrationResult;
 import ai.fabric.intent.orchestration.OrchestrationResultType;
@@ -72,7 +73,7 @@ class ConversationHandoverDemoHttpTest {
         JsonNode pending = postJson(
             session,
             "/api/demo/conversations/" + conversationId + "/handover",
-            transition(initial.path("control").path("version").asLong(), "request-human-1")
+            handover(initial.path("control").path("version").asLong(), "request-human-1")
         );
         assertThat(pending.path("control").path("state").asText()).isEqualTo("HUMAN_PENDING");
 
@@ -141,7 +142,7 @@ class ConversationHandoverDemoHttpTest {
     }
 
     @Test
-    void governedActionTransfersAnExplicitUserRequestWithoutRedundantConfirmation() throws Exception {
+    void governedActionRequestsRequiredIntakeWithoutChangingConversationAuthority() throws Exception {
         MvcResult created = mvc.perform(post("/api/demo/session").contentType("application/json").content("{}"))
             .andExpect(status().isOk())
             .andReturn();
@@ -160,6 +161,7 @@ class ConversationHandoverDemoHttpTest {
         );
 
         assertThat(handoverAction.allowed(context)).isTrue();
+        assertThat(RequestConversationHandoverAction.class.getAnnotation(AIAction.class).anonymousAllowed()).isTrue();
         assertThat(handoverAction.confirmationRequired(HandoverRequestProvenance.EXPLICIT_USER_REQUEST)).isFalse();
         assertThat(handoverAction.confirmationRequired(HandoverRequestProvenance.MODEL_RECOMMENDATION)).isTrue();
 
@@ -171,9 +173,50 @@ class ConversationHandoverDemoHttpTest {
         assertThat(result.isSuccess()).isTrue();
         mvc.perform(get("/api/demo/conversations/{id}", conversationId).session(session))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.control.state").value("HUMAN_PENDING"))
+            .andExpect(jsonPath("$.control.state").value("AI_ACTIVE"))
+            .andExpect(jsonPath("$.handoverIntakeRequired").value(true))
+            .andExpect(jsonPath("$.handoverIntakeSchema.anonymousAllowed").value(false))
+            .andExpect(jsonPath("$.handoverIntakeSchema.fields[0].key").value("email"))
+            .andExpect(jsonPath("$.handoverIntakeSchema.fields[0].required").value(true))
             .andExpect(jsonPath("$.messages[1].metadata.action").value("request_conversation_handover"))
-            .andExpect(jsonPath("$.messages[1].metadata.selectedBy").value("AI_FABRIC_ORCHESTRATOR"));
+            .andExpect(jsonPath("$.messages[1].metadata.selectedBy").value("AI_FABRIC_ORCHESTRATOR"))
+            .andExpect(jsonPath("$.messages[1].metadata.outcome").value("HANDOVER_INTAKE_REQUIRED"));
+
+        JsonNode pending = postJson(
+            session,
+            "/api/demo/conversations/" + conversationId + "/handover",
+            handover(0, "action-intake-submit")
+        );
+        assertThat(pending.path("control").path("state").asText()).isEqualTo("HUMAN_PENDING");
+        assertThat(pending.path("handoverIntakeRequired").asBoolean()).isFalse();
+        assertThat(pending.path("contactIntake").path("email").asText()).isEqualTo("visitor@example.test");
+    }
+
+    @Test
+    void requiredEmailAndConsentFailClosedBeforeTheControlTransition() throws Exception {
+        MvcResult created = mvc.perform(post("/api/demo/session").contentType("application/json").content("{}"))
+            .andExpect(status().isOk())
+            .andReturn();
+        MockHttpSession session = (MockHttpSession) created.getRequest().getSession(false);
+        String conversationId = json(created).path("conversationId").asText();
+
+        mvc.perform(post("/api/demo/conversations/{id}/handover", conversationId)
+                .session(session)
+                .contentType("application/json")
+                .content("""
+                    {
+                      "expectedVersion": 0,
+                      "idempotencyKey": "missing-required-email",
+                      "intake": {"name": "Demo Visitor"},
+                      "consentedFields": []
+                    }
+                    """))
+            .andExpect(status().isUnprocessableEntity());
+
+        mvc.perform(get("/api/demo/conversations/{id}", conversationId).session(session))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.control.state").value("AI_ACTIVE"))
+            .andExpect(jsonPath("$.contactIntake").doesNotExist());
     }
 
     @Test
@@ -183,7 +226,7 @@ class ConversationHandoverDemoHttpTest {
             .andReturn();
         MockHttpSession session = (MockHttpSession) created.getRequest().getSession(false);
         String conversationId = json(created).path("conversationId").asText();
-        String body = transition(0, "request-replay-" + UUID.randomUUID());
+        String body = handover(0, "request-replay-" + UUID.randomUUID());
 
         postJson(session, "/api/demo/conversations/" + conversationId + "/handover", body);
         mvc.perform(post("/api/demo/conversations/{id}/handover", conversationId)
@@ -209,6 +252,21 @@ class ConversationHandoverDemoHttpTest {
 
     private String transition(long expectedVersion, String idempotencyKey) {
         return "{\"expectedVersion\":" + expectedVersion + ",\"idempotencyKey\":\"" + idempotencyKey + "\"}";
+    }
+
+    private String handover(long expectedVersion, String idempotencyKey) {
+        return """
+            {
+              "expectedVersion": %d,
+              "idempotencyKey": "%s",
+              "intake": {
+                "email": "visitor@example.test",
+                "name": "Demo Visitor",
+                "phone": "+44 20 7946 0958"
+              },
+              "consentedFields": ["email", "phone"]
+            }
+            """.formatted(expectedVersion, idempotencyKey);
     }
 
     private long roleCount(JsonNode view, String role) {

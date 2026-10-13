@@ -1,14 +1,12 @@
 package com.ai.fabric.realapps.handover;
 
-import ai.fabric.chat.control.ConversationControlCommand;
-import ai.fabric.chat.control.ConversationControlCommandType;
 import ai.fabric.chat.control.ConversationControlGateway;
-import ai.fabric.chat.control.ConversationControlResult;
 import ai.fabric.chat.control.ConversationControlSnapshot;
 import ai.fabric.chat.control.ConversationControlState;
 import ai.fabric.chat.control.ConversationMessageCommand;
 import ai.fabric.chat.control.ConversationParticipantRole;
 import ai.fabric.chat.control.ConversationScope;
+import ai.fabric.chat.control.HandoverAdmissionResult;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import java.util.UUID;
@@ -20,13 +18,16 @@ class ConversationHandoverActionService {
 
     private final ConversationControlGateway gateway;
     private final DemoConversationRegistry registry;
+    private final DemoHandoverIntakePolicy intakePolicy;
 
     ConversationHandoverActionService(
         ConversationControlGateway gateway,
-        DemoConversationRegistry registry
+        DemoConversationRegistry registry,
+        DemoHandoverIntakePolicy intakePolicy
     ) {
         this.gateway = gateway;
         this.registry = registry;
+        this.intakePolicy = intakePolicy;
     }
 
     boolean canRequestHuman(String ownerId, String conversationId) {
@@ -52,25 +53,18 @@ class ConversationHandoverActionService {
         String idempotencyKey = boundedKey(
             StringUtils.hasText(requestId) ? requestId : "handover-ai-" + UUID.randomUUID()
         );
-        ConversationControlResult result = gateway.transition(new ConversationControlCommand(
-            scope,
-            ConversationControlCommandType.REQUEST_HUMAN,
-            current.version(),
-            idempotencyKey,
-            ownerId,
-            "AI_SELECTED_HANDOVER",
-            "handover-" + idempotencyKey,
-            ConversationHandoverDemoService.CHANNEL_ID
-        ));
-        if (!result.applied()) {
-            throw new IllegalStateException(result.code() + ": " + result.message());
+        if (current.state() != ConversationControlState.AI_ACTIVE) {
+            throw new IllegalStateException("Handover intake can begin only while AI is active.");
         }
+        registry.markIntakeRequested(conversationId);
+        HandoverAdmissionResult admission = intakePolicy.intakeRequired();
 
         Map<String, Object> metadata = Map.of(
             "demo", true,
             "action", "request_conversation_handover",
             "selectedBy", "AI_FABRIC_ORCHESTRATOR",
-            "requestProvenance", provenance.name()
+            "requestProvenance", provenance.name(),
+            "outcome", admission.outcome().name()
         );
         gateway.appendMessage(new ConversationMessageCommand(
             scope,
@@ -78,10 +72,10 @@ class ConversationHandoverActionService {
             null,
             ConversationParticipantRole.SYSTEM,
             "system",
-            "AI Fabric selected the governed handover action. Human support was requested and AI responses are paused.",
+            "AI Fabric selected the governed handover action. Required contact intake must be accepted before response authority changes.",
             metadata
         ), null);
-        return new HandoverAdmission(result.snapshot().state(), result.snapshot().version());
+        return new HandoverAdmission(admission, current.state(), current.version());
     }
 
     private ConversationScope ownerScope(String ownerId, String conversationId) {
@@ -110,5 +104,9 @@ class ConversationHandoverActionService {
         return "message-" + UUID.nameUUIDFromBytes(seed.getBytes(StandardCharsets.UTF_8));
     }
 
-    record HandoverAdmission(ConversationControlState controlState, long controlVersion) {}
+    record HandoverAdmission(
+        HandoverAdmissionResult admission,
+        ConversationControlState controlState,
+        long controlVersion
+    ) {}
 }

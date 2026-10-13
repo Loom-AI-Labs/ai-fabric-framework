@@ -12,6 +12,7 @@ import ai.fabric.chat.control.ConversationMessageCommand;
 import ai.fabric.chat.control.ConversationParticipantRole;
 import ai.fabric.chat.control.ConversationScope;
 import ai.fabric.chat.control.ConversationTurnLease;
+import ai.fabric.chat.control.HandoverIntakeSchema;
 import ai.fabric.intent.orchestration.OrchestrationContext;
 import ai.fabric.intent.orchestration.OrchestrationResult;
 import ai.fabric.intent.orchestration.RAGOrchestrator;
@@ -23,6 +24,7 @@ import java.util.Map;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -36,15 +38,18 @@ class ConversationHandoverDemoService {
     private final ConversationControlGateway gateway;
     private final DemoConversationRegistry registry;
     private final RAGOrchestrator orchestrator;
+    private final DemoHandoverIntakePolicy intakePolicy;
 
     ConversationHandoverDemoService(
         ConversationControlGateway gateway,
         DemoConversationRegistry registry,
-        RAGOrchestrator orchestrator
+        RAGOrchestrator orchestrator,
+        DemoHandoverIntakePolicy intakePolicy
     ) {
         this.gateway = gateway;
         this.registry = registry;
         this.orchestrator = orchestrator;
+        this.intakePolicy = intakePolicy;
     }
 
     ConversationView create(String ownerId) {
@@ -116,24 +121,38 @@ class ConversationHandoverDemoService {
         return view(scope);
     }
 
+    @Transactional
     ConversationView requestHuman(
         String ownerId,
         String conversationId,
-        TransitionRequest request
+        HandoverRequest request
     ) {
         ConversationScope scope = ownerScope(ownerId, conversationId);
+        if (request == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A handover request is required.");
+        }
+        DemoHandoverIntakePolicy.ValidatedIntake intake = intakePolicy.validate(
+            request.intake(),
+            request.consentedFields()
+        );
         String handoverId = "handover-" + requiredKey(request.idempotencyKey());
         transition(
             scope,
             ConversationControlCommandType.REQUEST_HUMAN,
-            request,
+            new TransitionRequest(request.expectedVersion(), request.idempotencyKey()),
             ownerId,
             "VISITOR_REQUEST",
             handoverId,
             CHANNEL_ID
         );
+        registry.saveIntake(conversationId, intake, Instant.now());
         append(scope, ConversationParticipantRole.SYSTEM, "system", "event-" + request.idempotencyKey(), null,
-            "Human support requested. AI responses are paused while the request is pending.", null);
+            "Required contact intake was accepted. Human support requested; AI responses are paused while the request is pending.", null,
+            Map.of(
+                "demo", true,
+                "intakeSchemaVersion", intakePolicy.schema().schemaVersion(),
+                "requiredContactAccepted", true
+            ));
         return view(scope);
     }
 
@@ -145,6 +164,7 @@ class ConversationHandoverDemoService {
         ConversationScope scope = ownerScope(ownerId, conversationId);
         transition(scope, ConversationControlCommandType.CANCEL_HUMAN_REQUEST, request, ownerId,
             "VISITOR_CANCEL", null, null);
+        registry.clearIntake(conversationId);
         append(scope, ConversationParticipantRole.SYSTEM, "system", "event-" + request.idempotencyKey(), null,
             "Human support request cancelled. AI response authority is active again.", null);
         return view(scope);
@@ -208,6 +228,7 @@ class ConversationHandoverDemoService {
         );
         transition(scope, ConversationControlCommandType.COMPLETE_AI_RESUME, complete, "system",
             "AI_RESUME_COMPLETE", null, null);
+        registry.clearIntake(conversationId);
         append(scope, ConversationParticipantRole.SYSTEM, "system", "event-" + request.idempotencyKey(), null,
             "The operator returned response authority to AI.", null);
         return view(scope);
@@ -217,6 +238,7 @@ class ConversationHandoverDemoService {
         ConversationScope scope = scope(registry.require(conversationId));
         transition(scope, ConversationControlCommandType.CLOSE, request, operatorId,
             "OPERATOR_CLOSE", null, null);
+        registry.clearIntake(conversationId);
         append(scope, ConversationParticipantRole.SYSTEM, "system", "event-" + request.idempotencyKey(), null,
             "The conversation was closed.", null);
         return view(scope);
@@ -266,7 +288,22 @@ class ConversationHandoverDemoService {
     }
 
     private ConversationView view(ConversationScope scope) {
-        return new ConversationView(gateway.status(scope), gateway.messages(scope, 0, 500));
+        DemoConversationRegistry.Entry entry = registry.require(scope.conversationId());
+        ContactIntakeView contact = StringUtils.hasText(entry.handoverEmail())
+            ? new ContactIntakeView(
+                entry.handoverEmail(),
+                entry.handoverName(),
+                entry.handoverPhone(),
+                entry.handoverIntakeAt()
+            )
+            : null;
+        return new ConversationView(
+            gateway.status(scope),
+            gateway.messages(scope, 0, 500),
+            intakePolicy.schema(),
+            entry.handoverIntakeRequested(),
+            contact
+        );
     }
 
     private void append(
@@ -338,12 +375,24 @@ class ConversationHandoverDemoService {
 
     record TransitionRequest(long expectedVersion, String idempotencyKey) {}
 
+    record HandoverRequest(
+        long expectedVersion,
+        String idempotencyKey,
+        Map<String, String> intake,
+        List<String> consentedFields
+    ) {}
+
     record MessageRequest(String text, String clientMessageId) {}
 
     record ConversationView(
         ConversationControlSnapshot control,
-        List<ConversationMessage> messages
+        List<ConversationMessage> messages,
+        HandoverIntakeSchema handoverIntakeSchema,
+        boolean handoverIntakeRequired,
+        ContactIntakeView contactIntake
     ) {}
+
+    record ContactIntakeView(String email, String name, String phone, Instant acceptedAt) {}
 
     record QueueItem(
         String conversationId,

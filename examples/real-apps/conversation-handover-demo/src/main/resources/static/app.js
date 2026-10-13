@@ -4,6 +4,8 @@ const state = {
   operatorAuthenticated: false,
   selectedConversationId: null,
   operatorConversation: null,
+  intakeDismissed: false,
+  lastIntakeRequestMessageId: null,
 };
 
 const $ = (id) => document.getElementById(id);
@@ -67,6 +69,13 @@ function renderMessages(root, messages) {
 function renderVisitor() {
   if (!state.visitor) return;
   const control = state.visitor.control;
+  const latestIntakeRequest = [...(state.visitor.messages || [])]
+    .reverse()
+    .find((message) => message.metadata?.outcome === "HANDOVER_INTAKE_REQUIRED");
+  if (latestIntakeRequest?.messageId && latestIntakeRequest.messageId !== state.lastIntakeRequestMessageId) {
+    state.lastIntakeRequestMessageId = latestIntakeRequest.messageId;
+    state.intakeDismissed = false;
+  }
   $("visitor-state").textContent = control.state.replaceAll("_", " ");
   $("visitor-state").dataset.state = control.state;
   $("visitor-authority").textContent = authorityCopy(control.state, control.version, control.controlEpoch);
@@ -79,6 +88,11 @@ function renderVisitor() {
   $("visitor-message").placeholder = control.state === "AI_ACTIVE"
     ? "Ask AI a question or request a human operator"
     : "Continue the conversation with the human operator";
+  if (control.state !== "AI_ACTIVE") {
+    closeIntake(false);
+  } else if (state.visitor.handoverIntakeRequired && !state.intakeDismissed) {
+    openIntake();
+  }
 }
 
 function authorityCopy(controlState, version, epoch) {
@@ -101,11 +115,62 @@ $("visitor-form").onsubmit = async (event) => {
 };
 
 $("request-human").onclick = async () => {
+  state.intakeDismissed = false;
+  openIntake();
+};
+
+function openIntake() {
+  $("handover-intake-overlay").hidden = false;
+  window.setTimeout(() => $("handover-email").focus(), 0);
+}
+
+function closeIntake(dismiss = true) {
+  $("handover-intake-overlay").hidden = true;
+  if (dismiss) state.intakeDismissed = true;
+}
+
+$("close-handover-intake").onclick = () => closeIntake();
+$("cancel-handover-intake").onclick = () => closeIntake();
+
+$("handover-phone").oninput = () => {
+  const hasPhone = Boolean($("handover-phone").value.trim());
+  $("handover-phone-consent-row").hidden = !hasPhone;
+  $("handover-phone-consent").required = hasPhone;
+  if (!hasPhone) $("handover-phone-consent").checked = false;
+};
+
+$("handover-intake-form").onsubmit = async (event) => {
+  event.preventDefault();
+  const email = $("handover-email").value.trim();
+  const name = $("handover-name").value.trim();
+  const phone = $("handover-phone").value.trim();
+  if (!email || !$("handover-email-consent").checked) {
+    toast("Email and consent are required before handover.");
+    return;
+  }
+  if (phone && !$("handover-phone-consent").checked) {
+    toast("Consent is required to share the optional phone number.");
+    return;
+  }
+  const intake = { email };
+  if (name) intake.name = name;
+  if (phone) intake.phone = phone;
+  const consentedFields = ["email"];
+  if (phone) consentedFields.push("phone");
   try {
     state.visitor = await api(`/api/demo/conversations/${state.conversationId}/handover`, {
       method: "POST",
-      body: JSON.stringify({ expectedVersion: state.visitor.control.version, idempotencyKey: key() }),
+      body: JSON.stringify({
+        expectedVersion: state.visitor.control.version,
+        idempotencyKey: key(),
+        intake,
+        consentedFields,
+      }),
     });
+    state.intakeDismissed = false;
+    $("handover-intake-form").reset();
+    $("handover-phone-consent-row").hidden = true;
+    closeIntake(false);
     renderVisitor();
   } catch (error) { toast(error.message); }
 };
@@ -176,6 +241,15 @@ function renderOperatorConversation() {
   $("close").hidden = !humanActive;
   $("operator-message").disabled = !humanActive;
   $("operator-form").querySelector("button").disabled = !humanActive;
+  const contact = view.contactIntake;
+  $("operator-contact").hidden = !contact;
+  if (contact) {
+    $("operator-contact-email").textContent = contact.email;
+    $("operator-contact-name-row").hidden = !contact.name;
+    $("operator-contact-name").textContent = contact.name || "";
+    $("operator-contact-phone-row").hidden = !contact.phone;
+    $("operator-contact-phone").textContent = contact.phone || "";
+  }
 }
 
 async function transition(operation) {

@@ -1,6 +1,7 @@
 package com.ai.fabric.realapps.handover;
 
 import com.ai.fabric.realapps.handover.ConversationHandoverDemoService.ConversationView;
+import com.ai.fabric.realapps.handover.ConversationHandoverDemoService.HandoverRequest;
 import com.ai.fabric.realapps.handover.ConversationHandoverDemoService.MessageRequest;
 import com.ai.fabric.realapps.handover.ConversationHandoverDemoService.QueueItem;
 import com.ai.fabric.realapps.handover.ConversationHandoverDemoService.TransitionRequest;
@@ -72,7 +73,7 @@ class ConversationHandoverDemoController {
     public ConversationView requestHuman(
         HttpSession session,
         @PathVariable String conversationId,
-        @RequestBody TransitionRequest request
+        @RequestBody HandoverRequest request
     ) {
         return service.requestHuman(owner(session), conversationId, request);
     }
@@ -159,7 +160,9 @@ class ConversationHandoverDemoController {
             "service", "conversation-handover-demo",
             "aiFabricVersion", "0.8.32",
             "proof", "Model-selected governed handover action plus AI Fabric conversation control",
-            "handoverAction", "request_conversation_handover"
+            "handoverAction", "request_conversation_handover",
+            "handoverIntakeSchema", "DEMO_HANDOVER_INTAKE_V1",
+            "requiredHandoverField", "email"
         );
     }
 

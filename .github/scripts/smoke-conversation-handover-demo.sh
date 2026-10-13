@@ -54,9 +54,10 @@ test "${ai_count_before}" -eq 1
 
 pending="$(curl -fsS -c "${cookie_jar}" -b "${cookie_jar}" -X POST \
   -H 'Content-Type: application/json' \
-  -d "{\"expectedVersion\":${version},\"idempotencyKey\":\"smoke-request-human\"}" \
+  -d "{\"expectedVersion\":${version},\"idempotencyKey\":\"smoke-request-human\",\"intake\":{\"email\":\"smoke@example.test\",\"name\":\"Smoke Visitor\",\"phone\":\"+44 20 7946 0958\"},\"consentedFields\":[\"email\",\"phone\"]}" \
   "${base_url}/api/demo/conversations/${conversation_id}/handover")"
 test "$(jq -r '.control.state' <<<"${pending}")" = "HUMAN_PENDING"
+test "$(jq -r '.contactIntake.email' <<<"${pending}")" = "smoke@example.test"
 
 pending_message="$(curl -fsS -c "${cookie_jar}" -b "${cookie_jar}" -X POST \
   -H 'Content-Type: application/json' \
