@@ -24,9 +24,9 @@ import java.util.Map;
 )
 class RequestConversationHandoverAction {
 
-    private final ConversationHandoverDemoService service;
+    private final ConversationHandoverActionService service;
 
-    RequestConversationHandoverAction(ConversationHandoverDemoService service) {
+    RequestConversationHandoverAction(ConversationHandoverActionService service) {
         this.service = service;
     }
 
@@ -66,7 +66,7 @@ class RequestConversationHandoverAction {
             HandoverRequestProvenance effectiveProvenance = requestProvenance == null
                 ? HandoverRequestProvenance.MODEL_RECOMMENDATION
                 : requestProvenance;
-            ConversationHandoverDemoService.HandoverAdmission admission = service.requestHumanFromAi(
+            ConversationHandoverActionService.HandoverAdmission admission = service.requestHuman(
                 context.sessionId(),
                 context.conversationId(),
                 context.requestId(),

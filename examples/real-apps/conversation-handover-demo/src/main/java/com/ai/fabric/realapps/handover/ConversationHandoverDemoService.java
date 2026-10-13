@@ -116,57 +116,6 @@ class ConversationHandoverDemoService {
         return view(scope);
     }
 
-    boolean canRequestHuman(String ownerId, String conversationId) {
-        if (!StringUtils.hasText(ownerId) || !StringUtils.hasText(conversationId)) {
-            return false;
-        }
-        try {
-            ConversationScope scope = ownerScope(ownerId, conversationId);
-            return gateway.status(scope).state() == ConversationControlState.AI_ACTIVE;
-        } catch (RuntimeException ignored) {
-            return false;
-        }
-    }
-
-    HandoverAdmission requestHumanFromAi(
-        String ownerId,
-        String conversationId,
-        String requestId,
-        HandoverRequestProvenance provenance
-    ) {
-        ConversationScope scope = ownerScope(ownerId, conversationId);
-        ConversationControlSnapshot current = gateway.status(scope);
-        String idempotencyKey = requiredKey(
-            StringUtils.hasText(requestId) ? requestId : "handover-ai-" + UUID.randomUUID()
-        );
-        TransitionRequest request = new TransitionRequest(current.version(), idempotencyKey);
-        ConversationControlResult result = transition(
-            scope,
-            ConversationControlCommandType.REQUEST_HUMAN,
-            request,
-            ownerId,
-            "AI_SELECTED_HANDOVER",
-            "handover-" + idempotencyKey,
-            CHANNEL_ID
-        );
-        Map<String, Object> metadata = new java.util.LinkedHashMap<>();
-        metadata.put("demo", true);
-        metadata.put("action", "request_conversation_handover");
-        metadata.put("selectedBy", "AI_FABRIC_ORCHESTRATOR");
-        metadata.put("requestProvenance", provenance.name());
-        append(
-            scope,
-            ConversationParticipantRole.SYSTEM,
-            "system",
-            "event-" + idempotencyKey,
-            null,
-            "AI Fabric selected the governed handover action. Human support was requested and AI responses are paused.",
-            null,
-            Map.copyOf(metadata)
-        );
-        return new HandoverAdmission(result.snapshot().state(), result.snapshot().version());
-    }
-
     ConversationView requestHuman(
         String ownerId,
         String conversationId,
@@ -390,8 +339,6 @@ class ConversationHandoverDemoService {
     record TransitionRequest(long expectedVersion, String idempotencyKey) {}
 
     record MessageRequest(String text, String clientMessageId) {}
-
-    record HandoverAdmission(ConversationControlState controlState, long controlVersion) {}
 
     record ConversationView(
         ConversationControlSnapshot control,
