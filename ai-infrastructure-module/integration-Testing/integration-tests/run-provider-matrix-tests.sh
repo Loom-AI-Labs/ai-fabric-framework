@@ -334,6 +334,18 @@ if ! check_provider_api_keys "$MATRIX_SPEC"; then
     exit 1
 fi
 
+PROJECT_VERSION="$(
+    cd "$SCRIPT_DIR" &&
+    mvn -q --no-transfer-progress help:evaluate \
+        -Dexpression=project.version \
+        -DforceStdout
+)"
+if [[ ! "$PROJECT_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][A-Za-z0-9.-]+)?$ ]]; then
+    print_error "Could not resolve the integration-test project version (received: '$PROJECT_VERSION')."
+    exit 1
+fi
+print_info "AI Fabric release under test: $PROJECT_VERSION"
+
 # Check if dependencies are built (skip in CI/CD - already built by workflow)
 if [ "${CI:-false}" == "true" ] || [ "${GITHUB_ACTIONS:-false}" == "true" ]; then
     print_info "Running in CI/CD - skipping dependency build check (already built by workflow)"
@@ -348,14 +360,14 @@ else
     fi
 
     CORE_TARGET="${PARENT_DIR}/ai-fabric-core/target"
-    CORE_JAR_PATTERN="${CORE_TARGET}/ai-fabric-core-*.jar"
-    if [ ! -d "$CORE_TARGET" ] || ! compgen -G "$CORE_JAR_PATTERN" > /dev/null; then
+    CORE_JAR="${CORE_TARGET}/ai-fabric-core-${PROJECT_VERSION}.jar"
+    if [ ! -f "$CORE_JAR" ]; then
         if [ "${AI_PROVIDERS_REAL_API_AUTO_BUILD_IF_MISSING:-true}" != "true" ]; then
             print_error "Dependencies are not built. Run 'mvn -B --no-transfer-progress -DskipITs install' from ai-infrastructure-module first."
             exit 1
         fi
 
-        print_warning "Dependencies may not be built. Running a local unit-test build with integration tests skipped..."
+        print_warning "AI Fabric $PROJECT_VERSION dependencies are not built. Running a local unit-test build with integration tests skipped..."
         cd "$PARENT_DIR" || exit 1
         # Use quiet logging for dependency build unless debug is requested
         BUILD_LOG_FLAG="-q"
@@ -369,7 +381,7 @@ else
         cd "$SCRIPT_DIR" || exit 1
         print_success "Dependencies built successfully"
     else
-        print_success "Dependencies appear to be built"
+        print_success "AI Fabric $PROJECT_VERSION dependencies are built"
     fi
 fi
 
@@ -451,6 +463,13 @@ case "$LOGGING_LEVEL" in
         MAVEN_CLI_FLAGS="-X -e $MAVEN_CLI_FLAGS"
         ;;
 esac
+
+print_info "Cleaning and compiling the AI Fabric $PROJECT_VERSION provider-matrix test harness..."
+if ! mvn $MAVEN_CLI_FLAGS clean test-compile -DskipTests; then
+    print_error "Failed to compile a clean provider-matrix test harness."
+    exit 1
+fi
+print_success "Provider-matrix test harness compiled from clean sources"
 
 MAVEN_COMMAND="mvn $MAVEN_CLI_FLAGS test"
 MAVEN_COMMAND="$MAVEN_COMMAND -Dtest=$TEST_CLASS"

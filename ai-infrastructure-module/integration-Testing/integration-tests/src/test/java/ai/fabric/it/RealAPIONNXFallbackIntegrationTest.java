@@ -18,6 +18,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
@@ -33,7 +34,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 @SpringBootTest(classes = TestApplication.class)
 @ActiveProfiles("real-api-test")
-@Transactional
+@Transactional(propagation = Propagation.NOT_SUPPORTED)
 public class RealAPIONNXFallbackIntegrationTest {
 
     private static final String OPENAI_KEY_PROPERTY = "OPENAI_API_KEY";
@@ -143,7 +144,7 @@ public class RealAPIONNXFallbackIntegrationTest {
         System.out.println("\n=== Phase 4: Orchestration with Current Provider ===");
 
         String userId1 = "onnx-fallback-user-1";
-        String query1 = "What embedding technologies support ONNX format?";
+        String query1 = "Search the test-product knowledge domain for embedding technologies that support ONNX format.";
 
         OrchestrationResult result1 = orchestrator.orchestrate(query1, ai.fabric.intent.orchestration.OrchestrationContext.forUser(userId1));
         assertNotNull(result1);
@@ -155,13 +156,13 @@ public class RealAPIONNXFallbackIntegrationTest {
 
         String userId2 = "onnx-fallback-user-2";
 
-        String query2a = "Show me local embedding solutions.";
+        String query2a = "Search the test-product knowledge domain for local embedding solutions.";
         OrchestrationResult result2a = orchestrator.orchestrate(query2a, ai.fabric.intent.orchestration.OrchestrationContext.forUser(userId2));
         assertNotNull(result2a);
         assertThat(result2a.isSuccess()).isTrue();
         System.out.println("  ✅ Query 1 completed");
 
-        String query2b = "What is semantic search with embeddings?";
+        String query2b = "Search the test-product knowledge domain for products that provide semantic search with embeddings.";
         OrchestrationResult result2b = orchestrator.orchestrate(query2b, ai.fabric.intent.orchestration.OrchestrationContext.forUser(userId2));
         assertNotNull(result2b);
         assertThat(result2b.isSuccess()).isTrue();

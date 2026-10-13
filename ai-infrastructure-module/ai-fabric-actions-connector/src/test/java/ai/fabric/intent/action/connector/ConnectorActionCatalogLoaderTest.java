@@ -15,6 +15,19 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class ConnectorActionCatalogLoaderTest {
 
     @Test
+    void loadActions_shouldReadTerminalControlContract() {
+        ConnectorActionCatalogLoader loader = new ConnectorActionCatalogLoader(new DefaultResourceLoader());
+        AIActionCatalogProperties.ActionSourceProperties source = new AIActionCatalogProperties.ActionSourceProperties();
+        source.setType(AIActionCatalogProperties.ActionSourceType.FILE);
+        source.setPath("classpath:actions/valid-terminal-action.yml");
+
+        ConnectorActionDefinition action = loader.loadActions(List.of(source)).getFirst();
+
+        assertThat(action.terminal()).isTrue();
+        assertThat(ConnectorActionMetadataMapper.toMetadata(action).isTerminal()).isTrue();
+    }
+
+    @Test
     void loadActions_shouldLoadValidContract() {
         ConnectorActionCatalogLoader loader = new ConnectorActionCatalogLoader(new DefaultResourceLoader());
 
@@ -274,6 +287,39 @@ class ConnectorActionCatalogLoaderTest {
             .isInstanceOf(IllegalArgumentException.class)
             .hasMessageContaining("readActionResolutionEligible")
             .hasMessageContaining("READ");
+    }
+
+    @Test
+    void metadataMapper_preservesTerminalControlContract() {
+        ConnectorActionDefinition definition = new ConnectorActionDefinition(
+            "request_control_transition",
+            "Request Control Transition",
+            "Request an explicit conversation control transition",
+            "control",
+            ActionAccessMode.WRITE_ONLY,
+            false,
+            null,
+            List.of(),
+            true,
+            false,
+            List.of(),
+            false,
+            ActionResultPresentationHint.STATUS,
+            null,
+            null,
+            null,
+            List.of(),
+            null,
+            true,
+            "connector",
+            Map.of("operation", "REQUEST_CONTROL"),
+            Map.of()
+        );
+
+        AIActionMetaData metadata = ConnectorActionMetadataMapper.toMetadata(definition);
+
+        assertThat(metadata.isTerminal()).isTrue();
+        assertThat(definition.runtimeActionConfig()).containsEntry("terminal", true);
     }
 
     @Test

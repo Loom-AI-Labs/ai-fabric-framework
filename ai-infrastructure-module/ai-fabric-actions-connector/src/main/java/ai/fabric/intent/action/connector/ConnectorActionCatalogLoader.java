@@ -54,6 +54,7 @@ public class ConnectorActionCatalogLoader {
     private static final String KEY_EXECUTION = "execution";
     private static final String KEY_ACCESS_MODE = "accessMode";
     private static final String KEY_REQUIRES_CONFIRMATION = "requiresConfirmation";
+    private static final String KEY_TERMINAL = "terminal";
     private static final String KEY_CONFIRMATION_MESSAGE = "confirmationMessage";
     private static final String KEY_PARAMS = "params";
     private static final String KEY_ANONYMOUS_ALLOWED = "anonymousAllowed";
@@ -307,6 +308,7 @@ public class ConnectorActionCatalogLoader {
         ActionAccessMode accessMode = parseAccessMode(accessModeRaw, label, name);
 
         boolean requiresConfirmation = readBoolean(raw, KEY_REQUIRES_CONFIRMATION, false);
+        boolean terminal = readBoolean(raw, KEY_TERMINAL, false);
         String confirmationMessage = readString(raw, KEY_CONFIRMATION_MESSAGE);
         boolean anonymousAllowed = readBoolean(raw, KEY_ANONYMOUS_ALLOWED, false);
         boolean groundingEligible = raw.containsKey(KEY_GROUNDING_ELIGIBLE)
@@ -351,6 +353,7 @@ public class ConnectorActionCatalogLoader {
             provenance,
             postPolicies,
             llmFacts,
+            terminal,
             adapterType,
             execution,
             mcpServers

@@ -2,7 +2,6 @@ package ai.fabric.it;
 
 import ai.fabric.config.ResponseSanitizationProperties;
 import ai.fabric.entity.IntentHistory;
-import ai.fabric.exception.AIServiceException;
 import ai.fabric.intent.action.ActionResult;
 import ai.fabric.intent.orchestration.OrchestrationResult;
 import ai.fabric.intent.orchestration.OrchestrationResultType;
@@ -26,6 +25,7 @@ import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 import org.slf4j.Logger;
@@ -53,7 +53,7 @@ import static org.mockito.Mockito.when;
 
 @SpringBootTest(classes = {TestApplication.class, RealAPIActionErrorRecoveryIntegrationTest.TestActionOverrides.class})
 @ActiveProfiles("real-api-test")
-@Transactional
+@Transactional(propagation = Propagation.NOT_SUPPORTED)
 public class RealAPIActionErrorRecoveryIntegrationTest {
 
     private static final Logger log = LoggerFactory.getLogger(RealAPIActionErrorRecoveryIntegrationTest.class);
@@ -124,7 +124,10 @@ public class RealAPIActionErrorRecoveryIntegrationTest {
             Card 4916-2345-0987-1123 leaked in the export owned by bree.secops@enterprise.example (contact (555) 714-2209).
             """;
 
-        OrchestrationResult result = orchestrateOrSkip(query, userId);
+        OrchestrationResult result = orchestrator.orchestrate(
+            query,
+            ai.fabric.intent.orchestration.OrchestrationContext.forUser(userId)
+        );
 
         assertNotNull(result, "Orchestrator should return a result");
         // The result may be SUCCESS (if LLM correctly identifies as OUT_OF_SCOPE) or ERROR (if action was attempted)
@@ -333,16 +336,6 @@ public class RealAPIActionErrorRecoveryIntegrationTest {
         product = productRepository.save(product);
         indexingGateway.upsert(product, AIProcessOperation.CREATE, IndexingStrategy.SYNC);
         return product;
-    }
-
-    private OrchestrationResult orchestrateOrSkip(String query, String userId) {
-        try {
-            return orchestrator.orchestrate(query, ai.fabric.intent.orchestration.OrchestrationContext.forUser(userId));
-        } catch (AIServiceException ex) {
-            Assumptions.assumeTrue(false,
-                "Skipping real API error recovery test because intent orchestration failed: " + ex.getMessage());
-            return null;
-        }
     }
 
     /**

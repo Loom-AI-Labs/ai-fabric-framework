@@ -15,6 +15,7 @@ import ai.fabric.intent.action.AIActionHandler;
 import ai.fabric.intent.action.AIActionRegistry;
 import ai.fabric.intent.action.ActionAccessMode;
 import ai.fabric.intent.action.ActionContext;
+import ai.fabric.intent.action.ActionConfirmationPolicySupport;
 import ai.fabric.intent.action.ActionGroundingSupport;
 import ai.fabric.intent.action.ActionResult;
 import ai.fabric.intent.action.invocation.ActionConfirmationState;
@@ -311,6 +312,10 @@ public class IntentHandlingStep implements PipelineStep {
             result = OrchestrationResult.error("Internal error: intent handling failed");
         }
         
+        result = markTerminalActionResult(result, 0);
+        if (isSuccessfulTerminalActionResult(result)) {
+            return context.terminate(result);
+        }
         return context.toBuilder()
             .intentResult(result)
             .build();
@@ -539,7 +544,12 @@ public class IntentHandlingStep implements PipelineStep {
         }
 
         boolean confirmedThisRequest = pipelineContext != null && pipelineContext.isActionConfirmed(actionName);
-        boolean requiresConfirmation = requiresActionConfirmation(handler);
+        boolean requiresConfirmation = requiresActionConfirmation(
+            handler,
+            meta,
+            effectiveParams,
+            actionContext
+        );
         if (requiresConfirmation && confirmedThisRequest && hasActionParameter(meta, CONFIRMATION_ACCEPTED_PARAMETER)) {
             Map<String, Object> updated = new LinkedHashMap<>(effectiveParams);
             updated.put(CONFIRMATION_ACCEPTED_PARAMETER, true);
@@ -938,6 +948,7 @@ public class IntentHandlingStep implements PipelineStep {
             Map<String, Object> resultData = Collections.unmodifiableMap(data);
 
             PostActionGenerationOutcome postActionGeneration = collectEvidenceOnly
+                || (success && meta != null && meta.isTerminal())
                 ? null
                 : postActionGenerationSupport.maybeGeneratePostActionSummary(
                     actionName,
@@ -1510,11 +1521,18 @@ public class IntentHandlingStep implements PipelineStep {
                 != OrchestrationProperties.ReadActionResolutionRagCooperationMode.NONE;
     }
 
-    private boolean requiresActionConfirmation(AIActionHandler handler) {
-        if (handler == null) {
-            return false;
-        }
-        return handler.requiresConfirmation();
+    private boolean requiresActionConfirmation(
+        AIActionHandler handler,
+        AIActionMetaData metadata,
+        Map<String, Object> params,
+        ActionContext context
+    ) {
+        return ActionConfirmationPolicySupport.requiresConfirmation(
+            handler,
+            metadata,
+            params,
+            context
+        );
     }
 
     private boolean isSpecialistWriteRequest(
@@ -2278,6 +2296,28 @@ public class IntentHandlingStep implements PipelineStep {
         if (response.getIntents().size() == 1) {
             return handleSingleIntent(response.getIntents().getFirst(), context, pipelineContext);
         }
+        List<Intent> terminalIntents = response.getIntents().stream()
+            .filter(this::isTerminalActionIntent)
+            .toList();
+        if (terminalIntents.size() > 1) {
+            return OrchestrationResult.builder()
+                .type(OrchestrationResultType.ERROR)
+                .success(false)
+                .errorCode("MULTIPLE_TERMINAL_ACTIONS")
+                .message("Only one terminal action may be selected in an orchestration turn.")
+                .build();
+        }
+        if (terminalIntents.size() == 1) {
+            OrchestrationResult terminalResult = handleSingleIntent(
+                terminalIntents.getFirst(),
+                context,
+                pipelineContext
+            );
+            return markTerminalActionResult(
+                terminalResult,
+                response.getIntents().size() - 1
+            );
+        }
         List<OrchestrationResult> childResults = new ArrayList<>();
         List<NextStepRecommendation> nextSteps = new ArrayList<>();
         boolean readEvidenceCompound = isReadEvidenceCompound(response.getIntents());
@@ -2336,6 +2376,56 @@ public class IntentHandlingStep implements PipelineStep {
             .nextSteps(Collections.unmodifiableList(nextSteps))
             .data(data)
             .build();
+    }
+
+    private boolean isTerminalActionIntent(Intent intent) {
+        if (intent == null || intent.getType() != IntentType.ACTION) {
+            return false;
+        }
+        String actionName = StringUtils.hasText(intent.getAction())
+            ? intent.getAction().trim()
+            : intent.getIntent();
+        AIActionMetaData metadata = getMetadataForAction(actionName);
+        return metadata != null && metadata.isTerminal();
+    }
+
+    private OrchestrationResult markTerminalActionResult(
+        OrchestrationResult result,
+        int suppressedSiblingIntentCount
+    ) {
+        if (result == null || !isTerminalActionResult(result)) {
+            return result;
+        }
+        Map<String, Object> metadata = new LinkedHashMap<>();
+        if (result.getMetadata() != null && !result.getMetadata().isEmpty()) {
+            metadata.putAll(result.getMetadata());
+        }
+        metadata.put("terminalAction", true);
+        if (suppressedSiblingIntentCount > 0) {
+            metadata.put("suppressedSiblingIntentCount", suppressedSiblingIntentCount);
+        }
+        result.setMetadata(Collections.unmodifiableMap(metadata));
+        result.setNextSteps(List.of());
+        return result;
+    }
+
+    private boolean isTerminalActionResult(OrchestrationResult result) {
+        if (result == null || result.getData() == null) {
+            return false;
+        }
+        Object action = result.getData().get(DATA_KEY_ACTION);
+        if (!(action instanceof String actionName) || !StringUtils.hasText(actionName)) {
+            return false;
+        }
+        AIActionMetaData metadata = getMetadataForAction(actionName);
+        return metadata != null && metadata.isTerminal();
+    }
+
+    private boolean isSuccessfulTerminalActionResult(OrchestrationResult result) {
+        return result != null
+            && result.isSuccess()
+            && result.getType() == OrchestrationResultType.ACTION_EXECUTED
+            && isTerminalActionResult(result);
     }
 
     private PipelineContext scopeReadEvidenceIntentContext(Intent intent, PipelineContext pipelineContext) {

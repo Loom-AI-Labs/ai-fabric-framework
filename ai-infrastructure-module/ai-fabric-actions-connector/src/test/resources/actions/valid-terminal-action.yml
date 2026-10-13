@@ -1,0 +1,13 @@
+actions:
+  - name: request_control_transition
+    displayName: Request Control Transition
+    description: Request an explicit host-owned control transition
+    category: control
+    accessMode: WRITE_ONLY
+    requiresConfirmation: false
+    anonymousAllowed: true
+    groundingEligible: false
+    terminal: true
+    adapterType: connector
+    execution:
+      operation: REQUEST_CONTROL

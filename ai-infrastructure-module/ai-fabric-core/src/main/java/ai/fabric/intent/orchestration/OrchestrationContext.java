@@ -10,6 +10,7 @@ import ai.fabric.intent.orchestration.conversation.ApprovedConversationSnapshot;
 import ai.fabric.intent.orchestration.attachment.NormalizedAttachment;
 import ai.fabric.intent.orchestration.attachment.OrchestrationAttachment;
 import ai.fabric.intent.actiondraft.ActionDraftSubmission;
+import ai.fabric.intent.orchestration.control.OrchestrationTurnGuard;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 
 import java.util.ArrayList;
@@ -152,6 +153,15 @@ public class OrchestrationContext {
      */
     @JsonIgnore
     private ActionDraftSubmission actionDraftSubmission;
+
+    /**
+     * Host-owned control/lease guard for the current orchestration turn.
+     *
+     * <p>This value is trusted runtime state. It is never accepted from request JSON
+     * or copied into metadata, history, diagnostics, or provider prompts.</p>
+     */
+    @JsonIgnore
+    private OrchestrationTurnGuard orchestrationTurnGuard;
 
     /**
      * True if an authenticated userId was provided.

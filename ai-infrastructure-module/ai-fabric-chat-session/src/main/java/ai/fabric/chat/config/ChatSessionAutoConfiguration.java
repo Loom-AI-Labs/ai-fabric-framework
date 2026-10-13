@@ -14,9 +14,13 @@ import org.springframework.context.annotation.Import;
 
 @AutoConfiguration
 @AutoConfigureAfter({AIInfrastructureAutoConfiguration.class, HibernateJpaAutoConfiguration.class, DataJpaRepositoriesAutoConfiguration.class})
-@EnableConfigurationProperties(ChatSessionProperties.class)
+@EnableConfigurationProperties({ChatSessionProperties.class, ConversationControlProperties.class})
 @ConditionalOnProperty(prefix = "ai.chat", name = "enabled", havingValue = "true")
-@Import({ChatSessionBaseConfiguration.class, ChatSessionJpaConfiguration.class})
+@Import({
+    ChatSessionBaseConfiguration.class,
+    ChatSessionJpaConfiguration.class,
+    ConversationControlJdbcConfiguration.class
+})
 public class ChatSessionAutoConfiguration {
 
     private static final Logger log = LoggerFactory.getLogger(ChatSessionAutoConfiguration.class);

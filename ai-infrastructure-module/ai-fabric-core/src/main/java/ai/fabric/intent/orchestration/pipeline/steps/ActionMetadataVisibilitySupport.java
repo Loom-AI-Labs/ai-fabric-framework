@@ -36,6 +36,7 @@ final class ActionMetadataVisibilitySupport {
             .accessMode(metadata.getAccessMode())
             .anonymousAllowed(metadata.isAnonymousAllowed())
             .confirmationRequired(metadata.isConfirmationRequired())
+            .terminal(metadata.isTerminal())
             .groundingEligible(metadata.isGroundingEligible())
             .groundingVectorSpaces(metadata.getGroundingVectorSpaces())
             .readActionResolutionEligible(metadata.isReadActionResolutionEligible())

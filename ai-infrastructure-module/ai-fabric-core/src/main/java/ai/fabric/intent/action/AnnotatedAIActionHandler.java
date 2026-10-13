@@ -14,7 +14,7 @@ import java.util.Map;
 import java.util.Optional;
 
 @Slf4j
-final class AnnotatedAIActionHandler implements AIActionHandler {
+final class AnnotatedAIActionHandler implements AIActionHandler, InvocationConfirmationPolicy {
 
     private final Object target;
     private final AIAction annotation;
@@ -22,6 +22,7 @@ final class AnnotatedAIActionHandler implements AIActionHandler {
     private final Method executeMethod;
     private final Method allowedMethod;
     private final Method confirmationMethod;
+    private final Method confirmationRequiredMethod;
     private final Method factsMethod;
     private final ActionMethodArgumentBinder binder;
 
@@ -31,6 +32,7 @@ final class AnnotatedAIActionHandler implements AIActionHandler {
                              Method executeMethod,
                              Method allowedMethod,
                              Method confirmationMethod,
+                             Method confirmationRequiredMethod,
                              Method factsMethod,
                              ActionMethodArgumentBinder binder) {
         this.target = target;
@@ -39,6 +41,7 @@ final class AnnotatedAIActionHandler implements AIActionHandler {
         this.executeMethod = makeAccessible(executeMethod);
         this.allowedMethod = makeAccessible(allowedMethod);
         this.confirmationMethod = makeAccessible(confirmationMethod);
+        this.confirmationRequiredMethod = makeAccessible(confirmationRequiredMethod);
         this.factsMethod = makeAccessible(factsMethod);
         this.binder = binder;
     }
@@ -51,6 +54,32 @@ final class AnnotatedAIActionHandler implements AIActionHandler {
     @Override
     public boolean requiresConfirmation() {
         return annotation.requiresConfirmation();
+    }
+
+    @Override
+    public boolean requiresConfirmation(Map<String, Object> params, ActionContext context) {
+        if (!annotation.requiresConfirmation()) {
+            return false;
+        }
+        if (confirmationRequiredMethod == null) {
+            return true;
+        }
+        try {
+            Object[] args = binder.bind(
+                confirmationRequiredMethod,
+                params != null ? params : Map.of(),
+                context
+            );
+            Object result = confirmationRequiredMethod.invoke(target, args);
+            return !(result instanceof Boolean required) || required;
+        } catch (Exception ex) {
+            log.debug(
+                "Failed to evaluate invocation confirmation policy for {}: {}",
+                metadata != null ? metadata.getName() : "unknown",
+                ex.getMessage()
+            );
+            return true;
+        }
     }
 
     @Override

@@ -10,6 +10,7 @@ import ai.fabric.intent.extraction.IntentExtractionInput;
 import ai.fabric.intent.orchestration.OrchestrationResult;
 import ai.fabric.intent.orchestration.RAGOrchestrator;
 import ai.fabric.intent.orchestration.OrchestrationContext;
+import ai.fabric.intent.orchestration.policy.SemanticRecoveryPolicy;
 import ai.fabric.it.entity.TestProduct;
 import ai.fabric.it.repository.TestProductRepository;
 import ai.fabric.indexing.api.AIEntityIndexingGateway;
@@ -28,6 +29,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
@@ -44,7 +46,7 @@ import static org.mockito.Mockito.when;
 
 @SpringBootTest(classes = TestApplication.class)
 @ActiveProfiles("real-api-test")
-@Transactional
+@Transactional(propagation = Propagation.NOT_SUPPORTED)
 public class RealAPIIntentGenerationRoutingIntegrationTest {
 
     static {
@@ -99,10 +101,16 @@ public class RealAPIIntentGenerationRoutingIntegrationTest {
             .intent("recommend_products")
             .vectorSpace("test-product")
             .optimizedQuery("test-product entities where category = 'Audio' AND price < 200")
+            .requiresRetrieval(true)
             .requiresGeneration(true)
+            .requiresTargetResolution(false)
+            .needsAdvancedRAG(false)
             .build();
 
-        when(progressiveIntentExtractionEngine.extract(any(IntentExtractionInput.class), any(OrchestrationContext.class)))
+        when(progressiveIntentExtractionEngine.extract(
+                any(IntentExtractionInput.class),
+                any(OrchestrationContext.class),
+                any(SemanticRecoveryPolicy.class)))
             .thenReturn(new ProgressiveIntentExtractionEngine.ExtractionOutput(
                 MultiIntentResponse.builder().intents(List.of(intent)).build(),
                 Map.of()
@@ -111,7 +119,9 @@ public class RealAPIIntentGenerationRoutingIntegrationTest {
         OrchestrationResult result = orchestrator.orchestrate("Suggest an affordable audio headset", ai.fabric.intent.orchestration.OrchestrationContext.forUser("real-gen-routing-user"));
 
         assertThat(result).isNotNull();
-        assertThat(result.isSuccess()).isTrue();
+        assertThat(result.isSuccess())
+            .as("generation-routing result: %s", result)
+            .isTrue();
         assertThat(result.getData()).containsKeys("ragResponse", "requiresGeneration");
         assertThat(result.getData().get("requiresGeneration")).isEqualTo(true);
 

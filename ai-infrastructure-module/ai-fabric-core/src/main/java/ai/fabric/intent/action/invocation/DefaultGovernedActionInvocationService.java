@@ -6,10 +6,12 @@ import ai.fabric.intent.action.AIActionRegistry;
 import ai.fabric.intent.action.ActionParameterContractValidator;
 import ai.fabric.intent.action.ActionParameterContractValidator.ActionParameterContractException;
 import ai.fabric.intent.action.ActionContext;
+import ai.fabric.intent.action.ActionConfirmationPolicySupport;
 import ai.fabric.intent.action.ActionPayload;
 import ai.fabric.intent.action.ActionResult;
 import ai.fabric.intent.orchestration.capability.CapabilityAwareActionCatalog;
 import ai.fabric.intent.orchestration.capability.CapabilityAwareActionCatalog.CapabilityDeniedException;
+import ai.fabric.intent.orchestration.control.OrchestrationControlException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -119,8 +121,12 @@ public final class DefaultGovernedActionInvocationService
             );
         }
 
-        boolean confirmationRequired = handler.requiresConfirmation()
-            || metadata.isConfirmationRequired();
+        boolean confirmationRequired = ActionConfirmationPolicySupport.requiresConfirmation(
+            handler,
+            metadata,
+            invocation.parameters(),
+            actionContext
+        );
         if (confirmationRequired
             && invocation.confirmationState() != ActionConfirmationState.CONFIRMED) {
             String message = confirmationMessage(handler, invocation.parameters(), actionContext);
@@ -138,6 +144,17 @@ public final class DefaultGovernedActionInvocationService
                 actionResult,
                 new ActionInvocationFailure("CONFIRMATION_REQUIRED", message, false)
             );
+        }
+
+        try {
+            if (actionContext.orchestrationContext() != null
+                && actionContext.orchestrationContext().getOrchestrationTurnGuard() != null) {
+                actionContext.orchestrationContext()
+                    .getOrchestrationTurnGuard()
+                    .verifyBeforeAction(metadata, actionContext);
+            }
+        } catch (OrchestrationControlException ex) {
+            return denied(ex.code(), ex.getMessage());
         }
 
         try {

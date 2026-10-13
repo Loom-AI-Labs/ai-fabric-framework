@@ -68,6 +68,7 @@ public final class ConnectorActionMetadataMapper {
             .accessMode(accessMode)
             .anonymousAllowed(definition.anonymousAllowed())
             .confirmationRequired(definition.requiresConfirmation())
+            .terminal(definition.terminal())
             .groundingEligible(definition.groundingEligible())
             .groundingVectorSpaces(definition.groundingVectorSpaces())
             .readActionResolutionEligible(definition.readActionResolutionEligible())

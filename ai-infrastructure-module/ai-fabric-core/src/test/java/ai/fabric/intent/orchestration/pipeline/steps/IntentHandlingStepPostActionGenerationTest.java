@@ -826,6 +826,145 @@ class IntentHandlingStepPostActionGenerationTest {
         assertThat(result.getData()).containsKey("postActionGeneration");
     }
 
+    @Test
+    void terminalControlActionNeverRunsPostActionGeneration() {
+        AIActionRegistry registry = mock(AIActionRegistry.class);
+        AIActionHandler handler = mock(AIActionHandler.class);
+        AIActionMetaData metadata = AIActionMetaData.builder()
+            .name("request_control_transition")
+            .accessMode(ActionAccessMode.WRITE_ONLY)
+            .terminal(true)
+            .anonymousAllowed(true)
+            .build();
+        when(registry.findHandler("request_control_transition")).thenReturn(Optional.of(handler));
+        when(registry.findMetadata("request_control_transition")).thenReturn(Optional.of(metadata));
+        when(handler.validateActionAllowed(any())).thenReturn(true);
+        when(handler.executeAction(any(), any())).thenReturn(ActionResult.builder()
+            .success(true)
+            .message("Control transition accepted.")
+            .build());
+        when(handler.buildPostActionLlmFacts(any(), any())).thenReturn(Optional.of(Map.of("status", "accepted")));
+
+        AICoreService aiCoreService = mock(AICoreService.class);
+        PostActionGenerationProperties properties = new PostActionGenerationProperties();
+        properties.setEnabled(true);
+        IntentHandlingStep step = new IntentHandlingStep(
+            registry,
+            providerOf((RAGProvider) null),
+            aiCoreService,
+            mock(AIServiceConfig.class),
+            providerOf((AdvancedRAGProvider) null),
+            new VectorSpaceRoutingProperties(),
+            new RankBasedMerger(),
+            new RelationshipQueryPostActionGenerationProperties(),
+            properties,
+            providerOf(new ObjectMapper()),
+            new OrchestrationProperties(),
+            providerOf((KnowledgeBaseOverviewService) null),
+            null,
+            new InMemoryPendingActionStore(),
+            new InMemoryActionDraftStore(),
+            promptTemplateResolver(),
+            new PromptRenderer()
+        );
+        Intent intent = Intent.builder()
+            .type(IntentType.ACTION)
+            .action("request_control_transition")
+            .requiresGeneration(true)
+            .build();
+        PipelineContext context = PipelineContext.from(
+                "Transfer control",
+                OrchestrationContext.forUser("user-1")
+            )
+            .toBuilder()
+            .intentResponse(MultiIntentResponse.builder().intents(List.of(intent)).build())
+            .build();
+
+        PipelineContext updated = step.process(context);
+        OrchestrationResult result = updated.getIntentResult();
+
+        assertThat(result.getType()).isEqualTo(OrchestrationResultType.ACTION_EXECUTED);
+        assertThat(result.getMessage()).isEqualTo("Control transition accepted.");
+        assertThat(result.getData()).doesNotContainKey("postActionGeneration");
+        assertThat(result.getMetadata()).containsEntry("terminalAction", true);
+        assertThat(result.getNextSteps()).isEmpty();
+        assertThat(updated.isShouldTerminate()).isTrue();
+        verifyNoInteractions(aiCoreService);
+    }
+
+    @Test
+    void terminalControlActionSuppressesCompoundSiblingExecution() {
+        AIActionRegistry registry = mock(AIActionRegistry.class);
+        AIActionHandler ordinaryHandler = mock(AIActionHandler.class);
+        AIActionHandler terminalHandler = mock(AIActionHandler.class);
+        AIActionMetaData ordinaryMetadata = AIActionMetaData.builder()
+            .name("ordinary_action")
+            .accessMode(ActionAccessMode.READ_WRITE)
+            .build();
+        AIActionMetaData terminalMetadata = AIActionMetaData.builder()
+            .name("request_control_transition")
+            .accessMode(ActionAccessMode.WRITE_ONLY)
+            .terminal(true)
+            .build();
+        when(registry.findHandler("ordinary_action")).thenReturn(Optional.of(ordinaryHandler));
+        when(registry.findHandler("request_control_transition")).thenReturn(Optional.of(terminalHandler));
+        when(registry.findMetadata("ordinary_action")).thenReturn(Optional.of(ordinaryMetadata));
+        when(registry.findMetadata("request_control_transition")).thenReturn(Optional.of(terminalMetadata));
+        when(terminalHandler.validateActionAllowed(any())).thenReturn(true);
+        when(terminalHandler.executeAction(any(), any())).thenReturn(ActionResult.builder()
+            .success(true)
+            .message("Control transition accepted.")
+            .build());
+
+        IntentHandlingStep step = new IntentHandlingStep(
+            registry,
+            providerOf((RAGProvider) null),
+            mock(AICoreService.class),
+            mock(AIServiceConfig.class),
+            providerOf((AdvancedRAGProvider) null),
+            new VectorSpaceRoutingProperties(),
+            new RankBasedMerger(),
+            new RelationshipQueryPostActionGenerationProperties(),
+            new PostActionGenerationProperties(),
+            providerOf(new ObjectMapper()),
+            new OrchestrationProperties(),
+            providerOf((KnowledgeBaseOverviewService) null),
+            null,
+            new InMemoryPendingActionStore(),
+            new InMemoryActionDraftStore(),
+            promptTemplateResolver(),
+            new PromptRenderer()
+        );
+        Intent ordinary = Intent.builder()
+            .type(IntentType.ACTION)
+            .action("ordinary_action")
+            .build();
+        Intent terminal = Intent.builder()
+            .type(IntentType.ACTION)
+            .action("request_control_transition")
+            .build();
+        PipelineContext context = PipelineContext.from(
+                "Perform work and transfer control",
+                OrchestrationContext.forUser("user-1")
+            )
+            .toBuilder()
+            .intentResponse(MultiIntentResponse.builder()
+                .intents(List.of(ordinary, terminal))
+                .build())
+            .build();
+
+        PipelineContext updated = step.process(context);
+
+        assertThat(updated.isShouldTerminate()).isTrue();
+        assertThat(updated.getIntentResult().getType())
+            .isEqualTo(OrchestrationResultType.ACTION_EXECUTED);
+        assertThat(updated.getIntentResult().getMetadata())
+            .containsEntry("terminalAction", true)
+            .containsEntry("suppressedSiblingIntentCount", 1);
+        verify(terminalHandler).executeAction(any(), any());
+        verify(ordinaryHandler, never()).executeAction(any(), any());
+    }
+
     private <T> ObjectProvider<T> providerOf(T value) {
         @SuppressWarnings("unchecked")
         ObjectProvider<T> provider = mock(ObjectProvider.class);

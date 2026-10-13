@@ -11,6 +11,7 @@ import ai.fabric.intent.extraction.ProgressiveIntentExtractionEngine;
 import ai.fabric.intent.orchestration.OrchestrationContext;
 import ai.fabric.intent.orchestration.OrchestrationResult;
 import ai.fabric.intent.orchestration.RAGOrchestrator;
+import ai.fabric.intent.orchestration.policy.SemanticRecoveryPolicy;
 import ai.fabric.it.entity.TestProduct;
 import ai.fabric.it.repository.TestProductRepository;
 import ai.fabric.it.support.RealAPITestSupport;
@@ -27,6 +28,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
@@ -36,8 +38,6 @@ import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.verify;
@@ -51,7 +51,7 @@ import static org.mockito.Mockito.verify;
  */
 @SpringBootTest(classes = TestApplication.class)
 @ActiveProfiles("real-api-test")
-@Transactional
+@Transactional(propagation = Propagation.NOT_SUPPORTED)
 public class RealAPILlmPurposePropagationIntegrationTest {
 
     static {
@@ -120,11 +120,14 @@ public class RealAPILlmPurposePropagationIntegrationTest {
             .optimizedQuery("CyberShield incident response playbooks")
             .requiresRetrieval(true)
             .requiresGeneration(true)
+            .requiresTargetResolution(false)
+            .needsAdvancedRAG(false)
             .build();
 
         org.mockito.Mockito.when(progressiveIntentExtractionEngine.extract(
-                argThat(in -> in != null && "force-generation-purpose".equals(in.userQuery())),
-                any(OrchestrationContext.class)))
+                any(IntentExtractionInput.class),
+                any(OrchestrationContext.class),
+                any(SemanticRecoveryPolicy.class)))
             .thenReturn(new ProgressiveIntentExtractionEngine.ExtractionOutput(
                 MultiIntentResponse.builder().intents(List.of(intent)).build(),
                 Map.of()
@@ -134,7 +137,7 @@ public class RealAPILlmPurposePropagationIntegrationTest {
         assertThat(result).isNotNull();
         assertThat(result.getType()).isNotNull();
 
-        verify(aiCoreService, atLeastOnce()).generateTextResponse(anyString(), eq(LlmPurpose.GENERATION));
+        verify(aiCoreService, atLeastOnce()).generateContent(any(), eq(LlmPurpose.GENERATION));
     }
 
     private void seedProduct() {

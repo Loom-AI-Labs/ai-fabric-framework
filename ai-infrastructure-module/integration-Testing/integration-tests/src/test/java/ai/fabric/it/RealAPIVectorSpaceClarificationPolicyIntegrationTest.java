@@ -9,6 +9,7 @@ import ai.fabric.intent.orchestration.OrchestrationContext;
 import ai.fabric.intent.orchestration.OrchestrationResult;
 import ai.fabric.intent.orchestration.OrchestrationResultType;
 import ai.fabric.intent.orchestration.RAGOrchestrator;
+import ai.fabric.intent.orchestration.policy.SemanticRecoveryPolicy;
 import ai.fabric.it.entity.TestArticle;
 import ai.fabric.it.entity.TestProduct;
 import ai.fabric.it.repository.TestArticleRepository;
@@ -24,6 +25,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
@@ -35,7 +37,6 @@ import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.when;
 
 /**
@@ -53,7 +54,7 @@ import static org.mockito.Mockito.when;
     }
 )
 @ActiveProfiles("real-api-test")
-@Transactional
+@Transactional(propagation = Propagation.NOT_SUPPORTED)
 public class RealAPIVectorSpaceClarificationPolicyIntegrationTest {
 
     static {
@@ -94,11 +95,16 @@ public class RealAPIVectorSpaceClarificationPolicyIntegrationTest {
             .intent("kb_search")
             .requiresRetrieval(true)
             .requiresGeneration(true)
+            .requiresTargetResolution(false)
+            .needsAdvancedRAG(false)
             .vectorSpace("")
             .optimizedQuery("enterprise security suite incident response and privacy compliance audits")
             .build();
 
-        when(progressiveIntentExtractionEngine.extract(any(IntentExtractionInput.class), any(OrchestrationContext.class)))
+        when(progressiveIntentExtractionEngine.extract(
+                any(IntentExtractionInput.class),
+                any(OrchestrationContext.class),
+                any(SemanticRecoveryPolicy.class)))
             .thenReturn(new ProgressiveIntentExtractionEngine.ExtractionOutput(
                 MultiIntentResponse.builder().intents(List.of(retrievalIntentMissingSpace)).build(),
                 Map.of()
@@ -107,7 +113,9 @@ public class RealAPIVectorSpaceClarificationPolicyIntegrationTest {
         OrchestrationResult result = orchestrator.orchestrate("Search the knowledge base for incident response and audit readiness and summarize findings.", ai.fabric.intent.orchestration.OrchestrationContext.forUser("realapi-clarification-policy-user"));
 
         assertThat(result).isNotNull();
-        assertThat(result.getType()).isEqualTo(OrchestrationResultType.CLARIFICATION_REQUIRED);
+        assertThat(result.getType())
+            .as("missing-vector-space result: %s", result)
+            .isEqualTo(OrchestrationResultType.CLARIFICATION_REQUIRED);
         assertThat(result.isSuccess()).isFalse();
 
         assertThat(result.getData()).isNotNull().containsKey("candidateVectorSpaces");

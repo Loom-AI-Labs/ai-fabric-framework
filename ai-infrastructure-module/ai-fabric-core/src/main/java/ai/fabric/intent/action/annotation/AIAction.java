@@ -55,6 +55,12 @@ public @interface AIAction {
     boolean anonymousAllowed() default false;
 
     /**
+     * Whether successful execution ends the current orchestration turn without
+     * post-action generation. Reserved for reviewed control transitions.
+     */
+    boolean terminal() default false;
+
+    /**
      * Whether this READ action is eligible for planner-driven read-action resolution.
      *
      * <p>Defaults to {@code false} so autonomous read planning stays fail-closed until

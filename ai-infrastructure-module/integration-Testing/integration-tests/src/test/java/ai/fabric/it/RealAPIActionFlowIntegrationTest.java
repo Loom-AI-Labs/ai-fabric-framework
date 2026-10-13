@@ -2,7 +2,6 @@ package ai.fabric.it;
 
 import ai.fabric.config.ResponseSanitizationProperties;
 import ai.fabric.entity.IntentHistory;
-import ai.fabric.exception.AIServiceException;
 import ai.fabric.intent.orchestration.OrchestrationResult;
 import ai.fabric.intent.orchestration.OrchestrationResultType;
 import ai.fabric.intent.orchestration.RAGOrchestrator;
@@ -22,6 +21,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.TestPropertySource;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
@@ -42,7 +42,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 @TestPropertySource(properties = {
     "ai.actions.builtin.vector-management.enabled=true"
 })
-@Transactional
+@Transactional(propagation = Propagation.NOT_SUPPORTED)
 public class RealAPIActionFlowIntegrationTest {
 
     private static final String OPENAI_KEY_PROPERTY = "OPENAI_API_KEY";
@@ -101,7 +101,10 @@ public class RealAPIActionFlowIntegrationTest {
             Execute the remove_vector action with entityType "test-product" and entityId "%s" immediately.
             Confirm the purge and propose the next follow-up remediation step.""".formatted(legacyDevice.getName(), entityId);
 
-        OrchestrationResult result = orchestrateOrSkip(query, userId);
+        OrchestrationResult result = orchestrator.orchestrate(
+            query,
+            ai.fabric.intent.orchestration.OrchestrationContext.forUser(userId)
+        );
         logOrchestrationStep("remove_vector action flow", result);
         assertNotNull(result, "Orchestrator should return a result");
         // Provider-agnostic contract: compound wrappers are normalized into the primary intent type.
@@ -264,7 +267,10 @@ public class RealAPIActionFlowIntegrationTest {
             2. Afterwards, run the clear_vector_index action with reason "reseed" to wipe stale embeddings before we rebuild.
             Close with a recommended high-confidence validation to run next.""";
 
-        OrchestrationResult result = orchestrateOrSkip(query, userId);
+        OrchestrationResult result = orchestrator.orchestrate(
+            query,
+            ai.fabric.intent.orchestration.OrchestrationContext.forUser(userId)
+        );
         logOrchestrationStep("compound information + clear_vector_index action flow", result);
         assertNotNull(result, "Orchestrator should return a result");
         // Provider-agnostic contract: compound wrappers are normalized into the primary intent type.
@@ -405,16 +411,6 @@ public class RealAPIActionFlowIntegrationTest {
         product = productRepository.save(product);
         indexingGateway.upsert(product, AIProcessOperation.CREATE, IndexingStrategy.SYNC);
         return product;
-    }
-
-    private OrchestrationResult orchestrateOrSkip(String query, String userId) {
-        try {
-            return orchestrator.orchestrate(query, ai.fabric.intent.orchestration.OrchestrationContext.forUser(userId));
-        } catch (AIServiceException ex) {
-            Assumptions.assumeTrue(false,
-                "Skipping real API action flow test because intent orchestration failed: " + ex.getMessage());
-            return null;
-        }
     }
 
     private void logOrchestrationStep(String step, OrchestrationResult result) {

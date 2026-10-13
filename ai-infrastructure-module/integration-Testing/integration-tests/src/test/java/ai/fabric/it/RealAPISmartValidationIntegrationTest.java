@@ -2,6 +2,7 @@ package ai.fabric.it;
 
 import ai.fabric.config.ResponseSanitizationProperties;
 import ai.fabric.entity.IntentHistory;
+import ai.fabric.intent.KnowledgeBaseOverviewService;
 import ai.fabric.intent.orchestration.OrchestrationResult;
 import ai.fabric.intent.orchestration.OrchestrationResultType;
 import ai.fabric.intent.orchestration.RAGOrchestrator;
@@ -19,18 +20,21 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;
+import java.time.Duration;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.awaitility.Awaitility.await;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 @SpringBootTest(classes = TestApplication.class)
 @ActiveProfiles("real-api-test")
-@Transactional
+@Transactional(propagation = Propagation.NOT_SUPPORTED)
 public class RealAPISmartValidationIntegrationTest {
 
     private static final String OPENAI_KEY_PROPERTY = "OPENAI_API_KEY";
@@ -49,6 +53,9 @@ public class RealAPISmartValidationIntegrationTest {
 
     @Autowired
     private VectorManagementService vectorManagementService;
+
+    @Autowired
+    private KnowledgeBaseOverviewService knowledgeBaseOverviewService;
 
     @Autowired
     private RAGOrchestrator orchestrator;
@@ -88,17 +95,29 @@ public class RealAPISmartValidationIntegrationTest {
             "ValidateCore",
             new BigDecimal("6999.99")
         );
+        RealAPITestSupport.awaitVectorExists(
+            vectorManagementService,
+            "test-product",
+            product1.getId().toString(),
+            Duration.ofSeconds(60)
+        );
+        await().atMost(Duration.ofSeconds(5)).untilAsserted(() ->
+            assertThat(knowledgeBaseOverviewService.getOverview().getEntityTypes())
+                .contains("test-product")
+        );
 
         System.out.println("✅ Created test products");
 
         System.out.println("\n=== Phase 2: Test Clear and Valid Intent ===");
 
         String userId1 = "validation-test-clear";
-        String clearQuery = "What validation features are available?";
+        String clearQuery = "Search the test-product knowledge domain for the Validation Engine product and describe its validation features.";
 
         OrchestrationResult result1 = orchestrator.orchestrate(clearQuery, ai.fabric.intent.orchestration.OrchestrationContext.forUser(userId1));
         assertNotNull(result1);
-        assertThat(result1.isSuccess()).isTrue();
+        assertThat(result1.isSuccess())
+            .as("clear-query result: %s", result1)
+            .isTrue();
 
         List<IntentHistory> clearHistory = intentHistoryRepository
             .findByUserIdOrderByCreatedAtDesc(userId1);

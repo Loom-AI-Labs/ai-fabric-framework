@@ -55,6 +55,15 @@ public class AIActionMetaData {
     private boolean groundingEligible;
 
     /**
+     * Whether a successful execution is terminal for the current orchestration turn.
+     *
+     * <p>Terminal actions are intended for control-plane transitions where post-action
+     * generation or additional model-selected work would be unsafe. This flag does not
+     * grant execution authority and remains subject to all normal action gates.</p>
+     */
+    private boolean terminal;
+
+    /**
      * Server-owned evidence spaces represented by this READ action and available to
      * complete grounding when the action returns an insufficient result.
      *

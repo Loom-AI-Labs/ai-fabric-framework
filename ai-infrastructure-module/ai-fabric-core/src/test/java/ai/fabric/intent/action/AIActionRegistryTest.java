@@ -3,6 +3,7 @@ package ai.fabric.intent.action;
 import ai.fabric.intent.action.annotation.AIAction;
 import ai.fabric.intent.action.annotation.ActionAllowed;
 import ai.fabric.intent.action.annotation.ActionConfirmation;
+import ai.fabric.intent.action.annotation.ActionConfirmationRequired;
 import ai.fabric.intent.action.annotation.ActionExecute;
 import ai.fabric.intent.action.annotation.ActionFacts;
 import ai.fabric.intent.action.annotation.Param;
@@ -72,6 +73,33 @@ class AIActionRegistryTest {
 
             assertThat(handler.getConfirmationMessage(Map.of("quantity", 3), new ActionContext(OrchestrationContext.forUser("user"), null)))
                 .isEqualTo("Add 3 items?");
+        }
+    }
+
+    @Test
+    void shouldEvaluateInvocationConfirmationPolicyFromStructuredParameters() {
+        try (AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext()) {
+            context.register(AIActionRegistry.class);
+            context.register(DynamicConfirmationAction.class);
+            context.refresh();
+
+            AIActionRegistry registry = context.getBean(AIActionRegistry.class);
+            AIActionHandler handler = registry.findHandler("dynamic_confirmation").orElseThrow();
+            InvocationConfirmationPolicy policy = (InvocationConfirmationPolicy) handler;
+            ActionContext actionContext = new ActionContext(
+                OrchestrationContext.forUser("user"),
+                null
+            );
+
+            assertThat(policy.requiresConfirmation(
+                Map.of("requestProvenance", RequestProvenance.EXPLICIT_USER_REQUEST.name()),
+                actionContext
+            )).isFalse();
+            assertThat(policy.requiresConfirmation(
+                Map.of("requestProvenance", RequestProvenance.MODEL_RECOMMENDATION.name()),
+                actionContext
+            )).isTrue();
+            assertThat(policy.requiresConfirmation(Map.of(), actionContext)).isTrue();
         }
     }
 
@@ -415,6 +443,34 @@ class AIActionRegistryTest {
 
         @ActionExecute
         public ActionResult execute(@Param(value = "quantity", required = true) Integer quantity) {
+            return ActionResult.builder().success(true).message("ok").build();
+        }
+    }
+
+    enum RequestProvenance {
+        EXPLICIT_USER_REQUEST,
+        MODEL_RECOMMENDATION
+    }
+
+    @AIAction(
+        name = "dynamic_confirmation",
+        description = "Action with a structured invocation confirmation policy",
+        category = "test",
+        accessMode = ActionAccessMode.WRITE_ONLY,
+        requiresConfirmation = true
+    )
+    static class DynamicConfirmationAction {
+        @ActionConfirmationRequired
+        public boolean confirmationRequired(
+            @Param("requestProvenance") RequestProvenance requestProvenance
+        ) {
+            return requestProvenance != RequestProvenance.EXPLICIT_USER_REQUEST;
+        }
+
+        @ActionExecute
+        public ActionResult execute(
+            @Param("requestProvenance") RequestProvenance requestProvenance
+        ) {
             return ActionResult.builder().success(true).message("ok").build();
         }
     }

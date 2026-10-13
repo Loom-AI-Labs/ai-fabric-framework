@@ -3,6 +3,7 @@ package ai.fabric.intent.action;
 import ai.fabric.intent.action.annotation.AIAction;
 import ai.fabric.intent.action.annotation.ActionAllowed;
 import ai.fabric.intent.action.annotation.ActionConfirmation;
+import ai.fabric.intent.action.annotation.ActionConfirmationRequired;
 import ai.fabric.intent.action.annotation.ActionExecute;
 import ai.fabric.intent.action.annotation.ActionFacts;
 import ai.fabric.intent.action.annotation.Param;
@@ -116,6 +117,11 @@ public class AIActionRegistry {
                 Method executeMethod = findSingleMethod(targetClass, ActionExecute.class, "@ActionExecute");
                 Method allowedMethod = findOptionalSingleMethod(targetClass, ActionAllowed.class, "@ActionAllowed");
                 Method confirmationMethod = findOptionalSingleMethod(targetClass, ActionConfirmation.class, "@ActionConfirmation");
+                Method confirmationRequiredMethod = findOptionalSingleMethod(
+                    targetClass,
+                    ActionConfirmationRequired.class,
+                    "@ActionConfirmationRequired"
+                );
                 Method factsMethod = findOptionalSingleMethod(targetClass, ActionFacts.class, "@ActionFacts");
 
                 if (allowedMethod != null) {
@@ -123,6 +129,9 @@ public class AIActionRegistry {
                 }
                 if (confirmationMethod != null) {
                     validateActionConfirmationMethod(confirmationMethod);
+                }
+                if (confirmationRequiredMethod != null) {
+                    validateActionConfirmationRequiredMethod(action, confirmationRequiredMethod);
                 }
                 if (factsMethod != null) {
                     validateActionFactsMethod(factsMethod);
@@ -135,7 +144,17 @@ public class AIActionRegistry {
                         + existingSource + " + annotations");
                 }
 
-                AIActionHandler handler = new AnnotatedAIActionHandler(bean, action, meta, executeMethod, allowedMethod, confirmationMethod, factsMethod, binder);
+                AIActionHandler handler = new AnnotatedAIActionHandler(
+                    bean,
+                    action,
+                    meta,
+                    executeMethod,
+                    allowedMethod,
+                    confirmationMethod,
+                    confirmationRequiredMethod,
+                    factsMethod,
+                    binder
+                );
                 handlerMap.put(key, handler);
                 metadataMap.put(key, meta);
                 sourceByActionKey.put(key, "annotations");
@@ -276,6 +295,51 @@ public class AIActionRegistry {
         }
     }
 
+    private void validateActionConfirmationRequiredMethod(
+        AIAction action,
+        Method confirmationRequiredMethod
+    ) {
+        if (!action.requiresConfirmation()) {
+            throw new IllegalStateException(
+                "AIAction @ActionConfirmationRequired requires @AIAction(requiresConfirmation = true): "
+                    + confirmationRequiredMethod.getDeclaringClass().getName()
+                    + "#" + confirmationRequiredMethod.getName()
+            );
+        }
+        Class<?> returnType = confirmationRequiredMethod.getReturnType();
+        if (returnType != boolean.class && returnType != Boolean.class) {
+            throw new IllegalStateException(
+                "AIAction @ActionConfirmationRequired method must return boolean or Boolean: "
+                    + confirmationRequiredMethod.getDeclaringClass().getName()
+                    + "#" + confirmationRequiredMethod.getName()
+            );
+        }
+        validateBoundActionParameters(confirmationRequiredMethod, "@ActionConfirmationRequired");
+    }
+
+    private void validateBoundActionParameters(Method method, String label) {
+        for (Parameter parameter : method.getParameters()) {
+            if (ActionMethodArgumentBinder.isContextParameter(parameter.getType())) {
+                continue;
+            }
+            Param param = parameter.getAnnotation(Param.class);
+            if (param == null) {
+                throw new IllegalStateException(
+                    "AIAction " + label + " method parameter must be annotated with @Param: "
+                        + method.getDeclaringClass().getName() + "#" + method.getName()
+                );
+            }
+            String name = StringUtils.hasText(param.value()) ? param.value() : parameter.getName();
+            if (!StringUtils.hasText(name) || name.startsWith("arg")) {
+                throw new IllegalStateException(
+                    "AIAction " + label + " parameter name is not available. "
+                        + "Compile with -parameters or set @Param(\"name\"). Offending parameter in "
+                        + method.getDeclaringClass().getName() + "#" + method.getName()
+                );
+            }
+        }
+    }
+
     private void validateActionFactsMethod(Method factsMethod) {
         Class<?> returnType = factsMethod.getReturnType();
         if (Map.class.isAssignableFrom(returnType)) {
@@ -376,6 +440,7 @@ public class AIActionRegistry {
             .accessMode(action.accessMode())
             .anonymousAllowed(action.anonymousAllowed())
             .confirmationRequired(action.requiresConfirmation())
+            .terminal(action.terminal())
             .groundingEligible(defaultGroundingEligible(action.accessMode()))
             .groundingVectorSpaces(normalizeGroundingVectorSpaces(action))
             .readActionResolutionEligible(action.readActionResolutionEligible())

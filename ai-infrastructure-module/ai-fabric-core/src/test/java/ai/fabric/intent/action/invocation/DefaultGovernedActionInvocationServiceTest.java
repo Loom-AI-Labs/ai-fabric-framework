@@ -14,15 +14,19 @@ import ai.fabric.intent.action.AIActionRegistry;
 import ai.fabric.intent.action.ActionAccessMode;
 import ai.fabric.intent.action.ActionContext;
 import ai.fabric.intent.action.ActionResult;
+import ai.fabric.intent.action.InvocationConfirmationPolicy;
 import ai.fabric.intent.orchestration.OrchestrationContext;
 import ai.fabric.intent.orchestration.capability.EffectiveCapabilityProfile;
 import ai.fabric.intent.orchestration.policy.OrchestrationPolicy;
+import ai.fabric.intent.orchestration.control.OrchestrationControlException;
+import ai.fabric.intent.orchestration.control.OrchestrationTurnGuard;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
 
 class DefaultGovernedActionInvocationServiceTest {
 
@@ -80,6 +84,72 @@ class DefaultGovernedActionInvocationServiceTest {
             .isEqualTo(GovernedActionInvocationStatus.CONFIRMATION_REQUIRED);
         assertThat(outcome.actionResult().getErrorCode()).isEqualTo("CONFIRMATION_REQUIRED");
         verify(handler, never()).executeAction(
+            org.mockito.ArgumentMatchers.anyMap(),
+            org.mockito.ArgumentMatchers.any()
+        );
+    }
+
+    @Test
+    void executesWithoutDuplicateConfirmationWhenInvocationPolicyWaivesIt() {
+        AIActionHandler dynamicHandler = mock(
+            AIActionHandler.class,
+            Mockito.withSettings().extraInterfaces(InvocationConfirmationPolicy.class)
+        );
+        InvocationConfirmationPolicy policy = (InvocationConfirmationPolicy) dynamicHandler;
+        when(registry.findHandler("update_payment")).thenReturn(Optional.of(dynamicHandler));
+        when(dynamicHandler.getActionMetadata()).thenReturn(metadata);
+        when(dynamicHandler.requiresConfirmation()).thenReturn(true);
+        when(dynamicHandler.validateActionAllowed(org.mockito.ArgumentMatchers.any())).thenReturn(true);
+        when(policy.requiresConfirmation(
+            org.mockito.ArgumentMatchers.anyMap(),
+            org.mockito.ArgumentMatchers.any()
+        )).thenReturn(false);
+        when(dynamicHandler.executeAction(
+            org.mockito.ArgumentMatchers.anyMap(),
+            org.mockito.ArgumentMatchers.any()
+        )).thenReturn(ActionResult.builder().success(true).message("Transferred").build());
+
+        GovernedActionInvocationOutcome outcome = service.invoke(invocation(
+            profile(Set.of(), Set.of("update_payment")),
+            ActionConfirmationState.NOT_CONFIRMED,
+            Map.of("last4", "4242")
+        ));
+
+        assertThat(outcome.status()).isEqualTo(GovernedActionInvocationStatus.EXECUTED);
+        verify(dynamicHandler).executeAction(
+            org.mockito.ArgumentMatchers.eq(Map.of("last4", "4242")),
+            org.mockito.ArgumentMatchers.any()
+        );
+    }
+
+    @Test
+    void keepsConfirmationWhenInvocationPolicyRequiresIt() {
+        AIActionHandler dynamicHandler = mock(
+            AIActionHandler.class,
+            Mockito.withSettings().extraInterfaces(InvocationConfirmationPolicy.class)
+        );
+        InvocationConfirmationPolicy policy = (InvocationConfirmationPolicy) dynamicHandler;
+        when(registry.findHandler("update_payment")).thenReturn(Optional.of(dynamicHandler));
+        when(dynamicHandler.getActionMetadata()).thenReturn(metadata);
+        when(dynamicHandler.requiresConfirmation()).thenReturn(true);
+        when(dynamicHandler.validateActionAllowed(org.mockito.ArgumentMatchers.any())).thenReturn(true);
+        when(dynamicHandler.getConfirmationMessage(
+            org.mockito.ArgumentMatchers.anyMap(),
+            org.mockito.ArgumentMatchers.any()
+        )).thenReturn("Talk to a person?");
+        when(policy.requiresConfirmation(
+            org.mockito.ArgumentMatchers.anyMap(),
+            org.mockito.ArgumentMatchers.any()
+        )).thenReturn(true);
+
+        GovernedActionInvocationOutcome outcome = service.invoke(invocation(
+            profile(Set.of(), Set.of("update_payment")),
+            ActionConfirmationState.NOT_CONFIRMED,
+            Map.of("last4", "4242")
+        ));
+
+        assertThat(outcome.status()).isEqualTo(GovernedActionInvocationStatus.CONFIRMATION_REQUIRED);
+        verify(dynamicHandler, never()).executeAction(
             org.mockito.ArgumentMatchers.anyMap(),
             org.mockito.ArgumentMatchers.any()
         );
@@ -214,6 +284,39 @@ class DefaultGovernedActionInvocationServiceTest {
 
         assertThat(outcome.status())
             .isEqualTo(GovernedActionInvocationStatus.FAILED);
+    }
+
+    @Test
+    void revalidatesHostTurnGuardImmediatelyBeforeExecution() {
+        OrchestrationTurnGuard guard = mock(OrchestrationTurnGuard.class);
+        org.mockito.Mockito.doThrow(new OrchestrationControlException(
+            "AI_TURN_LEASE_STALE",
+            "Conversation control changed."
+        )).when(guard).verifyBeforeAction(
+            org.mockito.ArgumentMatchers.any(),
+            org.mockito.ArgumentMatchers.any()
+        );
+        OrchestrationContext orchestrationContext = OrchestrationContext.builder()
+            .userId("user-1")
+            .orchestrationTurnGuard(guard)
+            .build();
+
+        GovernedActionInvocationOutcome outcome = service.invoke(new GovernedActionInvocation(
+            "update_payment",
+            Map.of("last4", "4242"),
+            new ActionContext(orchestrationContext, null, Map.of("last4", "4242")),
+            null,
+            profile(Set.of(), Set.of("update_payment")),
+            ActionConfirmationState.CONFIRMED,
+            List.of()
+        ));
+
+        assertThat(outcome.status()).isEqualTo(GovernedActionInvocationStatus.DENIED);
+        assertThat(outcome.publicFailure().reason()).isEqualTo("AI_TURN_LEASE_STALE");
+        verify(handler, never()).executeAction(
+            org.mockito.ArgumentMatchers.anyMap(),
+            org.mockito.ArgumentMatchers.any()
+        );
     }
 
     private GovernedActionInvocation invocation(

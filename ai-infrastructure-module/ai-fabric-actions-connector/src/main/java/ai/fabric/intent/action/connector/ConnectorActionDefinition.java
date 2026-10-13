@@ -34,6 +34,7 @@ public record ConnectorActionDefinition(
     AIContributionProvenance provenance,
     List<ConnectorActionPostPolicyDefinition> postPolicies,
     ConnectorActionLlmFactsDefinition llmFacts,
+    boolean terminal,
     String adapterType,
     Map<String, Object> execution,
     Map<String, Object> mcpServers
@@ -85,9 +86,42 @@ public record ConnectorActionDefinition(
             provenance,
             postPolicies,
             llmFacts,
+            false,
             null,
             Map.of(),
             Map.of()
+        );
+    }
+
+    public ConnectorActionDefinition(
+        String name,
+        String displayName,
+        String description,
+        String category,
+        ActionAccessMode accessMode,
+        boolean requiresConfirmation,
+        String confirmationMessage,
+        List<ConnectorActionParamDefinition> params,
+        boolean anonymousAllowed,
+        boolean groundingEligible,
+        List<String> groundingVectorSpaces,
+        boolean readActionResolutionEligible,
+        ActionResultPresentationHint resultPresentationHint,
+        String builtInModuleId,
+        String builtInCardId,
+        AIContributionProvenance provenance,
+        List<ConnectorActionPostPolicyDefinition> postPolicies,
+        ConnectorActionLlmFactsDefinition llmFacts,
+        String adapterType,
+        Map<String, Object> execution,
+        Map<String, Object> mcpServers
+    ) {
+        this(
+            name, displayName, description, category, accessMode,
+            requiresConfirmation, confirmationMessage, params, anonymousAllowed,
+            groundingEligible, groundingVectorSpaces, readActionResolutionEligible,
+            resultPresentationHint, builtInModuleId, builtInCardId, provenance,
+            postPolicies, llmFacts, false, adapterType, execution, mcpServers
         );
     }
 
@@ -108,6 +142,9 @@ public record ConnectorActionDefinition(
             }
             if (requiresConfirmation) {
                 out.put("requiresConfirmation", true);
+            }
+            if (terminal) {
+                out.put("terminal", true);
             }
         }
         if (!out.isEmpty() && params != null && !params.isEmpty()) {

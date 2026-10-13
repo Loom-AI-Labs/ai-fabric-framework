@@ -8,7 +8,6 @@ import ai.fabric.indexing.api.AIEntityIndexingGateway;
 import ai.fabric.indexing.api.AIProcessOperation;
 import ai.fabric.indexing.api.IndexingStrategy;
 import ai.fabric.service.VectorManagementService;
-import ai.fabric.exception.AIServiceException;
 import ai.fabric.intent.orchestration.OrchestrationResult;
 import ai.fabric.intent.orchestration.RAGOrchestrator;
 import ai.fabric.it.entity.TestProduct;
@@ -20,6 +19,7 @@ import org.junit.jupiter.api.Assumptions;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
@@ -47,7 +47,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 @SpringBootTest(classes = TestApplication.class)
 @ActiveProfiles("real-api-test")
-@Transactional
+@Transactional(propagation = Propagation.NOT_SUPPORTED)
 public class RealAPIIntegrationTest {
 
     private static final String OPENAI_KEY_PROPERTY = "OPENAI_API_KEY";
@@ -423,14 +423,10 @@ public class RealAPIIntegrationTest {
             Please consult the test-product knowledge base and explain our refund policy and next secure steps.
             """;
 
-        OrchestrationResult result;
-        try {
-            result = orchestrator.orchestrate(query, ai.fabric.intent.orchestration.OrchestrationContext.forUser(userId));
-        } catch (AIServiceException ex) {
-            Assumptions.assumeTrue(false,
-                "Skipping real RAG pipeline test because intent extraction failed: " + ex.getMessage());
-            return;
-        }
+        OrchestrationResult result = orchestrator.orchestrate(
+            query,
+            ai.fabric.intent.orchestration.OrchestrationContext.forUser(userId)
+        );
 
         assertNotNull(result, "Orchestrator should return a result");
         assertNotNull(result.getSanitizedPayload(), "Sanitized payload should be present");

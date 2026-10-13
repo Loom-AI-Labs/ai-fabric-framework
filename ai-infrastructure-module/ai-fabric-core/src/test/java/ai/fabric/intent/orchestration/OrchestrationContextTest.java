@@ -101,4 +101,18 @@ class OrchestrationContextTest {
                 "Application-only specialist contract"
             );
     }
+
+    @Test
+    void orchestrationTurnGuardIsNotSerialized() throws Exception {
+        OrchestrationContext context = OrchestrationContext.builder()
+            .userId("user")
+            .orchestrationTurnGuard(org.mockito.Mockito.mock(
+                ai.fabric.intent.orchestration.control.OrchestrationTurnGuard.class
+            ))
+            .build();
+
+        String json = new ObjectMapper().writeValueAsString(context);
+
+        assertThat(json).doesNotContain("orchestrationTurnGuard");
+    }
 }

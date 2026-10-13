@@ -1,6 +1,7 @@
 package ai.fabric.intent.orchestration;
 
 import ai.fabric.intent.orchestration.pipeline.Pipeline;
+import ai.fabric.intent.orchestration.request.OrchestrationRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -84,10 +85,46 @@ public class RAGOrchestrator {
     public OrchestrationResult orchestrate(String query, OrchestrationContext context) {
         Objects.requireNonNull(query, ERROR_NULL_QUERY);
         Objects.requireNonNull(context, ERROR_NULL_CONTEXT);
+
+        if (context.getOrchestrationTurnGuard() != null) {
+            context.getOrchestrationTurnGuard().verifyBeforeOrchestration();
+        }
         
         log.debug("Orchestrating query for user: {}", context.getIdentifier());
-        
-        return pipeline.execute(query, context);
+
+        OrchestrationResult result = pipeline.execute(query, context);
+        if (context.getOrchestrationTurnGuard() != null) {
+            context.getOrchestrationTurnGuard().verifyBeforeResultCommit(result);
+        }
+        return result;
+    }
+
+    /**
+     * Orchestrate a trusted structured request without discarding its source or
+     * conversation-persistence policy.
+     *
+     * <p>Hosts use this boundary when they provide a server-approved conversation
+     * snapshot and need enrichment without allowing the generic chat-session
+     * recorder to become a second transcript authority.</p>
+     */
+    public OrchestrationResult orchestrate(OrchestrationRequest request) {
+        Objects.requireNonNull(request, "request must not be null");
+        OrchestrationContext context = Objects.requireNonNull(
+            request.orchestrationContext(),
+            ERROR_NULL_CONTEXT
+        );
+
+        if (context.getOrchestrationTurnGuard() != null) {
+            context.getOrchestrationTurnGuard().verifyBeforeOrchestration();
+        }
+
+        log.debug("Orchestrating structured request for user: {}", context.getIdentifier());
+
+        OrchestrationResult result = pipeline.execute(request);
+        if (context.getOrchestrationTurnGuard() != null) {
+            context.getOrchestrationTurnGuard().verifyBeforeResultCommit(result);
+        }
+        return result;
     }
     
 }

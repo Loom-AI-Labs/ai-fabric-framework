@@ -25,6 +25,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
@@ -41,7 +42,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 @SpringBootTest(classes = TestApplication.class)
 @ActiveProfiles("real-api-test")
-@Transactional
+@Transactional(propagation = Propagation.NOT_SUPPORTED)
 public class RealAPIMultiProviderFailoverIntegrationTest {
 
     private static final String OPENAI_KEY_PROPERTY = "OPENAI_API_KEY";
@@ -226,7 +227,10 @@ public class RealAPIMultiProviderFailoverIntegrationTest {
             """;
 
         // Execute orchestration - should handle malformed JSON repair transparently
-        OrchestrationResult result = orchestrateOrSkip(query, userId);
+        OrchestrationResult result = orchestrator.orchestrate(
+            query,
+            ai.fabric.intent.orchestration.OrchestrationContext.forUser(userId)
+        );
 
         assertNotNull(result, "Orchestrator should return a result");
         assertThat(result.isSuccess()).isTrue();
@@ -285,21 +289,4 @@ public class RealAPIMultiProviderFailoverIntegrationTest {
         return product;
     }
 
-    private OrchestrationResult orchestrateOrSkip(String query, String userId) {
-        try {
-            return orchestrator.orchestrate(query, ai.fabric.intent.orchestration.OrchestrationContext.forUser(userId));
-        } catch (Exception ex) {
-            // Log the exception for debugging but don't fail the test
-            // - Vector search with null entityType is a known issue and not the focus of this test
-            // - The important part is that JSON repair mechanism was triggered successfully
-            System.err.println("Orchestration encountered exception (expected due to known vector search limitation): " + ex.getMessage());
-
-            // If we got here, at least JSON repair logic was exercised
-            // Return a synthetic success result to validate the repair mechanism
-            return OrchestrationResult.builder()
-                .success(true)
-                .message("JSON repair mechanism was exercised (orchestration encountered known limitation)")
-                .build();
-        }
-    }
 }
