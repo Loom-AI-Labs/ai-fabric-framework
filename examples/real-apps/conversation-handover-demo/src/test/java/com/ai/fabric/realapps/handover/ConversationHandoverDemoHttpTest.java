@@ -5,7 +5,9 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -32,6 +34,8 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 @SpringBootTest(properties = {
     "spring.datasource.url=jdbc:h2:mem:handover-test;DB_CLOSE_DELAY=-1",
     "app.demo.operator-access-code=test-operator-code",
+    "app.cors.allowed-origins=https://ai-fabric.dev",
+    "app.cors.allow-credentials=true",
     "ai.enabled=false"
 })
 @AutoConfigureMockMvc
@@ -139,6 +143,17 @@ class ConversationHandoverDemoHttpTest {
             .andExpect(status().isForbidden());
         mvc.perform(get("/api/demo/operator/conversations").session(new MockHttpSession()))
             .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void publicWebsiteCanUseCredentialedDemoSessions() throws Exception {
+        mvc.perform(options("/api/demo/session")
+                .header("Origin", "https://ai-fabric.dev")
+                .header("Access-Control-Request-Method", "POST")
+                .header("Access-Control-Request-Headers", "content-type"))
+            .andExpect(status().isOk())
+            .andExpect(header().string("Access-Control-Allow-Origin", "https://ai-fabric.dev"))
+            .andExpect(header().string("Access-Control-Allow-Credentials", "true"));
     }
 
     @Test

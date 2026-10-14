@@ -5,6 +5,7 @@ server:
       cookie:
         http-only: true
         same-site: lax
+        secure: false
 
 spring:
   application:
@@ -63,5 +64,9 @@ management:
         enabled: true
 
 app:
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:}
+    allowed-origin-patterns: ${CORS_ALLOWED_ORIGIN_PATTERNS:}
+    allow-credentials: ${CORS_ALLOW_CREDENTIALS:false}
   demo:
     operator-access-code: ${APP_DEMO_OPERATOR_ACCESS_CODE:demo-handover}

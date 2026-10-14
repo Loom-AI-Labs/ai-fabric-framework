@@ -50,6 +50,13 @@ state remains `AI_ACTIVE` until a valid email and consent are submitted. The
 local default operator code is `demo-handover`; hosted deployments must
 override it.
 
+The Docker image is ready for the cross-origin public demo at
+`https://ai-fabric.dev`: it allows that origin with credentials and emits a
+secure partitioned session cookie. For another website host, set
+`CORS_ALLOWED_ORIGINS` to the exact origin. Local jar runs keep ordinary
+same-site, non-secure cookies; the container enables Spring Boot's secure,
+partitioned session-cookie properties for the cross-site public UI.
+
 ## Verify
 
 ```bash
