@@ -35,6 +35,9 @@ jobs:
       - name: Validate framework release guards
         run: .github/scripts/validate-framework-release-guards.sh
 
+      - name: Validate AI Fabric coding-assistant skill
+        run: python3 .github/scripts/validate-ai-fabric-skill.py
+
   maven-build:
     name: Maven Build
     runs-on: ubuntu-latest
