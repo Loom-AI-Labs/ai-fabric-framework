@@ -26,6 +26,7 @@ import ai.fabric.intent.actiondraft.InMemoryActionDraftStore;
 import ai.fabric.intent.orchestration.OrchestrationContext;
 import ai.fabric.intent.orchestration.OrchestrationResult;
 import ai.fabric.intent.orchestration.OrchestrationResultType;
+import ai.fabric.intent.orchestration.auth.AuthenticationRequirement;
 import ai.fabric.intent.orchestration.pipeline.PipelineContext;
 import ai.fabric.intent.orchestration.request.ConversationPersistencePolicy;
 import ai.fabric.intent.orchestration.request.OrchestrationRequest;
@@ -124,6 +125,68 @@ class IntentHandlingStepAnonymousActionPolicyTest {
         assertThat(result.getType()).isEqualTo(OrchestrationResultType.ACTION_DENIED);
         assertThat(result.isSuccess()).isFalse();
         assertThat(result.getMessage()).isEqualTo("Action not permitted for anonymous users.");
+        assertThat(result.getErrorCode()).isEqualTo("AUTHENTICATION_REQUIRED");
+        assertThat(result.getData()).containsEntry("action", "manage_account");
+        assertThat(result.getData().get("authenticationRequirement"))
+            .isEqualTo(AuthenticationRequirement.forAction("manage_account"));
+        verify(handler, never()).validateActionAllowed(any());
+        verify(handler, never()).executeAction(anyMap(), any());
+    }
+
+    @Test
+    void shouldReturnActionNotFoundWithoutAuthenticationRequirementForUnknownAction() {
+        AIActionRegistry registry = mock(AIActionRegistry.class);
+        when(registry.findHandler("unknown_action")).thenReturn(Optional.empty());
+        when(registry.findMetadata("unknown_action")).thenReturn(Optional.empty());
+
+        Intent intent = Intent.builder()
+            .type(IntentType.ACTION)
+            .action("unknown_action")
+            .build();
+        PipelineContext context = PipelineContext.from(
+            "Run an unknown action",
+            OrchestrationContext.anonymous()
+        ).toBuilder()
+            .intentResponse(MultiIntentResponse.builder().intents(List.of(intent)).build())
+            .build();
+
+        OrchestrationResult result = newStep(registry).process(context).getIntentResult();
+
+        assertThat(result.getType()).isEqualTo(OrchestrationResultType.ERROR);
+        assertThat(result.isSuccess()).isFalse();
+        assertThat(result.getErrorCode()).isEqualTo("ACTION_NOT_FOUND");
+        assertThat(result.getData())
+            .containsEntry("action", "unknown_action")
+            .doesNotContainKey(AuthenticationRequirement.DATA_KEY);
+    }
+
+    @Test
+    void shouldFailClosedWithoutAuthenticationRequirementWhenActionMetadataIsMissing() {
+        AIActionRegistry registry = mock(AIActionRegistry.class);
+        AIActionHandler handler = mock(AIActionHandler.class);
+        when(registry.findHandler("misconfigured_action"))
+            .thenReturn(Optional.of(handler));
+        when(registry.findMetadata("misconfigured_action"))
+            .thenReturn(Optional.empty());
+
+        Intent intent = Intent.builder()
+            .type(IntentType.ACTION)
+            .action("misconfigured_action")
+            .build();
+        PipelineContext context = PipelineContext.from(
+            "Run a misconfigured action",
+            OrchestrationContext.anonymous()
+        ).toBuilder()
+            .intentResponse(MultiIntentResponse.builder().intents(List.of(intent)).build())
+            .build();
+
+        OrchestrationResult result = newStep(registry).process(context).getIntentResult();
+
+        assertThat(result.getType()).isEqualTo(OrchestrationResultType.ERROR);
+        assertThat(result.getErrorCode()).isEqualTo("ACTION_NOT_FOUND");
+        assertThat(result.getData())
+            .doesNotContainKey(AuthenticationRequirement.DATA_KEY);
+        verify(handler, never()).validateActionAllowed(any());
         verify(handler, never()).executeAction(anyMap(), any());
     }
 

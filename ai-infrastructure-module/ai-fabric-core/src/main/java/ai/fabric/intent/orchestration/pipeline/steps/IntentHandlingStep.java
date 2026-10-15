@@ -38,6 +38,7 @@ import ai.fabric.intent.KnowledgeBaseOverviewService;
 import ai.fabric.intent.orchestration.OrchestrationContext;
 import ai.fabric.intent.orchestration.OrchestrationResult;
 import ai.fabric.intent.orchestration.OrchestrationResultType;
+import ai.fabric.intent.orchestration.auth.AuthenticationRequirement;
 import ai.fabric.intent.orchestration.information.ReadActionExecutionScope;
 import ai.fabric.intent.orchestration.information.ReadActionResolutionService;
 import ai.fabric.intent.orchestration.pipeline.PipelineContext;
@@ -413,6 +414,25 @@ public class IntentHandlingStep implements PipelineStep {
         );
     }
 
+    private OrchestrationResult actionNotFound(String actionName, Intent intent) {
+        String message = ERROR_MSG_NO_HANDLER + actionName + "'";
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put(DATA_KEY_ACTION, actionName);
+        data.put(DATA_KEY_ACTION_RESULT, ActionResult.builder()
+            .success(false)
+            .message(message)
+            .errorCode(ERROR_CODE_ACTION_NOT_FOUND)
+            .build());
+        return OrchestrationResult.builder()
+            .type(OrchestrationResultType.ERROR)
+            .success(false)
+            .message(message)
+            .errorCode(ERROR_CODE_ACTION_NOT_FOUND)
+            .data(Collections.unmodifiableMap(data))
+            .nextSteps(extractNextSteps(intent))
+            .build();
+    }
+
     private OrchestrationResult handleAction(Intent intent,
                                              OrchestrationContext context,
                                              PipelineContext pipelineContext,
@@ -425,6 +445,10 @@ public class IntentHandlingStep implements PipelineStep {
         }
 
         AIActionMetaData meta = getMetadataForAction(actionName);
+        Optional<AIActionHandler> maybeHandler = actionHandlerRegistry.findHandler(actionName);
+        if (meta == null || maybeHandler.isEmpty()) {
+            return actionNotFound(actionName, intent);
+        }
         OrchestrationPolicy policy = pipelineContext != null ? pipelineContext.getOrchestrationPolicy() : null;
         if (policy != null
             && policy.capabilities() != null
@@ -460,36 +484,23 @@ public class IntentHandlingStep implements PipelineStep {
         if ((pipelineContext != null
                 ? pipelineContext.isAnonymous()
                 : context.isAnonymous())
-            && (meta == null || !meta.isAnonymousAllowed())) {
+            && !meta.isAnonymousAllowed()) {
+            Map<String, Object> data = new LinkedHashMap<>();
+            data.put(DATA_KEY_ACTION, actionName);
+            data.put(
+                AuthenticationRequirement.DATA_KEY,
+                AuthenticationRequirement.forAction(actionName)
+            );
             return OrchestrationResult.builder()
                 .type(OrchestrationResultType.ACTION_DENIED)
                 .success(false)
                 .message(ERROR_MSG_ACTION_NOT_PERMITTED_ANON)
-                .nextSteps(extractNextSteps(intent))
-                .build();
-        }
-
-        Optional<AIActionHandler> maybeHandler = actionHandlerRegistry.findHandler(actionName);
-        if (maybeHandler.isEmpty()) {
-            // Deterministic contract: missing handler is a canonical ERROR with ACTION_NOT_FOUND.
-            String message = ERROR_MSG_NO_HANDLER + actionName + "'";
-            Map<String, Object> data = new LinkedHashMap<>();
-            data.put(DATA_KEY_ACTION, actionName);
-            data.put(DATA_KEY_ACTION_RESULT, ActionResult.builder()
-                .success(false)
-                .message(message)
-                .errorCode(ERROR_CODE_ACTION_NOT_FOUND)
-                .build());
-            return OrchestrationResult.builder()
-                .type(OrchestrationResultType.ERROR)
-                .success(false)
-                .message(message)
-                .errorCode(ERROR_CODE_ACTION_NOT_FOUND)
+                .errorCode(AuthenticationRequirement.ERROR_CODE)
                 .data(Collections.unmodifiableMap(data))
                 .nextSteps(extractNextSteps(intent))
                 .build();
         }
-        
+
         AIActionHandler handler = maybeHandler.get();
 
         Map<String, Object> params = intent.getActionParams();

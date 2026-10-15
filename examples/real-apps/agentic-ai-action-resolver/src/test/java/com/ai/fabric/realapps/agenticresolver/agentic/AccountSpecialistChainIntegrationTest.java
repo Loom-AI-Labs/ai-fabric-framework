@@ -384,7 +384,16 @@ class AccountSpecialistChainIntegrationTest {
                 .isEqualTo("CHAIN_CANCELLED");
             assertThat(cancelled.at("/result/message").isMissingNode()
                 || cancelled.at("/result/message").isNull()).isTrue();
-            assertThat(cancelled.at("/result/results")).isEmpty();
+            // Cancellation may race with already completed read-only workers.
+            // Preserve their durable evidence, but never synthesize a manager
+            // answer or expose a result outside the requested specialist set.
+            assertThat(cancelled.at("/result/results"))
+                .allSatisfy(result -> assertThat(
+                    result.path("specialist").asText()
+                ).isIn(
+                    "account-resolver-manager-read@1",
+                    "billing-resolution-manager-advisor@1"
+                ));
         } else {
             assertThat(beforeCancel.path("status").asText())
                 .isEqualTo("COMPLETED");

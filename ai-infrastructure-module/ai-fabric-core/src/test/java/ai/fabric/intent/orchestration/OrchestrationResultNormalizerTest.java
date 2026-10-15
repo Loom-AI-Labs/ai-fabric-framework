@@ -1,5 +1,8 @@
 package ai.fabric.intent.orchestration;
 
+import ai.fabric.intent.orchestration.auth.AuthenticationRequirement;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -10,6 +13,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class OrchestrationResultNormalizerTest {
 
     private final OrchestrationResultNormalizer normalizer = new OrchestrationResultNormalizer();
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Test
     void normalize_compoundWithOnlyConfirmations_promotesNextConfirmationInsteadOfFailureWrapper() {
@@ -183,6 +187,89 @@ class OrchestrationResultNormalizerTest {
         assertThat(normalized.isSuccess()).isTrue();
         assertThat(normalized.getMessage()).contains("Refund policy");
         assertThat(normalized.getData()).containsEntry("answer", "Refund policy is 30 days.");
+    }
+
+    @Test
+    void normalize_compoundWithAuthenticationDeniedPrimary_preservesStructuredRequirement() {
+        AuthenticationRequirement requirement =
+            AuthenticationRequirement.forAction("protected_action");
+        OrchestrationResult denied = OrchestrationResult.builder()
+            .type(OrchestrationResultType.ACTION_DENIED)
+            .success(false)
+            .message("Authentication is required for this action.")
+            .errorCode("AUTHENTICATION_REQUIRED")
+            .data(Map.of(
+                "action", "protected_action",
+                "authenticationRequirement", requirement
+            ))
+            .build();
+
+        OrchestrationResult raw = OrchestrationResult.builder()
+            .type(OrchestrationResultType.COMPOUND_HANDLED)
+            .success(false)
+            .message("Some intents failed. See results for details.")
+            .children(List.of(denied))
+            .metadata(Map.of("sessionId", "s1"))
+            .build();
+
+        OrchestrationResult normalized = normalizer.normalize(raw);
+
+        assertThat(normalized.getType()).isEqualTo(OrchestrationResultType.ACTION_DENIED);
+        assertThat(normalized.isSuccess()).isFalse();
+        assertThat(normalized.getErrorCode()).isEqualTo("AUTHENTICATION_REQUIRED");
+        assertThat(normalized.getMetadata()).containsEntry("errorCode", "AUTHENTICATION_REQUIRED");
+        assertThat(normalized.getData())
+            .containsEntry("action", "protected_action")
+            .containsEntry("authenticationRequirement", requirement);
+        Map<String, Object> serialized = objectMapper.convertValue(
+            normalized.getData().get(AuthenticationRequirement.DATA_KEY),
+            new TypeReference<>() { }
+        );
+        assertThat(serialized).containsExactlyInAnyOrderEntriesOf(Map.of(
+            "schemaVersion", AuthenticationRequirement.SCHEMA_VERSION,
+            "reason", AuthenticationRequirement.REASON_ACTION_REQUIRES_AUTHENTICATED_END_USER,
+            "requiredSubjectType", AuthenticationRequirement.SUBJECT_TYPE_END_USER,
+            "action", "protected_action"
+        ));
+        assertThat(serialized).doesNotContainKey("schema");
+    }
+
+    @Test
+    void normalize_compoundWithSuccessfulActionAndAuthenticationDenial_promotesAuthenticationRequirement() {
+        OrchestrationResult executed = OrchestrationResult.builder()
+            .type(OrchestrationResultType.ACTION_EXECUTED)
+            .success(true)
+            .message("Read completed.")
+            .data(Map.of("action", "public_read"))
+            .build();
+        AuthenticationRequirement requirement =
+            AuthenticationRequirement.forAction("protected_action");
+        OrchestrationResult denied = OrchestrationResult.builder()
+            .type(OrchestrationResultType.ACTION_DENIED)
+            .success(false)
+            .message("Authentication is required for this action.")
+            .errorCode(AuthenticationRequirement.ERROR_CODE)
+            .data(Map.of(
+                "action", "protected_action",
+                AuthenticationRequirement.DATA_KEY, requirement
+            ))
+            .build();
+        OrchestrationResult raw = OrchestrationResult.builder()
+            .type(OrchestrationResultType.COMPOUND_HANDLED)
+            .success(true)
+            .message("Some intents failed. See results for details.")
+            .children(List.of(executed, denied))
+            .build();
+
+        OrchestrationResult normalized = normalizer.normalize(raw);
+
+        assertThat(normalized.getType()).isEqualTo(OrchestrationResultType.ACTION_DENIED);
+        assertThat(normalized.isSuccess()).isFalse();
+        assertThat(normalized.getErrorCode()).isEqualTo(AuthenticationRequirement.ERROR_CODE);
+        assertThat(normalized.getData())
+            .containsEntry("action", "protected_action")
+            .containsEntry(AuthenticationRequirement.DATA_KEY, requirement);
+        assertThat(normalized.getChildren()).containsExactly(executed, denied);
     }
 
     @Test

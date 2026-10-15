@@ -1,5 +1,6 @@
 package ai.fabric.intent.orchestration;
 
+import ai.fabric.intent.orchestration.auth.AuthenticationRequirement;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
@@ -364,16 +365,20 @@ public class OrchestrationResultNormalizer {
         Map<String, Object> data = (primary.getData() != null && !primary.getData().isEmpty())
             ? primary.getData()
             : raw.getData();
+        String errorCode = StringUtils.hasText(primary.getErrorCode())
+            ? primary.getErrorCode()
+            : raw.getErrorCode();
+        Map<String, Object> normalizedMetadata = withErrorCodeMetadata(metadata, errorCode);
 
         return OrchestrationResult.builder()
             .type(normalizedType)
             .success(normalizedSuccess)
             .message(message)
-            .errorCode(raw.getErrorCode())
+            .errorCode(errorCode)
             .data(data)
             .children(raw.getChildren())
             .nextSteps(raw.getNextSteps())
-            .metadata(metadata)
+            .metadata(normalizedMetadata)
             .smartSuggestion(raw.getSmartSuggestion())
             .build();
     }
@@ -393,13 +398,45 @@ public class OrchestrationResultNormalizer {
             return null;
         }
 
-        // Priority order: actions > information > scope (provider-agnostic and stable).
+        OrchestrationResult authenticationDenied = children.stream()
+            .filter(this::hasExactAuthenticationRequirement)
+            .findFirst()
+            .orElse(null);
+        if (authenticationDenied != null) {
+            return authenticationDenied;
+        }
+
+        // Exact authentication requirements outrank successful siblings; otherwise
+        // preserve the established actions > information > scope ordering.
         return firstByType(children, OrchestrationResultType.ACTION_EXECUTED,
             OrchestrationResultType.ACTION_DENIED,
             OrchestrationResultType.INFORMATION_PROVIDED,
             OrchestrationResultType.CLARIFICATION_REQUIRED,
             OrchestrationResultType.OUT_OF_SCOPE,
             OrchestrationResultType.COMPOUND_HANDLED);
+    }
+
+    private boolean hasExactAuthenticationRequirement(OrchestrationResult child) {
+        if (child == null
+            || child.getType() != OrchestrationResultType.ACTION_DENIED
+            || !AuthenticationRequirement.ERROR_CODE.equals(child.getErrorCode())
+            || child.getData() == null) {
+            return false;
+        }
+        Object value = child.getData().get(AuthenticationRequirement.DATA_KEY);
+        if (!(value instanceof AuthenticationRequirement requirement)) {
+            return false;
+        }
+        Object action = child.getData().get("action");
+        return AuthenticationRequirement.SCHEMA_VERSION.equals(requirement.schemaVersion())
+            && AuthenticationRequirement.REASON_ACTION_REQUIRES_AUTHENTICATED_END_USER.equals(
+                requirement.reason()
+            )
+            && AuthenticationRequirement.SUBJECT_TYPE_END_USER.equals(
+                requirement.requiredSubjectType()
+            )
+            && StringUtils.hasText(requirement.action())
+            && requirement.action().equals(action);
     }
 
     private OrchestrationResult firstByType(List<OrchestrationResult> children, OrchestrationResultType... types) {

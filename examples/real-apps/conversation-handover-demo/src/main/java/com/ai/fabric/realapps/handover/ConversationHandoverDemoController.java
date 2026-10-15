@@ -158,7 +158,7 @@ class ConversationHandoverDemoController {
         return Map.of(
             "status", "UP",
             "service", "conversation-handover-demo",
-            "aiFabricVersion", "0.8.32",
+            "aiFabricVersion", "0.8.33",
             "proof", "Model-selected governed handover action plus AI Fabric conversation control",
             "handoverAction", "request_conversation_handover",
             "handoverIntakeSchema", "DEMO_HANDOVER_INTAKE_V1",

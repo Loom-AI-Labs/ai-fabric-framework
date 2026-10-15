@@ -27,6 +27,7 @@ import ai.fabric.intent.action.AIActionMetaData;
 import ai.fabric.intent.action.AIActionRegistry;
 import ai.fabric.intent.action.ActionAccessMode;
 import ai.fabric.intent.action.ActionResult;
+import ai.fabric.intent.orchestration.auth.AuthenticationRequirement;
 import ai.fabric.intent.orchestration.pipeline.DefaultOrchestrationPipeline;
 import ai.fabric.intent.orchestration.pipeline.Pipeline;
 import ai.fabric.intent.orchestration.pipeline.PipelineStep;
@@ -591,6 +592,10 @@ class RAGOrchestratorTest {
             .build();
         when(intentQueryExtractor.extract(any(IntentExtractionInput.class), any(OrchestrationContext.class)))
             .thenReturn(MultiIntentResponse.builder().intents(List.of(intent)).build());
+        when(actionHandlerRegistry.findHandler("cancel_subscription"))
+            .thenReturn(Optional.of(actionHandler));
+        when(actionHandlerRegistry.findMetadata("cancel_subscription"))
+            .thenReturn(Optional.of(executableMetadata("cancel_subscription")));
 
         OrchestrationContext anonymous = OrchestrationContext.forSession("sess-123");
 
@@ -598,6 +603,9 @@ class RAGOrchestratorTest {
 
         assertThat(result.getType()).isEqualTo(OrchestrationResultType.ACTION_DENIED);
         assertThat(result.isSuccess()).isFalse();
+        assertThat(result.getErrorCode()).isEqualTo(AuthenticationRequirement.ERROR_CODE);
+        assertThat(result.getData()).containsKey(AuthenticationRequirement.DATA_KEY);
+        verify(actionHandler, never()).validateActionAllowed(any());
     }
 
     @Test
