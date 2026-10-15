@@ -36,7 +36,7 @@ pieces are not a model for an enterprise workforce integration.
 mvn -B --no-transfer-progress -f examples/real-apps/pom.xml \
   -pl conversation-handover-demo -am package
 
-APP_DEMO_OPERATOR_ACCESS_CODE=demo-handover \
+APP_DEMO_PUBLIC_OPERATOR_ENABLED=true \
 OPENAI_ENABLED=true \
 OPENAI_API_KEY="$OPENAI_API_KEY" \
 OPENAI_MODEL=gpt-4o-mini \
@@ -47,8 +47,21 @@ Open `http://localhost:8110`. Ask, for example, “Please transfer me to a human
 operator.” The model-selected action returns `HANDOVER_INTAKE_REQUIRED`; the
 host renders the same reviewed form used by the explicit button. The control
 state remains `AI_ACTIVE` until a valid email and consent are submitted. The
-local default operator code is `demo-handover`; hosted deployments must
-override it.
+public demo operator code is `demo-handover`. It is visible and prefilled in
+both UIs when `APP_DEMO_PUBLIC_OPERATOR_ENABLED=true`, which is the Docker
+image default. Click **Open my demo queue** to try the human side in the same
+browser session. This public operator can list, read, claim, reply to, return,
+and close only that session owner's conversations. Other visitors' transcripts
+and contact details remain inaccessible, even with a guessed conversation ID.
+Use sample contact details rather than personal information.
+
+`APP_DEMO_OPERATOR_ACCESS_CODE` remains a separate private operator credential
+for the shared queue; hosted deployments must override its local default. It
+is never returned by the health API or prefilled in either UI. Set
+`APP_DEMO_PUBLIC_OPERATOR_ENABLED=false` to disable self-service operator access.
+The public demo code can be customized with
+`APP_DEMO_PUBLIC_OPERATOR_ACCESS_CODE`; it is intentionally not a secret and is
+advertised by `/api/demo/health` only when the public operator is enabled.
 
 The Docker image is ready for the cross-origin public demo at
 `https://ai-fabric.dev`: it allows that origin with credentials and emits a
@@ -69,6 +82,7 @@ mvn -B --no-transfer-progress \
 The HTTP test executes the full AI-to-human-to-AI lifecycle, proves missing
 required intake fails before the state transition, verifies that no AI message
 is produced while a human owns the conversation, tests the governed handover
-action directly, and checks both owner and operator boundaries. The hosted demo
+action directly, and checks both owner and operator boundaries, including
+cross-session denial on every public-operator endpoint. The hosted demo
 is the real-provider proof that natural language selects the action; tests do
 not substitute phrase matching for model intent extraction.

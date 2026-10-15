@@ -28,16 +28,23 @@ class ConversationHandoverDemoController {
     private static final String OWNER = "demo.owner";
     private static final String CONVERSATION = "demo.conversation";
     private static final String OPERATOR = "demo.operator";
+    private static final String OPERATOR_OWNER = "demo.operator.owner";
 
     private final ConversationHandoverDemoService service;
     private final String operatorAccessCode;
+    private final boolean publicOperatorEnabled;
+    private final String publicOperatorAccessCode;
 
     ConversationHandoverDemoController(
         ConversationHandoverDemoService service,
-        @Value("${app.demo.operator-access-code}") String operatorAccessCode
+        @Value("${app.demo.operator-access-code}") String operatorAccessCode,
+        @Value("${app.demo.public-operator.enabled:false}") boolean publicOperatorEnabled,
+        @Value("${app.demo.public-operator.access-code:demo-handover}") String publicOperatorAccessCode
     ) {
         this.service = service;
         this.operatorAccessCode = operatorAccessCode;
+        this.publicOperatorEnabled = publicOperatorEnabled && !publicOperatorAccessCode.isBlank();
+        this.publicOperatorAccessCode = publicOperatorAccessCode;
     }
 
     @PostMapping("/session")
@@ -93,11 +100,25 @@ class ConversationHandoverDemoController {
         @RequestBody OperatorLogin request
     ) {
         byte[] supplied = String.valueOf(request.accessCode()).getBytes(StandardCharsets.UTF_8);
-        byte[] expected = operatorAccessCode.getBytes(StandardCharsets.UTF_8);
-        if (!MessageDigest.isEqual(supplied, expected)) {
+        boolean publicAccess = publicOperatorEnabled && MessageDigest.isEqual(
+            supplied, publicOperatorAccessCode.getBytes(StandardCharsets.UTF_8)
+        );
+        if (!publicAccess && !MessageDigest.isEqual(supplied, operatorAccessCode.getBytes(StandardCharsets.UTF_8))) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Operator access code was not accepted.");
         }
         String operatorId = "demo-operator";
+        if (publicAccess) {
+            String conversationId = (String) session.getAttribute(CONVERSATION);
+            if (conversationId == null) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "Open a visitor conversation before trying the demo operator.");
+            }
+            String ownerId = owner(session);
+            service.ownerView(ownerId, conversationId);
+            session.setAttribute(OPERATOR_OWNER, ownerId);
+            operatorId += "-" + ownerId;
+        } else {
+            session.removeAttribute(OPERATOR_OWNER);
+        }
         session.setAttribute(OPERATOR, operatorId);
         return Map.of("authenticated", true, "operatorId", operatorId, "displayName", "Demo operator");
     }
@@ -105,7 +126,8 @@ class ConversationHandoverDemoController {
     @GetMapping("/operator/conversations")
     public List<QueueItem> operatorQueue(HttpSession session) {
         requireOperator(session);
-        return service.queue();
+        String operatorOwner = (String) session.getAttribute(OPERATOR_OWNER);
+        return operatorOwner == null ? service.queue() : service.ownerQueue(operatorOwner);
     }
 
     @GetMapping("/operator/conversations/{conversationId}")
@@ -113,7 +135,7 @@ class ConversationHandoverDemoController {
         HttpSession session,
         @PathVariable String conversationId
     ) {
-        requireOperator(session);
+        requireOperator(session, conversationId);
         return service.operatorView(conversationId);
     }
 
@@ -123,7 +145,7 @@ class ConversationHandoverDemoController {
         @PathVariable String conversationId,
         @RequestBody TransitionRequest request
     ) {
-        return service.claim(conversationId, request, requireOperator(session));
+        return service.claim(conversationId, request, requireOperator(session, conversationId));
     }
 
     @PostMapping("/operator/conversations/{conversationId}/messages")
@@ -132,7 +154,7 @@ class ConversationHandoverDemoController {
         @PathVariable String conversationId,
         @RequestBody MessageRequest request
     ) {
-        return service.humanMessage(conversationId, request, requireOperator(session));
+        return service.humanMessage(conversationId, request, requireOperator(session, conversationId));
     }
 
     @PostMapping("/operator/conversations/{conversationId}/return-to-ai")
@@ -141,7 +163,7 @@ class ConversationHandoverDemoController {
         @PathVariable String conversationId,
         @RequestBody TransitionRequest request
     ) {
-        return service.returnToAi(conversationId, request, requireOperator(session));
+        return service.returnToAi(conversationId, request, requireOperator(session, conversationId));
     }
 
     @PostMapping("/operator/conversations/{conversationId}/close")
@@ -150,7 +172,7 @@ class ConversationHandoverDemoController {
         @PathVariable String conversationId,
         @RequestBody TransitionRequest request
     ) {
-        return service.close(conversationId, request, requireOperator(session));
+        return service.close(conversationId, request, requireOperator(session, conversationId));
     }
 
     @GetMapping("/health")
@@ -162,7 +184,9 @@ class ConversationHandoverDemoController {
             "proof", "Model-selected governed handover action plus AI Fabric conversation control",
             "handoverAction", "request_conversation_handover",
             "handoverIntakeSchema", "DEMO_HANDOVER_INTAKE_V1",
-            "requiredHandoverField", "email"
+            "requiredHandoverField", "email",
+            "publicOperatorEnabled", publicOperatorEnabled,
+            "demoOperatorAccessCode", publicOperatorEnabled ? publicOperatorAccessCode : ""
         );
     }
 
@@ -179,6 +203,15 @@ class ConversationHandoverDemoController {
         String operator = (String) session.getAttribute(OPERATOR);
         if (operator == null) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Operator session required.");
+        }
+        return operator;
+    }
+
+    private String requireOperator(HttpSession session, String conversationId) {
+        String operator = requireOperator(session);
+        String operatorOwner = (String) session.getAttribute(OPERATOR_OWNER);
+        if (operatorOwner != null) {
+            service.ownerView(operatorOwner, conversationId);
         }
         return operator;
     }

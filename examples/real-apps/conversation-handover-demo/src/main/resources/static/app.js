@@ -24,9 +24,17 @@ async function api(path, options = {}) {
 }
 
 async function start() {
-  const session = await api("/api/demo/session", { method: "POST", body: "{}" });
+  const [session, health] = await Promise.all([
+    api("/api/demo/session", { method: "POST", body: "{}" }),
+    api("/api/demo/health"),
+  ]);
   state.conversationId = session.conversationId;
   state.visitor = session.conversation;
+  if (health.publicOperatorEnabled && health.demoOperatorAccessCode) {
+    $("operator-code").type = "text";
+    $("operator-code").value = health.demoOperatorAccessCode;
+    $("operator-access-hint").textContent = "Public demo code. This operator can access only your own session conversation. Use sample contact details.";
+  }
   renderVisitor();
   window.setInterval(refresh, 2000);
 }

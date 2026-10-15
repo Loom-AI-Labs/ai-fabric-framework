@@ -34,6 +34,8 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 @SpringBootTest(properties = {
     "spring.datasource.url=jdbc:h2:mem:handover-test;DB_CLOSE_DELAY=-1",
     "app.demo.operator-access-code=test-operator-code",
+    "app.demo.public-operator.enabled=true",
+    "app.demo.public-operator.access-code=demo-handover",
     "app.cors.allowed-origins=https://ai-fabric.dev",
     "app.cors.allow-credentials=true",
     "ai.enabled=false"
@@ -142,6 +144,80 @@ class ConversationHandoverDemoHttpTest {
         mvc.perform(get("/api/demo/conversations/{id}", conversationId).session(new MockHttpSession()))
             .andExpect(status().isForbidden());
         mvc.perform(get("/api/demo/operator/conversations").session(new MockHttpSession()))
+            .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void healthAdvertisesOnlyThePublicDemoCode() throws Exception {
+        mvc.perform(get("/api/demo/health"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.publicOperatorEnabled").value(true))
+            .andExpect(jsonPath("$.demoOperatorAccessCode").value("demo-handover"))
+            .andExpect(result -> assertThat(result.getResponse().getContentAsString())
+                .doesNotContain("test-operator-code"));
+    }
+
+    @Test
+    void publicOperatorCanRunOwnLifecycleButCannotAccessOtherVisitors() throws Exception {
+        MvcResult first = mvc.perform(post("/api/demo/session").contentType("application/json").content("{}"))
+            .andExpect(status().isOk()).andReturn();
+        MvcResult second = mvc.perform(post("/api/demo/session").contentType("application/json").content("{}"))
+            .andExpect(status().isOk()).andReturn();
+        MockHttpSession session = (MockHttpSession) first.getRequest().getSession(false);
+        MockHttpSession otherSession = (MockHttpSession) second.getRequest().getSession(false);
+        String ownId = json(first).path("conversationId").asText();
+        String otherId = json(second).path("conversationId").asText();
+        JsonNode pending = postJson(session, "/api/demo/conversations/" + ownId + "/handover", handover(0, "own-public-intake"));
+        postJson(otherSession, "/api/demo/conversations/" + otherId + "/handover", handover(0, "other-public-intake"));
+
+        mvc.perform(post("/api/demo/operator/session").session(session)
+                .contentType("application/json").content("{\"accessCode\":\"demo-handover\"}"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.authenticated").value(true));
+        mvc.perform(get("/api/demo/operator/conversations").session(session))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.length()").value(1))
+            .andExpect(jsonPath("$[0].conversationId").value(ownId));
+        mvc.perform(get("/api/demo/operator/conversations/{id}", otherId).session(session))
+            .andExpect(status().isForbidden());
+        for (String operation : new String[] {"claim", "return-to-ai", "close"}) {
+            mvc.perform(post("/api/demo/operator/conversations/{id}/{operation}", otherId, operation)
+                    .session(session).contentType("application/json").content(transition(1, "foreign-" + operation)))
+                .andExpect(status().isForbidden());
+        }
+        mvc.perform(post("/api/demo/operator/conversations/{id}/messages", otherId).session(session)
+                .contentType("application/json").content("{\"text\":\"Not authorized\",\"clientMessageId\":\"foreign-reply\"}"))
+            .andExpect(status().isForbidden());
+
+        JsonNode claimed = postJson(session, "/api/demo/operator/conversations/" + ownId + "/claim",
+            transition(pending.path("control").path("version").asLong(), "public-claim"));
+        assertThat(claimed.path("control").path("state").asText()).isEqualTo("HUMAN_ACTIVE");
+        JsonNode reply = postJson(session, "/api/demo/operator/conversations/" + ownId + "/messages",
+            "{\"text\":\"A human is helping.\",\"clientMessageId\":\"public-reply\"}");
+        assertThat(roleCount(reply, "HUMAN")).isEqualTo(1);
+        JsonNode resumed = postJson(session, "/api/demo/operator/conversations/" + ownId + "/return-to-ai",
+            transition(claimed.path("control").path("version").asLong(), "public-return"));
+        assertThat(resumed.path("control").path("state").asText()).isEqualTo("AI_ACTIVE");
+        mvc.perform(get("/api/demo/conversations/{id}", otherId).session(otherSession))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.control.state").value("HUMAN_PENDING"));
+
+        mvc.perform(post("/api/demo/operator/session").session(session)
+                .contentType("application/json").content("{\"accessCode\":\"test-operator-code\"}"))
+            .andExpect(status().isOk());
+        mvc.perform(get("/api/demo/operator/conversations/{id}", otherId).session(session))
+            .andExpect(status().isOk());
+    }
+
+    @Test
+    void publicOperatorRequiresAnExistingVisitorSession() throws Exception {
+        mvc.perform(post("/api/demo/operator/session").session(new MockHttpSession())
+                .contentType("application/json").content("{\"accessCode\":\"demo-handover\"}"))
+            .andExpect(status().isConflict());
+        mvc.perform(get("/api/demo/operator/conversations").session(new MockHttpSession()))
+            .andExpect(status().isUnauthorized());
+        mvc.perform(post("/api/demo/operator/session").session(new MockHttpSession())
+                .contentType("application/json").content("{\"accessCode\":\"wrong-code\"}"))
             .andExpect(status().isUnauthorized());
     }
 

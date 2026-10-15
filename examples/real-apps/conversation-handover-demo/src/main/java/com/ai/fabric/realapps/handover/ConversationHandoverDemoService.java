@@ -171,7 +171,16 @@ class ConversationHandoverDemoService {
     }
 
     List<QueueItem> queue() {
+        return queue(null);
+    }
+
+    List<QueueItem> ownerQueue(String ownerId) {
+        return queue(requiredId(ownerId));
+    }
+
+    private List<QueueItem> queue(String ownerFilter) {
         return registry.list().stream()
+            .filter(entry -> ownerFilter == null || entry.ownerId().equals(ownerFilter))
             .map(entry -> {
                 ConversationControlSnapshot control = gateway.status(scope(entry));
                 return new QueueItem(

@@ -70,3 +70,6 @@ app:
     allow-credentials: ${CORS_ALLOW_CREDENTIALS:false}
   demo:
     operator-access-code: ${APP_DEMO_OPERATOR_ACCESS_CODE:demo-handover}
+    public-operator:
+      enabled: ${APP_DEMO_PUBLIC_OPERATOR_ENABLED:false}
+      access-code: ${APP_DEMO_PUBLIC_OPERATOR_ACCESS_CODE:demo-handover}

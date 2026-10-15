@@ -1,6 +1,7 @@
 package com.ai.fabric.realapps.handover;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import ai.fabric.access.policy.EntityAccessPolicy;
 import ai.fabric.dto.AIAccessSubjectContext;
@@ -10,6 +11,9 @@ import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.http.HttpStatus;
+import org.springframework.mock.web.MockHttpSession;
+import org.springframework.web.server.ResponseStatusException;
 
 @SpringBootTest(properties = {
     "spring.datasource.url=jdbc:h2:mem:handover-context-test;DB_CLOSE_DELAY=-1",
@@ -22,6 +26,19 @@ class ConversationHandoverDemoContextTest {
     @Autowired RAGOrchestrator orchestrator;
     @Autowired AIActionRegistry actionRegistry;
     @Autowired EntityAccessPolicy accessPolicy;
+    @Autowired ConversationHandoverDemoController controller;
+
+    @Test
+    void publicOperatorAccessIsOptInOutsideTheDemoContainer() {
+        assertThat(controller.health())
+            .containsEntry("publicOperatorEnabled", false)
+            .containsEntry("demoOperatorAccessCode", "");
+        assertThatThrownBy(() -> controller.operatorSession(
+            new MockHttpSession(),
+            new ConversationHandoverDemoController.OperatorLogin("demo-handover")
+        )).isInstanceOfSatisfying(ResponseStatusException.class,
+            error -> assertThat(error.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED));
+    }
 
     @Test
     void realOrchestrationGraphStartsWithTheHandoverActionRegistered() {
