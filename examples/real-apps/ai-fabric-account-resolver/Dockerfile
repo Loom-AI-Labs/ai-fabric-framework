@@ -6,11 +6,11 @@
 #
 # From repo root:
 # docker build -f examples/real-apps/ai-fabric-account-resolver/Dockerfile \
-#   --build-arg AI_FABRIC_VERSION=0.8.34 \
-#   -t ai-fabric-account-resolver:0.8.34 \
+#   --build-arg AI_FABRIC_VERSION=0.8.35 \
+#   -t ai-fabric-account-resolver:0.8.35 \
 #   examples/real-apps
 
-ARG AI_FABRIC_VERSION=0.8.34
+ARG AI_FABRIC_VERSION=0.8.35
 ARG APP_VERSION=1.0.0-SNAPSHOT
 ARG BUILD_COMMIT=unknown
 ARG BUILD_BRANCH=unknown

@@ -66,8 +66,15 @@ for document in sorted(SKILL_ROOT.rglob("*.md")):
 pom = ET.parse(ROOT / "ai-infrastructure-module" / "pom.xml").getroot()
 namespace = {"m": "http://maven.apache.org/POM/4.0.0"}
 version = pom.findtext("m:version", namespaces=namespace)
-if version != "0.8.32":
-    fail(f"skill supports 0.8.32 but framework BOM is {version}")
+skill_version_match = re.search(
+    r"validated for `(?P<version>\d+\.\d+\.\d+)`",
+    skill_text,
+)
+if not skill_version_match:
+    fail("SKILL.md must declare its validated immutable release")
+skill_version = skill_version_match.group("version")
+if skill_version != version:
+    fail(f"skill supports {skill_version} but framework BOM is {version}")
 
 managed_artifacts = {
     dependency.findtext("m:artifactId", namespaces=namespace)
