@@ -168,27 +168,30 @@ public class ChatSessionServiceImpl implements ChatSessionService {
         }
 
         LocalDateTime now = now();
-        ChatTurn.ChatTurnBuilder builder = ChatTurn.builder()
-            .session(session)
-            .userQuery(userQuery)
-            .aiResponse(aiResponse)
-            .timestamp(now);
-
-        if (turnMetadata != null && !turnMetadata.isEmpty()) {
-            builder.turnMetadata(new LinkedHashMap<>(turnMetadata));
+        Optional<Boolean> recorded = storageProvider.mutateOwnedSession(conversationId, ownerId, managed -> {
+            if (managed.getStatus() != SessionStatus.ACTIVE) {
+                return false;
+            }
+            ChatTurn.ChatTurnBuilder builder = ChatTurn.builder()
+                .session(managed)
+                .userQuery(userQuery)
+                .aiResponse(aiResponse)
+                .timestamp(now);
+            if (turnMetadata != null && !turnMetadata.isEmpty()) {
+                builder.turnMetadata(new LinkedHashMap<>(turnMetadata));
+            }
+            List<ChatTurn> turns = managed.getTurns();
+            if (turns == null) {
+                turns = new ArrayList<>();
+                managed.setTurns(turns);
+            }
+            turns.add(builder.build());
+            managed.setLastInteractionAt(now);
+            return true;
+        });
+        if (recorded.isEmpty()) {
+            throw new ChatSessionAccessDeniedException("Conversation is missing or owned by a different user");
         }
-
-        ChatTurn turn = builder.build();
-
-        List<ChatTurn> turns = session.getTurns();
-        if (turns == null) {
-            turns = new ArrayList<>();
-            session.setTurns(turns);
-        }
-        turns.add(turn);
-        session.setLastInteractionAt(now);
-
-        storageProvider.save(session);
     }
 
     @Override
@@ -236,14 +239,18 @@ public class ChatSessionServiceImpl implements ChatSessionService {
             throw new ChatSessionAccessDeniedException("Conversation is owned by a different user");
         }
 
-        Map<String, Object> merged = new LinkedHashMap<>();
-        if (session.getSessionMetadata() != null && !session.getSessionMetadata().isEmpty()) {
-            merged.putAll(session.getSessionMetadata());
+        Optional<Boolean> updated = storageProvider.mutateOwnedSession(conversationId, ownerId, managed -> {
+            Map<String, Object> merged = new LinkedHashMap<>();
+            if (managed.getSessionMetadata() != null && !managed.getSessionMetadata().isEmpty()) {
+                merged.putAll(managed.getSessionMetadata());
+            }
+            merged.putAll(updates);
+            managed.setSessionMetadata(merged);
+            return true;
+        });
+        if (updated.isEmpty()) {
+            throw new ChatSessionAccessDeniedException("Conversation is missing or owned by a different user");
         }
-        merged.putAll(updates);
-
-        session.setSessionMetadata(merged);
-        storageProvider.save(session);
     }
 
     @Override

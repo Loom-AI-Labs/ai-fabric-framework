@@ -1,17 +1,22 @@
 package ai.fabric.chat.pipeline;
 
 import ai.fabric.chat.config.ChatSessionProperties;
+import ai.fabric.chat.control.ConversationControlGateway;
+import ai.fabric.chat.control.ConversationScope;
 import ai.fabric.chat.domain.ChatSession;
 import ai.fabric.chat.domain.ChatTurn;
 import ai.fabric.dto.Intent;
 import ai.fabric.dto.MultiIntentResponse;
 import ai.fabric.intent.orchestration.OrchestrationContext;
+import ai.fabric.intent.orchestration.OrchestrationResult;
+import ai.fabric.intent.orchestration.OrchestrationResultType;
 import ai.fabric.intent.orchestration.pipeline.PipelineContext;
 import ai.fabric.intent.orchestration.pipeline.PipelineStep;
+import ai.fabric.intent.orchestration.conversation.ConversationStateScope;
+import ai.fabric.intent.orchestration.conversation.ConversationStateScopeResolver;
 import ai.fabric.intent.orchestration.targets.ResolvedTarget;
 import ai.fabric.intent.orchestration.targets.ResolvedTargetSource;
 import ai.fabric.chat.service.ChatSessionService;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.util.StringUtils;
 
@@ -28,7 +33,6 @@ import java.util.Map;
  * <p><strong>Order:</strong> 51 (after IntentExtractionStep (50), before TargetResolutionStep (52))</p>
  */
 @Slf4j
-@RequiredArgsConstructor
 public class WorkingSetTargetSeedingStep implements PipelineStep {
 
     private static final String STEP_NAME = "WorkingSetTargetSeeding";
@@ -37,6 +41,7 @@ public class WorkingSetTargetSeedingStep implements PipelineStep {
     private static final String METADATA_KEY_TARGET_SEEDING = "workingSetTargetSeeding";
     private static final String SESSION_META_KEY_LAST_RESOLVED_TARGETS = "lastResolvedTargets";
     private static final String SESSION_META_KEY_LAST_RESOLVED_TARGETS_TURN_INDEX = "lastResolvedTargetsTurnIndex";
+    private static final String STATE_META_KEY_LAST_WORKING_SET = "lastWorkingSet";
 
     private static final int WORKING_SET_MAX_TARGETS = 4;
     private static final int PINNED_TARGET_MAX_TARGETS = 8;
@@ -44,6 +49,20 @@ public class WorkingSetTargetSeedingStep implements PipelineStep {
 
     private final ChatSessionService chatSessionService;
     private final ChatSessionProperties properties;
+    private final ConversationControlGateway conversationControlGateway;
+
+    public WorkingSetTargetSeedingStep(ChatSessionService chatSessionService,
+                                      ChatSessionProperties properties) {
+        this(chatSessionService, properties, null);
+    }
+
+    public WorkingSetTargetSeedingStep(ChatSessionService chatSessionService,
+                                      ChatSessionProperties properties,
+                                      ConversationControlGateway conversationControlGateway) {
+        this.chatSessionService = chatSessionService;
+        this.properties = properties;
+        this.conversationControlGateway = conversationControlGateway;
+    }
 
     @Override
     public String getStepName() {
@@ -91,6 +110,26 @@ public class WorkingSetTargetSeedingStep implements PipelineStep {
             return context;
         }
 
+        var canonicalScope = ConversationStateScopeResolver.resolve(context);
+        if (canonicalScope.isPresent()) {
+            try {
+                TargetSeed canonicalSeed = loadCanonicalTargetSeed(context, canonicalScope.get());
+                return applySeed(context, response, canonicalSeed);
+            } catch (Exception ex) {
+                log.warn(
+                    "Canonical target state unavailable for conversation {}: {}",
+                    canonicalScope.get().conversationId(),
+                    ex.getMessage()
+                );
+                return context.terminate(OrchestrationResult.builder()
+                    .type(OrchestrationResultType.ERROR)
+                    .success(false)
+                    .errorCode("CONVERSATION_STATE_UNAVAILABLE")
+                    .message("The conversation state is unavailable. Please retry.")
+                    .build());
+            }
+        }
+
         ChatSession session;
         try {
             session = chatSessionService.getSession(conversationId, ownerId);
@@ -103,6 +142,12 @@ public class WorkingSetTargetSeedingStep implements PipelineStep {
         if (seed.targets().isEmpty() && session != null) {
             seed = new TargetSeed(extractWorkingSetTargets(session.getTurns()), "WORKING_SET");
         }
+        return applySeed(context, response, seed);
+    }
+
+    private PipelineContext applySeed(PipelineContext context,
+                                      MultiIntentResponse response,
+                                      TargetSeed seed) {
         List<ResolvedTarget> targets = seed.targets();
         if (targets.isEmpty()) {
             return context.withMetadata(METADATA_KEY_TARGET_SEEDING, Map.of("seeded", false));
@@ -125,6 +170,33 @@ public class WorkingSetTargetSeedingStep implements PipelineStep {
         );
     }
 
+    private TargetSeed loadCanonicalTargetSeed(PipelineContext context, ConversationStateScope scope) {
+        if (conversationControlGateway == null) {
+            throw new IllegalStateException(
+                "ConversationControlGateway is required for canonical target state"
+            );
+        }
+        Map<String, Object> metadata = conversationControlGateway.orchestrationState(
+                toControlScope(scope),
+                scope.expectedControlEpoch()
+            )
+            .map(state -> state.metadata())
+            .orElse(Map.of());
+        long sourceTurnCount = context.getOrchestrationContext().getApprovedConversationSnapshot() != null
+            ? context.getOrchestrationContext().getApprovedConversationSnapshot().sourceTurnCount()
+            : 0L;
+        TargetSeed pinned = extractPersistedPinnedTargets(metadata, sourceTurnCount);
+        if (!pinned.targets().isEmpty()) {
+            return pinned;
+        }
+        List<ResolvedTarget> workingSet = extractStoredWorkingSetTargets(
+            metadata.get(STATE_META_KEY_LAST_WORKING_SET)
+        );
+        return workingSet.isEmpty()
+            ? TargetSeed.empty()
+            : new TargetSeed(workingSet, "WORKING_SET");
+    }
+
     private boolean anyIntentRequiresTargetResolution(List<Intent> intents) {
         if (intents == null || intents.isEmpty()) {
             return false;
@@ -142,14 +214,21 @@ public class WorkingSetTargetSeedingStep implements PipelineStep {
             return TargetSeed.empty();
         }
 
+        int currentTurnIndex = session.getTurns() != null ? session.getTurns().size() : 0;
+        return extractPersistedPinnedTargets(session.getSessionMetadata(), currentTurnIndex);
+    }
+
+    private TargetSeed extractPersistedPinnedTargets(Map<String, Object> sessionMetadata, long currentTurnIndex) {
+        if (sessionMetadata == null || sessionMetadata.isEmpty()) {
+            return TargetSeed.empty();
+        }
+
         int reuseWindow = properties.getPinnedTargetReuseWindowTurns();
         if (reuseWindow <= 0) {
             return TargetSeed.empty();
         }
 
-        Map<String, Object> sessionMetadata = session.getSessionMetadata();
-        int currentTurnIndex = session.getTurns() != null ? session.getTurns().size() : 0;
-        int lastTurnIndex = coerceInt(sessionMetadata.get(SESSION_META_KEY_LAST_RESOLVED_TARGETS_TURN_INDEX), -1);
+        long lastTurnIndex = coerceLong(sessionMetadata.get(SESSION_META_KEY_LAST_RESOLVED_TARGETS_TURN_INDEX), -1L);
         if (lastTurnIndex < 0
             || lastTurnIndex > currentTurnIndex
             || (currentTurnIndex - lastTurnIndex) > reuseWindow) {
@@ -198,6 +277,37 @@ public class WorkingSetTargetSeedingStep implements PipelineStep {
         return targets.isEmpty()
             ? TargetSeed.empty()
             : new TargetSeed(Collections.unmodifiableList(targets), "PINNED_TARGETS");
+    }
+
+    private List<ResolvedTarget> extractStoredWorkingSetTargets(Object value) {
+        if (!(value instanceof Map<?, ?> workingSet) || workingSet.isEmpty()) {
+            return List.of();
+        }
+        Object refsValue = workingSet.get("topDocumentRefs");
+        if (!(refsValue instanceof List<?> refs) || refs.isEmpty()) {
+            return List.of();
+        }
+        List<ResolvedTarget> out = new ArrayList<>();
+        for (Object entry : refs) {
+            if (out.size() >= WORKING_SET_MAX_TARGETS) {
+                break;
+            }
+            if (!(entry instanceof Map<?, ?> refMap)) {
+                continue;
+            }
+            String id = coerceString(refMap.get("id"));
+            String vectorSpace = coerceString(refMap.get("vectorSpace"));
+            if (!StringUtils.hasText(id) || !StringUtils.hasText(vectorSpace)) {
+                continue;
+            }
+            out.add(ResolvedTarget.builder()
+                .id(id.trim())
+                .vectorSpace(vectorSpace.trim())
+                .metadata(safeMetadata(refMap.get("metadata")))
+                .source(ResolvedTargetSource.WORKING_SET)
+                .build());
+        }
+        return out.isEmpty() ? List.of() : Collections.unmodifiableList(out);
     }
 
     private List<ResolvedTarget> extractWorkingSetTargets(List<ChatTurn> turns) {
@@ -300,18 +410,27 @@ public class WorkingSetTargetSeedingStep implements PipelineStep {
         );
     }
 
-    private int coerceInt(Object value, int fallback) {
+    private long coerceLong(Object value, long fallback) {
         if (value instanceof Number number) {
-            return number.intValue();
+            return number.longValue();
         }
         String text = coerceString(value);
         if (StringUtils.hasText(text)) {
             try {
-                return Integer.parseInt(text.trim());
+                return Long.parseLong(text.trim());
             } catch (NumberFormatException ignored) {
             }
         }
         return fallback;
+    }
+
+    private ConversationScope toControlScope(ConversationStateScope scope) {
+        return new ConversationScope(
+            scope.tenantId(),
+            scope.deploymentId(),
+            scope.conversationId(),
+            scope.ownerId()
+        );
     }
 
     private String coerceString(Object value) {

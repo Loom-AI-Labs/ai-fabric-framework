@@ -1,6 +1,13 @@
 package ai.fabric.chat.pipeline;
 
 import ai.fabric.chat.config.ChatSessionProperties;
+import ai.fabric.chat.control.DefaultConversationControlGateway;
+import ai.fabric.chat.control.JdbcConversationControlStore;
+import ai.fabric.chat.control.ConversationControlCommand;
+import ai.fabric.chat.control.ConversationControlCommandType;
+import ai.fabric.chat.control.ConversationScope;
+import ai.fabric.chat.control.ConversationTurnLease;
+import ai.fabric.chat.control.ConversationTurnLeaseGuard;
 import ai.fabric.chat.domain.ChatSession;
 import ai.fabric.chat.service.ChatSessionService;
 import ai.fabric.dto.PIIDetectionResult;
@@ -19,17 +26,25 @@ import ai.fabric.intent.orchestration.OrchestrationContextMetadataKeys;
 import ai.fabric.intent.orchestration.attachment.NormalizedAttachment;
 import ai.fabric.intent.orchestration.OrchestrationResult;
 import ai.fabric.intent.orchestration.OrchestrationResultType;
+import ai.fabric.intent.orchestration.conversation.ApprovedConversationSnapshot;
+import ai.fabric.intent.orchestration.conversation.ConversationStateBinding;
 import ai.fabric.intent.orchestration.pipeline.PipelineContext;
 import ai.fabric.intent.orchestration.request.ConversationPersistencePolicy;
 import ai.fabric.intent.orchestration.request.OrchestrationRequest;
 import ai.fabric.intent.orchestration.targets.ResolvedTarget;
 import ai.fabric.intent.orchestration.targets.ResolvedTargetSource;
 import ai.fabric.privacy.pii.PIIDetectionService;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.h2.jdbcx.JdbcDataSource;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.ObjectProvider;
 
 import java.util.Map;
 import java.util.Set;
+import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
+import java.time.ZoneOffset;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -607,5 +622,174 @@ class ConversationRecordingStepTest {
                 && "dealer-vehicle".equals(entry.get("vectorSpace"))
                 && "ACTION_RESULT_ITEMS".equals(entry.get("originSource")));
         }));
+    }
+
+    @Test
+    void shouldPersistCanonicalPinnedTargetsWithoutWritingLegacyTranscript() {
+        ChatSessionService chatSessionService = mock(ChatSessionService.class);
+        ChatSessionProperties properties = new ChatSessionProperties();
+        properties.setEnabled(true);
+        @SuppressWarnings("unchecked")
+        ObjectProvider<PIIDetectionService> provider = mock(ObjectProvider.class);
+        JdbcDataSource dataSource = new JdbcDataSource();
+        dataSource.setURL("jdbc:h2:mem:recording-state-" + java.util.UUID.randomUUID() + ";DB_CLOSE_DELAY=-1");
+        DefaultConversationControlGateway gateway = new DefaultConversationControlGateway(
+            new JdbcConversationControlStore(dataSource, new ObjectMapper(), true),
+            Clock.fixed(Instant.parse("2026-10-16T01:00:00Z"), ZoneOffset.UTC)
+        );
+        ConversationScope scope = new ConversationScope(
+            "tenant-1", "deployment-1", "conv-1", "user-1"
+        );
+        gateway.status(scope);
+        ActionResult actionResult = ActionResult.builder()
+            .success(true)
+            .message("found")
+            .pinnedTargets(java.util.List.of(new ActionTargetRef(
+                "stock-1", "dealer-vehicle", "Northstar S4", Map.of("model", "S4")
+            )))
+            .build();
+        OrchestrationContext orchestration = OrchestrationContext.builder()
+            .userId("user-1")
+            .conversationId("conv-1")
+            .approvedConversationSnapshot(new ApprovedConversationSnapshot(
+                "turn-1", "user-1", "conv-1", "specialist-1", "a".repeat(64),
+                0, java.util.List.of(), Instant.parse("2026-10-16T01:00:00Z")
+            ))
+            .build();
+        PipelineContext context = PipelineContext.from(new OrchestrationRequest(
+            "Find a vehicle",
+            orchestration,
+            new TrustedExecutionContext(
+                new ExecutionPrincipal("service-1", ExecutionPrincipalType.SERVICE),
+                null,
+                ExecutionSource.APPLICATION,
+                "tenant-1",
+                "deployment-1",
+                Set.of(),
+                "correlation-1",
+                Instant.parse("2026-10-16T01:00:00Z")
+            ),
+            ConversationPersistencePolicy.READ_ONLY,
+            null,
+            null,
+            null,
+            ai.fabric.intent.orchestration.request.OrchestrationRequestPurpose.GENERAL,
+            ai.fabric.intent.orchestration.request.OrchestrationIntentPolicy.MODEL_DIRECTED,
+            new ConversationStateBinding(
+                "tenant-1", "deployment-1", "conv-1", "user-1", 0L
+            )
+        )).toBuilder()
+            .intentResult(OrchestrationResult.builder()
+                .type(OrchestrationResultType.ACTION_EXECUTED)
+                .success(true)
+                .message("found")
+                .data(Map.of("actionResult", actionResult))
+                .build())
+            .sanitizedPayload(Map.of("message", "found"))
+            .build();
+
+        new ConversationRecordingStep(chatSessionService, properties, provider, gateway).process(context);
+
+        assertThat(gateway.orchestrationState(scope, 0L)).get().satisfies(state -> {
+            assertThat(((Number) state.metadata().get("lastResolvedTargetsTurnIndex")).longValue())
+                .isEqualTo(1L);
+            assertThat(state.metadata().get("lastResolvedTargets")).asList().singleElement().satisfies(value ->
+                assertThat(((Map<?, ?>) value).get("id")).isEqualTo("stock-1")
+            );
+        });
+        verify(chatSessionService, never()).recordTurn(anyString(), anyString(), anyString(), anyString(), any());
+        verify(chatSessionService, never()).mergeSessionMetadata(anyString(), anyString(), any());
+    }
+
+    @Test
+    void shouldNotOverwriteSuccessfulTerminalTransferWhenControlEpochAdvances() {
+        ChatSessionService chatSessionService = mock(ChatSessionService.class);
+        ChatSessionProperties properties = new ChatSessionProperties();
+        properties.setEnabled(true);
+        @SuppressWarnings("unchecked")
+        ObjectProvider<PIIDetectionService> provider = mock(ObjectProvider.class);
+        JdbcDataSource dataSource = new JdbcDataSource();
+        dataSource.setURL("jdbc:h2:mem:terminal-recording-" + java.util.UUID.randomUUID() + ";DB_CLOSE_DELAY=-1");
+        DefaultConversationControlGateway gateway = new DefaultConversationControlGateway(
+            new JdbcConversationControlStore(dataSource, new ObjectMapper(), true),
+            Clock.fixed(Instant.parse("2026-10-16T01:00:00Z"), ZoneOffset.UTC)
+        );
+        ConversationScope scope = new ConversationScope(
+            "tenant-1", "deployment-1", "conv-terminal", "user-1"
+        );
+        gateway.status(scope);
+        ConversationTurnLease lease = gateway.acquireAiTurnLease(scope, Duration.ofMinutes(5));
+
+        OrchestrationContext orchestration = OrchestrationContext.builder()
+            .userId("user-1")
+            .conversationId("conv-terminal")
+            .approvedConversationSnapshot(new ApprovedConversationSnapshot(
+                "turn-terminal", "user-1", "conv-terminal", "specialist-1", "b".repeat(64),
+                0, java.util.List.of(), Instant.parse("2026-10-16T01:00:00Z")
+            ))
+            .build();
+        PipelineContext context = PipelineContext.from(new OrchestrationRequest(
+            "Transfer me to a person",
+            orchestration,
+            new TrustedExecutionContext(
+                new ExecutionPrincipal("service-1", ExecutionPrincipalType.SERVICE),
+                null,
+                ExecutionSource.APPLICATION,
+                "tenant-1",
+                "deployment-1",
+                Set.of(),
+                "correlation-terminal",
+                Instant.parse("2026-10-16T01:00:00Z")
+            ),
+            ConversationPersistencePolicy.READ_ONLY,
+            null,
+            null,
+            null,
+            ai.fabric.intent.orchestration.request.OrchestrationRequestPurpose.GENERAL,
+            ai.fabric.intent.orchestration.request.OrchestrationIntentPolicy.MODEL_DIRECTED,
+            new ConversationStateBinding(
+                "tenant-1", "deployment-1", "conv-terminal", "user-1", 0L
+            )
+        )).toBuilder()
+            .intentResult(OrchestrationResult.builder()
+                .type(OrchestrationResultType.ACTION_EXECUTED)
+                .success(true)
+                .message("The conversation is transferring to a human operator.")
+                .metadata(Map.of("terminalAction", true))
+                .data(Map.of("actionResult", ActionResult.builder()
+                    .success(true)
+                    .message("transfer accepted")
+                    .pinnedTargets(java.util.List.of(new ActionTargetRef(
+                        "stock-1", "dealer-vehicle", "Northstar S4", Map.of("model", "S4")
+                    )))
+                    .build()))
+                .build())
+            .sanitizedPayload(Map.of("message", "The conversation is transferring to a human operator."))
+            .build();
+
+        gateway.transition(new ConversationControlCommand(
+            scope,
+            ConversationControlCommandType.REQUEST_HUMAN,
+            0L,
+            "transfer-terminal",
+            "service-1",
+            "USER_REQUESTED_HUMAN",
+            "handover-terminal",
+            "operator-inbox"
+        ));
+
+        PipelineContext recorded = new ConversationRecordingStep(
+            chatSessionService,
+            properties,
+            provider,
+            gateway
+        ).process(context);
+
+        assertThat(recorded.getIntentResult().isSuccess()).isTrue();
+        assertThat(recorded.getIntentResult().getType()).isEqualTo(OrchestrationResultType.ACTION_EXECUTED);
+        assertThat(recorded.isShouldTerminate()).isFalse();
+        new ConversationTurnLeaseGuard(gateway, lease).verifyBeforeResultCommit(recorded.getIntentResult());
+        verify(chatSessionService, never()).recordTurn(anyString(), anyString(), anyString(), anyString(), any());
+        verify(chatSessionService, never()).mergeSessionMetadata(anyString(), anyString(), any());
     }
 }

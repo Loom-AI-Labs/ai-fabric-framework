@@ -69,7 +69,10 @@ public class CompoundConfirmationResolver extends ConfirmationResolverSupport {
                 context = markConfirmed(context, confirmed);
             }
         } else if (negative) {
-            popPending(context);
+            PendingAction cancelled = popPending(context);
+            if (cancelled == null) {
+                return context;
+            }
             // If user cancelled and there are no other intents, keep a single confirmation-negative intent so the
             // orchestration layer can respond deterministically (without executing any action).
             if (remaining.isEmpty()) {

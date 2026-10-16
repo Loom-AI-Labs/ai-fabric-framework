@@ -39,6 +39,7 @@ import ai.fabric.intent.orchestration.OrchestrationContext;
 import ai.fabric.intent.orchestration.OrchestrationResult;
 import ai.fabric.intent.orchestration.OrchestrationResultType;
 import ai.fabric.intent.orchestration.auth.AuthenticationRequirement;
+import ai.fabric.intent.orchestration.conversation.ConversationStateStoreAccess;
 import ai.fabric.intent.orchestration.information.ReadActionExecutionScope;
 import ai.fabric.intent.orchestration.information.ReadActionResolutionService;
 import ai.fabric.intent.orchestration.pipeline.PipelineContext;
@@ -610,7 +611,7 @@ public class IntentHandlingStep implements PipelineStep {
                     Instant.now(),
                     Instant.now()
                 );
-                actionDraftStore.saveDraft(context.getConversationId(), identifier, draft);
+                ConversationStateStoreAccess.saveDraft(actionDraftStore, pipelineContext, draft);
             }
 
             Map<String, Object> data = new LinkedHashMap<>();
@@ -658,7 +659,7 @@ public class IntentHandlingStep implements PipelineStep {
                     Instant.now(),
                     Instant.now()
                 );
-                actionDraftStore.saveDraft(context.getConversationId(), identifier, draft);
+                ConversationStateStoreAccess.saveDraft(actionDraftStore, pipelineContext, draft);
             }
 
             Map<String, Object> data = new LinkedHashMap<>();
@@ -762,7 +763,7 @@ public class IntentHandlingStep implements PipelineStep {
             }
 
             if (context.hasConversation() && actionDraftStore != null) {
-                actionDraftStore.clearDrafts(context.getConversationId(), identifier);
+                ConversationStateStoreAccess.clearDrafts(actionDraftStore, pipelineContext);
             }
 
             EvidenceBundle evidence = buildEvidenceBundle(pipelineContext);
@@ -780,7 +781,7 @@ public class IntentHandlingStep implements PipelineStep {
                 resolvedContextParams.resolvedParameters()
             );
             if (pendingActionStore != null) {
-                pendingActionStore.pushPendingAction(context.getConversationId(), identifier, pending);
+                ConversationStateStoreAccess.pushPending(pendingActionStore, pipelineContext, pending);
             }
 
             Map<String, Object> data = new LinkedHashMap<>();
@@ -806,7 +807,7 @@ public class IntentHandlingStep implements PipelineStep {
 
         try {
             if (context.hasConversation() && actionDraftStore != null) {
-                actionDraftStore.clearDrafts(context.getConversationId(), identifier);
+                ConversationStateStoreAccess.clearDrafts(actionDraftStore, pipelineContext);
             }
             ActionConfirmationState confirmationState =
                 !requiresConfirmation || confirmedThisRequest || !context.hasConversation()
@@ -1586,11 +1587,9 @@ public class IntentHandlingStep implements PipelineStep {
             return intercepted;
         }
 
-        String ownerId = conversationOwnerIdentifier(context, pipelineContext);
-        PendingAction pending = pendingActionStore.popPendingAction(
-            context.getConversationId(),
-            ownerId
-        ).orElse(null);
+        PendingAction pending = ConversationStateStoreAccess
+            .consumeObservedPending(pendingActionStore, pipelineContext)
+            .orElse(null);
         if (pending == null) {
             return OrchestrationResult.builder()
                 .type(OrchestrationResultType.INFORMATION_PROVIDED)
@@ -1599,7 +1598,7 @@ public class IntentHandlingStep implements PipelineStep {
                 .build();
         }
         if (actionDraftStore != null) {
-            actionDraftStore.clearDrafts(context.getConversationId(), ownerId);
+            ConversationStateStoreAccess.clearDrafts(actionDraftStore, pipelineContext);
         }
 
         Intent synthetic = Intent.builder()
@@ -1639,10 +1638,16 @@ public class IntentHandlingStep implements PipelineStep {
             return intercepted;
         }
 
-        String ownerId = conversationOwnerIdentifier(context, pipelineContext);
-        pendingActionStore.popPendingAction(context.getConversationId(), ownerId);
+        PendingAction cancelled = ConversationStateStoreAccess
+            .consumeObservedPending(pendingActionStore, pipelineContext)
+            .orElse(null);
+        if (pipelineContext != null
+            && pipelineContext.getObservedPendingAction() != null
+            && cancelled == null) {
+            return confirmationStateChanged();
+        }
         if (actionDraftStore != null) {
-            actionDraftStore.clearDrafts(context.getConversationId(), ownerId);
+            ConversationStateStoreAccess.clearDrafts(actionDraftStore, pipelineContext);
         }
         return OrchestrationResult.builder()
             .type(OrchestrationResultType.INFORMATION_PROVIDED)
@@ -1667,14 +1672,20 @@ public class IntentHandlingStep implements PipelineStep {
             return null;
         }
 
-        String conversationId = context.getConversationId();
-        String ownerId = conversationOwnerIdentifier(context, pipelineContext);
-        List<PendingAction> stackSnapshot = pendingActionStore.getPendingActionStack(conversationId, ownerId);
+        List<PendingAction> stackSnapshot = ConversationStateStoreAccess.pendingStack(
+            pendingActionStore,
+            pipelineContext
+        );
         if (stackSnapshot == null || stackSnapshot.isEmpty()) {
             return null;
         }
 
         PendingAction pending = stackSnapshot.getFirst();
+        if (pipelineContext != null
+            && pipelineContext.getObservedPendingAction() != null
+            && !pipelineContext.getObservedPendingAction().equals(pending)) {
+            return confirmationStateChanged();
+        }
         ConfirmationInterceptorRule rule =
             ConfiguredConfirmationSupport.findMatchingConfiguredConfirmationRule(rules, pending, decision);
         if (rule == null || rule.decision() == null || rule.decision().type() == null) {
@@ -1696,7 +1707,14 @@ public class IntentHandlingStep implements PipelineStep {
         Map<String, Object> resolvedParams =
             ConfiguredConfirmationSupport.resolveConfiguredConfirmationActionParams(configuredDecision.params(), stackSnapshot);
         ConfiguredConfirmationSupport.applyConfiguredConfirmationStackPolicy(rule.stackPolicy(), workingStack);
-        pendingActionStore.replacePendingActionStack(conversationId, ownerId, workingStack);
+        if (!ConversationStateStoreAccess.replaceObservedPendingStack(
+            pendingActionStore,
+            pipelineContext,
+            stackSnapshot,
+            workingStack
+        )) {
+            return confirmationStateChanged();
+        }
 
         if (configuredDecision.type() == ConfirmationInterceptorDecisionType.REPLY) {
             Object resolvedMessage =
@@ -1739,6 +1757,14 @@ public class IntentHandlingStep implements PipelineStep {
         return handleAction(synthetic, context, effectiveContext);
     }
 
+    private OrchestrationResult confirmationStateChanged() {
+        return OrchestrationResult.builder()
+            .type(OrchestrationResultType.ERROR)
+            .success(false)
+            .message("The pending action changed before confirmation. Please review and try again.")
+            .build();
+    }
+
     /**
      * If there is a pending action, and the LLM emitted the same ACTION again, try to interpret the user's
      * message as confirmation/rejection using a dedicated confirmation prompt.
@@ -1760,10 +1786,9 @@ public class IntentHandlingStep implements PipelineStep {
 
         PendingAction pending;
         try {
-            pending = pendingActionStore.peekPendingAction(
-                context.getConversationId(),
-                conversationOwnerIdentifier(context, pipelineContext)
-            ).orElse(null);
+            pending = ConversationStateStoreAccess
+                .peekPending(pendingActionStore, pipelineContext)
+                .orElse(null);
         } catch (Exception ex) {
             return null;
         }
@@ -2223,9 +2248,9 @@ public class IntentHandlingStep implements PipelineStep {
             return false;
         }
         try {
-            return pendingActionStore.peekPendingAction(
-                context.getConversationId(),
-                conversationOwnerIdentifier(context, pipelineContext)
+            return ConversationStateStoreAccess.peekPending(
+                pendingActionStore,
+                pipelineContext
             ).isPresent();
         } catch (Exception ex) {
             return false;

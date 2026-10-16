@@ -4,6 +4,7 @@ import ai.fabric.execution.context.ExecutionSource;
 import ai.fabric.execution.context.TrustedExecutionContext;
 import ai.fabric.intent.orchestration.OrchestrationContext;
 import ai.fabric.intent.orchestration.capability.EffectiveCapabilityProfile;
+import ai.fabric.intent.orchestration.conversation.ConversationStateBinding;
 import java.util.Objects;
 
 /**
@@ -18,7 +19,8 @@ public record OrchestrationRequest(
     String conversationInput,
     String responseInstructions,
     OrchestrationRequestPurpose purpose,
-    OrchestrationIntentPolicy intentPolicy
+    OrchestrationIntentPolicy intentPolicy,
+    ConversationStateBinding conversationStateBinding
 ) {
     public OrchestrationRequest {
         modelInput = Objects.requireNonNull(modelInput, "modelInput must not be null").trim();
@@ -35,6 +37,31 @@ public record OrchestrationRequest(
         intentPolicy = intentPolicy == null
             ? OrchestrationIntentPolicy.MODEL_DIRECTED
             : intentPolicy;
+    }
+
+    public OrchestrationRequest(
+        String modelInput,
+        OrchestrationContext orchestrationContext,
+        TrustedExecutionContext trustedExecutionContext,
+        ConversationPersistencePolicy conversationPersistencePolicy,
+        EffectiveCapabilityProfile effectiveCapabilityProfile,
+        String conversationInput,
+        String responseInstructions,
+        OrchestrationRequestPurpose purpose,
+        OrchestrationIntentPolicy intentPolicy
+    ) {
+        this(
+            modelInput,
+            orchestrationContext,
+            trustedExecutionContext,
+            conversationPersistencePolicy,
+            effectiveCapabilityProfile,
+            conversationInput,
+            responseInstructions,
+            purpose,
+            intentPolicy,
+            null
+        );
     }
 
     public OrchestrationRequest(

@@ -1,6 +1,9 @@
 package ai.fabric.chat.pipeline;
 
 import ai.fabric.chat.config.ChatSessionProperties;
+import ai.fabric.chat.control.DefaultConversationControlGateway;
+import ai.fabric.chat.control.JdbcConversationControlStore;
+import ai.fabric.chat.control.ConversationScope;
 import ai.fabric.chat.domain.ChatSession;
 import ai.fabric.chat.domain.ChatTurn;
 import ai.fabric.chat.service.ChatSessionService;
@@ -8,13 +11,26 @@ import ai.fabric.dto.AIChatMessage;
 import ai.fabric.dto.Intent;
 import ai.fabric.dto.IntentType;
 import ai.fabric.dto.MultiIntentResponse;
+import ai.fabric.execution.context.ExecutionPrincipal;
+import ai.fabric.execution.context.ExecutionPrincipalType;
+import ai.fabric.execution.context.ExecutionSource;
+import ai.fabric.execution.context.TrustedExecutionContext;
 import ai.fabric.intent.orchestration.OrchestrationContext;
 import ai.fabric.intent.orchestration.attachment.NormalizedAttachment;
+import ai.fabric.intent.orchestration.conversation.ApprovedConversationSnapshot;
+import ai.fabric.intent.orchestration.conversation.ConversationStateBinding;
 import ai.fabric.intent.orchestration.pipeline.PipelineContext;
+import ai.fabric.intent.orchestration.request.ConversationPersistencePolicy;
+import ai.fabric.intent.orchestration.request.OrchestrationRequest;
 import ai.fabric.intent.orchestration.targets.ResolvedTargetSource;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.h2.jdbcx.JdbcDataSource;
 import org.junit.jupiter.api.Test;
 
 import java.time.LocalDateTime;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
 
@@ -362,5 +378,99 @@ class WorkingSetTargetSeedingStepTest {
 
         assertThat(updated.getResolvedTargets()).isEmpty();
         verify(service, never()).getSession(anyString(), anyString());
+    }
+
+    @Test
+    void shouldSeedCanonicalPinnedTargetsWithoutReadingLegacySession() {
+        ChatSessionService service = mock(ChatSessionService.class);
+        ChatSessionProperties properties = new ChatSessionProperties();
+        properties.setEnabled(true);
+        properties.setPinnedTargetReuseWindowTurns(3);
+        DefaultConversationControlGateway gateway = gateway();
+        ConversationScope scope = new ConversationScope(
+            "tenant-1", "deployment-1", "conv-1", "user-1"
+        );
+        gateway.status(scope);
+        gateway.updateOrchestrationState(scope, 0L, metadata -> {
+            metadata.put("lastResolvedTargetsTurnIndex", 1L);
+            metadata.put("lastResolvedTargets", List.of(Map.of(
+                "id", "stock-42",
+                "vectorSpace", "dealer-vehicle",
+                "metadata", Map.of("stockId", "stock-42"),
+                "originSource", "ACTION_RESULT_ITEMS"
+            )));
+            return metadata;
+        });
+        Intent intent = Intent.builder()
+            .type(IntentType.INFORMATION)
+            .intent("compare_selected_vehicle")
+            .requiresTargetResolution(true)
+            .build();
+        OrchestrationContext orchestration = canonicalContext(1L);
+        PipelineContext context = PipelineContext.from(new OrchestrationRequest(
+            "Compare the selected vehicle",
+            orchestration,
+            trustedContext(),
+            ConversationPersistencePolicy.READ_ONLY,
+            null,
+            null,
+            null,
+            ai.fabric.intent.orchestration.request.OrchestrationRequestPurpose.GENERAL,
+            ai.fabric.intent.orchestration.request.OrchestrationIntentPolicy.MODEL_DIRECTED,
+            new ConversationStateBinding(
+                "tenant-1", "deployment-1", "conv-1", "user-1", 0L
+            )
+        )).toBuilder()
+            .intentResponse(MultiIntentResponse.builder().intents(List.of(intent)).build())
+            .build();
+
+        PipelineContext updated = new WorkingSetTargetSeedingStep(service, properties, gateway)
+            .process(context);
+
+        assertThat(updated.getResolvedTargets()).singleElement().satisfies(target -> {
+            assertThat(target.getId()).isEqualTo("stock-42");
+            assertThat(target.getVectorSpace()).isEqualTo("dealer-vehicle");
+            assertThat(target.getSource()).isEqualTo(ResolvedTargetSource.ACTION_RESULT_ITEMS);
+        });
+        verify(service, never()).getSession(anyString(), anyString());
+    }
+
+    private DefaultConversationControlGateway gateway() {
+        JdbcDataSource dataSource = new JdbcDataSource();
+        dataSource.setURL("jdbc:h2:mem:target-seeding-" + java.util.UUID.randomUUID() + ";DB_CLOSE_DELAY=-1");
+        return new DefaultConversationControlGateway(
+            new JdbcConversationControlStore(dataSource, new ObjectMapper(), true),
+            Clock.fixed(Instant.parse("2026-10-16T01:00:00Z"), ZoneOffset.UTC)
+        );
+    }
+
+    private OrchestrationContext canonicalContext(long sourceTurnCount) {
+        return OrchestrationContext.builder()
+            .userId("user-1")
+            .conversationId("conv-1")
+            .approvedConversationSnapshot(new ApprovedConversationSnapshot(
+                "turn-1",
+                "user-1",
+                "conv-1",
+                "specialist-1",
+                "a".repeat(64),
+                sourceTurnCount,
+                List.of(),
+                Instant.parse("2026-10-16T01:00:00Z")
+            ))
+            .build();
+    }
+
+    private TrustedExecutionContext trustedContext() {
+        return new TrustedExecutionContext(
+            new ExecutionPrincipal("service-1", ExecutionPrincipalType.SERVICE),
+            null,
+            ExecutionSource.APPLICATION,
+            "tenant-1",
+            "deployment-1",
+            java.util.Set.of(),
+            "correlation-1",
+            Instant.parse("2026-10-16T01:00:00Z")
+        );
     }
 }

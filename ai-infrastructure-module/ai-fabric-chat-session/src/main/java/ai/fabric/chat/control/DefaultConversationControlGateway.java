@@ -4,8 +4,11 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
+import java.util.function.UnaryOperator;
 
 /** Default state-machine implementation over a host-selected durable store. */
 public final class DefaultConversationControlGateway implements ConversationControlGateway {
@@ -116,6 +119,28 @@ public final class DefaultConversationControlGateway implements ConversationCont
     ) {
         int bounded = Math.max(1, Math.min(limit, MAX_MESSAGES));
         return store.listMessages(scope, Math.max(0, afterSequence), bounded);
+    }
+
+    @Override
+    public Optional<ConversationOrchestrationState> orchestrationState(
+        ConversationScope scope,
+        long expectedControlEpoch
+    ) {
+        return store.findOrchestrationState(scope, expectedControlEpoch);
+    }
+
+    @Override
+    public ConversationOrchestrationState updateOrchestrationState(
+        ConversationScope scope,
+        long expectedControlEpoch,
+        UnaryOperator<Map<String, Object>> mutation
+    ) {
+        return store.updateOrchestrationState(scope, expectedControlEpoch, mutation, clock.instant());
+    }
+
+    @Override
+    public void clearOrchestrationState(ConversationScope scope, long expectedControlEpoch) {
+        store.clearOrchestrationState(scope, expectedControlEpoch);
     }
 
     private Transition transitionFor(ConversationControlCommandType type) {

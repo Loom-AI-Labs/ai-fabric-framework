@@ -15,6 +15,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Function;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -142,6 +143,53 @@ class ChatSessionPendingActionStoreTest {
             });
     }
 
+    @Test
+    void shouldConsumeOnlyTheExpectedTopAction() {
+        InMemoryStorage storage = new InMemoryStorage();
+        storage.save(session("conv-1", "user-1", Map.of()));
+        ChatSessionPendingActionStore store = new ChatSessionPendingActionStore(storage);
+        PendingAction first = pending("first_action");
+        PendingAction second = pending("second_action");
+        store.pushPendingAction("conv-1", "user-1", first);
+        store.pushPendingAction("conv-1", "user-1", second);
+
+        assertThat(store.popPendingAction("conv-1", "user-1", first)).isEmpty();
+        assertThat(store.getPendingActionStack("conv-1", "user-1"))
+            .containsExactly(second, first);
+        assertThat(store.popPendingAction("conv-1", "user-1", second)).contains(second);
+        assertThat(store.getPendingActionStack("conv-1", "user-1"))
+            .containsExactly(first);
+    }
+
+    @Test
+    void shouldReplaceOnlyTheObservedStack() {
+        InMemoryStorage storage = new InMemoryStorage();
+        storage.save(session("conv-1", "user-1", Map.of()));
+        ChatSessionPendingActionStore store = new ChatSessionPendingActionStore(storage);
+        PendingAction first = pending("first_action");
+        PendingAction second = pending("second_action");
+        PendingAction replacement = pending("replacement_action");
+        store.pushPendingAction("conv-1", "user-1", first);
+        store.pushPendingAction("conv-1", "user-1", second);
+
+        assertThat(store.replacePendingActionStack(
+            "conv-1",
+            "user-1",
+            List.of(first),
+            List.of(replacement)
+        )).isFalse();
+        assertThat(store.getPendingActionStack("conv-1", "user-1"))
+            .containsExactly(second, first);
+        assertThat(store.replacePendingActionStack(
+            "conv-1",
+            "user-1",
+            List.of(second, first),
+            List.of(replacement)
+        )).isTrue();
+        assertThat(store.getPendingActionStack("conv-1", "user-1"))
+            .containsExactly(replacement);
+    }
+
     private PendingAction pending(String action) {
         return new PendingAction(action, Map.of("id", action + "-id"), null, Instant.parse("2026-06-18T08:30:00Z"));
     }
@@ -182,6 +230,21 @@ class ChatSessionPendingActionStoreTest {
             return sessions.values().stream()
                 .filter(session -> session.isOwnedBy(ownerId))
                 .toList();
+        }
+
+        @Override
+        public synchronized <T> Optional<T> mutateOwnedSession(
+            String conversationId,
+            String ownerId,
+            Function<ChatSession, T> mutation
+        ) {
+            ChatSession session = sessions.get(conversationId);
+            if (session == null || !session.isOwnedBy(ownerId)) {
+                return Optional.empty();
+            }
+            T result = mutation.apply(session);
+            sessions.put(conversationId, session);
+            return Optional.ofNullable(result);
         }
     }
 }

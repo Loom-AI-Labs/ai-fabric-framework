@@ -8,6 +8,7 @@ import ai.fabric.intent.action.PendingAction;
 import ai.fabric.intent.action.PendingActionStore;
 import ai.fabric.intent.action.AIActionNames;
 import ai.fabric.intent.orchestration.pipeline.PipelineContext;
+import ai.fabric.intent.orchestration.conversation.ConversationStateStoreAccess;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Collections;
@@ -43,9 +44,10 @@ public abstract class ConfirmationResolverSupport implements IntentResolver {
         if (context == null || context.getOrchestrationContext() == null || !context.getOrchestrationContext().hasConversation()) {
             return null;
         }
-        return pendingActionStore.peekPendingAction(
-                context.getOrchestrationContext().getConversationId(),
-                context.getConversationOwnerIdentifier())
+        if (context.getObservedPendingAction() != null) {
+            return context.getObservedPendingAction();
+        }
+        return ConversationStateStoreAccess.peekPending(pendingActionStore, context)
             .orElse(null);
     }
 
@@ -53,9 +55,7 @@ public abstract class ConfirmationResolverSupport implements IntentResolver {
         if (context == null || context.getOrchestrationContext() == null || !context.getOrchestrationContext().hasConversation()) {
             return null;
         }
-        return pendingActionStore.popPendingAction(
-                context.getOrchestrationContext().getConversationId(),
-                context.getConversationOwnerIdentifier())
+        return ConversationStateStoreAccess.consumeObservedPending(pendingActionStore, context)
             .orElse(null);
     }
 
@@ -66,11 +66,7 @@ public abstract class ConfirmationResolverSupport implements IntentResolver {
         if (context == null || context.getOrchestrationContext() == null || !context.getOrchestrationContext().hasConversation()) {
             return;
         }
-        pendingActionStore.pushPendingAction(
-            context.getOrchestrationContext().getConversationId(),
-            context.getConversationOwnerIdentifier(),
-            pendingAction
-        );
+        ConversationStateStoreAccess.pushPending(pendingActionStore, context, pendingAction);
     }
 
     protected boolean isExpired(PendingAction pending) {

@@ -38,15 +38,13 @@ public class ChatSessionActionDraftStore implements ActionDraftStore {
         if (!StringUtils.hasText(conversationId) || !StringUtils.hasText(ownerId) || draft == null) {
             return;
         }
-        storageProvider.findById(conversationId)
-            .filter(session -> session != null && session.isOwnedBy(ownerId))
-            .ifPresent(session -> {
-                Map<String, Object> metadata = session.getSessionMetadata();
-                Map<String, Object> mutable = metadata != null ? new HashMap<>(metadata) : new HashMap<>();
-                ActionDraftMetadata.put(mutable, draft);
-                session.setSessionMetadata(mutable);
-                storageProvider.save(session);
-            });
+        storageProvider.mutateOwnedSession(conversationId, ownerId, session -> {
+            Map<String, Object> metadata = session.getSessionMetadata();
+            Map<String, Object> mutable = metadata != null ? new HashMap<>(metadata) : new HashMap<>();
+            ActionDraftMetadata.put(mutable, draft);
+            session.setSessionMetadata(mutable);
+            return true;
+        });
     }
 
     @Override
@@ -54,9 +52,7 @@ public class ChatSessionActionDraftStore implements ActionDraftStore {
         if (!StringUtils.hasText(conversationId) || !StringUtils.hasText(ownerId)) {
             return Optional.empty();
         }
-        return storageProvider.findById(conversationId)
-            .filter(session -> session != null && session.isOwnedBy(ownerId))
-            .map(session -> {
+        return storageProvider.mutateOwnedSession(conversationId, ownerId, session -> {
                 Map<String, Object> metadata = session.getSessionMetadata();
                 if (metadata == null || metadata.isEmpty()) {
                     return null;
@@ -65,7 +61,6 @@ public class ChatSessionActionDraftStore implements ActionDraftStore {
                 ActionDraft existing = ActionDraftMetadata.peek(mutable);
                 ActionDraftMetadata.clear(mutable);
                 session.setSessionMetadata(mutable);
-                storageProvider.save(session);
                 return existing;
             })
             .filter(d -> d != null);

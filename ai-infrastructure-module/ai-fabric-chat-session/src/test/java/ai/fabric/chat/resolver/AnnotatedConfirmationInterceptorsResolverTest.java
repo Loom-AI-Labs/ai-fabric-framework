@@ -9,16 +9,13 @@ import ai.fabric.dto.IntentType;
 import ai.fabric.dto.MultiIntentResponse;
 import ai.fabric.intent.action.PendingAction;
 import ai.fabric.intent.action.PendingActionStore;
+import ai.fabric.intent.action.InMemoryPendingActionStore;
 import ai.fabric.intent.orchestration.OrchestrationContext;
 import ai.fabric.intent.orchestration.pipeline.PipelineContext;
 import java.time.Instant;
-import java.util.ArrayDeque;
-import java.util.Deque;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 import org.junit.jupiter.api.Test;
 import org.springframework.context.ApplicationContext;
 
@@ -30,7 +27,7 @@ class AnnotatedConfirmationInterceptorsResolverTest {
 
     @Test
     void shouldReplaceConfirmationIntentUsingAnnotatedInterceptor() {
-        PendingActionStore store = new StackPendingActionStore();
+        PendingActionStore store = new InMemoryPendingActionStore();
 
         TestInterceptors bean = new TestInterceptors();
         ApplicationContext applicationContext = mock(ApplicationContext.class);
@@ -72,7 +69,7 @@ class AnnotatedConfirmationInterceptorsResolverTest {
 
     @Test
     void shouldMarkConfirmedActionsWhenInterceptorExecutesAction() {
-        PendingActionStore store = new StackPendingActionStore();
+        PendingActionStore store = new InMemoryPendingActionStore();
 
         TestInterceptors bean = new TestInterceptors();
         ApplicationContext applicationContext = mock(ApplicationContext.class);
@@ -112,7 +109,7 @@ class AnnotatedConfirmationInterceptorsResolverTest {
 
     @Test
     void shouldPreserveNonConfirmationIntentsWhenAnnotatedInterceptorMatchesCompoundTurn() {
-        PendingActionStore store = new StackPendingActionStore();
+        PendingActionStore store = new InMemoryPendingActionStore();
 
         TestInterceptors bean = new TestInterceptors();
         ApplicationContext applicationContext = mock(ApplicationContext.class);
@@ -155,7 +152,7 @@ class AnnotatedConfirmationInterceptorsResolverTest {
 
     @Test
     void shouldSuppressCorrelatedActionIntentsWhenAnnotatedInterceptorPreservesCompoundFollowUps() {
-        PendingActionStore store = new StackPendingActionStore();
+        PendingActionStore store = new InMemoryPendingActionStore();
 
         TestInterceptors bean = new TestInterceptors();
         ApplicationContext applicationContext = mock(ApplicationContext.class);
@@ -194,7 +191,7 @@ class AnnotatedConfirmationInterceptorsResolverTest {
 
     @Test
     void shouldHonorOnceParamRegardlessOfStoredKeyCase() {
-        PendingActionStore store = new StackPendingActionStore();
+        PendingActionStore store = new InMemoryPendingActionStore();
 
         TestInterceptors bean = new TestInterceptors();
         ApplicationContext applicationContext = mock(ApplicationContext.class);
@@ -227,7 +224,7 @@ class AnnotatedConfirmationInterceptorsResolverTest {
 
     @Test
     void shouldNotResolveExpiredPendingActionWithAnnotatedInterceptor() {
-        PendingActionStore store = new StackPendingActionStore();
+        PendingActionStore store = new InMemoryPendingActionStore();
 
         TestInterceptors bean = new TestInterceptors();
         ApplicationContext applicationContext = mock(ApplicationContext.class);
@@ -258,6 +255,40 @@ class AnnotatedConfirmationInterceptorsResolverTest {
         PipelineContext updated = resolver.resolve(response, Map.of(), context);
         assertThat(updated).isSameAs(context);
         assertThat(store.peekPendingAction("conv-expired", "demo-user")).contains(expired);
+    }
+
+    @Test
+    void shouldExposeUnderlyingPendingActionAfterInterceptorPopsTop() {
+        PendingActionStore store = new InMemoryPendingActionStore();
+        StackWalkingInterceptors bean = new StackWalkingInterceptors();
+        ApplicationContext applicationContext = mock(ApplicationContext.class);
+        when(applicationContext.getBeansWithAnnotation(AIConfirmationInterceptors.class))
+            .thenReturn(Map.of("stackWalkingInterceptors", bean));
+        AnnotatedConfirmationInterceptorsResolver resolver =
+            new AnnotatedConfirmationInterceptorsResolver(store, applicationContext);
+        PipelineContext context = PipelineContext.from("no", OrchestrationContext.builder()
+            .userId("demo-user")
+            .conversationId("conv-stack")
+            .build());
+        PendingAction cancellation = new PendingAction(
+            "cancel_purchase_order", Map.of("orderNumber", "PO-42"), null, Instant.now()
+        );
+        PendingAction offer = new PendingAction(
+            "offer_order_discount", Map.of("orderNumber", "PO-42"), null, Instant.now()
+        );
+        store.pushPendingAction("conv-stack", "demo-user", cancellation);
+        store.pushPendingAction("conv-stack", "demo-user", offer);
+        MultiIntentResponse response = MultiIntentResponse.builder()
+            .intents(List.of(Intent.builder().type(IntentType.CONFIRMATION_NEGATIVE).build()))
+            .build();
+
+        PipelineContext updated = resolver.resolve(response, Map.of(), context);
+
+        assertThat(updated.getIntentResponse().getIntents()).singleElement().satisfies(intent -> {
+            assertThat(intent.getAction()).isEqualTo("cancel_purchase_order");
+            assertThat(intent.getActionParams()).containsEntry("orderNumber", "PO-42");
+        });
+        assertThat(store.peekPendingAction("conv-stack", "demo-user")).isEmpty();
     }
 
     @AIConfirmationInterceptors
@@ -297,57 +328,22 @@ class AnnotatedConfirmationInterceptorsResolverTest {
         }
     }
 
-    static final class StackPendingActionStore implements PendingActionStore {
+    @AIConfirmationInterceptors
+    static class StackWalkingInterceptors {
 
-        private final Map<String, Deque<PendingAction>> stacks = new ConcurrentHashMap<>();
-
-        @Override
-        public Optional<PendingAction> getPendingAction(String conversationId, String ownerId) {
-            return peekPendingAction(conversationId, ownerId);
-        }
-
-        @Override
-        public void savePendingAction(String conversationId, String ownerId, PendingAction pendingAction) {
-            clearPendingActions(conversationId, ownerId);
-            pushPendingAction(conversationId, ownerId, pendingAction);
-        }
-
-        @Override
-        public void clearPendingAction(String conversationId, String ownerId) {
-            clearPendingActions(conversationId, ownerId);
-        }
-
-        @Override
-        public Optional<PendingAction> peekPendingAction(String conversationId, String ownerId) {
-            Deque<PendingAction> stack = stacks.get(key(conversationId, ownerId));
-            return stack == null ? Optional.empty() : Optional.ofNullable(stack.peek());
-        }
-
-        @Override
-        public void pushPendingAction(String conversationId, String ownerId, PendingAction pendingAction) {
-            if (pendingAction == null) {
-                return;
+        @OnPendingActionConfirmation(
+            pendingActions = {"offer_order_discount"},
+            confirmation = IntentType.CONFIRMATION_NEGATIVE
+        )
+        public InterceptionDecision rejectOffer(ConfirmationInterceptionContext ctx) {
+            ctx.popPending();
+            PendingAction cancellation = ctx.peekPending();
+            if (cancellation == null) {
+                return ctx.reply("No cancellation remains.");
             }
-            stacks.computeIfAbsent(key(conversationId, ownerId), ignored -> new ArrayDeque<>()).push(pendingAction);
-        }
-
-        @Override
-        public Optional<PendingAction> popPendingAction(String conversationId, String ownerId) {
-            Deque<PendingAction> stack = stacks.get(key(conversationId, ownerId));
-            if (stack == null) {
-                return Optional.empty();
-            }
-            PendingAction popped = stack.poll();
-            return Optional.ofNullable(popped);
-        }
-
-        @Override
-        public void clearPendingActions(String conversationId, String ownerId) {
-            stacks.remove(key(conversationId, ownerId));
-        }
-
-        private String key(String conversationId, String ownerId) {
-            return conversationId + "::" + ownerId;
+            ctx.popPending();
+            return ctx.executeAction(cancellation.action(), cancellation.actionParams());
         }
     }
+
 }

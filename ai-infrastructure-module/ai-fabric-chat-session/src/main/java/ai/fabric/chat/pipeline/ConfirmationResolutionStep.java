@@ -7,6 +7,7 @@ import ai.fabric.chat.spi.IntentResolver;
 import ai.fabric.dto.MultiIntentResponse;
 import ai.fabric.intent.orchestration.pipeline.PipelineContext;
 import ai.fabric.intent.orchestration.pipeline.PipelineStep;
+import ai.fabric.intent.orchestration.conversation.ConversationStateScopeResolver;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -64,14 +65,16 @@ public class ConfirmationResolutionStep implements PipelineStep {
         }
 
         Map<String, Object> sessionMetadata = Map.of();
-        try {
-            ChatSession session = chatSessionService.getSession(conversationId, ownerId);
-            if (session != null && session.getSessionMetadata() != null) {
-                sessionMetadata = session.getSessionMetadata();
+        if (ConversationStateScopeResolver.resolve(context).isEmpty()) {
+            try {
+                ChatSession session = chatSessionService.getSession(conversationId, ownerId);
+                if (session != null && session.getSessionMetadata() != null) {
+                    sessionMetadata = session.getSessionMetadata();
+                }
+            } catch (Exception ex) {
+                log.debug("Failed to load session metadata for conversation {}: {}", conversationId, ex.getMessage());
+                return context;
             }
-        } catch (Exception ex) {
-            log.debug("Failed to load session metadata for conversation {}: {}", conversationId, ex.getMessage());
-            return context;
         }
 
         if (resolvers == null || resolvers.isEmpty()) {

@@ -7,6 +7,8 @@ import ai.fabric.intent.action.PendingAction;
 import ai.fabric.intent.action.PendingActionStore;
 import ai.fabric.intent.action.confirmation.ConfirmationInterceptorParamSupport;
 import ai.fabric.intent.orchestration.pipeline.PipelineContext;
+import ai.fabric.intent.orchestration.conversation.ConversationStateStoreAccess;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -25,6 +27,7 @@ public final class ConfirmationInterceptionContext {
     private final MultiIntentResponse intentResponse;
     private final PendingAction pendingAction;
     private final Intent confirmationIntent;
+    private List<PendingAction> observedStack;
 
     public ConfirmationInterceptionContext(PendingActionStore pendingActionStore,
                                            PipelineContext pipelineContext,
@@ -36,6 +39,15 @@ public final class ConfirmationInterceptionContext {
         this.intentResponse = intentResponse;
         this.pendingAction = pendingAction;
         this.confirmationIntent = confirmationIntent;
+        List<PendingAction> current = ConversationStateStoreAccess.pendingStack(
+            pendingActionStore,
+            pipelineContext
+        );
+        this.observedStack = pendingAction != null
+            && !current.isEmpty()
+            && pendingAction.equals(current.getFirst())
+                ? List.copyOf(current)
+                : List.of();
     }
 
     public PipelineContext pipelineContext() {
@@ -63,24 +75,55 @@ public final class ConfirmationInterceptionContext {
     }
 
     public PendingAction peekPending() {
-        return pendingActionStore.peekPendingAction(conversationId(), ownerId()).orElse(null);
+        return observedStack.isEmpty() ? null : observedStack.getFirst();
     }
 
     public PendingAction popPending() {
-        return pendingActionStore.popPendingAction(conversationId(), ownerId()).orElse(null);
+        if (observedStack.isEmpty()) {
+            return null;
+        }
+        List<PendingAction> expectedStack = observedStack;
+        PendingAction current = observedStack.getFirst();
+        PendingAction removed = ConversationStateStoreAccess.consumePending(
+            pendingActionStore,
+            pipelineContext,
+            current
+        ).orElse(null);
+        if (removed == null) {
+            throw new IllegalStateException(
+                "Pending confirmation stack changed while the interceptor was running"
+            );
+        }
+        observedStack = List.copyOf(expectedStack.subList(1, expectedStack.size()));
+        return removed;
     }
 
     public void pushPending(PendingAction pendingAction) {
-        pendingActionStore.pushPendingAction(conversationId(), ownerId(), pendingAction);
+        if (pendingAction == null) {
+            return;
+        }
+        List<PendingAction> replacement = new ArrayList<>();
+        replacement.add(pendingAction);
+        replacement.addAll(observedStack);
+        replaceObservedStack(replacement);
     }
 
     public void replaceTopPending(PendingAction updatedTop) {
-        popPending();
-        pushPending(updatedTop);
+        List<PendingAction> observed = pendingStack();
+        if (observed.isEmpty()) {
+            return;
+        }
+        List<PendingAction> replacement = new ArrayList<>(observed);
+        if (updatedTop == null) {
+            replacement.removeFirst();
+        } else {
+            replacement.set(0, updatedTop);
+        }
+        replaceObservedStack(replacement);
     }
 
     public List<PendingAction> pendingStack() {
-        return pendingActionStore.getPendingActionStack(conversationId(), ownerId());
+        return List.copyOf(observedStack);
     }
 
     public PendingAction previousPending() {
@@ -89,7 +132,25 @@ public final class ConfirmationInterceptionContext {
     }
 
     public void replacePendingStack(List<PendingAction> stackTopFirst) {
-        pendingActionStore.replacePendingActionStack(conversationId(), ownerId(), stackTopFirst);
+        replaceObservedStack(stackTopFirst);
+    }
+
+    private void replaceObservedStack(List<PendingAction> replacementTopFirst) {
+        List<PendingAction> expected = observedStack;
+        List<PendingAction> replacement = replacementTopFirst == null
+            ? List.of()
+            : List.copyOf(replacementTopFirst);
+        if (!ConversationStateStoreAccess.replaceObservedPendingStack(
+            pendingActionStore,
+            pipelineContext,
+            expected,
+            replacement
+        )) {
+            throw new IllegalStateException(
+                "Pending confirmation stack changed while the interceptor was running"
+            );
+        }
+        observedStack = replacement;
     }
 
     public void setTopPendingGuard(String key) {

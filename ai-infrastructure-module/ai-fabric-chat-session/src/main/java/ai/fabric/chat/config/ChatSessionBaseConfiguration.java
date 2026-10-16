@@ -4,6 +4,7 @@ import ai.fabric.chat.pipeline.ConversationEnrichmentStep;
 import ai.fabric.chat.pipeline.ConfirmationResolutionStep;
 import ai.fabric.chat.pipeline.ConversationRecordingStep;
 import ai.fabric.chat.pipeline.WorkingSetTargetSeedingStep;
+import ai.fabric.chat.control.ConversationControlGateway;
 import ai.fabric.chat.resolver.AnnotatedConfirmationInterceptorsResolver;
 import ai.fabric.chat.resolver.CompoundConfirmationResolver;
 import ai.fabric.chat.resolver.ConfiguredConfirmationInterceptorsResolver;
@@ -17,6 +18,8 @@ import ai.fabric.chat.spi.IntentResolver;
 import ai.fabric.intent.action.confirmation.ConfirmationInterceptorCatalogProvider;
 import ai.fabric.chat.storage.ChatSessionActionDraftStore;
 import ai.fabric.chat.storage.ChatSessionPendingActionStore;
+import ai.fabric.chat.storage.ConversationAwareActionDraftStore;
+import ai.fabric.chat.storage.ConversationAwarePendingActionStore;
 import ai.fabric.chat.strategy.MemoryStrategy;
 import ai.fabric.chat.strategy.SlidingWindowMemoryStrategy;
 import ai.fabric.intent.action.PendingActionStore;
@@ -55,8 +58,15 @@ class ChatSessionBaseConfiguration {
     @Bean
     @Primary
     PendingActionStore pendingActionStore(ChatSessionStorageProvider storageProvider,
-                                          ChatSessionProperties properties) {
-        return new ChatSessionPendingActionStore(storageProvider, properties);
+                                          ChatSessionProperties properties,
+                                          ObjectProvider<ConversationControlGateway> controlGateway) {
+        return new ConversationAwarePendingActionStore(
+            new ChatSessionPendingActionStore(storageProvider, properties),
+            controlGateway,
+            properties != null
+                ? properties.getMaxPendingActionStackDepth()
+                : ChatSessionPendingActionStore.DEFAULT_MAX_STACK_DEPTH
+        );
     }
 
     @Bean
@@ -68,8 +78,12 @@ class ChatSessionBaseConfiguration {
 
     @Bean
     @Primary
-    ActionDraftStore actionDraftStore(ChatSessionStorageProvider storageProvider) {
-        return new ChatSessionActionDraftStore(storageProvider);
+    ActionDraftStore actionDraftStore(ChatSessionStorageProvider storageProvider,
+                                      ObjectProvider<ConversationControlGateway> controlGateway) {
+        return new ConversationAwareActionDraftStore(
+            new ChatSessionActionDraftStore(storageProvider),
+            controlGateway
+        );
     }
 
     @Bean
@@ -113,15 +127,26 @@ class ChatSessionBaseConfiguration {
     @ConditionalOnBean(ChatSessionService.class)
     ConversationRecordingStep conversationRecordingStep(ChatSessionService chatSessionService,
                                                         ChatSessionProperties properties,
-                                                        ObjectProvider<PIIDetectionService> piiDetectionService) {
-        return new ConversationRecordingStep(chatSessionService, properties, piiDetectionService);
+                                                        ObjectProvider<PIIDetectionService> piiDetectionService,
+                                                        ObjectProvider<ConversationControlGateway> controlGateway) {
+        return new ConversationRecordingStep(
+            chatSessionService,
+            properties,
+            piiDetectionService,
+            controlGateway.getIfAvailable()
+        );
     }
 
     @Bean
     @ConditionalOnBean(ChatSessionService.class)
     WorkingSetTargetSeedingStep workingSetTargetSeedingStep(ChatSessionService chatSessionService,
-                                                            ChatSessionProperties properties) {
-        return new WorkingSetTargetSeedingStep(chatSessionService, properties);
+                                                            ChatSessionProperties properties,
+                                                            ObjectProvider<ConversationControlGateway> controlGateway) {
+        return new WorkingSetTargetSeedingStep(
+            chatSessionService,
+            properties,
+            controlGateway.getIfAvailable()
+        );
     }
 
     @Bean

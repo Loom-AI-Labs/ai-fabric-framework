@@ -14,6 +14,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.function.Function;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -110,6 +111,19 @@ class ChatSessionActionDraftStoreTest {
             return sessions.values().stream()
                 .filter(session -> session.isOwnedBy(ownerId))
                 .toList();
+        }
+
+        @Override
+        public synchronized <T> Optional<T> mutateOwnedSession(
+            String conversationId,
+            String ownerId,
+            Function<ChatSession, T> mutation
+        ) {
+            ChatSession session = sessions.get(conversationId);
+            if (session == null || !session.isOwnedBy(ownerId)) {
+                return Optional.empty();
+            }
+            return Optional.ofNullable(mutation.apply(session));
         }
     }
 }

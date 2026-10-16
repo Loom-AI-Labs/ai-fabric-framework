@@ -2,7 +2,10 @@ package com.ai.fabric.realapps.chat.orders.resolver;
 
 import ai.fabric.chat.interception.ConfirmationInterceptionContext;
 import ai.fabric.chat.interception.InterceptionDecision;
+import ai.fabric.intent.action.InMemoryPendingActionStore;
 import ai.fabric.intent.action.PendingAction;
+import ai.fabric.intent.orchestration.OrchestrationContext;
+import ai.fabric.intent.orchestration.pipeline.PipelineContext;
 import java.time.Instant;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
@@ -19,10 +22,18 @@ class CancellationRetentionOfferResolverTest {
             "Cancel order PO-1007?",
             Instant.parse("2026-10-12T12:00:00Z")
         );
+        InMemoryPendingActionStore pendingActionStore = new InMemoryPendingActionStore();
+        PipelineContext pipelineContext = PipelineContext.builder()
+            .orchestrationContext(OrchestrationContext.builder()
+                .conversationId("conversation-1")
+                .userId("owner-1")
+                .build())
+            .build();
+        pendingActionStore.pushPendingAction("conversation-1", "owner-1", cancellation);
         ConfirmationInterceptionContext context =
             new ConfirmationInterceptionContext(
-                null,
-                null,
+                pendingActionStore,
+                pipelineContext,
                 null,
                 cancellation,
                 null

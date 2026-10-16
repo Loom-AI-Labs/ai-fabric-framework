@@ -3,6 +3,7 @@ package ai.fabric.intent.orchestration.pipeline.steps;
 import ai.fabric.intent.action.PendingAction;
 import ai.fabric.intent.action.PendingActionStore;
 import ai.fabric.intent.orchestration.OrchestrationContext;
+import ai.fabric.intent.orchestration.conversation.ConversationStateStoreAccess;
 import ai.fabric.intent.orchestration.pipeline.PipelineContext;
 import ai.fabric.intent.orchestration.pipeline.PipelineStep;
 import java.util.Collections;
@@ -60,7 +61,9 @@ public class PendingActionPromptAugmentationStep implements PipelineStep {
             return context;
         }
 
-        PendingAction pending = pendingActionStore.peekPendingAction(conversationId, ownerId).orElse(null);
+        PendingAction pending = ConversationStateStoreAccess
+            .peekPending(pendingActionStore, context)
+            .orElse(null);
         if (pending == null || !StringUtils.hasText(pending.action())) {
             return context;
         }
@@ -77,6 +80,7 @@ public class PendingActionPromptAugmentationStep implements PipelineStep {
 
         PipelineContext updated = context.toBuilder()
             .pinnedTargetsContext(combined)
+            .observedPendingAction(pending)
             .build();
 
         Map<String, Object> meta = new LinkedHashMap<>();

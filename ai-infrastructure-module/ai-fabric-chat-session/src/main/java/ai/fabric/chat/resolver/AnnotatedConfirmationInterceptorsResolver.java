@@ -11,6 +11,7 @@ import ai.fabric.intent.action.AIActionNames;
 import ai.fabric.intent.action.PendingAction;
 import ai.fabric.intent.action.PendingActionStore;
 import ai.fabric.intent.action.confirmation.ConfirmationInterceptorParamSupport;
+import ai.fabric.intent.orchestration.conversation.ConversationStateStoreAccess;
 import ai.fabric.intent.orchestration.pipeline.PipelineContext;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
@@ -93,7 +94,12 @@ public class AnnotatedConfirmationInterceptorsResolver extends ConfirmationResol
 
         // Optional once/guard: set onceParam=true on the current top pending action before invoking handler.
         if (StringUtils.hasText(handler.onceParam) && handler.autoSetOnceParam) {
-            trySetOnceParamOnTop(handler.onceParam, context);
+            PendingAction guarded = trySetOnceParamOnTop(handler.onceParam, context);
+            if (guarded == null) {
+                return context;
+            }
+            pending = guarded;
+            context = context.toBuilder().observedPendingAction(guarded).build();
         }
 
         ConfirmationInterceptionContext interceptionContext = new ConfirmationInterceptionContext(
@@ -155,21 +161,32 @@ public class AnnotatedConfirmationInterceptorsResolver extends ConfirmationResol
         return null;
     }
 
-    private void trySetOnceParamOnTop(String key, PipelineContext context) {
+    private PendingAction trySetOnceParamOnTop(String key, PipelineContext context) {
         String normalizedKey = ConfirmationInterceptorParamSupport.normalizeOnceParam(key);
         if (!StringUtils.hasText(normalizedKey)) {
-            return;
+            return null;
         }
         PendingAction current = peekPending(context);
         if (current == null) {
-            return;
+            return null;
         }
         if (ConfirmationInterceptorParamSupport.isGuardSet(current, normalizedKey)) {
-            return;
+            return current;
         }
         PendingAction updated = ConfirmationInterceptorParamSupport.withGuardSet(current, normalizedKey);
-        popPending(context);
-        pushPending(context, updated);
+        List<PendingAction> observed = ConversationStateStoreAccess.pendingStack(store(), context);
+        if (observed.isEmpty() || !current.equals(observed.getFirst())) {
+            return null;
+        }
+        List<PendingAction> replacement = new java.util.ArrayList<>(observed);
+        replacement.set(0, updated);
+        boolean replaced = ConversationStateStoreAccess.replaceObservedPendingStack(
+            store(),
+            context,
+            observed,
+            replacement
+        );
+        return replaced ? updated : null;
     }
 
     private InterceptionDecision invoke(InterceptorMethod handler, ConfirmationInterceptionContext ctx) {

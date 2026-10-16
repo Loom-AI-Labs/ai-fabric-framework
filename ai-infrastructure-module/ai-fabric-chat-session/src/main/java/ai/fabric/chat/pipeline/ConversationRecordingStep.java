@@ -1,6 +1,8 @@
 package ai.fabric.chat.pipeline;
 
 import ai.fabric.chat.config.ChatSessionProperties;
+import ai.fabric.chat.control.ConversationControlGateway;
+import ai.fabric.chat.control.ConversationScope;
 import ai.fabric.chat.service.ChatSessionService;
 import ai.fabric.dto.PIIDetection;
 import ai.fabric.dto.PIIDetectionResult;
@@ -12,10 +14,11 @@ import ai.fabric.intent.orchestration.OrchestrationResult;
 import ai.fabric.intent.orchestration.OrchestrationResultType;
 import ai.fabric.intent.orchestration.pipeline.PipelineContext;
 import ai.fabric.intent.orchestration.pipeline.PipelineStep;
+import ai.fabric.intent.orchestration.conversation.ConversationStateScope;
+import ai.fabric.intent.orchestration.conversation.ConversationStateScopeResolver;
 import ai.fabric.intent.orchestration.request.ConversationPersistencePolicy;
 import ai.fabric.intent.orchestration.targets.ResolvedTarget;
 import ai.fabric.privacy.pii.PIIDetectionService;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.util.StringUtils;
@@ -35,7 +38,6 @@ import java.util.Set;
  * <p><strong>Order:</strong> 95 (after ResponseSanitizationStep (90), before HistoryPersistenceStep (100))</p>
  */
 @Slf4j
-@RequiredArgsConstructor
 public class ConversationRecordingStep implements PipelineStep {
 
     private static final String STEP_NAME = "ConversationRecording";
@@ -59,6 +61,8 @@ public class ConversationRecordingStep implements PipelineStep {
 
     private static final String SESSION_META_KEY_LAST_RESOLVED_TARGETS = "lastResolvedTargets";
     private static final String SESSION_META_KEY_LAST_RESOLVED_TARGETS_TURN_INDEX = "lastResolvedTargetsTurnIndex";
+    private static final String STATE_META_KEY_LAST_WORKING_SET = "lastWorkingSet";
+    private static final String RESULT_META_KEY_TERMINAL_ACTION = "terminalAction";
 
     private static final int ACTION_REFS_MAX_FIELDS = 12;
     private static final int ACTION_REFS_MAX_STRING_LENGTH = 120;
@@ -68,6 +72,23 @@ public class ConversationRecordingStep implements PipelineStep {
     private final ChatSessionService chatSessionService;
     private final ChatSessionProperties properties;
     private final ObjectProvider<PIIDetectionService> piiDetectionService;
+    private final ConversationControlGateway conversationControlGateway;
+
+    public ConversationRecordingStep(ChatSessionService chatSessionService,
+                                     ChatSessionProperties properties,
+                                     ObjectProvider<PIIDetectionService> piiDetectionService) {
+        this(chatSessionService, properties, piiDetectionService, null);
+    }
+
+    public ConversationRecordingStep(ChatSessionService chatSessionService,
+                                     ChatSessionProperties properties,
+                                     ObjectProvider<PIIDetectionService> piiDetectionService,
+                                     ConversationControlGateway conversationControlGateway) {
+        this.chatSessionService = chatSessionService;
+        this.properties = properties;
+        this.piiDetectionService = piiDetectionService;
+        this.conversationControlGateway = conversationControlGateway;
+    }
 
     @Override
     public String getStepName() {
@@ -98,7 +119,7 @@ public class ConversationRecordingStep implements PipelineStep {
         if (context.isShouldTerminate() && !shouldRecordAfterTermination(context)) {
             return context;
         }
-        if (isConversationPersistenceDisabled(context)) {
+        if (isAllConversationPersistenceDisabled(context)) {
             return context;
         }
         if (properties == null || !properties.isEnabled()) {
@@ -117,36 +138,59 @@ public class ConversationRecordingStep implements PipelineStep {
             return context;
         }
 
-        String conversationInput =
-            context.getOrchestrationRequest() != null
-                && StringUtils.hasText(
-                    context.getOrchestrationRequest().conversationInput()
-                )
-                ? context.getOrchestrationRequest().conversationInput()
-                : context.getOriginalQuery();
-        String userQuery = redactIfPossible(conversationInput);
-        String assistantResponse = sanitizedMessage(context);
-        if (!StringUtils.hasText(userQuery) || !StringUtils.hasText(assistantResponse)) {
-            return context;
-        }
-
         try {
             Map<String, Object> turnMetadata = buildTurnMetadata(context);
-            chatSessionService.recordTurn(conversationId, ownerId, userQuery, assistantResponse, turnMetadata);
-            persistPinnedTargets(context, conversationId, ownerId);
+            var canonicalScope = ConversationStateScopeResolver.resolve(context);
+            // A successful terminal action may intentionally transfer control and advance the epoch.
+            if (canonicalScope.isPresent() && !isSuccessfulTerminalAction(context)) {
+                persistCanonicalState(context, canonicalScope.get(), turnMetadata);
+            }
+
+            if (shouldPersistLegacyTranscript(context)) {
+                String conversationInput =
+                    context.getOrchestrationRequest() != null
+                        && StringUtils.hasText(context.getOrchestrationRequest().conversationInput())
+                        ? context.getOrchestrationRequest().conversationInput()
+                        : context.getOriginalQuery();
+                String userQuery = redactIfPossible(conversationInput);
+                String assistantResponse = sanitizedMessage(context);
+                if (StringUtils.hasText(userQuery) && StringUtils.hasText(assistantResponse)) {
+                    chatSessionService.recordTurn(conversationId, ownerId, userQuery, assistantResponse, turnMetadata);
+                    if (canonicalScope.isEmpty()) {
+                        persistPinnedTargets(context, conversationId, ownerId);
+                    }
+                }
+            }
         } catch (Exception ex) {
-            log.warn("Failed to record conversation turn conversationId={}: {}", conversationId, ex.getMessage());
+            log.warn("Failed to persist conversation state conversationId={}: {}", conversationId, ex.getMessage());
+            if (context.getOrchestrationRequest() != null
+                && context.getOrchestrationRequest().conversationStateBinding() != null) {
+                return context.terminate(OrchestrationResult.builder()
+                    .type(OrchestrationResultType.ERROR)
+                    .success(false)
+                    .errorCode("CONVERSATION_STATE_PERSISTENCE_FAILED")
+                    .message("The conversation state could not be saved. Please retry.")
+                    .build());
+            }
         }
         return context;
     }
 
-    private boolean isConversationPersistenceDisabled(PipelineContext context) {
-        if (context != null && context.getOrchestrationRequest() != null) {
-            ConversationPersistencePolicy policy =
-                context.getOrchestrationRequest().conversationPersistencePolicy();
-            if (policy != ConversationPersistencePolicy.CONVERSATION) {
-                return true;
-            }
+    private boolean isSuccessfulTerminalAction(PipelineContext context) {
+        OrchestrationResult result = context != null ? context.getIntentResult() : null;
+        return result != null
+            && result.isSuccess()
+            && result.getType() == OrchestrationResultType.ACTION_EXECUTED
+            && result.getMetadata() != null
+            && Boolean.TRUE.equals(result.getMetadata().get(RESULT_META_KEY_TERMINAL_ACTION));
+    }
+
+    private boolean isAllConversationPersistenceDisabled(PipelineContext context) {
+        if (context != null
+            && context.getOrchestrationRequest() != null
+            && context.getOrchestrationRequest().conversationPersistencePolicy()
+                == ConversationPersistencePolicy.NEVER) {
+            return true;
         }
         Object mode = null;
         if (context != null && context.getOrchestrationContext() != null
@@ -160,22 +204,73 @@ public class ConversationRecordingStep implements PipelineStep {
         return mode != null && QUERY_PERSISTENCE_MODE_NEVER_PERSIST.equalsIgnoreCase(mode.toString().trim());
     }
 
+    private boolean shouldPersistLegacyTranscript(PipelineContext context) {
+        return context != null
+            && (context.getOrchestrationRequest() == null
+                || context.getOrchestrationRequest().conversationPersistencePolicy()
+                    == ConversationPersistencePolicy.CONVERSATION);
+    }
+
+    private void persistCanonicalState(PipelineContext context,
+                                       ConversationStateScope stateScope,
+                                       Map<String, Object> turnMetadata) {
+        if (conversationControlGateway == null) {
+            throw new IllegalStateException(
+                "ConversationControlGateway is required for canonical conversation state"
+            );
+        }
+        Map<String, Object> stateUpdates = new LinkedHashMap<>();
+        Object workingSet = turnMetadata.get(TURN_META_KEY_WORKING_SET);
+        if (workingSet instanceof Map<?, ?> workingSetMap && !workingSetMap.isEmpty()) {
+            stateUpdates.put(STATE_META_KEY_LAST_WORKING_SET, workingSet);
+        }
+        collectPinnedTargetUpdates(context, canonicalTurnIndex(context), stateUpdates);
+        if (stateUpdates.isEmpty()) {
+            return;
+        }
+        conversationControlGateway.updateOrchestrationState(
+            toControlScope(stateScope),
+            stateScope.expectedControlEpoch(),
+            current -> {
+                Map<String, Object> merged = new LinkedHashMap<>(current);
+                merged.putAll(stateUpdates);
+                return Collections.unmodifiableMap(merged);
+            }
+        );
+    }
+
     private void persistPinnedTargets(PipelineContext context, String conversationId, String ownerId) {
         if (context == null || !StringUtils.hasText(conversationId) || !StringUtils.hasText(ownerId)) {
             return;
         }
-        if (properties == null || properties.getPinnedTargetPersistence() == null) {
+        Map<String, Object> updates = new LinkedHashMap<>();
+        collectPinnedTargetUpdates(context, legacyTurnIndex(conversationId, ownerId), updates);
+        if (updates.isEmpty()) {
+            return;
+        }
+        try {
+            chatSessionService.mergeSessionMetadata(conversationId, ownerId, updates);
+        } catch (Exception ex) {
+            log.debug("Failed to persist lastResolvedTargets for conversationId={}: {}", conversationId, ex.getMessage());
+        }
+    }
+
+    private void collectPinnedTargetUpdates(PipelineContext context,
+                                            long turnIndex,
+                                            Map<String, Object> updates) {
+        if (context == null
+            || updates == null
+            || properties == null
+            || properties.getPinnedTargetPersistence() == null) {
             return;
         }
         ChatSessionProperties.PinnedTargetPersistence persistence = properties.getPinnedTargetPersistence();
         if (!persistence.isEnabled()) {
             return;
         }
-
         boolean requestHasAttachments = context.getOrchestrationContext() != null
             && context.getOrchestrationContext().getAttachmentsNormalized() != null
             && !context.getOrchestrationContext().getAttachmentsNormalized().isEmpty();
-
         List<ResolvedTarget> actionResultTargets = extractPinnedTargetsFromActionResult(context);
         boolean hasActionResultTargets = actionResultTargets != null && !actionResultTargets.isEmpty();
 
@@ -199,13 +294,6 @@ public class ConversationRecordingStep implements PipelineStep {
         int maxMetadataEntries = Math.max(0, persistence.getMaxMetadataEntries());
         int maxMetadataValueChars = Math.max(0, persistence.getMaxMetadataValueChars());
         boolean storeIdlessTargets = persistence.isStoreIdlessTargets();
-
-        int turnIndex = 0;
-        try {
-            var session = chatSessionService.getSession(conversationId, ownerId);
-            turnIndex = session != null && session.getTurns() != null ? session.getTurns().size() : 0;
-        } catch (Exception ignored) {
-        }
 
         List<Map<String, Object>> stored = new ArrayList<>();
         for (ResolvedTarget target : targets) {
@@ -279,15 +367,35 @@ public class ConversationRecordingStep implements PipelineStep {
             return;
         }
 
-        Map<String, Object> updates = new LinkedHashMap<>();
         updates.put(SESSION_META_KEY_LAST_RESOLVED_TARGETS, Collections.unmodifiableList(stored));
         updates.put(SESSION_META_KEY_LAST_RESOLVED_TARGETS_TURN_INDEX, turnIndex);
+    }
 
+    private long legacyTurnIndex(String conversationId, String ownerId) {
         try {
-            chatSessionService.mergeSessionMetadata(conversationId, ownerId, updates);
-        } catch (Exception ex) {
-            log.debug("Failed to persist lastResolvedTargets for conversationId={}: {}", conversationId, ex.getMessage());
+            var session = chatSessionService.getSession(conversationId, ownerId);
+            return session != null && session.getTurns() != null ? session.getTurns().size() : 0L;
+        } catch (Exception ignored) {
+            return 0L;
         }
+    }
+
+    private long canonicalTurnIndex(PipelineContext context) {
+        if (context != null
+            && context.getOrchestrationContext() != null
+            && context.getOrchestrationContext().getApprovedConversationSnapshot() != null) {
+            return context.getOrchestrationContext().getApprovedConversationSnapshot().sourceTurnCount() + 1L;
+        }
+        return 1L;
+    }
+
+    private ConversationScope toControlScope(ConversationStateScope scope) {
+        return new ConversationScope(
+            scope.tenantId(),
+            scope.deploymentId(),
+            scope.conversationId(),
+            scope.ownerId()
+        );
     }
 
     private List<ResolvedTarget> mergePinnedTargetsForPersistence(List<ResolvedTarget> writeTargets,

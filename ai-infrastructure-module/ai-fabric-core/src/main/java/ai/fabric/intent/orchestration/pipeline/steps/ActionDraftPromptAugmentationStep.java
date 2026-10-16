@@ -6,6 +6,7 @@ import ai.fabric.intent.actiondraft.ActionDraft;
 import ai.fabric.intent.actiondraft.ActionDraftContinuation;
 import ai.fabric.intent.actiondraft.ActionDraftStore;
 import ai.fabric.intent.orchestration.OrchestrationContext;
+import ai.fabric.intent.orchestration.conversation.ConversationStateStoreAccess;
 import ai.fabric.intent.orchestration.pipeline.PipelineContext;
 import ai.fabric.intent.orchestration.pipeline.PipelineStep;
 import ai.fabric.intent.orchestration.request.ConversationPersistencePolicy;
@@ -70,9 +71,7 @@ public class ActionDraftPromptAugmentationStep implements PipelineStep {
 
         ActionDraft draft;
         try {
-            draft = actionDraftStore
-                .peekDraft(conversationId, ownerId)
-                .orElse(null);
+            draft = ConversationStateStoreAccess.peekDraft(actionDraftStore, context).orElse(null);
         } catch (RuntimeException ex) {
             log.warn(
                 "Failed to load action draft for conversation {}: {}",

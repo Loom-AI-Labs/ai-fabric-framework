@@ -10,9 +10,11 @@ import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.HexFormat;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.function.UnaryOperator;
 import javax.sql.DataSource;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -27,6 +29,8 @@ import org.springframework.util.StringUtils;
  * construct this store with {@code initializeSchema=false}.</p>
  */
 public final class JdbcConversationControlStore implements ConversationControlStore {
+
+    private static final int MAX_ORCHESTRATION_STATE_JSON_CHARS = 262_144;
 
     private static final String CONTROL_COLUMNS = """
         tenant_id, deployment_id, conversation_id, owner_id, control_state,
@@ -166,6 +170,9 @@ public final class JdbcConversationControlStore implements ConversationControlSt
                 command.scope(), targetState, nextVersion, nextEpoch,
                 activeHandoverId, channelBindingId, now
             );
+            if (targetState == ConversationControlState.CLOSED) {
+                deleteOrchestrationState(command.scope());
+            }
             return storeCommandResult(
                 command,
                 next,
@@ -248,6 +255,130 @@ public final class JdbcConversationControlStore implements ConversationControlSt
             scope.tenantId(), scope.deploymentId(), scope.conversationId(), scope.ownerId(),
             afterSequence, limit
         ));
+    }
+
+    @Override
+    public Optional<ConversationOrchestrationState> findOrchestrationState(
+        ConversationScope scope,
+        long expectedControlEpoch
+    ) {
+        return transactions.execute(status -> {
+            verifyCanonicalAiTurn(lock(scope), expectedControlEpoch);
+            return queryOrchestrationState(scope, false);
+        });
+    }
+
+    @Override
+    public ConversationOrchestrationState updateOrchestrationState(
+        ConversationScope scope,
+        long expectedControlEpoch,
+        UnaryOperator<Map<String, Object>> mutation,
+        Instant now
+    ) {
+        if (mutation == null) {
+            throw new IllegalArgumentException("mutation is required");
+        }
+        ConversationOrchestrationState result = transactions.execute(status -> {
+            verifyCanonicalAiTurn(lock(scope), expectedControlEpoch);
+            ConversationOrchestrationState current = queryOrchestrationState(scope, true)
+                .orElse(new ConversationOrchestrationState(scope, 0, Map.of(), now));
+            Map<String, Object> updated = mutation.apply(new LinkedHashMap<>(current.metadata()));
+            Map<String, Object> normalized = updated == null || updated.isEmpty()
+                ? Map.of()
+                : new LinkedHashMap<>(updated);
+            long revision = current.revision() + 1;
+            if (normalized.isEmpty()) {
+                deleteOrchestrationState(scope);
+                return new ConversationOrchestrationState(scope, revision, Map.of(), now);
+            }
+            String json = writeJson(normalized);
+            if (json.length() > MAX_ORCHESTRATION_STATE_JSON_CHARS) {
+                throw new ConversationControlViolationException(
+                    "CONVERSATION_STATE_TOO_LARGE",
+                    "Conversation orchestration state exceeds the configured bound."
+                );
+            }
+            int updatedRows = jdbc.update(
+                """
+                UPDATE ai_conversation_orchestration_state
+                   SET owner_id = ?, state_revision = ?, state_json = ?, updated_at = ?
+                 WHERE tenant_id = ? AND deployment_id = ? AND conversation_id = ?
+                """,
+                scope.ownerId(), revision, json, timestamp(now),
+                scope.tenantId(), scope.deploymentId(), scope.conversationId()
+            );
+            if (updatedRows == 0) {
+                jdbc.update(
+                    """
+                    INSERT INTO ai_conversation_orchestration_state (
+                      tenant_id, deployment_id, conversation_id, owner_id,
+                      state_revision, state_json, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    scope.tenantId(), scope.deploymentId(), scope.conversationId(), scope.ownerId(),
+                    revision, json, timestamp(now)
+                );
+            }
+            return new ConversationOrchestrationState(scope, revision, normalized, now);
+        });
+        return java.util.Objects.requireNonNull(result, "transaction returned no orchestration state");
+    }
+
+    @Override
+    public void clearOrchestrationState(ConversationScope scope, long expectedControlEpoch) {
+        transactions.executeWithoutResult(status -> {
+            verifyCanonicalAiTurn(lock(scope), expectedControlEpoch);
+            deleteOrchestrationState(scope);
+        });
+    }
+
+    private void verifyCanonicalAiTurn(
+        ConversationControlSnapshot control,
+        long expectedControlEpoch
+    ) {
+        if (expectedControlEpoch < 0) {
+            throw new IllegalArgumentException("expectedControlEpoch cannot be negative");
+        }
+        if (control.state() != ConversationControlState.AI_ACTIVE
+            || control.controlEpoch() != expectedControlEpoch) {
+            throw new ConversationControlViolationException(
+                "AI_TURN_LEASE_STALE",
+                "Canonical conversation state requires the current AI control epoch."
+            );
+        }
+    }
+
+    private Optional<ConversationOrchestrationState> queryOrchestrationState(
+        ConversationScope scope,
+        boolean forUpdate
+    ) {
+        String sql = """
+            SELECT owner_id, state_revision, state_json, updated_at
+              FROM ai_conversation_orchestration_state
+             WHERE tenant_id = ? AND deployment_id = ? AND conversation_id = ?
+            """ + (forUpdate ? " FOR UPDATE" : "");
+        List<ConversationOrchestrationState> rows = jdbc.query(
+            sql,
+            (rs, row) -> {
+                verifyOwner(scope, rs.getString("owner_id"));
+                return new ConversationOrchestrationState(
+                    scope,
+                    rs.getLong("state_revision"),
+                    readJson(rs.getString("state_json")),
+                    instant(rs, "updated_at")
+                );
+            },
+            scope.tenantId(), scope.deploymentId(), scope.conversationId()
+        );
+        return rows.stream().findFirst();
+    }
+
+    private void deleteOrchestrationState(ConversationScope scope) {
+        jdbc.update(
+            "DELETE FROM ai_conversation_orchestration_state"
+                + " WHERE tenant_id = ? AND deployment_id = ? AND conversation_id = ? AND owner_id = ?",
+            scope.tenantId(), scope.deploymentId(), scope.conversationId(), scope.ownerId()
+        );
     }
 
     private ConversationControlSnapshot lock(ConversationScope scope) {
@@ -545,6 +676,21 @@ public final class JdbcConversationControlStore implements ConversationControlSt
               PRIMARY KEY (message_id),
               UNIQUE (tenant_id, deployment_id, conversation_id, message_sequence),
               UNIQUE (tenant_id, deployment_id, conversation_id, owner_id, client_message_id)
+            )
+            """);
+        jdbc.execute("""
+            CREATE TABLE IF NOT EXISTS ai_conversation_orchestration_state (
+              tenant_id VARCHAR(128) NOT NULL,
+              deployment_id VARCHAR(128) NOT NULL,
+              conversation_id VARCHAR(160) NOT NULL,
+              owner_id VARCHAR(256) NOT NULL,
+              state_revision BIGINT NOT NULL,
+              state_json VARCHAR(262144) NOT NULL,
+              updated_at TIMESTAMP NOT NULL,
+              PRIMARY KEY (tenant_id, deployment_id, conversation_id),
+              FOREIGN KEY (tenant_id, deployment_id, conversation_id)
+                REFERENCES ai_conversation_control (tenant_id, deployment_id, conversation_id)
+                ON DELETE CASCADE
             )
             """);
     }

@@ -15,6 +15,7 @@ import ai.fabric.intent.action.confirmation.ConfirmationInterceptorRule;
 import ai.fabric.intent.action.confirmation.ConfirmationInterceptorStackPolicy;
 import ai.fabric.intent.action.confirmation.ConfirmationInterceptorTrigger;
 import ai.fabric.intent.orchestration.pipeline.PipelineContext;
+import ai.fabric.intent.orchestration.conversation.ConversationStateStoreAccess;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.LinkedHashMap;
@@ -76,9 +77,10 @@ public class ConfiguredConfirmationInterceptorsResolver extends ConfirmationReso
             return context;
         }
 
-        String conversationId = context.getOrchestrationContext() != null ? context.getOrchestrationContext().getConversationId() : null;
-        String ownerId = context.getConversationOwnerIdentifier();
-        List<PendingAction> stackSnapshot = store().getPendingActionStack(conversationId, ownerId);
+        List<PendingAction> stackSnapshot = ConversationStateStoreAccess.pendingStack(store(), context);
+        if (stackSnapshot.isEmpty() || !pending.equals(stackSnapshot.getFirst())) {
+            return context;
+        }
         List<PendingAction> workingStack = new ArrayList<>(stackSnapshot);
 
         String onceParam = rule.trigger() != null
@@ -90,7 +92,14 @@ public class ConfiguredConfirmationInterceptorsResolver extends ConfirmationReso
 
         InterceptionDecision decision = toDecision(rule.decision(), stackSnapshot);
         applyStackPolicy(rule.stackPolicy(), workingStack);
-        store().replacePendingActionStack(conversationId, ownerId, workingStack);
+        if (!ConversationStateStoreAccess.replaceObservedPendingStack(
+            store(),
+            context,
+            stackSnapshot,
+            workingStack
+        )) {
+            return context;
+        }
 
         PipelineContext updated = context;
         if (decision.confirmedActions() != null) {

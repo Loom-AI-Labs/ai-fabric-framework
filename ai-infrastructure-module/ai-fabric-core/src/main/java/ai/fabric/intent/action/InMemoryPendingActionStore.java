@@ -6,6 +6,8 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.Deque;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import org.springframework.util.StringUtils;
 
 /**
@@ -56,15 +58,33 @@ public class InMemoryPendingActionStore implements PendingActionStore {
         if (key == null) {
             return Optional.empty();
         }
-        Deque<PendingAction> stack = store.get(key);
-        if (stack == null) {
+        AtomicReference<PendingAction> popped = new AtomicReference<>();
+        store.computeIfPresent(key, (ignored, stack) -> {
+            popped.set(stack.poll());
+            return stack.isEmpty() ? null : stack;
+        });
+        return Optional.ofNullable(popped.get());
+    }
+
+    @Override
+    public Optional<PendingAction> popPendingAction(
+        String conversationId,
+        String ownerId,
+        PendingAction expected
+    ) {
+        String key = key(conversationId, ownerId);
+        if (key == null || expected == null) {
             return Optional.empty();
         }
-        PendingAction popped = stack.poll();
-        if (stack.isEmpty()) {
-            store.remove(key);
-        }
-        return Optional.ofNullable(popped);
+        AtomicReference<PendingAction> popped = new AtomicReference<>();
+        store.computeIfPresent(key, (ignored, stack) -> {
+            PendingAction current = stack.peek();
+            if (expected.equals(current)) {
+                popped.set(stack.poll());
+            }
+            return stack.isEmpty() ? null : stack;
+        });
+        return Optional.ofNullable(popped.get());
     }
 
     @Override
@@ -97,9 +117,36 @@ public class InMemoryPendingActionStore implements PendingActionStore {
         if (key == null) {
             return;
         }
+        store.compute(key, (ignored, current) -> toStack(stackTopFirst));
+    }
+
+    @Override
+    public boolean replacePendingActionStack(
+        String conversationId,
+        String ownerId,
+        List<PendingAction> expectedTopFirst,
+        List<PendingAction> replacementTopFirst
+    ) {
+        String key = key(conversationId, ownerId);
+        if (key == null) {
+            return false;
+        }
+        List<PendingAction> expected = expectedTopFirst == null ? List.of() : List.copyOf(expectedTopFirst);
+        AtomicBoolean replaced = new AtomicBoolean();
+        store.compute(key, (ignored, current) -> {
+            List<PendingAction> observed = current == null ? List.of() : List.copyOf(current);
+            if (!expected.equals(observed)) {
+                return current;
+            }
+            replaced.set(true);
+            return toStack(replacementTopFirst);
+        });
+        return replaced.get();
+    }
+
+    private Deque<PendingAction> toStack(List<PendingAction> stackTopFirst) {
         if (stackTopFirst == null || stackTopFirst.isEmpty()) {
-            store.remove(key);
-            return;
+            return null;
         }
         Deque<PendingAction> next = new ConcurrentLinkedDeque<>();
         for (int index = stackTopFirst.size() - 1; index >= 0; index--) {
@@ -108,11 +155,7 @@ public class InMemoryPendingActionStore implements PendingActionStore {
                 next.push(pendingAction);
             }
         }
-        if (next.isEmpty()) {
-            store.remove(key);
-            return;
-        }
-        store.put(key, next);
+        return next.isEmpty() ? null : next;
     }
 
     private String key(String conversationId, String ownerId) {

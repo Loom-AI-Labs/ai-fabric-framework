@@ -184,6 +184,94 @@ class JdbcConversationControlStoreTest {
             .isEqualTo("MESSAGE_IDEMPOTENCY_CONFLICT");
     }
 
+    @Test
+    void orchestrationStateIsScopedVersionedAndClearedWhenConversationCloses() {
+        gateway.status(scope);
+
+        ConversationOrchestrationState first = gateway.updateOrchestrationState(scope, 0L, metadata -> {
+            metadata.put("confirmation", Map.of("action", "request_test_drive"));
+            return metadata;
+        });
+        ConversationOrchestrationState second = gateway.updateOrchestrationState(scope, 0L, metadata -> {
+            metadata.put("draft", Map.of("email", "person@example.test"));
+            return metadata;
+        });
+
+        assertThat(first.revision()).isEqualTo(1);
+        assertThat(second.revision()).isEqualTo(2);
+        assertThat(gateway.orchestrationState(scope, 0L)).get().satisfies(state -> {
+            assertThat(state.metadata()).containsKeys("confirmation", "draft");
+            assertThat(state.updatedAt()).isEqualTo(NOW);
+        });
+
+        ConversationScope forged = new ConversationScope(
+            scope.tenantId(), scope.deploymentId(), scope.conversationId(), "owner-2"
+        );
+        assertThatThrownBy(() -> gateway.orchestrationState(forged, 0L))
+            .isInstanceOf(ConversationControlViolationException.class)
+            .extracting(ex -> ((ConversationControlViolationException) ex).code())
+            .isEqualTo("CONVERSATION_OWNER_MISMATCH");
+
+        gateway.transition(command(
+            ConversationControlCommandType.CLOSE,
+            0,
+            "close-1",
+            null,
+            null
+        ));
+        assertThatThrownBy(() -> gateway.orchestrationState(scope, 0L))
+            .isInstanceOf(ConversationControlViolationException.class)
+            .extracting(ex -> ((ConversationControlViolationException) ex).code())
+            .isEqualTo("AI_TURN_LEASE_STALE");
+        assertThatThrownBy(() -> gateway.updateOrchestrationState(
+            scope,
+            0L,
+            metadata -> Map.of("late", true)
+        ))
+            .isInstanceOf(ConversationControlViolationException.class)
+            .extracting(ex -> ((ConversationControlViolationException) ex).code())
+            .isEqualTo("AI_TURN_LEASE_STALE");
+    }
+
+    @Test
+    void orchestrationStateMutationCanDeleteTheStateWithoutLosingRevisionResult() {
+        gateway.status(scope);
+        gateway.updateOrchestrationState(scope, 0L, metadata -> Map.of("key", "value"));
+
+        ConversationOrchestrationState cleared = gateway.updateOrchestrationState(scope, 0L, metadata -> Map.of());
+
+        assertThat(cleared.revision()).isEqualTo(2);
+        assertThat(cleared.metadata()).isEmpty();
+        assertThat(gateway.orchestrationState(scope, 0L)).isEmpty();
+    }
+
+    @Test
+    void orchestrationStateRejectsStaleEpochAfterHumanHandover() {
+        gateway.status(scope);
+        gateway.updateOrchestrationState(scope, 0L, metadata -> Map.of("key", "value"));
+
+        gateway.transition(command(
+            ConversationControlCommandType.REQUEST_HUMAN,
+            0L,
+            "handover-1",
+            "handover-1",
+            "channel-1"
+        ));
+
+        assertThatThrownBy(() -> gateway.orchestrationState(scope, 0L))
+            .isInstanceOf(ConversationControlViolationException.class)
+            .extracting(ex -> ((ConversationControlViolationException) ex).code())
+            .isEqualTo("AI_TURN_LEASE_STALE");
+        assertThatThrownBy(() -> gateway.updateOrchestrationState(
+            scope,
+            0L,
+            metadata -> Map.of("late", true)
+        ))
+            .isInstanceOf(ConversationControlViolationException.class)
+            .extracting(ex -> ((ConversationControlViolationException) ex).code())
+            .isEqualTo("AI_TURN_LEASE_STALE");
+    }
+
     private ConversationControlCommand command(
         ConversationControlCommandType type,
         long version,

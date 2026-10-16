@@ -28,7 +28,9 @@ public class ExpiredConfirmationResolver extends ConfirmationResolverSupport {
                                    Map<String, Object> sessionMetadata,
                                    PipelineContext context) {
         // Pop only the current (top) pending action. If there are older entries under it, they remain.
-        popPending(context);
+        if (popPending(context) == null) {
+            return context;
+        }
         return context;
     }
 

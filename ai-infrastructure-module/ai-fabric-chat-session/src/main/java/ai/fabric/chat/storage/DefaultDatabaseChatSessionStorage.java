@@ -8,6 +8,8 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.function.Function;
+import org.springframework.transaction.annotation.Transactional;
 
 @Slf4j
 @RequiredArgsConstructor
@@ -36,5 +38,26 @@ public class DefaultDatabaseChatSessionStorage implements ChatSessionStorageProv
     @Override
     public List<ChatSession> findByOwnerId(String ownerId) {
         return repository.findWithTurnsByOwnerId(ownerId);
+    }
+
+    @Override
+    @Transactional
+    public <T> Optional<T> mutateOwnedSession(
+        String conversationId,
+        String ownerId,
+        Function<ChatSession, T> mutation
+    ) {
+        if (mutation == null) {
+            throw new IllegalArgumentException("mutation is required");
+        }
+        Optional<ChatSession> owned = repository.findByIdForUpdate(conversationId)
+            .filter(session -> session != null && session.isOwnedBy(ownerId));
+        if (owned.isEmpty()) {
+            return Optional.empty();
+        }
+        ChatSession session = owned.get();
+        T result = mutation.apply(session);
+        repository.save(session);
+        return Optional.ofNullable(result);
     }
 }

@@ -4,6 +4,7 @@ import ai.fabric.dto.MultiIntentResponse;
 import ai.fabric.dto.AIChatMessage;
 import ai.fabric.execution.context.ExecutionSubjectRef;
 import ai.fabric.execution.context.TrustedExecutionContext;
+import ai.fabric.intent.action.PendingAction;
 import ai.fabric.intent.actiondraft.ActionDraftContinuation;
 import ai.fabric.intent.orchestration.policy.OrchestrationPolicy;
 import ai.fabric.intent.orchestration.capability.EffectiveCapabilityProfile;
@@ -210,6 +211,15 @@ public class PipelineContext {
     @JsonIgnore
     @ToString.Exclude
     private final transient String intentExtractionSystemInstructions;
+
+    /**
+     * Pending action observed before intent extraction for atomic confirmation consumption.
+     *
+     * <p>This is trusted internal state and may contain user-provided action parameters.</p>
+     */
+    @JsonIgnore
+    @ToString.Exclude
+    private final transient PendingAction observedPendingAction;
 
     /**
      * Rendered pinned targets context (attachments / selected UI cards) to be injected into the

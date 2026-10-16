@@ -17,7 +17,7 @@ import org.springframework.util.StringUtils;
  */
 public class ChatSessionPendingActionStore implements PendingActionStore {
 
-    static final int DEFAULT_MAX_STACK_DEPTH = 8;
+    public static final int DEFAULT_MAX_STACK_DEPTH = 8;
 
     private final ChatSessionStorageProvider storageProvider;
     private final int maxStackDepth;
@@ -46,9 +46,15 @@ public class ChatSessionPendingActionStore implements PendingActionStore {
 
     @Override
     public void savePendingAction(String conversationId, String ownerId, PendingAction pendingAction) {
-        // Legacy API: treat as replace (clear then push).
-        clearPendingActions(conversationId, ownerId);
-        pushPendingAction(conversationId, ownerId, pendingAction);
+        if (!StringUtils.hasText(conversationId) || !StringUtils.hasText(ownerId) || pendingAction == null) {
+            return;
+        }
+        storageProvider.mutateOwnedSession(conversationId, ownerId, session -> {
+            Map<String, Object> mutable = mutableMetadata(session);
+            ConfirmationStack.replace(mutable, List.of(pendingAction), maxStackDepth);
+            session.setSessionMetadata(mutable);
+            return true;
+        });
     }
 
     @Override
@@ -70,15 +76,12 @@ public class ChatSessionPendingActionStore implements PendingActionStore {
             return;
         }
 
-        storageProvider.findById(conversationId)
-            .filter(session -> session != null && session.isOwnedBy(ownerId))
-            .ifPresent(session -> {
-                Map<String, Object> metadata = session.getSessionMetadata();
-                Map<String, Object> mutable = metadata != null ? new HashMap<>(metadata) : new HashMap<>();
-                ConfirmationStack.push(mutable, pendingAction, maxStackDepth);
-                session.setSessionMetadata(mutable);
-                storageProvider.save(session);
-            });
+        storageProvider.mutateOwnedSession(conversationId, ownerId, session -> {
+            Map<String, Object> mutable = mutableMetadata(session);
+            ConfirmationStack.push(mutable, pendingAction, maxStackDepth);
+            session.setSessionMetadata(mutable);
+            return true;
+        });
     }
 
     @Override
@@ -87,20 +90,35 @@ public class ChatSessionPendingActionStore implements PendingActionStore {
             return Optional.empty();
         }
 
-        return storageProvider.findById(conversationId)
-            .filter(session -> session != null && session.isOwnedBy(ownerId))
-            .map(session -> {
-                Map<String, Object> metadata = session.getSessionMetadata();
-                if (metadata == null) {
-                    return null;
-                }
-                Map<String, Object> mutable = new HashMap<>(metadata);
-                PendingAction popped = ConfirmationStack.pop(mutable);
-                session.setSessionMetadata(mutable);
-                storageProvider.save(session);
-                return popped;
-            })
-            .filter(action -> action != null);
+        return storageProvider.mutateOwnedSession(conversationId, ownerId, session -> {
+            Map<String, Object> mutable = mutableMetadata(session);
+            PendingAction popped = ConfirmationStack.pop(mutable);
+            session.setSessionMetadata(mutable);
+            return popped;
+        });
+    }
+
+    @Override
+    public Optional<PendingAction> popPendingAction(
+        String conversationId,
+        String ownerId,
+        PendingAction expected
+    ) {
+        if (!StringUtils.hasText(conversationId)
+            || !StringUtils.hasText(ownerId)
+            || expected == null) {
+            return Optional.empty();
+        }
+        return storageProvider.mutateOwnedSession(conversationId, ownerId, session -> {
+            Map<String, Object> mutable = mutableMetadata(session);
+            PendingAction current = ConfirmationStack.peek(mutable);
+            if (!expected.equals(current)) {
+                return null;
+            }
+            PendingAction popped = ConfirmationStack.pop(mutable);
+            session.setSessionMetadata(mutable);
+            return popped;
+        });
     }
 
     @Override
@@ -114,18 +132,12 @@ public class ChatSessionPendingActionStore implements PendingActionStore {
             return;
         }
 
-        storageProvider.findById(conversationId)
-            .filter(session -> session != null && session.isOwnedBy(ownerId))
-            .ifPresent(session -> {
-                Map<String, Object> metadata = session.getSessionMetadata();
-                if (metadata == null || metadata.isEmpty()) {
-                    return;
-                }
-                Map<String, Object> mutable = new HashMap<>(metadata);
-                ConfirmationStack.clear(mutable);
-                session.setSessionMetadata(mutable);
-                storageProvider.save(session);
-            });
+        storageProvider.mutateOwnedSession(conversationId, ownerId, session -> {
+            Map<String, Object> mutable = mutableMetadata(session);
+            ConfirmationStack.clear(mutable);
+            session.setSessionMetadata(mutable);
+            return true;
+        });
     }
 
     @Override
@@ -147,14 +159,38 @@ public class ChatSessionPendingActionStore implements PendingActionStore {
             return;
         }
 
-        storageProvider.findById(conversationId)
-            .filter(session -> session != null && session.isOwnedBy(ownerId))
-            .ifPresent(session -> {
-                Map<String, Object> metadata = session.getSessionMetadata();
-                Map<String, Object> mutable = metadata != null ? new HashMap<>(metadata) : new HashMap<>();
-                ConfirmationStack.replace(mutable, stackTopFirst, maxStackDepth);
-                session.setSessionMetadata(mutable);
-                storageProvider.save(session);
-            });
+        storageProvider.mutateOwnedSession(conversationId, ownerId, session -> {
+            Map<String, Object> mutable = mutableMetadata(session);
+            ConfirmationStack.replace(mutable, stackTopFirst, maxStackDepth);
+            session.setSessionMetadata(mutable);
+            return true;
+        });
+    }
+
+    @Override
+    public boolean replacePendingActionStack(
+        String conversationId,
+        String ownerId,
+        List<PendingAction> expectedTopFirst,
+        List<PendingAction> replacementTopFirst
+    ) {
+        if (!StringUtils.hasText(conversationId) || !StringUtils.hasText(ownerId)) {
+            return false;
+        }
+        List<PendingAction> expected = expectedTopFirst == null ? List.of() : List.copyOf(expectedTopFirst);
+        return storageProvider.mutateOwnedSession(conversationId, ownerId, session -> {
+            Map<String, Object> mutable = mutableMetadata(session);
+            if (!expected.equals(ConfirmationStack.getAll(mutable))) {
+                return false;
+            }
+            ConfirmationStack.replace(mutable, replacementTopFirst, maxStackDepth);
+            session.setSessionMetadata(mutable);
+            return true;
+        }).orElse(false);
+    }
+
+    private Map<String, Object> mutableMetadata(ChatSession session) {
+        Map<String, Object> metadata = session != null ? session.getSessionMetadata() : null;
+        return metadata != null ? new HashMap<>(metadata) : new HashMap<>();
     }
 }
