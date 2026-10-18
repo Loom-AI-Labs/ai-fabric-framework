@@ -624,6 +624,8 @@ public class AIProviderConfig {
         private Integer port = 19530;
         private String username;
         private String password;
+        @lombok.ToString.Exclude
+        private String token;
         private String databaseName = "default";
         private Integer timeout = 30;
         private Boolean secure = false;

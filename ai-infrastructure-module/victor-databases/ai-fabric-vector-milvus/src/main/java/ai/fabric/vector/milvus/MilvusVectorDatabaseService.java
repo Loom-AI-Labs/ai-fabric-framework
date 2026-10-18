@@ -115,11 +115,12 @@ public class MilvusVectorDatabaseService implements VectorDatabaseService, AutoC
         if (client != null) {
             this.client = client;
         } else {
+            ConnectParam parameters = buildConnectParam(config);
             try {
-                this.client = new MilvusServiceClient(buildConnectParam());
+                this.client = new MilvusServiceClient(parameters);
                 log.info("Connected to Milvus at {}:{}", config.getHost(), config.getPort());
             } catch (Exception ex) {
-                throw new AIServiceException("Failed to initialise Milvus client: " + ex.getMessage(), ex);
+                throw new AIServiceException("Failed to initialise Milvus client (" + ex.getClass().getSimpleName() + ")");
             }
         }
 
@@ -229,7 +230,16 @@ public class MilvusVectorDatabaseService implements VectorDatabaseService, AutoC
         return diagnostics;
     }
 
-    private ConnectParam buildConnectParam() {
+    static ConnectParam buildConnectParam(AIProviderConfig.MilvusConfig config) {
+        Objects.requireNonNull(config, "Milvus configuration must be present");
+        String token = config.getToken();
+        if (token != null && (token.isBlank() || !token.equals(token.strip()))) {
+            throw new AIServiceException("Milvus token must be nonblank and have no surrounding whitespace");
+        }
+        if (token != null && (config.getUsername() != null && !config.getUsername().isBlank()
+            || config.getPassword() != null && !config.getPassword().isBlank())) {
+            throw new AIServiceException("Milvus token and username/password authentication cannot be combined");
+        }
         ConnectParam.Builder builder = ConnectParam.newBuilder()
             .withHost(Optional.ofNullable(config.getHost()).orElse("localhost"))
             .withPort(Optional.ofNullable(config.getPort()).orElse(19530));
@@ -237,7 +247,9 @@ public class MilvusVectorDatabaseService implements VectorDatabaseService, AutoC
         if (Boolean.TRUE.equals(config.getSecure())) {
             builder.withSecure(true);
         }
-        if (config.getUsername() != null && !config.getUsername().isBlank()) {
+        if (token != null) {
+            builder.withToken(token);
+        } else if (config.getUsername() != null && !config.getUsername().isBlank()) {
             builder.withAuthorization(config.getUsername(), Optional.ofNullable(config.getPassword()).orElse(""));
         }
         if (config.getTimeout() != null && config.getTimeout() > 0) {
