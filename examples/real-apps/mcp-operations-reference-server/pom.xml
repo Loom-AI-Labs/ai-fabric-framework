@@ -13,7 +13,7 @@
 
     <groupId>com.ai.fabric.realapps</groupId>
     <artifactId>mcp-operations-reference-server</artifactId>
-    <version>0.8.39</version>
+    <version>0.8.40</version>
     <name>AI Fabric MCP Operations Reference Server</name>
     <description>Authenticated remote MCP server for isolated AI Fabric operations demos</description>
 
@@ -38,7 +38,7 @@
         <dependency>
             <groupId>com.ai.fabric.examples</groupId>
             <artifactId>smoke-support</artifactId>
-            <version>0.8.39</version>
+            <version>0.8.40</version>
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>

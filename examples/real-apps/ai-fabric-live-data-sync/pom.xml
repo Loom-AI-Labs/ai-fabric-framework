@@ -13,7 +13,7 @@
 
     <groupId>com.ai.fabric.realapps</groupId>
     <artifactId>ai-fabric-live-data-sync</artifactId>
-    <version>0.8.39</version>
+    <version>0.8.40</version>
     <name>AI Fabric Live Data Sync</name>
     <description>Annotation-driven database to vector synchronization with live RAG proof</description>
 
@@ -22,7 +22,7 @@
         <maven.compiler.source>21</maven.compiler.source>
         <maven.compiler.target>21</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <ai-fabric.version>0.8.39</ai-fabric.version>
+        <ai-fabric.version>0.8.40</ai-fabric.version>
         <lombok.version>1.18.38</lombok.version>
     </properties>
 
@@ -30,7 +30,7 @@
         <dependency>
             <groupId>com.ai.fabric.examples</groupId>
             <artifactId>smoke-support</artifactId>
-            <version>0.8.39</version>
+            <version>0.8.40</version>
         </dependency>
 
         <dependency>

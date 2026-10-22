@@ -2,7 +2,7 @@
 
 ## Supported Baseline
 
-- AI Fabric release: `0.8.39`
+- AI Fabric release: `0.8.40`
 - Public source baseline reviewed: `3c3be868`
 - Java: `21`
 - Spring Boot: `4.1.0`

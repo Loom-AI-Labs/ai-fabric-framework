@@ -38,7 +38,8 @@ class ActionProposalCoordinatorTest {
         assertThat(proposal.status())
             .isEqualTo(ActionProposalReceiptStatus.PROPOSED);
         assertThat(fixture.confirmedInvocations).hasValue(0);
-        assertThat(fixture.preflightSubject).hasValue("account-1");
+        assertThat(fixture.preflightSubject).hasValue("principal-1");
+        assertThat(fixture.trustedContext.subject().subjectId()).isEqualTo("account-1");
         assertThat(stored.protectedParameters())
             .doesNotContain("1 Main Street", "SW1A 1AA");
         assertThat(stored.idempotencyKey())
