@@ -142,9 +142,12 @@ public class SecurityAnalysisStep implements PipelineStep {
         TrustedExecutionContext trustedContext
     ) {
         Map<String, Object> metadata = new LinkedHashMap<>();
+        if (context.getMetadata() != null && !context.getMetadata().isEmpty()) {
+            metadata.putAll(context.getMetadata());
+        }
         metadata.put(
             METADATA_KEY_AUTHENTICATED,
-            trustedContext != null || context.isAuthenticated()
+            trustedContext != null ? trustedContext.isAuthenticated() : context.isAuthenticated()
         );
         metadata.put(METADATA_KEY_SESSION_ID, context.getSessionId());
         if (trustedContext != null) {
@@ -158,9 +161,6 @@ public class SecurityAnalysisStep implements PipelineStep {
         }
         if (context.getUserAgent() != null) {
             metadata.put(METADATA_KEY_USER_AGENT, context.getUserAgent());
-        }
-        if (context.getMetadata() != null && !context.getMetadata().isEmpty()) {
-            metadata.putAll(context.getMetadata());
         }
         
         return metadata;

@@ -373,14 +373,16 @@ public class PipelineContext {
      * @return true if authenticated, false if anonymous
      */
     public boolean isAuthenticated() {
-        return trustedExecutionContext() != null
-            || (orchestrationContext != null && orchestrationContext.isAuthenticated());
+        TrustedExecutionContext trustedContext = trustedExecutionContext();
+        return trustedContext != null
+            ? trustedContext.isAuthenticated()
+            : orchestrationContext != null && orchestrationContext.isAuthenticated();
     }
 
     /**
-     * Check whether this request has no trusted or authenticated caller.
+     * Check whether this request has an anonymous caller, including a trusted anonymous owner.
      *
-     * @return true only for the legacy anonymous-session path
+     * @return true if the caller is anonymous
      */
     public boolean isAnonymous() {
         return !isAuthenticated();

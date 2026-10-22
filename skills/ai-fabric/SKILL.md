@@ -11,7 +11,7 @@ Use released AI Fabric artifacts and public contracts to add AI capabilities whi
 
 1. Read the target application's `pom.xml`, runtime configuration, tests, and local development guide.
 2. Identify its Java, Spring Boot, AI Fabric, provider, vector-store, database, and security choices.
-3. Confirm the latest supported immutable AI Fabric release from Maven Central or the repository release notes. This package is validated for `0.8.37`; do not silently downgrade or consume a mutable source branch.
+3. Confirm the latest supported immutable AI Fabric release from Maven Central or the repository release notes. This package is validated for `0.8.38`; do not silently downgrade or consume a mutable source branch.
 4. Find the closest maintained real app before designing a new integration shape.
 5. State whether the task is indexing/retrieval, actions, conversations/execution, provider wiring, or a combination, then read only the matching reference below.
 

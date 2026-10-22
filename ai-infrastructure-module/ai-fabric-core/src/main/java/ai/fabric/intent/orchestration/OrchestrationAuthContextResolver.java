@@ -1,6 +1,7 @@
 package ai.fabric.intent.orchestration;
 
 import ai.fabric.dto.AIAccessSubjectContext;
+import ai.fabric.execution.context.ExecutionPrincipalType;
 import ai.fabric.execution.context.ExecutionSubjectRef;
 import ai.fabric.execution.context.TrustedExecutionContext;
 import java.util.List;
@@ -51,6 +52,18 @@ public final class OrchestrationAuthContextResolver {
     public static AIAccessSubjectContext from(TrustedExecutionContext context) {
         if (context == null) {
             return AIAccessSubjectContext.builder().build();
+        }
+        if (context.initiator().principalType() == ExecutionPrincipalType.ANONYMOUS_SESSION) {
+            return AIAccessSubjectContext.builder()
+                .subjectId(context.initiator().principalId())
+                .sessionId(context.initiator().principalId())
+                .subjectType(ExecutionPrincipalType.ANONYMOUS_SESSION.name())
+                .authMode("TRUSTED_" + context.source().name())
+                .callerType(ExecutionPrincipalType.ANONYMOUS_SESSION.name())
+                .deploymentId(context.deploymentId())
+                .tenantId(context.tenantId())
+                .grantedScopes(List.copyOf(context.grantedScopes()))
+                .build();
         }
         ExecutionSubjectRef subject = context.subject();
         String subjectId = subject != null

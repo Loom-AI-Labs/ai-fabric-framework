@@ -169,7 +169,7 @@ public class AccessControlStep implements PipelineStep {
         metadata.put(METADATA_KEY_ENTRY_POINT, ENTRY_POINT_RAG_ORCHESTRATOR);
         metadata.put(
             METADATA_KEY_AUTHENTICATED,
-            trustedContext != null || context.isAuthenticated()
+            trustedContext != null ? trustedContext.isAuthenticated() : context.isAuthenticated()
         );
         metadata.put(METADATA_KEY_SESSION_ID, context.getSessionId());
         if (trustedContext != null) {
@@ -192,7 +192,7 @@ public class AccessControlStep implements PipelineStep {
             metadata.put(METADATA_KEY_IP_ADDRESS, context.getIpAddress());
         }
 
-        if (context.getMetadata() != null && !context.getMetadata().isEmpty()) {
+        if (trustedContext == null && context.getMetadata() != null && !context.getMetadata().isEmpty()) {
             for (String key : VERIFIED_AUTH_METADATA_KEYS) {
                 Object value = context.getMetadata().get(key);
                 if (value != null) {

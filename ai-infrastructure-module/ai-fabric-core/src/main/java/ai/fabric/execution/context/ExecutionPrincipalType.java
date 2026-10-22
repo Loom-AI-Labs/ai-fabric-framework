@@ -5,6 +5,7 @@ package ai.fabric.execution.context;
  */
 public enum ExecutionPrincipalType {
     END_USER,
+    ANONYMOUS_SESSION,
     SERVICE,
     SYSTEM
 }
