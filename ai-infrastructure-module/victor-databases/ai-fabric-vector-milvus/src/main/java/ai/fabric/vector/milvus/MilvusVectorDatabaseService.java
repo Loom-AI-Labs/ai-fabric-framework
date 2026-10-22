@@ -1259,9 +1259,9 @@ public class MilvusVectorDatabaseService implements VectorDatabaseService, AutoC
         }
 
         validation.terms().forEach(term ->
-            expr.append(" && ").append(FIELD_METADATA).append(" like \"%")
+            expr.append(" && ").append(FIELD_METADATA).append(" like ")
                 .append(jsonNeedle(term.key(), term.value()))
-                .append("%\""));
+        );
 
         return expr.toString();
     }
@@ -1271,7 +1271,12 @@ public class MilvusVectorDatabaseService implements VectorDatabaseService, AutoC
         singleton.put(key, value);
         String json = MetadataJsonSerializer.serialize(singleton);
         String fragment = json.length() > 1 ? json.substring(1, json.length() - 1) : json;
-        return escapeLikePattern(fragment);
+        try {
+            // LIKE escaping and Milvus string-literal escaping are separate layers.
+            return MAPPER.writeValueAsString("%" + escapeLikePattern(fragment) + "%");
+        } catch (JsonProcessingException exception) {
+            throw new AIServiceException("Failed to encode Milvus metadata filter", exception);
+        }
     }
 
     private static String escapeLikePattern(String value) {
@@ -1283,7 +1288,6 @@ public class MilvusVectorDatabaseService implements VectorDatabaseService, AutoC
             char ch = value.charAt(i);
             switch (ch) {
                 case '\\' -> escaped.append("\\\\");
-                case '"' -> escaped.append("\\\"");
                 case '%' -> escaped.append("\\%");
                 case '_' -> escaped.append("\\_");
                 default -> escaped.append(ch);

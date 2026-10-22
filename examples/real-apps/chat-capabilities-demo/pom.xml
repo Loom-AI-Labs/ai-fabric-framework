@@ -14,7 +14,7 @@
 
     <groupId>com.ai.fabric.realapps</groupId>
     <artifactId>chat-capabilities-demo</artifactId>
-    <version>0.8.40</version>
+    <version>0.8.41</version>
     <name>Chat Capabilities Demo</name>
     <description>Demo app showcasing AI Fabric chat-session capabilities (conversation context + turn recording)</description>
 
@@ -23,7 +23,7 @@
         <maven.compiler.source>21</maven.compiler.source>
         <maven.compiler.target>21</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <ai-fabric.version>0.8.40</ai-fabric.version>
+        <ai-fabric.version>0.8.41</ai-fabric.version>
         <lombok.version>1.18.38</lombok.version>
         <springdoc.version>2.3.0</springdoc.version>
     </properties>
@@ -33,7 +33,7 @@
         <dependency>
             <groupId>com.ai.fabric.examples</groupId>
             <artifactId>smoke-support</artifactId>
-            <version>0.8.40</version>
+            <version>0.8.41</version>
         </dependency>
         <!-- Spring Boot -->
         <dependency>

@@ -302,6 +302,7 @@ class MilvusVectorDatabaseServiceTest {
         metadata.put("rank", 7);
         metadata.put("featured", true);
         metadata.put("sku", "SKU_100%");
+        metadata.put("publicationStatus", "PUBLIC_APPROVED");
 
         MilvusVectorDatabaseService service = new MilvusVectorDatabaseService(baseConfig(), client);
 
@@ -321,7 +322,8 @@ class MilvusVectorDatabaseServiceTest {
             .contains("\\\"tenant\\\":\\\"retail\\\"")
             .contains("\\\"rank\\\":\\\"7\\\"")
             .contains("\\\"featured\\\":\\\"true\\\"")
-            .contains("\\\"sku\\\":\\\"SKU\\_100\\%\\\"")
+            .contains("\\\"sku\\\":\\\"SKU\\\\_100\\\\%\\\"")
+            .contains("\\\"publicationStatus\\\":\\\"PUBLIC\\\\_APPROVED\\\"")
             .doesNotContain("\\\"rank\\\":7")
             .doesNotContain("\\\"featured\\\":true")
             .doesNotContain("SKU_100%");
