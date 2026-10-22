@@ -75,6 +75,7 @@ public final class DurableExecutionPayloadCodec {
         payload.put("tenantId", context.tenantId());
         payload.put("deploymentId", context.deploymentId());
         payload.put("grantedScopes", context.grantedScopes());
+        payload.put("callerIdentity", context.callerIdentity() == null ? null : context.callerIdentity().snapshot());
         payload.put("correlationId", context.correlationId());
         payload.put(
             "authenticatedAt",
@@ -114,7 +115,8 @@ public final class DurableExecutionPayloadCodec {
             optional(payload, "deploymentId"),
             scopes(payload.get("grantedScopes")),
             optional(payload, "correlationId"),
-            instant(payload, "authenticatedAt")
+            instant(payload, "authenticatedAt"),
+            ai.fabric.execution.context.ExecutionCallerIdentity.restore(payload.get("callerIdentity"))
         );
         return new AIExecutionRequest<>(
             record.specialistId(),

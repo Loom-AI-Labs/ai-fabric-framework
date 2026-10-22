@@ -3,6 +3,7 @@ package ai.fabric.intent.orchestration;
 import ai.fabric.dto.AIAccessSubjectContext;
 import ai.fabric.execution.context.ExecutionPrincipalType;
 import ai.fabric.execution.context.ExecutionSubjectRef;
+import ai.fabric.execution.context.ExecutionSource;
 import ai.fabric.execution.context.TrustedExecutionContext;
 import java.util.List;
 import java.util.Map;
@@ -53,32 +54,29 @@ public final class OrchestrationAuthContextResolver {
         if (context == null) {
             return AIAccessSubjectContext.builder().build();
         }
-        if (context.initiator().principalType() == ExecutionPrincipalType.ANONYMOUS_SESSION) {
-            return AIAccessSubjectContext.builder()
-                .subjectId(context.initiator().principalId())
-                .sessionId(context.initiator().principalId())
-                .subjectType(ExecutionPrincipalType.ANONYMOUS_SESSION.name())
-                .authMode("TRUSTED_" + context.source().name())
-                .callerType(ExecutionPrincipalType.ANONYMOUS_SESSION.name())
-                .deploymentId(context.deploymentId())
-                .tenantId(context.tenantId())
-                .grantedScopes(List.copyOf(context.grantedScopes()))
-                .build();
-        }
+        var caller = context.callerIdentity();
+        boolean anonymous = context.initiator().principalType() == ExecutionPrincipalType.ANONYMOUS_SESSION;
+        boolean callerIsSubject = context.source() == ExecutionSource.INTERACTIVE || caller != null;
         ExecutionSubjectRef subject = context.subject();
-        String subjectId = subject != null
+        String subjectId = !callerIsSubject && subject != null
             ? subject.subjectId()
             : context.initiator().principalId();
-        String subjectType = subject != null
+        String subjectType = !callerIsSubject && subject != null
             ? subject.subjectType()
             : context.initiator().principalType().name();
         return AIAccessSubjectContext.builder()
             .subjectId(subjectId)
-            .subjectType(subjectType)
-            .authMode("TRUSTED_" + context.source().name())
-            .callerType(context.initiator().principalType().name())
+            .subjectType(caller != null && caller.subjectType() != null ? caller.subjectType() : subjectType)
+            .sessionId(caller != null && caller.sessionId() != null ? caller.sessionId()
+                : anonymous ? context.initiator().principalId() : null)
+            .customerId(caller != null ? caller.customerId() : null)
+            .authMode(caller != null && caller.authMode() != null ? caller.authMode() : "TRUSTED_" + context.source().name())
+            .callerType(caller != null && caller.callerType() != null ? caller.callerType() : context.initiator().principalType().name())
             .deploymentId(context.deploymentId())
             .tenantId(context.tenantId())
+            .issuer(caller != null ? caller.issuer() : null)
+            .audiences(caller != null ? caller.audiences() : null)
+            .expiresAt(caller != null && caller.expiresAt() != null ? caller.expiresAt().toString() : null)
             .grantedScopes(List.copyOf(context.grantedScopes()))
             .build();
     }

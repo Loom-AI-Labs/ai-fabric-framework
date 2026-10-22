@@ -31,6 +31,36 @@ class ActionConnectorExecutorTest {
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     @Test
+    void confirmedConnectorWritePreservesVerifiedCallerInsteadOfConversationSubject() {
+        var fake = new FakeHttpClient(List.of(new OutboundHttpExecutionResponse(200,
+            "{\"success\":true,\"data\":{\"receipt\":\"receipt-1\"}}", Map.of())));
+        var executor = new ActionConnectorExecutor(connectorProps("https://example", 1, Duration.ZERO), fake, null, fixedClock());
+        var trusted = new ai.fabric.execution.context.TrustedExecutionContext(
+            new ai.fabric.execution.context.ExecutionPrincipal("verified-user", ai.fabric.execution.context.ExecutionPrincipalType.END_USER),
+            new ai.fabric.execution.context.ExecutionSubjectRef("conversation", "conversation-1"),
+            ai.fabric.execution.context.ExecutionSource.INTERACTIVE, "tenant-1", "deployment-1",
+            java.util.Set.of("chat:query", "action:request"), "request-1", fixedClock().instant()
+        ).withCallerIdentity(new ai.fabric.execution.context.ExecutionCallerIdentity("END_USER", "PUBLIC_RUNTIME_TOKEN",
+            "PUBLIC_BROWSER", "verified-session", "customer-1", "verified-issuer", List.of("runtime"), null));
+        var legacy = OrchestrationContext.builder().userId("spoofed-user").sessionId("spoofed-session")
+            .conversationId("conversation-1").metadata(Map.of(OrchestrationContextMetadataKeys.CUSTOMER_ID, "spoofed-customer")).build();
+        var pipeline = ai.fabric.intent.orchestration.pipeline.PipelineContext.from(
+            new ai.fabric.intent.orchestration.request.OrchestrationRequest("Confirm", legacy, trusted,
+                ai.fabric.intent.orchestration.request.ConversationPersistencePolicy.READ_ONLY));
+        var result = executor.execute("request", ActionAccessMode.WRITE_ONLY, Map.of("confirmed", true),
+            new ActionContext(legacy, pipeline));
+        assertThat(result.isSuccess()).isTrue();
+        var trace = OBJECT_MAPPER.valueToTree(readRequest(fake.lastRequestBody())).path("trace");
+        assertThat(trace.path("authContext").path("subjectId").asText()).isEqualTo("verified-user");
+        assertThat(trace.path("authContext").path("sessionId").asText()).isEqualTo("verified-session");
+        assertThat(trace.path("authContext").path("customerId").asText()).isEqualTo("customer-1");
+        assertThat(trace.path("authContext").path("tenantId").asText()).isEqualTo("tenant-1");
+        assertThat(trace.path("authContext").path("deploymentId").asText()).isEqualTo("deployment-1");
+        assertThat(trace.path("authContext").path("grantedScopes").toString()).doesNotContain("admin");
+        assertThat(trace.path("conversationId").asText()).isEqualTo("conversation-1");
+    }
+
+    @Test
     void execute_shouldParseObjectPayloadSuccess() {
         FakeHttpClient fake = new FakeHttpClient(List.of(
             new OutboundHttpExecutionResponse(200, "{\"success\":true,\"message\":\"ok\",\"data\":{\"orderRef\":\"PO-1\"}}", Map.of())

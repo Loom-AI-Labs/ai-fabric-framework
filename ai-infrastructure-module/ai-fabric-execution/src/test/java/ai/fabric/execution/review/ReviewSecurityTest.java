@@ -107,7 +107,8 @@ class ReviewSecurityTest {
             Set.of("action:update_address"),
             "correlation-1",
             NOW
-        );
+        ).withCallerIdentity(new ai.fabric.execution.context.ExecutionCallerIdentity("END_USER", "VERIFIED_TOKEN",
+            "PUBLIC_BROWSER", "session-private", "customer-private", "issuer-private", java.util.List.of("runtime"), NOW.plusSeconds(300)));
     }
 
     private TrustedReviewerContext reviewer() {

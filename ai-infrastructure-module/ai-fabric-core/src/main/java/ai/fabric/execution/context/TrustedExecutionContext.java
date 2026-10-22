@@ -22,8 +22,15 @@ public record TrustedExecutionContext(
     String deploymentId,
     Set<String> grantedScopes,
     String correlationId,
-    Instant authenticatedAt
+    Instant authenticatedAt,
+    ExecutionCallerIdentity callerIdentity
 ) {
+    public TrustedExecutionContext(ExecutionPrincipal initiator, ExecutionSubjectRef subject, ExecutionSource source,
+                                   String tenantId, String deploymentId, Set<String> grantedScopes,
+                                   String correlationId, Instant authenticatedAt) {
+        this(initiator, subject, source, tenantId, deploymentId, grantedScopes, correlationId, authenticatedAt, null);
+    }
+
     public TrustedExecutionContext {
         Objects.requireNonNull(initiator, "initiator is required");
         Objects.requireNonNull(source, "source is required");
@@ -35,6 +42,22 @@ public record TrustedExecutionContext(
             correlationId = "exec-" + UUID.randomUUID();
         }
         validatePrincipalForSource(source, initiator.principalType());
+        if (callerIdentity != null) {
+            boolean anonymous = initiator.principalType() == ExecutionPrincipalType.ANONYMOUS_SESSION;
+            if (callerIdentity.subjectType() != null
+                && anonymous != ExecutionPrincipalType.ANONYMOUS_SESSION.name().equals(callerIdentity.subjectType())) {
+                throw new IllegalArgumentException("Caller identity must preserve the verified principal authentication class");
+            }
+            if (anonymous && callerIdentity.sessionId() != null
+                && !initiator.principalId().equals(callerIdentity.sessionId())) {
+                throw new IllegalArgumentException("Anonymous caller session must match the verified initiator");
+            }
+        }
+    }
+
+    public TrustedExecutionContext withCallerIdentity(ExecutionCallerIdentity identity) {
+        return new TrustedExecutionContext(initiator, subject, source, tenantId, deploymentId, grantedScopes,
+            correlationId, authenticatedAt, identity);
     }
 
     public static TrustedExecutionContext application(

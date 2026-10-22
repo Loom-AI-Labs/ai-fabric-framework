@@ -69,6 +69,7 @@ public final class ReviewSecurity {
         putOptional(payload, "tenantId", context.tenantId());
         putOptional(payload, "deploymentId", context.deploymentId());
         payload.put("grantedScopes", List.copyOf(context.grantedScopes()));
+        if (context.callerIdentity() != null) payload.put("callerIdentity", context.callerIdentity().snapshot());
         payload.put("correlationId", context.correlationId());
         if (context.authenticatedAt() != null) {
             payload.put(
@@ -108,7 +109,8 @@ public final class ReviewSecurity {
             optionalText(payload, "deploymentId"),
             stringSet(payload.get("grantedScopes")),
             optionalText(payload, "correlationId"),
-            instant(payload, "authenticatedAt")
+            instant(payload, "authenticatedAt"),
+            ai.fabric.execution.context.ExecutionCallerIdentity.restore(payload.get("callerIdentity"))
         );
         return new ReviewSourceEnvelope(
             text(payload, "receiptId"),

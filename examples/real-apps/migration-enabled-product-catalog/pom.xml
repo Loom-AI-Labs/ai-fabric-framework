@@ -14,7 +14,7 @@
 
     <groupId>com.ai.fabric.realapps</groupId>
     <artifactId>migration-enabled-product-catalog</artifactId>
-    <version>1.0.0-SNAPSHOT</version>
+    <version>0.8.39</version>
     <name>Migration-Enabled Product Catalog</name>
     <description>Demo app for AI Fabric: bulk backfill indexing via migration module (offline: H2 + deterministic local embeddings + Lucene)</description>
 
@@ -23,7 +23,7 @@
         <maven.compiler.source>21</maven.compiler.source>
         <maven.compiler.target>21</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <ai-fabric.version>0.8.38</ai-fabric.version>
+        <ai-fabric.version>0.8.39</ai-fabric.version>
         <lombok.version>1.18.38</lombok.version>
     </properties>
 
@@ -32,7 +32,7 @@
         <dependency>
             <groupId>com.ai.fabric.examples</groupId>
             <artifactId>smoke-support</artifactId>
-            <version>0.8.38</version>
+            <version>0.8.39</version>
         </dependency>
         <!-- Spring Boot -->
         <dependency>

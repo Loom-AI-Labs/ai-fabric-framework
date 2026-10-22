@@ -260,7 +260,8 @@ class SpecialistChainPayloadCodecTest {
                 Set.of("specialist:incident-manager@1"),
                 "correlation-private",
                 NOW.minusSeconds(5)
-            ),
+            ).withCallerIdentity(new ai.fabric.execution.context.ExecutionCallerIdentity("END_USER", "VERIFIED_TOKEN",
+                "PUBLIC_BROWSER", "session-private", "customer-private", "issuer-private", List.of("runtime"), NOW.plusSeconds(300))),
             new ConversationBinding(
                 "user-private",
                 "conversation-private"

@@ -66,6 +66,7 @@ public final class SpecialistChainPayloadCodec {
         payload.put("tenantId", context.tenantId());
         payload.put("deploymentId", context.deploymentId());
         payload.put("grantedScopes", context.grantedScopes());
+        payload.put("callerIdentity", context.callerIdentity() == null ? null : context.callerIdentity().snapshot());
         payload.put("correlationId", context.correlationId());
         payload.put("authenticatedAt", text(context.authenticatedAt()));
         payload.put("deadline", text(request.deadline()));
@@ -115,7 +116,8 @@ public final class SpecialistChainPayloadCodec {
             optional(payload, "deploymentId"),
             scopes(payload.get("grantedScopes")),
             optional(payload, "correlationId"),
-            instant(payload, "authenticatedAt")
+            instant(payload, "authenticatedAt"),
+            ai.fabric.execution.context.ExecutionCallerIdentity.restore(payload.get("callerIdentity"))
         );
         String conversationUserId = optional(
             payload,

@@ -81,7 +81,9 @@ class DurableAIExecutionGatewayTest {
         AIExecutionRequest<ResolverInput> request = request(
             new ResolverInput("Inspect this account"),
             "event-42",
-            context("account-service", "account-42")
+            context("account-service", "account-42").withCallerIdentity(new ai.fabric.execution.context.ExecutionCallerIdentity(
+                "SERVICE", "PRIVATE_ASSERTION", "BACKEND", "session-private", "customer-private", "issuer-private",
+                java.util.List.of("runtime"), NOW.plusSeconds(300)))
         );
 
         ExecutionHandle accepted = first.submit(request);
@@ -124,8 +126,10 @@ class DurableAIExecutionGatewayTest {
             .isEqualTo(new ResolverOutput("Account inspected"));
         assertThat(completed.result().diagnostics())
             .containsEntry("nullableProviderField", null);
-        verify(restartedRunner)
-            .executeAssigned(anyString(), any());
+        var restoredRequest = org.mockito.ArgumentCaptor.forClass(AIExecutionRequest.class);
+        verify(restartedRunner).executeAssigned(anyString(), restoredRequest.capture());
+        assertThat(restoredRequest.getValue().trustedExecutionContext().callerIdentity())
+            .isEqualTo(request.trustedExecutionContext().callerIdentity());
 
         ExecutionHandle replay = restarted.submit(request);
         ExecutionHandle conflict = restarted.submit(request(
