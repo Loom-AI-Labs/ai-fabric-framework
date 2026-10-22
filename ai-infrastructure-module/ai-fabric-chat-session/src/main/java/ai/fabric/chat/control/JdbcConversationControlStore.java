@@ -19,6 +19,7 @@ import javax.sql.DataSource;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.util.StringUtils;
 
@@ -51,11 +52,21 @@ public final class JdbcConversationControlStore implements ConversationControlSt
         ObjectMapper objectMapper,
         boolean initializeSchema
     ) {
-        if (dataSource == null || objectMapper == null) {
-            throw new IllegalArgumentException("dataSource and objectMapper are required");
+        this(dataSource, objectMapper, initializeSchema, new DataSourceTransactionManager(dataSource));
+    }
+
+    /** Use the host's manager when conversation writes join an application transaction. */
+    public JdbcConversationControlStore(
+        DataSource dataSource,
+        ObjectMapper objectMapper,
+        boolean initializeSchema,
+        PlatformTransactionManager transactionManager
+    ) {
+        if (dataSource == null || objectMapper == null || transactionManager == null) {
+            throw new IllegalArgumentException("dataSource, objectMapper and transactionManager are required");
         }
         this.jdbc = new JdbcTemplate(dataSource);
-        this.transactions = new TransactionTemplate(new DataSourceTransactionManager(dataSource));
+        this.transactions = new TransactionTemplate(transactionManager);
         this.objectMapper = objectMapper.copy();
         if (initializeSchema) {
             initializeSchema();
