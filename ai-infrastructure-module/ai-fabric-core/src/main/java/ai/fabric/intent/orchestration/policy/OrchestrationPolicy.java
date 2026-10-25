@@ -223,6 +223,7 @@ public record OrchestrationPolicy(
         int maxParallelActions,
         int maxPlannerContextChars,
         int maxActionEvidenceCharsPerAction,
+        int maxActionEvidenceItems,
         OrchestrationProperties.ReadActionResolutionRagCooperationMode ragCooperationMode,
         boolean requireGroundingEligible
     ) {
@@ -237,6 +238,9 @@ public record OrchestrationPolicy(
             maxParallelActions = normalizePositive(maxParallelActions, 1);
             maxPlannerContextChars = normalizePositive(maxPlannerContextChars, 4_000);
             maxActionEvidenceCharsPerAction = normalizePositive(maxActionEvidenceCharsPerAction, 2_400);
+            if (maxActionEvidenceItems < 1 || maxActionEvidenceItems > 100) {
+                throw new IllegalArgumentException("maxActionEvidenceItems must be between 1 and 100");
+            }
             ragCooperationMode = ragCooperationMode != null
                 ? ragCooperationMode
                 : OrchestrationProperties.ReadActionResolutionRagCooperationMode.RAG_IF_ACTIONS_INSUFFICIENT;
@@ -258,6 +262,7 @@ public record OrchestrationPolicy(
                 1,
                 4_000,
                 2_400,
+                5,
                 OrchestrationProperties.ReadActionResolutionRagCooperationMode.RAG_IF_ACTIONS_INSUFFICIENT,
                 true
             );

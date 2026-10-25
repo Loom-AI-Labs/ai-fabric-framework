@@ -1,5 +1,6 @@
 package ai.fabric.intent.orchestration.information;
 
+import ai.fabric.config.AIEntityConfigurationLoader;
 import ai.fabric.config.OrchestrationProperties;
 import ai.fabric.core.AICoreService;
 import ai.fabric.core.LlmPurpose;
@@ -128,7 +129,8 @@ class ReadActionResolutionServiceTest {
             actionRegistry,
             new IntentExtractionJsonSupport(new ObjectMapper()),
             templateResolver,
-            new PromptRenderer()
+            new PromptRenderer(),
+            mock(AIEntityConfigurationLoader.class)
         );
         OrchestrationContext context = OrchestrationContext.forUser("user-1");
         ReadActionResolutionService.ResolutionOutcome outcome = service.resolve(
@@ -224,7 +226,8 @@ class ReadActionResolutionServiceTest {
             actionRegistry,
             new IntentExtractionJsonSupport(new ObjectMapper()),
             templateResolver,
-            new PromptRenderer()
+            new PromptRenderer(),
+            mock(AIEntityConfigurationLoader.class)
         );
         OrchestrationContext orchestrationContext = OrchestrationContext.forUser("user-1");
         PipelineContext pipelineContext = PipelineContext.from("Find electric vehicles", orchestrationContext)
@@ -312,7 +315,8 @@ class ReadActionResolutionServiceTest {
             actionRegistry,
             new IntentExtractionJsonSupport(new ObjectMapper()),
             templateResolver,
-            new PromptRenderer()
+            new PromptRenderer(),
+            mock(AIEntityConfigurationLoader.class)
         );
 
         service.resolve(
@@ -401,7 +405,8 @@ class ReadActionResolutionServiceTest {
             actionRegistry,
             new IntentExtractionJsonSupport(new ObjectMapper()),
             templateResolver,
-            new PromptRenderer()
+            new PromptRenderer(),
+            mock(AIEntityConfigurationLoader.class)
         );
         OrchestrationContext context = OrchestrationContext.forUser("user-1");
         ReadActionResolutionService.ResolutionOutcome outcome = service.resolve(
@@ -455,7 +460,8 @@ class ReadActionResolutionServiceTest {
             actionRegistry,
             new IntentExtractionJsonSupport(new ObjectMapper()),
             mock(PromptTemplateResolver.class),
-            new PromptRenderer()
+            new PromptRenderer(),
+            mock(AIEntityConfigurationLoader.class)
         );
         OrchestrationContext context = OrchestrationContext.forUser("user-1");
         ReadActionResolutionService.ResolutionOutcome outcome = service.resolve(
@@ -539,7 +545,8 @@ class ReadActionResolutionServiceTest {
             actionRegistry,
             new IntentExtractionJsonSupport(new ObjectMapper()),
             templateResolver,
-            new PromptRenderer()
+            new PromptRenderer(),
+            mock(AIEntityConfigurationLoader.class)
         );
 
         ReadActionResolutionService.ResolutionOutcome outcome = service.resolve(
@@ -645,7 +652,8 @@ class ReadActionResolutionServiceTest {
             actionRegistry,
             new IntentExtractionJsonSupport(new ObjectMapper()),
             templateResolver,
-            new PromptRenderer()
+            new PromptRenderer(),
+            mock(AIEntityConfigurationLoader.class)
         );
 
         ReadActionResolutionService.ResolutionOutcome outcome = service.resolve(
@@ -760,7 +768,8 @@ class ReadActionResolutionServiceTest {
             actionRegistry,
             new IntentExtractionJsonSupport(new ObjectMapper()),
             templateResolver,
-            new PromptRenderer()
+            new PromptRenderer(),
+            mock(AIEntityConfigurationLoader.class)
         );
         OrchestrationContext context = OrchestrationContext.builder()
             .userId("user-1")
@@ -901,7 +910,8 @@ class ReadActionResolutionServiceTest {
             actionRegistry,
             new IntentExtractionJsonSupport(new ObjectMapper()),
             templateResolver,
-            new PromptRenderer()
+            new PromptRenderer(),
+            mock(AIEntityConfigurationLoader.class)
         );
 
         ReadActionResolutionService.ResolutionOutcome outcome = service.resolve(
@@ -990,7 +1000,8 @@ class ReadActionResolutionServiceTest {
             actionRegistry,
             new IntentExtractionJsonSupport(new ObjectMapper()),
             templateResolver,
-            new PromptRenderer()
+            new PromptRenderer(),
+            mock(AIEntityConfigurationLoader.class)
         );
 
         ReadActionResolutionService.ResolutionOutcome outcome = service.resolve(
@@ -1101,7 +1112,8 @@ class ReadActionResolutionServiceTest {
             actionRegistry,
             new IntentExtractionJsonSupport(new ObjectMapper()),
             templateResolver,
-            new PromptRenderer()
+            new PromptRenderer(),
+            mock(AIEntityConfigurationLoader.class)
         );
 
         ReadActionResolutionService.ResolutionOutcome outcome = service.resolve(
@@ -1200,7 +1212,8 @@ class ReadActionResolutionServiceTest {
             actionRegistry,
             new IntentExtractionJsonSupport(new ObjectMapper()),
             templateResolver,
-            new PromptRenderer()
+            new PromptRenderer(),
+            mock(AIEntityConfigurationLoader.class)
         );
 
         ReadActionResolutionService.ResolutionOutcome outcome = service.resolve(
@@ -1274,7 +1287,8 @@ class ReadActionResolutionServiceTest {
             actionRegistry,
             new IntentExtractionJsonSupport(new ObjectMapper()),
             templateResolver,
-            new PromptRenderer()
+            new PromptRenderer(),
+            mock(AIEntityConfigurationLoader.class)
         );
 
         ReadActionResolutionService.ResolutionOutcome outcome = service.resolve(
@@ -1339,7 +1353,8 @@ class ReadActionResolutionServiceTest {
             actionRegistry,
             new IntentExtractionJsonSupport(new ObjectMapper()),
             templateResolver,
-            new PromptRenderer()
+            new PromptRenderer(),
+            mock(AIEntityConfigurationLoader.class)
         );
 
         service.resolve(
@@ -1446,7 +1461,8 @@ class ReadActionResolutionServiceTest {
             actionRegistry,
             new IntentExtractionJsonSupport(new ObjectMapper()),
             templateResolver,
-            new PromptRenderer()
+            new PromptRenderer(),
+            mock(AIEntityConfigurationLoader.class)
         );
 
         ReadActionResolutionService.ResolutionOutcome outcome = service.resolve(
@@ -1594,7 +1610,8 @@ class ReadActionResolutionServiceTest {
             actionRegistry,
             new IntentExtractionJsonSupport(new ObjectMapper()),
             templateResolver,
-            new PromptRenderer()
+            new PromptRenderer(),
+            mock(AIEntityConfigurationLoader.class)
         );
         OrchestrationContext context = OrchestrationContext.forUser("user-1");
         return service.resolve(
@@ -1655,6 +1672,7 @@ class ReadActionResolutionServiceTest {
                 1,
                 4_000,
                 1_200,
+                5,
                 ragMode,
                 true
             ),

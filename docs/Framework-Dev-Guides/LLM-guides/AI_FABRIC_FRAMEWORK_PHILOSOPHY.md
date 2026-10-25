@@ -291,6 +291,42 @@ such as vector similarity, BM25/hybrid search, and configured rerankers. It
 does prohibit an ad hoc token scorer or keyword list pretending to understand
 the user's request.
 
+### Strict Trust Boundaries, Minimal AI Contracts
+
+Fail-closed protects authority and execution safety; it is not a requirement
+that every model decision be perfect. Separate three concerns:
+
+- **Trust and side effects:** enforce tenant/ownership isolation, permissions,
+  trusted IDs, declared write confirmation, and finite spending/execution bounds.
+  A model decision, user acceptance, or quality tolerance cannot waive these.
+- **Executable structure:** require only fields needed for the requested
+  operation to execute safely. Keep prompts/schema consistent with that contract.
+  Use named, bounded LLM repair when allowed; do not silently invent intent,
+  actions, parameters, targets, sources, or a replacement semantic decision.
+- **Semantic quality:** accept measured model imperfection and improve prompts,
+  authorized catalogues, evidence, examples, or model choice. Do not replace
+  intelligence with keyword/regex rules or demand universal100% semantic accuracy.
+
+A missing optional optimization hint should not automatically block an otherwise
+safe useful answer. Explicit technical defaults may be documented policy, but
+must not masquerade as LLM decisions. Required execution parameters still matter;
+non-security confidence/provenance checks may warn where the declared policy
+allows informed acceptance. Security-critical provenance remains mandatory.
+
+READ actions are not inherently tied to indexed knowledge. Require a vector
+space only when retrieval or that action's declared grounding contract needs it.
+Do not force arbitrary READ capabilities into vector-space ownership.
+
+When information is missing, preserve useful authorized evidence and expose the
+limitation honestly. Prefer business-facing clarification over asking customers
+to repair internal routing. Never search all sources, replay an action, or
+substitute an answer unless explicit server-owned recovery policy permits it.
+
+For every new hard validator, state which trust boundary or execution
+requirement it protects. If it protects neither, justify warning/quality
+diagnostics instead of rejecting the whole interaction. Invalid operator budget
+configuration can fail early; this is distinct from an imperfect model answer.
+
 **Philosophy:** Respect intelligence wherever it comes from—human users, LLMs, or domain experts.
 
 ---

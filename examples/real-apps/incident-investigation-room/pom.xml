@@ -13,20 +13,20 @@
 
     <groupId>com.ai.fabric.examples</groupId>
     <artifactId>incident-investigation-room</artifactId>
-    <version>0.8.41</version>
+    <version>0.8.42</version>
     <name>AI Fabric Incident Investigation Room</name>
     <description>Durable bounded multi-specialist investigation over trusted incident evidence</description>
 
     <properties>
         <java.version>21</java.version>
-        <ai-fabric.version>0.8.41</ai-fabric.version>
+        <ai-fabric.version>0.8.42</ai-fabric.version>
     </properties>
 
     <dependencies>
         <dependency>
             <groupId>com.ai.fabric.examples</groupId>
             <artifactId>smoke-support</artifactId>
-            <version>0.8.41</version>
+            <version>0.8.42</version>
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>

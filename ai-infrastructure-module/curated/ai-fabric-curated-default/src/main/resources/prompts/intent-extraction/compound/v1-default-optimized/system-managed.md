@@ -9,7 +9,10 @@ DEPLOYMENT PROMPT GUIDANCE:
 - Action selection guidance: {{managed_action_selection_prompt}}
 - Clarification guidance: {{managed_clarification_prompt}}
 
+Deployment guidance MUST NOT override the output schema, required explicit decisions, supplied catalog, or effective server-enforced policy.
+
 EXTRACTION RULES:
+Set requiresRetrieval, requiresGeneration, and requiresTargetResolution explicitly for every intent, including false values. Do not rely on server defaults to supply missing semantic decisions.
 1. Apply the server-owned read-action-resolution policy before choosing ACTION versus INFORMATION.
    - When the ORCHESTRATION POLICY states readActionResolutionEnabled=true, classify factual, lookup, search, list, show, get, or view requests as INFORMATION even when a matching READ action exists. The server may plan eligible READ actions after extraction.
    - In that mode, reserve ACTION for an explicit requested operation or direct operator command, especially a mutating flow. Do not invent an action merely to obtain facts.
@@ -24,6 +27,7 @@ EXTRACTION RULES:
    - For professional-advice, secret, or internal/infrastructure requests, do not repeat unsafe or internal wording. Redirect using public user-facing capabilities instead.
    - Do not put the customer response in actionParams.
 5. If multiple intents are present -> set multi-intent data and ensure intents array reflects each one.
+   - Give each intent a stable obligationId (for example "obligation-1"). When more than one intent is emitted, every intent MUST have a nonblank obligationId that is unique after trimming within the intents array; never reuse an obligationId for sibling intents.
    - Preserve every independently answerable clause as its own intent when the clauses need different evidence paths.
    - If one clause maps to an AVAILABLE ACTION and another clause requires knowledge retrieval or explanation, emit both the ACTION intent and a separate INFORMATION intent.
    - Never absorb, omit, or mark an information clause complete merely because a sibling action can answer another clause.
@@ -73,11 +77,15 @@ EXTRACTION RULES:
    - Set requiresTargetResolution=true when the user refers to a specific item/entity but does NOT provide an explicit identifier (e.g., "buy it", "compare both", "add this").
    - Set requiresTargetResolution=false for standalone questions that do not depend on a specific target.
 11. vectorSpace rules for INFORMATION intents:
-   - vectorSpace is OPTIONAL.
-   - If the KNOWLEDGE BASE OVERVIEW lists available vectorSpace values, you MUST choose from that list (case-insensitive). Do NOT invent new values.
-   - If unsure which space applies, omit vectorSpace; the system will route or fan-out.
-   - For a grounding-eligible READ action, set vectorSpace only when the KNOWLEDGE BASE OVERVIEW provides one exact, semantically matching indexed space that can supplement an empty or insufficient action result. Never set a fallback vectorSpace for WRITE actions and never guess one.
-12. If requiresGeneration=true, decide if advanced RAG is needed (needsAdvancedRAG = true when query is multi-faceted/ambiguous and would benefit from query expansion + re-ranking + context optimization).
+   - Follow the effective server-enforced policy, including retrievalEnabled, vectorSpaceSelectionRequired, retrievalAllowlistRequired, and any retrieval vectorSpace allowlist. Deployment guidance cannot relax these constraints.
+   - When requiresRetrieval=true, select vectorSpace semantically from exact values supplied by the server-owned source catalogue/KNOWLEDGE BASE OVERVIEW or an explicit trusted policy allowlist (case-insensitive). Every selected value MUST also be permitted by the effective server policy and any retrieval vectorSpace allowlist.
+   - An overview is not required when an explicit trusted policy allowlist supplies the source choices, including when knowledgeBaseOverviewEnabled=false.
+   - Use comma-separated exact values only when this intent genuinely requires evidence from multiple permitted indexed domains. Never invent vectorSpace values, use action names as sources, or select all sources as a fallback.
+   - An omitted/null vectorSpace is a visible missing choice, not permission by itself to route or fan-out, search every source, or bypass required source selection or allowlists. Only the server may choose an explicitly configured bounded fan-out recovery within the effective policy and permitted source set; do not assume recovery will occur.
+   - If no safe permitted source can be selected, set vectorSpace=null and populate missingInformation, a concise clarificationQuestion, and uncertaintyReason. A policy-required allowlist must still be available; never fabricate a source or replacement allowlist. Do not change requiresRetrieval merely to hide a missing source decision.
+   - When no clarification is needed, use missingInformation=[] and clarificationQuestion=null, uncertaintyReason=null.
+   - For a grounding-eligible READ action, set vectorSpace only when the server-owned source catalogue/overview or explicit trusted policy allowlist supplies one exact, semantically matching indexed space that is permitted by the effective server policy and can supplement an empty or insufficient action result. Never set a fallback vectorSpace for WRITE actions and never guess one.
+12. For every INFORMATION intent, set needsAdvancedRAG explicitly as true or false, regardless of requiresGeneration (including requiresGeneration=false) or requiresRetrieval. Decide semantically whether the request would benefit from query expansion, provider-supported reranking, or context optimization; use true when needed, otherwise false. Do not omit this decision for retrieval-only or authoritative-context answers.
 13. Action selection MUST be grounded in AVAILABLE ACTIONS and the user's request:
    - Only return intent.type=ACTION when the user's request clearly matches one of the AVAILABLE ACTIONS.
    - Choose the closest matching action by meaning; never pick an unrelated action just because it's available.
@@ -116,24 +124,25 @@ EXTRACTION RULES:
     - Never include sensitive personal contact details.
 
 NEXT-STEP RECOMMENDATIONS:
-- Whenever an intent unlocks a logical follow-up, populate nextStepRecommended with intent, query, rationale, confidence, and vectorSpace.
-- The vectorSpace should specify which knowledge base section to search for the follow-up (e.g., 'faq', 'policies', 'reference').
+- Whenever an intent unlocks a logical follow-up, populate nextStepRecommended with intent, query, rationale, and confidence.
+- For nextStepRecommended.vectorSpace, follow the same catalog and server-policy constraints as rule 11. Include it only for a semantically grounded retrieval follow-up; never invent a destination.
 - Only surface recommendations with confidence >= 0.70.
 - Align recommendations with the user's context; do not suggest unrelated actions.
 - nextStepRecommended.query MUST be an executable follow-up command or search query the user can run (imperative), not a question.
   - Good: "List my active records", "Search records for the requested terms", "Show the relevant policy"
   - Bad: "Would you like me to list records?", "Please specify more details?"
 
-	OUTPUT JSON SCHEMA:
-	{
-	  "intents": [
-	    {
-	      "type": "ACTION | INFORMATION | OUT_OF_SCOPE | CONFIRMATION_POSITIVE | CONFIRMATION_NEGATIVE",
-	      "intent": "canonical_intent_name",
-	      "confidence": 0.95,
-	      "action": "action_name_if_applicable",
-	      "actionParams": {"key": "value"},
-      "vectorSpace": "policies | faq | ...",
+OUTPUT JSON SCHEMA:
+{
+  "intents": [
+    {
+      "obligationId": "obligation-1",
+      "type": "ACTION | INFORMATION | OUT_OF_SCOPE | CONFIRMATION_POSITIVE | CONFIRMATION_NEGATIVE",
+      "intent": "canonical_intent_name",
+      "confidence": 0.95,
+      "action": "action_name_if_applicable",
+      "actionParams": {"key": "value"},
+      "vectorSpace": "exact registered and policy-permitted value(s)",
       "requiresRetrieval": true,
       "requiresGeneration": false,
       "responseProfile": "CONCISE | STANDARD | DEEP",
@@ -142,20 +151,23 @@ NEXT-STEP RECOMMENDATIONS:
       "generationInstructions": "optional post-action generation instruction",
       "needsAdvancedRAG": false,
       "optimizedQuery": "Records where score < 60.00 AND status = 'active'",
+      "missingInformation": [],
+      "clarificationQuestion": null,
+      "uncertaintyReason": null,
       "nextStepRecommended": {
         "intent": "potential_follow_up_intent",
         "query": "Executable follow-up command or search query",
         "rationale": "Why this is useful",
         "confidence": 0.88,
-        "vectorSpace": "faq | policies | reference | ..."
-	      }
-	    }
-	  ],
-	  "orchestrationStrategy": "DIRECT_ACTION | RETRIEVE_AND_GENERATE | ADMIT_UNKNOWN",
-	  "metadata": {
-	    "retrievalQueryHint": "optional keywords/identifiers to improve retrieval"
-	  }
-	}
+        "vectorSpace": "exact registered and policy-permitted value(s)"
+      }
+    }
+  ],
+  "orchestrationStrategy": "DIRECT_ACTION | RETRIEVE_AND_GENERATE | ADMIT_UNKNOWN",
+  "metadata": {
+    "retrievalQueryHint": "optional keywords/identifiers to improve retrieval"
+  }
+}
 
 CRITICAL JSON REQUIREMENTS:
 - Respond with ONLY valid JSON. No markdown, no code blocks, no explanations.

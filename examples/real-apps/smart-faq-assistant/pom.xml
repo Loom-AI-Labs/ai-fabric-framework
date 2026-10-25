@@ -14,7 +14,7 @@
 
     <groupId>com.ai.fabric.realapps</groupId>
     <artifactId>smart-faq-assistant</artifactId>
-    <version>0.8.41</version>
+    <version>0.8.42</version>
     <name>Smart FAQ Assistant</name>
     <description>Smart FAQ assistant demo app for AI Fabric (offline semantic search; optional RAG)</description>
 
@@ -23,7 +23,7 @@
         <maven.compiler.source>21</maven.compiler.source>
         <maven.compiler.target>21</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <ai-fabric.version>0.8.41</ai-fabric.version>
+        <ai-fabric.version>0.8.42</ai-fabric.version>
         <lombok.version>1.18.38</lombok.version>
     </properties>
 
@@ -32,7 +32,7 @@
         <dependency>
             <groupId>com.ai.fabric.examples</groupId>
             <artifactId>smoke-support</artifactId>
-            <version>0.8.41</version>
+            <version>0.8.42</version>
         </dependency>
         <!-- Spring Boot -->
         <dependency>

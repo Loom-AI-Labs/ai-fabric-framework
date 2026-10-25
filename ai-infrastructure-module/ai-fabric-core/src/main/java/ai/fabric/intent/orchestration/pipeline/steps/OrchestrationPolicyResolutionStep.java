@@ -211,6 +211,7 @@ public class OrchestrationPolicyResolutionStep implements PipelineStep {
                 read.getMaxParallelActions() != null ? read.getMaxParallelActions() : 1,
                 read.getMaxPlannerContextChars() != null ? read.getMaxPlannerContextChars() : 4_000,
                 read.getMaxActionEvidenceCharsPerAction() != null ? read.getMaxActionEvidenceCharsPerAction() : 2_400,
+                read.getMaxActionEvidenceItems(),
                 read.getRagCooperationMode(),
                 read.getRequireGroundingEligible() == null || read.getRequireGroundingEligible()
             );
@@ -360,6 +361,7 @@ public class OrchestrationPolicyResolutionStep implements PipelineStep {
             debug.put("readActionResolutionMaxParallelActions", readPolicy.maxParallelActions());
             debug.put("readActionResolutionMaxPlannerContextChars", readPolicy.maxPlannerContextChars());
             debug.put("readActionResolutionMaxActionEvidenceCharsPerAction", readPolicy.maxActionEvidenceCharsPerAction());
+            debug.put("readActionResolutionMaxActionEvidenceItems", readPolicy.maxActionEvidenceItems());
             debug.put("readActionResolutionRagCooperationMode", readPolicy.ragCooperationMode().name());
             debug.put("readActionResolutionRequireGroundingEligible", readPolicy.requireGroundingEligible());
             if (readPolicy.hasAllowedReadActions()) {

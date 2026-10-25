@@ -13,13 +13,13 @@
 
     <groupId>com.ai.fabric.realapps</groupId>
     <artifactId>customer-runtime-demo</artifactId>
-    <version>0.8.41</version>
+    <version>0.8.42</version>
     <name>Customer Runtime Demo</name>
     <description>Customer-owned domain fixture plus AI Fabric connector/runtime scenario.</description>
 
     <properties>
         <java.version>21</java.version>
-        <ai-fabric.version>0.8.41</ai-fabric.version>
+        <ai-fabric.version>0.8.42</ai-fabric.version>
         <lombok.version>1.18.38</lombok.version>
     </properties>
 
@@ -27,7 +27,7 @@
         <dependency>
             <groupId>com.ai.fabric.examples</groupId>
             <artifactId>smoke-support</artifactId>
-            <version>0.8.41</version>
+            <version>0.8.42</version>
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>

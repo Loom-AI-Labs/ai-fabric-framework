@@ -1839,6 +1839,30 @@ public class IntentHandlingStep implements PipelineStep {
         return resolved;
     }
 
+    private OrchestrationResult rejectDisallowedRetrieval(Intent intent,
+                                                        boolean retrievalEnabled,
+                                                        boolean allowlistRequired,
+                                                        OrchestrationPolicy.RagBudgets budgets) {
+        String reason;
+        String message;
+        if (!retrievalEnabled) {
+            reason = "RETRIEVAL_DISABLED_BY_POLICY";
+            message = "Retrieval is disabled by server policy for this request.";
+        } else if (allowlistRequired && (budgets == null || !budgets.hasVectorSpaceAllowlist())) {
+            reason = "RETRIEVAL_ALLOWLIST_REQUIRED";
+            message = "Retrieval requires a configured vectorSpace allowlist in this mode.";
+        } else {
+            return null;
+        }
+        return OrchestrationResult.builder()
+            .type(OrchestrationResultType.CLARIFICATION_REQUIRED)
+            .success(false)
+            .message(message)
+            .data(Map.of("reason", reason))
+            .nextSteps(extractNextSteps(intent))
+            .build();
+    }
+
     private OrchestrationResult handleInformation(Intent intent, OrchestrationContext context, PipelineContext pipelineContext) {
         return handleInformation(intent, context, pipelineContext, false);
     }
@@ -1865,6 +1889,9 @@ public class IntentHandlingStep implements PipelineStep {
         );
 
         boolean retrievalEnabled = informationPlan.retrievalEnabled();
+        if (pipelineContext.getEffectiveCapabilityProfile() != null) {
+            retrievalEnabled = retrievalEnabled && pipelineContext.getEffectiveCapabilityProfile().retrievalEnabled();
+        }
         OrchestrationPolicy.RagBudgets ragBudgets = informationPlan.ragBudgets();
         boolean deepRetrievalEnabled = informationPlan.deepRetrievalEnabled();
         boolean retrievalAllowlistRequired = informationPlan.retrievalAllowlistRequired();
@@ -1880,30 +1907,11 @@ public class IntentHandlingStep implements PipelineStep {
         Map<String, Object> metadata = informationPlan.metadata();
         boolean forceRetrievalWhenTargetsPresent = informationPlan.forceRetrievalWhenTargetsPresent();
 
-        if (requiresRetrieval && !retrievalEnabled) {
-            Map<String, Object> data = new LinkedHashMap<>();
-            data.put("reason", "RETRIEVAL_DISABLED_BY_POLICY");
-            return OrchestrationResult.builder()
-                .type(OrchestrationResultType.CLARIFICATION_REQUIRED)
-                .success(false)
-                .message("Retrieval is disabled by server policy for this request.")
-                .data(Collections.unmodifiableMap(data))
-                .nextSteps(extractNextSteps(intent))
-                .build();
-        }
-
-        if (requiresRetrieval
-            && retrievalAllowlistRequired
-            && (ragBudgets == null || !ragBudgets.hasVectorSpaceAllowlist())) {
-            Map<String, Object> data = new LinkedHashMap<>();
-            data.put("reason", "RETRIEVAL_ALLOWLIST_REQUIRED");
-            return OrchestrationResult.builder()
-                .type(OrchestrationResultType.CLARIFICATION_REQUIRED)
-                .success(false)
-                .message("Retrieval requires a configured vectorSpace allowlist in this mode.")
-                .data(Collections.unmodifiableMap(data))
-                .nextSteps(extractNextSteps(intent))
-                .build();
+        OrchestrationResult retrievalDenial = requiresRetrieval
+            ? rejectDisallowedRetrieval(intent, retrievalEnabled, retrievalAllowlistRequired, ragBudgets)
+            : null;
+        if (retrievalDenial != null) {
+            return retrievalDenial;
         }
 
         ReadActionResolutionService.ResolutionOutcome readActionResolution = suppliedReadActionResolution;
@@ -1998,6 +2006,12 @@ public class IntentHandlingStep implements PipelineStep {
             metadata.put("readActionResolutionForcedRetrieval", true);
             metadata.put(DATA_KEY_REQUIRES_GENERATION, needsGeneration);
             metadata.put("requiresRetrieval", true);
+        }
+        retrievalDenial = requiresRetrieval
+            ? rejectDisallowedRetrieval(intent, retrievalEnabled, retrievalAllowlistRequired, ragBudgets)
+            : null;
+        if (retrievalDenial != null) {
+            return ReadActionResolutionSupport.attachDiagnostics(retrievalDenial, readActionResolution);
         }
         if (!requiresRetrieval) {
             OrchestrationResult result = collectEvidenceOnly

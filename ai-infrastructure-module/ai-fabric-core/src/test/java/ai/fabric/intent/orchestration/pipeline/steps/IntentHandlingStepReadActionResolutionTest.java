@@ -23,6 +23,7 @@ import ai.fabric.intent.orchestration.OrchestrationResult;
 import ai.fabric.intent.orchestration.OrchestrationResultType;
 import ai.fabric.intent.orchestration.information.ReadActionResolutionService;
 import ai.fabric.intent.orchestration.pipeline.PipelineContext;
+import ai.fabric.intent.orchestration.policy.OrchestrationPolicy;
 import ai.fabric.intent.vectorspace.RankBasedMerger;
 import ai.fabric.prompt.ClasspathPromptTemplateStore;
 import ai.fabric.prompt.PromptRenderer;
@@ -31,6 +32,8 @@ import ai.fabric.spi.AdvancedRAGProvider;
 import ai.fabric.spi.RAGProvider;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.core.io.DefaultResourceLoader;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -47,6 +50,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 class IntentHandlingStepReadActionResolutionTest {
@@ -225,6 +229,77 @@ class IntentHandlingStepReadActionResolutionTest {
         assertThat(result.getMetadata()).containsKey("readActionResolution");
         assertThat(result.getData()).containsKey("ragResponse");
         verify(ragProvider).performRAGQuery(any());
+    }
+
+    @ParameterizedTest(name = "generation={0}, retrievalEnabled={1}, allowlistRequired={2}")
+    @CsvSource({
+        "true, false, false, RETRIEVAL_DISABLED_BY_POLICY",
+        "false, false, false, RETRIEVAL_DISABLED_BY_POLICY",
+        "true, true, true, RETRIEVAL_ALLOWLIST_REQUIRED",
+        "false, true, true, RETRIEVAL_ALLOWLIST_REQUIRED"
+    })
+    void shouldRejectPlannerPromotedRetrievalWhenServerPolicyDisallowsIt(boolean needsGeneration,
+                                                                        boolean retrievalEnabled,
+                                                                        boolean retrievalAllowlistRequired,
+                                                                        String expectedReason) {
+        RAGProvider ragProvider = mock(RAGProvider.class);
+        AICoreService aiCoreService = mock(AICoreService.class);
+        ReadActionResolutionService readActionResolutionService = mock(ReadActionResolutionService.class);
+        when(readActionResolutionService.resolve(any(), any(), any())).thenReturn(
+            ReadActionResolutionService.ResolutionOutcome.continueWithRag(
+                null,
+                List.of("policy"),
+                List.of(),
+                Map.of("attempted", true, "useRag", true)
+            )
+        );
+
+        IntentHandlingStep step = buildStep(ragProvider, aiCoreService);
+        ReflectionTestUtils.setField(step, "readActionResolutionServiceProvider", providerOf(readActionResolutionService));
+
+        OrchestrationPolicy policy = new OrchestrationPolicy(
+            null,
+            "resolver",
+            null,
+            OrchestrationProperties.InformationMode.LLM_DRIVEN,
+            new OrchestrationPolicy.OrchestrationCapabilities(
+                true,
+                retrievalEnabled,
+                false,
+                true,
+                false,
+                false,
+                true,
+                retrievalAllowlistRequired,
+                false,
+                true,
+                false,
+                false,
+                false
+            ),
+            OrchestrationPolicy.RagBudgets.defaults()
+        );
+        Intent intent = Intent.builder()
+            .type(IntentType.INFORMATION)
+            .intent("What is the refund policy?")
+            .requiresRetrieval(false)
+            .requiresGeneration(needsGeneration)
+            .directAnswer("Refund policy information is not available yet.")
+            .optimizedQuery("refund policy")
+            .build();
+        PipelineContext context = PipelineContext.from("What is the refund policy?", OrchestrationContext.forUser("user-1"))
+            .toBuilder()
+            .orchestrationPolicy(policy)
+            .intentResponse(MultiIntentResponse.builder().intents(List.of(intent)).build())
+            .build();
+
+        OrchestrationResult result = step.process(context).getIntentResult();
+
+        verify(readActionResolutionService).resolve(any(), any(), any());
+        verifyNoInteractions(ragProvider, aiCoreService);
+        assertThat(result.getType()).isEqualTo(OrchestrationResultType.CLARIFICATION_REQUIRED);
+        assertThat(result.isSuccess()).isFalse();
+        assertThat(result.getData()).containsEntry("reason", expectedReason);
     }
 
     @Test

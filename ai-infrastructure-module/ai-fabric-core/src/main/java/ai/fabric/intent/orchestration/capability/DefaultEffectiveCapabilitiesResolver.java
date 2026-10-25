@@ -244,6 +244,7 @@ public final class DefaultEffectiveCapabilitiesResolver implements EffectiveCapa
             source.maxParallelActions(),
             source.maxPlannerContextChars(),
             source.maxActionEvidenceCharsPerAction(),
+            source.maxActionEvidenceItems(),
             source.ragCooperationMode(),
             source.requireGroundingEligible()
         );
@@ -359,6 +360,7 @@ public final class DefaultEffectiveCapabilitiesResolver implements EffectiveCapa
             Integer.toString(policy.maxParallelActions()),
             Integer.toString(policy.maxPlannerContextChars()),
             Integer.toString(policy.maxActionEvidenceCharsPerAction()),
+            Integer.toString(policy.maxActionEvidenceItems()),
             policy.ragCooperationMode().name(),
             Boolean.toString(policy.requireGroundingEligible())
         );

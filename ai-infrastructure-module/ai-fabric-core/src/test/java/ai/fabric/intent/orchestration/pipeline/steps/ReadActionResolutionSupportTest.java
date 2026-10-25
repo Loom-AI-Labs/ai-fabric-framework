@@ -45,6 +45,7 @@ class ReadActionResolutionSupportTest {
                 1,
                 4_000,
                 2_400,
+                5,
                 OrchestrationProperties.ReadActionResolutionRagCooperationMode.RAG_IF_ACTIONS_INSUFFICIENT,
                 true
             )

@@ -13,7 +13,7 @@
 
     <groupId>com.ai.fabric.realapps</groupId>
     <artifactId>retrieval-connector-boundary-lab</artifactId>
-    <version>0.8.41</version>
+    <version>0.8.42</version>
     <name>AI Fabric Retrieval Connector Boundary Lab</name>
     <description>Packaged proof of the documents-only external retrieval boundary</description>
 
@@ -22,14 +22,14 @@
         <maven.compiler.source>21</maven.compiler.source>
         <maven.compiler.target>21</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <ai-fabric.version>0.8.41</ai-fabric.version>
+        <ai-fabric.version>0.8.42</ai-fabric.version>
     </properties>
 
     <dependencies>
         <dependency>
             <groupId>com.ai.fabric.examples</groupId>
             <artifactId>smoke-support</artifactId>
-            <version>0.8.41</version>
+            <version>0.8.42</version>
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>

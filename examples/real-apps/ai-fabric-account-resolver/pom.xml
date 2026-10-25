@@ -14,7 +14,7 @@
 
     <groupId>com.subscription</groupId>
     <artifactId>ai-fabric-account-resolver</artifactId>
-    <version>0.8.41</version>
+    <version>0.8.42</version>
     <name>AI Fabric Account Resolver</name>
     <description>Account-resolution demo for AI Fabric governed actions, policies, and readiness blockers</description>
 
@@ -23,7 +23,7 @@
         <maven.compiler.source>21</maven.compiler.source>
         <maven.compiler.target>21</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <ai-fabric.version>0.8.41</ai-fabric.version>
+        <ai-fabric.version>0.8.42</ai-fabric.version>
         <lombok.version>1.18.38</lombok.version>
     </properties>
 
@@ -32,7 +32,7 @@
         <dependency>
             <groupId>com.ai.fabric.examples</groupId>
             <artifactId>smoke-support</artifactId>
-            <version>0.8.41</version>
+            <version>0.8.42</version>
         </dependency>
         <!-- Spring Boot Starters -->
         <dependency>

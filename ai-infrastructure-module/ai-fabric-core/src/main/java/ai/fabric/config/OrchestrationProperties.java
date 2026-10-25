@@ -399,8 +399,16 @@ public class OrchestrationProperties {
         private Integer maxParallelActions;
         private Integer maxPlannerContextChars;
         private Integer maxActionEvidenceCharsPerAction;
+        private int maxActionEvidenceItems = 5;
         private ReadActionResolutionRagCooperationMode ragCooperationMode;
         private Boolean requireGroundingEligible;
+
+        public void setMaxActionEvidenceItems(int maxActionEvidenceItems) {
+            if (maxActionEvidenceItems < 1 || maxActionEvidenceItems > 100) {
+                throw new IllegalArgumentException("maxActionEvidenceItems must be between 1 and 100");
+            }
+            this.maxActionEvidenceItems = maxActionEvidenceItems;
+        }
 
         public void setAllowedReadActions(List<String> allowedReadActions) {
             this.allowedReadActions = normalizeActionNames(allowedReadActions);

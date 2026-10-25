@@ -126,6 +126,11 @@ class OrchestrationPolicyResolutionStepTest {
             assertThat(policy.mode()).isNull();
             assertThat(policy.informationMode()).isEqualTo(OrchestrationProperties.InformationMode.DETERMINISTIC_RAG_GENERATE);
             assertThat(policy.capabilities().forceGroundingEligibleReadActionPostGeneration()).isFalse();
+            assertThat(policy.readActionResolutionPolicy().maxActionEvidenceItems()).isEqualTo(5);
+
+            @SuppressWarnings("unchecked")
+            Map<String, Object> policyMeta = (Map<String, Object>) output.getMetadataView().get("orchestrationPolicy");
+            assertThat(policyMeta).containsEntry("readActionResolutionMaxActionEvidenceItems", 5);
         }
 
         @Test
@@ -271,6 +276,7 @@ class OrchestrationPolicyResolutionStepTest {
             readActionResolution.setAllowedReadActions(java.util.List.of("get_policy", "check_availability"));
             readActionResolution.setMaxActionsPerIteration(2);
             readActionResolution.setMaxTotalActions(3);
+            readActionResolution.setMaxActionEvidenceItems(17);
             readActionResolution.setRagCooperationMode(
                 OrchestrationProperties.ReadActionResolutionRagCooperationMode.RAG_IF_ACTIONS_INSUFFICIENT
             );
@@ -291,13 +297,36 @@ class OrchestrationPolicyResolutionStepTest {
                 .isEqualTo(OrchestrationProperties.ReadActionResolutionPlanningMode.SINGLE_PASS);
             assertThat(output.getOrchestrationPolicy().readActionResolutionPolicy().allowedReadActions())
                 .containsExactly("get_policy", "check_availability");
+            assertThat(output.getOrchestrationPolicy().readActionResolutionPolicy().maxActionEvidenceItems())
+                .isEqualTo(17);
 
             @SuppressWarnings("unchecked")
             Map<String, Object> policyMeta = (Map<String, Object>) output.getMetadataView().get("orchestrationPolicy");
             assertThat(policyMeta).containsEntry("readActionResolutionEnabled", true);
             assertThat(policyMeta).containsEntry("readActionResolutionPlanningMode", "SINGLE_PASS");
             assertThat(policyMeta).containsEntry("readActionResolutionRequireAllowlist", true);
+            assertThat(policyMeta).containsEntry("readActionResolutionMaxActionEvidenceItems", 17);
             assertThat(policyMeta).containsEntry("readActionResolutionAllowedReadActions", java.util.List.of("get_policy", "check_availability"));
+        }
+
+        @Test
+        @DisplayName("Should default omitted mode evidence item budget to five")
+        void shouldDefaultOmittedModeEvidenceItemBudgetToFive() {
+            OrchestrationProperties properties = new OrchestrationProperties();
+            OrchestrationProperties.ModeOverrides mode = new OrchestrationProperties.ModeOverrides();
+            mode.setReadActionResolution(new OrchestrationProperties.ReadActionResolutionModeOverrides());
+            properties.getModes().put("resolver", mode);
+            properties.setDefaultMode("resolver");
+
+            PipelineContext output = new OrchestrationPolicyResolutionStep(properties).process(
+                PipelineContext.from("hello", OrchestrationContext.forUser("user-123"))
+            );
+
+            assertThat(output.getOrchestrationPolicy().readActionResolutionPolicy().maxActionEvidenceItems())
+                .isEqualTo(5);
+            @SuppressWarnings("unchecked")
+            Map<String, Object> policyMeta = (Map<String, Object>) output.getMetadataView().get("orchestrationPolicy");
+            assertThat(policyMeta).containsEntry("readActionResolutionMaxActionEvidenceItems", 5);
         }
 
         @Test

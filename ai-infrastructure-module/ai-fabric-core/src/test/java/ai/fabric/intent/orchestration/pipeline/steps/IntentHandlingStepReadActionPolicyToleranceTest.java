@@ -181,6 +181,7 @@ class IntentHandlingStepReadActionPolicyToleranceTest {
                 1,
                 4000,
                 1200,
+                5,
                 OrchestrationProperties.ReadActionResolutionRagCooperationMode.RAG_IF_ACTIONS_INSUFFICIENT,
                 true
             ),

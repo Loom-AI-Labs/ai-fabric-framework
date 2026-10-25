@@ -2,6 +2,14 @@
 
 Use this index to decide which files a coding assistant should read.
 
+Before changing validation, routing, actions, or retrieval, read
+"Strict Trust Boundaries, Minimal AI Contracts" in
+`docs/Framework-Dev-Guides/LLM-guides/AI_FABRIC_FRAMEWORK_PHILOSOPHY.md`.
+Fail closed on authority and execution safety, not on every imperfect semantic
+decision. Require minimal execution fields; improve guided LLM decisions and use
+only configured bounded repair. Do not hide decisions with text matching or
+unapproved fallbacks. READ actions need not be backed by vector spaces.
+
 | User asks for | Read first | Then read |
 | --- | --- | --- |
 | "What can AI Fabric unlock in this app?" | `docs/llm-context/AI_FABRIC_OPPORTUNITY_SCANNER.md` | `docs/llm-context/AI_FABRIC_CAPABILITY_MAP.md`, `docs/getting-started/12-real-apps-map.md` |

@@ -1,5 +1,6 @@
 package ai.fabric.intent.orchestration.information;
 
+import ai.fabric.config.AIEntityConfigurationLoader;
 import ai.fabric.core.AICoreService;
 import ai.fabric.core.LlmPurpose;
 import ai.fabric.dto.AIGenerationRequest;
@@ -17,7 +18,6 @@ import ai.fabric.intent.action.ActionGroundingSupport;
 import ai.fabric.intent.action.ActionGroundingSufficiency;
 import ai.fabric.intent.action.ActionParameterContractValidator;
 import ai.fabric.intent.action.ActionParameterContractValidator.ActionParameterContractException;
-import ai.fabric.intent.action.ActionPayload;
 import ai.fabric.intent.action.ActionResult;
 import ai.fabric.intent.orchestration.capability.CapabilityAwareActionMetadataSupport;
 import ai.fabric.intent.action.invocation.ActionConfirmationState;
@@ -66,6 +66,7 @@ public class ReadActionResolutionService {
     private static final String PLACEHOLDER_INTENT_JSON = "intent_json";
     private static final String PLACEHOLDER_ELIGIBLE_ACTIONS_JSON = "eligible_actions_json";
     private static final String PLACEHOLDER_PRIOR_EVIDENCE_JSON = "prior_evidence_json";
+    private static final String PLACEHOLDER_KNOWLEDGE_SOURCES_JSON = "knowledge_sources_json";
     private static final String PLACEHOLDER_MAX_ACTIONS_PER_ITERATION = "max_actions_per_iteration";
     private static final String PLACEHOLDER_MAX_TOTAL_ACTIONS = "max_total_actions";
     private static final String PLACEHOLDER_RAG_COOPERATION_MODE = "rag_cooperation_mode";
@@ -104,6 +105,7 @@ public class ReadActionResolutionService {
     private final IntentExtractionJsonSupport jsonSupport;
     private final PromptTemplateResolver promptTemplateResolver;
     private final PromptRenderer promptRenderer;
+    private final AIEntityConfigurationLoader entityConfigurationLoader;
 
     public ResolutionOutcome resolve(Intent intent,
                                      OrchestrationContext orchestrationContext,
@@ -160,6 +162,7 @@ public class ReadActionResolutionService {
         List<Map<String, Object>> rejectedActionProposals = new ArrayList<>();
         Set<String> executionKeys = new LinkedHashSet<>();
         PlannerDecision lastDecision = null;
+        Map<String, Object> knowledgeSources = buildKnowledgeSourceCatalog(policy, orchestrationContext, pipelineContext);
 
         for (int iteration = 1; iteration <= maxIterations; iteration++) {
             PlannerDecision decision = planActions(
@@ -171,7 +174,8 @@ public class ReadActionResolutionService {
                 executedActions,
                 rejectedActionProposals,
                 iteration,
-                maxIterations
+                maxIterations,
+                knowledgeSources
             );
             if (decision == null) {
                 plannerIterations.add(Map.of(
@@ -227,17 +231,18 @@ public class ReadActionResolutionService {
             }
         }
 
-        boolean hasSuccessfulActionEvidence = executedActions.stream().anyMatch(ExecutedReadAction::groundingUsable);
+        EvidenceContextProjection evidenceProjection = buildEvidenceContext(executedActions, readPolicy.maxPlannerContextChars());
+        boolean hasSuccessfulActionEvidence = evidenceProjection.groundingUsable();
         long insufficientActionEvidenceCount = executedActions.stream()
             .filter(action -> action != null && !action.groundingUsable())
             .count();
         boolean useRag = shouldUseRag(
             lastDecision,
             hasSuccessfulActionEvidence,
-            insufficientActionEvidenceCount > 0,
+            insufficientActionEvidenceCount > 0 || evidenceProjection.omittedActions() > 0,
             readPolicy
         );
-        String evidenceContext = buildEvidenceContext(executedActions, readPolicy.maxPlannerContextChars());
+        String evidenceContext = evidenceProjection.context();
         List<String> preferredVectorSpaces = lastDecision != null
             ? normalizeVectorSpaces(lastDecision.suggestedVectorSpaces)
             : List.of();
@@ -272,6 +277,10 @@ public class ReadActionResolutionService {
         diagnostics.put("groundingUsableActionCount", executedActions.stream().filter(ExecutedReadAction::groundingUsable).count());
         diagnostics.put("insufficientActionEvidenceCount", insufficientActionEvidenceCount);
         diagnostics.put("useRag", useRag);
+        diagnostics.put("knowledgeSourceCatalog", knowledgeSources);
+        diagnostics.put("maxActionEvidenceItems", readPolicy.maxActionEvidenceItems());
+        diagnostics.put("contextGroundingUsable", evidenceProjection.groundingUsable());
+        diagnostics.put("contextOmittedActionsCount", evidenceProjection.omittedActions());
         if (lastDecision != null) {
             diagnostics.put("finalDecision", lastDecision.decision != null ? lastDecision.decision.name() : null);
             if (StringUtils.hasText(lastDecision.missingEvidenceReason)) {
@@ -391,7 +400,8 @@ public class ReadActionResolutionService {
                                         List<ExecutedReadAction> executedActions,
                                         List<Map<String, Object>> rejectedActionProposals,
                                         int iteration,
-                                        int maxIterations) {
+                                        int maxIterations,
+                                        Map<String, Object> knowledgeSources) {
         try {
             String systemPrompt =
                 SpecialistPromptInstructionSupport.appendToSystemPrompt(
@@ -406,22 +416,23 @@ public class ReadActionResolutionService {
                 );
             String userPrompt = promptRenderer.render(
                 promptTemplateResolver.resolve(TEMPLATE_FAMILY, TEMPLATE_USER).template(),
-                Map.of(
-                    PLACEHOLDER_MODE, orchestrationContext != null && StringUtils.hasText(orchestrationContext.getMode())
+                Map.ofEntries(
+                    Map.entry(PLACEHOLDER_MODE, orchestrationContext != null && StringUtils.hasText(orchestrationContext.getMode())
                         ? orchestrationContext.getMode()
-                        : "",
-                    PLACEHOLDER_QUERY, query,
-                    PLACEHOLDER_INTENT_JSON, writeJson(buildIntentPromptModel(intent)),
-                    PLACEHOLDER_ELIGIBLE_ACTIONS_JSON, writeJson(buildEligibleActionsPromptModel(eligibleActions)),
-                    PLACEHOLDER_PRIOR_EVIDENCE_JSON, writeJson(buildPriorEvidencePromptModel(
+                        : ""),
+                    Map.entry(PLACEHOLDER_QUERY, query),
+                    Map.entry(PLACEHOLDER_INTENT_JSON, writeJson(buildIntentPromptModel(intent))),
+                    Map.entry(PLACEHOLDER_ELIGIBLE_ACTIONS_JSON, writeJson(buildEligibleActionsPromptModel(eligibleActions))),
+                    Map.entry(PLACEHOLDER_KNOWLEDGE_SOURCES_JSON, writeJson(knowledgeSources)),
+                    Map.entry(PLACEHOLDER_PRIOR_EVIDENCE_JSON, writeJson(buildPriorEvidencePromptModel(
                         executedActions,
                         rejectedActionProposals
-                    )),
-                    PLACEHOLDER_MAX_ACTIONS_PER_ITERATION, String.valueOf(readPolicy.maxActionsPerIteration()),
-                    PLACEHOLDER_MAX_TOTAL_ACTIONS, String.valueOf(readPolicy.maxTotalActions()),
-                    PLACEHOLDER_RAG_COOPERATION_MODE, readPolicy.ragCooperationMode().name(),
-                    PLACEHOLDER_ITERATION, String.valueOf(iteration),
-                    PLACEHOLDER_MAX_ITERATIONS, String.valueOf(maxIterations)
+                    ))),
+                    Map.entry(PLACEHOLDER_MAX_ACTIONS_PER_ITERATION, String.valueOf(readPolicy.maxActionsPerIteration())),
+                    Map.entry(PLACEHOLDER_MAX_TOTAL_ACTIONS, String.valueOf(readPolicy.maxTotalActions())),
+                    Map.entry(PLACEHOLDER_RAG_COOPERATION_MODE, readPolicy.ragCooperationMode().name()),
+                    Map.entry(PLACEHOLDER_ITERATION, String.valueOf(iteration)),
+                    Map.entry(PLACEHOLDER_MAX_ITERATIONS, String.valueOf(maxIterations))
                 )
             );
 
@@ -636,7 +647,8 @@ public class ReadActionResolutionService {
                 handler,
                 result,
                 actionContext,
-                readPolicy.maxActionEvidenceCharsPerAction()
+                readPolicy.maxActionEvidenceCharsPerAction(),
+                readPolicy.maxActionEvidenceItems()
             );
             return new ExecutedReadAction(
                 actionExecutionId,
@@ -655,7 +667,8 @@ public class ReadActionResolutionService {
                 handler,
                 errorResult,
                 actionContext,
-                readPolicy.maxActionEvidenceCharsPerAction()
+                readPolicy.maxActionEvidenceCharsPerAction(),
+                readPolicy.maxActionEvidenceItems()
             );
             return new ExecutedReadAction(
                 actionExecutionId,
@@ -675,7 +688,7 @@ public class ReadActionResolutionService {
             return false;
         }
         if (result.getGroundingSufficiency() == ActionGroundingSufficiency.SUFFICIENT) {
-            return true;
+            return evidence != null && (evidence.completeProjection() || evidence.groundingUsable());
         }
         if (ActionGroundingSupport.requiresAdditionalGrounding(result)) {
             return false;
@@ -737,18 +750,16 @@ public class ReadActionResolutionService {
     private EvidenceSnippet buildEvidenceSnippet(AIActionHandler handler,
                                                  ActionResult result,
                                                  ActionContext actionContext,
-                                                 int maxChars) {
+                                                 int maxChars,
+                                                 int maxItems) {
         if (result == null) {
             return EvidenceSnippet.empty();
         }
         try {
             Optional<Map<String, Object>> llmFacts = handler.buildPostActionLlmFacts(result, actionContext);
             if (llmFacts.isPresent() && llmFacts.get() != null && !llmFacts.get().isEmpty()) {
-                Object sanitized = sanitizeValue(llmFacts.get(), 0);
-                return new EvidenceSnippet(
-                    writeBoundedEvidenceJson(sanitized, maxChars),
-                    hasSubstantiveEvidence(sanitized)
-                );
+                Object sanitized = sanitizeValue(llmFacts.get(), 0, maxItems);
+                return retainedEvidenceSnippet(sanitized, maxChars, maxItems);
             }
         } catch (Exception ex) {
             log.debug("Read-action resolution facts builder failed: {}", ex.getMessage());
@@ -763,16 +774,27 @@ public class ReadActionResolutionService {
             payload.put("errorCode", result.getErrorCode());
         }
         if (result.getData() != null) {
-            payload.put("data", sanitizePayload(result.getData()));
+            payload.put("data", result.getData().toMap());
         }
         if (result.getPinnedTargets() != null && !result.getPinnedTargets().isEmpty()) {
             payload.put("pinnedTargets", result.getPinnedTargets());
         }
-        Object sanitized = sanitizeValue(payload, 0);
-        return new EvidenceSnippet(
-            writeBoundedEvidenceJson(sanitized, maxChars),
-            hasSubstantiveEvidence(sanitized)
-        );
+        Object sanitized = sanitizeValue(payload, 0, maxItems);
+        return retainedEvidenceSnippet(sanitized, maxChars, maxItems);
+    }
+
+    private EvidenceSnippet retainedEvidenceSnippet(Object sanitized, int maxChars, int maxItems) {
+        String summary = writeBoundedEvidenceJson(sanitized, maxChars, maxItems);
+        if (!StringUtils.hasText(summary)) {
+            return EvidenceSnippet.empty();
+        }
+        try {
+            Object retained = jsonSupport.objectMapper().readValue(summary, Object.class);
+            return new EvidenceSnippet(summary, hasSubstantiveEvidence(retained), summary.equals(writeJson(sanitized)));
+        } catch (Exception ex) {
+            log.warn("Unable to validate retained read-action evidence", ex);
+            return new EvidenceSnippet(summary, false, false);
+        }
     }
 
     private boolean hasSubstantiveEvidence(Object value) {
@@ -833,13 +855,16 @@ public class ReadActionResolutionService {
             : "";
     }
 
-    private String writeBoundedEvidenceJson(Object value, int maxChars) {
+    private String writeBoundedEvidenceJson(Object value, int maxChars, int maxItems) {
+        if (maxChars > 0 && maxChars < 2) {
+            return null;
+        }
         String json = writeJson(value);
         if (maxChars <= 0 || json.length() <= maxChars) {
             return json;
         }
 
-        for (int itemLimit : List.of(5, 3, 1)) {
+        for (int itemLimit : new LinkedHashSet<>(List.of(maxItems, Math.min(maxItems, 3), 1))) {
             Object prioritized = prioritizeEvidence(value, itemLimit);
             json = writeJson(prioritized);
             if (json.length() <= maxChars) {
@@ -847,7 +872,7 @@ public class ReadActionResolutionService {
             }
         }
 
-        for (int itemLimit : List.of(3, 1)) {
+        for (int itemLimit : new LinkedHashSet<>(List.of(Math.min(maxItems, 3), 1))) {
             Object compacted = shrinkEvidenceLists(value, itemLimit);
             json = writeJson(compacted);
             if (json.length() <= maxChars) {
@@ -859,7 +884,10 @@ public class ReadActionResolutionService {
         fallback.put("truncated", true);
         fallback.put("summary", truncate(String.valueOf(value), Math.min(400, Math.max(80, maxChars - 80))));
         json = writeJson(fallback);
-        return json.length() <= maxChars ? json : "{\"truncated\":true}";
+        if (json.length() <= maxChars) {
+            return json;
+        }
+        return maxChars >= "{\"truncated\":true}".length() ? "{\"truncated\":true}" : "{}";
     }
 
     private Object shrinkEvidenceLists(Object value, int maxItems) {
@@ -970,25 +998,18 @@ public class ReadActionResolutionService {
         return null;
     }
 
-    private Object sanitizePayload(ActionPayload payload) {
-        if (payload == null) {
-            return null;
-        }
-        return sanitizeValue(payload.toMap(), 0);
-    }
-
-    private Object sanitizeValue(Object value, int depth) {
+    private Object sanitizeValue(Object value, int depth, int maxItems) {
         if (value == null) {
             return null;
+        }
+        if (value instanceof Number || value instanceof Boolean) {
+            return value;
         }
         if (depth > 3) {
             return truncate(String.valueOf(value), 240);
         }
         if (value instanceof String text) {
             return truncate(text, 240);
-        }
-        if (value instanceof Number || value instanceof Boolean) {
-            return value;
         }
         if (value instanceof Map<?, ?> map) {
             Map<String, Object> sanitized = new LinkedHashMap<>();
@@ -1001,15 +1022,15 @@ public class ReadActionResolutionService {
                     sanitized.put("_truncated", true);
                     break;
                 }
-                sanitized.put(String.valueOf(entry.getKey()), sanitizeValue(entry.getValue(), depth + 1));
+                sanitized.put(String.valueOf(entry.getKey()), sanitizeValue(entry.getValue(), depth + 1, maxItems));
             }
             return sanitized;
         }
         if (value instanceof List<?> list) {
             List<Object> sanitized = new ArrayList<>();
-            int limit = Math.min(list.size(), 5);
+            int limit = Math.min(list.size(), maxItems);
             for (int i = 0; i < limit; i++) {
-                sanitized.add(sanitizeValue(list.get(i), depth + 1));
+                sanitized.add(sanitizeValue(list.get(i), depth + 1, maxItems));
             }
             if (list.size() > limit) {
                 sanitized.add(Map.of("_truncatedItems", list.size() - limit));
@@ -1019,27 +1040,39 @@ public class ReadActionResolutionService {
         return truncate(String.valueOf(value), 240);
     }
 
-    private String buildEvidenceContext(List<ExecutedReadAction> executedActions, int maxChars) {
+    private EvidenceContextProjection buildEvidenceContext(List<ExecutedReadAction> executedActions, int maxChars) {
         if (executedActions == null || executedActions.isEmpty()) {
-            return null;
+            return new EvidenceContextProjection(null, false, 0);
         }
         StringBuilder out = new StringBuilder(Math.min(maxChars, 4096));
         out.append("READ ACTION EVIDENCE\n");
+        boolean groundingUsable = false;
+        int omittedActions = 0;
         for (ExecutedReadAction executedAction : executedActions) {
             if (executedAction == null || !StringUtils.hasText(executedAction.evidenceSummary)) {
                 continue;
             }
-            out.append("- action: ").append(executedAction.actionName).append('\n');
-            out.append("  success: ").append(executedAction.actionResult != null && executedAction.actionResult.isSuccess()).append('\n');
+            StringBuilder block = new StringBuilder();
+            block.append("- action: ").append(executedAction.actionName).append('\n');
+            block.append("  success: ").append(executedAction.actionResult != null && executedAction.actionResult.isSuccess()).append('\n');
             if (executedAction.actionResult != null && StringUtils.hasText(executedAction.actionResult.getMessage())) {
-                out.append("  message: ").append(truncate(executedAction.actionResult.getMessage(), 200)).append('\n');
+                block.append("  message: ").append(truncate(executedAction.actionResult.getMessage(), 200)).append('\n');
             }
-            out.append("  evidence: ").append(executedAction.evidenceSummary).append('\n');
-            if (out.length() >= maxChars) {
-                break;
+            block.append("  evidence: ").append(executedAction.evidenceSummary).append('\n');
+            if (out.length() + block.length() > maxChars) {
+                omittedActions++;
+                continue;
+            }
+            out.append(block);
+            groundingUsable |= executedAction.groundingUsable();
+        }
+        if (omittedActions > 0) {
+            String marker = "- Evidence actions omitted by context budget: " + omittedActions + "\n";
+            if (out.length() + marker.length() <= maxChars) {
+                out.append(marker);
             }
         }
-        return truncate(out.toString(), maxChars);
+        return new EvidenceContextProjection(truncate(out.toString(), maxChars), groundingUsable, omittedActions);
     }
 
     private String resolvePlannerQuery(Intent intent, PipelineContext pipelineContext) {
@@ -1065,6 +1098,38 @@ public class ReadActionResolutionService {
         model.put("optimizedQuery", intent.getOptimizedQuery());
         model.put("directAnswer", intent.getDirectAnswer());
         return model;
+    }
+
+    private Map<String, Object> buildKnowledgeSourceCatalog(OrchestrationPolicy policy,
+                                                           OrchestrationContext context,
+                                                           PipelineContext pipelineContext) {
+        var effective = pipelineContext != null ? pipelineContext.getEffectiveCapabilityProfile() : null;
+        if (effective == null && context != null) {
+            effective = context.getEffectiveCapabilityProfile();
+        }
+        boolean retrievalEnabled = policy.capabilities().retrievalEnabled()
+            && (effective == null || effective.retrievalEnabled());
+        List<String> spaces = List.of();
+        if (retrievalEnabled) {
+            if (policy.ragBudgets().hasVectorSpaceAllowlist()) {
+                spaces = policy.ragBudgets().retrievalVectorSpacesAllowlist();
+            } else if (!policy.capabilities().retrievalAllowlistRequired() && entityConfigurationLoader != null) {
+                spaces = normalizeVectorSpaces(new ArrayList<>(entityConfigurationLoader.getSupportedEntityTypes()));
+            }
+            if (effective != null) {
+                Set<String> effectiveSpaces = effective.effectiveVectorSpaces();
+                spaces = spaces.stream().filter(effectiveSpaces::contains).toList();
+            }
+        }
+        Map<String, Object> catalog = new LinkedHashMap<>();
+        catalog.put("retrievalEnabled", retrievalEnabled);
+        catalog.put("vectorSpaces", spaces.stream().sorted().toList());
+        catalog.put("selectionRequired", policy.capabilities().vectorSpaceSelectionRequired());
+        catalog.put("allowlistRequired", policy.capabilities().retrievalAllowlistRequired());
+        catalog.put("fanoutEnabled", Boolean.TRUE.equals(policy.ragBudgets().fanoutEnabled()));
+        catalog.put("maxSpaces", policy.ragBudgets().maxSpaces());
+        catalog.put("missingVectorSpaceRecovery", policy.semanticRecoveryPolicy().missingVectorSpace().name());
+        return Collections.unmodifiableMap(catalog);
     }
 
     private List<Map<String, Object>> buildEligibleActionsPromptModel(List<EligibleReadAction> eligibleActions) {
@@ -1274,12 +1339,16 @@ public class ReadActionResolutionService {
     ) {
     }
 
+    private record EvidenceContextProjection(String context, boolean groundingUsable, int omittedActions) {
+    }
+
     private record EvidenceSnippet(
         String summary,
-        boolean groundingUsable
+        boolean groundingUsable,
+        boolean completeProjection
     ) {
         private static EvidenceSnippet empty() {
-            return new EvidenceSnippet(null, false);
+            return new EvidenceSnippet(null, false, false);
         }
     }
 

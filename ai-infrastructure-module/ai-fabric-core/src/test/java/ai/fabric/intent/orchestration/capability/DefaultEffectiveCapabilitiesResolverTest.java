@@ -2,12 +2,15 @@ package ai.fabric.intent.orchestration.capability;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import ai.fabric.config.OrchestrationProperties;
 import ai.fabric.intent.action.AIActionMetaData;
 import ai.fabric.intent.action.ActionAccessMode;
 import ai.fabric.intent.orchestration.policy.OrchestrationPolicy;
 import java.util.List;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 class DefaultEffectiveCapabilitiesResolverTest {
 
@@ -59,6 +62,7 @@ class DefaultEffectiveCapabilitiesResolverTest {
         assertThat(effective.readActionResolutionPolicy().allowedReadActions())
             .containsExactly("inspect_account");
         assertThat(effective.readActionResolutionPolicy().requireAllowlist()).isTrue();
+        assertThat(effective.readActionResolutionPolicy().maxActionEvidenceItems()).isEqualTo(5);
         assertThat(effective.profileHash()).hasSize(64);
     }
 
@@ -139,6 +143,62 @@ class DefaultEffectiveCapabilitiesResolverTest {
         );
 
         assertThat(first.profileHash()).isNotEqualTo(second.profileHash());
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {1, 17, 100})
+    void preservesEvidenceItemBudgetWhenCopyingEffectiveReadPolicy(int budget) {
+        DefaultEffectiveCapabilitiesResolver resolver = new DefaultEffectiveCapabilitiesResolver();
+        OrchestrationPolicy policy = policyWithEvidenceItems(budget);
+
+        EffectiveCapabilityProfile effective = resolver.resolveLegacy(
+            policy,
+            List.of(action("inspect_account", ActionAccessMode.READ))
+        );
+        EffectiveCapabilityProfile disabled = resolver.resolveLegacy(policy, List.of());
+
+        assertThat(effective.readActionResolutionPolicy().enabled()).isTrue();
+        assertThat(effective.readActionResolutionPolicy().maxActionEvidenceItems()).isEqualTo(budget);
+        assertThat(disabled.readActionResolutionPolicy().enabled()).isFalse();
+        assertThat(disabled.readActionResolutionPolicy().maxActionEvidenceItems()).isEqualTo(budget);
+    }
+
+    @Test
+    void profileHashChangesWhenOnlyEvidenceItemBudgetChanges() {
+        DefaultEffectiveCapabilitiesResolver resolver = new DefaultEffectiveCapabilitiesResolver();
+        List<AIActionMetaData> actions = List.of(action("inspect_account", ActionAccessMode.READ));
+
+        EffectiveCapabilityProfile first = resolver.resolveLegacy(policyWithEvidenceItems(5), actions);
+        EffectiveCapabilityProfile second = resolver.resolveLegacy(policyWithEvidenceItems(17), actions);
+
+        assertThat(first.profileHash()).isNotEqualTo(second.profileHash());
+    }
+
+    private OrchestrationPolicy policyWithEvidenceItems(int budget) {
+        return new OrchestrationPolicy(
+            null,
+            "resolver",
+            null,
+            null,
+            null,
+            new OrchestrationPolicy.ReadActionResolutionPolicy(
+                true,
+                OrchestrationProperties.ReadActionResolutionPlanningMode.SINGLE_PASS,
+                List.of("inspect_account"),
+                true,
+                1,
+                2,
+                2,
+                1,
+                4_000,
+                2_400,
+                budget,
+                OrchestrationProperties.ReadActionResolutionRagCooperationMode.RAG_IF_ACTIONS_INSUFFICIENT,
+                true
+            ),
+            null,
+            null
+        );
     }
 
     private OrchestrationPolicy policyWithTopK(int topK) {

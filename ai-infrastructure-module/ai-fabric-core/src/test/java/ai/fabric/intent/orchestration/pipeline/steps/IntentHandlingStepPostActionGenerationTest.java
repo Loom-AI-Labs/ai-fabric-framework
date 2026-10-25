@@ -269,6 +269,7 @@ class IntentHandlingStepPostActionGenerationTest {
                 1,
                 4000,
                 2400,
+                5,
                 OrchestrationProperties.ReadActionResolutionRagCooperationMode.PARALLEL_ACTIONS_AND_RAG,
                 true
             ),

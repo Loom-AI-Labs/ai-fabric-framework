@@ -7,6 +7,9 @@ Resolved mode:
 Extracted intent JSON:
 {{intent_json}}
 
+Authorized knowledge-source catalogue JSON (server-owned; names are retrieval choices, not evidence):
+{{knowledge_sources_json}}
+
 Eligible READ actions JSON:
 {{eligible_actions_json}}
 
@@ -25,6 +28,8 @@ Instructions:
 - If one or more eligible READ actions would materially improve the answer, return those actions.
 - If live READ actions are helpful but indexed knowledge is still needed, return decision=EXECUTE_READ_ACTIONS_AND_RAG.
 - If READ actions are not the right tool, return decision=USE_RAG_ONLY.
+- When indexed knowledge is needed, select its relevant vectorSpace name(s) from the authorized catalogue in suggestedVectorSpaces, even if extraction initially requested no retrieval. Do not repeat an absent source selection merely because it is absent from the extracted intent.
+- An empty catalogue or retrievalEnabled=false does not authorize invented sources. Never interpret omission as permission to search every source; respect the stated selection, fan-out and missing-source recovery policy.
 - For compound requests, select all needed read actions within budget. Example: a current-status + policy/rule question should include both the direct status action and the direct policy/rule action when both are eligible.
 - Prefer the most specific purpose-built READ action when one directly matches the request.
 - Prefer read actions that return live, authoritative facts over broad search actions when the user asks for a specific current state, private resource, or named record.

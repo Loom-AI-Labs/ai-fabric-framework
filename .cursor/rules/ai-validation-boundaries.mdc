@@ -1,0 +1,10 @@
+---
+description: Trust boundaries and minimal AI execution contracts
+alwaysApply: true
+---
+
+Follow `AGENTS.md` and "Strict Trust Boundaries, Minimal AI Contracts" in
+`docs/Framework-Dev-Guides/LLM-guides/AI_FABRIC_FRAMEWORK_PHILOSOPHY.md`.
+Hard authority and execution-safety boundaries do not mean hard rejection of
+every imperfect semantic decision. Require minimal execution fields and use
+only configured bounded LLM repair, never hidden text-matching decisions.

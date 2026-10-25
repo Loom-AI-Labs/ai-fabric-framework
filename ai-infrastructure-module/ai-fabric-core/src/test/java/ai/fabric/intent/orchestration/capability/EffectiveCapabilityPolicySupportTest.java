@@ -43,6 +43,7 @@ class EffectiveCapabilityPolicySupportTest {
                 1,
                 3_000,
                 1_800,
+                5,
                 OrchestrationProperties.ReadActionResolutionRagCooperationMode
                     .PARALLEL_ACTIONS_AND_RAG,
                 true
@@ -86,6 +87,7 @@ class EffectiveCapabilityPolicySupportTest {
                 1,
                 3_000,
                 1_800,
+                17,
                 OrchestrationProperties.ReadActionResolutionRagCooperationMode
                     .PARALLEL_ACTIONS_AND_RAG,
                 true
@@ -101,6 +103,7 @@ class EffectiveCapabilityPolicySupportTest {
         assertThat(constrained.ragBudgets().maxSpaces()).isEqualTo(1);
         assertThat(constrained.readActionResolutionPolicy().allowedReadActions())
             .containsExactly("inspect_account");
+        assertThat(constrained.readActionResolutionPolicy().maxActionEvidenceItems()).isEqualTo(17);
         assertThat(constrained.capabilities().actionsEnabled()).isTrue();
         assertThat(constrained.capabilities().retrievalEnabled()).isTrue();
         assertThat(constrained.capabilities().suggestionsEnabled()).isFalse();
