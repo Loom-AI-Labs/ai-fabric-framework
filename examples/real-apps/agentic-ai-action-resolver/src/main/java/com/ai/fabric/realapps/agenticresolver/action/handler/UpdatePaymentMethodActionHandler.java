@@ -41,12 +41,8 @@ public class UpdatePaymentMethodActionHandler extends BaseActionHandler {
 
     @ActionAllowed
     public boolean allowed(ActionContext context) {
-        String userId = context != null ? context.userId() : null;
-        if (userId == null || userId.isBlank()) {
-            return false;
-        }
         try {
-            UUID userUuid = parseUserId(userId);
+            UUID userUuid = requireCurrentUser(context);
             return subscriptionService.hasActiveSubscription(userUuid);
         } catch (Exception ex) {
             return false;

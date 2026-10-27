@@ -14,7 +14,6 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.UUID;
 
 @AIAction(
     name = "get_account_profile",
@@ -37,8 +36,11 @@ public class GetAccountProfileActionHandler extends BaseActionHandler {
 
     @ActionAllowed
     public boolean allowed(ActionContext context) {
-        String userId = context != null ? context.userId() : null;
-        return userId != null && !userId.isBlank();
+        try {
+            return requireCurrentUser(context) != null;
+        } catch (IllegalArgumentException ex) {
+            return false;
+        }
     }
 
     @ActionExecute
@@ -87,15 +89,6 @@ public class GetAccountProfileActionHandler extends BaseActionHandler {
     }
 
     private AccountResolutionService.AccountProfile resolveProfile(ActionContext context) {
-        String effectiveUserId = context != null ? context.userId() : null;
-        if (effectiveUserId == null || effectiveUserId.isBlank()) {
-            throw new IllegalArgumentException("authenticated user context is required");
-        }
-
-        try {
-            return accountResolutionService.accountProfile(Long.parseLong(effectiveUserId));
-        } catch (NumberFormatException ignored) {
-            return accountResolutionService.accountProfile(UUID.fromString(effectiveUserId));
-        }
+        return accountResolutionService.accountProfile(requireCurrentUser(context));
     }
 }

@@ -1,6 +1,9 @@
 package com.ai.fabric.realapps.agenticresolver.action.handler;
 
+import ai.fabric.execution.context.ExecutionSubjectRef;
+import ai.fabric.execution.context.TrustedExecutionContext;
 import ai.fabric.intent.action.ActionContext;
+import com.ai.fabric.realapps.agenticresolver.config.AgenticResolverTrustBoundary;
 import com.ai.fabric.realapps.agenticresolver.entity.Subscription;
 import com.ai.fabric.realapps.agenticresolver.service.SubscriptionService;
 import com.ai.fabric.realapps.agenticresolver.service.UserService;
@@ -9,7 +12,7 @@ import lombok.RequiredArgsConstructor;
 import java.util.UUID;
 
 /**
- * Base class for action handlers with userId parsing support
+ * Resolves account resources separately from the caller's conversation identity.
  */
 @RequiredArgsConstructor
 public abstract class BaseActionHandler {
@@ -37,6 +40,25 @@ public abstract class BaseActionHandler {
     }
 
     protected UUID requireCurrentUser(ActionContext context) {
+        TrustedExecutionContext trusted = context != null
+            && context.pipelineContext() != null
+            && context.pipelineContext().getOrchestrationRequest() != null
+            ? context.pipelineContext().getOrchestrationRequest().trustedExecutionContext()
+            : null;
+        if (trusted != null) {
+            ExecutionSubjectRef subject = trusted.subject();
+            // Protect the server-bound account/tenant/deployment boundary. Never
+            // substitute the initiator or model parameters for an invalid subject.
+            if (subject == null || !"account".equals(subject.subjectType())
+                || !AgenticResolverTrustBoundary.TENANT_ID.equals(trusted.tenantId())
+                || !AgenticResolverTrustBoundary.DEPLOYMENT_ID.equals(trusted.deploymentId())) {
+                throw new IllegalArgumentException("Trusted account subject in this demo boundary is required");
+            }
+            return UUID.fromString(subject.subjectId());
+        }
+
+        // The direct orchestration API uses application user IDs without a
+        // specialist execution envelope; retain its numeric/UUID contract.
         String userId = context != null ? context.userId() : null;
         if (userId == null || userId.isBlank()) {
             throw new IllegalArgumentException("authenticated user context is required");
