@@ -1,4 +1,5 @@
 # syntax=docker/dockerfile:1.7
+ARG AI_FABRIC_VERSION=0.8.42
 ARG APP_VERSION=1.0.0-SNAPSHOT
 ARG SOURCE_COMMIT=
 ARG SOURCE_BRANCH=
@@ -7,10 +8,12 @@ ARG BUILD_BRANCH=unknown
 ARG BUILD_TIME=
 
 FROM maven:3.9-eclipse-temurin-21 AS build
+ARG AI_FABRIC_VERSION
 WORKDIR /workspace
 COPY . .
 RUN --mount=type=cache,target=/root/.m2 \
     mvn -B -V --no-transfer-progress \
+    -Dai-fabric.version="${AI_FABRIC_VERSION}" \
     -pl mcp-operations-reference-server -am package
 
 FROM eclipse-temurin:21-jre-alpine AS runtime
