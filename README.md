@@ -1,19 +1,16 @@
 <p align="center">
   <a href="https://ai-fabric.dev">
-    <img src="https://ai-fabric.dev/brand/ai-fabric-logo-mark-square.png" alt="AI Fabric" width="120">
+    <img src="https://ai-fabric.dev/brand/ai-fabric-logo-mark-square.png" alt="AI Fabric" width="104">
   </a>
 </p>
 
 <h1 align="center">AI Fabric Framework</h1>
 
-<p align="center">
-  An open-source AI enablement framework for Java and Spring Boot.
-</p>
+<p align="center"><strong>AI enablement for Java and Spring Boot. More than a chatbot.</strong></p>
 
 <p align="center">
-  Add semantic retrieval, evidence-grounded RAG, governed actions, conversation memory, privacy,
-  behavior intelligence, and provider-backed orchestration while your application remains in
-  control of domain state, identity, authorization, and side effects.
+  Build conversations, event-driven intelligence and bounded specialist teams around your existing<br>
+  data and services. Your application keeps control of identity, policy, business state and execution.
 </p>
 
 <p align="center">
@@ -25,99 +22,179 @@
 </p>
 
 <p align="center">
-  <a href="docs/getting-started/README.md"><strong>Getting Started</strong></a>
-  ·
-  <a href="https://ai-fabric.dev/demos"><strong>Live Demos</strong></a>
-  ·
+  <a href="#quickstart"><strong>Quickstart</strong></a> &middot;
+  <a href="#four-ways-to-build"><strong>Capabilities</strong></a> &middot;
+  <a href="#explore-the-demos"><strong>Live Demos</strong></a> &middot;
+  <a href="docs/getting-started/README.md"><strong>Documentation</strong></a> &middot;
   <a href="https://ai-fabric.dev/course"><strong>Course</strong></a>
-  ·
-  <a href="docs/llm-context/README.md"><strong>Coding-Assistant Context</strong></a>
-  ·
-  <a href="docs/release-notes/0.8.38.md"><strong>0.8.38 Release Notes</strong></a>
 </p>
 
----
+![AI Fabric connects conversational, event-driven and multi-specialist execution to shared retrieval, action, memory and human-control capabilities inside an application-owned boundary.](docs/assets/ai-fabric-capabilities.svg)
 
-## Why AI Fabric?
+## The Idea
 
-Normal Spring Boot applications already own users, permissions, transactions, policies, and
-business data. AI Fabric adds an AI capability layer around those application boundaries instead
-of asking the model to replace them.
+Your application already knows who the user is, what they may access, which records are current,
+and how a business operation should execute. AI should use those capabilities, not replace them.
 
-| Your application owns | AI Fabric enables |
-| --- | --- |
-| Domain entities and source-of-truth data | Annotation-driven indexing and synchronized vector evidence |
-| Authentication, current user, and tenant | Policy-aware retrieval and governed action access |
-| Transactions and side effects | Typed action discovery, parameter extraction, and confirmation |
-| Product policies and allowed capabilities | Modes, positions, curated prompts, and application overlays |
-| HTTP/API result projection | Structured orchestration results, evidence, diagnostics, and usage |
-| Deployment and secret management | Provider abstraction, local embeddings, and explicit failure evidence |
+AI Fabric adds a modular intelligence layer: understand a request, retrieve authorized evidence,
+consult live services, coordinate specialists, and propose or execute permitted application actions.
+Use it behind a chat interface, call it from Java, or invoke it from an application-owned event handler.
 
-The central rule is simple: **the LLM can reason and propose; trusted application code decides what
-it may see and what it may change.**
+> **The model interprets, reasons and proposes. Your application owns authority and side effects.**
 
-## What You Can Build
+Built on Spring AI for model integration and document ETL, with opinionated contracts for application
+data, governed execution, specialist composition and human participation. Install only what you need;
+neither a vector database nor a chat interface is required for every use case.
 
-| Capability | Typical modules | Start here |
-| --- | --- | --- |
-| Semantic search over application data | `ai-fabric-starter`, one embedding provider, one vector provider | [First Semantic Search](docs/getting-started/03-first-semantic-search.md) |
-| Evidence-grounded answers | Search modules plus `ai-fabric-rag` | [First RAG Chat](docs/getting-started/04-first-rag-chat.md) |
-| Governed application actions | `ai-fabric-starter`, optional action registry, `ai-fabric-chat-session` | [First Governed Action](docs/getting-started/05-first-governed-action.md) |
-| Follow-ups and pending confirmations | `ai-fabric-chat-session` | [Chat Session Memory](docs/getting-started/06-chat-session-memory.md) |
-| Live entity create/update/delete synchronization | `ai-fabric-indexing`, optional `ai-fabric-data-sync` | [Live Data Sync](docs/course/production/05-live-data-sync/lesson.md) |
-| Governed text/JSON document ingestion | `ai-fabric-indexing`, Spring AI document ETL, one vector provider | [Document Ingestion Workbench](examples/real-apps/document-ingestion-workbench/README.md) |
-| Existing-data backfill | `ai-fabric-migration-core` | [Migration and Backfill](docs/course/production/04-migration-backfill/lesson.md) |
-| Tenant-safe and role-aware retrieval | Access policy hooks plus a metadata-filtering vector provider | [Security and Access Policy](docs/getting-started/10-security-access-policy.md) |
-| PII detection and sanitized evidence | `ai-fabric-pii`, optional `ai-fabric-governance` | [Privacy Shield app](examples/real-apps/privacy-first-customer-facing-support/README.md) |
-| Behavior insight and agentic UI planning | `ai-fabric-behavior` | [Behavior Signals app](examples/real-apps/behavior-churn-signals/README.md) |
-| Bounded, versioned AI specialists | Optional `ai-fabric-execution` plus the capabilities each specialist uses | [Bounded Agentic Enablement](docs/Framework-Dev-Guides/application-patterns/AGENTIC_APP_GUIDE.md) |
-| Bounded adaptive and parallel specialist chains | `ai-fabric-execution` with Java- or manifest-defined exact-version chains | [Bounded Multi-Specialist Chains](docs/Framework-Dev-Guides/application-patterns/BOUNDED_MULTI_SPECIALIST_CHAINS.md) |
-| Purpose-specific LLM and embedding routing | `ai-fabric-provider-spring-ai` or `ai-fabric-onnx-starter` | [Provider Routing](docs/course/production/01-provider-routing/lesson.md) |
+## Four Ways To Build
 
-Use [Choose Your Path](docs/getting-started/01-choose-your-path.md) to install only the modules your
-application needs.
+### 1. Conversations That Use Your Application
 
-## Request Flow
+**"Compare these options, explain the policy, then help me take the next step."**
+
+Combine semantic search, grounded answers, live READ actions, attachments, conversation memory and
+confirmed application actions in one interaction. Registered actions are Java handlers or reviewed
+connector-backed operations, not arbitrary model-generated HTTP requests.
+
+Explore [AI Shopping](https://ai-fabric.dev/demos/ai-shopping-experience),
+[Account Resolver](https://ai-fabric.dev/demos/ai-fabric-account-resolver), and the
+[governed-action guide](docs/getting-started/05-first-governed-action.md).
+
+### 2. Intelligence Without A Chat Screen
+
+**"When new account events arrive, analyze risk and return a typed assessment."**
+
+Call an exact-version specialist from an application service, an event handler or a scheduled job.
+Use typed inputs and outputs, scoped READ actions, optional retrieval, and asynchronous execution.
+The host owns the trigger, broker or scheduler and decides what to do with the result.
+
+```java
+SpecialistClient<AccountRequest, AccountAssessment> client = specialistClientFactory.bind(
+    SpecialistId.of("account-resolver", "1"),
+    AccountRequest.class,
+    AccountAssessment.class
+);
+
+ExecutionHandle handle = client.submit(new SpecialistInvocation<>(
+    request, trustedEventContext, null, null, "account-event:" + eventId
+));
+```
+
+This illustrates a registered specialist and application-defined DTOs; trusted context and the
+idempotency key come from the backend, not the event payload or model.
+See [Behavior Signals](https://ai-fabric.dev/demos/ai-fabric-behavior-signals) and the
+[execution API](ai-infrastructure-module/ai-fabric-execution/README.md#typed-asynchronous-and-event-calls).
+
+### 3. Fixed Sequential And Parallel Plans
+
+**"Always inspect the account, then assess its options."**
+Or: **"Check service health and recent changes independently, then combine the findings."**
+
+Declare the steps in Java, use typed input mappers, and aggregate approved specialist results.
+Choose a fixed sequence when dependencies are known and bounded parallel branches when work is
+independent. A model does not have to rediscover your workflow on every request.
+
+See [fixed sequential plans](ai-infrastructure-module/ai-fabric-execution/README.md#fixed-sequential-plans),
+[bounded parallel plans](docs/Framework-Dev-Guides/application-patterns/BOUNDED_READ_ONLY_PARALLEL_PLANS.md),
+and the [standalone execution consumer](examples/agentic-execution-consumer/README.md).
+
+### 4. Adaptive Multi-Specialist Teams
+
+**"Investigate this incident. Consult the specialists needed for this question."**
+
+A manager chooses from an application-approved catalogue: answer directly, clarify, consult one
+worker, consult independent workers in parallel, or adapt after a result. Define the team in Java
+or a versioned `ai.fabric/v1` YAML manifest. Both paths use the same execution runtime.
+
+Workers remain bounded, read-only leaves. The manager receives approved result projections, not
+unrestricted tools, credentials or recursive access to other agents.
+
+Try [Incident Investigation](https://ai-fabric.dev/demos/ai-fabric-incident-investigation) or read the
+[multi-specialist chain guide](docs/Framework-Dev-Guides/application-patterns/BOUNDED_MULTI_SPECIALIST_CHAINS.md).
+
+**Choose deliberately:** one specialist for one known job; a fixed plan for known steps; an adaptive
+chain when the next specialist genuinely depends on the question or earlier evidence. Durable jobs,
+JDBC chains and review tasks require their configured stores; the fixed-plan coordinator's state is
+ephemeral, not a restartable general-purpose workflow engine.
+
+## Keep Knowledge Connected To Reality
+
+Answers are only as useful as their evidence. AI Fabric connects application records, external
+data and trusted documents to a shared indexing and retrieval lifecycle.
 
 ```mermaid
 flowchart LR
-    UI[UI or API client] --> APP[Spring Boot application]
-    APP --> ID[Identity and tenant context]
-    ID --> AF[AI Fabric orchestration]
-    AF --> POLICY[Access policy and governance]
-    POLICY --> SESSION[Conversation state]
-    POLICY --> RAG[Retrieval and evidence]
-    POLICY --> ACTION[Registered application actions]
-    RAG --> VECTOR[(Vector store)]
-    RAG --> MODEL[LLM and embedding provider]
-    ACTION --> DOMAIN[Application services]
-    DOMAIN --> DB[(Application database)]
-    SESSION --> CHAT[(Chat store)]
-    MODEL --> RESULT[Structured result]
-    ACTION --> RESULT
-    RESULT --> APP
-    APP --> UI
+    A[Application entity changes] --> Q[Durable indexing work]
+    B[External data through your adapter] --> Q
+    C[Trusted documents] --> D[Spring AI readers and chunking]
+    D --> Q
+    Q --> E[Embedding provider]
+    E --> V[(Vector evidence)]
+    U[Question or specialist request] --> P[Application-authorized scope]
+    P --> R[Retrieval]
+    V --> R
+    R --> O[Evidence, source references and grounded context]
 ```
 
-See [Public Architecture](docs/architecture/AI_FABRIC_PUBLIC_ARCHITECTURE.md) for the complete
-ownership model and module map.
+- **Application data:** `@AICapable` and `@AIProcess` connect entity create/update/delete operations
+  to indexing. The source transaction and its projected queue work commit together.
+- **External systems:** use the data-sync and retrieval-connector modules with application-owned
+  credentials and source bindings. A READ action can also fetch live facts without indexing them.
+- **Documents:** prepare trusted resources with Spring AI readers and transformers, submit canonical
+  chunk work, inspect work status, and delete exact manifest identities.
+- **Evidence:** expose retrieved records, scores and source references so users and tests can inspect
+  what supported an answer. Queue acceptance is not proof that indexing is complete.
 
-## Start With `0.8.38`
+Your app owns source storage, source authorization and document version activation/replacement.
+AI Fabric provides the preparation, indexing and retrieval primitives; it is not a hosted file store
+or a turnkey document-management system. Reader formats depend on the adapters you configure;
+the [Document Workbench](examples/real-apps/document-ingestion-workbench/README.md) proves text and JSON.
 
-### Requirements
+See [entity indexing](docs/getting-started/03-first-semantic-search.md),
+[document indexing](docs/Framework-Dev-Guides/retrieval-vectorization/DOCUMENT_INDEXING_0_8_MIGRATION_GUIDE.md),
+and [live synchronization](examples/real-apps/ai-fabric-live-data-sync/README.md).
 
-- Java `21`
-- Maven `3.9+`
-- Spring Boot `4.1.x`
+## People Stay In The Loop
 
-AI Fabric artifacts are published under `io.github.loom-ai-labs`. No custom Maven repository is
-required.
+Human involvement has two different meanings. AI Fabric supports both without conflating them.
 
-### 1. Import The BOM
+**Review an action.** Create a governed proposal and route it to an authorized reviewer. Durable
+review supports policy-bound approval, rejection, correction, requests for information and
+escalation. An approval rechecks the linked action's current authority before execution.
+
+**Take over a conversation.** A user request, button or model-selected action can begin a human
+handover. Typed intake can require contact details and consent. While human authority is pending
+or active, the AI cannot quietly continue responding; return to AI is an explicit transition.
+
+```mermaid
+flowchart LR
+    AI[AI conversation] --> I[Handover request and intake]
+    I --> P[Human pending]
+    P --> H[Human active]
+    H --> T[Explicit return to AI]
+    T --> AI
+```
+
+The framework supplies state and authorization contracts. Your application or integration supplies
+the operator UI, authentication and delivery adapter; the framework does not require LoomAI Desk.
+See [human conversation handover](docs/Framework-Dev-Guides/application-patterns/CONVERSATION_CONTROL_AND_HUMAN_HANDOVER.md),
+[durable action review](docs/Framework-Dev-Guides/application-patterns/DURABLE_HUMAN_REVIEW.md),
+or [try the side-by-side demo](https://ai-fabric.dev/demos/ai-fabric-conversation-handover).
+
+## Quickstart
+
+For an existing **Java 21 / Spring Boot 4.1.x** application with Maven 3.9+.
+The dependency example targets **0.8.42**, available on Maven Central under `io.github.loom-ai-labs`.
+No custom Maven repository is required. Source builds use the POM versions in your checkout.
+
+### 1. Choose Your Modules
+
+Import the BOM, then add the capabilities you use. This example enables indexing, grounded
+conversations, session state, OpenAI through Spring AI, and a local Lucene vector store.
 
 ```xml
 <properties>
-  <ai-fabric.version>0.8.38</ai-fabric.version>
+  <ai-fabric.version>0.8.42</ai-fabric.version>
 </properties>
 
 <dependencyManagement>
@@ -131,17 +208,19 @@ required.
     </dependency>
   </dependencies>
 </dependencyManagement>
-```
 
-### 2. Add A Provider And Vector Store
-
-This is a small OpenAI + local Lucene setup:
-
-```xml
 <dependencies>
   <dependency>
     <groupId>io.github.loom-ai-labs</groupId>
     <artifactId>ai-fabric-starter</artifactId>
+  </dependency>
+  <dependency>
+    <groupId>io.github.loom-ai-labs</groupId>
+    <artifactId>ai-fabric-rag</artifactId>
+  </dependency>
+  <dependency>
+    <groupId>io.github.loom-ai-labs</groupId>
+    <artifactId>ai-fabric-chat-session</artifactId>
   </dependency>
   <dependency>
     <groupId>io.github.loom-ai-labs</groupId>
@@ -154,11 +233,7 @@ This is a small OpenAI + local Lucene setup:
 </dependencies>
 ```
 
-Prefer local embeddings? Replace the cloud embedding path with
-[`ai-fabric-onnx-starter`](docs/getting-started/08-local-onnx-embeddings.md). Prefer a managed
-vector database? AI Fabric also provides Pinecone, Qdrant, Weaviate, and Milvus modules.
-
-### 3. Enable AI Fabric
+### 2. Enable AI Fabric
 
 ```java
 import ai.fabric.annotation.EnableAIInfrastructure;
@@ -174,7 +249,7 @@ public class Application {
 }
 ```
 
-### 4. Configure The Runtime
+### 3. Connect A Model And Vector Store
 
 ```yaml
 ai:
@@ -185,33 +260,35 @@ ai:
     openai:
       enabled: ${OPENAI_ENABLED:false}
       api-key: ${OPENAI_API_KEY:}
-      base-url: ${OPENAI_BASE_URL:https://api.openai.com/v1}
       model: ${OPENAI_MODEL:gpt-4o-mini}
-      embedding-model: ${OPENAI_EMBEDDING_MODEL:text-embedding-3-small}
-      embedding-dimensions: ${OPENAI_EMBEDDING_DIMENSIONS:512}
+      embedding-model: text-embedding-3-small
+      embedding-dimensions: 512
   vector-db:
     type: lucene
     lucene:
-      index-path: ./data/lucene-vector-index-${OPENAI_EMBEDDING_DIMENSIONS:512}
+      index-path: ./data/lucene-512
   service:
     features:
       enable-generation: ${OPENAI_ENABLED:false}
       enable-embeddings: ${OPENAI_ENABLED:false}
       enable-search: true
       enable-rag: true
+  chat:
+    enabled: true
 ```
-
-Keep credentials outside source control:
 
 ```bash
 export OPENAI_ENABLED=true
 export OPENAI_API_KEY="<your key>"
 ```
 
-For CI and no-key local development, use the deterministic
-[smoke profile](docs/getting-started/02-installation.md#smoke-profile).
+Keep secrets outside source control. Configure your application's datasource and session/indexing
+schema before using persistent state. See [installation](docs/getting-started/02-installation.md)
+and [chat sessions](docs/getting-started/06-chat-session-memory.md).
 
-### 5. Make Domain Data Searchable
+### 4. Connect Your Data Lifecycle
+
+Declare what is searchable, then annotate your existing public transactional write boundary:
 
 ```java
 @Entity
@@ -219,7 +296,6 @@ For CI and no-key local development, use the deterministic
 public class SupportArticle {
     @Id
     @AIIdentity
-    @AIContext(key = "entityId", dataType = AIContextDataType.ID, required = true)
     private String id;
 
     @AISearchable(priority = 100, required = true)
@@ -227,13 +303,8 @@ public class SupportArticle {
 
     @AISearchable(maxLength = 8000, priority = 80, required = true)
     private String answer;
-
-    @AIContext(priority = 70)
-    private String category;
 }
 ```
-
-Synchronize writes at the trusted transactional service boundary:
 
 ```java
 @Transactional
@@ -243,165 +314,137 @@ public SupportArticle update(SupportArticle article) {
 }
 ```
 
-Since `0.4.0`, AI Fabric projects annotation-backed entity content and metadata, commits durable indexing
-work with the source transaction, and applies create/update/delete changes to the configured vector
-provider. Follow the complete [semantic-search lifecycle](docs/getting-started/03-first-semantic-search.md)
-before exposing retrieval to users.
+The [complete semantic-search guide](docs/getting-started/03-first-semantic-search.md) includes imports,
+create/update/delete behavior and the programmatic gateway for paths that cannot use Spring AOP.
 
-## Modules At A Glance
+### 5. Use The Same Pipeline From Your App
 
-### Application capabilities
+```java
+OrchestrationResult result = orchestrator.orchestrate(
+    "What is our delivery policy, and can you help with my order?",
+    trustedContext
+);
+```
 
-- `ai-fabric-core`: orchestration, intent, configuration, action contracts, and shared APIs.
-- `ai-fabric-starter`: default core + PII + indexing starter.
-- `ai-fabric-rag`: evidence retrieval and RAG context.
-- `ai-fabric-indexing`: annotation-driven and programmatic indexing lifecycle.
-- `ai-fabric-data-sync`: API/connector data synchronization.
-- `ai-fabric-chat-session`: recent turns, pinned targets, and pending confirmations.
-- `ai-fabric-pii` and `ai-fabric-governance`: privacy and governance controls.
-- `ai-fabric-behavior`: event-backed behavior insight.
-- `ai-fabric-migration-core`: bounded, resumable data backfill.
-- `ai-fabric-execution`: optional bounded, versioned specialist execution and governed composition,
-  including opt-in durable, manager-controlled multi-specialist chains whose workers remain
-  read-only leaves.
+Here `orchestrator` is `RAGOrchestrator`; `trustedContext` is the application's server-built
+`OrchestrationContext`. Derive user, tenant, permissions and allowed capabilities from authenticated
+backend state, never from arbitrary browser JSON. Register your own actions to enable operations
+such as order lookup; a prompt alone does not add an integration.
 
-### Providers and storage
+Continue with [first RAG chat](docs/getting-started/04-first-rag-chat.md),
+[first governed action](docs/getting-started/05-first-governed-action.md), or the complete
+[`chat-capabilities-demo`](examples/real-apps/chat-capabilities-demo/README.md).
 
-- Cloud LLM and embedding abstraction: `ai-fabric-provider-spring-ai`.
-- Local ONNX embeddings: `ai-fabric-onnx-starter`.
-- Vector providers: Lucene, memory, Pinecone, Qdrant, Weaviate, and Milvus.
-- Curated prompt bundles: default, commerce, and support.
+## Pick The Capabilities You Need
 
-The BOM contains the complete supported artifact list. See
-[`ai-infrastructure-module/pom.xml`](ai-infrastructure-module/pom.xml) and the
-[installation guide](docs/getting-started/02-installation.md) for optional modules.
+| Capability | Modules and extension points |
+| --- | --- |
+| Entity indexing and live synchronization | `ai-fabric-indexing`, `ai-fabric-data-sync`, annotations or the public indexing gateway |
+| Grounded retrieval and existing search systems | `ai-fabric-rag`, `ai-fabric-retrieval-connector` |
+| Application actions and external tools | `@AIAction`, `ai-fabric-actions-connector`, HTTP/MCP bindings; optional database-backed action registry |
+| Conversation history, confirmations and human handover | `ai-fabric-chat-session` and application-owned policy/operator integration |
+| Specialists, fixed plans and adaptive chains | Optional `ai-fabric-execution`, Java definitions or versioned specialist/chain manifests |
+| Durable human review | `ai-fabric-execution`, review policies, reviewer authorization and dispatch adapters |
+| Behavior insights and structured UI composition | `ai-fabric-behavior` and application-approved component catalogues |
+| Privacy and governance | `ai-fabric-pii`, optional `ai-fabric-governance` |
+| Existing-data backfill | `ai-fabric-migration-core` |
+| Prompt and mode defaults | Default, commerce and support curated modules, with application overlays |
 
-## Live, Source-Backed Demos
+**Model integration:** Spring AI-backed providers, purpose-specific routing and optional local
+ONNX embeddings. **Vector providers:** Lucene, memory, Pinecone, Qdrant, Weaviate and Milvus.
+Providers have different filter and lifecycle capabilities; select and test the ones your boundaries require.
 
-These are deployed Spring Boot applications from `examples/real-apps`, not mocked UI stories.
+The convenience `ai-fabric-starter` includes core, PII and indexing, not every optional capability.
+See the [module decision tree](docs/llm-context/AI_FABRIC_MODULE_DECISION_TREE.md),
+[BOM](ai-infrastructure-module/pom.xml), and
+[curated prompt guide](docs/Framework-Dev-Guides/runtime-modes-prompts/PROMPT_MANAGEMENT_CURATED_MODULES_GUIDE.md).
 
-| Live demo | Framework proof | Backend source |
+## Explore The Demos
+
+Every example below links to framework-consuming application source. The website is a companion UI,
+not a requirement for using AI Fabric. Check each demo's provider posture: deterministic smoke mode
+is useful for local verification, but it is not evidence of live LLM behavior.
+
+| Try it | What to explore | Source |
 | --- | --- | --- |
-| [AI Shopping Experience](https://ai-fabric.dev/demos/ai-shopping-experience) | Staged commerce RAG, attachments, chat memory, cart actions, checkout confirmation | [`chat-capabilities-demo`](examples/real-apps/chat-capabilities-demo) |
-| [Account Resolver](https://ai-fabric.dev/demos/ai-fabric-account-resolver) | Profile reads, policy evidence, blocker reasoning, governed remedies | [`ai-fabric-account-resolver`](examples/real-apps/ai-fabric-account-resolver) |
-| [Behavior Signals](https://ai-fabric.dev/demos/ai-fabric-behavior-signals) | Raw events, incremental insight, and allowlisted agentic UI composition | [`behavior-churn-signals`](examples/real-apps/behavior-churn-signals) |
-| [Tenant Guard](https://ai-fabric.dev/demos/ai-fabric-tenant-guard) | Tenant-filtered evidence, role visibility, governed writes, scoped deletion | [`tenant-knowledge-portal`](examples/real-apps/tenant-knowledge-portal) |
-| [Privacy Shield](https://ai-fabric.dev/demos/ai-fabric-privacy-shield) | PII detection, redacted persistence, safe indexing, sanitized retrieval | [`privacy-first-customer-facing-support`](examples/real-apps/privacy-first-customer-facing-support) |
-| [Live Data Sync](https://ai-fabric.dev/demos/ai-fabric-live-data-sync) | Annotation-driven create/update/delete synchronization and current RAG evidence | [`ai-fabric-live-data-sync`](examples/real-apps/ai-fabric-live-data-sync) |
-| [Agentic AI Action Resolver](https://ai-fabric.dev/demos/ai-fabric-agentic-action-resolver) | Adaptive specialist chains, typed waits, governed receipts, review, and durable replay | [`agentic-ai-action-resolver`](examples/real-apps/agentic-ai-action-resolver) |
-| [Deployment Knowledge Guard](https://ai-fabric.dev/demos/ai-fabric-deployment-knowledge-guard) | Trusted tenant/deployment retrieval, typed specialist output, citations, and leakage canaries | [`deployment-knowledge-guard`](examples/real-apps/deployment-knowledge-guard) |
-| [Incident Investigation Room](https://ai-fabric.dev/demos/ai-fabric-incident-investigation) | Adaptive specialist chains, specialist-selected READ actions, runbook RAG, bounded repair, and durable lineage | [`incident-investigation-room`](examples/real-apps/incident-investigation-room) |
-| [MCP Operations](https://ai-fabric.dev/demos/ai-fabric-mcp-operations) | Authenticated remote MCP reads, confirmed writes, exact binding, and replay-safe receipts | [`mcp-operations-assistant`](examples/real-apps/mcp-operations-assistant) |
-| [Document Knowledge Operations](https://ai-fabric.dev/demos/ai-fabric-document-knowledge-operations) | Trusted preview, index, retrieve, replace, and exact-delete document lifecycle | [`document-ingestion-workbench`](examples/real-apps/document-ingestion-workbench) |
+| [AI Shopping](https://ai-fabric.dev/demos/ai-shopping-experience) | Product and policy evidence, attachments, memory, cart actions and checkout confirmation | [Chat capabilities](examples/real-apps/chat-capabilities-demo/README.md) |
+| [Account Resolver](https://ai-fabric.dev/demos/ai-fabric-account-resolver) | Live profile reads, policy reasoning and governed remedies | [Account resolver](examples/real-apps/ai-fabric-account-resolver/README.md) |
+| [Behavior Signals](https://ai-fabric.dev/demos/ai-fabric-behavior-signals) | Application and scheduled analysis, churn insights and allowlisted UI composition | [Behavior signals](examples/real-apps/behavior-churn-signals/README.md) |
+| [Incident Investigation](https://ai-fabric.dev/demos/ai-fabric-incident-investigation) | Adaptive specialists, live READ actions, runbook RAG and parallel evidence gathering | [Investigation room](examples/real-apps/incident-investigation-room/README.md) |
+| [Agentic Action Resolver](https://ai-fabric.dev/demos/ai-fabric-agentic-action-resolver) | Specialist composition, governed receipts and human review | [Action resolver](examples/real-apps/agentic-ai-action-resolver/README.md) |
+| [Human Handover](https://ai-fabric.dev/demos/ai-fabric-conversation-handover) | Ask for a person, complete intake, reply as the operator and return to AI | [Handover demo](examples/real-apps/conversation-handover-demo/README.md) |
+| [Document Knowledge](https://ai-fabric.dev/demos/ai-fabric-document-knowledge-operations) | Preview, index, retrieve, replace and delete documents with actual work status | [Document workbench](examples/real-apps/document-ingestion-workbench/README.md) |
+| [Live Data Sync](https://ai-fabric.dev/demos/ai-fabric-live-data-sync) | Change application data and inspect synchronized vector evidence | [Live data sync](examples/real-apps/ai-fabric-live-data-sync/README.md) |
+| [Tenant Guard](https://ai-fabric.dev/demos/ai-fabric-tenant-guard) | Tenant-scoped retrieval, role visibility and governed writes | [Tenant knowledge portal](examples/real-apps/tenant-knowledge-portal/README.md) |
+| [Privacy Shield](https://ai-fabric.dev/demos/ai-fabric-privacy-shield) | PII detection, redacted persistence and sanitized retrieval | [Privacy-first support](examples/real-apps/privacy-first-customer-facing-support/README.md) |
+| [MCP Operations](https://ai-fabric.dev/demos/ai-fabric-mcp-operations) | Authenticated remote tools, confirmed writes and replay-safe receipts | [MCP assistant](examples/real-apps/mcp-operations-assistant/README.md) |
+| [Deployment Knowledge](https://ai-fabric.dev/demos/ai-fabric-deployment-knowledge-guard) | Tenant/deployment-scoped evidence, citations and specialist outputs | [Knowledge guard](examples/real-apps/deployment-knowledge-guard/README.md) |
 
-Use the [Real-App Capability Matrix](examples/real-apps/REAL_APP_CAPABILITIES.md) to find additional
-examples for provider routing, DB action registries, MCP, document ingestion, migration, vector
-readiness, and relationship queries.
+More examples: [real-app capability matrix](examples/real-apps/REAL_APP_CAPABILITIES.md).
 
-## Learn AI Fabric
+## Clear Boundaries, Visible Outcomes
 
-- [Getting Started](docs/getting-started/README.md): focused guides from first search to production.
-- [Interactive course](https://ai-fabric.dev/course): guided lessons, videos, checks, and real-app case studies.
-- [Course source](docs/course/AI_FABRIC_EXTERNAL_USER_COURSE.md): versioned curriculum and lab contracts.
-- [Architecture](docs/architecture/AI_FABRIC_PUBLIC_ARCHITECTURE.md): request flow and ownership boundaries.
-- [Release notes](docs/release-notes/0.8.38.md): current behavior and migration considerations.
-- [LoomAI 0.8 upgrade notes](docs/release-notes/LOOMAI_PLATFORM_AI_FABRIC_0_8_0_UPGRADE_NOTES.md): code-backed platform impact, adoption gates, and rollback guidance.
-- [0.6.1 release notes](docs/release-notes/0.6.1.md): previous release behavior.
-- [Production checklist](docs/getting-started/13-production-checklist.md): release and deployment gate.
+- **Your app owns identity and business data.** The vector index is derived evidence, not a replacement
+  for your database. Models do not supply trusted tenant IDs, scopes or hidden resource targets.
+- **Actions use registered execution paths.** Authorization, required execution fields, preflight and
+  the configured confirmation/review policy still apply at execution time.
+- **LLM decisions stay LLM-driven.** Guide semantic choices with prompts, schemas and curated modes;
+  keep uncertainty visible. Recovery must follow the configured policy, not silently invent success.
+- **Evidence remains inspectable.** Results expose relevant evidence, structured outcomes and
+  diagnostics so apps can distinguish an answer, clarification, policy denial or provider failure.
+- **The framework is not a managed platform.** Your app owns endpoints, UI, source storage, external
+  integration credentials and deployment. AI Fabric supplies reusable Java/Spring capabilities.
 
-## Build With A Coding Assistant
+See [public architecture](docs/architecture/AI_FABRIC_PUBLIC_ARCHITECTURE.md) and
+[security and access policy](docs/getting-started/10-security-access-policy.md).
 
-AI Fabric includes a compact, code-backed context pack for coding assistants. Start with:
+## Learn And Build
 
-1. [LLM Context Index](docs/llm-context/AI_FABRIC_CONTEXT_INDEX.md)
-2. [Capability Map](docs/llm-context/AI_FABRIC_CAPABILITY_MAP.md)
-3. [Module Decision Tree](docs/llm-context/AI_FABRIC_MODULE_DECISION_TREE.md)
-4. [Rules For Coding Assistants](docs/llm-context/AI_FABRIC_RULES_FOR_CODING_ASSISTANTS.md)
-5. [Common Task Recipes](docs/llm-context/AI_FABRIC_COMMON_TASK_RECIPES.md)
+- [Getting started](docs/getting-started/README.md): choose a minimal integration path.
+- [Interactive course](https://ai-fabric.dev/course): lessons and real-app walkthroughs.
+- [Specialist manifests](docs/Framework-Dev-Guides/application-patterns/SPECIALIST_MANIFEST_AUTHORING_GUIDE.md): schemas, prompts and exact-version definitions.
+- [Coding-assistant context](docs/llm-context/README.md): capability map, module choices, rules and recipes.
+- [Production checklist](docs/getting-started/13-production-checklist.md): application readiness checks.
+- [Release history](https://github.com/Loom-AI-Labs/ai-fabric-framework/releases) and [versioned notes](docs/release-notes): review behavior changes before upgrading; `0.x` releases may require migration.
 
-Ask the assistant to read those files and the nearest real app before changing code. Require it to
-preserve application-owned identity, tenant policy, confirmation, and failure visibility.
-
-## Build And Verify
-
-Build the framework from source:
+### Build From Source
 
 ```bash
 mvn -B -V --no-transfer-progress -f ai-infrastructure-module/pom.xml clean verify
-```
 
-Install local artifacts, then verify every real app:
-
-```bash
 mvn -B -V --no-transfer-progress -f ai-infrastructure-module/pom.xml install
 mvn -B -V --no-transfer-progress -f examples/real-apps/pom.xml package
 ```
 
-Tests are layered deliberately:
+Verification is layered: deterministic unit/contract tests, no-key smoke profiles, Docker/Testcontainers
+integration tests, and explicitly keyed real-provider checks. A passing smoke run does not substitute
+for a real-provider release check. See [testing](docs/getting-started/11-testing-and-verification.md)
+and the [release safety checklist](docs/Framework-Dev-Guides/testing-verification/RELEASE_SAFETY_CHECKLIST.md).
 
-- deterministic unit and contract tests run without provider keys;
-- smoke profiles prove packaged runtime behavior without hiding failures;
-- Docker/Testcontainers suites prove supported infrastructure boundaries;
-- keyed provider suites exercise real LLM, embedding, and managed-vector integrations.
-
-See [Testing and Verification](docs/getting-started/11-testing-and-verification.md) and the
-[CI Pipeline Guide](docs/Framework-Dev-Guides/testing-verification/CI_PIPELINE_GUIDE.md). Before
-tagging or publishing, apply the
-[Release Safety Checklist](docs/Framework-Dev-Guides/testing-verification/RELEASE_SAFETY_CHECKLIST.md)
-as the mandatory evidence-backed release gate.
-
-## Repository Layout
+<details>
+<summary><strong>Repository map</strong></summary>
 
 ```text
-ai-infrastructure-module/     Framework modules, providers, vectors, and integration suites
-examples/minimal-spring-boot/ Minimal Spring Boot consumer
-examples/agentic-execution-consumer/ Standalone public execution API consumer and runtime proof
-examples/real-apps/           Product-shaped applications and deployment smoke tests
-docs/getting-started/         Canonical external-developer guides
-docs/llm-context/             Coding-assistant context and task recipes
-docs/course/                  Versioned course lessons and case studies
-docs/release-notes/           Release behavior and migration notes
+ai-infrastructure-module/           Framework, providers, vector adapters and integration suites
+examples/minimal-spring-boot/        Small Spring Boot consumer
+examples/agentic-execution-consumer/ Public execution API and composition proof
+examples/real-apps/                  Runnable, product-shaped examples
+docs/getting-started/                Developer onboarding
+docs/Framework-Dev-Guides/            Architecture and integration contracts
+docs/llm-context/                    Coding-assistant guidance
+docs/course/                        Course source and labs
+docs/release-notes/                  Release behavior and migration notes
 ```
 
-## Community And Contributing
+</details>
 
-AI Fabric is created and maintained by
-**[Mahmoud Elgammal](https://www.linkedin.com/in/engmahmoudalgammal/)**. Source is published under
-the [Loom AI Labs GitHub organization](https://github.com/Loom-AI-Labs).
+## Community
 
-- [Contributing guide](CONTRIBUTING.md)
-- [Code of Conduct](CODE_OF_CONDUCT.md)
-- [Security policy](SECURITY.md)
-- [Roadmap and issues](https://github.com/Loom-AI-Labs/ai-fabric-framework/issues)
-- [Discord community](https://discord.gg/cBpR7JQuY)
-- [Project website](https://ai-fabric.dev)
+Created and maintained by **[Mahmoud Elgammal](https://www.linkedin.com/in/engmahmoudalgammal/)**
+at [Loom AI Labs](https://github.com/Loom-AI-Labs).
 
-The project favors focused, well-tested changes with real-app proof over broad rewrites.
+[Contributing](CONTRIBUTING.md) &middot; [Code of conduct](CODE_OF_CONDUCT.md) &middot;
+[Security](SECURITY.md) &middot; [Issues](https://github.com/Loom-AI-Labs/ai-fabric-framework/issues) &middot;
+[Discord](https://discord.gg/cBpR7JQuY) &middot; [Website](https://ai-fabric.dev)
 
-## Release Policy
-
-The current release is **`0.8.38`**. AI Fabric remains on a `0.x` release line, so review release
-notes and migration guidance before upgrading:
-
-- [AI Fabric 0.8.38 release notes](docs/release-notes/0.8.38.md)
-- [AI Fabric 0.8.37 release notes](docs/release-notes/0.8.37.md)
-- [AI Fabric 0.8.30 release notes](docs/release-notes/0.8.30.md)
-- [AI Fabric 0.8.13 release notes](docs/release-notes/0.8.13.md)
-- [AI Fabric 0.8.0 release notes](docs/release-notes/0.8.0.md)
-- [LoomAI platform 0.8.0 upgrade notes](docs/release-notes/LOOMAI_PLATFORM_AI_FABRIC_0_8_0_UPGRADE_NOTES.md)
-- [LoomAI 0.8 document-indexing adoption runbook](docs/Framework-Dev-Guides/retrieval-vectorization/LOOMAI_AI_FABRIC_0_8_DOCUMENT_INDEXING_MIGRATION_RUNBOOK.md)
-- [AI Fabric 0.6.1 release notes](docs/release-notes/0.6.1.md)
-- [AI Fabric 0.6.0 release notes](docs/release-notes/0.6.0.md)
-- [AI Fabric 0.5.3 release notes](docs/release-notes/0.5.3.md)
-- [AI Fabric 0.4.0 release notes](docs/release-notes/0.4.0.md)
-- [Annotation lifecycle 0.4 migration guide](docs/Framework-Dev-Guides/retrieval-vectorization/ANNOTATION_LIFECYCLE_0_4_MIGRATION_GUIDE.md)
-
-## Project Boundary
-
-This repository contains the open-source AI Fabric framework, documentation, examples, and test
-suites. It does not contain private managed-product code, customer configuration, deployment
-operations, or commercial application code.
-
-## License
-
-Licensed under the [Apache License 2.0](LICENSE).
+Licensed under [Apache 2.0](LICENSE).

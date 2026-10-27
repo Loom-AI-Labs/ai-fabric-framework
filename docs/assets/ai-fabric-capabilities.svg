@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="690" viewBox="0 0 1200 690" role="img" aria-labelledby="title description">
+  <title id="title">AI Fabric: application-owned AI enablement</title>
+  <desc id="description">Inside a trusted Spring Boot application, AI Fabric supports conversations, application and event-driven intelligence, and multi-specialist execution. Shared retrieval, actions, memory and human-control contracts connect these patterns to configured providers and application-owned systems.</desc>
+  <defs>
+    <marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 Z" fill="#8193a6"/></marker>
+  </defs>
+  <rect width="1200" height="690" rx="8" fill="#ffffff"/>
+  <g font-family="Inter, Segoe UI, Arial, sans-serif" letter-spacing="0">
+    <text x="48" y="38" font-size="13" font-weight="700" fill="#097a72">AI FABRIC / APPLICATION ENABLEMENT</text>
+    <text x="48" y="87" font-size="32" font-weight="700" fill="#152a3b">One AI layer. More than one way to use it.</text>
+    <rect x="24" y="122" width="1152" height="420" rx="8" fill="#f7fafc" stroke="#cdd9e3"/>
+    <rect x="48" y="146" width="1104" height="52" rx="6" fill="#eaf0f5"/>
+    <text x="70" y="179" font-size="17" font-weight="700" fill="#18394e">YOUR SPRING BOOT APPLICATION</text>
+    <text x="688" y="178" font-size="14" fill="#40596b">Trusted identity / tenant / policy / permissions</text>
+    <g fill="none" stroke="#8193a6" stroke-width="1.5" marker-end="url(#arrow)">
+      <path d="M222 198 V222"/><path d="M600 198 V222"/><path d="M978 198 V222"/>
+    </g>
+    <rect x="48" y="230" width="348" height="126" rx="8" fill="#edf5ff" stroke="#95bce5"/>
+    <text x="70" y="257" font-size="12" font-weight="700" fill="#2867a8">01 / USER-INITIATED</text>
+    <text x="70" y="287" font-size="23" font-weight="700" fill="#18394e">Conversational AI</text>
+    <text x="70" y="314" font-size="15" fill="#40596b">Search, explain, compare and act.</text>
+    <text x="70" y="337" font-size="14" fill="#40596b">Conversation context stays with the app.</text>
+    <rect x="426" y="230" width="348" height="126" rx="8" fill="#eef9f5" stroke="#91c6b8"/>
+    <text x="448" y="257" font-size="12" font-weight="700" fill="#087d68">02 / APPLICATION-INITIATED</text>
+    <text x="448" y="287" font-size="23" font-weight="700" fill="#18394e">Event-driven intelligence</text>
+    <text x="448" y="314" font-size="15" fill="#40596b">Call a specialist. Run a known plan.</text>
+    <text x="448" y="337" font-size="14" fill="#40596b">Your app owns events and scheduling.</text>
+    <rect x="804" y="230" width="348" height="126" rx="8" fill="#fff8eb" stroke="#ddc182"/>
+    <text x="826" y="257" font-size="12" font-weight="700" fill="#886117">03 / COORDINATED SPECIALISTS</text>
+    <text x="826" y="287" font-size="23" font-weight="700" fill="#18394e">Bounded specialist teams</text>
+    <text x="826" y="314" font-size="15" fill="#40596b">Sequential, parallel or adaptive work.</text>
+    <text x="826" y="337" font-size="14" fill="#40596b">Approved workers. Typed results.</text>
+    <g fill="none" stroke="#8193a6" stroke-width="1.5" marker-end="url(#arrow)">
+      <path d="M222 356 V384"/><path d="M600 356 V384"/><path d="M978 356 V384"/>
+    </g>
+    <rect x="48" y="392" width="1104" height="120" rx="8" fill="#ffffff" stroke="#c2d1dd"/>
+    <text x="70" y="420" font-size="12" font-weight="700" fill="#526d7d">SHARED FRAMEWORK CAPABILITIES</text>
+    <path d="M330 438 V492 M606 438 V492 M882 438 V492" fill="none" stroke="#e0e7ed"/>
+    <text x="70" y="457" font-size="19" font-weight="700" fill="#18394e">Retrieval + evidence</text>
+    <text x="70" y="484" font-size="14" fill="#526879">Entities / documents / live reads</text>
+    <text x="352" y="457" font-size="19" font-weight="700" fill="#18394e">Governed actions</text>
+    <text x="352" y="484" font-size="14" fill="#526879">Registered application handlers</text>
+    <text x="628" y="457" font-size="19" font-weight="700" fill="#18394e">Memory + state</text>
+    <text x="628" y="484" font-size="14" fill="#526879">Sessions / jobs / chain checkpoints</text>
+    <text x="904" y="457" font-size="19" font-weight="700" fill="#18394e">Human participation</text>
+    <text x="904" y="484" font-size="14" fill="#526879">Action review / chat handover</text>
+    <g fill="none" stroke="#8193a6" stroke-width="1.5" marker-end="url(#arrow)">
+      <path d="M318 542 V570"/><path d="M882 542 V570"/>
+    </g>
+    <rect x="48" y="578" width="540" height="82" rx="8" fill="#f5f7fa" stroke="#cdd9e3"/>
+    <text x="70" y="610" font-size="18" font-weight="700" fill="#18394e">Pluggable providers</text>
+    <text x="70" y="637" font-size="15" fill="#526879">Spring AI models / embeddings / vector stores</text>
+    <rect x="612" y="578" width="540" height="82" rx="8" fill="#f5f7fa" stroke="#cdd9e3"/>
+    <text x="634" y="610" font-size="18" font-weight="700" fill="#18394e">Your existing systems</text>
+    <text x="634" y="637" font-size="15" fill="#526879">Business services / source data / external APIs</text>
+  </g>
+</svg>
