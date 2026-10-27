@@ -33,6 +33,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -52,13 +54,13 @@ class AccountActionSubjectResolutionTest {
         AccountResolutionService.AccountProfile account = accountProfile();
         when(accounts.accountProfile(accountId)).thenReturn(account);
         String actorId = "demo:agentic-resolver-" + UUID.randomUUID() + ":missing-payment";
-        ActionContext context = context(source, actorId,
+        ActionContext context = spy(context(source, actorId,
             new ExecutionSubjectRef("account", accountId.toString()),
-            AgenticResolverTrustBoundary.TENANT_ID, AgenticResolverTrustBoundary.DEPLOYMENT_ID);
+            AgenticResolverTrustBoundary.TENANT_ID, AgenticResolverTrustBoundary.DEPLOYMENT_ID));
 
-        if (source == ExecutionSource.INTERACTIVE) {
-            assertThat(context.userId()).isEqualTo(actorId);
-        }
+        // Exercise opaque caller identity independently of framework accessor projection.
+        doReturn(actorId).when(context).userId();
+        assertThat(context.userId()).isEqualTo(actorId);
         assertThat(profile.allowed(context)).isTrue();
         ActionResult result = profile.execute(context);
 
