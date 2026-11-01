@@ -9,6 +9,7 @@ import ai.fabric.config.VectorSpaceRoutingProperties;
 import ai.fabric.core.AICoreService;
 import ai.fabric.core.LlmPurpose;
 import ai.fabric.dto.AIGenerationResponse;
+import ai.fabric.dto.AIChatMessage;
 import ai.fabric.dto.AdvancedRAGResponse;
 import ai.fabric.dto.Intent;
 import ai.fabric.dto.IntentType;
@@ -54,6 +55,36 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 class IntentHandlingStepReadActionResolutionTest {
+
+    @Test
+    void doesNotReportRawReadEvidenceAsSuccessWhenConversationGenerationFails() {
+        RAGProvider ragProvider = mock(RAGProvider.class);
+        AICoreService ai = mock(AICoreService.class);
+        ReadActionResolutionService resolver = mock(ReadActionResolutionService.class);
+        when(resolver.resolve(any(), any(), any())).thenReturn(
+            ReadActionResolutionService.ResolutionOutcome.answerFromActionsOnly(
+                "Internal current evidence: Alpha=42; Beta=70", List.of("records"), List.of(),
+                Map.of("attempted", true)));
+        IntentHandlingStep step = buildStep(ragProvider, ai);
+        ReflectionTestUtils.setField(step, "readActionResolutionServiceProvider", providerOf(resolver));
+        OrchestrationContext orchestration = OrchestrationContext.forUser("owner-1");
+        orchestration.setConversationId("conversation-1");
+        Intent intent = Intent.builder().type(IntentType.INFORMATION).intent("Which is lower?")
+            .requiresRetrieval(true).requiresGeneration(true).vectorSpace("records").build();
+        PipelineContext input = PipelineContext.from("Which is lower?", orchestration).toBuilder()
+            .historyMessages(List.of(AIChatMessage.user("Compare Alpha and Beta")))
+            .intentResponse(MultiIntentResponse.builder().intents(List.of(intent)).build()).build();
+
+        OrchestrationResult result = step.process(input).getIntentResult();
+
+        assertThat(result.getType()).isEqualTo(OrchestrationResultType.ERROR);
+        assertThat(result.isSuccess()).isFalse();
+        assertThat(result.getErrorCode()).isEqualTo("GENERATION_FAILED");
+        assertThat(result.getMessage()).doesNotContain("Alpha=42");
+        assertThat(result.getData()).containsKey("generationError");
+        verify(ai, never()).generateTextResponse(anyString(), any());
+        verifyNoInteractions(ragProvider);
+    }
 
     @Test
     void shouldAnswerFromReadActionEvidenceWithoutRag() {

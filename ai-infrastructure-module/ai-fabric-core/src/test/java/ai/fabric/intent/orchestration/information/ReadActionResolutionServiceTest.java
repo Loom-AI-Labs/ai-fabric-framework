@@ -6,6 +6,7 @@ import ai.fabric.core.AICoreService;
 import ai.fabric.core.LlmPurpose;
 import ai.fabric.dto.AIGenerationRequest;
 import ai.fabric.dto.AIGenerationResponse;
+import ai.fabric.dto.AIChatMessage;
 import ai.fabric.dto.Intent;
 import ai.fabric.dto.IntentType;
 import ai.fabric.intent.IntentExtractionJsonSupport;
@@ -48,6 +49,50 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class ReadActionResolutionServiceTest {
+
+    @Test
+    void carriesNativeConversationHistoryAndAnExplicitModelRetrievalQueryWithoutExecutingOrInventingFacts() {
+        AICoreService ai = mock(AICoreService.class);
+        AIActionRegistry registry = mock(AIActionRegistry.class);
+        PromptTemplateResolver templates = mock(PromptTemplateResolver.class);
+        AIActionMetaData metadata = AIActionMetaData.builder().name("compare_records")
+            .accessMode(ActionAccessMode.READ).groundingEligible(true).readActionResolutionEligible(true).build();
+        when(registry.getAllMetadata()).thenReturn(List.of(metadata));
+        when(registry.findHandler("compare_records")).thenReturn(Optional.of(mock(AIActionHandler.class)));
+        when(templates.resolve("orchestration/read-action-resolution", "system"))
+            .thenReturn(resolvedTemplate("system", "Plan authorized reads."));
+        when(templates.resolve("orchestration/read-action-resolution", "user"))
+            .thenReturn(resolvedTemplate("user", "query={{query}}\nprior={{prior_evidence_json}}"));
+        when(ai.generateContent(any(), eq(LlmPurpose.ORCHESTRATION))).thenReturn(
+            AIGenerationResponse.builder().content("""
+                {"decision":"USE_RAG_ONLY","actions":[],"suggestedVectorSpaces":["inventory"],
+                 "retrievalQuery":"Aster E1 and Northstar S4 mileage and body style"}
+                """).build());
+        var service = new ReadActionResolutionService(ai, registry, new IntentExtractionJsonSupport(new ObjectMapper()),
+            templates, new PromptRenderer(), mock(AIEntityConfigurationLoader.class));
+        var orchestration = OrchestrationContext.forUser("owner-1");
+        orchestration.setConversationId("conversation-1");
+        var history = List.of(AIChatMessage.user("Compare Aster E1 and Northstar S4"),
+            AIChatMessage.assistant("Aster E1:4850 SUV; Northstar S4:8920 Estate"));
+        var pipeline = PipelineContext.from("Of those two, which has lower mileage?", orchestration).toBuilder()
+            .historyMessages(history).orchestrationPolicy(readActionPolicy("executor", List.of("compare_records"),
+                OrchestrationProperties.ReadActionResolutionPlanningMode.ITERATIVE,
+                OrchestrationProperties.ReadActionResolutionRagCooperationMode.RAG_IF_ACTIONS_INSUFFICIENT)).build();
+        var outcome = service.resolve(Intent.builder().type(IntentType.INFORMATION)
+            .intent("lower mileage").requiresRetrieval(true).build(), orchestration, pipeline);
+
+        var requests = ArgumentCaptor.forClass(AIGenerationRequest.class);
+        verify(ai).generateContent(requests.capture(), eq(LlmPurpose.ORCHESTRATION));
+        assertThat(requests.getValue().getMessages()).extracting(AIChatMessage::getContent)
+            .containsExactly(history.get(0).getContent(), history.get(1).getContent());
+        assertThat(requests.getValue().getPrompt()).doesNotContain("4850");
+        assertThat(requests.getValue().getSystemPrompt()).contains("CONVERSATION REFERENCE POLICY");
+        assertThat(outcome.retrievalQuery()).isEqualTo("Aster E1 and Northstar S4 mileage and body style");
+        assertThat(outcome.executedActions()).isEmpty();
+        assertThat(outcome.hasGroundingEvidence()).isFalse();
+        assertThat(outcome.diagnostics()).containsEntry("retrievalQuerySource", "MODEL");
+        assertThat(pipeline.getEffectiveQuery()).isEqualTo("Of those two, which has lower mileage?");
+    }
 
     @Test
     void shouldRepairRejectedPlannerParametersBeforeExecutingReadAction() {

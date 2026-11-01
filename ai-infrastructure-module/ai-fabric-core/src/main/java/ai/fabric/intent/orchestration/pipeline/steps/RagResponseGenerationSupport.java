@@ -11,6 +11,7 @@ import ai.fabric.dto.ResponseGenerationProfile;
 import ai.fabric.dto.TransientInputPolicy;
 import ai.fabric.intent.orchestration.OrchestrationAuthContextResolver;
 import ai.fabric.intent.orchestration.pipeline.PipelineContext;
+import ai.fabric.intent.orchestration.conversation.ConversationPromptContext;
 import ai.fabric.intent.orchestration.policy.OrchestrationPolicy;
 import ai.fabric.prompt.PromptRenderer;
 import ai.fabric.prompt.PromptTemplateResolver;
@@ -98,6 +99,10 @@ final class RagResponseGenerationSupport {
                         return response;
                     }
                 } catch (Exception ex) {
+                    if (!ConversationPromptContext.history(pipelineContext,
+                        ConversationPromptContext.characterBudget(pipelineContext)).messages().isEmpty()) {
+                        throw new IllegalStateException("Conversation-bound generation failed without discarding history.", ex);
+                    }
                     log.warn("No-context generation failed; falling back to static response: {}", ex.getMessage());
                 }
             }
@@ -106,7 +111,8 @@ final class RagResponseGenerationSupport {
                 null,
                 null,
                 null,
-                null
+                null,
+                Map.of()
             );
         }
 
@@ -144,6 +150,9 @@ final class RagResponseGenerationSupport {
         if (StringUtils.hasText(generationTrace.path())) {
             metadata.put(METADATA_KEY_RESPONSE_GENERATION_PATH, generationTrace.path());
         }
+        if (generationTrace.conversationContext() != null && !generationTrace.conversationContext().isEmpty()) {
+            metadata.put("responseGenerationConversationContext", generationTrace.conversationContext());
+        }
         return metadata.isEmpty() ? Map.of() : Collections.unmodifiableMap(metadata);
     }
 
@@ -152,7 +161,8 @@ final class RagResponseGenerationSupport {
         Long processingTimeMs,
         Long providerProcessingTimeMs,
         String model,
-        String path
+        String path,
+        Map<String, Object> conversationContext
     ) {}
 
     ResponseGenerationProfile resolveResponseGenerationProfile(Intent intent) {
@@ -206,13 +216,17 @@ final class RagResponseGenerationSupport {
         String effectivePrompt = appendResponseInstructions(prompt, pipelineContext);
         AIGenerationResponse response;
         List<AIGenerationInputPart> transientInputParts = transientInputParts(pipelineContext);
-        if ((maxTokens != null && maxTokens > 0) || !transientInputParts.isEmpty()) {
+        ConversationPromptContext.Projection conversation = ConversationPromptContext.history(
+            pipelineContext, ConversationPromptContext.characterBudget(pipelineContext));
+        if ((maxTokens != null && maxTokens > 0) || !transientInputParts.isEmpty() || !conversation.messages().isEmpty()) {
             response = aiCoreService.generateContent(
                 AIGenerationRequest.builder()
                     .entityId("adhoc-" + UUID.randomUUID())
                     .entityType(StringUtils.hasText(entityType) ? entityType : "adhoc")
                     .generationType(StringUtils.hasText(generationType) ? generationType : "text")
                     .prompt(effectivePrompt)
+                    .systemPrompt(conversation.messages().isEmpty() ? null : ConversationPromptContext.REFERENCE_POLICY)
+                    .messages(conversation.messages())
                     .maxTokens(maxTokens)
                     .inputParts(transientInputParts)
                     .transientInputPolicy(transientInputParts.isEmpty()
@@ -225,6 +239,9 @@ final class RagResponseGenerationSupport {
                 purpose
             );
             if (response == null || !StringUtils.hasText(response.getContent())) {
+                if (!conversation.messages().isEmpty()) {
+                    throw new IllegalStateException("Generation returned no content for a conversation-bound request.");
+                }
                 response = aiCoreService.generateTextResponse(effectivePrompt, purpose);
             }
         } else {
@@ -236,7 +253,8 @@ final class RagResponseGenerationSupport {
             elapsedMs,
             response != null ? response.getProcessingTimeMs() : null,
             response != null ? response.getModel() : null,
-            path
+            path,
+            conversation.messages().isEmpty() ? Map.of() : conversation.diagnostics()
         );
     }
 

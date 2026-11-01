@@ -63,6 +63,41 @@ import static org.mockito.Mockito.when;
 class IntentHandlingStepCompoundReadEvidenceTest {
 
     @Test
+    void usesTheExplicitPlannerQueryForRetrievalWithoutChangingTheUserQueryOrScope() {
+        RAGProvider ragProvider = mock(RAGProvider.class);
+        when(ragProvider.performRAGQuery(any(RAGRequest.class))).thenReturn(response(document(
+            "record-1", "document", "approved-source", "Referenced record evidence."
+        )));
+        AICoreService aiCoreService = mock(AICoreService.class);
+        when(aiCoreService.generateTextResponse(anyString(), eq(LlmPurpose.GENERATION)))
+            .thenReturn(AIGenerationResponse.builder().content("Grounded comparison.").build());
+        ReadActionResolutionService resolutionService = mock(ReadActionResolutionService.class);
+        String modelQuery = "Compare record Alpha and record Beta mileage and body style";
+        when(resolutionService.resolve(any(), any(), any()))
+            .thenReturn(new ReadActionResolutionService.ResolutionOutcome(
+                true, null, null,
+                true, false, null, List.of("document"), modelQuery,
+                List.of(), Map.of("retrievalQuerySource", "MODEL")
+            ));
+        IntentHandlingStep step = newStep(mock(AIActionRegistry.class), ragProvider, aiCoreService);
+        ReflectionTestUtils.setField(step, "readActionResolutionServiceProvider", providerOf(resolutionService));
+        String original = "Of those two, which has lower mileage?";
+        PipelineContext input = context(original, information(original, "document"));
+
+        OrchestrationResult result = step.process(input).getIntentResult();
+
+        ArgumentCaptor<RAGRequest> request = ArgumentCaptor.forClass(RAGRequest.class);
+        verify(ragProvider).performRAGQuery(request.capture());
+        assertThat(request.getValue().getQuery()).isEqualTo(modelQuery);
+        assertThat(request.getValue().getEntityType()).isEqualTo("document");
+        assertThat(input.getOriginalQuery()).isEqualTo(original);
+        assertThat(request.getValue().getMetadata()).containsEntry("readPlannerRetrievalQueryApplied", true)
+            .containsEntry("readPlannerRetrievalQuerySource", "MODEL")
+            .containsEntry("readPlannerRetrievalQuery", modelQuery);
+        assertThat(result.isSuccess()).isTrue();
+    }
+
+    @Test
     void scopesEachInformationPlannerToItsCompoundObligation() {
         RAGProvider ragProvider = mock(RAGProvider.class);
         when(ragProvider.performRag(any(RAGRequest.class))).thenReturn(response(document(

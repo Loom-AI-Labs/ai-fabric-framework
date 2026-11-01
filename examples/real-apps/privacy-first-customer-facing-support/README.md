@@ -64,8 +64,8 @@ Build from the repository root:
 
 ```bash
 docker build -f examples/real-apps/privacy-first-customer-facing-support/Dockerfile \
-  --build-arg AI_FABRIC_VERSION=0.8.42 \
-  -t ai-fabric-privacy-shield:0.8.42 \
+  --build-arg AI_FABRIC_VERSION=0.8.43 \
+  -t ai-fabric-privacy-shield:0.8.43 \
   examples/real-apps
 ```
 

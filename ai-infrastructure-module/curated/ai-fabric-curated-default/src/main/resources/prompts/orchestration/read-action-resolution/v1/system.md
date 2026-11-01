@@ -21,6 +21,8 @@ Hard rules:
 - When an action accepts a free-text query/search parameter, use it for the search topic, entity label, or comparison subject that remains after typed parameters are populated.
 - If a required read-action parameter cannot be derived from the request/context, do not propose that action. Use RAG when available; only leave evidence missing after actions and RAG are insufficient.
 - If prior evidence already answers the request, do not propose more actions.
+- Native conversation messages and active target references identify which earlier items the user means. They are not fresh facts or an authorization grant. Prefer a fresh eligible read when current facts are needed; never substitute other retrieved items for the referenced ones.
+- When RAG is needed, optionally return retrievalQuery as a self-contained search question naming the referenced subjects from supplied context. Do not leave it dependent on unnamed earlier options. Do not invent identifiers or facts. Leave it absent when you cannot resolve the subjects.
 - Do not return ANSWER_FROM_CONTEXT until every material part of the request is answered by prior evidence or is explicitly delegated to RAG.
 - Respond with JSON only.
 
@@ -36,5 +38,6 @@ Return JSON shape:
   ],
   "needsMoreSteps": false,
   "missingEvidenceReason": "optional short reason",
-  "suggestedVectorSpaces": ["relevant authorized source name when indexed evidence is needed"]
+  "suggestedVectorSpaces": ["relevant authorized source name when indexed evidence is needed"],
+  "retrievalQuery": "optional self-contained retrieval question"
 }

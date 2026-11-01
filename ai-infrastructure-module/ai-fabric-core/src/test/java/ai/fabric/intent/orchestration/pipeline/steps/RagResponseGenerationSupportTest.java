@@ -8,6 +8,7 @@ import ai.fabric.dto.AIGenerationInputPart;
 import ai.fabric.dto.AIGenerationInputType;
 import ai.fabric.dto.AIGenerationRequest;
 import ai.fabric.dto.AIGenerationResponse;
+import ai.fabric.dto.AIChatMessage;
 import ai.fabric.dto.Intent;
 import ai.fabric.dto.ResponseGenerationProfile;
 import ai.fabric.intent.orchestration.OrchestrationContext;
@@ -27,15 +28,63 @@ import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.when;
 
 class RagResponseGenerationSupportTest {
+
+    @Test
+    void carriesNativeHistoryToBothGroundedAndNoCurrentEvidenceGenerationWithoutTextPacking() {
+        AICoreService ai = mock(AICoreService.class);
+        when(ai.generateContent(any(), eq(LlmPurpose.GENERATION)))
+            .thenReturn(AIGenerationResponse.builder().content("Supported answer").build());
+        var support = newSupport(ai, true);
+        var orchestration = OrchestrationContext.forUser("owner-1");
+        orchestration.setConversationId("conversation-1");
+        var history = List.of(AIChatMessage.user("Compare Aster E1 and Northstar S4"),
+            AIChatMessage.assistant("Aster4850; Northstar8920"));
+        var pipeline = PipelineContext.from("Which of those two?", orchestration).toBuilder()
+            .historyMessages(history).build();
+        for (String evidence : List.of("Current authorized Aster4851; Northstar8921", "")) {
+            var trace = support.generateRagAnswer(Intent.builder().requiresGeneration(true).build(),
+                "Which of those two?", evidence, pipeline);
+            assertThat(trace.content()).isEqualTo("Supported answer");
+            assertThat(support.responseGenerationMetadata(trace)).containsKey("responseGenerationConversationContext");
+        }
+        var requests = ArgumentCaptor.forClass(AIGenerationRequest.class);
+        verify(ai, times(2)).generateContent(requests.capture(), eq(LlmPurpose.GENERATION));
+        for (AIGenerationRequest request : requests.getAllValues()) {
+            assertThat(request.getMessages()).extracting(AIChatMessage::getContent)
+                .containsExactly(history.get(0).getContent(), history.get(1).getContent());
+            assertThat(request.getPrompt()).doesNotContain("Aster4850");
+            assertThat(request.getSystemPrompt()).contains("historical statements", "takes precedence");
+        }
+        verify(ai, never()).generateTextResponse(anyString(), eq(LlmPurpose.GENERATION));
+    }
+
+    @Test
+    void emptyConversationBoundGenerationFailsVisiblyInsteadOfRetryingWithoutHistory() {
+        AICoreService ai = mock(AICoreService.class);
+        var support = newSupport(ai, true);
+        var orchestration = OrchestrationContext.forUser("owner-1");
+        orchestration.setConversationId("conversation-1");
+        var pipeline = PipelineContext.from("follow-up", orchestration).toBuilder()
+            .historyMessages(List.of(AIChatMessage.assistant("earlier facts"))).build();
+        assertThatThrownBy(() -> support.generateRagAnswer(Intent.builder().requiresGeneration(true).build(),
+            "follow-up", "current authorized evidence", pipeline)).isInstanceOf(IllegalStateException.class)
+            .hasMessageContaining("conversation-bound");
+        assertThatThrownBy(() -> support.generateRagAnswer(Intent.builder().requiresGeneration(true).build(),
+            "follow-up", "", pipeline)).isInstanceOf(IllegalStateException.class)
+            .hasMessageContaining("without discarding history");
+        verify(ai, never()).generateTextResponse(anyString(), eq(LlmPurpose.GENERATION));
+    }
 
     @Test
     void shouldReturnStaticNoContextFallbackWhenGenerationIsDisabled() {

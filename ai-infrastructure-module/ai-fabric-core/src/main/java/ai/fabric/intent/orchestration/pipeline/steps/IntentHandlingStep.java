@@ -2041,6 +2041,14 @@ public class IntentHandlingStep implements PipelineStep {
         }
         List<String> vectorSpaces = routedVectorSpaces.vectorSpaces();
 
+        if (StringUtils.hasText(readActionResolution.retrievalQuery())) {
+            retrievalBaseQuery = readActionResolution.retrievalQuery();
+            optimizedQuery = retrievalBaseQuery;
+            metadata.put("readPlannerRetrievalQueryApplied", true);
+            metadata.put("readPlannerRetrievalQuerySource", "MODEL");
+            metadata.put("readPlannerRetrievalQuery", retrievalBaseQuery);
+        }
+
         InformationRetrievalQuerySupport.PreparedRetrievalQuery preparedQuery =
             InformationRetrievalQuerySupport.prepare(
                 intent,

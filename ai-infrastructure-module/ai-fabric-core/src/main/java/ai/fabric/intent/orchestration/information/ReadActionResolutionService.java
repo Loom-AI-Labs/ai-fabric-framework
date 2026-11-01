@@ -26,6 +26,7 @@ import ai.fabric.intent.action.invocation.GovernedActionInvocationOutcome;
 import ai.fabric.intent.action.invocation.GovernedActionInvocationSupport;
 import ai.fabric.intent.orchestration.OrchestrationAuthContextResolver;
 import ai.fabric.intent.orchestration.OrchestrationContext;
+import ai.fabric.intent.orchestration.conversation.ConversationPromptContext;
 import ai.fabric.intent.orchestration.pipeline.PipelineContext;
 import ai.fabric.intent.orchestration.policy.OrchestrationPolicy;
 import ai.fabric.prompt.PromptRenderer;
@@ -163,6 +164,9 @@ public class ReadActionResolutionService {
         Set<String> executionKeys = new LinkedHashSet<>();
         PlannerDecision lastDecision = null;
         Map<String, Object> knowledgeSources = buildKnowledgeSourceCatalog(policy, orchestrationContext, pipelineContext);
+        String targetContext = ConversationPromptContext.activeTargets(pipelineContext, readPolicy.maxPlannerContextChars());
+        ConversationPromptContext.Projection conversation = ConversationPromptContext.history(
+            pipelineContext, readPolicy.maxPlannerContextChars() - targetContext.length());
 
         for (int iteration = 1; iteration <= maxIterations; iteration++) {
             PlannerDecision decision = planActions(
@@ -175,7 +179,9 @@ public class ReadActionResolutionService {
                 rejectedActionProposals,
                 iteration,
                 maxIterations,
-                knowledgeSources
+                knowledgeSources,
+                conversation,
+                targetContext
             );
             if (decision == null) {
                 plannerIterations.add(Map.of(
@@ -279,6 +285,8 @@ public class ReadActionResolutionService {
         diagnostics.put("useRag", useRag);
         diagnostics.put("knowledgeSourceCatalog", knowledgeSources);
         diagnostics.put("maxActionEvidenceItems", readPolicy.maxActionEvidenceItems());
+        diagnostics.put("conversationContext", conversation.diagnostics());
+        diagnostics.put("activeTargetContextCharacters", targetContext.length());
         diagnostics.put("contextGroundingUsable", evidenceProjection.groundingUsable());
         diagnostics.put("contextOmittedActionsCount", evidenceProjection.omittedActions());
         if (lastDecision != null) {
@@ -290,6 +298,11 @@ public class ReadActionResolutionService {
         if (!preferredVectorSpaces.isEmpty()) {
             diagnostics.put("preferredVectorSpaces", preferredVectorSpaces);
         }
+        String retrievalQuery = lastDecision != null ? lastDecision.retrievalQuery : null;
+        if (StringUtils.hasText(retrievalQuery)) {
+            diagnostics.put("retrievalQuery", retrievalQuery);
+            diagnostics.put("retrievalQuerySource", "MODEL");
+        }
 
         return new ResolutionOutcome(
             true,
@@ -299,6 +312,7 @@ public class ReadActionResolutionService {
             hasSuccessfulActionEvidence,
             evidenceContext,
             preferredVectorSpaces,
+            retrievalQuery,
             Collections.unmodifiableList(executedActions),
             Collections.unmodifiableMap(diagnostics)
         );
@@ -401,7 +415,9 @@ public class ReadActionResolutionService {
                                         List<Map<String, Object>> rejectedActionProposals,
                                         int iteration,
                                         int maxIterations,
-                                        Map<String, Object> knowledgeSources) {
+                                        Map<String, Object> knowledgeSources,
+                                        ConversationPromptContext.Projection conversation,
+                                        String targetContext) {
         try {
             String systemPrompt =
                 SpecialistPromptInstructionSupport.appendToSystemPrompt(
@@ -436,6 +452,12 @@ public class ReadActionResolutionService {
                 )
             );
 
+            if (!conversation.messages().isEmpty() || StringUtils.hasText(targetContext)) {
+                systemPrompt = systemPrompt + "\n\n" + ConversationPromptContext.REFERENCE_POLICY;
+            }
+            if (StringUtils.hasText(targetContext)) {
+                userPrompt = userPrompt + "\n\nACTIVE TARGET REFERENCE DATA\n" + targetContext;
+            }
             AIGenerationResponse response = aiCoreService.generateContent(
                 AIGenerationRequest.builder()
                     .entityId("read-action-resolution-" + UUID.randomUUID())
@@ -443,6 +465,7 @@ public class ReadActionResolutionService {
                     .generationType("read_action_resolution")
                     .systemPrompt(systemPrompt)
                     .prompt(userPrompt)
+                    .messages(conversation.messages())
                     .parameters(jsonSupport.jsonOnlyResponseParameters(PlannerPayload.class))
                     .authContext(OrchestrationAuthContextResolver.from(orchestrationContext))
                     .build(),
@@ -481,12 +504,18 @@ public class ReadActionResolutionService {
             if (payload.suggestedVectorSpaces != null && !payload.suggestedVectorSpaces.isEmpty()) {
                 diagnostics.put("suggestedVectorSpaces", normalizeVectorSpaces(payload.suggestedVectorSpaces));
             }
+            String retrievalQuery = StringUtils.hasText(payload.retrievalQuery) ? payload.retrievalQuery.trim() : null;
+            if (retrievalQuery != null) {
+                diagnostics.put("retrievalQuery", retrievalQuery);
+                diagnostics.put("retrievalQuerySource", "MODEL");
+            }
             return new PlannerDecision(
                 decisionType,
                 List.copyOf(proposals),
                 payload.needsMoreSteps,
                 payload.missingEvidenceReason,
                 payload.suggestedVectorSpaces != null ? List.copyOf(payload.suggestedVectorSpaces) : List.of(),
+                retrievalQuery,
                 Collections.unmodifiableMap(diagnostics)
             );
         } catch (Exception ex) {
@@ -1335,6 +1364,7 @@ public class ReadActionResolutionService {
         Boolean needsMoreSteps,
         String missingEvidenceReason,
         List<String> suggestedVectorSpaces,
+        String retrievalQuery,
         Map<String, Object> diagnostics
     ) {
     }
@@ -1360,6 +1390,7 @@ public class ReadActionResolutionService {
         boolean hasGroundingEvidence,
         String evidenceContext,
         List<String> preferredVectorSpaces,
+        String retrievalQuery,
         List<ExecutedReadAction> executedActions,
         Map<String, Object> diagnostics
     ) {
@@ -1372,6 +1403,7 @@ public class ReadActionResolutionService {
                 false,
                 null,
                 List.of(),
+                null,
                 List.of(),
                 Map.of("attempted", false, "skipReason", reason)
             );
@@ -1389,6 +1421,7 @@ public class ReadActionResolutionService {
                 true,
                 evidenceContext,
                 preferredVectorSpaces != null ? List.copyOf(preferredVectorSpaces) : List.of(),
+                null,
                 executedActions != null ? List.copyOf(executedActions) : List.of(),
                 diagnostics != null ? Collections.unmodifiableMap(new LinkedHashMap<>(diagnostics)) : Map.of("attempted", true)
             );
@@ -1407,6 +1440,7 @@ public class ReadActionResolutionService {
                 hasEvidence,
                 evidenceContext,
                 preferredVectorSpaces != null ? List.copyOf(preferredVectorSpaces) : List.of(),
+                null,
                 executedActions != null ? List.copyOf(executedActions) : List.of(),
                 diagnostics != null ? Collections.unmodifiableMap(new LinkedHashMap<>(diagnostics)) : Map.of("attempted", true)
             );
@@ -1426,6 +1460,7 @@ public class ReadActionResolutionService {
                 false,
                 evidenceContext,
                 preferredVectorSpaces != null ? List.copyOf(preferredVectorSpaces) : List.of(),
+                null,
                 executedActions != null ? List.copyOf(executedActions) : List.of(),
                 diagnostics != null
                     ? Collections.unmodifiableMap(new LinkedHashMap<>(diagnostics))
@@ -1522,6 +1557,7 @@ public class ReadActionResolutionService {
         public Boolean needsMoreSteps;
         public String missingEvidenceReason;
         public List<String> suggestedVectorSpaces = List.of();
+        public String retrievalQuery;
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)

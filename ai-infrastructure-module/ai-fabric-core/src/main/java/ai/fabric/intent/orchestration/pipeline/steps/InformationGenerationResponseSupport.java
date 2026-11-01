@@ -8,6 +8,7 @@ import ai.fabric.intent.orchestration.OrchestrationResult;
 import ai.fabric.intent.orchestration.OrchestrationResultType;
 import ai.fabric.intent.orchestration.information.ReadActionResolutionService;
 import ai.fabric.intent.orchestration.pipeline.PipelineContext;
+import ai.fabric.intent.orchestration.conversation.ConversationPromptContext;
 import ai.fabric.intent.orchestration.pipeline.steps.RagResponseGenerationSupport.ResponseGenerationTrace;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.util.StringUtils;
@@ -160,6 +161,22 @@ final class InformationGenerationResponseSupport {
                 pipelineContext != null ? pipelineContext.getRequestId() : "unknown",
                 ex.getMessage(),
                 ex);
+            if (!ConversationPromptContext.history(pipelineContext,
+                ConversationPromptContext.characterBudget(pipelineContext)).messages().isEmpty()) {
+                Map<String, Object> errorData = new LinkedHashMap<>();
+                errorData.put(DATA_KEY_ANSWER, null);
+                errorData.put(DATA_KEY_DOCUMENTS, List.of());
+                errorData.put(DATA_KEY_REQUIRES_GENERATION, true);
+                errorData.put(DATA_KEY_GENERATION_ERROR, ex.getMessage());
+                return ReadActionResolutionSupport.attachDiagnostics(OrchestrationResult.builder()
+                    .type(OrchestrationResultType.ERROR)
+                    .success(false)
+                    .errorCode("GENERATION_FAILED")
+                    .message("Failed to generate the conversation response.")
+                    .data(Collections.unmodifiableMap(errorData))
+                    .nextSteps(extractNextSteps(intent))
+                    .build(), resolutionOutcome);
+            }
         }
 
         Map<String, Object> data = new LinkedHashMap<>();
