@@ -36,12 +36,8 @@ public class SubscribeActionHandler extends BaseActionHandler {
 
     @ActionAllowed
     public boolean allowed(ActionContext context) {
-        String userId = context != null ? context.userId() : null;
-        if (userId == null || userId.isBlank()) {
-            return false;
-        }
         try {
-            UUID userUuid = parseUserId(userId);
+            UUID userUuid = requireCurrentUser(context);
             // User can subscribe if they don't have an active subscription
             return !subscriptionService.hasActiveSubscription(userUuid);
         } catch (Exception e) {

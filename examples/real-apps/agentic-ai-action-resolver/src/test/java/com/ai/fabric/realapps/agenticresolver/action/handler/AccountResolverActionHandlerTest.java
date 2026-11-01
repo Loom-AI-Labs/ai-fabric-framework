@@ -163,7 +163,8 @@ class AccountResolverActionHandlerTest {
             new AccountResolutionService.AddressProfile(true, true, "BILLING", "San Francisco", "CA", "94105", "USA"),
             new AccountResolutionService.AddressProfile(true, true, "SHIPPING", "San Francisco", "CA", "94105", "USA")
         );
-        when(accountResolutionService.accountProfile(92L)).thenReturn(profile);
+        when(userService.getUserIdFromNumeric(92L)).thenReturn(userUuid);
+        when(accountResolutionService.accountProfile(userUuid)).thenReturn(profile);
 
         GetAccountProfileActionHandler handler = new GetAccountProfileActionHandler(
             accountResolutionService,
@@ -181,7 +182,7 @@ class AccountResolverActionHandlerTest {
         assertThat(result.getData().toMap())
             .containsKey("accountProfile")
             .doesNotContainKeys("readiness", "canContinue", "blockers", "recommendedActions", "policies");
-        verify(accountResolutionService).accountProfile(92L);
+        verify(accountResolutionService).accountProfile(userUuid);
     }
 
     @Test
@@ -219,6 +220,7 @@ class AccountResolverActionHandlerTest {
 
     @Test
     void profileActionDoesNotReturnBackendReadinessDecisions() {
+        UUID userUuid = UUID.randomUUID();
         AccountResolutionService.AccountProfile profile = new AccountResolutionService.AccountProfile(
             new AccountResolutionService.AccountHolderProfile("Resolver User", false, LocalDateTime.now()),
             new AccountResolutionService.SubscriptionProfile(
@@ -240,7 +242,8 @@ class AccountResolverActionHandlerTest {
             new AccountResolutionService.AddressProfile(false, false, "BILLING", null, null, null, null),
             new AccountResolutionService.AddressProfile(false, false, "SHIPPING", null, null, null, null)
         );
-        when(accountResolutionService.accountProfile(92L)).thenReturn(profile);
+        when(userService.getUserIdFromNumeric(92L)).thenReturn(userUuid);
+        when(accountResolutionService.accountProfile(userUuid)).thenReturn(profile);
 
         GetAccountProfileActionHandler handler = new GetAccountProfileActionHandler(
             accountResolutionService,
@@ -264,6 +267,7 @@ class AccountResolverActionHandlerTest {
 
     @Test
     void profileActionFactsAreCompactAndDecisionFree() {
+        UUID userUuid = UUID.randomUUID();
         AccountResolutionService.AccountProfile profile = new AccountResolutionService.AccountProfile(
             new AccountResolutionService.AccountHolderProfile("Resolver User", false, LocalDateTime.now()),
             new AccountResolutionService.SubscriptionProfile(
@@ -279,7 +283,8 @@ class AccountResolverActionHandlerTest {
             new AccountResolutionService.AddressProfile(false, false, "BILLING", null, null, null, null),
             new AccountResolutionService.AddressProfile(true, true, "SHIPPING", "San Francisco", "CA", "94105", "USA")
         );
-        when(accountResolutionService.accountProfile(93L)).thenReturn(profile);
+        when(userService.getUserIdFromNumeric(93L)).thenReturn(userUuid);
+        when(accountResolutionService.accountProfile(userUuid)).thenReturn(profile);
 
         GetAccountProfileActionHandler handler = new GetAccountProfileActionHandler(
             accountResolutionService,

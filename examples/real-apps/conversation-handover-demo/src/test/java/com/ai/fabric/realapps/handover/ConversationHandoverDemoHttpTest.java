@@ -38,6 +38,8 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
     "app.demo.public-operator.access-code=demo-handover",
     "app.cors.allowed-origins=https://ai-fabric.dev",
     "app.cors.allow-credentials=true",
+    "AI_FABRIC_VERSION=9.8.7",
+    "APP_BUILD_COMMIT=health-test-source",
     "ai.enabled=false"
 })
 @AutoConfigureMockMvc
@@ -48,6 +50,14 @@ class ConversationHandoverDemoHttpTest {
     @Autowired RequestConversationHandoverAction handoverAction;
 
     @MockitoBean RAGOrchestrator orchestrator;
+
+    @Test
+    void healthReportsTheDeployedVersionAndSourceInsteadOfHardcodedReleaseMetadata() throws Exception {
+        mvc.perform(get("/api/demo/health"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.aiFabricVersion").value("9.8.7"))
+            .andExpect(jsonPath("$.commit").value("health-test-source"));
+    }
 
     @BeforeEach
     void modelAnswersOrdinaryTurns() {

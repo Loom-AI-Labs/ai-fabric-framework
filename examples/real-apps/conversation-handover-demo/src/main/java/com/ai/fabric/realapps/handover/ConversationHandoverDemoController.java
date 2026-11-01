@@ -34,17 +34,23 @@ class ConversationHandoverDemoController {
     private final String operatorAccessCode;
     private final boolean publicOperatorEnabled;
     private final String publicOperatorAccessCode;
+    private final String aiFabricVersion;
+    private final String buildCommit;
 
     ConversationHandoverDemoController(
         ConversationHandoverDemoService service,
         @Value("${app.demo.operator-access-code}") String operatorAccessCode,
         @Value("${app.demo.public-operator.enabled:false}") boolean publicOperatorEnabled,
-        @Value("${app.demo.public-operator.access-code:demo-handover}") String publicOperatorAccessCode
+        @Value("${app.demo.public-operator.access-code:demo-handover}") String publicOperatorAccessCode,
+        @Value("${AI_FABRIC_VERSION:unknown}") String aiFabricVersion,
+        @Value("${APP_BUILD_COMMIT:${SOURCE_COMMIT:unknown}}") String buildCommit
     ) {
         this.service = service;
         this.operatorAccessCode = operatorAccessCode;
         this.publicOperatorEnabled = publicOperatorEnabled && !publicOperatorAccessCode.isBlank();
         this.publicOperatorAccessCode = publicOperatorAccessCode;
+        this.aiFabricVersion = aiFabricVersion;
+        this.buildCommit = buildCommit;
     }
 
     @PostMapping("/session")
@@ -180,7 +186,8 @@ class ConversationHandoverDemoController {
         return Map.of(
             "status", "UP",
             "service", "conversation-handover-demo",
-            "aiFabricVersion", "0.8.38",
+            "aiFabricVersion", aiFabricVersion,
+            "commit", buildCommit,
             "proof", "Model-selected governed handover action plus AI Fabric conversation control",
             "handoverAction", "request_conversation_handover",
             "handoverIntakeSchema", "DEMO_HANDOVER_INTAKE_V1",
