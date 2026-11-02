@@ -787,7 +787,7 @@ public class ReadActionResolutionService {
         try {
             Optional<Map<String, Object>> llmFacts = handler.buildPostActionLlmFacts(result, actionContext);
             if (llmFacts.isPresent() && llmFacts.get() != null && !llmFacts.get().isEmpty()) {
-                Object sanitized = sanitizeValue(llmFacts.get(), 0, maxItems);
+                Object sanitized = sanitizeValue(llmFacts.get(), 0, maxItems, maxChars);
                 return retainedEvidenceSnippet(sanitized, maxChars, maxItems);
             }
         } catch (Exception ex) {
@@ -808,7 +808,7 @@ public class ReadActionResolutionService {
         if (result.getPinnedTargets() != null && !result.getPinnedTargets().isEmpty()) {
             payload.put("pinnedTargets", result.getPinnedTargets());
         }
-        Object sanitized = sanitizeValue(payload, 0, maxItems);
+        Object sanitized = sanitizeValue(payload, 0, maxItems, maxChars);
         return retainedEvidenceSnippet(sanitized, maxChars, maxItems);
     }
 
@@ -1027,18 +1027,19 @@ public class ReadActionResolutionService {
         return null;
     }
 
-    private Object sanitizeValue(Object value, int depth, int maxItems) {
+    private Object sanitizeValue(Object value, int depth, int maxItems, int maxChars) {
         if (value == null) {
             return null;
         }
         if (value instanceof Number || value instanceof Boolean) {
             return value;
         }
+        if (value instanceof String text) {
+            // Approved text shares the declared evidence budget, not a separate hidden leaf cap.
+            return truncate(text, maxChars);
+        }
         if (depth > 3) {
             return truncate(String.valueOf(value), 240);
-        }
-        if (value instanceof String text) {
-            return truncate(text, 240);
         }
         if (value instanceof Map<?, ?> map) {
             Map<String, Object> sanitized = new LinkedHashMap<>();
@@ -1051,7 +1052,7 @@ public class ReadActionResolutionService {
                     sanitized.put("_truncated", true);
                     break;
                 }
-                sanitized.put(String.valueOf(entry.getKey()), sanitizeValue(entry.getValue(), depth + 1, maxItems));
+                sanitized.put(String.valueOf(entry.getKey()), sanitizeValue(entry.getValue(), depth + 1, maxItems, maxChars));
             }
             return sanitized;
         }
@@ -1059,7 +1060,7 @@ public class ReadActionResolutionService {
             List<Object> sanitized = new ArrayList<>();
             int limit = Math.min(list.size(), maxItems);
             for (int i = 0; i < limit; i++) {
-                sanitized.add(sanitizeValue(list.get(i), depth + 1, maxItems));
+                sanitized.add(sanitizeValue(list.get(i), depth + 1, maxItems, maxChars));
             }
             if (list.size() > limit) {
                 sanitized.add(Map.of("_truncatedItems", list.size() - limit));

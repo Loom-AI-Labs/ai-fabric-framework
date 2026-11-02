@@ -71,7 +71,7 @@ class DefaultCuratedPackTest {
 
         assertThat(readResource("prompts/rag/generation/v1/answer-managed.md"))
             .contains("Do not quote context section names, metadata keys, implementation labels")
-            .contains("Do not treat retrieved search results as the current target")
+            .contains("Do not substitute unrelated retrieved items")
             .contains("Translate failed lookups into user-facing missing live evidence");
 
         assertThat(readResource("prompts/orchestration/read-action-resolution/v1/user.md"))
@@ -82,6 +82,26 @@ class DefaultCuratedPackTest {
             .contains("Render monetary values in user-facing form")
             .doesNotContain("USD prices")
             .doesNotContain("785.95");
+    }
+
+    @Test
+    void shouldGuideReferencesAndConditionalRequirementsWithoutTechnicalTopicDenials() throws Exception {
+        assertThat(readResource("prompts/orchestration/read-action-resolution/v1/system.md"))
+            .contains("Preserve the originating user's issue order")
+            .contains("Do not spend a diagnostic read solely to restate case metadata");
+        for (String version : List.of("v1", "v1-default-optimized")) {
+            for (String name : List.of("answer", "answer-managed")) {
+                assertThat(readResource("prompts/rag/generation/" + version + "/" + name + ".md"))
+                    .contains("Technical vocabulary alone does not make a question confidential")
+                    .contains("Distinguish optional features and their conditional prerequisites")
+                    .contains("Never disclose secrets")
+                    .doesNotContain("ATTACHMENTS/PINNED TARGETS only")
+                    .doesNotContain("Highest priority: if the user question asks about assistant implementation");
+            }
+            assertThat(readResource("prompts/orchestration/read-action-resolution/" + version + "/user.md"))
+                .contains("{{knowledge_sources_json}}")
+                .contains("authorized capability and knowledge catalogues");
+        }
     }
 
     @Test

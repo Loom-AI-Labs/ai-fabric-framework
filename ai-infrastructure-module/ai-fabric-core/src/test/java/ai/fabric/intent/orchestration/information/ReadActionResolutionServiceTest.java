@@ -95,6 +95,47 @@ class ReadActionResolutionServiceTest {
     }
 
     @Test
+    void shouldRetainApprovedStructuredFindingsBeyondTheOldHiddenStringCap() throws Exception {
+        AICoreService ai = mock(AICoreService.class);
+        AIActionRegistry registry = mock(AIActionRegistry.class);
+        PromptTemplateResolver templates = mock(PromptTemplateResolver.class);
+        AIActionMetaData metadata = AIActionMetaData.builder().name("check_configuration")
+            .accessMode(ActionAccessMode.READ).groundingEligible(true).readActionResolutionEligible(true).build();
+        AIActionHandler handler = mock(AIActionHandler.class);
+        String summary = "Approved observation. ".repeat(25) + "The registered index has thirteen active sources.";
+        Map<String, Object> facts = Map.of("findings", List.of(Map.of(
+            "summary", summary, "facts", Map.of("sourceCount", "13"),
+            "evidenceReferenceIds", List.of("approved-evidence-1"))));
+        ActionResult result = ActionResult.builder().success(true).data(ActionPayload.object(facts)).build();
+        when(handler.validateActionAllowed(any())).thenReturn(true);
+        when(handler.executeAction(any(), any())).thenReturn(result);
+        when(handler.buildPostActionLlmFacts(eq(result), any())).thenReturn(Optional.of(facts));
+        when(registry.getAllMetadata()).thenReturn(List.of(metadata));
+        when(registry.findHandler("check_configuration")).thenReturn(Optional.of(handler));
+        when(registry.findMetadata("check_configuration")).thenReturn(Optional.of(metadata));
+        when(templates.resolve("orchestration/read-action-resolution", "system"))
+            .thenReturn(resolvedTemplate("system", "Plan authorized reads."));
+        when(templates.resolve("orchestration/read-action-resolution", "user"))
+            .thenReturn(resolvedTemplate("user", "{{query}} {{eligible_actions_json}}"));
+        when(ai.generateContent(any(), eq(LlmPurpose.ORCHESTRATION))).thenReturn(AIGenerationResponse.builder()
+            .content("{\"decision\":\"EXECUTE_READ_ACTIONS\",\"actions\":[{\"name\":\"check_configuration\",\"params\":{}}]}").build());
+        var service = new ReadActionResolutionService(ai, registry, new IntentExtractionJsonSupport(new ObjectMapper()),
+            templates, new PromptRenderer(), mock(AIEntityConfigurationLoader.class));
+        var context = OrchestrationContext.forUser("owner-1");
+        var outcome = service.resolve(Intent.builder().type(IntentType.INFORMATION).intent("Check configuration").build(),
+            context, PipelineContext.from("Check configuration", context).toBuilder().orchestrationPolicy(
+                readActionPolicy("executor", List.of("check_configuration"),
+                    OrchestrationProperties.ReadActionResolutionPlanningMode.SINGLE_PASS,
+                    OrchestrationProperties.ReadActionResolutionRagCooperationMode.RAG_IF_ACTIONS_INSUFFICIENT)).build());
+        String retained = outcome.executedActions().getFirst().evidenceSummary();
+        var json = new ObjectMapper().readTree(retained);
+        assertThat(json.at("/findings/0/summary").asText()).isEqualTo(summary);
+        assertThat(json.at("/findings/0/facts/sourceCount").asText()).isEqualTo("13");
+        assertThat(retained.length()).isLessThanOrEqualTo(1200);
+        assertThat(outcome.hasGroundingEvidence()).isTrue();
+    }
+
+    @Test
     void shouldRepairRejectedPlannerParametersBeforeExecutingReadAction() {
         AICoreService aiCoreService = mock(AICoreService.class);
         AIActionRegistry actionRegistry = mock(AIActionRegistry.class);

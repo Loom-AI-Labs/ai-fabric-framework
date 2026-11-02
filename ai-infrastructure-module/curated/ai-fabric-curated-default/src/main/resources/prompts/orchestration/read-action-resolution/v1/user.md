@@ -24,7 +24,7 @@ Planner budgets:
 
 Instructions:
 - If current evidence is already sufficient, return decision=ANSWER_FROM_CONTEXT with no actions.
-- If the request asks about assistant implementation, infrastructure, internal status, runtime behavior, tool status, retrieval/vectorization, providers, platform internals, logs, deployments, or secrets, return decision=ANSWER_FROM_CONTEXT unless an eligible read action is explicitly a public, user-safe capability action for that exact request.
+- Determine available help from the authorized capability and knowledge catalogues, not from whether the request uses technical vocabulary. Approved product setup and troubleshooting documentation may discuss deployments, indexing, providers, or integrations. This never authorizes undisclosed internals, secrets, or private diagnostic reads without their declared permission.
 - If one or more eligible READ actions would materially improve the answer, return those actions.
 - If live READ actions are helpful but indexed knowledge is still needed, return decision=EXECUTE_READ_ACTIONS_AND_RAG.
 - If READ actions are not the right tool, return decision=USE_RAG_ONLY.

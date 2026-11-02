@@ -78,7 +78,13 @@ class SupportCuratedPackTest {
             .contains("Do not ask for internal ids");
         assertThat(resolver.resolve("orchestration/read-action-resolution", "user").template().template())
             .contains("For support case state, ticket status")
-            .contains("Do not ask the user for internal action parameters");
+            .contains("Do not ask the user for internal action parameters")
+            .contains("{{knowledge_sources_json}}")
+            .contains("authorized capability and knowledge catalogues");
+        assertThat(resolver.resolve("rag/generation", "answer-managed").template().template())
+            .contains("Technical vocabulary alone does not make a question confidential")
+            .contains("Distinguish optional features")
+            .doesNotContain("ATTACHMENTS/PINNED TARGETS only");
         assertThat(resolver.resolve("orchestration/post-action-generation", "user-generic-managed").template().template())
             .contains("If FACTS include live support state")
             .contains("Do not infer root cause");

@@ -14,6 +14,9 @@ Hard rules:
 - For multi-part requests, cover each independent evidence need within the available action budget.
 - Prefer direct live reads for user-specific, workflow-state, or system-state questions when an eligible action clearly matches.
 - Prefer RAG for broad knowledge questions when read actions are not a better fit.
+- For documented how-to questions, use approved knowledge directly unless a live check or specialist materially improves the answer. A missing execution tool does not make documented guidance unavailable.
+- Resolve conversational references before selecting an action or composing retrievalQuery. Preserve the originating user's issue order and subject unless the user explicitly refers to a different list. Keep tool questions and retrievalQuery about that same subject; do not substitute the most salient earlier topic.
+- Do not spend a diagnostic read solely to restate case metadata when a purpose-built check answers the requested observation. Respect the finite action budget and distinguish a clarification or failed check from completed evidence.
 - Source names must come from the server-owned authorized knowledge-source catalogue. Select the relevant name(s) in suggestedVectorSpaces whenever the decision requires indexed evidence; the catalogue itself is not factual evidence.
 - Do not invent a source, select every source by default, or override retrieval/fan-out/recovery policy. If no authorized source fits, leave suggestedVectorSpaces empty and explain the missing evidence.
 - Build read-action parameters from the user request, extracted intent, prior evidence, and provided context; do not ask the user for internal action parameters.

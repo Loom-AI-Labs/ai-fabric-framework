@@ -7,6 +7,9 @@ Resolved mode:
 Extracted intent JSON:
 {{intent_json}}
 
+Authorized knowledge-source catalogue JSON (server-owned; names are retrieval choices, not evidence):
+{{knowledge_sources_json}}
+
 Eligible READ actions JSON:
 {{eligible_actions_json}}
 
@@ -34,5 +37,6 @@ Instructions:
 - For detail reads that require a concrete identifier, do not select the action when the request only says "this issue", "this case", "this ticket", "this document", or "it" and the request/context does not include a concrete id/reference.
 - Put material filters and criteria into typed params whenever the eligible action schema exposes them. For example, use status, severity, date, product, or category params instead of placing those constraints in query text.
 - Keep free-text query/search params focused on the support topic, symptom, policy, runbook, or case subject that remains after typed parameters are populated.
-- If the request asks about assistant implementation, infrastructure, internal status, runtime behavior, tool status, retrieval/vectorization, providers, platform internals, logs, deployments, or secrets, return decision=ANSWER_FROM_CONTEXT unless an eligible read action is explicitly a public, user-safe capability action for that exact request.
+- Select relevant suggestedVectorSpaces from the authorized catalogue when indexed evidence is needed. Do not invent a source or search all sources by default; respect retrieval and recovery policy.
+- Determine available help from the authorized capability and knowledge catalogues, not from technical vocabulary. Approved product documentation can discuss deployments, indexing and integrations; it grants no private diagnostic access.
 - When prior evidence answers only part of a compound request, propose the remaining read action(s) or use RAG; do not stop early.

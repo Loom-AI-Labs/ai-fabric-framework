@@ -28,6 +28,13 @@ public final class ConversationPromptContext {
         or trusted hidden identifiers. When fresh facts are required, use the authorized read or
         retrieval path. If only an earlier statement is available, attribute it as historical and
         make uncertainty explicit rather than claiming it is current or that no conversation exists.
+        Resolve a follow-up's subject before choosing tools or drafting a search question. Preserve
+        the order and distinct meaning of issues in the originating user request; do not replace
+        the referenced issue with the most prominent topic in an assistant answer. If the user
+        explicitly refers to an assistant list, use that list instead. Keep any self-contained
+        tool question and retrieval query consistent with the resolved subject. When the reference
+        is genuinely ambiguous, ask a short customer-facing clarification rather than guessing
+        a different issue or asking for an internal source name.
         """;
 
     private ConversationPromptContext() {
