@@ -3,6 +3,8 @@ package ai.fabric.intent.action;
 import ai.fabric.intent.action.annotation.Param;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.core.convert.support.DefaultConversionService;
 
 import java.lang.reflect.Method;
@@ -43,12 +45,24 @@ class ActionMethodArgumentBinderTest {
         assertThat(args).containsExactly(1);
     }
 
-    @Test
-    void shouldTreatRequiredPlaceholderTextAsMissing() throws Exception {
+    @ParameterizedTest
+    @ValueSource(strings = {"New shipping address (required)", "demo.acceptance@example.com",
+        "Optional House", "e.g. consulting"})
+    void shouldBindSuppliedTextWithoutKeywordClassification(String value) throws Exception {
         ActionMethodArgumentBinder binder = new ActionMethodArgumentBinder(new DefaultConversionService(), new ObjectMapper());
         Method method = DemoAction.class.getDeclaredMethod("shipping", String.class);
 
-        assertThatThrownBy(() -> binder.bind(method, Map.of("shippingAddress", "New shipping address (required)"), null))
+        assertThat(binder.bind(method, Map.of("shippingAddress", value), null)).containsExactly(value);
+    }
+
+    @Test
+    void shouldStillRejectAbsentAndBlankRequiredValues() throws Exception {
+        var binder = new ActionMethodArgumentBinder(new DefaultConversionService(), new ObjectMapper());
+        var method = DemoAction.class.getDeclaredMethod("shipping", String.class);
+        assertThatThrownBy(() -> binder.bind(method, Map.of(), null))
+            .isInstanceOf(ActionMethodArgumentBinder.MissingActionParameterException.class)
+            .hasMessageContaining("shippingAddress");
+        assertThatThrownBy(() -> binder.bind(method, Map.of("shippingAddress", " \t"), null))
             .isInstanceOf(ActionMethodArgumentBinder.MissingActionParameterException.class)
             .hasMessageContaining("shippingAddress");
     }

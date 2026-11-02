@@ -91,6 +91,25 @@ class ConversationAwareOrchestrationStateStoreTest {
     }
 
     @Test
+    void canonicalDraftCancellationComparesTheObservedDraftAndPreservesOtherScopes() {
+        var drafts = new ConversationAwareActionDraftStore(legacyDraft, provider(gateway));
+        var first = new ActionDraft("first_action", Map.of("value", "first"), "email", NOW, NOW);
+        var replacement = new ActionDraft("second_action", Map.of(), "phone", NOW, NOW);
+        var foreign = new ConversationStateScope("tenant-2", "deployment-2", "conversation-1", "owner-1", 0L);
+        gateway.status(controlScope(foreign));
+        drafts.saveDraft(scope, replacement);
+        drafts.saveDraft(foreign, first);
+
+        assertThat(drafts.popDraft(scope, first)).isEmpty();
+        assertThat(drafts.peekDraft(scope)).contains(replacement);
+        assertThat(drafts.peekDraft(foreign)).contains(first);
+        assertThat(drafts.popDraft(scope, replacement)).contains(replacement);
+        assertThat(drafts.popDraft(scope, replacement)).isEmpty();
+        assertThat(drafts.peekDraft(foreign)).contains(first);
+        verifyNoInteractions(legacyDraft);
+    }
+
+    @Test
     void canonicalCallsFailClosedWhenConversationControlIsUnavailable() {
         ConversationAwarePendingActionStore pendingStore = new ConversationAwarePendingActionStore(
             legacyPending,

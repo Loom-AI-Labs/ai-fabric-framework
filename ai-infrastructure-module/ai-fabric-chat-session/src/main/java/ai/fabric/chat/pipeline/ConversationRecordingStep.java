@@ -568,8 +568,12 @@ public class ConversationRecordingStep implements PipelineStep {
         if (context.getEarlyTerminationResult() == null || context.getEarlyTerminationResult().getType() == null) {
             return false;
         }
-        // Clarification is an expected user-facing outcome; keep the conversation history consistent.
-        return context.getEarlyTerminationResult().getType() == ai.fabric.intent.orchestration.OrchestrationResultType.CLARIFICATION_REQUIRED;
+        OrchestrationResult result = context.getEarlyTerminationResult();
+        return result.getType() == OrchestrationResultType.CLARIFICATION_REQUIRED
+            || (result.getType() == OrchestrationResultType.INFORMATION_PROVIDED
+                && result.isSuccess()
+                && result.getData() != null
+                && Boolean.TRUE.equals(result.getData().get("actionDraftCancelled")));
     }
 
     private String sanitizedMessage(PipelineContext context) {

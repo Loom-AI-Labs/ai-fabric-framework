@@ -138,6 +138,17 @@ public final class ConversationStateStoreAccess {
         }
     }
 
+    public static Optional<ActionDraft> consumeObservedDraft(ActionDraftStore store, PipelineContext context) {
+        ActionDraft expected = context != null ? context.getObservedActionDraft() : null;
+        if (expected == null) {
+            return Optional.empty();
+        }
+        Optional<ConversationStateScope> scope = ConversationStateScopeResolver.resolve(context);
+        return scope.isPresent()
+            ? store.popDraft(scope.get(), expected)
+            : store.popDraft(conversationId(context), ownerId(context), expected);
+    }
+
     private static String conversationId(PipelineContext context) {
         if (context == null
             || context.getOrchestrationContext() == null

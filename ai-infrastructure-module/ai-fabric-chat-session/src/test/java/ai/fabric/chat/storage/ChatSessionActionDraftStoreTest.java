@@ -58,6 +58,24 @@ class ChatSessionActionDraftStoreTest {
     }
 
     @Test
+    void shouldRemoveOnlyTheObservedDraftAndPreserveAReplacement() {
+        var storage = new InMemoryStorage();
+        var session = session("conv-1", "owner-1", Map.of("existing", "kept"));
+        storage.save(session);
+        var store = new ChatSessionActionDraftStore(storage);
+        var observed = draft("first_action");
+        var replacement = draft("second_action");
+        store.saveDraft("conv-1", "owner-1", replacement);
+
+        assertThat(store.popDraft("conv-1", "owner-1", observed)).isEmpty();
+        assertThat(store.popDraft("conv-1", "other-owner", replacement)).isEmpty();
+        assertThat(store.peekDraft("conv-1", "owner-1")).contains(replacement);
+        assertThat(store.popDraft("conv-1", "owner-1", replacement)).contains(replacement);
+        assertThat(store.popDraft("conv-1", "owner-1", replacement)).isEmpty();
+        assertThat(session.getSessionMetadata()).containsEntry("existing", "kept");
+    }
+
+    @Test
     void shouldIgnoreSessionsOwnedByAnotherUser() {
         InMemoryStorage storage = new InMemoryStorage();
         ChatSession session = session("conv-1", "owner-1", Map.of());

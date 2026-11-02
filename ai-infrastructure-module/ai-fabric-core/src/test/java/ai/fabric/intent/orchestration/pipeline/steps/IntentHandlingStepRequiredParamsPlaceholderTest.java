@@ -48,11 +48,14 @@ import static org.mockito.Mockito.when;
 class IntentHandlingStepRequiredParamsPlaceholderTest {
 
     @Test
-    void shouldTreatMetadataDescriptionCopiedIntoParamsAsMissing() {
+    void shouldRequireConfirmationRatherThanRejectDescriptionLikeSuppliedText() {
         AIActionRegistry registry = mock(AIActionRegistry.class);
         AIActionHandler handler = mock(AIActionHandler.class);
         when(registry.findHandler("change_delivery_address")).thenReturn(Optional.of(handler));
         when(handler.validateActionAllowed(org.mockito.ArgumentMatchers.any())).thenReturn(true);
+        when(handler.requiresConfirmation()).thenReturn(true);
+        when(handler.getConfirmationMessage(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any()))
+            .thenReturn("Confirm the proposed address?");
 
         AIActionMetaData meta = AIActionMetaData.builder()
             .name("change_delivery_address")
@@ -86,7 +89,7 @@ class IntentHandlingStepRequiredParamsPlaceholderTest {
             new PromptRenderer()
         );
 
-        // Simulate the extractor "filling" the missing value by copying the parameter description.
+        // The proposal remains model-owned; confirmation is not replaced by a lexical veto.
         Intent intent = Intent.builder()
             .type(IntentType.ACTION)
             .action("change_delivery_address")
@@ -95,7 +98,8 @@ class IntentHandlingStepRequiredParamsPlaceholderTest {
             ))
             .build();
 
-        PipelineContext context = PipelineContext.from("change my address", OrchestrationContext.forUser("user"))
+        PipelineContext context = PipelineContext.from("change my address", OrchestrationContext.forUser("user")
+            .toBuilder().conversationId("description-like-text").build())
             .toBuilder()
             .intentResponse(MultiIntentResponse.builder().intents(List.of(intent)).build())
             .build();
@@ -103,17 +107,20 @@ class IntentHandlingStepRequiredParamsPlaceholderTest {
         PipelineContext updated = step.process(context);
         OrchestrationResult result = updated.getIntentResult();
 
-        assertThat(result.getType()).isEqualTo(OrchestrationResultType.CLARIFICATION_REQUIRED);
+        assertThat(result.getType()).isEqualTo(OrchestrationResultType.CONFIRMATION_REQUIRED);
         assertThat(result.isSuccess()).isFalse();
-        assertThat(result.getData()).containsEntry("missingRequiredParameters", List.of("shippingAddress"));
+        verify(handler, org.mockito.Mockito.never()).executeAction(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any());
     }
 
     @Test
-    void shouldTreatInstructionLikeValueAsMissing() {
+    void shouldNotRejectSuppliedTextContainingRequired() {
         AIActionRegistry registry = mock(AIActionRegistry.class);
         AIActionHandler handler = mock(AIActionHandler.class);
         when(registry.findHandler("change_delivery_address")).thenReturn(Optional.of(handler));
         when(handler.validateActionAllowed(org.mockito.ArgumentMatchers.any())).thenReturn(true);
+        when(handler.requiresConfirmation()).thenReturn(true);
+        when(handler.getConfirmationMessage(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any()))
+            .thenReturn("Confirm the proposed address?");
 
         AIActionMetaData meta = AIActionMetaData.builder()
             .name("change_delivery_address")
@@ -155,7 +162,8 @@ class IntentHandlingStepRequiredParamsPlaceholderTest {
             ))
             .build();
 
-        PipelineContext context = PipelineContext.from("change my address", OrchestrationContext.forUser("user"))
+        PipelineContext context = PipelineContext.from("change my address", OrchestrationContext.forUser("user")
+            .toBuilder().conversationId("required-like-text").build())
             .toBuilder()
             .intentResponse(MultiIntentResponse.builder().intents(List.of(intent)).build())
             .build();
@@ -163,17 +171,20 @@ class IntentHandlingStepRequiredParamsPlaceholderTest {
         PipelineContext updated = step.process(context);
         OrchestrationResult result = updated.getIntentResult();
 
-        assertThat(result.getType()).isEqualTo(OrchestrationResultType.CLARIFICATION_REQUIRED);
+        assertThat(result.getType()).isEqualTo(OrchestrationResultType.CONFIRMATION_REQUIRED);
         assertThat(result.isSuccess()).isFalse();
-        assertThat(result.getData()).containsEntry("missingRequiredParameters", List.of("shippingAddress"));
+        verify(handler, org.mockito.Mockito.never()).executeAction(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any());
     }
 
     @Test
-    void shouldTreatEchoedUserQueryAsMissing() {
+    void shouldNotRejectTheWholeUserMessageAsAnEchoValue() {
         AIActionRegistry registry = mock(AIActionRegistry.class);
         AIActionHandler handler = mock(AIActionHandler.class);
         when(registry.findHandler("confirmable_echo")).thenReturn(Optional.of(handler));
         when(handler.validateActionAllowed(org.mockito.ArgumentMatchers.any())).thenReturn(true);
+        when(handler.requiresConfirmation()).thenReturn(true);
+        when(handler.getConfirmationMessage(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any()))
+            .thenReturn("Confirm the proposed message?");
 
         AIActionMetaData meta = AIActionMetaData.builder()
             .name("confirmable_echo")
@@ -216,7 +227,8 @@ class IntentHandlingStepRequiredParamsPlaceholderTest {
             ))
             .build();
 
-        PipelineContext context = PipelineContext.from(userMessage, OrchestrationContext.forUser("user"))
+        PipelineContext context = PipelineContext.from(userMessage, OrchestrationContext.forUser("user")
+            .toBuilder().conversationId("whole-message-text").build())
             .toBuilder()
             .intentResponse(MultiIntentResponse.builder().intents(List.of(intent)).build())
             .build();
@@ -224,9 +236,9 @@ class IntentHandlingStepRequiredParamsPlaceholderTest {
         PipelineContext updated = step.process(context);
         OrchestrationResult result = updated.getIntentResult();
 
-        assertThat(result.getType()).isEqualTo(OrchestrationResultType.CLARIFICATION_REQUIRED);
+        assertThat(result.getType()).isEqualTo(OrchestrationResultType.CONFIRMATION_REQUIRED);
         assertThat(result.isSuccess()).isFalse();
-        assertThat(result.getData()).containsEntry("missingRequiredParameters", List.of("message"));
+        verify(handler, org.mockito.Mockito.never()).executeAction(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any());
     }
 
     @Test

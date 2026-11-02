@@ -14,7 +14,6 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Parameter;
 import java.lang.reflect.Type;
 import java.util.Arrays;
-import java.util.Locale;
 import java.util.Map;
 
 final class ActionMethodArgumentBinder {
@@ -83,12 +82,7 @@ final class ActionMethodArgumentBinder {
         if (raw == null) {
             return true;
         }
-        String s = raw.toString();
-        if (!StringUtils.hasText(s)) {
-            return true;
-        }
-        String lowered = s.trim().toLowerCase(Locale.ROOT);
-        return lowered.contains("required") || lowered.contains("optional") || lowered.contains("example") || lowered.contains("e.g");
+        return !StringUtils.hasText(raw.toString());
     }
 
     private Object convert(Object raw, Type targetType) {

@@ -195,6 +195,9 @@ public class ActionDraftContinuationAnalyzer {
         String model = providerResponse.get() != null
             ? providerResponse.get().getModel()
             : null;
+        if (Boolean.TRUE.equals(decision.cancelsDraft())) {
+            return AnalysisOutcome.cancelled(result.getAttempts(), model);
+        }
         if (!Boolean.TRUE.equals(decision.continuesDraft())) {
             return AnalysisOutcome.independent(
                 result.getAttempts(),
@@ -341,15 +344,25 @@ public class ActionDraftContinuationAnalyzer {
                 "continuesDraft must be supplied"
             );
         }
-        if (!Boolean.TRUE.equals(decision.continuesDraft())) {
+        if (Boolean.TRUE.equals(decision.continuesDraft())
+            && Boolean.TRUE.equals(decision.cancelsDraft())) {
+            throw new IllegalArgumentException(
+                "a draft cannot be continued and cancelled in the same decision"
+            );
+        }
+        if (!Boolean.TRUE.equals(decision.continuesDraft())
+            && !Boolean.TRUE.equals(decision.cancelsDraft())) {
             return;
         }
         if (!AIActionNames.normalize(continuation.action()).equals(
             AIActionNames.normalize(decision.action())
         )) {
             throw new IllegalArgumentException(
-                "continued action must match the stored draft"
+                "draft action must match the stored draft"
             );
+        }
+        if (Boolean.TRUE.equals(decision.cancelsDraft())) {
+            return;
         }
         if (decision.providedParams() == null) {
             return;
@@ -563,6 +576,7 @@ public class ActionDraftContinuationAnalyzer {
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record ContinuationDecision(
         Boolean continuesDraft,
+        Boolean cancelsDraft,
         String action,
         Map<String, Object> providedParams,
         Double confidence,
@@ -580,6 +594,7 @@ public class ActionDraftContinuationAnalyzer {
     public record AnalysisOutcome(
         boolean evaluated,
         boolean continued,
+        boolean cancelled,
         MultiIntentResponse response,
         List<String> suppliedParameterNames,
         int attempts,
@@ -599,7 +614,7 @@ public class ActionDraftContinuationAnalyzer {
 
         public static AnalysisOutcome notEvaluated() {
             return new AnalysisOutcome(
-                false, false, null, List.of(), 0, null, null, null,
+                false, false, false, null, List.of(), 0, null, null, null,
                 List.of()
             );
         }
@@ -631,7 +646,7 @@ public class ActionDraftContinuationAnalyzer {
             Set<String> rejectedParameterNames
         ) {
             return new AnalysisOutcome(
-                true, false, null, List.of(), attempts, null,
+                true, false, false, null, List.of(), attempts, null,
                 failureType, inputSource,
                 rejectedParameterNames != null
                     ? List.copyOf(rejectedParameterNames)
@@ -644,7 +659,14 @@ public class ActionDraftContinuationAnalyzer {
             String model
         ) {
             return new AnalysisOutcome(
-                true, false, null, List.of(), attempts, model, null,
+                true, false, false, null, List.of(), attempts, model, null,
+                "MODEL", List.of()
+            );
+        }
+
+        public static AnalysisOutcome cancelled(int attempts, String model) {
+            return new AnalysisOutcome(
+                true, false, true, null, List.of(), attempts, model, null,
                 "MODEL", List.of()
             );
         }
@@ -657,6 +679,7 @@ public class ActionDraftContinuationAnalyzer {
             return new AnalysisOutcome(
                 true,
                 true,
+                false,
                 response,
                 List.of(),
                 0,
@@ -694,6 +717,7 @@ public class ActionDraftContinuationAnalyzer {
             return new AnalysisOutcome(
                 true,
                 true,
+                false,
                 response,
                 suppliedParameterNames != null
                     ? List.copyOf(suppliedParameterNames)
@@ -710,6 +734,7 @@ public class ActionDraftContinuationAnalyzer {
             Map<String, Object> diagnostics = new LinkedHashMap<>();
             diagnostics.put("evaluated", evaluated);
             diagnostics.put("continued", continued);
+            diagnostics.put("cancelled", cancelled);
             diagnostics.put("attempts", attempts);
             diagnostics.put(
                 "suppliedParameterNames",

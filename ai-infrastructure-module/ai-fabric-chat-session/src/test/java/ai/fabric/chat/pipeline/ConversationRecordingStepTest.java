@@ -59,6 +59,31 @@ import static org.mockito.Mockito.when;
 class ConversationRecordingStepTest {
 
     @Test
+    void shouldRecordSuccessfulDraftCancellationAfterPipelineTermination() {
+        var service = mock(ChatSessionService.class);
+        var properties = new ChatSessionProperties();
+        properties.setEnabled(true);
+        @SuppressWarnings("unchecked")
+        ObjectProvider<PIIDetectionService> provider = mock(ObjectProvider.class);
+        var step = new ConversationRecordingStep(service, properties, provider);
+        var result = OrchestrationResult.builder()
+            .type(OrchestrationResultType.INFORMATION_PROVIDED).success(true)
+            .message("The incomplete request was cancelled without submitting it.")
+            .data(Map.of("actionDraftCancelled", true)).build();
+        var context = PipelineContext.from("Please abandon the draft.",
+            OrchestrationContext.builder().userId("user-1").conversationId("conv-1").build())
+            .terminate(result);
+
+        assertThat(step.shouldSkip(context)).isFalse();
+        step.process(context);
+
+        verify(service).recordTurn("conv-1", "user-1", "Please abandon the draft.",
+            result.getMessage(), Map.of("_resultType", "INFORMATION_PROVIDED"));
+        assertThat(step.shouldSkip(PipelineContext.from("hello", context.getOrchestrationContext())
+            .terminate(OrchestrationResult.error("Access denied")))).isTrue();
+    }
+
+    @Test
     void shouldRecordTurnUsingSanitizedMessageAndRedactedQuery() {
         ChatSessionService chatSessionService = mock(ChatSessionService.class);
 

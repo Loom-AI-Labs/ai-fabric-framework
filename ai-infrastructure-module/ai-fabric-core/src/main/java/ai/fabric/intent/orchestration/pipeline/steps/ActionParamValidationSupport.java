@@ -17,7 +17,6 @@ import java.util.Set;
 import static ai.fabric.intent.orchestration.pipeline.steps.ActionEvidenceSupport.buildEvidenceBundle;
 import static ai.fabric.intent.orchestration.pipeline.steps.ActionParameterSupport.isConfirmationAcceptedParameter;
 import static ai.fabric.intent.orchestration.pipeline.steps.ActionParameterSupport.isHiddenActionParameter;
-import static ai.fabric.intent.orchestration.pipeline.steps.ActionParameterSupport.isPlaceholderOrInstructionEcho;
 import static ai.fabric.intent.orchestration.pipeline.steps.ActionParameterSupport.isUserVisibleActionParameter;
 import static ai.fabric.intent.orchestration.pipeline.steps.ActionParameterSupport.normalizeParameterNameSet;
 
@@ -66,10 +65,6 @@ final class ActionParamValidationSupport {
         String pinnedEvidenceLower = evidence != null && StringUtils.hasText(evidence.pinnedEvidenceLower())
             ? evidence.pinnedEvidenceLower()
             : "";
-
-        String originalQuery = pipelineContext != null ? pipelineContext.getOriginalQuery() : null;
-        String normalizedOriginalQuery = StringUtils.hasText(originalQuery) ? originalQuery.trim() : "";
-
         ActionParamProvenanceMode effectiveMode = provenanceMode != null ? provenanceMode : ActionParamProvenanceMode.WARN;
         List<String> hardMissing = new java.util.ArrayList<>();
         List<String> provenanceMissing = new java.util.ArrayList<>();
@@ -89,11 +84,6 @@ final class ActionParamValidationSupport {
 
             String raw = value.toString();
             if (!StringUtils.hasText(raw)) {
-                hardMissing.add(required);
-                continue;
-            }
-
-            if (isPlaceholderOrInstructionEcho(required, raw, meta, normalizedOriginalQuery)) {
                 hardMissing.add(required);
                 continue;
             }

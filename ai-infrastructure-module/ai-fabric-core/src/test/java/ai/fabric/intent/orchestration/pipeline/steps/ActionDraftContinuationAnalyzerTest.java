@@ -36,6 +36,8 @@ import java.util.Optional;
 import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.springframework.core.io.DefaultResourceLoader;
 
@@ -181,6 +183,56 @@ class ActionDraftContinuationAnalyzerTest {
             any(AIGenerationRequest.class),
             eq(LlmPurpose.ORCHESTRATION)
         );
+    }
+
+    @Test
+    void shouldUseExplicitModelDecisionToCancelTheStoredDraft() {
+        when(aiCoreService.generateContent(any(AIGenerationRequest.class), eq(LlmPurpose.ORCHESTRATION)))
+            .thenReturn(AIGenerationResponse.builder().model("test-model").content("""
+                {"continuesDraft": false, "cancelsDraft": true,
+                 "action": "update_address", "providedParams": {}, "confidence": 0.97}
+                """).build());
+
+        var outcome = analyzer.analyze(context("Leave that unfinished request behind, please."));
+
+        assertThat(outcome.cancelled()).isTrue();
+        assertThat(outcome.continued()).isFalse();
+        assertThat(outcome.response()).isNull();
+        assertThat(outcome.failureType()).isNull();
+        assertThat(outcome.diagnostics()).containsEntry("cancelled", true)
+            .containsEntry("model", "test-model");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+        "{\"continuesDraft\": false, \"cancelsDraft\": true, \"action\": \"delete_account\"}",
+        "{\"continuesDraft\": true, \"cancelsDraft\": true, \"action\": \"update_address\"}"
+    })
+    void shouldRejectCancellationForAnotherActionOrAContradictoryDecision(String json) {
+        when(aiCoreService.generateContent(any(AIGenerationRequest.class), eq(LlmPurpose.ORCHESTRATION)))
+            .thenReturn(AIGenerationResponse.builder().content(json).build());
+
+        var outcome = analyzer.analyze(context("Please cancel the draft."));
+
+        assertThat(outcome.cancelled()).isFalse();
+        assertThat(outcome.continued()).isFalse();
+        assertThat(outcome.failureType()).isEqualTo("VALIDATION_ERROR");
+        verify(aiCoreService, times(2)).generateContent(any(AIGenerationRequest.class), eq(LlmPurpose.ORCHESTRATION));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"Cancel that request.", "What is your cancellation policy?"})
+    void shouldNotInferCancellationFromMessageTextWhenModelDecidesIndependent(String message) {
+        when(aiCoreService.generateContent(any(AIGenerationRequest.class), eq(LlmPurpose.ORCHESTRATION)))
+            .thenReturn(AIGenerationResponse.builder().content("""
+                {"continuesDraft": false, "cancelsDraft": false, "action": null}
+                """).build());
+
+        var outcome = analyzer.analyze(context(message));
+
+        assertThat(outcome.cancelled()).isFalse();
+        assertThat(outcome.continued()).isFalse();
+        assertThat(outcome.failureType()).isNull();
     }
 
     @Test

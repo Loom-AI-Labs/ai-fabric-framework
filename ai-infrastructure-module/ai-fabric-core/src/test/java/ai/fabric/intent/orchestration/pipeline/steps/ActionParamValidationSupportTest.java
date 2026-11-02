@@ -6,6 +6,8 @@ import ai.fabric.intent.action.AIActionParamSchema;
 import ai.fabric.intent.orchestration.OrchestrationContext;
 import ai.fabric.intent.orchestration.pipeline.PipelineContext;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.util.List;
 import java.util.Map;
@@ -45,13 +47,45 @@ class ActionParamValidationSupportTest {
         );
 
         assertThat(validation).isNotNull();
-        assertThat(validation.missingRequired()).containsExactlyInAnyOrder("shippingAddress", "cartId");
-        assertThat(validation.provenanceMissing()).containsExactly("productId");
+        assertThat(validation.missingRequired()).containsExactly("cartId");
+        assertThat(validation.provenanceMissing()).containsExactlyInAnyOrder("shippingAddress", "productId");
         assertThat(validation.debugMetadata())
             .containsEntry("provenanceMode", "WARN")
             .containsEntry("provenanceBlocking", false)
             .containsEntry("untrustedHiddenParameters", List.of("cartId"))
             .containsKeys("sourcesUsed", "missing", "hardMissing", "provenanceMissing");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+        "demo.acceptance@example.com", "Optional House", "Required Limited",
+        "e.g. consulting", "Text to echo back", "message", "Use action confirmable_echo."
+    })
+    void shouldNotRejectSuppliedPublicTextBySemanticKeywordsOrEcho(String value) {
+        AIActionMetaData meta = AIActionMetaData.builder()
+            .name("confirmable_echo")
+            .parameters(Map.of("message", "Text to echo back"))
+            .requiredParameters(Set.of("message"))
+            .build();
+        PipelineContext context = PipelineContext.from(value, OrchestrationContext.forUser("user"));
+
+        var validation = validateRequiredActionParams(meta, Map.of("message", value), context);
+
+        assertThat(validation.missingRequired()).isEmpty();
+        assertThat(validation.provenanceMissing()).isEmpty();
+        assertThat(validation.debugMetadata()).containsEntry("hardMissing", List.of());
+    }
+
+    @Test
+    void shouldStillRequireAbsentAndBlankParameters() {
+        AIActionMetaData meta = AIActionMetaData.builder()
+            .requiredParameters(Set.of("absent", "blank"))
+            .build();
+        var validation = validateRequiredActionParams(meta, Map.of("blank", "  "),
+            PipelineContext.from("continue", OrchestrationContext.forUser("user")));
+
+        assertThat(validation.missingRequired()).containsExactlyInAnyOrder("absent", "blank");
+        assertThat(validation.provenanceMissing()).isEmpty();
     }
 
     @Test

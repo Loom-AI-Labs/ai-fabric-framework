@@ -1,7 +1,12 @@
 package ai.fabric.intent.orchestration.pipeline.steps;
 
+import ai.fabric.intent.actiondraft.ActionDraftStore;
+import ai.fabric.intent.orchestration.OrchestrationResult;
+import ai.fabric.intent.orchestration.OrchestrationResultType;
+import ai.fabric.intent.orchestration.conversation.ConversationStateStoreAccess;
 import ai.fabric.intent.orchestration.pipeline.PipelineContext;
 import ai.fabric.intent.orchestration.pipeline.PipelineStep;
+import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -19,6 +24,7 @@ public class ActionDraftSemanticContinuationStep implements PipelineStep {
         "actionDraftSemanticContinuation";
 
     private final ActionDraftContinuationAnalyzer analyzer;
+    private final ActionDraftStore actionDraftStore;
 
     @Override
     public String getStepName() {
@@ -44,6 +50,22 @@ public class ActionDraftSemanticContinuationStep implements PipelineStep {
             METADATA_KEY,
             outcome.diagnostics()
         );
+        if (outcome.cancelled()) {
+            if (ConversationStateStoreAccess.consumeObservedDraft(actionDraftStore, context).isEmpty()) {
+                return updated.terminate(OrchestrationResult.builder()
+                    .type(OrchestrationResultType.ERROR).success(false)
+                    .errorCode("ACTION_DRAFT_CHANGED")
+                    .message("The incomplete request changed before cancellation. Please review it and try again.")
+                    .build());
+            }
+            return updated.terminate(OrchestrationResult.builder()
+                .type(OrchestrationResultType.INFORMATION_PROVIDED)
+                .success(true)
+                .message("The incomplete request was cancelled without submitting it.")
+                .data(Map.of("actionDraftCancelled", true,
+                    "action", context.getActionDraftContinuation().action()))
+                .build());
+        }
         if (!outcome.continued() || outcome.response() == null) {
             return updated;
         }

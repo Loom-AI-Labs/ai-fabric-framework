@@ -38,6 +38,14 @@ public class InMemoryActionDraftStore implements ActionDraftStore {
     }
 
     @Override
+    public Optional<ActionDraft> popDraft(String conversationId, String ownerId, ActionDraft expected) {
+        if (!StringUtils.hasText(conversationId) || !StringUtils.hasText(ownerId) || expected == null) {
+            return Optional.empty();
+        }
+        return store.remove(key(conversationId, ownerId), expected) ? Optional.of(expected) : Optional.empty();
+    }
+
+    @Override
     public void clearDrafts(String conversationId, String ownerId) {
         popDraft(conversationId, ownerId);
     }

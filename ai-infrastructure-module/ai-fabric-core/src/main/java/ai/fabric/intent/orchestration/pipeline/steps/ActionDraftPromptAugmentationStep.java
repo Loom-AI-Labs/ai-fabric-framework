@@ -100,6 +100,7 @@ public class ActionDraftPromptAugmentationStep implements PipelineStep {
             ? existingContext.trim() + "\n\n" + block
             : block;
         PipelineContext updated = context.toBuilder()
+            .observedActionDraft(draft)
             .actionDraftContinuation(continuation)
             .intentExtractionSystemInstructions(combined)
             .build();
@@ -128,6 +129,7 @@ public class ActionDraftPromptAugmentationStep implements PipelineStep {
             - previously collected public parameter names=%s
             - still missing public parameter names=%s
             - Before applying normal intent rules, first decide whether the actual current user message continues this draft.
+            - An intentional request to abandon this incomplete draft is handled by the draft cancellation decision; it never cancels an already submitted business request.
             - Continue this draft only when that message explicitly asks to continue/resume it, or primarily supplies/corrects one or more draft fields.
             - A message that names a missing field and supplies its value continues the draft even if that field name also has a broader domain meaning, or the immediately preceding turn discussed something else.
             - If the message continues the draft, return ACTION for the same action with only values grounded in user messages.

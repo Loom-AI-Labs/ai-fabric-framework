@@ -67,6 +67,24 @@ public class ChatSessionActionDraftStore implements ActionDraftStore {
     }
 
     @Override
+    public Optional<ActionDraft> popDraft(String conversationId, String ownerId, ActionDraft expected) {
+        if (!StringUtils.hasText(conversationId) || !StringUtils.hasText(ownerId) || expected == null) {
+            return Optional.empty();
+        }
+        return storageProvider.mutateOwnedSession(conversationId, ownerId, session -> {
+            Map<String, Object> metadata = session.getSessionMetadata();
+            ActionDraft current = ActionDraftMetadata.peek(metadata);
+            if (!expected.equals(current)) {
+                return null;
+            }
+            Map<String, Object> mutable = new HashMap<>(metadata);
+            ActionDraftMetadata.clear(mutable);
+            session.setSessionMetadata(mutable);
+            return current;
+        });
+    }
+
+    @Override
     public void clearDrafts(String conversationId, String ownerId) {
         popDraft(conversationId, ownerId);
     }

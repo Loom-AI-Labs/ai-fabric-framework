@@ -16,6 +16,11 @@ public interface ActionDraftStore {
 
     Optional<ActionDraft> popDraft(String conversationId, String ownerId);
 
+    /** Atomically removes only the draft observed by the caller. */
+    default Optional<ActionDraft> popDraft(String conversationId, String ownerId, ActionDraft expected) {
+        throw new IllegalStateException("Observed-draft cancellation requires atomic draft removal");
+    }
+
     void clearDrafts(String conversationId, String ownerId);
 
     default Optional<ActionDraft> peekDraft(ConversationStateScope scope) {
@@ -27,6 +32,10 @@ public interface ActionDraftStore {
     }
 
     default Optional<ActionDraft> popDraft(ConversationStateScope scope) {
+        throw canonicalScopeUnavailable();
+    }
+
+    default Optional<ActionDraft> popDraft(ConversationStateScope scope, ActionDraft expected) {
         throw canonicalScopeUnavailable();
     }
 

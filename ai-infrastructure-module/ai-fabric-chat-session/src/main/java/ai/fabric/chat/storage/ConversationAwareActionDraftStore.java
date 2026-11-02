@@ -40,6 +40,11 @@ public final class ConversationAwareActionDraftStore implements ActionDraftStore
     }
 
     @Override
+    public Optional<ActionDraft> popDraft(String conversationId, String ownerId, ActionDraft expected) {
+        return legacy.popDraft(conversationId, ownerId, expected);
+    }
+
+    @Override
     public void clearDrafts(String conversationId, String ownerId) {
         legacy.clearDrafts(conversationId, ownerId);
     }
@@ -71,6 +76,23 @@ public final class ConversationAwareActionDraftStore implements ActionDraftStore
         gateway.updateOrchestrationState(toControlScope(scope), scope.expectedControlEpoch(), metadata -> {
             popped.set(ActionDraftMetadata.peek(metadata));
             ActionDraftMetadata.clear(metadata);
+            return metadata;
+        });
+        return Optional.ofNullable(popped.get());
+    }
+
+    @Override
+    public Optional<ActionDraft> popDraft(ConversationStateScope scope, ActionDraft expected) {
+        if (expected == null) {
+            return Optional.empty();
+        }
+        AtomicReference<ActionDraft> popped = new AtomicReference<>();
+        requireControlGateway().updateOrchestrationState(toControlScope(scope), scope.expectedControlEpoch(), metadata -> {
+            ActionDraft current = ActionDraftMetadata.peek(metadata);
+            if (expected.equals(current)) {
+                popped.set(current);
+                ActionDraftMetadata.clear(metadata);
+            }
             return metadata;
         });
         return Optional.ofNullable(popped.get());

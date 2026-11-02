@@ -94,48 +94,4 @@ final class ActionParameterSupport {
         return StringUtils.hasText(required) && CONFIRMATION_ACCEPTED_PARAMETER.equals(required.trim());
     }
 
-    static boolean isPlaceholderOrInstructionEcho(String requiredParamName,
-                                                  String rawValue,
-                                                  AIActionMetaData meta,
-                                                  String normalizedOriginalQuery) {
-        String raw = rawValue != null ? rawValue.trim() : "";
-        if (!StringUtils.hasText(raw)) {
-            return true;
-        }
-
-        String lowered = raw.toLowerCase(Locale.ROOT);
-        if (lowered.contains("required") || lowered.contains("optional") || lowered.contains("example") || lowered.contains("e.g")) {
-            return true;
-        }
-
-        Map<String, String> descriptions = meta != null ? meta.getParameters() : null;
-        String description = descriptions != null ? descriptions.get(requiredParamName) : null;
-        if (StringUtils.hasText(description) && raw.equalsIgnoreCase(description.trim())) {
-            return true;
-        }
-
-        if (StringUtils.hasText(requiredParamName) && raw.equalsIgnoreCase(requiredParamName.trim())) {
-            return true;
-        }
-
-        if (StringUtils.hasText(normalizedOriginalQuery) && raw.equalsIgnoreCase(normalizedOriginalQuery)) {
-            String originalLower = normalizedOriginalQuery.toLowerCase(Locale.ROOT);
-            boolean looksLikeInstruction = false;
-            if (meta != null && StringUtils.hasText(meta.getName())
-                && originalLower.contains(meta.getName().toLowerCase(Locale.ROOT))) {
-                looksLikeInstruction = true;
-            }
-            if (!looksLikeInstruction && descriptions != null && !descriptions.isEmpty()) {
-                for (String key : descriptions.keySet()) {
-                    if (StringUtils.hasText(key) && originalLower.contains(key.toLowerCase(Locale.ROOT))) {
-                        looksLikeInstruction = true;
-                        break;
-                    }
-                }
-            }
-            return looksLikeInstruction;
-        }
-
-        return false;
-    }
 }

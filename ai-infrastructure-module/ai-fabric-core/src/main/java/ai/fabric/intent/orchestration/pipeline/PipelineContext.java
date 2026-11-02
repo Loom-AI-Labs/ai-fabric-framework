@@ -221,6 +221,11 @@ public class PipelineContext {
     @ToString.Exclude
     private final transient PendingAction observedPendingAction;
 
+    /** Trusted draft snapshot used for conditional cancellation, never public prompt data. */
+    @JsonIgnore
+    @ToString.Exclude
+    private final transient ai.fabric.intent.actiondraft.ActionDraft observedActionDraft;
+
     /**
      * Rendered pinned targets context (attachments / selected UI cards) to be injected into the
      * current user message for LLM calls.
