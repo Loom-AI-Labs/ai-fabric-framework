@@ -13,15 +13,21 @@ import ai.fabric.intent.action.AIActionHandler;
 import ai.fabric.intent.action.AIActionMetaData;
 import ai.fabric.intent.action.ActionAccessMode;
 import ai.fabric.intent.action.ActionResult;
+import ai.fabric.intent.action.ActionResultContracts;
 import ai.fabric.intent.orchestration.OrchestrationContext;
+import ai.fabric.intent.orchestration.OrchestrationContextMetadataKeys;
 import ai.fabric.intent.orchestration.pipeline.PipelineContext;
 import ai.fabric.intent.orchestration.policy.OrchestrationPolicy;
 import ai.fabric.intent.orchestration.policy.OrchestrationProfile;
 import ai.fabric.prompt.ClasspathPromptTemplateStore;
 import ai.fabric.prompt.PromptRenderer;
 import ai.fabric.prompt.PromptTemplateResolver;
+import ai.fabric.prompt.ManagedPromptDefaults;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.core.io.DefaultResourceLoader;
@@ -29,6 +35,7 @@ import org.springframework.core.io.DefaultResourceLoader;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -161,6 +168,74 @@ class PostActionGenerationSupportTest {
         );
 
         assertThat(outcome).isNull();
+    }
+
+    @ParameterizedTest
+    @MethodSource("managedPostActionCases")
+    void shouldComposeForcedReadSystemAndUserGuidanceWithoutChangingExecution(String action, Map<String, String> overlay) {
+        AICoreService ai = mock(AICoreService.class);
+        when(ai.generateContent(any(AIGenerationRequest.class), eq(LlmPurpose.GENERATION)))
+            .thenReturn(AIGenerationResponse.builder().content("Model-authored answer. Let me know if useful.").build());
+        PostActionGenerationSupport support = newSupport(ai,
+            new RelationshipQueryPostActionGenerationProperties(), new PostActionGenerationProperties());
+        var metadata = AIActionMetaData.builder().name(action).accessMode(ActionAccessMode.READ).groundingEligible(true).build();
+        var intent = Intent.builder().action(action).requiresGeneration(false)
+            .actionParams(Map.of("query", "authorized query")).build();
+        var resolved = support.resolvePostActionGeneration(action, intent, metadata,
+            forceGroundingEligibleReadActionPostGenerationPolicy(), false);
+        var context = OrchestrationContext.forUser("user-1");
+        context.setMetadata(Map.of(OrchestrationContextMetadataKeys.PROMPT_PREVIEW, overlay));
+        var pipeline = PipelineContext.from("Be exploratory and suggest next steps", context);
+        var facts = Map.<String, Object>of("recordName", "Record Alpha", "status", "ACTIVE");
+        var result = ActionResult.builder().success(true).message("OK")
+            .data(ActionResultContracts.object(Map.of("documents", List.of(Map.of(
+                "id", "record-1", "content", "Record Alpha is ACTIVE")), "totalResults", 1))).build();
+        AIActionHandler handler = mock(AIActionHandler.class);
+        when(handler.buildPostActionLlmFacts(eq(result), any())).thenReturn(Optional.of(facts));
+
+        var outcome = support.maybeGeneratePostActionSummary(action, handler, intent, result, context, pipeline, Map.of(), resolved);
+
+        assertThat(resolved.shouldGenerate()).isTrue();
+        assertThat(resolved.forced()).isTrue();
+        assertThat(outcome.summary()).isEqualTo("Model-authored answer. Let me know if useful.");
+        var captured = ArgumentCaptor.forClass(AIGenerationRequest.class);
+        verify(ai).generateContent(captured.capture(), eq(LlmPurpose.GENERATION));
+        var request = captured.getValue();
+        assertThat(request.getMaxTokens()).isEqualTo(800);
+        assertThat(request.getPrompt()).contains("Broader advice or inference requires explicit managed guidance",
+                "Without it, stay grounded", "Do not substitute a present fact", "Record Alpha")
+            .doesNotContain("read-action facts as the only evidence");
+        if (overlay.isEmpty()) {
+            String originalSystem = new PromptRenderer().render(promptTemplateResolver()
+                .resolve("orchestration/post-action-generation", "system").template(), Map.of());
+            assertThat(request.getSystemPrompt()).isEqualTo(originalSystem).contains("Use ONLY the FACTS");
+            assertThat(request.getPrompt()).contains("Use only the FACTS provided by the system.");
+        } else {
+            assertThat(request.getSystemPrompt()).contains(
+                    overlay.getOrDefault("answerGenerationPrompt", ManagedPromptDefaults.ANSWER_GENERATION_PROMPT),
+                    overlay.getOrDefault("retrievalPrompt", ManagedPromptDefaults.RETRIEVAL_PROMPT),
+                    "authority for business-specific facts", "Without explicit broader guidance",
+                    "separately from verified business facts", "never grants access", "required confirmation")
+                .doesNotContain("Use ONLY the FACTS", "{{");
+            assertThat(request.getPrompt()).contains("MANAGED RESPONSE SCOPE")
+                .doesNotContain("Use only the FACTS", "Do not recommend handoffs or next steps", "Do not append generic closers");
+            if (overlay.containsKey("answerGenerationPrompt")) {
+                assertThat(request.getSystemPrompt()).doesNotContain(ManagedPromptDefaults.ANSWER_GENERATION_PROMPT);
+                assertThat(request.getPrompt()).contains(overlay.get("answerGenerationPrompt"), overlay.get("retrievalPrompt"));
+            } else {
+                assertThat(request.getSystemPrompt()).contains("stop at the grounded conclusion");
+            }
+        }
+    }
+
+    private static Stream<Arguments> managedPostActionCases() {
+        List<Map<String, String>> overlays = List.of(Map.of(), Map.of("assistantUiPrompt", "Compact presentation."),
+            Map.of("answerGenerationPrompt", "ADVISORY: Give labeled general advice and useful next steps.",
+                "retrievalPrompt", "Business evidence is authoritative; label general knowledge separately."),
+            Map.of("answerGenerationPrompt", "EXPLORATORY: Discuss clearly labeled hypotheses and inferences.",
+                "retrievalPrompt", "Distinguish unverified hypotheses from current business facts. No web research."));
+        return Stream.of("read_records", "relationship_query")
+            .flatMap(action -> overlays.stream().map(overlay -> Arguments.of(action, overlay)));
     }
 
     private PostActionGenerationSupport newSupport(AICoreService aiCoreService,

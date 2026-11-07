@@ -6,6 +6,7 @@ import ai.fabric.curated.CuratedPackEnvironmentPostProcessor;
 import ai.fabric.intent.orchestration.policy.OrchestrationProfile;
 import ai.fabric.prompt.ClasspathPromptTemplateStore;
 import ai.fabric.prompt.PromptTemplateResolver;
+import ai.fabric.prompt.PromptRenderer;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.context.properties.bind.Binder;
@@ -73,7 +74,7 @@ class SupportCuratedPackTest {
             .contains("Policy, runbook, and known-issue documents are guidance");
 
         assertThat(resolver.resolve("rag/generation", "answer-managed").template().template())
-            .contains("Use only the relevant support context above")
+            .contains("Use the relevant support context above as the authority for business-specific facts")
             .contains("Do not invent root cause")
             .contains("Do not ask for internal ids");
         assertThat(resolver.resolve("orchestration/read-action-resolution", "user").template().template())
@@ -87,7 +88,28 @@ class SupportCuratedPackTest {
             .doesNotContain("ATTACHMENTS/PINNED TARGETS only");
         assertThat(resolver.resolve("orchestration/post-action-generation", "user-generic-managed").template().template())
             .contains("If FACTS include live support state")
-            .contains("Do not infer root cause");
+            .contains("Do not invent root cause");
+    }
+
+    @Test
+    void shouldRenderManagedSupportBreadthWithoutInventingCaseStateOrAuthority() {
+        PromptTemplateResolver resolver = supportResolver();
+        Map<String, String> values = Map.of(
+            "managed_answer_generation_prompt", "ADVISORY: Give labeled general troubleshooting guidance and useful next steps.",
+            "managed_retrieval_prompt", "EXPLORATORY: Explore clearly labeled hypotheses, not invented case facts.",
+            "managed_assistant_ui_prompt", "Warm consultative style.",
+            "query", "Explain the issue", "context", "Authorized support evidence", "facts", "Authorized support facts",
+            "action_name", "read_case", "instruction", "Explain the issue");
+        for (String name : List.of("answer-managed", "no-context-managed", "user-generic-managed")) {
+            String family = name.startsWith("user-") ? "orchestration/post-action-generation" : "rag/generation";
+            String prompt = new PromptRenderer().render(resolver.resolve(family, name).template(), values);
+            assertThat(prompt).as(name)
+                .contains(values.get("managed_answer_generation_prompt"), values.get("managed_retrieval_prompt"),
+                    "separately from verified business facts", "Do not ask for internal ids")
+                .doesNotContain("{{", "Use only the relevant support context", "Use only the FACTS",
+                    "Do not recommend handoffs, escalations", "Do not append generic closers",
+                    "Do not infer root cause");
+        }
     }
 
     @Test

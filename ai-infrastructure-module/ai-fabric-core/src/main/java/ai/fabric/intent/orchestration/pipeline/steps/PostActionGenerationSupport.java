@@ -49,12 +49,13 @@ final class PostActionGenerationSupport {
     private static final String DATA_KEY_DOCUMENTS = "documents";
 
     private static final String READ_ACTION_GENERATION_GROUNDING_INSTRUCTION =
-        "Use the read-action facts as the only evidence. If the user's requested conclusion depends on a fact type "
-            + "that is absent, say that the evidence is missing. Do not substitute a present fact such as status, "
-            + "availability, price, name, or identifier as evidence for a different requested attribute.";
+        "Use read-action facts for business-specific claims. Broader advice or inference requires explicit managed "
+            + "guidance and must be labeled separately. Without it, stay grounded. Do not substitute a present fact "
+            + "as evidence for a different requested attribute.";
 
     private static final String TEMPLATE_FAMILY_POST_ACTION_GENERATION = "orchestration/post-action-generation";
     private static final String TEMPLATE_POST_ACTION_SYSTEM = "system";
+    private static final String TEMPLATE_POST_ACTION_SYSTEM_MANAGED = "system-managed";
     private static final String TEMPLATE_POST_ACTION_USER_GENERIC = "user-generic";
     private static final String TEMPLATE_POST_ACTION_USER_GENERIC_MANAGED = "user-generic-managed";
     private static final String TEMPLATE_POST_ACTION_USER_RELATIONSHIP_QUERY = "user-relationship-query";
@@ -284,16 +285,14 @@ final class PostActionGenerationSupport {
             relationalQuery = relationshipData.get("query").toString();
         }
 
-        String systemPrompt = promptRenderer.render(
-            promptTemplateResolver.resolve(TEMPLATE_FAMILY_POST_ACTION_GENERATION, TEMPLATE_POST_ACTION_SYSTEM).template(),
-            Map.of()
-        );
+        Map<String, String> promptOverlay = extractPromptPreview(pipelineContext);
+        String systemPrompt = buildPostActionSystemPrompt(promptOverlay);
 
         String userPrompt = buildPostActionUserPrompt(
             instruction,
             relationalQuery,
             facts.payload(),
-            extractPromptPreview(pipelineContext)
+            promptOverlay
         );
 
         AIGenerationRequest generationRequest = AIGenerationRequest.builder()
@@ -417,10 +416,8 @@ final class PostActionGenerationSupport {
             instruction = instruction.substring(0, 500);
         }
 
-        String systemPrompt = promptRenderer.render(
-            promptTemplateResolver.resolve(TEMPLATE_FAMILY_POST_ACTION_GENERATION, TEMPLATE_POST_ACTION_SYSTEM).template(),
-            Map.of()
-        );
+        Map<String, String> promptOverlay = extractPromptPreview(pipelineContext);
+        String systemPrompt = buildPostActionSystemPrompt(promptOverlay);
 
         String safeActionName = StringUtils.hasText(actionName) ? actionName.trim() : "(unknown)";
         String safeFacts = facts.payload() != null ? facts.payload() : "";
@@ -428,7 +425,7 @@ final class PostActionGenerationSupport {
             safeActionName,
             instruction,
             safeFacts,
-            extractPromptPreview(pipelineContext)
+            promptOverlay
         );
 
         AIGenerationRequest generationRequest = AIGenerationRequest.builder()
@@ -892,6 +889,19 @@ final class PostActionGenerationSupport {
         } catch (Exception ignored) {
             return null;
         }
+    }
+
+    private String buildPostActionSystemPrompt(Map<String, String> promptOverlay) {
+        if (hasManagedGenerationPromptOverride(promptOverlay)) {
+            return renderManagedGenerationPrompt(
+                promptTemplateResolver, promptRenderer, TEMPLATE_FAMILY_POST_ACTION_GENERATION,
+                TEMPLATE_POST_ACTION_SYSTEM_MANAGED, Map.of(), promptOverlay
+            );
+        }
+        return promptRenderer.render(
+            promptTemplateResolver.resolve(TEMPLATE_FAMILY_POST_ACTION_GENERATION, TEMPLATE_POST_ACTION_SYSTEM).template(),
+            Map.of()
+        );
     }
 
     private String buildPostActionUserPrompt(String instruction,

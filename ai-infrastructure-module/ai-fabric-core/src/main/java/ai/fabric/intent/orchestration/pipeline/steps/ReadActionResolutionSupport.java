@@ -226,7 +226,7 @@ final class ReadActionResolutionSupport {
                                                      String noContextMessage) {
         String combinedContext = retrievedContext;
         if (resolutionOutcome != null && StringUtils.hasText(resolutionOutcome.evidenceContext())) {
-            String readActionEvidence = evidenceGenerationContext(resolutionOutcome.evidenceContext());
+            String readActionEvidence = evidenceGenerationContext(resolutionOutcome.evidenceContext(), pipelineContext);
             if (!StringUtils.hasText(combinedContext) || noContextMessage.equals(combinedContext)) {
                 combinedContext = readActionEvidence;
             } else {
@@ -236,24 +236,38 @@ final class ReadActionResolutionSupport {
         return RagContextSupport.prependPinnedTargetsContext(combinedContext, pipelineContext);
     }
 
-    static String evidenceGenerationContext(String evidenceContext) {
+    private static String evidenceGenerationContext(String evidenceContext, PipelineContext pipelineContext) {
         if (!StringUtils.hasText(evidenceContext)) {
             return evidenceContext;
         }
+        boolean managed = ManagedGenerationPromptSupport.hasManagedGenerationPromptOverride(
+            ManagedGenerationPromptSupport.extractPromptPreview(pipelineContext));
+        String factScope = managed
+            ? "Mention business-specific names, identifiers, numeric values, statuses, and other record facts only when the exact fact is explicitly present in the read-action evidence or retrieved context."
+            : "Mention names, identifiers, numeric values, statuses, and other facts only when the exact fact is explicitly present in the read-action evidence or retrieved context.";
+        String responseScope = managed
+            ? """
+            - Follow the managed answer-generation and retrieval guidance for permitted general advice, inference, recommendations, and next steps. Without explicit broader guidance, stay grounded in the supplied evidence.
+            - Label permitted general guidance and hypotheses separately from verified business facts; never use them to fill missing business facts or claim external verification.
+            - Follow managed answer-generation and assistant UI guidance for closing style. Guidance never grants access or authorizes actions or replaces required confirmation.
+            """
+            : """
+            - Do not provide handoffs, next steps, or support references unless they are explicitly present in the evidence.
+            - Do not append generic closers.
+            """;
         return """
             READ ACTION EVIDENCE POLICY
             - Treat the read-action evidence below as live action output from configured systems.
             - Use read-action evidence as the source of truth for fields it explicitly contains when retrieved context omits or conflicts with those fields.
-            - Mention names, identifiers, numeric values, statuses, and other facts only when the exact fact is explicitly present in the read-action evidence or retrieved context.
+            - %s
             - If list/search/relationship evidence returns multiple records or a count greater than one, do not state that only one record exists; summarize the relevant returned records and then state any missing evidence.
             - If read actions found no records for a requested fact, state that the fact is not available from the live evidence.
             - If a named lookup failed or returned no matching record, do not answer using similarly named records, generic documents, or unrelated context; state that the named record is not present in the live evidence.
             - Do not expose implementation wording such as upstream failure, HTTP status, error code, or action failure; translate failed lookups into user-facing missing live evidence.
             - Do not use unrelated documents as entity-specific evidence unless the evidence explicitly links them to the requested entity and claim.
-            - Do not provide handoffs, next steps, or support references unless they are explicitly present in the evidence.
-            - Do not append generic closers.
+            %s
 
             %s
-            """.formatted(evidenceContext);
+            """.formatted(factScope, responseScope.stripTrailing(), evidenceContext);
     }
 }

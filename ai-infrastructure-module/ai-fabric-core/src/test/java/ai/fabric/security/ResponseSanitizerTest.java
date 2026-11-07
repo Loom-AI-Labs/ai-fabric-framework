@@ -138,7 +138,8 @@ class ResponseSanitizerTest {
     }
 
     @Test
-    void shouldRemoveTerminalGenericAssistanceCloser() {
+    void shouldRetainTerminalGenericAssistanceCloser() {
+        String answer = "No negative reviews are available in the live store data. If you have any other specific questions about this snowboard, feel free to ask!";
         OrchestrationResult result = OrchestrationResult.builder()
             .type(OrchestrationResultType.INFORMATION_PROVIDED)
             .success(true)
@@ -150,15 +151,16 @@ class ResponseSanitizerTest {
 
         Map<String, Object> payload = sanitizer.sanitize(result, "user-789");
 
-        assertThat(payload.get("message")).isEqualTo("No negative reviews are available in the live store data.");
-        assertThat(payload.get("safeSummary")).isEqualTo("No negative reviews are available in the live store data.");
+        assertThat(payload.get("message")).isEqualTo(answer);
+        assertThat(payload.get("safeSummary")).isEqualTo(answer);
         @SuppressWarnings("unchecked")
         Map<String, Object> data = (Map<String, Object>) payload.get("data");
-        assertThat(data).containsEntry("answer", "No negative reviews are available in the live store data.");
+        assertThat(data).containsEntry("answer", answer);
     }
 
     @Test
-    void shouldRemoveTerminalPreferenceGatheringCloser() {
+    void shouldRetainTerminalPreferenceGatheringCloser() {
+        String answer = "Only one available snowboard is under $800 in the live store data. If you have specific features or preferences in mind, please let me know, and I can assist further!";
         OrchestrationResult result = OrchestrationResult.builder()
             .type(OrchestrationResultType.INFORMATION_PROVIDED)
             .success(true)
@@ -170,14 +172,14 @@ class ResponseSanitizerTest {
 
         Map<String, Object> payload = sanitizer.sanitize(result, "user-789");
 
-        assertThat(payload.get("message")).isEqualTo("Only one available snowboard is under $800 in the live store data.");
+        assertThat(payload.get("message")).isEqualTo(answer);
         @SuppressWarnings("unchecked")
         Map<String, Object> data = (Map<String, Object>) payload.get("data");
-        assertThat(data).containsEntry("answer", "Only one available snowboard is under $800 in the live store data.");
+        assertThat(data).containsEntry("answer", answer);
     }
 
     @Test
-    void shouldRemoveTerminalGenericAssistanceParagraphAfterBulletList() {
+    void shouldRetainTerminalGenericAssistanceParagraphAfterBulletList() {
         String answer = """
             No negative reviews are available in the live store data.
 
@@ -196,21 +198,14 @@ class ResponseSanitizerTest {
 
         Map<String, Object> payload = sanitizer.sanitize(result, "user-789");
 
-        String expected = """
-            No negative reviews are available in the live store data.
-
-            Product facts:
-            - Price: $749.95
-            - Available inventory: 50 units
-            """.stripTrailing();
-        assertThat(payload.get("message")).isEqualTo(expected);
+        assertThat(payload.get("message")).isEqualTo(answer);
         @SuppressWarnings("unchecked")
         Map<String, Object> data = (Map<String, Object>) payload.get("data");
-        assertThat(data).containsEntry("answer", expected);
+        assertThat(data).containsEntry("answer", answer);
     }
 
     @Test
-    void shouldRemoveTerminalExternalInformationHandoff() {
+    void shouldRetainTerminalExternalInformationHandoff() {
         OrchestrationResult result = OrchestrationResult.builder()
             .type(OrchestrationResultType.INFORMATION_PROVIDED)
             .success(true)
@@ -219,11 +214,11 @@ class ResponseSanitizerTest {
 
         Map<String, Object> payload = sanitizer.sanitize(result, "user-789");
 
-        assertThat(payload.get("message")).isEqualTo("Beginner suitability is not available in the live store data.");
+        assertThat(payload.get("message")).isEqualTo(result.getMessage());
     }
 
     @Test
-    void shouldRemoveTerminalDocumentationAndSupportHandoff() {
+    void shouldRetainTerminalDocumentationAndSupportHandoff() {
         String answer = """
             No return policy is available in the live store data.
 
@@ -238,14 +233,14 @@ class ResponseSanitizerTest {
 
         Map<String, Object> payload = sanitizer.sanitize(result, "user-789");
 
-        assertThat(payload.get("message")).isEqualTo("No return policy is available in the live store data.");
+        assertThat(payload.get("message")).isEqualTo(answer);
         @SuppressWarnings("unchecked")
         Map<String, Object> data = (Map<String, Object>) payload.get("data");
-        assertThat(data).containsEntry("answer", "No return policy is available in the live store data.");
+        assertThat(data).containsEntry("answer", answer);
     }
 
     @Test
-    void shouldRemoveTerminalAdditionalResourcesHandoff() {
+    void shouldRetainTerminalAdditionalResourcesHandoff() {
         String answer = """
             Beginner suitability is not available in the live store data.
 
@@ -260,14 +255,14 @@ class ResponseSanitizerTest {
 
         Map<String, Object> payload = sanitizer.sanitize(result, "user-789");
 
-        assertThat(payload.get("message")).isEqualTo("Beginner suitability is not available in the live store data.");
+        assertThat(payload.get("message")).isEqualTo(answer);
         @SuppressWarnings("unchecked")
         Map<String, Object> data = (Map<String, Object>) payload.get("data");
-        assertThat(data).containsEntry("answer", "Beginner suitability is not available in the live store data.");
+        assertThat(data).containsEntry("answer", answer);
     }
 
     @Test
-    void shouldRemoveTerminalStorePolicyLookupHandoff() {
+    void shouldRetainTerminalStorePolicyLookupHandoff() {
         OrchestrationResult result = OrchestrationResult.builder()
             .type(OrchestrationResultType.INFORMATION_PROVIDED)
             .success(true)
@@ -280,10 +275,85 @@ class ResponseSanitizerTest {
 
         Map<String, Object> payload = sanitizer.sanitize(result, "user-789");
 
-        assertThat(payload.get("message")).isEqualTo("The return policy is not available in the live store data.");
+        assertThat(payload.get("message")).isEqualTo(result.getMessage());
         @SuppressWarnings("unchecked")
         Map<String, Object> data = (Map<String, Object>) payload.get("data");
-        assertThat(data).containsEntry("answer", "The return policy is not available in the live store data.");
+        assertThat(data).containsEntry("answer", result.getMessage());
+    }
+
+    @Test
+    void shouldRetainCompleteSuggestionsAndSmartSuggestionText() {
+        String text = "Here are the available options. If you would like a comparison, let me know.\n ";
+        OrchestrationResult result = OrchestrationResult.builder()
+            .type(OrchestrationResultType.INFORMATION_PROVIDED)
+            .success(true)
+            .message(text)
+            .nextSteps(List.of(NextStepRecommendation.builder()
+                .intent("compare_options")
+                .query(text)
+                .rationale(text)
+                .confidence(0.9)
+                .build()))
+            .smartSuggestion(Map.of("query", text, "response", text))
+            .build();
+
+        Map<String, Object> payload = sanitizer.sanitize(result, "user-789");
+
+        assertThat(payload).containsEntry("message", text).containsEntry("safeSummary", text);
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> suggestions = (List<Map<String, Object>>) payload.get("suggestions");
+        assertThat(suggestions).singleElement().satisfies(suggestion ->
+            assertThat(suggestion).containsEntry("query", text).containsEntry("rationale", text));
+        assertThat(payload.get("smartSuggestion")).isEqualTo(Map.of("query", text, "response", text));
+        verifyNoInteractions(eventPublisher);
+    }
+
+    @Test
+    void shouldRetainNestedStringsActionTextAndSerializedJsonWithoutRewriting() {
+        String text = "Available options are listed above. If you need more information, feel free to ask!\n ";
+        String json = "{\"answer\":\"Available options are listed above. If you need more information, feel free to ask!\"}";
+        Map<String, Object> actionData = Map.of("text", text, "json", json);
+        OrchestrationResult result = OrchestrationResult.builder()
+            .type(OrchestrationResultType.ACTION_EXECUTED)
+            .success(true)
+            .message(text)
+            .data(Map.of(
+                "answer", text,
+                "json", json,
+                "nested", List.of(text, Map.of("text", text)),
+                "actionResult", ActionResult.builder().success(true).message(text)
+                    .data(ActionResultContracts.object(actionData)).build()))
+            .build();
+
+        Map<String, Object> payload = sanitizer.sanitize(result, "user-789");
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> data = (Map<String, Object>) payload.get("data");
+        assertThat(data).containsEntry("answer", text).containsEntry("json", json)
+            .containsEntry("nested", List.of(text, Map.of("text", text)));
+        @SuppressWarnings("unchecked")
+        Map<String, Object> action = (Map<String, Object>) data.get("actionResult");
+        assertThat(action).containsEntry("message", text).containsEntry("data", actionData);
+    }
+
+    @Test
+    void shouldRetainBenignClosingTextWhileStillRedactingPii() {
+        String text = "Contact user@example.com. If you need more information, feel free to ask!";
+        OrchestrationResult result = OrchestrationResult.builder()
+            .type(OrchestrationResultType.INFORMATION_PROVIDED)
+            .success(true)
+            .message(text)
+            .data(Map.of("answer", text))
+            .build();
+
+        Map<String, Object> payload = sanitizer.sanitize(result, "user-789");
+
+        String expected = "Contact ***@***.***. If you need more information, feel free to ask!";
+        assertThat(payload).containsEntry("message", expected).containsEntry("safeSummary", expected)
+            .containsKey("warning").containsKey("guidance");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> data = (Map<String, Object>) payload.get("data");
+        assertThat(data).containsEntry("answer", expected);
     }
 
     @Test

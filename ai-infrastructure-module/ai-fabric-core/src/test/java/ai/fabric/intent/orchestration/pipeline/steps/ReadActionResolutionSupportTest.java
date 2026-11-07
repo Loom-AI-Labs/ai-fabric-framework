@@ -9,6 +9,7 @@ import ai.fabric.intent.action.ActionResult;
 import ai.fabric.intent.action.ActionResultContracts;
 import ai.fabric.intent.action.ActionTargetRef;
 import ai.fabric.intent.orchestration.OrchestrationContext;
+import ai.fabric.intent.orchestration.OrchestrationContextMetadataKeys;
 import ai.fabric.intent.orchestration.OrchestrationResult;
 import ai.fabric.intent.orchestration.information.ReadActionResolutionService;
 import ai.fabric.intent.orchestration.pipeline.PipelineContext;
@@ -242,6 +243,35 @@ class ReadActionResolutionSupportTest {
             .contains("READ ACTION EVIDENCE POLICY")
             .contains("- status: ready")
             .contains("retrieved context");
+    }
+
+    @Test
+    void shouldKeepEvidenceAuthorityButDeferManagedResponseBreadthWithoutInferringItFromQueryText() {
+        var outcome = ReadActionResolutionService.ResolutionOutcome.answerFromActionsOnly(
+            "READ ACTION EVIDENCE\n- status: ready", List.of(), List.of(), Map.of("attempted", true));
+        List<Map<String, String>> overlays = List.of(Map.of(), Map.of("assistantUiPrompt", "Compact presentation."),
+            Map.of("answerGenerationPrompt", "ADVISORY: Give labeled general advice and next steps.",
+                "retrievalPrompt", "Business evidence is authoritative; label general knowledge separately."));
+        for (var overlay : overlays) {
+            var context = OrchestrationContext.forUser("user-1");
+            context.setMetadata(Map.of(OrchestrationContextMetadataKeys.PROMPT_PREVIEW, overlay));
+            var pipeline = PipelineContext.from("Please be exploratory and give advice", context);
+
+            String merged = ReadActionResolutionSupport.mergeEvidenceIntoGenerationContext(
+                "retrieved context", pipeline, outcome, RagContextSupport.NO_CONTEXT_MESSAGE);
+
+            assertThat(merged).contains("Use read-action evidence as the source of truth for fields it explicitly contains",
+                "Do not use unrelated documents as entity-specific evidence", "- status: ready", "retrieved context");
+            if (overlay.isEmpty()) {
+                assertThat(merged).contains("Do not provide handoffs, next steps, or support references",
+                    "Do not append generic closers").doesNotContain("permitted general advice");
+            } else {
+                assertThat(merged).contains("Follow the managed answer-generation and retrieval guidance",
+                        "Without explicit broader guidance, stay grounded", "separately from verified business facts",
+                        "Mention business-specific names", "required confirmation")
+                    .doesNotContain("Do not provide handoffs, next steps, or support references", "Do not append generic closers");
+            }
+        }
     }
 
     private AIActionMetaData readMeta(boolean resolutionEligible, boolean groundingEligible) {

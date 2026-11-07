@@ -20,7 +20,7 @@ import static org.mockito.Mockito.when;
 class ResponseSanitizationStepTest {
 
     @Test
-    void shouldApplySanitizedMessageAndAnswerToResultMirrorsWithoutDroppingData() {
+    void shouldRetainFullMessageAndAnswerInResultMirrorsWithoutDroppingData() {
         @SuppressWarnings("unchecked")
         ObjectProvider<PIIDetectionService> piiProvider = mock(ObjectProvider.class);
         when(piiProvider.getIfAvailable()).thenReturn(null);
@@ -45,18 +45,19 @@ class ResponseSanitizationStepTest {
 
         PipelineContext updated = step.process(context);
 
-        assertThat(result.getMessage()).isEqualTo("Live store data has no review records.");
+        String expected = "Live store data has no review records. Let me know if you need anything else.";
+        assertThat(result.getMessage()).isEqualTo(expected);
         assertThat(result.getData())
-            .containsEntry("answer", "Live store data has no review records.")
+            .containsEntry("answer", expected)
             .containsKey("documents");
-        assertThat(updated.getSanitizedPayload()).containsEntry("message", "Live store data has no review records.");
+        assertThat(updated.getSanitizedPayload()).containsEntry("message", expected).containsEntry("safeSummary", expected);
         @SuppressWarnings("unchecked")
         Map<String, Object> sanitizedData = (Map<String, Object>) updated.getSanitizedPayload().get("data");
-        assertThat(sanitizedData).containsEntry("answer", "Live store data has no review records.");
+        assertThat(sanitizedData).containsEntry("answer", expected);
     }
 
     @Test
-    void shouldSanitizeCompoundChildrenAndResultsDataBeforeReturning() {
+    void shouldRetainFullCompoundChildrenAndResultsTextWhileFilteringInternalMetadata() {
         @SuppressWarnings("unchecked")
         ObjectProvider<PIIDetectionService> piiProvider = mock(ObjectProvider.class);
         when(piiProvider.getIfAvailable()).thenReturn(null);
@@ -90,7 +91,7 @@ class ResponseSanitizationStepTest {
 
         PipelineContext updated = step.process(context);
 
-        String expected = "No return policy is available in live store data.";
+        String expected = childAnswer;
         assertThat(result.getMessage()).isEqualTo(expected);
         assertThat(child.getMessage()).isEqualTo(expected);
         assertThat(child.getData()).containsEntry("answer", expected);

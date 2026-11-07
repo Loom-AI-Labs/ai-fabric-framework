@@ -6,6 +6,7 @@ import ai.fabric.curated.CuratedPackEnvironmentPostProcessor;
 import ai.fabric.intent.orchestration.policy.OrchestrationProfile;
 import ai.fabric.prompt.ClasspathPromptTemplateStore;
 import ai.fabric.prompt.PromptTemplateResolver;
+import ai.fabric.prompt.PromptRenderer;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.context.properties.bind.Binder;
@@ -179,21 +180,40 @@ class CommerceCuratedPackTest {
             .contains("optional resolver-only product search parameter")
             .contains("Do not include cart verbs or action wording");
         assertThat(resolver.resolve("rag/generation", "answer-managed").template().template())
-            .contains("Use only the relevant commerce context above")
+            .contains("Use the relevant commerce context above as the authority for business-specific facts")
             .contains("Highest priority: if the user question asks about assistant implementation")
             .contains("Do not repeat labels such as \"Current page\"")
             .contains("Do not treat retrieved catalog/search results as the current product")
             .contains("do not answer as a missing-evidence or product-data question")
             .contains("treat, cure, diagnose, or prevent a health condition")
-            .contains("asks for professional advice, asks whether a product can treat")
             .contains("no safest option can be identified from the available live store data")
             .contains("state that it is not available in the live store data")
             .contains("treat the explicit availability fact as the stock-status source of truth")
-            .contains("Do not recommend checking another website, contacting support, contacting a vendor/manufacturer")
-            .contains("Do not add next-step or handoff sentences for missing live data")
             .contains("Do not substitute price, availability, vendor, or product title as safety evidence")
             .contains("present explicit price, availability, variant, shipping-policy, review-signal")
-            .contains("Do not append generic closers");
+            .contains("Follow the managed answer-generation and retrieval guidance for response scope");
+    }
+
+    @Test
+    void shouldRenderManagedCommerceBreadthWithoutWeakeningBusinessFactsOrSafety() {
+        PromptTemplateResolver resolver = commerceResolver();
+        Map<String, String> values = Map.of(
+            "managed_answer_generation_prompt", "ADVISORY: Give labeled general guidance and useful next steps.",
+            "managed_retrieval_prompt", "EXPLORATORY: Explore clearly labeled hypotheses, not invented store facts.",
+            "managed_assistant_ui_prompt", "Warm consultative style.",
+            "query", "Compare options", "context", "Authorized store evidence", "facts", "Authorized store facts",
+            "action_name", "read_catalog", "instruction", "Compare options", "relational_query", "Authorized query");
+        for (String name : List.of("answer-managed", "no-context-managed", "user-generic-managed", "user-relationship-query-managed")) {
+            String family = name.startsWith("user-") ? "orchestration/post-action-generation" : "rag/generation";
+            String prompt = new PromptRenderer().render(resolver.resolve(family, name).template(), values);
+            assertThat(prompt).as(name)
+                .contains(values.get("managed_answer_generation_prompt"), values.get("managed_retrieval_prompt"),
+                    "separately from verified business facts", "Do not substitute price, availability, vendor, or product title as safety evidence")
+                .doesNotContain("{{", "Use only the relevant commerce context", "Use only the FACTS",
+                    "Do not add next-step or handoff sentences", "Do not recommend checking another website",
+                    "When evidence is missing, end after", "Do not append generic closers",
+                    "If the user asks for professional advice", "Do not infer vendor reputation");
+        }
     }
 
     @Test
