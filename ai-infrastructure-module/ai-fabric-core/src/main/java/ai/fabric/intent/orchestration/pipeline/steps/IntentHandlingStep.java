@@ -708,7 +708,7 @@ public class IntentHandlingStep implements PipelineStep {
                     .nextSteps(extractNextSteps(intent))
                     .build();
             }
-            if (!requiresConfirmation) {
+            if (!requiresConfirmation && !context.isSpecialistActionPolicyWrites()) {
                 return OrchestrationResult.builder()
                     .type(OrchestrationResultType.ACTION_DENIED)
                     .success(false)
@@ -720,31 +720,33 @@ public class IntentHandlingStep implements PipelineStep {
                     .nextSteps(extractNextSteps(intent))
                     .build();
             }
-            Map<String, Object> data = new LinkedHashMap<>();
-            data.put(DATA_KEY_ACTION, actionName);
-            data.put(DATA_KEY_CONFIRMATION_MESSAGE, confirmationMessage);
-            data.put(DATA_KEY_CONFIRMATION_REQUIRED, true);
-            data.put(
-                DATA_KEY_METADATA,
-                publicActionMetadata(getMetadataForAction(actionName))
-            );
-            return OrchestrationResult.builder()
-                .type(OrchestrationResultType.CONFIRMATION_REQUIRED)
-                .success(false)
-                .message(
-                    StringUtils.hasText(confirmationMessage)
-                        ? confirmationMessage
-                        : "Please confirm to proceed."
-                )
-                .data(Collections.unmodifiableMap(data))
-                .metadata(publicActionParamValidationMetadata(meta, validation))
-                .nextSteps(extractNextSteps(intent))
-                .actionProposalCandidate(new ActionProposalCandidate(
-                    actionName,
-                    effectiveParams,
-                    actionContext
-                ))
-                .build();
+            if (requiresConfirmation) {
+                Map<String, Object> data = new LinkedHashMap<>();
+                data.put(DATA_KEY_ACTION, actionName);
+                data.put(DATA_KEY_CONFIRMATION_MESSAGE, confirmationMessage);
+                data.put(DATA_KEY_CONFIRMATION_REQUIRED, true);
+                data.put(
+                    DATA_KEY_METADATA,
+                    publicActionMetadata(getMetadataForAction(actionName))
+                );
+                return OrchestrationResult.builder()
+                    .type(OrchestrationResultType.CONFIRMATION_REQUIRED)
+                    .success(false)
+                    .message(
+                        StringUtils.hasText(confirmationMessage)
+                            ? confirmationMessage
+                            : "Please confirm to proceed."
+                    )
+                    .data(Collections.unmodifiableMap(data))
+                    .metadata(publicActionParamValidationMetadata(meta, validation))
+                    .nextSteps(extractNextSteps(intent))
+                    .actionProposalCandidate(new ActionProposalCandidate(
+                        actionName,
+                        effectiveParams,
+                        actionContext
+                    ))
+                    .build();
+            }
         }
 
         if (requiresConfirmation && !confirmedThisRequest && context.hasConversation()) {
@@ -810,7 +812,8 @@ public class IntentHandlingStep implements PipelineStep {
                 ConversationStateStoreAccess.clearDrafts(actionDraftStore, pipelineContext);
             }
             ActionConfirmationState confirmationState =
-                !requiresConfirmation || confirmedThisRequest || !context.hasConversation()
+                !isSpecialistWriteRequest(meta, pipelineContext)
+                    && (!requiresConfirmation || confirmedThisRequest || !context.hasConversation())
                 ? ActionConfirmationState.CONFIRMED
                 : ActionConfirmationState.NOT_CONFIRMED;
             GovernedActionInvocationOutcome invocationOutcome =
@@ -830,8 +833,10 @@ public class IntentHandlingStep implements PipelineStep {
                 confirmationData.put(DATA_KEY_CONFIRMATION_MESSAGE,
                     invocationOutcome.actionResult().getMessage());
                 confirmationData.put(DATA_KEY_CONFIRMATION_REQUIRED, true);
-                confirmationData.put(DATA_KEY_PROVIDED_PARAMETERS,
-                    publicProvidedParameters(meta, effectiveParams));
+                if (!isSpecialistWriteRequest(meta, pipelineContext)) {
+                    confirmationData.put(DATA_KEY_PROVIDED_PARAMETERS,
+                        publicProvidedParameters(meta, effectiveParams));
+                }
                 confirmationData.put(DATA_KEY_METADATA,
                     publicActionMetadata(getMetadataForAction(actionName)));
                 return OrchestrationResult.builder()
@@ -841,6 +846,9 @@ public class IntentHandlingStep implements PipelineStep {
                     .data(Collections.unmodifiableMap(confirmationData))
                     .metadata(publicActionParamValidationMetadata(meta, validation))
                     .nextSteps(extractNextSteps(intent))
+                    .actionProposalCandidate(isSpecialistWriteRequest(meta, pipelineContext)
+                        ? new ActionProposalCandidate(actionName, effectiveParams, actionContext)
+                        : null)
                     .build();
             }
             if (invocationOutcome.status() == GovernedActionInvocationStatus.DENIED) {

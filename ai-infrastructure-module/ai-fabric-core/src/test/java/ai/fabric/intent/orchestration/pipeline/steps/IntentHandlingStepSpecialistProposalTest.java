@@ -25,6 +25,8 @@ import ai.fabric.intent.action.AIActionParamSchema;
 import ai.fabric.intent.action.AIActionParamType;
 import ai.fabric.intent.action.AIActionRegistry;
 import ai.fabric.intent.action.ActionAccessMode;
+import ai.fabric.intent.action.ActionResult;
+import ai.fabric.intent.action.InvocationConfirmationPolicy;
 import ai.fabric.intent.action.InMemoryPendingActionStore;
 import ai.fabric.intent.actiondraft.InMemoryActionDraftStore;
 import ai.fabric.intent.orchestration.OrchestrationContext;
@@ -49,13 +51,17 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.core.io.DefaultResourceLoader;
 
 class IntentHandlingStepSpecialistProposalTest {
 
-    @Test
-    void emitsInternalProposalWithoutExecutingSpecialistWrite() throws Exception {
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void emitsInternalProposalWithoutExecutingSpecialistWrite(boolean actionPolicy) throws Exception {
         AIActionRegistry registry = mock(AIActionRegistry.class);
         AIActionHandler handler = mock(AIActionHandler.class);
         AIActionMetaData metadata = AIActionMetaData.builder()
@@ -84,6 +90,7 @@ class IntentHandlingStepSpecialistProposalTest {
         IntentHandlingStep step = newStep(registry);
         OrchestrationContext orchestrationContext =
             OrchestrationContext.forUser("user-1");
+        orchestrationContext.setSpecialistActionPolicyWrites(actionPolicy);
         OrchestrationRequest request = new OrchestrationRequest(
             "Update my address to 1 Main Street",
             orchestrationContext,
@@ -149,8 +156,9 @@ class IntentHandlingStepSpecialistProposalTest {
         verify(handler, never()).executeAction(anyMap(), any());
     }
 
-    @Test
-    void deniesSpecialistWriteOutsideEffectiveProfileWithoutExecutingIt() {
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void deniesSpecialistWriteOutsideEffectiveProfileWithoutExecutingIt(boolean actionPolicy) {
         AIActionRegistry registry = mock(AIActionRegistry.class);
         AIActionHandler handler = mock(AIActionHandler.class);
         AIActionMetaData metadata = AIActionMetaData.builder()
@@ -178,6 +186,7 @@ class IntentHandlingStepSpecialistProposalTest {
 
         OrchestrationContext orchestrationContext =
             OrchestrationContext.forUser("user-1");
+        orchestrationContext.setSpecialistActionPolicyWrites(actionPolicy);
         OrchestrationRequest request = new OrchestrationRequest(
             "Update my address to 1 Main Street",
             orchestrationContext,
@@ -233,6 +242,95 @@ class IntentHandlingStepSpecialistProposalTest {
             .isEqualTo("ACTION_NOT_IN_EFFECTIVE_PROFILE");
         assertThat(result.getActionProposalCandidate()).isNull();
         verify(handler, never()).executeAction(anyMap(), any());
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+        "true, SPECIALIST, true, false, ACTION_EXECUTED",
+        "true, SPECIALIST, true, true, ACTION_EXECUTED",
+        "true, SPECIALIST, true, true, CONFIRMATION_REQUIRED",
+        "false, SPECIALIST, true, false, ACTION_DENIED",
+        "true, SPECIALIST, false, false, ACTION_DENIED",
+        "false, GENERAL, true, false, ACTION_EXECUTED",
+        "true, GENERAL, true, false, ACTION_EXECUTED"
+    })
+    void noConfirmWriteUsesNormalGovernedExecutionOnlyWhenPermitted(
+        boolean actionPolicy,
+        OrchestrationRequestPurpose purpose,
+        boolean authorized,
+        boolean dynamicWaiver,
+        OrchestrationResultType expected
+    ) {
+        AIActionRegistry registry = mock(AIActionRegistry.class);
+        AIActionHandler handler = mock(AIActionHandler.class,
+            org.mockito.Mockito.withSettings().extraInterfaces(InvocationConfirmationPolicy.class));
+        AIActionMetaData metadata = AIActionMetaData.builder()
+            .name("update_address")
+            .accessMode(ActionAccessMode.WRITE_ONLY)
+            .confirmationRequired(dynamicWaiver)
+            .build();
+        when(registry.findHandler("update_address")).thenReturn(Optional.of(handler));
+        when(registry.findMetadata("update_address")).thenReturn(Optional.of(metadata));
+        when(handler.requiresConfirmation()).thenReturn(dynamicWaiver);
+        when(((InvocationConfirmationPolicy) handler).requiresConfirmation(anyMap(), any()))
+            .thenReturn(false, expected == OrchestrationResultType.CONFIRMATION_REQUIRED);
+        when(handler.validateActionAllowed(any())).thenReturn(authorized);
+        when(handler.executeAction(anyMap(), any()))
+            .thenReturn(ActionResult.builder().success(true).message("Updated").build());
+        OrchestrationContext orchestrationContext = OrchestrationContext.builder()
+            .userId("user-1")
+            .specialistActionPolicyWrites(actionPolicy)
+            .build();
+        OrchestrationRequest request = new OrchestrationRequest(
+            "Update address", orchestrationContext, null, ConversationPersistencePolicy.NEVER,
+            null, null, null, purpose
+        );
+        EffectiveCapabilityProfile profile = new EffectiveCapabilityProfile(
+            "DEFAULT", "resolver", false, Set.of(), Set.of("update_address"),
+            Set.of(), Set.of("update_address"), OrchestrationPolicy.RagBudgets.defaults(),
+            OrchestrationPolicy.ReadActionResolutionPolicy.defaults(), "write-profile"
+        );
+        PipelineContext context = PipelineContext.from(request).toBuilder()
+            .orchestrationPolicy(new OrchestrationPolicy(
+                OrchestrationProfile.DEFAULT, "resolver", null,
+                OrchestrationProperties.InformationMode.LLM_DRIVEN,
+                OrchestrationPolicy.OrchestrationCapabilities.defaults(),
+                OrchestrationPolicy.RagBudgets.defaults()
+            ))
+            .effectiveCapabilityProfile(profile)
+            .intentResponse(MultiIntentResponse.builder()
+                .intents(List.of(Intent.builder().type(IntentType.ACTION)
+                    .action("update_address").actionParams(Map.of()).build()))
+                .build())
+            .build();
+
+        OrchestrationResult result = newStep(registry).process(context).getIntentResult();
+
+        assertThat(result.getType()).isEqualTo(expected);
+        if (expected == OrchestrationResultType.CONFIRMATION_REQUIRED) {
+            assertThat(result.getActionProposalCandidate()).isNotNull();
+            assertThat(result.getData()).doesNotContainKey("providedParameters");
+        } else {
+            assertThat(result.getActionProposalCandidate()).isNull();
+        }
+        verify(handler, org.mockito.Mockito.times(expected == OrchestrationResultType.ACTION_EXECUTED ? 1 : 0))
+            .executeAction(anyMap(), any());
+        if (!actionPolicy && purpose == OrchestrationRequestPurpose.SPECIALIST) {
+            assertThat(result.getErrorCode()).isEqualTo("SPECIALIST_WRITE_CONFIRMATION_REQUIRED");
+        }
+    }
+
+    @Test
+    void actionPolicyOptInIsDefaultFalseAndCannotBeSetFromJson() throws Exception {
+        ObjectMapper mapper = new ObjectMapper();
+        assertThat(OrchestrationContext.builder().build().isSpecialistActionPolicyWrites()).isFalse();
+        assertThat(mapper.readValue(
+            "{\"userId\":\"user-1\",\"specialistActionPolicyWrites\":true}",
+            OrchestrationContext.class
+        ).isSpecialistActionPolicyWrites()).isFalse();
+        assertThat(mapper.writeValueAsString(OrchestrationContext.builder()
+            .userId("user-1").specialistActionPolicyWrites(true).build()))
+            .doesNotContain("specialistActionPolicyWrites");
     }
 
     private IntentHandlingStep newStep(AIActionRegistry registry) {

@@ -6,11 +6,14 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.MappingIterator;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 class PublishedSpecialistResourceSchemaTest {
 
@@ -47,6 +50,33 @@ class PublishedSpecialistResourceSchemaTest {
         assertThatThrownBy(() -> validator.validate(schema, chain))
             .isInstanceOf(IllegalArgumentException.class)
             .hasMessageContaining("specialist-resource-v1@1");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"ACTION_POLICY", "CONFIRMATION_RECEIPT_REQUIRED"})
+    void publishedSchemaRequiresBoundedWritesForEnabledPolicy(String policy) throws Exception {
+        SpecialistSchemaDefinition schema = publishedSchema();
+        ObjectNode manifest = (ObjectNode) documents(
+            "/META-INF/ai-fabric/examples/support-knowledge-specialist.yml"
+        ).stream().filter(resource -> "Specialist".equals(resource.path("kind").asText()))
+            .findFirst().orElseThrow().deepCopy();
+        validator.validate(schema, manifest);
+        ObjectNode spec = (ObjectNode) manifest.path("spec");
+        ((ObjectNode) spec.path("execution")).put("writePolicy", policy);
+        assertThatThrownBy(() -> validator.validate(schema, manifest))
+            .isInstanceOf(IllegalArgumentException.class);
+
+        ObjectNode actions = (ObjectNode) spec.path("capabilities").path("actions");
+        actions.putArray("visible").add("update_address");
+        actions.putArray("proposableWrites").add("update_address");
+        validator.validate(schema, manifest);
+
+        ((ObjectNode) spec.path("execution")).put("writePolicy", "DISABLED");
+        assertThatThrownBy(() -> validator.validate(schema, manifest))
+            .isInstanceOf(IllegalArgumentException.class);
+        ((ObjectNode) spec.path("execution")).put("writePolicy", "AUTO_CONFIRM");
+        assertThatThrownBy(() -> validator.validate(schema, manifest))
+            .isInstanceOf(IllegalArgumentException.class);
     }
 
     private SpecialistSchemaDefinition publishedSchema() throws Exception {

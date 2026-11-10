@@ -182,6 +182,7 @@
             "writePolicy": {
               "enum": [
                 "DISABLED",
+                "ACTION_POLICY",
                 "CONFIRMATION_RECEIPT_REQUIRED"
               ]
             }
@@ -241,7 +242,7 @@
               "execution": {
                 "properties": {
                   "writePolicy": {
-                    "const": "CONFIRMATION_RECEIPT_REQUIRED"
+                    "enum": ["CONFIRMATION_RECEIPT_REQUIRED", "ACTION_POLICY"]
                   }
                 }
               }

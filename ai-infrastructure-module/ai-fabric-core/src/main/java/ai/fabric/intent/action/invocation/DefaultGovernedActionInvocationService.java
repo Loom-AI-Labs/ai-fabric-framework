@@ -17,6 +17,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.function.Function;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.util.StringUtils;
 
 /**
@@ -24,6 +26,10 @@ import org.springframework.util.StringUtils;
  */
 public final class DefaultGovernedActionInvocationService
     implements GovernedActionInvocationService {
+
+    private static final Logger log = LoggerFactory.getLogger(
+        DefaultGovernedActionInvocationService.class
+    );
 
     private final Function<String, Optional<AIActionHandler>> handlerLookup;
     private final Function<String, Optional<AIActionMetaData>> metadataLookup;
@@ -127,6 +133,9 @@ public final class DefaultGovernedActionInvocationService
             invocation.parameters(),
             actionContext
         );
+        if (invocation.confirmationState() == ActionConfirmationState.PROPOSAL_PREFLIGHT && !confirmationRequired) {
+            return denied("ACTION_PROPOSAL_POLICY_CHANGED", "The action no longer requires this proposal.");
+        }
         if (confirmationRequired
             && invocation.confirmationState() != ActionConfirmationState.CONFIRMED) {
             String message = confirmationMessage(handler, invocation.parameters(), actionContext);
@@ -157,30 +166,31 @@ public final class DefaultGovernedActionInvocationService
             return denied(ex.code(), ex.getMessage());
         }
 
+        GovernedActionInvocationOutcome outcome;
         try {
             ActionResult result = handler.executeAction(invocation.parameters(), actionContext);
             if (result == null) {
-                return failure(
+                outcome = failure(
                     "ACTION_EMPTY_RESULT",
                     "Action returned no result.",
                     false,
                     null
                 );
-            }
-            if (!result.isSuccess()) {
+            } else if (!result.isSuccess()) {
                 String reason = StringUtils.hasText(result.getErrorCode())
                     ? result.getErrorCode()
                     : "ACTION_FAILED";
                 String message = StringUtils.hasText(result.getMessage())
                     ? result.getMessage()
                     : "Action failed.";
-                return failure(reason, message, false, result);
+                outcome = failure(reason, message, false, result);
+            } else {
+                outcome = new GovernedActionInvocationOutcome(
+                    GovernedActionInvocationStatus.EXECUTED,
+                    result,
+                    null
+                );
             }
-            return new GovernedActionInvocationOutcome(
-                GovernedActionInvocationStatus.EXECUTED,
-                result,
-                null
-            );
         } catch (Exception ex) {
             ActionResult handled = handleErrorSafely(handler, ex, actionContext);
             String reason = handled != null && StringUtils.hasText(handled.getErrorCode())
@@ -189,10 +199,29 @@ public final class DefaultGovernedActionInvocationService
             String message = handled != null && StringUtils.hasText(handled.getMessage())
                 ? handled.getMessage()
                 : "Action execution failed.";
-            if (!metadata.getAccessMode().isReadOnly()) {
-                return outcomeUnknown(reason, message, handled);
-            }
-            return failure(reason, message, false, handled);
+            outcome = !metadata.getAccessMode().isReadOnly()
+                ? outcomeUnknown(reason, message, handled)
+                : failure(reason, message, false, handled);
+        }
+        notifyAfterAction(metadata, actionContext, outcome);
+        return outcome;
+    }
+
+    private void notifyAfterAction(
+        AIActionMetaData metadata,
+        ActionContext context,
+        GovernedActionInvocationOutcome outcome
+    ) {
+        if (context.orchestrationContext() == null
+            || context.orchestrationContext().getOrchestrationTurnGuard() == null) {
+            return;
+        }
+        try {
+            context.orchestrationContext().getOrchestrationTurnGuard()
+                .afterAction(metadata, context, outcome);
+        } catch (Exception ex) {
+            log.warn("Action completion hook failed: action={} outcome={} cause={}",
+                metadata.getName(), outcome.status(), ex.getClass().getName());
         }
     }
 

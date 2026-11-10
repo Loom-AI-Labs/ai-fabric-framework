@@ -14,6 +14,8 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 
 class DefaultSpecialistRegistryTest {
 
@@ -141,6 +143,51 @@ class DefaultSpecialistRegistryTest {
         ))
             .isInstanceOf(IllegalArgumentException.class)
             .hasMessageContaining("writePolicy=DISABLED");
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+        "ACTION_POLICY, false", "ACTION_POLICY, true",
+        "CONFIRMATION_RECEIPT_REQUIRED, true"
+    })
+    void registersWriteDefinitionsUnderTheirExplicitPolicy(
+        SpecialistWritePolicy policy, boolean confirmationRequired
+    ) {
+        SpecialistExecutionProfile profile = new SpecialistExecutionProfile(
+            "resolver", writeProfile().requestedCapabilities(), ExecutionStrategy.SINGLE_PASS, policy
+        );
+        SpecialistDefinition<String, String> definition = definition("resolver", profile);
+        DefaultSpecialistRegistry registry = new DefaultSpecialistRegistry(
+            List.of(definition),
+            actionRegistry(AIActionMetaData.builder().name("update_address")
+                .accessMode(ActionAccessMode.WRITE_ONLY)
+                .confirmationRequired(confirmationRequired).build()),
+            Set.of("resolver")
+        );
+        assertThat(registry.require(ID)).isSameAs(definition);
+        assertThat(profile.writeEnabled()).isTrue();
+    }
+
+    @Test
+    void confirmationReceiptPolicyStillRejectsUnconfirmedActionDefinition() {
+        assertThatThrownBy(() -> new DefaultSpecialistRegistry(
+            List.of(definition("resolver", writeProfile())),
+            actionRegistry("update_address", ActionAccessMode.WRITE_ONLY), Set.of("resolver")
+        )).isInstanceOf(IllegalStateException.class)
+            .hasMessageContaining("without application-owned confirmation");
+    }
+
+    @Test
+    void actionPolicyStillRejectsReadsDeclaredAsWrites() {
+        SpecialistExecutionProfile profile = new SpecialistExecutionProfile(
+            "resolver", writeProfile().requestedCapabilities(), ExecutionStrategy.SINGLE_PASS,
+            SpecialistWritePolicy.ACTION_POLICY
+        );
+        assertThatThrownBy(() -> new DefaultSpecialistRegistry(
+            List.of(definition("resolver", profile)),
+            actionRegistry("update_address", ActionAccessMode.READ), Set.of("resolver")
+        )).isInstanceOf(IllegalStateException.class)
+            .hasMessageContaining("as proposable WRITE");
     }
 
     @Test

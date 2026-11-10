@@ -154,7 +154,11 @@ final class ActionProposalTestFixture {
             (ignored, context) -> authority.get()
         );
         effectiveProfile = resolveProfile(trustedContext);
-        coordinator = new ActionProposalCoordinator(
+        coordinator = coordinator(invocationService());
+    }
+
+    ActionProposalCoordinator coordinator(GovernedActionInvocationService invocationService) {
+        return new ActionProposalCoordinator(
             repository,
             security,
             new ActionProposalValidator(),
@@ -163,7 +167,7 @@ final class ActionProposalTestFixture {
             actionRegistry,
             policyResolutionStep,
             capabilityResolver,
-            invocationService(),
+            invocationService,
             ActionProposalMetrics.noop(),
             clock,
             Duration.ofMinutes(10)

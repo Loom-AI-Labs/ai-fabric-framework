@@ -128,7 +128,9 @@ public final class SpecialistDefinitionValidator {
                         + " as proposable WRITE"
                 );
             }
-            if (!metadata.isConfirmationRequired()) {
+            if (!metadata.isConfirmationRequired()
+                && definition.executionProfile().writePolicy()
+                    == SpecialistWritePolicy.CONFIRMATION_RECEIPT_REQUIRED) {
                 throw new IllegalStateException(
                     "Specialist " + definition.id()
                         + " declares write action " + action
@@ -137,11 +139,10 @@ public final class SpecialistDefinitionValidator {
             }
         }
         if (!capabilities.proposableWriteActions().isEmpty()
-            && definition.executionProfile().writePolicy()
-                != SpecialistWritePolicy.CONFIRMATION_RECEIPT_REQUIRED) {
+            && !definition.executionProfile().writePolicy().permitsProposals()) {
             throw new IllegalStateException(
                 "Specialist " + definition.id()
-                    + " requires CONFIRMATION_RECEIPT_REQUIRED for write proposals"
+                    + " requires an enabled write policy for write proposals"
             );
         }
     }

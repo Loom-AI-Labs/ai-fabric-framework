@@ -19,6 +19,7 @@ import ai.fabric.execution.specialist.SpecialistDefinition;
 import ai.fabric.execution.specialist.SpecialistInputAdapter;
 import ai.fabric.execution.specialist.SpecialistOutputAdapter;
 import ai.fabric.execution.specialist.SpecialistOutputMode;
+import ai.fabric.execution.specialist.SpecialistWritePolicy;
 import ai.fabric.execution.specialist.SpecialistRegistry;
 import ai.fabric.execution.specialist.manifest.SpecialistConversationBinding;
 import ai.fabric.execution.specialist.manifest.SpecialistInteractionCapability;
@@ -1764,6 +1765,9 @@ public final class DefaultAIExecutionGateway
             .userId(trustedIdentifier(trustedContext))
             .mode(definition.executionProfile().mode())
             .metadata(bindTrustedMetadata(context, trustedContext))
+            .specialistActionPolicyWrites(
+                definition.executionProfile().writePolicy() == SpecialistWritePolicy.ACTION_POLICY
+            )
             .specialistInstructions(definition.instructions().render());
         if (binding != null) {
             builder.userId(binding.userId())

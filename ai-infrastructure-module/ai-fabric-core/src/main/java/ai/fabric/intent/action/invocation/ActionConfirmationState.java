@@ -5,5 +5,7 @@ package ai.fabric.intent.action.invocation;
  */
 public enum ActionConfirmationState {
     NOT_CONFIRMED,
-    CONFIRMED
+    CONFIRMED,
+    /** Check whether a proposal is still required; never dispatch the handler. */
+    PROPOSAL_PREFLIGHT
 }

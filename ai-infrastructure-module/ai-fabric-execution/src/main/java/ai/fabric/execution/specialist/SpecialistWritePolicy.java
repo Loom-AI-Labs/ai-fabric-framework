@@ -5,9 +5,11 @@ package ai.fabric.execution.specialist;
  */
 public enum SpecialistWritePolicy {
     DISABLED,
+    /** Follow each action's existing confirmation policy through governed invocation. */
+    ACTION_POLICY,
     CONFIRMATION_RECEIPT_REQUIRED;
 
     public boolean permitsProposals() {
-        return this == CONFIRMATION_RECEIPT_REQUIRED;
+        return this == CONFIRMATION_RECEIPT_REQUIRED || this == ACTION_POLICY;
     }
 }

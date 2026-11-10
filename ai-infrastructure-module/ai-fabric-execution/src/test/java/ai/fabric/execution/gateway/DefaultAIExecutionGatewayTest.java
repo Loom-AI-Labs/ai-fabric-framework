@@ -71,6 +71,8 @@ import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.springframework.core.task.AsyncTaskExecutor;
 import org.springframework.core.task.support.TaskExecutorAdapter;
 
@@ -151,8 +153,11 @@ class DefaultAIExecutionGatewayTest {
             .isEqualTo(1);
     }
 
-    @Test
-    void replacesAdapterSuppliedIdentityWithTrustedExecutionSubject() {
+    @ParameterizedTest
+    @EnumSource(SpecialistWritePolicy.class)
+    void replacesAdapterSuppliedIdentityAndWritePolicyWithRegisteredAuthority(
+        SpecialistWritePolicy writePolicy
+    ) {
         AtomicReference<PipelineContext> observed = new AtomicReference<>();
         SpecialistDefinition<ResolverInput, ResolverOutput> base =
             definition(false);
@@ -162,7 +167,12 @@ class DefaultAIExecutionGatewayTest {
             new SpecialistDefinition<>(
                 base.identity(),
                 base.instructions(),
-                base.executionProfile(),
+                new SpecialistExecutionProfile(
+                    base.executionProfile().mode(),
+                    base.executionProfile().requestedCapabilities(),
+                    base.executionProfile().strategy(),
+                    writePolicy
+                ),
                 base.limits(),
                 base.delegationPolicy(),
                 base.handoffPolicy(),
@@ -189,6 +199,7 @@ class DefaultAIExecutionGatewayTest {
                         return OrchestrationContext.builder()
                             .userId("untrusted-user")
                             .sessionId("untrusted-session")
+                            .specialistActionPolicyWrites(writePolicy != SpecialistWritePolicy.ACTION_POLICY)
                             .position("resolver")
                             .metadata(Map.ofEntries(
                                 Map.entry(
@@ -261,6 +272,8 @@ class DefaultAIExecutionGatewayTest {
         );
 
         assertThat(result.succeeded()).isTrue();
+        assertThat(observed.get().getOrchestrationContext().isSpecialistActionPolicyWrites())
+            .isEqualTo(writePolicy == SpecialistWritePolicy.ACTION_POLICY);
         assertThat(observed.get().getOrchestrationContext().getUserId())
             .isEqualTo("account-42");
         assertThat(observed.get().getOrchestrationContext().getSessionId())
@@ -985,8 +998,9 @@ class DefaultAIExecutionGatewayTest {
         assertThat(result.failure().reason()).isEqualTo("DEADLINE_EXCEEDED");
     }
 
-    @Test
-    void convertsInternalWriteCandidateIntoSafeDurableProposal() {
+    @ParameterizedTest
+    @EnumSource(value = SpecialistWritePolicy.class, names = {"CONFIRMATION_RECEIPT_REQUIRED", "ACTION_POLICY"})
+    void convertsInternalWriteCandidateIntoSafeDurableProposal(SpecialistWritePolicy writePolicy) {
         ActionProposalCoordinator coordinator =
             mock(ActionProposalCoordinator.class);
         ActionProposalView proposal = new ActionProposalView(
@@ -1006,7 +1020,7 @@ class DefaultAIExecutionGatewayTest {
             any(),
             any()
         )).thenReturn(proposal);
-        DefaultAIExecutionGateway gateway = writeGateway(coordinator);
+        DefaultAIExecutionGateway gateway = writeGateway(coordinator, writeProposalResult(), writePolicy);
 
         AIExecutionResult<ResolverOutput> result = gateway.execute(
             new AIExecutionRequest<>(
@@ -1329,6 +1343,14 @@ class DefaultAIExecutionGatewayTest {
         ActionProposalCoordinator coordinator,
         OrchestrationResult orchestrationResult
     ) {
+        return writeGateway(coordinator, orchestrationResult, SpecialistWritePolicy.CONFIRMATION_RECEIPT_REQUIRED);
+    }
+
+    private DefaultAIExecutionGateway writeGateway(
+        ActionProposalCoordinator coordinator,
+        OrchestrationResult orchestrationResult,
+        SpecialistWritePolicy writePolicy
+    ) {
         AIActionMetaData writeMetadata = AIActionMetaData.builder()
             .name("update_address")
             .accessMode(ActionAccessMode.WRITE_ONLY)
@@ -1341,7 +1363,7 @@ class DefaultAIExecutionGatewayTest {
             .thenReturn(Optional.of(writeMetadata));
         OrchestrationProperties properties = orchestrationProperties();
         SpecialistDefinition<ResolverInput, ResolverOutput> definition =
-            writeDefinition();
+            writeDefinition(writePolicy);
         return new DefaultAIExecutionGateway(
             new DefaultSpecialistRegistry(
                 List.of(definition),
@@ -1496,7 +1518,7 @@ class DefaultAIExecutionGatewayTest {
         );
     }
 
-    private SpecialistDefinition<ResolverInput, ResolverOutput> writeDefinition() {
+    private SpecialistDefinition<ResolverInput, ResolverOutput> writeDefinition(SpecialistWritePolicy writePolicy) {
         RequestedCapabilityProfile requested =
             new RequestedCapabilityProfile(
                 false,
@@ -1519,7 +1541,7 @@ class DefaultAIExecutionGatewayTest {
                 "resolver",
                 requested,
                 ExecutionStrategy.SINGLE_PASS,
-                SpecialistWritePolicy.CONFIRMATION_RECEIPT_REQUIRED
+                writePolicy
             ),
             SpecialistLimits.defaults(),
             new SpecialistInputAdapter<>() {

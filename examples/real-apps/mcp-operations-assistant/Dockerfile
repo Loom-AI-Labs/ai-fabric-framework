@@ -1,11 +1,11 @@
 # syntax=docker/dockerfile:1.7
 # Build context: repository root.
 #
-# The connector and execution hardening is published in AI Fabric 0.8.46. This
-# image therefore resolves the immutable framework release from Maven Central
-# and packages only the reference application from this source revision.
+# This image resolves framework artifacts from Maven Central and packages only
+# the reference application. The 0.8.47 RC default requires actual publication
+# before this Central-backed build can consume it.
 
-ARG AI_FABRIC_VERSION=0.8.46
+ARG AI_FABRIC_VERSION=0.8.47
 ARG APP_VERSION=1.0.0-SNAPSHOT
 ARG SOURCE_COMMIT=
 ARG SOURCE_BRANCH=

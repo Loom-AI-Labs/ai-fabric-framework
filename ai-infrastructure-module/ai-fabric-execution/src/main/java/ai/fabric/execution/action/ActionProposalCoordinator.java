@@ -20,6 +20,8 @@ import ai.fabric.intent.action.invocation.GovernedActionInvocationStatus;
 import ai.fabric.intent.orchestration.OrchestrationContext;
 import ai.fabric.intent.orchestration.capability.EffectiveCapabilityPolicySupport;
 import ai.fabric.intent.orchestration.capability.EffectiveCapabilityProfile;
+import ai.fabric.intent.orchestration.control.OrchestrationControlException;
+import ai.fabric.intent.orchestration.control.OrchestrationTurnGuard;
 import ai.fabric.intent.orchestration.pipeline.PipelineContext;
 import ai.fabric.intent.orchestration.pipeline.steps.OrchestrationPolicyResolutionStep;
 import ai.fabric.intent.orchestration.request.ConversationPersistencePolicy;
@@ -171,7 +173,7 @@ public final class ActionProposalCoordinator {
                 ),
                 trustedContext,
                 currentProfile,
-                ActionConfirmationState.NOT_CONFIRMED,
+                ActionConfirmationState.PROPOSAL_PREFLIGHT,
                 evidence
             )
         );
@@ -294,6 +296,19 @@ public final class ActionProposalCoordinator {
         ActionProposalDecisionRequest request,
         TrustedExecutionContext trustedContext
     ) {
+        return decide(request, trustedContext, null);
+    }
+
+    /**
+     * Confirm with a host-owned guard on the freshly resolved action context.
+     * Terminal receipt replay and rejection do not invoke the guard. Dispatched
+     * outcomes remain authoritative even if the host deadline subsequently expires.
+     */
+    public ActionProposalDecisionResult decide(
+        ActionProposalDecisionRequest request,
+        TrustedExecutionContext trustedContext,
+        OrchestrationTurnGuard guard
+    ) {
         Objects.requireNonNull(request, "request is required");
         Objects.requireNonNull(trustedContext, "trustedContext is required");
         try {
@@ -304,7 +319,7 @@ public final class ActionProposalCoordinator {
             if (request.decision() == ActionProposalDecision.REJECT) {
                 return reject(receipt);
             }
-            return confirm(receipt, trustedContext);
+            return confirm(receipt, trustedContext, guard);
         } catch (ActionProposalPersistenceException ex) {
             return storeUnavailable(request.receiptId());
         }
@@ -375,7 +390,8 @@ public final class ActionProposalCoordinator {
 
     private ActionProposalDecisionResult confirm(
         ActionProposalReceipt initial,
-        TrustedExecutionContext trustedContext
+        TrustedExecutionContext trustedContext,
+        OrchestrationTurnGuard guard
     ) {
         ActionProposalReceipt receipt = expireIfNeeded(initial);
         if (receipt.status().terminal()) {
@@ -398,8 +414,12 @@ public final class ActionProposalCoordinator {
         CurrentAction current;
         try {
             current = resolveCurrent(receipt, trustedContext);
+            current.actionContext().orchestrationContext().setOrchestrationTurnGuard(guard);
+            if (guard != null) {
+                guard.verifyBeforeOrchestration();
+            }
             GovernedActionInvocationOutcome preflight = invocationService.invoke(
-                invocation(current, receipt, ActionConfirmationState.NOT_CONFIRMED)
+                invocation(current, receipt, ActionConfirmationState.PROPOSAL_PREFLIGHT)
             );
             if (preflight.status()
                 != GovernedActionInvocationStatus.CONFIRMATION_REQUIRED) {
@@ -412,6 +432,8 @@ public final class ActionProposalCoordinator {
                     )
                 );
             }
+        } catch (OrchestrationControlException ex) {
+            return failBeforeExecution(receipt, ex.code(), ex.getMessage());
         } catch (SpecialistCapabilityResolutionException ex) {
             return failBeforeExecution(receipt, ex.reason(), ex.getMessage());
         } catch (ActionProposalValidationException ex) {
@@ -427,7 +449,7 @@ public final class ActionProposalCoordinator {
         if (receipt.status() == ActionProposalReceiptStatus.PROPOSED) {
             ActionProposalReceipt confirmed = receipt.confirmed(clock.instant());
             if (!compareAndSetReceipt(receipt, confirmed)) {
-                return confirm(reload(receipt.receiptId()), trustedContext);
+                return confirm(reload(receipt.receiptId()), trustedContext, guard);
             }
             receipt = confirmed;
             metrics.record("confirmed", receipt.actionName(), receipt.status());
@@ -438,7 +460,7 @@ public final class ActionProposalCoordinator {
 
         ActionProposalReceipt executing = receipt.executing(clock.instant());
         if (!compareAndSetReceipt(receipt, executing)) {
-            return confirm(reload(receipt.receiptId()), trustedContext);
+            return confirm(reload(receipt.receiptId()), trustedContext, guard);
         }
         metrics.record("executing", executing.actionName(), executing.status());
 

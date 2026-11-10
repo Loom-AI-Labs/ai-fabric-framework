@@ -5,13 +5,17 @@ AI Fabric Framework publishes to **Maven Central** via the Sonatype Central Port
 - Group: `io.github.loom-ai-labs`
 - BOM artifact: `ai-fabric-bom`
 - Release tag format: `ai-fabric-framework-v<version>`
-- Release version: `0.8.46`
-- Previous immutable release: `0.8.45`
+- Release version: `0.8.47`
+- Previous immutable release: `0.8.46`
+
+See [0.8.47 notes](release-notes/0.8.47.md) for scope and actual qualification.
+Local installs do not prove publication, Central-only consumption or hosted adoption.
 
 ## Consume From Maven Central
 
 No repository configuration and no credentials are needed to consume — Central is the default
 Maven repository.
+Check publication before adopting these coordinates.
 
 ```xml
 <dependencyManagement>
@@ -19,7 +23,7 @@ Maven repository.
     <dependency>
       <groupId>io.github.loom-ai-labs</groupId>
       <artifactId>ai-fabric-bom</artifactId>
-      <version>0.8.46</version>
+      <version>0.8.47</version>
       <type>pom</type>
       <scope>import</scope>
     </dependency>
@@ -51,7 +55,7 @@ as GitHub Actions repository secrets:
 mvn -B -V --no-transfer-progress -f ai-infrastructure-module/pom.xml \
   -Dai.vector-db.lucene.cleanup-on-close=true \
   -Prelease \
-  -pl '!integration-Testing/testcontainers-support,!integration-Testing/integration-tests,!integration-Testing/relationship-query-integration-tests,!integration-Testing/chat-session-integration-tests,!integration-Testing/behavior-integration-tests' \
+  -pl '!integration-Testing/vector-contract-tests,!integration-Testing/testcontainers-support,!integration-Testing/integration-tests,!integration-Testing/relationship-query-integration-tests,!integration-Testing/chat-session-integration-tests,!integration-Testing/behavior-integration-tests' \
   install
 mvn -B -V --no-transfer-progress -f examples/minimal-spring-boot/pom.xml compile
 mvn -B -V --no-transfer-progress -f examples/real-apps/pom.xml install
@@ -69,11 +73,11 @@ Plugin `0.11.0` does not produce a valid multi-module Central bundle under
 Maven `3.10.0`. Change this pin only after a complete test publication proves
 the generated bundle layout remains valid.
 
-Tag and create a GitHub Release; the release workflow publishes automatically:
+Only after separate approval, tag and create a GitHub Release; the release workflow publishes automatically:
 
 ```bash
-git tag -a ai-fabric-framework-v0.8.46 -m "AI Fabric Framework 0.8.46"
-git push origin ai-fabric-framework-v0.8.46
+git tag -a ai-fabric-framework-v0.8.47 -m "AI Fabric Framework 0.8.47"
+git push origin ai-fabric-framework-v0.8.47
 ```
 
 Then create a GitHub Release from the tag. The workflow runs:
@@ -99,7 +103,7 @@ Use `curl` before publishing to confirm whether a version already exists:
 
 ```bash
 curl -s -o /dev/null -w '%{http_code}\n' \
-  https://repo1.maven.org/maven2/io/github/loom-ai-labs/ai-fabric-bom/0.8.46/ai-fabric-bom-0.8.46.pom
+  https://repo1.maven.org/maven2/io/github/loom-ai-labs/ai-fabric-bom/0.8.47/ai-fabric-bom-0.8.47.pom
 ```
 
 ## Boundary

@@ -136,6 +136,13 @@ public class OrchestrationContext {
     private String specialistInstructions;
 
     /**
+     * Server-owned opt-in to governed specialist writes under the action's own policy.
+     * The execution gateway overwrites adapter values from the registered definition.
+     */
+    @JsonIgnore
+    private boolean specialistActionPolicyWrites;
+
+    /**
      * Backend-frozen history projection for one explicitly owned interactive turn.
      *
      * <p>This cannot be populated from public request JSON. Conversation-aware

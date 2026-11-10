@@ -20,13 +20,20 @@ import ai.fabric.intent.orchestration.capability.EffectiveCapabilityProfile;
 import ai.fabric.intent.orchestration.policy.OrchestrationPolicy;
 import ai.fabric.intent.orchestration.control.OrchestrationControlException;
 import ai.fabric.intent.orchestration.control.OrchestrationTurnGuard;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.Mockito;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 
 class DefaultGovernedActionInvocationServiceTest {
 
@@ -34,11 +41,13 @@ class DefaultGovernedActionInvocationServiceTest {
     private AIActionHandler handler;
     private AIActionMetaData metadata;
     private DefaultGovernedActionInvocationService service;
+    private OrchestrationTurnGuard guard;
 
     @BeforeEach
     void setUp() {
         registry = mock(AIActionRegistry.class);
         handler = mock(AIActionHandler.class);
+        guard = mock(OrchestrationTurnGuard.class);
         metadata = AIActionMetaData.builder()
             .name("update_payment")
             .accessMode(ActionAccessMode.READ_WRITE)
@@ -108,6 +117,18 @@ class DefaultGovernedActionInvocationServiceTest {
             org.mockito.ArgumentMatchers.anyMap(),
             org.mockito.ArgumentMatchers.any()
         )).thenReturn(ActionResult.builder().success(true).message("Transferred").build());
+
+        GovernedActionInvocationOutcome preflight = service.invoke(invocation(
+            profile(Set.of(), Set.of("update_payment")),
+            ActionConfirmationState.PROPOSAL_PREFLIGHT,
+            Map.of("last4", "4242")
+        ));
+        assertThat(preflight.status()).isEqualTo(GovernedActionInvocationStatus.DENIED);
+        assertThat(preflight.publicFailure().reason()).isEqualTo("ACTION_PROPOSAL_POLICY_CHANGED");
+        verify(dynamicHandler, never()).executeAction(
+            org.mockito.ArgumentMatchers.anyMap(),
+            org.mockito.ArgumentMatchers.any()
+        );
 
         GovernedActionInvocationOutcome outcome = service.invoke(invocation(
             profile(Set.of(), Set.of("update_payment")),
@@ -313,8 +334,132 @@ class DefaultGovernedActionInvocationServiceTest {
 
         assertThat(outcome.status()).isEqualTo(GovernedActionInvocationStatus.DENIED);
         assertThat(outcome.publicFailure().reason()).isEqualTo("AI_TURN_LEASE_STALE");
+        verify(guard, never()).afterAction(
+            org.mockito.ArgumentMatchers.any(),
+            org.mockito.ArgumentMatchers.any(),
+            org.mockito.ArgumentMatchers.any()
+        );
         verify(handler, never()).executeAction(
             org.mockito.ArgumentMatchers.anyMap(),
+            org.mockito.ArgumentMatchers.any()
+        );
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+        "success, EXECUTED, false", "failure, FAILED, false",
+        "null, FAILED, false", "writeException, OUTCOME_UNKNOWN, false",
+        "readException, FAILED, false",
+        "success, EXECUTED, true", "failure, FAILED, true",
+        "null, FAILED, true", "writeException, OUTCOME_UNKNOWN, true",
+        "readException, FAILED, true"
+    })
+    @ExtendWith(OutputCaptureExtension.class)
+    void reportsExactlyTheDispatchedOutcomeEvenWhenCompletionHookThrows(
+        String scenario,
+        GovernedActionInvocationStatus expected,
+        boolean hookThrows,
+        CapturedOutput logs
+    ) {
+        boolean read = scenario.equals("readException");
+        boolean handlerThrows = scenario.endsWith("Exception");
+        metadata.setAccessMode(read ? ActionAccessMode.READ : ActionAccessMode.READ_WRITE);
+        ActionResult result = ActionResult.builder()
+            .success(scenario.equals("success"))
+            .errorCode(scenario.equals("failure") ? "BUSINESS_FAILURE" : null)
+            .build();
+        AtomicBoolean dispatched = new AtomicBoolean();
+        when(handler.executeAction(
+            org.mockito.ArgumentMatchers.anyMap(), org.mockito.ArgumentMatchers.any()
+        )).thenAnswer(call -> {
+            dispatched.set(true);
+            if (handlerThrows) {
+                throw new IllegalStateException("handler failed");
+            }
+            return scenario.equals("null") ? null : result;
+        });
+        Mockito.doAnswer(call -> {
+            assertThat(dispatched).isTrue();
+            if (hookThrows) {
+                throw new IllegalStateException("private receipt payload");
+            }
+            return null;
+        }).when(guard).afterAction(
+            org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(),
+            org.mockito.ArgumentMatchers.any()
+        );
+        Map<String, Object> parameters = Map.of("last4", "4242");
+
+        GovernedActionInvocationOutcome outcome = service.invoke(invocation(
+            read ? profile(Set.of("update_payment"), Set.of())
+                : profile(Set.of(), Set.of("update_payment")),
+            ActionConfirmationState.CONFIRMED, parameters
+        ));
+
+        assertThat(outcome.status()).isEqualTo(expected);
+        if (!handlerThrows && !scenario.equals("null")) {
+            assertThat(outcome.actionResult()).isSameAs(result);
+        }
+        if (scenario.equals("null")) {
+            assertThat(outcome.publicFailure().reason()).isEqualTo("ACTION_EMPTY_RESULT");
+        }
+        var order = Mockito.inOrder(handler, guard);
+        order.verify(guard).verifyBeforeAction(
+            org.mockito.ArgumentMatchers.same(metadata), org.mockito.ArgumentMatchers.any()
+        );
+        order.verify(handler).executeAction(
+            org.mockito.ArgumentMatchers.eq(parameters), org.mockito.ArgumentMatchers.any()
+        );
+        order.verify(guard).afterAction(
+            org.mockito.ArgumentMatchers.same(metadata),
+            org.mockito.ArgumentMatchers.argThat(context ->
+                context.orchestrationContext().getOrchestrationTurnGuard() == guard
+                    && context.actionParams().equals(parameters)),
+            org.mockito.ArgumentMatchers.same(outcome)
+        );
+        verify(handler).executeAction(
+            org.mockito.ArgumentMatchers.anyMap(), org.mockito.ArgumentMatchers.any()
+        );
+        verify(handler, Mockito.times(handlerThrows ? 1 : 0)).handleError(
+            org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any()
+        );
+        if (hookThrows) {
+            assertThat(logs.getOut()).contains(
+                "Action completion hook failed: action=update_payment outcome=" + expected,
+                "cause=java.lang.IllegalStateException"
+            ).doesNotContain("private receipt payload");
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"profile", "schema", "authorization", "authorizationException", "confirmation", "guard"})
+    void neverReportsCompletionBeforeDispatch(String boundary) {
+        if (boundary.equals("authorization")) {
+            when(handler.validateActionAllowed(org.mockito.ArgumentMatchers.any())).thenReturn(false);
+        }
+        if (boundary.equals("authorizationException")) {
+            when(handler.validateActionAllowed(org.mockito.ArgumentMatchers.any()))
+                .thenThrow(new IllegalStateException("authorization unavailable"));
+        }
+        if (boundary.equals("guard")) {
+            Mockito.doThrow(new OrchestrationControlException("STALE", "Stale turn"))
+                .when(guard).verifyBeforeAction(
+                    org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any()
+                );
+        }
+        GovernedActionInvocationOutcome outcome = service.invoke(invocation(
+            profile(Set.of(), boundary.equals("profile") ? Set.of() : Set.of("update_payment")),
+            boundary.equals("confirmation") ? ActionConfirmationState.NOT_CONFIRMED
+                : ActionConfirmationState.CONFIRMED,
+            boundary.equals("schema") ? Map.of() : Map.of("last4", "4242")
+        ));
+
+        assertThat(outcome.executed()).isFalse();
+        verify(handler, never()).executeAction(
+            org.mockito.ArgumentMatchers.anyMap(), org.mockito.ArgumentMatchers.any()
+        );
+        verify(guard, never()).afterAction(
+            org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(),
             org.mockito.ArgumentMatchers.any()
         );
     }
@@ -324,7 +469,8 @@ class DefaultGovernedActionInvocationServiceTest {
         ActionConfirmationState confirmationState,
         Map<String, Object> parameters
     ) {
-        OrchestrationContext orchestrationContext = OrchestrationContext.forUser("user-1");
+        OrchestrationContext orchestrationContext = OrchestrationContext.builder()
+            .userId("user-1").orchestrationTurnGuard(guard).build();
         return new GovernedActionInvocation(
             "update_payment",
             parameters,

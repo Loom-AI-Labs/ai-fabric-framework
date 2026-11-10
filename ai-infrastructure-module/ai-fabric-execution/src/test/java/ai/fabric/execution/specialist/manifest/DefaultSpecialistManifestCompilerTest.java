@@ -8,20 +8,95 @@ import ai.fabric.execution.specialist.RegisteredSpecialist;
 import ai.fabric.execution.specialist.SpecialistId;
 import ai.fabric.execution.specialist.SpecialistDefinitionSource;
 import ai.fabric.execution.specialist.SpecialistOutputMode;
+import ai.fabric.execution.specialist.SpecialistDefinitionValidator;
+import ai.fabric.execution.specialist.SpecialistWritePolicy;
+import ai.fabric.intent.action.AIActionMetaData;
+import ai.fabric.intent.action.AIActionRegistry;
+import ai.fabric.intent.action.ActionAccessMode;
 import ai.fabric.execution.input.SpecialistInputContinuation;
 import ai.fabric.execution.input.SpecialistInputRequirement;
 import ai.fabric.intent.orchestration.request.OrchestrationIntentPolicy;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 
 class DefaultSpecialistManifestCompilerTest {
 
     private final DefaultSpecialistManifestCompiler compiler =
         new DefaultSpecialistManifestCompiler();
+
+    @ParameterizedTest
+    @CsvSource({"ACTION_POLICY, false", "ACTION_POLICY, true", "CONFIRMATION_RECEIPT_REQUIRED, true"})
+    void compilesExplicitWritePolicyWithExistingBounds(
+        SpecialistWritePolicy policy, boolean confirmationRequired
+    ) {
+        SpecialistCompilationResult result = compiler.compile(
+            writeManifest(policy, true, 700), writeContext(confirmationRequired)
+        );
+        var definition = result.specialist().definition();
+        assertThat(definition.executionProfile().writePolicy()).isEqualTo(policy);
+        assertThat(definition.executionProfile().writeEnabled()).isTrue();
+        assertThat(definition.executionProfile().requestedCapabilities().proposableWriteActions())
+            .containsExactly("update_address");
+        assertThat(definition.limits().maxDuration()).isEqualTo(Duration.ofSeconds(30));
+        assertThat(definition.limits().maxOutputTokens()).isEqualTo(700);
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+        "DISABLED, true, 700, WRITE_POLICY_INVALID",
+        "ACTION_POLICY, false, 700, WRITE_POLICY_UNUSED",
+        "ACTION_POLICY, true, 0, SPECIALIST_LIMIT_INVALID",
+        "ACTION_POLICY, true, 2147483647, SPECIALIST_LIMIT_INVALID",
+        "CONFIRMATION_RECEIPT_REQUIRED, true, 700, MANIFEST_COMPILATION_FAILED"
+    })
+    void writePoliciesDoNotBypassCapabilityOrLimitValidation(
+        SpecialistWritePolicy policy, boolean writes, int outputTokens, String reason
+    ) {
+        assertThatThrownBy(() -> compiler.compile(
+            writeManifest(policy, writes, outputTokens), writeContext(false)
+        )).isInstanceOf(SpecialistManifestException.class)
+            .satisfies(error -> assertThat(((SpecialistManifestException) error).reason())
+                .isEqualTo(reason));
+    }
+
+    private SpecialistManifest writeManifest(
+        SpecialistWritePolicy policy, boolean writes, int outputTokens
+    ) {
+        var mapper = ManifestTestFixtures.objectMapper();
+        ObjectNode manifest = mapper.valueToTree(ManifestTestFixtures.manifest());
+        ObjectNode spec = (ObjectNode) manifest.path("spec");
+        ((ObjectNode) spec.path("execution")).put("writePolicy", policy.name());
+        if (writes) {
+            ObjectNode actions = (ObjectNode) spec.path("capabilities").path("actions");
+            actions.putArray("visible").add("update_address");
+            actions.putArray("proposableWrites").add("update_address");
+        }
+        ((ObjectNode) spec.path("limits")).put("maxOutputTokens", outputTokens);
+        return mapper.convertValue(manifest, SpecialistManifest.class);
+    }
+
+    private SpecialistCompilationContext writeContext(boolean confirmationRequired) {
+        SpecialistCompilationContext base = ManifestTestFixtures.compilationContext();
+        AIActionRegistry registry = org.mockito.Mockito.mock(AIActionRegistry.class);
+        org.mockito.Mockito.when(registry.getAllMetadata()).thenReturn(List.of(
+            AIActionMetaData.builder().name("update_address").accessMode(ActionAccessMode.WRITE_ONLY)
+                .confirmationRequired(confirmationRequired).build()
+        ));
+        return new SpecialistCompilationContext(
+            base.schemaRegistry(), base.promptProfileRegistry(), base.groundingValidatorRegistry(),
+            base.finalOutputValidatorRegistry(), base.directOutputProjectorRegistry(),
+            base.outputNormalizerRegistry(), base.inputContinuationRegistry(), base.schemaValidator(),
+            new SpecialistDefinitionValidator(registry, Set.of("deep"), Set.of("support-policy")),
+            base.canonicalJson(), base.objectMapper(), base.iterativeModes(), base.source(), base.contentHash()
+        );
+    }
 
     @Test
     void compilesConfigurationOnlySpecialistIntoExistingDefinitionPath() {

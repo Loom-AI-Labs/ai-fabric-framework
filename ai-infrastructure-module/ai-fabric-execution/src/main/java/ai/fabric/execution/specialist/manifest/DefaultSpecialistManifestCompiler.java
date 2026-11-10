@@ -12,7 +12,6 @@ import ai.fabric.execution.specialist.SpecialistIdentity;
 import ai.fabric.execution.specialist.SpecialistInstructions;
 import ai.fabric.execution.specialist.SpecialistLimits;
 import ai.fabric.execution.specialist.SpecialistOutputMode;
-import ai.fabric.execution.specialist.SpecialistWritePolicy;
 import ai.fabric.execution.input.SpecialistInputContinuation;
 import ai.fabric.intent.orchestration.capability.RequestedCapabilityProfile;
 import java.util.ArrayList;
@@ -456,20 +455,18 @@ public final class DefaultSpecialistManifestCompiler
             );
         }
         if (!capabilities.proposableWriteActions().isEmpty()
-            && spec.execution().writePolicy()
-                != SpecialistWritePolicy.CONFIRMATION_RECEIPT_REQUIRED) {
+            && !spec.execution().writePolicy().permitsProposals()) {
             throw failure(
                 "WRITE_POLICY_INVALID",
-                "Write proposals require CONFIRMATION_RECEIPT_REQUIRED.",
+                "Write proposals require an enabled write policy.",
                 context.source()
             );
         }
         if (capabilities.proposableWriteActions().isEmpty()
-            && spec.execution().writePolicy()
-                == SpecialistWritePolicy.CONFIRMATION_RECEIPT_REQUIRED) {
+            && spec.execution().writePolicy().permitsProposals()) {
             throw failure(
                 "WRITE_POLICY_UNUSED",
-                "CONFIRMATION_RECEIPT_REQUIRED requires at least one proposable write.",
+                "An enabled write policy requires at least one proposable write.",
                 context.source()
             );
         }
