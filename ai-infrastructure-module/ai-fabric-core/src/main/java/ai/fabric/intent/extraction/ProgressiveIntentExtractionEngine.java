@@ -141,7 +141,7 @@ public class ProgressiveIntentExtractionEngine {
         if (!"multi_step".equals(forceMode)) {
             ExtractionAttempt rawAttempt = compoundStrategy.attemptExtract(input, safeContext);
             totalLlmCalls += rawAttempt.getLlmCalls();
-            compoundAttempt = assessAttempt(rawAttempt, userQuery);
+            compoundAttempt = assessAttempt(rawAttempt, userQuery, safeContext);
             attemptEvents.add(toAttemptEvent(compoundAttempt));
             attempts.add(compoundAttempt);
 
@@ -191,10 +191,11 @@ public class ProgressiveIntentExtractionEngine {
                 ExtractionAttempt rawRepairAttempt = repairStrategy.attemptRepair(input, safeContext, compoundAttempt);
                 totalLlmCalls += rawRepairAttempt.getLlmCalls();
                 ExtractionAttempt repairAttempt = enforceSemanticRecoveryPolicy(
-                    assessAttempt(rawRepairAttempt, userQuery),
+                    assessAttempt(rawRepairAttempt, userQuery, safeContext),
                     attempts,
                     recoveryPolicy,
-                    userQuery
+                    userQuery,
+                    safeContext
                 );
                 attemptEvents.add(toAttemptEvent(repairAttempt));
                 attempts.add(repairAttempt);
@@ -250,10 +251,11 @@ public class ProgressiveIntentExtractionEngine {
                 );
                 totalLlmCalls += rawCompletionAttempt.getLlmCalls();
                 ExtractionAttempt completed = enforceSemanticRecoveryPolicy(
-                    assessAttempt(rawCompletionAttempt, userQuery),
+                    assessAttempt(rawCompletionAttempt, userQuery, safeContext),
                     attempts,
                     recoveryPolicy,
-                    userQuery
+                    userQuery,
+                    safeContext
                 );
                 attemptEvents.add(toAttemptEvent(completed));
                 attempts.add(completed);
@@ -315,10 +317,11 @@ public class ProgressiveIntentExtractionEngine {
             );
             totalLlmCalls += rawMultiStepAttempt.getLlmCalls();
             ExtractionAttempt multiStepAttempt = enforceSemanticRecoveryPolicy(
-                assessAttempt(rawMultiStepAttempt, userQuery),
+                assessAttempt(rawMultiStepAttempt, userQuery, safeContext),
                 attempts,
                 recoveryPolicy,
-                userQuery
+                userQuery,
+                safeContext
             );
             attemptEvents.add(toAttemptEvent(multiStepAttempt));
             attempts.add(multiStepAttempt);
@@ -496,7 +499,8 @@ public class ProgressiveIntentExtractionEngine {
     ) {
     }
 
-    private ExtractionAttempt assessAttempt(ExtractionAttempt attempt, String originalQuery) {
+    private ExtractionAttempt assessAttempt(ExtractionAttempt attempt, String originalQuery,
+                                             OrchestrationContext context) {
         if (attempt == null) {
             return null;
         }
@@ -556,7 +560,7 @@ public class ProgressiveIntentExtractionEngine {
                 .build();
         }
 
-        IntentExtractionValidator.ValidationResult validation = validator.validate(processed, originalQuery);
+        IntentExtractionValidator.ValidationResult validation = validator.validate(processed, originalQuery, context);
         return ExtractionAttempt.builder()
             .success(validation.valid())
             .response(processed)
@@ -577,7 +581,8 @@ public class ProgressiveIntentExtractionEngine {
         ExtractionAttempt candidate,
         List<ExtractionAttempt> priorAttempts,
         SemanticRecoveryPolicy policy,
-        String originalQuery
+        String originalQuery,
+        OrchestrationContext context
     ) {
         if (candidate == null || !candidate.isSuccess() || candidate.getResponse() == null) {
             return candidate;
@@ -748,7 +753,7 @@ public class ProgressiveIntentExtractionEngine {
             .build();
         effectiveResponse.normalize();
         IntentExtractionValidator.ValidationResult effectiveValidation =
-            validator.validate(effectiveResponse, originalQuery);
+            validator.validate(effectiveResponse, originalQuery, context);
         return ExtractionAttempt.builder()
             .success(effectiveValidation.valid())
             .response(effectiveResponse)

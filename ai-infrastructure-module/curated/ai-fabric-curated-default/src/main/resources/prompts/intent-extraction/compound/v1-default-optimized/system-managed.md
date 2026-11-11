@@ -72,6 +72,7 @@ Set requiresRetrieval, requiresGeneration, and requiresTargetResolution explicit
 9. requiresRetrieval MUST be set for INFORMATION intents:
    - requiresRetrieval=true when the answer must be grounded in the indexed knowledge base.
    - requiresRetrieval=false when no indexed retrieval is needed (e.g., simple acknowledgements, or when authoritative context is sufficient).
+   - Live READ tools are separate from indexed retrieval. When eligible READ tools can supply the needed facts without indexed knowledge, use INFORMATION with requiresRetrieval=false and vectorSpace=null; the server READ planner chooses the tool. Never invent a vectorSpace or ask the user for an internal knowledge domain to enable a READ tool.
    - When requiresRetrieval=false AND requiresGeneration=false you MUST provide directAnswer (a short reply, 1 sentence).
 10. requiresTargetResolution MUST be set when the request depends on resolving specific target(s) from attachments or prior retrieved results:
    - Set requiresTargetResolution=true when the user refers to a specific item/entity but does NOT provide an explicit identifier (e.g., "buy it", "compare both", "add this").

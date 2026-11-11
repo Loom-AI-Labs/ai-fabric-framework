@@ -1915,13 +1915,6 @@ public class IntentHandlingStep implements PipelineStep {
         Map<String, Object> metadata = informationPlan.metadata();
         boolean forceRetrievalWhenTargetsPresent = informationPlan.forceRetrievalWhenTargetsPresent();
 
-        OrchestrationResult retrievalDenial = requiresRetrieval
-            ? rejectDisallowedRetrieval(intent, retrievalEnabled, retrievalAllowlistRequired, ragBudgets)
-            : null;
-        if (retrievalDenial != null) {
-            return retrievalDenial;
-        }
-
         ReadActionResolutionService.ResolutionOutcome readActionResolution = suppliedReadActionResolution;
 
         if (!requiresRetrieval) {
@@ -2015,7 +2008,7 @@ public class IntentHandlingStep implements PipelineStep {
             metadata.put(DATA_KEY_REQUIRES_GENERATION, needsGeneration);
             metadata.put("requiresRetrieval", true);
         }
-        retrievalDenial = requiresRetrieval
+        OrchestrationResult retrievalDenial = requiresRetrieval
             ? rejectDisallowedRetrieval(intent, retrievalEnabled, retrievalAllowlistRequired, ragBudgets)
             : null;
         if (retrievalDenial != null) {

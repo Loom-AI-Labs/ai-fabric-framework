@@ -7,6 +7,8 @@ import ai.fabric.intent.action.AIActionMetaData;
 import ai.fabric.intent.action.AIActionRegistry;
 import ai.fabric.intent.action.ActionParameterContractValidator;
 import ai.fabric.intent.action.ActionParameterContractValidator.ActionParameterContractException;
+import ai.fabric.intent.orchestration.OrchestrationContext;
+import ai.fabric.intent.orchestration.information.ReadActionEligibilitySupport;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import lombok.RequiredArgsConstructor;
@@ -47,6 +49,11 @@ public class IntentExtractionValidator {
      * include additional, non-relational instructions).</p>
      */
     public ValidationResult validate(MultiIntentResponse response, String originalQuery) {
+        return validate(response, originalQuery, null);
+    }
+
+    public ValidationResult validate(MultiIntentResponse response, String originalQuery,
+                                     OrchestrationContext context) {
         List<ValidationIssue> issues = new ArrayList<>();
 
         if (response == null) {
@@ -59,13 +66,15 @@ public class IntentExtractionValidator {
             return toResult(issues);
         }
 
+        boolean qualifiedReadPath = ReadActionEligibilitySupport.hasQualifiedReadPath(actionHandlerRegistry, context);
         for (int i = 0; i < response.getIntents().size(); i++) {
             validateIntent(
                 response.getIntents().get(i),
                 i,
                 issues,
                 originalQuery,
-                response.getIntents().size() > 1
+                response.getIntents().size() > 1,
+                qualifiedReadPath
             );
         }
         validateDistinctObligationIds(response.getIntents(), issues);
@@ -100,7 +109,8 @@ public class IntentExtractionValidator {
                                 int index,
                                 List<ValidationIssue> issues,
                                 String originalQuery,
-                                boolean compound) {
+                                boolean compound,
+                                boolean qualifiedReadPath) {
         if (intent == null) {
             issues.add(ValidationIssue.error(IssueCode.INTENT_NULL, index, null, "Intent is null"));
             return;
@@ -161,7 +171,7 @@ public class IntentExtractionValidator {
         if (intent.getType() == IntentType.ACTION) {
             validateActionIntent(intent, index, issues, originalQuery);
         } else if (intent.getType() == IntentType.INFORMATION) {
-            validateInformationIntent(intent, index, issues);
+            validateInformationIntent(intent, index, issues, qualifiedReadPath);
         } else if (intent.getType() == IntentType.OUT_OF_SCOPE) {
             validateOutOfScopeIntent(intent, index, issues);
         }
@@ -320,7 +330,8 @@ public class IntentExtractionValidator {
         return trimmed.replaceAll("\\s+", " ");
     }
 
-    private void validateInformationIntent(Intent intent, int index, List<ValidationIssue> issues) {
+    private void validateInformationIntent(Intent intent, int index, List<ValidationIssue> issues,
+                                           boolean qualifiedReadPath) {
         if (intent.getNeedsAdvancedRAG() == null) {
             issues.add(ValidationIssue.error(
                 IssueCode.INFORMATION_MISSING_ADVANCED_RAG_DECISION,
@@ -342,6 +353,7 @@ public class IntentExtractionValidator {
         }
         if (Boolean.TRUE.equals(intent.getRequiresRetrieval())
             && !StringUtils.hasText(intent.getVectorSpace())
+            && !qualifiedReadPath
             && !hasDeclaredClarification(intent)) {
             issues.add(ValidationIssue.error(
                 IssueCode.INFORMATION_MISSING_VECTOR_SPACE,

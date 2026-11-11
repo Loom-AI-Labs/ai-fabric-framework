@@ -1,4 +1,23 @@
 actions:
+  - name: native_read_public_guide
+    description: Read the fictional public service guide explaining subscription cancellation procedure and billing-period timing. Reading this guide does not cancel anything. No account, input parameters or indexed document search is needed.
+    accessMode: READ
+    anonymousAllowed: true
+    groundingEligible: true
+    readActionResolutionEligible: true
+    adapterType: mcp-tool
+    inputSchema:
+      type: object
+      properties: {}
+      additionalProperties: false
+    outputSchema:
+      type: object
+      properties:
+        guide: {type: string}
+      required: [guide]
+    llmFacts: {copyFields: [guide]}
+    execution:
+      mcp: {connectionId: native-schema-fixture, toolName: guide.read}
   - name: native_read_setting
     description: Read a public synthetic setting by requestKey. No sign-in, vector search or business mutation is needed.
     accessMode: READ

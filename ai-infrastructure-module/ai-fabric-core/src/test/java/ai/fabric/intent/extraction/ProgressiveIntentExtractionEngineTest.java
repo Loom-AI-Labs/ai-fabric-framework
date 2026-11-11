@@ -84,7 +84,7 @@ class ProgressiveIntentExtractionEngineTest {
         )).thenReturn(raw);
         when(postProcessor.postProcess(any(MultiIntentResponse.class), anyString()))
             .thenReturn(incomplete);
-        when(validator.validate(any(MultiIntentResponse.class), anyString()))
+        when(validator.validate(any(MultiIntentResponse.class), anyString(), any(OrchestrationContext.class)))
             .thenReturn(validation);
 
         ProgressiveIntentExtractionEngine engine =
@@ -228,7 +228,7 @@ class ProgressiveIntentExtractionEngineTest {
         )).thenReturn(invalidVectorAttempt, actionMismatchAttempt);
         when(postProcessor.postProcess(any(MultiIntentResponse.class), anyString()))
             .thenReturn(invalidVectorResponse, actionMismatchResponse);
-        when(validator.validate(any(MultiIntentResponse.class), anyString()))
+        when(validator.validate(any(MultiIntentResponse.class), anyString(), any(OrchestrationContext.class)))
             .thenReturn(invalidVectorValidation, actionMismatchValidation);
 
         ProgressiveIntentExtractionEngine engine =
@@ -364,7 +364,7 @@ class ProgressiveIntentExtractionEngineTest {
 
         when(compound.attemptExtract(any(IntentExtractionInput.class), any(OrchestrationContext.class))).thenReturn(compoundAttempt);
         when(postProcessor.postProcess(any(MultiIntentResponse.class), anyString())).thenReturn(response);
-        when(validator.validate(any(MultiIntentResponse.class), anyString()))
+        when(validator.validate(any(MultiIntentResponse.class), anyString(), any(OrchestrationContext.class)))
             .thenReturn(new IntentExtractionValidator.ValidationResult(true, IntentExtractionValidator.ErrorCategory.NONE, List.of(), List.of()));
 
         ProgressiveIntentExtractionEngine engine = new ProgressiveIntentExtractionEngine(
@@ -449,7 +449,7 @@ class ProgressiveIntentExtractionEngineTest {
         when(compound.attemptExtract(any(IntentExtractionInput.class), any(OrchestrationContext.class))).thenReturn(compoundAttempt);
         when(repair.attemptRepair(any(IntentExtractionInput.class), any(OrchestrationContext.class), any(ExtractionAttempt.class))).thenReturn(repairAttempt);
         when(postProcessor.postProcess(any(MultiIntentResponse.class), anyString())).thenReturn(repaired);
-        when(validator.validate(any(MultiIntentResponse.class), anyString()))
+        when(validator.validate(any(MultiIntentResponse.class), anyString(), any(OrchestrationContext.class)))
             .thenReturn(new IntentExtractionValidator.ValidationResult(true, IntentExtractionValidator.ErrorCategory.NONE, List.of(), List.of()));
 
         ProgressiveIntentExtractionEngine engine = new ProgressiveIntentExtractionEngine(
@@ -547,7 +547,7 @@ class ProgressiveIntentExtractionEngineTest {
             any(SemanticRecoveryPolicy.class)
         )).thenReturn(multiStepAttempt);
         when(postProcessor.postProcess(any(MultiIntentResponse.class), anyString())).thenReturn(multiStepResponse);
-        when(validator.validate(any(MultiIntentResponse.class), anyString()))
+        when(validator.validate(any(MultiIntentResponse.class), anyString(), any(OrchestrationContext.class)))
             .thenReturn(new IntentExtractionValidator.ValidationResult(true, IntentExtractionValidator.ErrorCategory.NONE, List.of(), List.of()));
 
         ProgressiveIntentExtractionEngine engine = new ProgressiveIntentExtractionEngine(
@@ -658,7 +658,7 @@ class ProgressiveIntentExtractionEngineTest {
                 List.of(incompleteIssue.message()),
                 List.of()
             );
-        when(validator.validate(any(MultiIntentResponse.class), anyString()))
+        when(validator.validate(any(MultiIntentResponse.class), anyString(), any(OrchestrationContext.class)))
             .thenReturn(incompleteValidation)
             .thenReturn(new IntentExtractionValidator.ValidationResult(true, IntentExtractionValidator.ErrorCategory.NONE, List.of(), List.of()));
 
@@ -1023,7 +1023,7 @@ class ProgressiveIntentExtractionEngineTest {
         );
         when(postProcessor.postProcess(any(), anyString()))
             .thenAnswer(invocation -> invocation.getArgument(0));
-        when(validator.validate(any(), anyString()))
+        when(validator.validate(any(), anyString(), any(OrchestrationContext.class)))
             .thenReturn(rejectedValidation, valid, valid);
 
         ProgressiveIntentExtractionEngine engine =
@@ -1130,7 +1130,7 @@ class ProgressiveIntentExtractionEngineTest {
         );
         when(postProcessor.postProcess(any(), anyString()))
             .thenAnswer(invocation -> invocation.getArgument(0));
-        when(validator.validate(any(), anyString()))
+        when(validator.validate(any(), anyString(), any(OrchestrationContext.class)))
             .thenReturn(rejectedValidation, valid);
 
         ProgressiveIntentExtractionEngine engine =

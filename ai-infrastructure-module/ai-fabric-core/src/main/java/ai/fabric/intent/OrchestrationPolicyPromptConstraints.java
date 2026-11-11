@@ -66,6 +66,8 @@ public final class OrchestrationPolicyPromptConstraints {
             out.append("- For factual or lookup-style requests that need live system reads, keep intent.type=INFORMATION.\n");
             out.append("- The server may plan eligible READ actions after extraction; do NOT force those requests into ACTION just because a READ action exists.\n");
             out.append("- Reserve ACTION intents for explicit user-requested operations, especially mutating flows or direct operator commands.\n");
+            out.append("- requiresRetrieval means indexed knowledge/RAG, not a live READ tool call. For READ-only evidence set requiresRetrieval=false and vectorSpace=null.\n");
+            out.append("- READ tools do not require an indexed vector space. Never invent a vectorSpace or ask the user for an internal knowledge domain to enable a READ tool.\n");
         }
         if (capabilities.retrievalAllowlistRequired()) {
             out.append("- Retrieval requires a configured vectorSpace allowlist in this mode (fail-closed).\n");

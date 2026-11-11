@@ -230,7 +230,7 @@ public class MultiStepIntentExtractionStrategy implements IntentExtractionStrate
                 actionResolutions,
                 paramFill.paramsByIntentIndex()
             );
-            IntentExtractionValidator.ValidationResult validation = validator.validate(response);
+            IntentExtractionValidator.ValidationResult validation = validator.validate(response, userQuery, context);
             if (!validation.valid() && log.isDebugEnabled()) {
                 log.debug(
                     "Multi-step extraction validation rejected issueCodes={}",

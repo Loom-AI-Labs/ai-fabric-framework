@@ -105,7 +105,7 @@ public class CompoundIntentExtractionStrategy implements IntentExtractionStrateg
             }
 
             String sanitized = jsonSupport.stripCodeFences(content);
-            IntentExtractionValidator.ValidationResult validation = validator.validate(parsed);
+            IntentExtractionValidator.ValidationResult validation = validator.validate(parsed, query, context);
 
             return ExtractionAttempt.builder()
                 .success(validation.valid())

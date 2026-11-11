@@ -181,7 +181,8 @@ public class CompletionIntentExtractionStrategy {
 
             String sanitized = jsonSupport.stripCodeFences(content);
             MultiIntentResponse parsed = jsonSupport.parseResponse(content);
-            IntentExtractionValidator.ValidationResult validation = validator.validate(parsed);
+            IntentExtractionValidator.ValidationResult validation = validator.validate(parsed,
+                input != null ? input.userQuery() : null, context);
 
             return ExtractionAttempt.builder()
                 .success(validation.valid())

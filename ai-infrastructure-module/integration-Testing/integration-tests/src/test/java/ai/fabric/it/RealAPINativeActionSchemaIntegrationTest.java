@@ -49,7 +49,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
     "ai.actions.builtin.vector-management.enabled=false",
     "ai.chat.enabled=true",
     "ai.chat.auto-create-sessions=true",
-    "ai.intent-extraction.progressive.enabled=false",
+    "ai.intent-extraction.progressive.enabled=true",
     "ai.providers.llm-provider=openai",
     "ai.providers.embedding-provider=openai",
     "ai.providers.onnx.enabled=false",
@@ -60,19 +60,39 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
     "ai.service.features.enable-embeddings=false",
     "ai.service.features.enable-search=false",
     "ai.service.features.enable-rag=false",
-    "ai.orchestration.default-mode=native-fixture",
-    "ai.orchestration.modes.native-fixture.actions-enabled=true",
-    "ai.orchestration.modes.native-fixture.actions-preferred=true",
-    "ai.orchestration.modes.native-fixture.retrieval-enabled=false",
-    "ai.orchestration.modes.native-fixture.suggestions-enabled=false",
-    "ai.orchestration.modes.native-fixture.read-action-resolution.enabled=true",
-    "ai.orchestration.modes.native-fixture.read-action-resolution.require-allowlist=true",
-    "ai.orchestration.modes.native-fixture.read-action-resolution.allowed-read-actions[0]=native_read_setting",
-    "ai.orchestration.modes.native-fixture.read-action-resolution.allowed-read-actions[1]=native_read_private_setting",
-    "ai.orchestration.modes.native-fixture.read-action-resolution.max-total-actions=1",
-    "ai.orchestration.modes.native-fixture.read-action-resolution.rag-cooperation-mode=NONE"
+    "ai.orchestration.profile=PRODUCTION_CHAT",
+    "ai.orchestration.default-mode=executor",
+    "ai.orchestration.modes.executor.actions-enabled=true",
+    "ai.orchestration.modes.executor.actions-preferred=true",
+    "ai.orchestration.modes.executor.retrieval-enabled=false",
+    "ai.orchestration.modes.executor.retrieval-allowlist-required=true",
+    "ai.orchestration.modes.executor.vector-space-selection-required=false",
+    "ai.orchestration.modes.executor.knowledge-base-overview-enabled=false",
+    "ai.orchestration.modes.executor.suggestions-enabled=false",
+    "ai.orchestration.modes.executor.read-action-resolution.enabled=true",
+    "ai.orchestration.modes.executor.read-action-resolution.planning-mode=ITERATIVE",
+    "ai.orchestration.modes.executor.read-action-resolution.require-allowlist=true",
+    "ai.orchestration.modes.executor.read-action-resolution.allowed-read-actions[0]=native_read_setting",
+    "ai.orchestration.modes.executor.read-action-resolution.allowed-read-actions[1]=native_read_private_setting",
+    "ai.orchestration.modes.executor.read-action-resolution.allowed-read-actions[2]=native_read_public_guide",
+    "ai.orchestration.modes.executor.read-action-resolution.max-total-actions=1",
+    "ai.orchestration.modes.executor.read-action-resolution.rag-cooperation-mode=NONE",
+    "ai.orchestration.modes.guide-without-index.actions-enabled=true",
+    "ai.orchestration.modes.guide-without-index.retrieval-enabled=true",
+    "ai.orchestration.modes.guide-without-index.retrieval-allowlist-required=true",
+    "ai.orchestration.modes.guide-without-index.vector-space-selection-required=false",
+    "ai.orchestration.modes.guide-without-index.knowledge-base-overview-enabled=false",
+    "ai.orchestration.modes.guide-without-index.suggestions-enabled=false",
+    "ai.orchestration.modes.guide-without-index.read-action-resolution.enabled=true",
+    "ai.orchestration.modes.guide-without-index.read-action-resolution.planning-mode=ITERATIVE",
+    "ai.orchestration.modes.guide-without-index.read-action-resolution.require-allowlist=true",
+    "ai.orchestration.modes.guide-without-index.read-action-resolution.allowed-read-actions[0]=native_read_public_guide",
+    "ai.orchestration.modes.guide-without-index.read-action-resolution.max-total-actions=1",
+    "ai.orchestration.modes.guide-without-index.read-action-resolution.rag-cooperation-mode=NONE"
 })
 class RealAPINativeActionSchemaIntegrationTest {
+    private static final String PUBLIC_GUIDE = "In this fictional service, subscription cancellation takes effect "
+        + "at the end of the current billing period. Reading the guide does not cancel a subscription.";
     static {
         RealAPITestSupport.ensureProviderConfigured();
         RealAPITestSupport.ensureLLMProviderSet();
@@ -93,7 +113,7 @@ class RealAPINativeActionSchemaIntegrationTest {
             .isTrue();
         assertThat(registry.findMetadata("native_read_setting").orElseThrow().getInputSchema()).isNotEmpty();
         assertThat(registry.findMetadata("native_read_setting").orElseThrow().getGroundingVectorSpaces()).isEmpty();
-        System.out.printf("Native schema qualification: provider=openai model=%s maxQueries=8 syntheticReceiver=true%n", model);
+        System.out.printf("Native schema qualification: provider=openai model=%s maxQueries=10 syntheticReceiver=true%n", model);
     }
 
     @BeforeEach
@@ -114,6 +134,35 @@ class RealAPINativeActionSchemaIntegrationTest {
         assertThat(call.parameters()).containsEntry("requestKey", "public-sample");
         assertThat(((Map<?, ?>) call.parameters().get("options")).containsKey("note")).isTrue();
         assertThat(((Map<?, ?>) call.parameters().get("options")).get("note")).isNull();
+    }
+
+    @Test
+    void publicInformationUsesNativeReadWithIndexedRetrievalDisabled() {
+        assertPublicGuideInformation(OrchestrationContext.builder()
+            .sessionId("public-guide-" + UUID.randomUUID()).build());
+    }
+
+    @Test
+    void publicInformationUsesNativeReadWithoutRequiredVectorAllowlist() {
+        assertPublicGuideInformation(OrchestrationContext.builder().mode("guide-without-index")
+            .sessionId("public-guide-" + UUID.randomUUID()).build());
+    }
+
+    private void assertPublicGuideInformation(OrchestrationContext context) {
+        var result = query("How does subscription cancellation work?", context);
+        System.out.printf("Native public INFO diagnostics: policy=%s extraction=%s%n",
+            result.getMetadata() != null ? result.getMetadata().get("orchestrationPolicy") : null,
+            result.getMetadata() != null ? result.getMetadata().get("extractionDiagnostics") : null);
+        assertThat(result.getType()).isEqualTo(OrchestrationResultType.INFORMATION_PROVIDED);
+        assertThat(result.isSuccess()).isTrue();
+        assertThat(receiver.calls).hasSize(1);
+        assertThat(receiver.calls.getFirst().action()).isEqualTo("native_read_public_guide");
+        assertThat(receiver.calls.getFirst().parameters()).isEmpty();
+        assertThat(result.getMessage()).containsIgnoringCase("billing");
+        assertThat(result.getData().get("ragResponse")).isNull();
+        assertThat(result.getData().get("readActionResolution")).isInstanceOf(Map.class);
+        assertThat(((Map<?, ?>) result.getData().get("readActionResolution")).get("useRag"))
+            .isEqualTo(false);
     }
 
     @Test
@@ -173,7 +222,7 @@ class RealAPINativeActionSchemaIntegrationTest {
     }
 
     private OrchestrationResult query(String text, OrchestrationContext context) {
-        assertThat(queries.incrementAndGet()).as("Bounded eight-query native qualification").isLessThanOrEqualTo(8);
+        assertThat(queries.incrementAndGet()).as("Bounded ten-query native qualification").isLessThanOrEqualTo(10);
         var result = orchestrator.orchestrate(text, context);
         assertThat(result).isNotNull();
         System.out.printf("Native schema real-provider turn %d: type=%s success=%s receiverCalls=%d%n",
@@ -220,6 +269,11 @@ class RealAPINativeActionSchemaIntegrationTest {
         public ActionResult execute(String actionId, ActionAccessMode mode, Map<String, Object> params,
                                     ActionContext context, Map<String, Object> config) {
             calls.add(new Call(actionId, mode, Collections.unmodifiableMap(new LinkedHashMap<>(params))));
+            if (actionId.equals("native_read_public_guide")) {
+                return ActionResult.builder().success(true)
+                    .data(ActionPayload.object(Map.of("guide", PUBLIC_GUIDE)))
+                    .build();
+            }
             return ActionResult.builder().success(true).message("Synthetic fixture accepted the setting.")
                 .data(ActionPayload.object(Map.of("accepted", true))).build();
         }

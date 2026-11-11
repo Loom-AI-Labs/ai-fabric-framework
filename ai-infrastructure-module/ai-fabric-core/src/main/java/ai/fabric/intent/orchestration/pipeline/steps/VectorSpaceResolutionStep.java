@@ -6,6 +6,8 @@ import ai.fabric.dto.IntentType;
 import ai.fabric.dto.MultiIntentResponse;
 import ai.fabric.intent.KnowledgeBaseOverview;
 import ai.fabric.intent.KnowledgeBaseOverviewService;
+import ai.fabric.intent.action.AIActionRegistry;
+import ai.fabric.intent.orchestration.information.ReadActionEligibilitySupport;
 import ai.fabric.intent.orchestration.OrchestrationContextMetadataKeys;
 import ai.fabric.intent.orchestration.OrchestrationResult;
 import ai.fabric.intent.orchestration.OrchestrationResultType;
@@ -18,6 +20,7 @@ import ai.fabric.config.VectorSpaceRoutingProperties;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
@@ -49,6 +52,9 @@ public class VectorSpaceResolutionStep implements PipelineStep {
 
     private final VectorSpaceRoutingProperties vectorSpaceRoutingProperties;
     private final ObjectProvider<KnowledgeBaseOverviewService> knowledgeBaseOverviewServiceProvider;
+
+    @Autowired(required = false)
+    private AIActionRegistry actionRegistry;
 
     @Override
     public String getStepName() {
@@ -237,6 +243,11 @@ public class VectorSpaceResolutionStep implements PipelineStep {
                 intent.setVectorSpace(targetVectorSpace);
                 routingEvents.add(toTargetContextEvent(i, targetVectorSpace, context));
                 anyUpdate = true;
+                continue;
+            }
+
+            if (ReadActionEligibilitySupport.hasQualifiedReadPath(actionRegistry, context.getOrchestrationContext())) {
+                routingEvents.add(Map.of("intentIndex", i, "source", "DEFERRED_TO_READ_PLANNER"));
                 continue;
             }
 

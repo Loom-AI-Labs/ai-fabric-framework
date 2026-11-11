@@ -108,7 +108,7 @@ class MultiStepIntentExtractionStrategyTest {
             .inputSchema(rawInput).outputSchema(Map.of("type", "object", "properties", Map.of("accepted", Map.of("type", "boolean"))))
             .build();
         when(actionHandlerRegistry.getAllMetadata()).thenReturn(List.of(action));
-        when(validator.validate(any())).thenReturn(
+        when(validator.validate(any(), any(), any())).thenReturn(
             new IntentExtractionValidator.ValidationResult(true, IntentExtractionValidator.ErrorCategory.NONE, List.of(), List.of()));
         when(aiCoreService.generateContent(any(AIGenerationRequest.class), eq(LlmPurpose.ORCHESTRATION)))
             .thenReturn(AIGenerationResponse.builder().content("""
@@ -136,7 +136,7 @@ class MultiStepIntentExtractionStrategyTest {
 
     @Test
     void shouldCountOnlyClassificationCallWhenNoActionIntentsPresent() {
-        when(validator.validate(any())).thenReturn(
+        when(validator.validate(any(), any(), any())).thenReturn(
             new IntentExtractionValidator.ValidationResult(true, IntentExtractionValidator.ErrorCategory.NONE, List.of(), List.of())
         );
         when(aiCoreService.generateContent(any(AIGenerationRequest.class), eq(LlmPurpose.ORCHESTRATION)))
@@ -172,7 +172,7 @@ class MultiStepIntentExtractionStrategyTest {
                   }]
                 }
                 """).build());
-        when(validator.validate(any())).thenReturn(
+        when(validator.validate(any(), any(), any())).thenReturn(
             new IntentExtractionValidator.ValidationResult(
                 false,
                 IntentExtractionValidator.ErrorCategory.STRUCTURAL,
@@ -200,7 +200,7 @@ class MultiStepIntentExtractionStrategyTest {
 
     @Test
     void shouldKeepTrustedRuntimeContextInSystemPromptOnly() {
-        when(validator.validate(any())).thenReturn(
+        when(validator.validate(any(), any(), any())).thenReturn(
             new IntentExtractionValidator.ValidationResult(
                 true,
                 IntentExtractionValidator.ErrorCategory.NONE,
@@ -256,7 +256,7 @@ class MultiStepIntentExtractionStrategyTest {
 
     @Test
     void shouldGiveTheModelTypedPolicyAndRejectedObligationsForSemanticReplan() {
-        when(validator.validate(any())).thenReturn(
+        when(validator.validate(any(), any(), any())).thenReturn(
             new IntentExtractionValidator.ValidationResult(
                 true,
                 IntentExtractionValidator.ErrorCategory.NONE,
@@ -371,7 +371,7 @@ class MultiStepIntentExtractionStrategyTest {
 
     @Test
     void shouldParseConfirmationIntentTypeWithoutExtraCalls() {
-        when(validator.validate(any())).thenReturn(
+        when(validator.validate(any(), any(), any())).thenReturn(
             new IntentExtractionValidator.ValidationResult(true, IntentExtractionValidator.ErrorCategory.NONE, List.of(), List.of())
         );
 
@@ -398,7 +398,7 @@ class MultiStepIntentExtractionStrategyTest {
 
     @Test
     void shouldPreserveModelAuthoredOutOfScopeResponse() {
-        when(validator.validate(any())).thenReturn(
+        when(validator.validate(any(), any(), any())).thenReturn(
             new IntentExtractionValidator.ValidationResult(true, IntentExtractionValidator.ErrorCategory.NONE, List.of(), List.of())
         );
         when(aiCoreService.generateContent(any(AIGenerationRequest.class), eq(LlmPurpose.ORCHESTRATION)))
@@ -457,7 +457,7 @@ class MultiStepIntentExtractionStrategyTest {
             .build();
 
         when(actionHandlerRegistry.getAllMetadata()).thenReturn(List.of(action));
-        when(validator.validate(any())).thenReturn(
+        when(validator.validate(any(), any(), any())).thenReturn(
             new IntentExtractionValidator.ValidationResult(true, IntentExtractionValidator.ErrorCategory.NONE, List.of(), List.of())
         );
         when(aiCoreService.generateContent(any(AIGenerationRequest.class), eq(LlmPurpose.ORCHESTRATION)))
@@ -570,7 +570,7 @@ class MultiStepIntentExtractionStrategyTest {
                 .description("Read a current operational record")
                 .build()
         ));
-        when(validator.validate(any())).thenReturn(
+        when(validator.validate(any(), any(), any())).thenReturn(
             new IntentExtractionValidator.ValidationResult(
                 true,
                 IntentExtractionValidator.ErrorCategory.NONE,
@@ -728,7 +728,7 @@ class MultiStepIntentExtractionStrategyTest {
     @Test
     void explicitlyPermittedInformationReplanStillRunsWhenNoActionsAreVisible() {
         when(actionHandlerRegistry.getAllMetadata()).thenReturn(List.of());
-        when(validator.validate(any())).thenReturn(
+        when(validator.validate(any(), any(), any())).thenReturn(
             new IntentExtractionValidator.ValidationResult(
                 true,
                 IntentExtractionValidator.ErrorCategory.NONE,
@@ -939,7 +939,7 @@ class MultiStepIntentExtractionStrategyTest {
         when(actionHandlerRegistry.getAllMetadata()).thenReturn(List.of(
             AIActionMetaData.builder().name("search_inventory").build()
         ));
-        when(validator.validate(any())).thenReturn(
+        when(validator.validate(any(), any(), any())).thenReturn(
             new IntentExtractionValidator.ValidationResult(
                 true,
                 IntentExtractionValidator.ErrorCategory.NONE,

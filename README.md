@@ -30,7 +30,7 @@
   ·
   <a href="docs/llm-context/README.md"><strong>Coding-Assistant Context</strong></a>
   ·
-  <a href="docs/release-notes/0.8.48.md"><strong>0.8.48 Release Notes</strong></a>
+  <a href="docs/release-notes/0.8.49.md"><strong>0.8.49 Release Notes</strong></a>
 </p>
 
 ![AI Fabric connects conversational, event-driven and multi-specialist execution to shared retrieval, action, memory and human-control capabilities inside an application-owned boundary.](docs/assets/ai-fabric-capabilities.svg)
@@ -188,7 +188,7 @@ or [try the side-by-side demo](https://ai-fabric.dev/demos/ai-fabric-conversatio
 ## Quickstart
 
 For an existing **Java 21 / Spring Boot 4.1.x** application with Maven 3.9+.
-The dependency example targets **0.8.48** under `io.github.loom-ai-labs`.
+The dependency example targets **0.8.49** under `io.github.loom-ai-labs`.
 Verify the published BOM is available on Maven Central before adoption.
 No custom Maven repository is required. Source builds use the POM versions in your checkout.
 
@@ -199,7 +199,7 @@ conversations, session state, OpenAI through Spring AI, and a local Lucene vecto
 
 ```xml
 <properties>
-  <ai-fabric.version>0.8.48</ai-fabric.version>
+  <ai-fabric.version>0.8.49</ai-fabric.version>
 </properties>
 
 <dependencyManagement>

@@ -16,6 +16,14 @@ import ai.fabric.dto.IntentType;
 import ai.fabric.dto.MultiIntentResponse;
 import ai.fabric.dto.RAGResponse;
 import ai.fabric.intent.KnowledgeBaseOverviewService;
+import ai.fabric.intent.IntentExtractionJsonSupport;
+import ai.fabric.intent.IntentExtractionValidator;
+import ai.fabric.intent.action.AIActionHandler;
+import ai.fabric.intent.action.AIActionMetaData;
+import ai.fabric.intent.action.ActionAccessMode;
+import ai.fabric.intent.action.ActionPayload;
+import ai.fabric.intent.action.ActionResult;
+import ai.fabric.config.AIEntityConfigurationLoader;
 import ai.fabric.intent.action.AIActionRegistry;
 import ai.fabric.intent.action.InMemoryPendingActionStore;
 import ai.fabric.intent.actiondraft.InMemoryActionDraftStore;
@@ -25,6 +33,7 @@ import ai.fabric.intent.orchestration.OrchestrationResultType;
 import ai.fabric.intent.orchestration.information.ReadActionResolutionService;
 import ai.fabric.intent.orchestration.pipeline.PipelineContext;
 import ai.fabric.intent.orchestration.policy.OrchestrationPolicy;
+import ai.fabric.intent.orchestration.policy.OrchestrationProfile;
 import ai.fabric.intent.vectorspace.RankBasedMerger;
 import ai.fabric.prompt.ClasspathPromptTemplateStore;
 import ai.fabric.prompt.PromptRenderer;
@@ -42,6 +51,7 @@ import org.mockito.ArgumentCaptor;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -55,6 +65,101 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 class IntentHandlingStepReadActionResolutionTest {
+
+    @ParameterizedTest
+    @CsvSource({"true,true,true", "false,true,true", "true,false,true", "false,false,true",
+        "true,true,false", "false,true,false"})
+    void productionExecutorPlansNativeReadBeforeCheckingIndexedRetrieval(boolean retrievalEnabled,
+                                                                         boolean plannerReads,
+                                                                         boolean actionAuthorized) {
+        var registry = mock(AIActionRegistry.class);
+        var handler = mock(AIActionHandler.class);
+        var metadata = AIActionMetaData.builder().name("inspect_public_guide")
+            .accessMode(ActionAccessMode.READ).anonymousAllowed(true)
+            .groundingEligible(true).readActionResolutionEligible(true)
+            .inputSchema(Map.of("type", "object", "properties", Map.of(), "additionalProperties", false))
+            .outputSchema(Map.of("type", "object", "properties", Map.of("guide", Map.of("type", "string"))))
+            .build();
+        when(registry.getAllMetadata()).thenReturn(List.of(metadata));
+        when(registry.findMetadata(metadata.getName())).thenReturn(Optional.of(metadata));
+        when(registry.findHandler(metadata.getName())).thenReturn(Optional.of(handler));
+        when(handler.validateActionAllowed(any())).thenReturn(actionAuthorized);
+        var actionResult = ActionResult.builder().success(true)
+            .data(ActionPayload.object(Map.of("guide", "Use approved setup instructions."))).build();
+        when(handler.executeAction(any(), any())).thenReturn(actionResult);
+        when(handler.buildPostActionLlmFacts(eq(actionResult), any()))
+            .thenReturn(Optional.of(Map.of("guide", "Use approved setup instructions.")));
+
+        var properties = new OrchestrationProperties();
+        properties.setProfile(OrchestrationProfile.PRODUCTION_CHAT);
+        properties.setDefaultMode("executor");
+        var mode = new OrchestrationProperties.ModeOverrides();
+        mode.setActionsEnabled(true);
+        mode.setRetrievalEnabled(retrievalEnabled);
+        mode.setRetrievalAllowlistRequired(true);
+        mode.setVectorSpaceSelectionRequired(false);
+        mode.setKnowledgeBaseOverviewEnabled(false);
+        mode.setRag(new OrchestrationProperties.RagModeOverrides());
+        var reads = new OrchestrationProperties.ReadActionResolutionModeOverrides();
+        reads.setEnabled(true);
+        reads.setRequireAllowlist(true);
+        reads.setAllowedReadActions(List.of(metadata.getName()));
+        reads.setPlanningMode(OrchestrationProperties.ReadActionResolutionPlanningMode.ITERATIVE);
+        reads.setRagCooperationMode(OrchestrationProperties.ReadActionResolutionRagCooperationMode.NONE);
+        mode.setReadActionResolution(reads);
+        properties.getModes().put("executor", mode);
+        var policyStep = new OrchestrationPolicyResolutionStep(properties);
+        ReflectionTestUtils.setField(policyStep, "actionRegistry", registry);
+        String query = "Show me the public service guide.";
+        var input = policyStep.process(PipelineContext.from(query, OrchestrationContext.anonymous()));
+        var context = input.getOrchestrationContext();
+        assertThat(input.getOrchestrationPolicy().profile()).isEqualTo(OrchestrationProfile.PRODUCTION_CHAT);
+        assertThat(input.getOrchestrationPolicy().mode()).isEqualTo("executor");
+        assertThat(input.getOrchestrationPolicy().ragBudgets().hasVectorSpaceAllowlist()).isFalse();
+        var intent = Intent.builder().type(IntentType.INFORMATION).intent("public_guide")
+            .requiresRetrieval(true).requiresGeneration(true).requiresTargetResolution(false)
+            .needsAdvancedRAG(false).build();
+        var response = MultiIntentResponse.builder().intents(List.of(intent)).build();
+        assertThat(new IntentExtractionValidator(registry).validate(response, query, context).valid()).isTrue();
+        assertThat(intent.getRequiresRetrieval()).isTrue();
+        assertThat(intent.getVectorSpace()).isNull();
+
+        var ai = mock(AICoreService.class);
+        when(ai.generateContent(any(), eq(LlmPurpose.ORCHESTRATION))).thenReturn(AIGenerationResponse.builder()
+            .content(plannerReads
+                ? "{\"decision\":\"EXECUTE_READ_ACTIONS\",\"actions\":[{\"name\":\"inspect_public_guide\",\"params\":{}}]}"
+                : "{\"decision\":\"USE_RAG_ONLY\",\"actions\":[]}").build());
+        when(ai.generateTextResponse(anyString(), eq(LlmPurpose.GENERATION)))
+            .thenReturn(AIGenerationResponse.builder().content("Use approved setup instructions.").build());
+        var readService = new ReadActionResolutionService(ai, registry,
+            new IntentExtractionJsonSupport(new ObjectMapper()), promptTemplateResolver(), new PromptRenderer(),
+            mock(AIEntityConfigurationLoader.class));
+        var rag = mock(RAGProvider.class);
+        var step = buildStep(rag, ai);
+        ReflectionTestUtils.setField(step, "readActionResolutionServiceProvider", providerOf(readService));
+        var vectorStep = new VectorSpaceResolutionStep(new VectorSpaceRoutingProperties(),
+            providerOf((KnowledgeBaseOverviewService) null));
+        ReflectionTestUtils.setField(vectorStep, "actionRegistry", registry);
+        var routed = vectorStep.process(input.toBuilder().intentResponse(response).build());
+        assertThat(routed.isShouldTerminate()).isFalse();
+        assertThat(intent.getVectorSpace()).isNull();
+        var result = step.process(routed).getIntentResult();
+
+        verify(ai).generateContent(any(), eq(LlmPurpose.ORCHESTRATION));
+        verifyNoInteractions(rag);
+        if (plannerReads && actionAuthorized) {
+            assertThat(result.isSuccess()).isTrue();
+            assertThat(result.getType()).isEqualTo(OrchestrationResultType.INFORMATION_PROVIDED);
+            assertThat(result.getMessage()).isEqualTo("Use approved setup instructions.");
+            verify(handler).executeAction(eq(Map.of()), any());
+        } else {
+            assertThat(result.isSuccess()).isFalse();
+            assertThat(result.getData()).containsEntry("reason", retrievalEnabled
+                ? "RETRIEVAL_ALLOWLIST_REQUIRED" : "RETRIEVAL_DISABLED_BY_POLICY");
+            verify(handler, never()).executeAction(any(), any());
+            verify(ai, never()).generateTextResponse(anyString(), any());
+        }
+    }
 
     @Test
     void doesNotReportRawReadEvidenceAsSuccessWhenConversationGenerationFails() {

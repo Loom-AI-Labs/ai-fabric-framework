@@ -12,6 +12,7 @@ import ai.fabric.intent.extraction.IntentExtractionInput;
 import ai.fabric.intent.extraction.IntentExtractionSystemContextSupport;
 import ai.fabric.intent.action.AIActionRegistry;
 import ai.fabric.intent.orchestration.OrchestrationContext;
+import ai.fabric.intent.orchestration.information.ReadActionEligibilitySupport;
 import ai.fabric.prompt.PromptRenderer;
 import ai.fabric.prompt.PromptTemplateResolver;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -136,7 +137,7 @@ public class IntentQueryExtractor {
         }
 
         response.normalize();
-        validateResponse(response, userQuery);
+        validateResponse(response, userQuery, safeContext);
         if (!response.hasIntents()) {
             log.warn("Intent extractor returned no intents");
         }
@@ -233,7 +234,8 @@ public class IntentQueryExtractor {
         String model
     ) {}
 
-    private void validateResponse(MultiIntentResponse response, String originalQuery) {
+    private void validateResponse(MultiIntentResponse response, String originalQuery,
+                                  OrchestrationContext context) {
         if (response.getIntents() == null) {
             response.setIntents(List.of());
         }
@@ -260,6 +262,7 @@ public class IntentQueryExtractor {
                     && StringUtils.hasText(intent.getClarificationQuestion());
                 if (Boolean.TRUE.equals(intent.getRequiresRetrieval())
                     && !StringUtils.hasText(intent.getVectorSpace())
+                    && !ReadActionEligibilitySupport.hasQualifiedReadPath(actionHandlerRegistry, context)
                     && !hasDeclaredClarification) {
                     throw new AIServiceException(
                         "INFORMATION intent requires retrieval but is missing the 'vectorSpace' decision"

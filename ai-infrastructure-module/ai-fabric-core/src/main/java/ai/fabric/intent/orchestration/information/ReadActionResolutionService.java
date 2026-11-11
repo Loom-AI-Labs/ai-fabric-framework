@@ -13,7 +13,6 @@ import ai.fabric.intent.action.AIActionMetaData;
 import ai.fabric.intent.action.ActionNativeSchemaSupport;
 import ai.fabric.intent.action.AIActionParamSchema;
 import ai.fabric.intent.action.AIActionRegistry;
-import ai.fabric.intent.action.ActionAccessMode;
 import ai.fabric.intent.action.ActionContext;
 import ai.fabric.intent.action.ActionGroundingSupport;
 import ai.fabric.intent.action.ActionGroundingSufficiency;
@@ -338,42 +337,17 @@ public class ReadActionResolutionService {
         Map<String, EligibleReadAction> eligible = new LinkedHashMap<>();
         List<String> scopeFilteredActionNames = new ArrayList<>();
         for (AIActionMetaData metadata : actions) {
-            if (metadata == null || !StringUtils.hasText(metadata.getName())) {
-                continue;
-            }
-            if (metadata.getAccessMode() != ActionAccessMode.READ) {
-                continue;
-            }
-            if (context != null
-                && context.getEffectiveCapabilityProfile() != null
-                && !context.getEffectiveCapabilityProfile()
-                    .canExecuteReadAction(metadata.getName())) {
-                continue;
-            }
-            if (!metadata.isReadActionResolutionEligible()) {
-                continue;
-            }
-            if (readPolicy.requireGroundingEligible() && !metadata.isGroundingEligible()) {
+            if (!ReadActionEligibilitySupport.eligible(metadata, context, readPolicy,
+                isAnonymous(context, pipelineContext))) {
                 continue;
             }
             String normalizedName = metadata.getName().trim().toLowerCase(Locale.ROOT);
-            if (readPolicy.requireAllowlist() && !readPolicy.allowedReadActions().contains(normalizedName)) {
-                continue;
-            }
-            if (!readPolicy.requireAllowlist()
-                && readPolicy.hasAllowedReadActions()
-                && !readPolicy.allowedReadActions().contains(normalizedName)) {
-                continue;
-            }
             if (!matchesIntentVectorSpaces(metadata, intentVectorSpaces)) {
                 scopeFilteredActionNames.add(metadata.getName());
                 continue;
             }
             Optional<AIActionHandler> handler = actionRegistry.findHandler(metadata.getName());
             if (handler.isEmpty()) {
-                continue;
-            }
-            if (isAnonymous(context, pipelineContext) && !metadata.isAnonymousAllowed()) {
                 continue;
             }
             eligible.put(
