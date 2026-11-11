@@ -12,6 +12,8 @@ import ai.fabric.intent.action.ActionPayload;
 import ai.fabric.intent.action.ActionResult;
 import ai.fabric.intent.action.ActionResultContracts;
 import ai.fabric.intent.action.ActionTargetRef;
+import ai.fabric.intent.action.ActionNativeSchemaSupport;
+import ai.fabric.intent.action.ActionParameterContractValidator.ActionParameterContractException;
 import ai.fabric.intent.orchestration.attachment.OrchestrationAttachment;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -149,6 +151,18 @@ public class ActionConnectorExecutor {
             throw new IllegalArgumentException("accessMode is required");
         }
 
+        if (actionConfig != null && actionConfig.get(ActionNativeSchemaSupport.INPUT_SCHEMA) instanceof Map<?, ?> schema) {
+            try {
+                @SuppressWarnings("unchecked")
+                Map<String, Object> inputSchema = (Map<String, Object>) schema;
+                ActionNativeSchemaSupport.validateInput(inputSchema, params);
+            } catch (ActionParameterContractException ex) {
+                return failure(ex.reason(), ex.getMessage());
+            } catch (IllegalArgumentException ex) {
+                return failure(ERROR_INVALID_CONFIGURATION, "Action native input schema is invalid.");
+            }
+        }
+
         boolean mcpToolAction = isMcpToolAction(actionConfig);
         boolean connectorDispatchedMcpAction;
         try {
@@ -212,6 +226,10 @@ public class ActionConnectorExecutor {
         });
 
         int maxAttempts = Math.max(1, properties != null ? properties.getMaxAttempts() : 1);
+        // A generated key does not prove an MCP receiver deduplicates uncertain writes.
+        if (mcpToolAction && needsIdempotency(accessMode) && !hasQualifiedMcpDeduplication(actionConfig)) {
+            maxAttempts = 1;
+        }
         Duration backoff = properties != null && properties.getInitialBackoff() != null
             ? properties.getInitialBackoff()
             : Duration.ofSeconds(1);
@@ -258,6 +276,17 @@ public class ActionConnectorExecutor {
 
     private boolean needsIdempotency(ActionAccessMode accessMode) {
         return accessMode == ActionAccessMode.WRITE_ONLY || accessMode == ActionAccessMode.READ_WRITE;
+    }
+
+    private boolean hasQualifiedMcpDeduplication(Map<String, Object> actionConfig) {
+        if (!(actionConfig.get("execution") instanceof Map<?, ?> execution)
+            || !(execution.get("mcp") instanceof Map<?, ?> mcp)
+            || !(mcp.get("receiverDeduplication") instanceof Map<?, ?> contract)) {
+            return false;
+        }
+        return Boolean.TRUE.equals(contract.get("qualified"))
+            && contract.get("contractId") instanceof String id && StringUtils.hasText(id)
+            && "CONNECTOR_REQUEST_IDEMPOTENCY_KEY".equals(contract.get("keyTransport"));
     }
 
     private String generateIdempotencyKey() {

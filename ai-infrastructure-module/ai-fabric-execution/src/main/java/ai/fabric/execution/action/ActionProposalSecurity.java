@@ -60,6 +60,8 @@ public final class ActionProposalSecurity {
             objectMapper,
             "objectMapper is required"
         ).copy();
+        this.canonicalMapper.setDefaultPropertyInclusion(com.fasterxml.jackson.annotation.JsonInclude.Value.construct(
+            com.fasterxml.jackson.annotation.JsonInclude.Include.ALWAYS, com.fasterxml.jackson.annotation.JsonInclude.Include.ALWAYS));
         this.canonicalMapper.configure(
             SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS,
             true

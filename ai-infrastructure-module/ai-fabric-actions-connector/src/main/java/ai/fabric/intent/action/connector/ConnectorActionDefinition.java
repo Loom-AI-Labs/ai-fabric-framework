@@ -4,6 +4,7 @@ import ai.fabric.intent.action.ActionAccessMode;
 import ai.fabric.intent.action.AIActionParamType;
 import ai.fabric.intent.action.ActionResultPresentationHint;
 import ai.fabric.intent.action.AIContributionProvenance;
+import ai.fabric.intent.action.ActionNativeSchemaSupport;
 
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -37,7 +38,9 @@ public record ConnectorActionDefinition(
     boolean terminal,
     String adapterType,
     Map<String, Object> execution,
-    Map<String, Object> mcpServers
+    Map<String, Object> mcpServers,
+    Map<String, Object> inputSchema,
+    Map<String, Object> outputSchema
 ) {
     public ConnectorActionDefinition {
         params = params != null ? List.copyOf(params) : List.of();
@@ -46,6 +49,25 @@ public record ConnectorActionDefinition(
         adapterType = adapterType != null && !adapterType.isBlank() ? adapterType.trim() : null;
         execution = execution != null && !execution.isEmpty() ? Map.copyOf(execution) : Map.of();
         mcpServers = mcpServers != null && !mcpServers.isEmpty() ? Map.copyOf(mcpServers) : Map.of();
+        inputSchema = ActionNativeSchemaSupport.snapshot(inputSchema);
+        outputSchema = ActionNativeSchemaSupport.snapshot(outputSchema);
+        ActionNativeSchemaSupport.validateDefinition(inputSchema);
+        ActionNativeSchemaSupport.validateDefinition(outputSchema);
+    }
+
+    public ConnectorActionDefinition(
+        String name, String displayName, String description, String category, ActionAccessMode accessMode,
+        boolean requiresConfirmation, String confirmationMessage, List<ConnectorActionParamDefinition> params,
+        boolean anonymousAllowed, boolean groundingEligible, List<String> groundingVectorSpaces,
+        boolean readActionResolutionEligible, ActionResultPresentationHint resultPresentationHint,
+        String builtInModuleId, String builtInCardId, AIContributionProvenance provenance,
+        List<ConnectorActionPostPolicyDefinition> postPolicies, ConnectorActionLlmFactsDefinition llmFacts,
+        boolean terminal, String adapterType, Map<String, Object> execution, Map<String, Object> mcpServers
+    ) {
+        this(name, displayName, description, category, accessMode, requiresConfirmation, confirmationMessage,
+            params, anonymousAllowed, groundingEligible, groundingVectorSpaces, readActionResolutionEligible,
+            resultPresentationHint, builtInModuleId, builtInCardId, provenance, postPolicies, llmFacts,
+            terminal, adapterType, execution, mcpServers, null, null);
     }
 
     public ConnectorActionDefinition(
@@ -127,6 +149,12 @@ public record ConnectorActionDefinition(
 
     public Map<String, Object> runtimeActionConfig() {
         Map<String, Object> out = new LinkedHashMap<>();
+        if (inputSchema != null) {
+            out.put(ActionNativeSchemaSupport.INPUT_SCHEMA, inputSchema);
+        }
+        if (outputSchema != null) {
+            out.put(ActionNativeSchemaSupport.OUTPUT_SCHEMA, outputSchema);
+        }
         if (adapterType != null && !adapterType.isBlank()) {
             out.put("adapterType", adapterType);
         }

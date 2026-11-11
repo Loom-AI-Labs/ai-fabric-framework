@@ -58,7 +58,8 @@ final class ActionDraftContinuationSupport {
                     )
                 )
                 .filter(parameter ->
-                    !ActionContextSchemaSupport.hasMeaningfulActionParamValue(
+                    !ai.fabric.intent.action.ActionNativeSchemaSupport.hasExplicitPublicNull(metadata, collected, parameter)
+                        && !ActionContextSchemaSupport.hasMeaningfulActionParamValue(
                         collected.get(parameter)
                     )
                 )
@@ -105,16 +106,16 @@ final class ActionDraftContinuationSupport {
             List<String> preserved = continuation.collectedParams().keySet()
                 .stream()
                 .filter(key ->
-                    !ActionContextSchemaSupport.hasMeaningfulActionParamValue(
+                    !current.containsKey(key) || (current.get(key) != null && !ActionContextSchemaSupport.hasMeaningfulActionParamValue(
                         current.get(key)
-                    )
+                    ))
                 )
                 .toList();
             List<String> supplied = current.entrySet().stream()
                 .filter(entry ->
                     StringUtils.hasText(entry.getKey())
-                        && ActionContextSchemaSupport
-                            .hasMeaningfulActionParamValue(entry.getValue())
+                        && (entry.getValue() == null || ActionContextSchemaSupport
+                            .hasMeaningfulActionParamValue(entry.getValue()))
                 )
                 .map(Map.Entry::getKey)
                 .map(String::trim)
@@ -150,7 +151,7 @@ final class ActionDraftContinuationSupport {
                 name
             );
             Object safeValue = sanitizeValue(value, schema);
-            if (safeValue != null) {
+            if (safeValue != null || value == null) {
                 sanitized.put(name, safeValue);
             }
         });
@@ -178,16 +179,17 @@ final class ActionDraftContinuationSupport {
                 rawName
             );
             if (!StringUtils.hasText(canonicalName)
-                || !ActionContextSchemaSupport
-                    .hasMeaningfulActionParamValue(value)) {
+                || (value != null && !ActionContextSchemaSupport
+                    .hasMeaningfulActionParamValue(value))) {
                 return;
             }
             AIActionParamSchema schema = ActionParameterSupport.paramSchema(
                 metadata,
                 canonicalName
             );
-            Object safeValue = sanitizeAnalyzedValue(value, schema);
-            if (safeValue != null) {
+            Object safeValue = metadata.getInputSchema() != null
+                ? sanitizeValue(value, schema) : sanitizeAnalyzedValue(value, schema);
+            if (safeValue != null || value == null) {
                 sanitized.put(canonicalName, safeValue);
             }
         });
@@ -213,7 +215,7 @@ final class ActionDraftContinuationSupport {
             }
             Map<String, Object> sanitized = new LinkedHashMap<>();
             map.forEach((rawKey, nestedValue) -> {
-                if (rawKey == null || nestedValue == null) {
+                if (rawKey == null) {
                     return;
                 }
                 String canonical = canonicalName(
@@ -230,7 +232,7 @@ final class ActionDraftContinuationSupport {
                     nestedValue,
                     nestedSchema
                 );
-                if (safeValue != null) {
+                if (safeValue != null || nestedValue == null) {
                     sanitized.put(canonical, safeValue);
                 }
             });
@@ -246,7 +248,7 @@ final class ActionDraftContinuationSupport {
             List<Object> sanitized = new ArrayList<>();
             for (Object item : list) {
                 Object safeValue = sanitizeAnalyzedValue(item, itemSchema);
-                if (safeValue != null) {
+                if (safeValue != null || item == null) {
                     sanitized.add(safeValue);
                 }
             }
@@ -286,7 +288,7 @@ final class ActionDraftContinuationSupport {
                     : Map.of();
             Map<String, Object> sanitized = new LinkedHashMap<>();
             map.forEach((rawKey, nestedValue) -> {
-                if (rawKey == null || nestedValue == null) {
+                if (rawKey == null) {
                     return;
                 }
                 String key = String.valueOf(rawKey).trim();
@@ -301,7 +303,7 @@ final class ActionDraftContinuationSupport {
                     return;
                 }
                 Object safeValue = sanitizeValue(nestedValue, nestedSchema);
-                if (safeValue != null) {
+                if (safeValue != null || nestedValue == null) {
                     sanitized.put(key, safeValue);
                 }
             });
@@ -315,7 +317,7 @@ final class ActionDraftContinuationSupport {
             List<Object> sanitized = new ArrayList<>(list.size());
             for (Object item : list) {
                 Object safeValue = sanitizeValue(item, itemSchema);
-                if (safeValue != null) {
+                if (safeValue != null || item == null) {
                     sanitized.add(safeValue);
                 }
             }
@@ -367,8 +369,8 @@ final class ActionDraftContinuationSupport {
         if (current != null) {
             current.forEach((key, value) -> {
                 if (!StringUtils.hasText(key)
-                    || !ActionContextSchemaSupport
-                        .hasMeaningfulActionParamValue(value)) {
+                    || (value != null && !ActionContextSchemaSupport
+                        .hasMeaningfulActionParamValue(value))) {
                     return;
                 }
                 String normalizedKey = key.trim();
@@ -395,7 +397,7 @@ final class ActionDraftContinuationSupport {
             return copy;
         }
         source.forEach((key, value) -> {
-            if (StringUtils.hasText(key) && value != null) {
+            if (StringUtils.hasText(key)) {
                 copy.put(key.trim(), immutableCopy(value));
             }
         });
@@ -405,7 +407,7 @@ final class ActionDraftContinuationSupport {
     private static Map<String, Object> stringMap(Map<?, ?> source) {
         Map<String, Object> copy = new LinkedHashMap<>();
         source.forEach((key, value) -> {
-            if (key != null && value != null) {
+            if (key != null) {
                 copy.put(String.valueOf(key), value);
             }
         });
@@ -419,9 +421,7 @@ final class ActionDraftContinuationSupport {
         if (value instanceof List<?> list) {
             List<Object> copy = new ArrayList<>(list.size());
             for (Object item : list) {
-                if (item != null) {
-                    copy.add(immutableCopy(item));
-                }
+                copy.add(immutableCopy(item));
             }
             return Collections.unmodifiableList(copy);
         }

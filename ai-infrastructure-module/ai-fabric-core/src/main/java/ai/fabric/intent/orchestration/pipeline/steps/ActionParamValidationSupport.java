@@ -77,6 +77,9 @@ final class ActionParamValidationSupport {
                 continue;
             }
             Object value = params != null ? params.get(required) : null;
+            if (ai.fabric.intent.action.ActionNativeSchemaSupport.hasExplicitPublicNull(meta, params, required)) {
+                continue;
+            }
             if (value == null) {
                 hardMissing.add(required);
                 continue;

@@ -52,6 +52,13 @@ public final class ActionParameterContractValidator {
                 null
             );
         }
+        if (metadata.getInputSchema() != null) {
+            values.forEach((name, value) -> validateUntypedValue(name, value, 0));
+            if (requireRequiredParameters) {
+                ActionNativeSchemaSupport.validateInput(metadata.getInputSchema(), values);
+            }
+            return;
+        }
         if (requireRequiredParameters) {
             List<String> requiredWithoutSchema = required.stream()
                 .filter(name -> !schemas.containsKey(name))

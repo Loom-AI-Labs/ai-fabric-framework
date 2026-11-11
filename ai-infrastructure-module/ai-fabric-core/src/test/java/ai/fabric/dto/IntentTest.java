@@ -10,7 +10,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class IntentTest {
 
     @Test
-    void setActionParamsDropsNullKeysAndValues() {
+    void setActionParamsPreservesExplicitNullButDropsNullKeys() {
         Intent intent = new Intent();
 
         Map<String, Object> params = new HashMap<>();
@@ -22,8 +22,23 @@ class IntentTest {
 
         assertThat(intent.getActionParams())
             .containsEntry("ok", 123)
-            .doesNotContainKey("nullValue")
+            .containsEntry("nullValue", null)
+            .doesNotContainKey("absent")
             .doesNotContainKey(null);
+        intent.normalize();
+        assertThat(intent.getActionParams()).containsEntry("nullValue", null).doesNotContainKey("absent");
+    }
+
+    @Test
+    void jsonAndBuilderNormalizationKeepNullDistinctFromAbsent() throws Exception {
+        var json = new com.fasterxml.jackson.databind.ObjectMapper();
+        var intent = json.readValue("{\"actionParams\":{\"clear\":null,\"items\":[null,2]}}", Intent.class);
+        intent.normalize();
+        var restored = json.readValue(json.writeValueAsString(intent), Intent.class);
+        assertThat(restored.getActionParams()).containsEntry("clear", null).doesNotContainKey("absent");
+        var built = Intent.builder().actionParams(java.util.Collections.singletonMap("clear", null)).build();
+        built.normalize();
+        assertThat(built.getActionParams()).containsEntry("clear", null).doesNotContainKey("absent");
     }
 }
 

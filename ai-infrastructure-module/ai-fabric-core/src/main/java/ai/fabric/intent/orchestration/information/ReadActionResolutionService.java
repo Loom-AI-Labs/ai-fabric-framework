@@ -10,6 +10,7 @@ import ai.fabric.intent.IntentExtractionJsonSupport;
 import ai.fabric.intent.SpecialistPromptInstructionSupport;
 import ai.fabric.intent.action.AIActionHandler;
 import ai.fabric.intent.action.AIActionMetaData;
+import ai.fabric.intent.action.ActionNativeSchemaSupport;
 import ai.fabric.intent.action.AIActionParamSchema;
 import ai.fabric.intent.action.AIActionRegistry;
 import ai.fabric.intent.action.ActionAccessMode;
@@ -28,6 +29,7 @@ import ai.fabric.intent.orchestration.OrchestrationAuthContextResolver;
 import ai.fabric.intent.orchestration.OrchestrationContext;
 import ai.fabric.intent.orchestration.conversation.ConversationPromptContext;
 import ai.fabric.intent.orchestration.pipeline.PipelineContext;
+import ai.fabric.intent.orchestration.pipeline.steps.ActionRuntimeContextParamSupport;
 import ai.fabric.intent.orchestration.policy.OrchestrationPolicy;
 import ai.fabric.prompt.PromptRenderer;
 import ai.fabric.prompt.PromptTemplateResolver;
@@ -204,6 +206,8 @@ public class ReadActionResolutionService {
                 executionScope,
                 deduplicatedActions,
                 rejectedActionProposals,
+                orchestrationContext,
+                pipelineContext,
                 iteration
             );
             boolean rejectedThisIteration = rejectedActionProposals.size() > rejectedBeforeApproval;
@@ -489,7 +493,7 @@ public class ReadActionResolutionService {
                     }
                     proposals.add(new PlannerActionProposal(
                         action.name.trim(),
-                        immutableNonNullParams(action.params),
+                        immutableParams(action.params),
                         action.priority != null ? action.priority : proposals.size() + 1
                     ));
                 }
@@ -532,6 +536,8 @@ public class ReadActionResolutionService {
                                                                ReadActionExecutionScope executionScope,
                                                                List<Map<String, Object>> deduplicatedActions,
                                                                List<Map<String, Object>> rejectedActionProposals,
+                                                               OrchestrationContext orchestrationContext,
+                                                               PipelineContext pipelineContext,
                                                                int iteration) {
         if (decision == null || decision.actions == null || decision.actions.isEmpty()) {
             return List.of();
@@ -564,6 +570,13 @@ public class ReadActionResolutionService {
                     "The proposed action is not eligible for this request."
                 ));
                 continue;
+            }
+            proposal = new PlannerActionProposal(eligible.name(), ActionRuntimeContextParamSupport.resolveConfiguredParameters(
+                eligible.metadata(), proposal.params(), orchestrationContext, pipelineContext), proposal.priority());
+            if (eligible.metadata().getInputSchema() == null) {
+                Map<String, Object> legacyParams = new LinkedHashMap<>(proposal.params());
+                legacyParams.values().removeIf(java.util.Objects::isNull);
+                proposal = new PlannerActionProposal(eligible.name(), immutableParams(legacyParams), proposal.priority());
             }
             if (!hasRequiredParams(eligible.metadata(), proposal.params())) {
                 rejectedActionProposals.add(rejectedProposal(
@@ -599,7 +612,7 @@ public class ReadActionResolutionService {
                 if (!claim.acquired()) {
                     Map<String, Object> duplicate = new LinkedHashMap<>();
                     duplicate.put("action", eligible.name());
-                    duplicate.put("params", immutableNonNullParams(proposal.params()));
+                    duplicate.put("params", immutableParams(proposal.params()));
                     duplicate.put("reason", "REQUEST_SCOPED_DUPLICATE");
                     if (StringUtils.hasText(claim.existingExecutionId())) {
                         duplicate.put("existingActionExecutionId", claim.existingExecutionId());
@@ -624,7 +637,7 @@ public class ReadActionResolutionService {
         rejected.put("action", proposal != null ? proposal.name() : null);
         rejected.put(
             "params",
-            proposal != null ? immutableNonNullParams(proposal.params()) : Map.of()
+            proposal != null ? immutableParams(proposal.params()) : Map.of()
         );
         rejected.put("reason", reason);
         if (StringUtils.hasText(path)) {
@@ -743,6 +756,9 @@ public class ReadActionResolutionService {
                 continue;
             }
             Object value = params != null ? params.get(required) : null;
+            if (ActionNativeSchemaSupport.hasExplicitPublicNull(metadata, params, required)) {
+                continue;
+            }
             if (value == null) {
                 return false;
             }
@@ -1174,6 +1190,12 @@ public class ReadActionResolutionService {
                 item.put("category", action.metadata().getCategory());
                 item.put("requiredParameters", publicRequiredParameters(action.metadata()));
                 item.put("parameterSchemas", publicParameterSchemas(action.metadata()));
+                if (action.metadata().getInputSchema() != null) {
+                    item.put("inputSchema", ActionNativeSchemaSupport.publicInputSchema(action.metadata()));
+                }
+                if (action.metadata().getOutputSchema() != null) {
+                    item.put("outputSchema", action.metadata().getOutputSchema());
+                }
                 item.put("groundingEligible", action.metadata().isGroundingEligible());
                 return Collections.unmodifiableMap(item);
             })
@@ -1298,13 +1320,13 @@ public class ReadActionResolutionService {
         return value.substring(0, Math.max(0, maxChars - 3)) + "...";
     }
 
-    private static Map<String, Object> immutableNonNullParams(Map<String, Object> params) {
+    private static Map<String, Object> immutableParams(Map<String, Object> params) {
         if (params == null || params.isEmpty()) {
             return Map.of();
         }
         Map<String, Object> normalized = new LinkedHashMap<>();
         params.forEach((key, value) -> {
-            if (StringUtils.hasText(key) && value != null) {
+            if (StringUtils.hasText(key)) {
                 normalized.put(key.trim(), value);
             }
         });
@@ -1511,7 +1533,7 @@ public class ReadActionResolutionService {
             return new ExecutedReadAction(
                 null,
                 actionName,
-                immutableNonNullParams(params),
+                immutableParams(params),
                 metadata,
                 actionResult,
                 false,

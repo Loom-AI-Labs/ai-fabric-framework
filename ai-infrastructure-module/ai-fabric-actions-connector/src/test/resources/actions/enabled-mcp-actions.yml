@@ -1,0 +1,21 @@
+mcpServers:
+  - serverRef: business-mcp
+    endpointUrl: https://business.example/mcp
+actions:
+  - name: disabled_action
+    enabled: false
+    accessMode: READ_WRITE
+    adapterType: mcp-tool
+    execution:
+      mcp: {serverRef: business-mcp, toolName: request.disabled}
+  - name: explicitly_enabled_action
+    enabled: true
+    accessMode: READ
+    adapterType: mcp-tool
+    execution:
+      mcp: {serverRef: business-mcp, toolName: request.enabled}
+  - name: default_enabled_action
+    accessMode: READ
+    adapterType: mcp-tool
+    execution:
+      mcp: {serverRef: business-mcp, toolName: request.default}

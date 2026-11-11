@@ -118,6 +118,12 @@ public class AIActionMetaData {
     @Builder.Default
     private Map<String, AIActionParamSchema> parameterSchemas = Collections.emptyMap();
 
+    /** Optional native receiver contract; simplified schemas still describe trusted input bindings. */
+    private Map<String, Object> inputSchema;
+
+    /** Optional native result schema, preserved for planners and execution adapters. */
+    private Map<String, Object> outputSchema;
+
     /**
      * Parameter names that must be provided for the action to execute safely.
      *

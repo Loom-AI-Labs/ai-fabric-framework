@@ -40,7 +40,7 @@ public record ActionDraftContinuation(
         }
         Map<String, Object> copy = new LinkedHashMap<>();
         source.forEach((key, value) -> {
-            if (StringUtils.hasText(key) && value != null) {
+            if (StringUtils.hasText(key)) {
                 copy.put(key.trim(), freezeValue(value));
             }
         });
@@ -53,7 +53,7 @@ public record ActionDraftContinuation(
         if (value instanceof Map<?, ?> map) {
             Map<String, Object> copy = new LinkedHashMap<>();
             map.forEach((key, nestedValue) -> {
-                if (key != null && nestedValue != null) {
+                if (key != null) {
                     copy.put(String.valueOf(key), freezeValue(nestedValue));
                 }
             });
@@ -62,9 +62,7 @@ public record ActionDraftContinuation(
         if (value instanceof List<?> list) {
             List<Object> copy = new ArrayList<>(list.size());
             for (Object item : list) {
-                if (item != null) {
-                    copy.add(freezeValue(item));
-                }
+                copy.add(freezeValue(item));
             }
             return Collections.unmodifiableList(copy);
         }

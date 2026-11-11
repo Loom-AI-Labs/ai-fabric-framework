@@ -10,6 +10,7 @@ import ai.fabric.intent.EnrichedPromptBuilder;
 import ai.fabric.intent.IntentExtractionJsonSupport;
 import ai.fabric.intent.IntentExtractionValidator;
 import ai.fabric.intent.action.AIActionMetaData;
+import ai.fabric.intent.action.ActionNativeSchemaSupport;
 import ai.fabric.intent.action.AIActionRegistry;
 import ai.fabric.intent.orchestration.OrchestrationContext;
 import ai.fabric.intent.orchestration.capability.CapabilityAwareActionMetadataSupport;
@@ -228,6 +229,13 @@ public class CompletionIntentExtractionStrategy {
             .filter(Objects::nonNull)
             .filter(meta -> StringUtils.hasText(meta.getName()))
             .map(meta -> {
+                if (meta.getInputSchema() != null) {
+                    return "- " + meta.getName().trim() + " - " + Objects.toString(meta.getDescription(), "")
+                        + " inputSchema=" + ActionNativeSchemaSupport.json(
+                            ActionNativeSchemaSupport.publicInputSchema(meta))
+                        + (meta.getOutputSchema() == null ? "" : " outputSchema="
+                            + ActionNativeSchemaSupport.json(meta.getOutputSchema()));
+                }
                 Set<String> required = meta.getRequiredParameters() != null ? meta.getRequiredParameters() : Set.of();
                 String requiredText = required.isEmpty() ? "" : " required=" + required;
                 Map<String, String> params = meta.getParameters() != null ? meta.getParameters() : Map.of();

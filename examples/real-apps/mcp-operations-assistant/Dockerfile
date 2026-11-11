@@ -2,10 +2,10 @@
 # Build context: repository root.
 #
 # This image resolves framework artifacts from Maven Central and packages only
-# the reference application. The 0.8.47 RC default requires actual publication
+# the reference application. The 0.8.48 RC default requires actual publication
 # before this Central-backed build can consume it.
 
-ARG AI_FABRIC_VERSION=0.8.47
+ARG AI_FABRIC_VERSION=0.8.48
 ARG APP_VERSION=1.0.0-SNAPSHOT
 ARG SOURCE_COMMIT=
 ARG SOURCE_BRANCH=

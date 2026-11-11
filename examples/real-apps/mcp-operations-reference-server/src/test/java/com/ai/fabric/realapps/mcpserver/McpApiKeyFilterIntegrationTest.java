@@ -1,10 +1,16 @@
 package com.ai.fabric.realapps.mcpserver;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.ai.fabric.realapps.mcpserver.config.McpApiKeyFilter;
+import ai.fabric.intent.action.ActionNativeSchemaSupport;
+import ai.fabric.intent.action.ActionParameterContractValidator.ActionParameterContractException;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -32,6 +38,16 @@ class McpApiKeyFilterIntegrationTest {
                 "wrong-key"
             ))
             .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void nativeValidationCoexistsWithTheRealMcpServerValidator() {
+        Map<String, Object> schema = Map.of("properties", Map.of(
+            "selection", Map.of("type", List.of("string", "null"))),
+            "required", List.of("selection"), "additionalProperties", false);
+        ActionNativeSchemaSupport.validateInput(schema, Collections.singletonMap("selection", null));
+        assertThatThrownBy(() -> ActionNativeSchemaSupport.validateInput(schema, Map.of("selection", 4)))
+            .isInstanceOf(ActionParameterContractException.class);
     }
 
     @Test

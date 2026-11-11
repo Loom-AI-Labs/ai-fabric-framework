@@ -81,15 +81,16 @@ public record ActionDraftSubmission(
                 || key.length() > MAX_PARAMETER_NAME_CHARACTERS) {
                 throw new IllegalArgumentException("action draft parameter name is invalid");
             }
-            if (rawValue != null) {
-                copied.put(key, copyValue(rawValue, depth + 1));
-            }
+            copied.put(key, copyValue(rawValue, depth + 1));
         });
         return copied;
     }
 
     private static Object copyValue(Object value, int depth) {
         requireDepth(depth);
+        if (value == null) {
+            return null;
+        }
         if (value instanceof String stringValue) {
             if (stringValue.length() > MAX_STRING_CHARACTERS) {
                 throw new IllegalArgumentException("action draft string value is too long");
@@ -108,11 +109,9 @@ public record ActionDraftSubmission(
                 if (copied.size() >= MAX_COLLECTION_SIZE) {
                     throw new IllegalArgumentException("action draft list is too large");
                 }
-                if (item != null) {
-                    copied.add(copyValue(item, depth + 1));
-                }
+                copied.add(copyValue(item, depth + 1));
             }
-            return List.copyOf(copied);
+            return Collections.unmodifiableList(copied);
         }
         throw new IllegalArgumentException(
             "unsupported action draft parameter value type"

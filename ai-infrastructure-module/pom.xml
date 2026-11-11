@@ -7,7 +7,7 @@
 
     <groupId>io.github.loom-ai-labs</groupId>
     <artifactId>ai-fabric-bom</artifactId>
-    <version>0.8.47</version>
+    <version>0.8.48</version>
     <packaging>pom</packaging>
 
     <name>AI Fabric Framework BOM</name>
@@ -102,7 +102,7 @@
         <jmh.version>1.37</jmh.version>
         <javafaker.version>1.0.2</javafaker.version>
         <swagger-request-validator.version>2.40.0</swagger-request-validator.version>
-        <json-schema-validator.version>2.0.1</json-schema-validator.version>
+        <json-schema-validator.version>3.0.0</json-schema-validator.version>
     </properties>
 
     <dependencyManagement>

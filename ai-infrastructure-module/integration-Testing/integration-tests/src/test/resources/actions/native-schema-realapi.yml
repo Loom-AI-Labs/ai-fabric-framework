@@ -1,0 +1,108 @@
+actions:
+  - name: native_read_setting
+    description: Read a public synthetic setting by requestKey. No sign-in, vector search or business mutation is needed.
+    accessMode: READ
+    anonymousAllowed: true
+    groundingEligible: true
+    readActionResolutionEligible: true
+    adapterType: mcp-tool
+    inputSchema:
+      properties:
+        requestKey: {type: string}
+        options:
+          type: object
+          properties:
+            threshold: {type: number, exclusiveMinimum: 0.25, maximum: 2.75}
+            note: {type: [string, 'null']}
+          required: [threshold, note]
+          additionalProperties: false
+      required: [requestKey, options]
+      additionalProperties: false
+    outputSchema: &output
+      type: object
+      properties:
+        accepted: {type: boolean}
+      required: [accepted]
+    llmFacts: {copyFields: [accepted]}
+    params:
+      - {name: requestKey, type: STRING, required: true}
+      - {name: options, type: OBJECT, required: true}
+    execution:
+      mcp: {connectionId: native-schema-fixture, toolName: settings.read}
+  - name: native_read_private_setting
+    description: Read the signed-in user's private synthetic setting by requestKey and selection. Selection is required but may explicitly be null. Never collect scopeKey; it comes from trusted runtime context.
+    accessMode: READ
+    groundingEligible: true
+    readActionResolutionEligible: true
+    adapterType: mcp-tool
+    inputSchema:
+      type: object
+      properties:
+        requestKey: {type: string}
+        selection: {type: [string, 'null']}
+        scopeKey: {type: string}
+      required: [requestKey, selection, scopeKey]
+      additionalProperties: false
+    outputSchema: *output
+    llmFacts: {copyFields: [accepted]}
+    params:
+      - {name: requestKey, type: STRING, required: true}
+      - {name: selection, type: STRING, required: true}
+      - name: scopeKey
+        type: STRING
+        required: true
+        askUser: false
+        visibility: INTERNAL
+        resolveFrom: {source: RUNTIME_CONTEXT, field: userId}
+    execution:
+      mcp: {connectionId: native-schema-fixture, toolName: settings.read-private}
+  - name: native_save_preference
+    description: Save a synthetic preference. Collect requestKey and selection. Selection is required but may explicitly be null to clear it. Never ask for scopeKey; trusted runtime context supplies it. Always request final confirmation.
+    accessMode: WRITE_ONLY
+    requiresConfirmation: true
+    confirmationMessage: Save the requested synthetic preference?
+    adapterType: mcp-tool
+    inputSchema:
+      type: object
+      properties:
+        requestKey: {type: string}
+        selection: {type: [string, 'null']}
+        scopeKey: {type: string}
+        optional: {type: string}
+      required: [requestKey, selection, scopeKey]
+      additionalProperties: false
+    outputSchema: *output
+    params:
+      - {name: requestKey, type: STRING, required: true}
+      - {name: selection, type: STRING, required: true}
+      - name: scopeKey
+        type: STRING
+        required: true
+        askUser: false
+        visibility: INTERNAL
+        resolveFrom: {source: RUNTIME_CONTEXT, field: userId}
+    execution:
+      mcp: {connectionId: native-schema-fixture, toolName: settings.save}
+  - name: native_save_without_confirmation
+    description: Save a synthetic marker by requestKey. This safe fixture explicitly permits execution without confirmation. Never ask for scopeKey; trusted runtime context supplies it.
+    accessMode: WRITE_ONLY
+    requiresConfirmation: false
+    adapterType: mcp-tool
+    inputSchema:
+      type: object
+      properties:
+        requestKey: {type: string}
+        scopeKey: {type: string}
+      required: [requestKey, scopeKey]
+      additionalProperties: false
+    outputSchema: *output
+    params:
+      - {name: requestKey, type: STRING, required: true}
+      - name: scopeKey
+        type: STRING
+        required: true
+        askUser: false
+        visibility: INTERNAL
+        resolveFrom: {source: RUNTIME_CONTEXT, field: userId}
+    execution:
+      mcp: {connectionId: native-schema-fixture, toolName: settings.mark}

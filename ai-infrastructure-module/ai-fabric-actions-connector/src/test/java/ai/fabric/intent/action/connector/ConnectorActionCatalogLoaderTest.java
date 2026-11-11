@@ -15,6 +15,23 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class ConnectorActionCatalogLoaderTest {
 
     @Test
+    void disabledActionIsAbsentFromCatalogueAndRuntimeHandlersWhileDefaultRemainsEnabled() {
+        var source = new AIActionCatalogProperties.ActionSourceProperties();
+        source.setPath("classpath:actions/enabled-mcp-actions.yml");
+        var catalogue = new ConnectorActionCatalogLoader(new DefaultResourceLoader()).loadCatalog(List.of(source));
+        assertThat(catalogue.actions()).extracting(ConnectorActionDefinition::name)
+            .containsExactly("explicitly_enabled_action", "default_enabled_action");
+        var service = org.mockito.Mockito.mock(ConnectorActionCatalogService.class);
+        org.mockito.Mockito.when(service.getCatalog()).thenReturn(catalogue);
+        var properties = new AIActionConnectorProperties();
+        properties.getMcpGateway().setBaseUrl("https://gateway.example");
+        properties.getMcpGateway().setApiKey("test-key");
+        var contributor = new ConnectorActionsRegistryContributor(properties, service, org.mockito.Mockito.mock(ActionConnectorExecutor.class));
+        assertThat(contributor.getHandlers()).extracting(handler -> handler.getActionMetadata().getName())
+            .containsExactly("explicitly_enabled_action", "default_enabled_action");
+    }
+
+    @Test
     void loadActions_shouldReadTerminalControlContract() {
         ConnectorActionCatalogLoader loader = new ConnectorActionCatalogLoader(new DefaultResourceLoader());
         AIActionCatalogProperties.ActionSourceProperties source = new AIActionCatalogProperties.ActionSourceProperties();

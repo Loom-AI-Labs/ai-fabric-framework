@@ -60,6 +60,10 @@ public class ActionInfo {
     @Builder.Default
     private Map<String, AIActionParamSchema> parameterSchemas = Collections.emptyMap();
 
+    private Map<String, Object> inputSchema;
+
+    private Map<String, Object> outputSchema;
+
     /**
      * Optional hint for how the confirmation message should be retrieved from configuration.
      */
@@ -90,6 +94,8 @@ public class ActionInfo {
             .confirmationMessageKey(confirmationMessageKey != null ? confirmationMessageKey.trim() : null)
             .parameters(parameters == null ? Collections.emptyMap() : parameters)
             .parameterSchemas(parameterSchemas == null ? Collections.emptyMap() : parameterSchemas)
+            .inputSchema(ActionNativeSchemaSupport.snapshot(inputSchema))
+            .outputSchema(ActionNativeSchemaSupport.snapshot(outputSchema))
             .build();
         if (copy.parameters != null && !copy.parameters.isEmpty()) {
             copy.parameters = copy.parameters.entrySet().stream()

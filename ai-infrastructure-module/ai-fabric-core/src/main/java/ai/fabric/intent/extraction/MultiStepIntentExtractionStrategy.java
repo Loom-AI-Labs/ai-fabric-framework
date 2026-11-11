@@ -15,6 +15,7 @@ import ai.fabric.intent.SpecialistPromptInstructionSupport;
 import ai.fabric.intent.IntentExtractionJsonSupport;
 import ai.fabric.intent.IntentExtractionValidator;
 import ai.fabric.intent.action.AIActionMetaData;
+import ai.fabric.intent.action.ActionNativeSchemaSupport;
 import ai.fabric.intent.action.AIActionRegistry;
 import ai.fabric.intent.action.AIActionParamSchema;
 import ai.fabric.intent.action.AIActionParamType;
@@ -596,6 +597,11 @@ public class MultiStepIntentExtractionStrategy implements IntentExtractionStrate
             }
 
             AIActionMetaData meta = metadataByName.get(action);
+            if (meta != null && meta.getInputSchema() != null) {
+                tasks.append("- intentIndex=").append(index).append(" action=").append(action)
+                    .append(" public parameters and requirements: see inputSchema\n");
+                continue;
+            }
             Map<String, String> params = meta != null ? meta.getParameters() : Map.of();
             if ((meta == null || meta.getRequiredParameters() == null || meta.getRequiredParameters().isEmpty())
                 && (params == null || params.isEmpty())) {
@@ -622,12 +628,20 @@ public class MultiStepIntentExtractionStrategy implements IntentExtractionStrate
                 continue;
             }
             specs.append("- action=").append(meta.getName()).append("\n");
-            if (meta.getRequiredParameters() != null && !meta.getRequiredParameters().isEmpty()) {
+            if (meta.getOutputSchema() != null) {
+                specs.append("  outputSchema: ").append(ActionNativeSchemaSupport.json(meta.getOutputSchema())).append("\n");
+            }
+            if (meta.getInputSchema() != null) {
+                specs.append("  required: see public inputSchema; internal bindings are supplied by the runtime.\n");
+            } else if (meta.getRequiredParameters() != null && !meta.getRequiredParameters().isEmpty()) {
                 specs.append("  required: ").append(String.join(", ", meta.getRequiredParameters())).append("\n");
             } else {
                 specs.append("  required: (none)\n");
             }
-            if (meta.getParameterSchemas() != null && !meta.getParameterSchemas().isEmpty()) {
+            if (meta.getInputSchema() != null) {
+                specs.append("  inputSchema: ").append(ActionNativeSchemaSupport.json(
+                    ActionNativeSchemaSupport.publicInputSchema(meta))).append("\n");
+            } else if (meta.getParameterSchemas() != null && !meta.getParameterSchemas().isEmpty()) {
                 specs.append("  paramsSchema:\n");
                 for (Map.Entry<String, AIActionParamSchema> entry : meta.getParameterSchemas().entrySet()) {
                     if (entry.getKey() == null) {
@@ -724,7 +738,7 @@ public class MultiStepIntentExtractionStrategy implements IntentExtractionStrate
             }
             Map<String, Object> cleaned = new LinkedHashMap<>();
             mapping.getActionParams().forEach((key, value) -> {
-                if (!StringUtils.hasText(key) || value == null) {
+                if (!StringUtils.hasText(key)) {
                     return;
                 }
                 cleaned.put(key, value);

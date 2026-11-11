@@ -1,5 +1,7 @@
 package ai.fabric.intent;
 
+import ai.fabric.intent.action.ActionNativeSchemaSupport;
+
 import ai.fabric.intent.action.ActionInfo;
 import ai.fabric.intent.action.AIActionParamSchema;
 import ai.fabric.intent.action.AIActionParamType;
@@ -244,7 +246,10 @@ public class EnrichedPromptBuilder {
                     .append(String.join(",", action.getGroundingVectorSpaces()))
                     .append("]");
             }
-            if (!CollectionUtils.isEmpty(action.getParameterSchemas())) {
+            if (action.getInputSchema() != null) {
+                prompt.append(" (inputSchema: ")
+                    .append(ActionNativeSchemaSupport.json(action.getInputSchema())).append(")");
+            } else if (!CollectionUtils.isEmpty(action.getParameterSchemas())) {
                 String schemas = action.getParameterSchemas().entrySet().stream()
                     .filter(entry -> entry.getKey() != null)
                     .map(entry -> entry.getKey() + ":" + summarizeSchema(entry.getValue(), 0))
@@ -255,6 +260,10 @@ public class EnrichedPromptBuilder {
                     .map(entry -> entry.getKey() + "=" + entry.getValue())
                     .collect(Collectors.joining(", "));
                 prompt.append(" (params: ").append(parameters).append(")");
+            }
+            if (action.getOutputSchema() != null) {
+                prompt.append(" (outputSchema: ")
+                    .append(ActionNativeSchemaSupport.json(action.getOutputSchema())).append(")");
             }
             prompt.append("\n");
         }

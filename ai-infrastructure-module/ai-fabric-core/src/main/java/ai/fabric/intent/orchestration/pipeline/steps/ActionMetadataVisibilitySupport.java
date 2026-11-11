@@ -1,6 +1,7 @@
 package ai.fabric.intent.orchestration.pipeline.steps;
 
 import ai.fabric.intent.action.AIActionMetaData;
+import ai.fabric.intent.action.ActionNativeSchemaSupport;
 import ai.fabric.intent.action.AIActionParamSchema;
 import org.springframework.util.StringUtils;
 
@@ -47,6 +48,8 @@ final class ActionMetadataVisibilitySupport {
             .provenance(metadata.getProvenance())
             .parameters(publicParameters)
             .parameterSchemas(publicSchemas)
+            .inputSchema(ActionNativeSchemaSupport.publicInputSchema(metadata))
+            .outputSchema(metadata.getOutputSchema())
             .requiredParameters(publicRequired)
             .build();
     }

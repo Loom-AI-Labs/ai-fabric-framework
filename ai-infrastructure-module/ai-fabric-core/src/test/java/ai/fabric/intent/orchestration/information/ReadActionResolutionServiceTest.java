@@ -51,6 +51,152 @@ import static org.mockito.Mockito.when;
 class ReadActionResolutionServiceTest {
 
     @Test
+    void nativeReadPlannerReceivesSchemaWithoutVectorRequirementOrTrustedCollectionFields() {
+        var ai = mock(AICoreService.class);
+        var registry = mock(AIActionRegistry.class);
+        var templates = mock(PromptTemplateResolver.class);
+        var metadata = AIActionMetaData.builder().name("inspect_request").accessMode(ActionAccessMode.READ)
+            .groundingEligible(true).readActionResolutionEligible(true)
+            .inputSchema(Map.of("type", "object", "properties", Map.of(
+                "selection", Map.of("oneOf", List.of(Map.of("type", "number", "minimum", 0.25), Map.of("type", "null"))),
+                "scopeKey", Map.of("type", "string")), "required", List.of("selection", "scopeKey")))
+            .outputSchema(Map.of("type", "object", "properties", Map.of("accepted", Map.of("type", "boolean"))))
+            .requiredParameters(Set.of("scopeKey"))
+            .parameterSchemas(Map.of("scopeKey", AIActionParamSchema.builder().askUser(false).visibility("INTERNAL")
+                .resolveFrom(Map.of("source", "RUNTIME_CONTEXT", "field", "userId")).build())).build();
+        when(registry.getAllMetadata()).thenReturn(List.of(metadata));
+        when(registry.findHandler("inspect_request")).thenReturn(Optional.of(mock(AIActionHandler.class)));
+        when(templates.resolve("orchestration/read-action-resolution", "system"))
+            .thenReturn(resolvedTemplate("system", "Plan authorized reads."));
+        when(templates.resolve("orchestration/read-action-resolution", "user"))
+            .thenReturn(resolvedTemplate("user", "{{eligible_actions_json}}"));
+        when(ai.generateContent(any(), eq(LlmPurpose.ORCHESTRATION))).thenReturn(AIGenerationResponse.builder()
+            .content("{\"decision\":\"USE_RAG_ONLY\",\"actions\":[]}").build());
+        var service = new ReadActionResolutionService(ai, registry, new IntentExtractionJsonSupport(new ObjectMapper()),
+            templates, new PromptRenderer(), mock(AIEntityConfigurationLoader.class));
+        var context = OrchestrationContext.forUser("verified-user");
+        service.resolve(Intent.builder().type(IntentType.INFORMATION).intent("Inspect my request").build(), context,
+            PipelineContext.from("Inspect my request", context).toBuilder().orchestrationPolicy(
+                readActionPolicy("executor", List.of("inspect_request"), OrchestrationProperties.ReadActionResolutionPlanningMode.SINGLE_PASS,
+                    OrchestrationProperties.ReadActionResolutionRagCooperationMode.RAG_IF_ACTIONS_INSUFFICIENT)).build());
+        var requests = ArgumentCaptor.forClass(AIGenerationRequest.class);
+        verify(ai).generateContent(requests.capture(), eq(LlmPurpose.ORCHESTRATION));
+        assertThat(requests.getValue().getPrompt()).contains("inputSchema", "oneOf", "0.25", "outputSchema", "accepted")
+            .doesNotContain("scopeKey");
+    }
+
+    @Test
+    void nativeReadDispatchPreservesExplicitNullWithoutInventingAbsentFields() {
+        var ai = mock(AICoreService.class);
+        var registry = mock(AIActionRegistry.class);
+        var templates = mock(PromptTemplateResolver.class);
+        var metadata = AIActionMetaData.builder().name("inspect_request").accessMode(ActionAccessMode.READ)
+            .groundingEligible(true).readActionResolutionEligible(true)
+            .inputSchema(Map.of("properties", Map.of(
+                "selection", Map.of("oneOf", List.of(Map.of("type", "number"), Map.of("type", "null"))),
+                "optional", Map.of("type", "string")),
+                "required", List.of("selection"), "additionalProperties", false))
+            .requiredParameters(Set.of("selection")).build();
+        var handler = mock(AIActionHandler.class);
+        when(handler.validateActionAllowed(any())).thenReturn(true);
+        var result = ActionResult.builder().success(true).data(ActionPayload.object(Map.of("accepted", true))).build();
+        when(handler.executeAction(any(), any())).thenReturn(result);
+        when(handler.buildPostActionLlmFacts(eq(result), any())).thenReturn(Optional.of(Map.of("accepted", true)));
+        when(registry.getAllMetadata()).thenReturn(List.of(metadata));
+        when(registry.findMetadata("inspect_request")).thenReturn(Optional.of(metadata));
+        when(registry.findHandler("inspect_request")).thenReturn(Optional.of(handler));
+        when(templates.resolve("orchestration/read-action-resolution", "system"))
+            .thenReturn(resolvedTemplate("system", "Plan authorized reads."));
+        when(templates.resolve("orchestration/read-action-resolution", "user"))
+            .thenReturn(resolvedTemplate("user", "{{eligible_actions_json}}"));
+        when(ai.generateContent(any(), eq(LlmPurpose.ORCHESTRATION))).thenReturn(AIGenerationResponse.builder()
+            .content("""
+                {"decision":"EXECUTE_READ_ACTIONS","actions":[{"name":"inspect_request","params":{"selection":null}}]}
+                """).build());
+        var service = new ReadActionResolutionService(ai, registry, new IntentExtractionJsonSupport(new ObjectMapper()),
+            templates, new PromptRenderer(), mock(AIEntityConfigurationLoader.class));
+        var context = OrchestrationContext.forUser("verified-user");
+        var outcome = service.resolve(Intent.builder().type(IntentType.INFORMATION).intent("Inspect my request").build(), context,
+            PipelineContext.from("Inspect my request", context).toBuilder().orchestrationPolicy(
+                readActionPolicy("executor", List.of("inspect_request"), OrchestrationProperties.ReadActionResolutionPlanningMode.SINGLE_PASS,
+                    OrchestrationProperties.ReadActionResolutionRagCooperationMode.NONE)).build());
+
+        assertThat(outcome.executedActions()).hasSize(1);
+        assertThat(outcome.executedActions().getFirst().params()).containsEntry("selection", null).doesNotContainKey("optional");
+        var parameters = ArgumentCaptor.forClass(Map.class);
+        var actionContext = ArgumentCaptor.forClass(ActionContext.class);
+        verify(handler).executeAction(parameters.capture(), actionContext.capture());
+        assertThat(parameters.getValue()).containsEntry("selection", null).doesNotContainKey("optional");
+        assertThat(actionContext.getValue().actionParams()).containsEntry("selection", null).doesNotContainKey("optional");
+    }
+
+    @Test
+    void resolvesMissingAndSpoofedRuntimeBindingsBeforePlannerValidationAndDeduplication() {
+        assertTrustedPlannerDispatch(true);
+    }
+
+    @Test
+    void missingTrustedRuntimeContextCannotBeReplacedByPlannerValues() {
+        assertTrustedPlannerDispatch(false);
+    }
+
+    private void assertTrustedPlannerDispatch(boolean trustedUserPresent) {
+        var ai = mock(AICoreService.class);
+        var registry = mock(AIActionRegistry.class);
+        var templates = mock(PromptTemplateResolver.class);
+        var metadata = AIActionMetaData.builder().name("inspect_private_request").accessMode(ActionAccessMode.READ)
+            .anonymousAllowed(true).groundingEligible(true).readActionResolutionEligible(true)
+            .inputSchema(Map.of("properties", Map.of(
+                "selection", Map.of("type", List.of("string", "null")), "scopeKey", Map.of("type", "string")),
+                "required", List.of("selection", "scopeKey"), "additionalProperties", false))
+            .requiredParameters(Set.of("selection", "scopeKey"))
+            .parameterSchemas(Map.of("scopeKey", AIActionParamSchema.builder().askUser(false).visibility("INTERNAL")
+                .resolveFrom(Map.of("source", "RUNTIME_CONTEXT", "field", "userId")).build())).build();
+        var handler = mock(AIActionHandler.class);
+        when(handler.validateActionAllowed(any())).thenReturn(true);
+        var result = ActionResult.builder().success(true).data(ActionPayload.object(Map.of("accepted", true))).build();
+        when(handler.executeAction(any(), any())).thenReturn(result);
+        when(handler.buildPostActionLlmFacts(eq(result), any())).thenReturn(Optional.of(Map.of("accepted", true)));
+        when(registry.getAllMetadata()).thenReturn(List.of(metadata));
+        when(registry.findMetadata("inspect_private_request")).thenReturn(Optional.of(metadata));
+        when(registry.findHandler("inspect_private_request")).thenReturn(Optional.of(handler));
+        when(templates.resolve("orchestration/read-action-resolution", "system"))
+            .thenReturn(resolvedTemplate("system", "Plan authorized reads."));
+        when(templates.resolve("orchestration/read-action-resolution", "user"))
+            .thenReturn(resolvedTemplate("user", "{{eligible_actions_json}}"));
+        when(ai.generateContent(any(), eq(LlmPurpose.ORCHESTRATION))).thenReturn(AIGenerationResponse.builder()
+            .content("""
+                {"decision":"EXECUTE_READ_ACTIONS","actions":[
+                  {"name":"inspect_private_request","params":{"selection":null}},
+                  {"name":"inspect_private_request","params":{"selection":null,"scopeKey":"spoofed-one"}},
+                  {"name":"inspect_private_request","params":{"selection":null,"scopeKey":"spoofed-two"}}]}
+                """).build());
+        var service = new ReadActionResolutionService(ai, registry, new IntentExtractionJsonSupport(new ObjectMapper()),
+            templates, new PromptRenderer(), mock(AIEntityConfigurationLoader.class));
+        var context = trustedUserPresent ? OrchestrationContext.forUser("verified-user")
+            : OrchestrationContext.builder().sessionId("anonymous-session").metadata(Map.of("userId", "not-a-verified-user")).build();
+        var outcome = service.resolve(Intent.builder().type(IntentType.INFORMATION).intent("Inspect my private request").build(), context,
+            PipelineContext.from("Inspect my private request", context).toBuilder().orchestrationPolicy(
+                readActionPolicy("executor", List.of("inspect_private_request"), OrchestrationProperties.ReadActionResolutionPlanningMode.SINGLE_PASS,
+                    OrchestrationProperties.ReadActionResolutionRagCooperationMode.NONE)).build());
+
+        if (trustedUserPresent) {
+            assertThat(outcome.executedActions()).hasSize(1);
+            assertThat(outcome.executedActions().getFirst().params()).containsEntry("selection", null)
+                .containsEntry("scopeKey", "verified-user").hasSize(2);
+            var parameters = ArgumentCaptor.forClass(Map.class);
+            var actionContext = ArgumentCaptor.forClass(ActionContext.class);
+            verify(handler, times(1)).executeAction(parameters.capture(), actionContext.capture());
+            assertThat(parameters.getValue()).containsEntry("selection", null).containsEntry("scopeKey", "verified-user");
+            assertThat(actionContext.getValue().actionParams()).containsEntry("scopeKey", "verified-user");
+        } else {
+            assertThat(outcome.executedActions()).isEmpty();
+            assertThat(outcome.diagnostics().get("rejectedActionProposals")).asString().contains("ACTION_REQUIRED_PARAMETERS_MISSING");
+            verify(handler, never()).executeAction(any(), any());
+        }
+    }
+
+    @Test
     void carriesNativeConversationHistoryAndAnExplicitModelRetrievalQueryWithoutExecutingOrInventingFacts() {
         AICoreService ai = mock(AICoreService.class);
         AIActionRegistry registry = mock(AIActionRegistry.class);

@@ -5,11 +5,11 @@
 #
 # From the repository root:
 # docker build -f examples/real-apps/ecommerce-store/Dockerfile \
-#   --build-arg AI_FABRIC_VERSION=0.8.47 \
-#   -t ai-fabric-ecommerce-store:0.8.47 \
+#   --build-arg AI_FABRIC_VERSION=0.8.48 \
+#   -t ai-fabric-ecommerce-store:0.8.48 \
 #   examples/real-apps
 
-ARG AI_FABRIC_VERSION=0.8.47
+ARG AI_FABRIC_VERSION=0.8.48
 
 FROM maven:3.9-eclipse-temurin-21 AS build
 ARG AI_FABRIC_VERSION

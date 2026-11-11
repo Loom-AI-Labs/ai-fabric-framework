@@ -99,6 +99,24 @@ class DefaultGovernedActionInvocationServiceTest {
     }
 
     @Test
+    void nativeProposalPreflightDoesNotRequireUnresolvedRuntimeInputsButDispatchDoes() {
+        metadata.setInputSchema(Map.of("type", "object", "properties", Map.of(
+            "last4", Map.of("type", "string"), "scopeKey", Map.of("type", "string")),
+            "required", List.of("last4", "scopeKey"), "additionalProperties", false));
+        metadata.setParameterSchemas(Map.of("scopeKey", AIActionParamSchema.builder().type(AIActionParamType.STRING)
+            .askUser(false).visibility("INTERNAL").resolveFrom(Map.of("source", "RUNTIME_CONTEXT", "field", "userId")).build()));
+        var profile = profile(Set.of(), Set.of("update_payment"));
+        var preflight = service.invoke(invocation(profile, ActionConfirmationState.PROPOSAL_PREFLIGHT, Map.of("last4", "4242")));
+        assertThat(preflight.status()).isEqualTo(GovernedActionInvocationStatus.CONFIRMATION_REQUIRED);
+        verify(handler, never()).executeAction(org.mockito.ArgumentMatchers.anyMap(), org.mockito.ArgumentMatchers.any());
+        var unresolved = service.invoke(invocation(profile, ActionConfirmationState.CONFIRMED, Map.of("last4", "4242")));
+        assertThat(unresolved.status()).isEqualTo(GovernedActionInvocationStatus.INVALID);
+        assertThat(unresolved.publicFailure().reason()).isEqualTo("ACTION_PARAMETER_INVALID");
+        verify(handler, never()).executeAction(org.mockito.ArgumentMatchers.anyMap(), org.mockito.ArgumentMatchers.any());
+        verify(guard, never()).verifyBeforeAction(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
     void executesWithoutDuplicateConfirmationWhenInvocationPolicyWaivesIt() {
         AIActionHandler dynamicHandler = mock(
             AIActionHandler.class,

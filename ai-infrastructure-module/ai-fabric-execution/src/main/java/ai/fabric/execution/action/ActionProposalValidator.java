@@ -4,6 +4,7 @@ import ai.fabric.intent.action.AIActionMetaData;
 import ai.fabric.intent.action.AIActionNames;
 import ai.fabric.intent.action.AIActionParamSchema;
 import ai.fabric.intent.action.AIActionParamType;
+import ai.fabric.intent.action.ActionParameterContractValidator;
 import ai.fabric.intent.orchestration.capability.EffectiveCapabilityProfile;
 import java.math.BigDecimal;
 import java.util.ArrayList;
@@ -68,6 +69,14 @@ public final class ActionProposalValidator {
     ) {
         Map<String, Object> values =
             parameters == null ? Map.of() : parameters;
+        if (metadata.getInputSchema() != null) {
+            try {
+                ActionParameterContractValidator.validateExecutable(metadata, values);
+                return;
+            } catch (ActionParameterContractValidator.ActionParameterContractException ex) {
+                throw invalid(ex.reason(), ex.getMessage());
+            }
+        }
         Map<String, AIActionParamSchema> schemas =
             metadata.getParameterSchemas() == null
                 ? Map.of()
@@ -147,6 +156,12 @@ public final class ActionProposalValidator {
             );
         }
         contract.put("parameterSchemas", schemas);
+        if (metadata.getInputSchema() != null) {
+            contract.put("inputSchema", metadata.getInputSchema());
+        }
+        if (metadata.getOutputSchema() != null) {
+            contract.put("outputSchema", metadata.getOutputSchema());
+        }
         return security.canonicalHash(contract);
     }
 

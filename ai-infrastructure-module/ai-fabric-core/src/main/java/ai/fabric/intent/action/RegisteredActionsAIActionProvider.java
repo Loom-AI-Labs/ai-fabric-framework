@@ -39,6 +39,8 @@ public class RegisteredActionsAIActionProvider implements AIActionProvider {
                 .groundingVectorSpaces(meta.getGroundingVectorSpaces())
                 .parameters(publicParameters(meta))
                 .parameterSchemas(publicParameterSchemas(meta))
+                .inputSchema(ActionNativeSchemaSupport.publicInputSchema(meta))
+                .outputSchema(meta.getOutputSchema())
                 .build())
             .filter(ActionInfo::hasValidName)
             .toList();

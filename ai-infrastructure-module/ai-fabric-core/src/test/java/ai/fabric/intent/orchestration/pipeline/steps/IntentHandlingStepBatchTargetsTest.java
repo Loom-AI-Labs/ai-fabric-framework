@@ -58,6 +58,94 @@ import static org.mockito.Mockito.when;
 class IntentHandlingStepBatchTargetsTest {
 
     @Test
+    void explicitNativeNullSurvivesConfirmationSerializationAndDispatchWithoutInventingAbsentFields() throws Exception {
+        var metadata = AIActionMetaData.builder().name("clear_value").accessMode(ActionAccessMode.WRITE_ONLY)
+            .confirmationRequired(true).parameters(Map.of("value", "Value to clear", "scopeKey", "Trusted scope"))
+            .parameterSchemas(Map.of("value", AIActionParamSchema.builder().type(AIActionParamType.STRING).required(true).build(),
+                "scopeKey", AIActionParamSchema.builder().type(AIActionParamType.STRING).required(true).visibility("INTERNAL").askUser(false)
+                    .resolveFrom(Map.of("source", "RUNTIME_CONTEXT", "field", "userId")).build()))
+            .requiredParameters(Set.of("value", "scopeKey"))
+            .inputSchema(Map.of("type", "object", "properties", Map.of("value", Map.of("type", List.of("string", "null")),
+                "scopeKey", Map.of("type", "string", "const", "verified-user")),
+                "required", List.of("value", "scopeKey"), "additionalProperties", false)).build();
+        var captured = new java.util.concurrent.atomic.AtomicReference<Map<String, Object>>();
+        AIActionHandler handler = new AIActionHandler() {
+            public AIActionMetaData getActionMetadata() { return metadata; }
+            public boolean requiresConfirmation() { return true; }
+            public String getConfirmationMessage(Map<String, Object> params, ai.fabric.intent.action.ActionContext context) { return "Clear this value?"; }
+            public ActionResult executeAction(Map<String, Object> params, ai.fabric.intent.action.ActionContext context) {
+                captured.set(params);
+                assertThat(context.actionParams()).containsEntry("value", null);
+                return ActionResult.builder().success(true).message("Cleared").build();
+            }
+        };
+        var registry = mock(AIActionRegistry.class);
+        when(registry.findMetadata("clear_value")).thenReturn(Optional.of(metadata));
+        when(registry.findHandler("clear_value")).thenReturn(Optional.of(handler));
+        var pending = new InMemoryPendingActionStore();
+        var step = newStep(registry, pending);
+        var context = OrchestrationContext.builder().userId("verified-user").conversationId("native-null-confirmation").build();
+        var first = PipelineContext.from("Clear my value", context).toBuilder().intentResponse(MultiIntentResponse.builder()
+            .intents(List.of(Intent.builder().type(IntentType.ACTION).action("clear_value")
+                .actionParams(java.util.Collections.singletonMap("value", null)).build())).build()).build();
+        assertThat(step.process(first).getIntentResult().getType()).isEqualTo(OrchestrationResultType.CONFIRMATION_REQUIRED);
+        assertThat(captured.get()).isNull();
+        var json = new ObjectMapper();
+        var saved = pending.peekPendingAction("native-null-confirmation", "verified-user").orElseThrow();
+        Map<String, Object> decoded = json.readValue(json.writeValueAsString(saved.toMap()), new com.fasterxml.jackson.core.type.TypeReference<>() {});
+        var restored = PendingAction.fromMap(decoded);
+        assertThat(restored.actionParams()).containsEntry("value", null).doesNotContainKey("absent");
+        pending.savePendingAction("native-null-confirmation", "verified-user", restored);
+        var confirmation = PipelineContext.from("Confirm", context).toBuilder().intentResponse(MultiIntentResponse.builder()
+            .intents(List.of(Intent.builder().type(IntentType.CONFIRMATION_POSITIVE).build())).build()).build();
+        assertThat(step.process(confirmation).getIntentResult().getType()).isEqualTo(OrchestrationResultType.ACTION_EXECUTED);
+        assertThat(captured.get()).containsEntry("value", null).containsEntry("scopeKey", "verified-user").doesNotContainKey("absent");
+        assertThat(pending.peekPendingAction("native-null-confirmation", "verified-user")).isEmpty();
+    }
+
+    @Test
+    void nativeActionDispatchUsesNormalRuntimeResolutionAndKeepsIncompleteCollectionOpen() {
+        var metadata = AIActionMetaData.builder().name("inspect_request").accessMode(ActionAccessMode.READ)
+            .parameters(Map.of("query", "Public request", "scopeKey", "Trusted runtime binding"))
+            .parameterSchemas(Map.of("query", AIActionParamSchema.builder().type(AIActionParamType.STRING).required(true).build(),
+                "scopeKey", AIActionParamSchema.builder().type(AIActionParamType.STRING).required(true)
+                    .askUser(false).visibility("INTERNAL").resolveFrom(Map.of("source", "RUNTIME_CONTEXT", "field", "userId")).build()))
+            .requiredParameters(Set.of("query", "scopeKey"))
+            .inputSchema(Map.of("type", "object", "properties", Map.of("query", Map.of("type", "string"),
+                "scopeKey", Map.of("type", "string", "const", "verified-user")),
+                "required", List.of("query", "scopeKey"), "additionalProperties", false)).build();
+        var captured = new java.util.concurrent.atomic.AtomicReference<Map<String, Object>>();
+        AIActionHandler handler = new AIActionHandler() {
+            public AIActionMetaData getActionMetadata() { return metadata; }
+            public boolean requiresConfirmation() { return false; }
+            public String getConfirmationMessage(Map<String, Object> params, ai.fabric.intent.action.ActionContext context) { return "Inspect?"; }
+            public ActionResult executeAction(Map<String, Object> params, ai.fabric.intent.action.ActionContext context) {
+                captured.set(params);
+                return ActionResult.builder().success(true).message("Inspected").build();
+            }
+        };
+        var registry = mock(AIActionRegistry.class);
+        when(registry.findMetadata("inspect_request")).thenReturn(Optional.of(metadata));
+        when(registry.findHandler("inspect_request")).thenReturn(Optional.of(handler));
+        var step = newStep(registry);
+        var context = OrchestrationContext.builder().userId("verified-user").conversationId("native-collection").build();
+        var incomplete = PipelineContext.from("Inspect", context).toBuilder().intentResponse(MultiIntentResponse.builder()
+            .intents(List.of(Intent.builder().type(IntentType.ACTION).action("inspect_request")
+                .actionParams(Map.of("scopeKey", "model-spoof")).build())).build()).build();
+        var collected = step.process(incomplete).getIntentResult();
+        assertThat(collected.getType()).isEqualTo(OrchestrationResultType.CLARIFICATION_REQUIRED);
+        assertThat(collected.getMessage()).contains("query").doesNotContain("scopeKey");
+        assertThat(captured.get()).isNull();
+        var complete = PipelineContext.from("Inspect this request", context).toBuilder().intentResponse(MultiIntentResponse.builder()
+            .intents(List.of(Intent.builder().type(IntentType.ACTION).action("inspect_request")
+                .actionParams(Map.of("query", "inspect", "scopeKey", "model-spoof")).build())).build()).build();
+        var dispatched = step.process(complete).getIntentResult();
+        assertThat(dispatched.getType()).isEqualTo(OrchestrationResultType.ACTION_EXECUTED);
+        assertThat(dispatched.isSuccess()).isTrue();
+        assertThat(captured.get()).containsEntry("query", "inspect").containsEntry("scopeKey", "verified-user");
+    }
+
+    @Test
     void shouldExpandBatchTargetsFromResolvedTargetsWhenOnlyOneItemProvided() {
         AIActionMetaData meta = addToCartMeta();
         AIActionHandler handler = mock(AIActionHandler.class);

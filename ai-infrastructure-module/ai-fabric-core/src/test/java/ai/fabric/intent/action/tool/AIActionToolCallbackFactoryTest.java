@@ -29,6 +29,38 @@ class AIActionToolCallbackFactoryTest {
     private final ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
 
     @Test
+    void nativeToolSchemaPreservesNullableAndTrustedArgumentsAreValidatedAfterResolution() throws Exception {
+        AIActionMetaData metadata = AIActionMetaData.builder().name("inspect_native")
+            .accessMode(ActionAccessMode.READ).anonymousAllowed(true)
+            .inputSchema(Map.of("type", "object", "properties", Map.of(
+                "note", Map.of("type", java.util.List.of("string", "null")),
+                "tenantId", Map.of("type", "string")),
+                "required", java.util.List.of("note", "tenantId"), "additionalProperties", false))
+            .parameterSchemas(Map.of("tenantId", AIActionParamSchema.builder().visibility("INTERNAL").askUser(false).build()))
+            .build();
+        RecordingActionHandler handler = new RecordingActionHandler(metadata, false);
+        var callback = newFactory().createCallback(handler,
+            new ActionContext(OrchestrationContext.anonymous(), null, Map.of("tenantId", "trusted-tenant")));
+        assertThat(callback.getToolDefinition().inputSchema()).contains("null").doesNotContain("tenantId");
+        var result = readMap(callback.call("{\"note\":null,\"tenantId\":\"model-spoof\"}"));
+        assertThat(result).containsEntry("success", true);
+        assertThat(handler.lastParams.get()).containsEntry("note", null).containsEntry("tenantId", "trusted-tenant");
+        assertThat(handler.executions).hasValue(1);
+    }
+
+    @Test
+    void nativeToolRejectsSchemaViolationBeforeExecution() throws Exception {
+        AIActionMetaData metadata = AIActionMetaData.builder().name("inspect_native")
+            .accessMode(ActionAccessMode.READ).anonymousAllowed(true)
+            .inputSchema(Map.of("type", "object", "properties", Map.of("price", Map.of("type", "number", "minimum", 0.25)),
+                "required", java.util.List.of("price"), "additionalProperties", false)).build();
+        RecordingActionHandler handler = new RecordingActionHandler(metadata, false);
+        var callback = newFactory().createCallback(handler, anonymousContext());
+        assertThat(readMap(callback.call("{\"price\":0.1}"))).containsEntry("success", false).containsEntry("errorCode", "ACTION_PARAMETER_INVALID");
+        assertThat(handler.executions).hasValue(0);
+    }
+
+    @Test
     void inputSchemaExposesOnlyPublicDeclaredParameters() throws Exception {
         ToolCallback callback = newFactory().createCallback(new RecordingActionHandler(actionMetadata(), false), anonymousContext());
 
@@ -260,7 +292,7 @@ class AIActionToolCallbackFactoryTest {
         @Override
         public ActionResult executeAction(Map<String, Object> params, ActionContext context) {
             executions.incrementAndGet();
-            lastParams.set(Map.copyOf(params));
+            lastParams.set(java.util.Collections.unmodifiableMap(new LinkedHashMap<>(params)));
             return ActionResult.builder()
                 .success(true)
                 .message("ok")

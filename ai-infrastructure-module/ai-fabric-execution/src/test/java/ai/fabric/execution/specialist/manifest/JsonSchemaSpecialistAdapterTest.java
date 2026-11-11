@@ -90,6 +90,25 @@ class JsonSchemaSpecialistAdapterTest {
     }
 
     @Test
+    void validatesJackson2NullableValuesThroughTheValidatorJsonBoundary() throws Exception {
+        var mapper = ManifestTestFixtures.objectMapper();
+        var schema = new SpecialistSchemaDefinition("ai.fabric/v1", "SpecialistSchema",
+            new SpecialistResourceMetadata("nullable-contract", "1"),
+            new SpecialistSchemaSpec(SpecialistSchemaDirection.INPUT, "2020-12", mapper.readTree("""
+                {"type":"object","properties":{"selection":{"type":["number","null"],"minimum":0.25}},
+                 "required":["selection"],"additionalProperties":false}
+                """)));
+        var validator = new SpecialistJsonSchemaValidator();
+        validator.validateDefinition(schema, "nullable-contract.yml");
+        validator.validate(schema, mapper.readTree("{\"selection\":null}"));
+        validator.validate(schema, mapper.readTree("{\"selection\":0.5}"));
+        assertThatThrownBy(() -> validator.validate(schema, mapper.readTree("{}")))
+            .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> validator.validate(schema, mapper.readTree("{\"selection\":0.1}")))
+            .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
     void rejectsExternalSchemaReferencesBeforeRuntimeValidation() {
         JsonNode externalSchema = ManifestTestFixtures.objectMapper()
             .createObjectNode()

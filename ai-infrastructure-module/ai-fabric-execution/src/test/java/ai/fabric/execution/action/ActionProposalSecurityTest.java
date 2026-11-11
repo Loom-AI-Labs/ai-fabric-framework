@@ -12,6 +12,17 @@ import org.junit.jupiter.api.Test;
 
 class ActionProposalSecurityTest {
 
+    @Test
+    void explicitNullSurvivesEncryptedReceiptAndCannotCollideWithAbsentEvenWithNonNullMapper() {
+        var mapper = new ObjectMapper().setSerializationInclusion(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL);
+        var security = new ActionProposalSecurity(mapper, "test-encryption-secret-with-at-least-32-characters",
+            "test-fingerprint-secret-with-at-least-32-characters");
+        var explicit = java.util.Collections.<String, Object>singletonMap("value", null);
+        var restored = security.unprotect(security.protect(explicit, "receipt:params"), "receipt:params");
+        assertThat(restored).containsEntry("value", null).doesNotContainKey("absent");
+        assertThat(security.canonicalHash(explicit)).isNotEqualTo(security.canonicalHash(Map.of()));
+    }
+
     private final ActionProposalSecurity security =
         new ActionProposalSecurity(
             new ObjectMapper(),

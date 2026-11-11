@@ -155,6 +155,15 @@ public final class DefaultGovernedActionInvocationService
             );
         }
 
+        // Collection and proposal preflight may be incomplete. Full native inputs
+        // are checked only at dispatch, after the caller's normal parameter resolution.
+        if (metadata.getInputSchema() != null) {
+            try {
+                ActionParameterContractValidator.validateExecutable(metadata, invocation.parameters());
+            } catch (ActionParameterContractException ex) {
+                return invalid(ex.reason(), ex.getMessage());
+            }
+        }
         try {
             if (actionContext.orchestrationContext() != null
                 && actionContext.orchestrationContext().getOrchestrationTurnGuard() != null) {
@@ -272,6 +281,9 @@ public final class DefaultGovernedActionInvocationService
         }
         List<String> missing = new ArrayList<>();
         for (String parameter : metadata.getRequiredParameters()) {
+            if (ai.fabric.intent.action.ActionNativeSchemaSupport.hasExplicitPublicNull(metadata, parameters, parameter)) {
+                continue;
+            }
             Object value = parameters.get(parameter);
             if (value == null || (value instanceof String text && !StringUtils.hasText(text))) {
                 missing.add(parameter);

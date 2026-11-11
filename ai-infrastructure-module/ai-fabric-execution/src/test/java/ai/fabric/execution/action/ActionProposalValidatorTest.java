@@ -18,6 +18,23 @@ import org.junit.jupiter.api.Test;
 
 class ActionProposalValidatorTest {
 
+    @Test
+    void nativeProposalPreservesNullableContractAndBindsItIntoReceiptHash() {
+        var metadata = AIActionMetaData.builder().name("clear_value").accessMode(ActionAccessMode.WRITE_ONLY)
+            .confirmationRequired(true).requiredParameters(Set.of("value"))
+            .inputSchema(Map.of("type", "object", "properties", Map.of("value", Map.of("type", List.of("string", "null"))),
+                "required", List.of("value"), "additionalProperties", false)).build();
+        assertThatCode(() -> validator.validateParameters(metadata, java.util.Collections.singletonMap("value", null)))
+            .doesNotThrowAnyException();
+        assertThatThrownBy(() -> validator.validateParameters(metadata, Map.of())).isInstanceOf(ActionProposalValidationException.class);
+        var originalHash = validator.schemaHash(metadata, security);
+        metadata.setInputSchema(Map.of("type", "object", "properties", Map.of("value", Map.of("type", "string")),
+            "required", List.of("value"), "additionalProperties", false));
+        assertThat(validator.schemaHash(metadata, security)).isNotEqualTo(originalHash);
+        assertThatThrownBy(() -> validator.validateParameters(metadata, java.util.Collections.singletonMap("value", null)))
+            .isInstanceOf(ActionProposalValidationException.class);
+    }
+
     private final ActionProposalValidator validator =
         new ActionProposalValidator();
     private final ActionProposalSecurity security =

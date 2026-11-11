@@ -153,11 +153,10 @@ public class Intent {
             return;
         }
 
-        // Jackson can deserialize JSON objects that contain null values, but Map.copyOf rejects null keys/values.
-        // Be defensive and drop null entries to avoid NPEs during intent extraction parsing.
+        // Explicit JSON null is a supplied value; it must remain distinct from an absent field.
         Map<String, Object> cleaned = new java.util.LinkedHashMap<>(params.size());
         params.forEach((key, value) -> {
-            if (key == null || value == null) {
+            if (key == null) {
                 return;
             }
             cleaned.put(key, value);
@@ -205,11 +204,7 @@ public class Intent {
         }
         // Semantic booleans intentionally remain null when the model omitted them. The extraction validator
         // can then request bounded model repair instead of silently inventing a decision.
-        if (actionParams == null) {
-            actionParams = Collections.emptyMap();
-        } else {
-            actionParams = Map.copyOf(actionParams);
-        }
+        setActionParams(actionParams);
         if (optimizedQuery != null && optimizedQuery.isBlank()) {
             optimizedQuery = null;
         }

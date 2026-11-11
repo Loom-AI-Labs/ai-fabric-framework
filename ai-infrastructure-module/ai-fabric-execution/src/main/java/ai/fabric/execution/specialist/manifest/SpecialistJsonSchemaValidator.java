@@ -2,6 +2,7 @@ package ai.fabric.execution.specialist.manifest;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.networknt.schema.Error;
+import com.networknt.schema.InputFormat;
 import com.networknt.schema.Schema;
 import com.networknt.schema.SchemaLocation;
 import com.networknt.schema.SchemaRegistry;
@@ -51,7 +52,7 @@ public final class SpecialistJsonSchemaValidator {
                 )
             );
             List<Error> metaErrors = metaSchema.validate(
-                definition.spec().schema()
+                definition.spec().schema().toString(), InputFormat.JSON
             );
             if (!metaErrors.isEmpty()) {
                 throw failure(
@@ -80,7 +81,7 @@ public final class SpecialistJsonSchemaValidator {
     ) {
         Objects.requireNonNull(definition, "definition is required");
         Objects.requireNonNull(value, "value is required");
-        List<Error> errors = compiled(definition).validate(value);
+        List<Error> errors = compiled(definition).validate(value.toString(), InputFormat.JSON);
         if (!errors.isEmpty()) {
             throw new IllegalArgumentException(
                 "JSON does not satisfy schema " + definition.id()
@@ -92,7 +93,7 @@ public final class SpecialistJsonSchemaValidator {
     private Schema compiled(SpecialistSchemaDefinition definition) {
         return schemas.computeIfAbsent(
             definition.id().toString(),
-            ignored -> registry.getSchema(definition.spec().schema())
+            ignored -> registry.getSchema(definition.spec().schema().toString(), InputFormat.JSON)
         );
     }
 

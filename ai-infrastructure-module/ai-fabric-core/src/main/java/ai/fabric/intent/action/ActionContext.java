@@ -150,7 +150,7 @@ public record ActionContext(OrchestrationContext orchestrationContext,
         }
         Map<String, Object> copy = new LinkedHashMap<>();
         for (Map.Entry<String, Object> entry : params.entrySet()) {
-            if (entry == null || !StringUtils.hasText(entry.getKey()) || entry.getValue() == null) {
+            if (entry == null || !StringUtils.hasText(entry.getKey())) {
                 continue;
             }
             copy.put(entry.getKey().trim(), entry.getValue());

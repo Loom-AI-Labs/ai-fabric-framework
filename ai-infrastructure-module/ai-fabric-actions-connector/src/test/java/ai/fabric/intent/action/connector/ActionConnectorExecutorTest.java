@@ -30,6 +30,73 @@ class ActionConnectorExecutorTest {
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.EnumSource(value = ActionAccessMode.class, names = {"WRITE_ONLY", "READ_WRITE"})
+    void mcpWriteDoesNotRetryUncertainTransportFailureWithoutReceiverContract(ActionAccessMode mode) {
+        for (String dispatch : List.of("DIRECT_GATEWAY", "CONNECTOR")) {
+            AtomicInteger attempts = new AtomicInteger();
+            var props = connectorProps("https://connector.example", 3, Duration.ZERO);
+            props.getMcpGateway().setBaseUrl("https://gateway.example");
+            props.getMcpGateway().setApiKey("test-key");
+            var executor = new ActionConnectorExecutor(props, request -> {
+                attempts.incrementAndGet();
+                assertThat(readRequest(request.body())).containsKey("idempotencyKey");
+                throw new IllegalStateException("Connection lost after receiver accepted the request");
+            }, null, fixedClock());
+            var config = Map.<String, Object>of("adapterType", "mcp-tool", "execution", Map.of("mcp", Map.of(
+                "serverRef", "company", "toolName", "subscription.cancel", "dispatchMode", dispatch)));
+            assertThat(executor.execute("cancel", mode, Map.of(), testContext(), config).isSuccess()).isFalse();
+            assertThat(attempts).hasValue(1);
+        }
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.EnumSource(value = ActionAccessMode.class, names = {"WRITE_ONLY", "READ_WRITE"})
+    void mcpWriteDoesNotRetryRetryableErrorWithoutReceiverContract(ActionAccessMode mode) {
+        var props = connectorProps("https://connector.example", 3, Duration.ZERO);
+        props.getMcpGateway().setBaseUrl("https://gateway.example");
+        props.getMcpGateway().setApiKey("test-key");
+        var fake = new FakeHttpClient(List.of(new OutboundHttpExecutionResponse(503,
+            "{\"success\":false,\"errorCode\":\"SERVICE_UNAVAILABLE\"}", Map.of())));
+        var executor = new ActionConnectorExecutor(props, fake, null, fixedClock());
+        assertThat(executor.execute("cancel", mode, Map.of(), testContext(), Map.of("adapterType", "mcp-tool")).isSuccess()).isFalse();
+        assertThat(fake.callCount()).isEqualTo(1);
+    }
+
+    @Test
+    void mcpRetryRequiresCompleteReceiverDeduplicationContractAndReusesKey() {
+        for (Map<String, Object> contract : List.of(
+            Map.<String, Object>of("qualified", true),
+            Map.<String, Object>of("qualified", true, "contractId", "tested-receiver-v1"),
+            Map.<String, Object>of("qualified", true, "contractId", "tested-receiver-v1", "keyTransport", "CONNECTOR_REQUEST_IDEMPOTENCY_KEY"))) {
+            var bodies = new ArrayList<Map<String, Object>>();
+            var props = connectorProps("https://connector.example", 3, Duration.ZERO);
+            props.getMcpGateway().setBaseUrl("https://gateway.example");
+            props.getMcpGateway().setApiKey("test-key");
+            var executor = new ActionConnectorExecutor(props, request -> {
+                bodies.add(readRequest(request.body()));
+                return new OutboundHttpExecutionResponse(503, "{\"success\":false,\"errorCode\":\"SERVICE_UNAVAILABLE\"}", Map.of());
+            }, null, fixedClock());
+            executor.execute("cancel", ActionAccessMode.WRITE_ONLY, Map.of(), testContext(), Map.of(
+                "adapterType", "mcp-tool", "execution", Map.of("mcp", Map.of("receiverDeduplication", contract))));
+            assertThat(bodies).hasSize(contract.containsKey("keyTransport") ? 3 : 1);
+            assertThat(bodies.stream().map(body -> body.get("idempotencyKey")).distinct()).hasSize(1);
+        }
+    }
+
+    @Test
+    void mcpReadRetainsBoundedRetryWithoutReceiverDeduplication() {
+        var props = connectorProps("https://connector.example", 3, Duration.ZERO);
+        props.getMcpGateway().setBaseUrl("https://gateway.example");
+        props.getMcpGateway().setApiKey("test-key");
+        var fake = new FakeHttpClient(List.of(new OutboundHttpExecutionResponse(503, "{}", Map.of()),
+            new OutboundHttpExecutionResponse(200, "{\"success\":true}", Map.of())));
+        var result = new ActionConnectorExecutor(props, fake, null, fixedClock()).execute("lookup", ActionAccessMode.READ,
+            Map.of(), testContext(), Map.of("adapterType", "mcp-tool"));
+        assertThat(result.isSuccess()).isTrue();
+        assertThat(fake.callCount()).isEqualTo(2);
+    }
+
     @Test
     void confirmedConnectorWritePreservesVerifiedCallerInsteadOfConversationSubject() {
         var fake = new FakeHttpClient(List.of(new OutboundHttpExecutionResponse(200,

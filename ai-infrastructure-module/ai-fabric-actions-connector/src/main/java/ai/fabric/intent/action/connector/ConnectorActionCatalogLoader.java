@@ -4,6 +4,7 @@ import ai.fabric.dto.IntentType;
 import ai.fabric.intent.action.AIActionParamType;
 import ai.fabric.intent.action.AIContributionProvenance;
 import ai.fabric.intent.action.ActionAccessMode;
+import ai.fabric.intent.action.ActionNativeSchemaSupport;
 import ai.fabric.intent.action.ActionResultPresentationHint;
 import ai.fabric.intent.action.confirmation.ConfirmationInterceptorDecision;
 import ai.fabric.intent.action.confirmation.ConfirmationInterceptorDecisionType;
@@ -42,6 +43,7 @@ import org.yaml.snakeyaml.constructor.SafeConstructor;
 public class ConnectorActionCatalogLoader {
 
     private static final String KEY_ACTIONS = "actions";
+    private static final String KEY_ENABLED = "enabled";
     private static final String KEY_CONFIRMATION_INTERCEPTORS = "confirmationInterceptors";
     private static final String KEY_WEBHOOK_TARGETS = "webhookTargets";
     private static final String KEY_MCP_SERVERS = "mcpServers";
@@ -239,7 +241,7 @@ public class ConnectorActionCatalogLoader {
 
         List<ConnectorActionDefinition> actions = new ArrayList<>();
         for (Map<String, Object> map : actionMaps) {
-            if (map == null || map.isEmpty()) {
+            if (map == null || map.isEmpty() || Boolean.FALSE.equals(map.get(KEY_ENABLED))) {
                 continue;
             }
             actions.add(parseAction(map, label, mcpServers));
@@ -356,7 +358,11 @@ public class ConnectorActionCatalogLoader {
             terminal,
             adapterType,
             execution,
-            mcpServers
+            mcpServers,
+            raw.get(ActionNativeSchemaSupport.INPUT_SCHEMA) != null
+                ? readOptionalObjectMap(raw.get(ActionNativeSchemaSupport.INPUT_SCHEMA), label, "actions[" + name + "].inputSchema") : null,
+            raw.get(ActionNativeSchemaSupport.OUTPUT_SCHEMA) != null
+                ? readOptionalObjectMap(raw.get(ActionNativeSchemaSupport.OUTPUT_SCHEMA), label, "actions[" + name + "].outputSchema") : null
         );
     }
 

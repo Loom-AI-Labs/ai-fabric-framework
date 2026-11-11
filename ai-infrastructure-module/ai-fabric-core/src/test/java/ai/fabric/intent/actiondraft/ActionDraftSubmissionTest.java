@@ -9,6 +9,16 @@ import org.junit.jupiter.api.Test;
 class ActionDraftSubmissionTest {
 
     @Test
+    void keepsExplicitNullsAndArrayPositionsWithoutInventingAbsentParameters() {
+        var params = new java.util.LinkedHashMap<String, Object>();
+        params.put("value", null);
+        params.put("items", java.util.Arrays.asList(null, 2));
+        var submission = new ActionDraftSubmission("update_value", params);
+        assertThat(submission.parameters()).containsEntry("value", null).doesNotContainKey("absent");
+        assertThat((java.util.List<?>) submission.parameters().get("items")).hasSize(2).first().isNull();
+    }
+
+    @Test
     void shouldCopyInputAndKeepValuesOutOfToString() {
         ActionDraftSubmission submission = new ActionDraftSubmission(
             " request_callback ",

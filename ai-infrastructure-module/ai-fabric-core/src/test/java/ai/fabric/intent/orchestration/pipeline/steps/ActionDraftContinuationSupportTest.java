@@ -19,6 +19,28 @@ import org.junit.jupiter.api.Test;
 class ActionDraftContinuationSupportTest {
 
     @Test
+    void explicitNativeNullSurvivesDraftRoundTripAndOverridesPreviousValue() throws Exception {
+        var metadata = AIActionMetaData.builder().name("update_value").parameters(Map.of("value", "Value", "payload", "Payload"))
+            .inputSchema(Map.of("type", "object", "properties", Map.of("value", Map.of("type", List.of("string", "null")),
+                "payload", Map.of("type", "array")))).build();
+        var params = new java.util.LinkedHashMap<String, Object>();
+        params.put("value", null);
+        params.put("payload", java.util.Arrays.asList(null, Map.of("nested", "kept")));
+        var draft = new ai.fabric.intent.actiondraft.ActionDraft("update_value", params, "Other fields", java.time.Instant.now(), java.time.Instant.now());
+        var json = new com.fasterxml.jackson.databind.ObjectMapper();
+        var restored = ai.fabric.intent.actiondraft.ActionDraft.fromMap(json.readValue(json.writeValueAsString(draft.toMap()),
+            new com.fasterxml.jackson.core.type.TypeReference<Map<String, Object>>() {}));
+        var continuation = ActionDraftContinuationSupport.continuation(restored, metadata);
+        assertThat(continuation.collectedParams()).containsEntry("value", null).doesNotContainKey("absent");
+        assertThat((List<?>) continuation.collectedParams().get("payload")).hasSize(2).first().isNull();
+        var previous = new ai.fabric.intent.actiondraft.ActionDraftContinuation("update_value", Map.of("value", "old"), List.of());
+        var intent = ai.fabric.dto.Intent.builder().type(ai.fabric.dto.IntentType.ACTION).action("update_value")
+            .actionParams(java.util.Collections.singletonMap("value", null)).build();
+        ActionDraftContinuationSupport.merge(ai.fabric.dto.MultiIntentResponse.builder().intents(List.of(intent)).build(), previous);
+        assertThat(intent.getActionParams()).containsEntry("value", null).doesNotContainKey("absent");
+    }
+
+    @Test
     void shouldKeepOnlyPublicDraftParametersAndRequiredFieldNames() {
         AIActionMetaData metadata = addressMetadata();
         ActionDraft draft = new ActionDraft(

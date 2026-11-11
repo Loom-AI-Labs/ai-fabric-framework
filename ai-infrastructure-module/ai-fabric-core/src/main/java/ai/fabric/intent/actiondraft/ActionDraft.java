@@ -58,7 +58,7 @@ public record ActionDraft(
         if (rawParams instanceof Map<?, ?> raw) {
             Map<String, Object> cleaned = new LinkedHashMap<>();
             raw.forEach((k, v) -> {
-                if (k == null || v == null) {
+                if (k == null) {
                     return;
                 }
                 cleaned.put(String.valueOf(k), v);

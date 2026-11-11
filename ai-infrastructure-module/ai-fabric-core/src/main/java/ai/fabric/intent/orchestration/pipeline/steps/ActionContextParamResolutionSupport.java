@@ -104,6 +104,10 @@ final class ActionContextParamResolutionSupport {
                 continue;
             }
             AIActionParamSchema schema = paramSchema(meta, parameter);
+            if (ai.fabric.intent.action.ActionNativeSchemaSupport.hasExplicitPublicNull(meta, current, parameter)
+                && (schema == null || schema.getResolveFrom() == null || schema.getResolveFrom().isEmpty())) {
+                continue;
+            }
             Object existingValue = valueByCandidateKeys(current, List.of(parameter));
             boolean hasExistingValue = hasMeaningfulActionParamValue(existingValue);
             boolean alreadyTrusted = previouslyTrustedParameters != null
@@ -172,7 +176,7 @@ final class ActionContextParamResolutionSupport {
         }
         String normalizedSource = source.trim().toUpperCase(Locale.ROOT);
         if (PARAM_RESOLVE_SOURCE_RUNTIME_CONTEXT.equals(normalizedSource)) {
-            return resolveRuntimeContextValue(parameter, resolveFrom, context, pipelineContext);
+            return ActionRuntimeContextParamSupport.resolveValue(parameter, resolveFrom, context, pipelineContext);
         }
         if (PARAM_RESOLVE_SOURCE_ATTACHMENT_METADATA.equals(normalizedSource)) {
             return resolveAttachmentContextParam(context, parameter, resolveParamCandidateKeys(parameter, resolveFrom));
@@ -395,42 +399,6 @@ final class ActionContextParamResolutionSupport {
 
     private String nullToEmpty(String value) {
         return value != null ? value : "";
-    }
-
-    private Object resolveRuntimeContextValue(String parameter,
-                                              Map<String, Object> resolveFrom,
-                                              OrchestrationContext context,
-                                              PipelineContext pipelineContext) {
-        String field = firstTextObject(resolveFrom.get("field"), resolveFrom.get("contextField"), parameter);
-        if (!StringUtils.hasText(field)) {
-            return null;
-        }
-        String normalized = field.trim();
-        if ("shopperSessionId".equals(normalized) || "sessionId".equals(normalized)) {
-            return context != null ? context.getSessionId() : null;
-        }
-        if ("userId".equals(normalized)) {
-            return context != null ? context.getUserId() : null;
-        }
-        if ("conversationId".equals(normalized)) {
-            return context != null ? context.getConversationId() : null;
-        }
-        if ("requestId".equals(normalized)) {
-            return pipelineContext != null && StringUtils.hasText(pipelineContext.getRequestId())
-                ? pipelineContext.getRequestId()
-                : context != null ? context.getRequestId() : null;
-        }
-        if ("position".equals(normalized)) {
-            return context != null ? context.getPosition() : null;
-        }
-        if ("mode".equals(normalized)) {
-            return context != null ? context.getMode() : null;
-        }
-        Object value = valueByCandidateKeys(pipelineContext != null ? pipelineContext.getMetadata() : null, List.of(normalized));
-        if (hasMeaningfulActionParamValue(value)) {
-            return value;
-        }
-        return valueByCandidateKeys(context != null ? context.getMetadata() : null, List.of(normalized));
     }
 
     private Object resolveOwnedResourceParam(String parameter,

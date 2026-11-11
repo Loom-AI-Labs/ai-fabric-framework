@@ -40,6 +40,14 @@ public final class ConnectorActionMetadataMapper {
         Map<String, AIActionParamSchema> schemas = new LinkedHashMap<>();
         Set<String> required = new LinkedHashSet<>();
 
+        if (definition.inputSchema() != null && definition.inputSchema().get("properties") instanceof Map<?, ?> nativeProperties) {
+            nativeProperties.forEach((key, value) -> {
+                String name = key.toString();
+                Object description = value instanceof Map<?, ?> schema ? schema.get("description") : null;
+                parameters.put(name, description == null ? name : description.toString());
+            });
+        }
+
         List<ConnectorActionParamDefinition> params = definition.params() != null ? definition.params() : List.of();
         for (ConnectorActionParamDefinition param : params) {
             if (param == null || !StringUtils.hasText(param.name())) {
@@ -79,6 +87,8 @@ public final class ConnectorActionMetadataMapper {
             .provenance(definition.provenance())
             .parameters(Collections.unmodifiableMap(parameters))
             .parameterSchemas(Collections.unmodifiableMap(schemas))
+            .inputSchema(definition.inputSchema())
+            .outputSchema(definition.outputSchema())
             .requiredParameters(Collections.unmodifiableSet(required))
             .build();
     }

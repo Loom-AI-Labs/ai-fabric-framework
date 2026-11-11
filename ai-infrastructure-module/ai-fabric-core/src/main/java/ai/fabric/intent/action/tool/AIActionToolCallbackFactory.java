@@ -2,6 +2,7 @@ package ai.fabric.intent.action.tool;
 
 import ai.fabric.intent.action.AIActionHandler;
 import ai.fabric.intent.action.AIActionMetaData;
+import ai.fabric.intent.action.ActionNativeSchemaSupport;
 import ai.fabric.intent.action.AIActionNames;
 import ai.fabric.intent.action.AIActionParamSchema;
 import ai.fabric.intent.action.AIActionParamType;
@@ -271,7 +272,7 @@ public class AIActionToolCallbackFactory {
         public String call(String toolInput, ToolContext toolContext) {
             Map<String, Object> modelParams;
             try {
-                modelParams = parseToolInput(toolInput);
+                modelParams = parseToolInput(toolInput, metadata.getInputSchema() != null);
             } catch (Exception ex) {
                 return resultJson(metadata, error("TOOL_INPUT_INVALID", "Tool input must be a JSON object."));
             }
@@ -301,7 +302,7 @@ public class AIActionToolCallbackFactory {
         }
     }
 
-    private Map<String, Object> parseToolInput(String toolInput) throws Exception {
+    private Map<String, Object> parseToolInput(String toolInput, boolean nativeSchema) throws Exception {
         if (!StringUtils.hasText(toolInput)) {
             return Map.of();
         }
@@ -311,11 +312,11 @@ public class AIActionToolCallbackFactory {
         }
         Map<String, Object> normalized = new LinkedHashMap<>();
         parsed.forEach((key, value) -> {
-            if (StringUtils.hasText(key) && value != null) {
+            if (StringUtils.hasText(key) && (value != null || nativeSchema)) {
                 normalized.put(key.trim(), value);
             }
         });
-        return Map.copyOf(normalized);
+        return java.util.Collections.unmodifiableMap(normalized);
     }
 
     private Map<String, Object> executableParams(AIActionMetaData meta,
@@ -324,23 +325,27 @@ public class AIActionToolCallbackFactory {
         Map<String, Object> executable = new LinkedHashMap<>();
         if (modelParams != null) {
             modelParams.forEach((key, value) -> {
-                String canonicalName = canonicalDeclaredParameterName(meta, key);
-                if (StringUtils.hasText(canonicalName) && value != null && isUserVisibleParameter(meta, canonicalName)) {
+                String canonicalName = meta.getInputSchema() != null ? key : canonicalDeclaredParameterName(meta, key);
+                if (StringUtils.hasText(canonicalName) && (value != null || meta.getInputSchema() != null)
+                    && isUserVisibleParameter(meta, canonicalName)) {
                     executable.put(canonicalName, value);
                 }
             });
         }
         if (trustedParams != null) {
             trustedParams.forEach((key, value) -> {
-                if (StringUtils.hasText(key) && value != null) {
+                if (StringUtils.hasText(key) && (value != null || meta.getInputSchema() != null)) {
                     executable.put(key.trim(), value);
                 }
             });
         }
-        return executable.isEmpty() ? Map.of() : Map.copyOf(executable);
+        return executable.isEmpty() ? Map.of() : java.util.Collections.unmodifiableMap(executable);
     }
 
     private String inputSchema(AIActionMetaData meta) {
+        if (meta.getInputSchema() != null) {
+            return toJson(ActionNativeSchemaSupport.publicInputSchema(meta));
+        }
         Map<String, Object> root = new LinkedHashMap<>();
         root.put("type", "object");
 
@@ -446,6 +451,7 @@ public class AIActionToolCallbackFactory {
         }
         return meta.getRequiredParameters().stream()
             .filter(StringUtils::hasText)
+            .filter(parameter -> !ActionNativeSchemaSupport.hasExplicitPublicNull(meta, params, parameter))
             .filter(parameter -> !hasMeaningfulValue(params != null ? params.get(parameter) : null))
             .toList();
     }

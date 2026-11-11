@@ -31,6 +31,32 @@ import static org.mockito.Mockito.when;
 class ActionContextParamResolutionSupportTest {
 
     @Test
+    void nativeSchemaRequiresTrustedGenericFieldOnlyAfterRuntimeResolution() {
+        var binding = AIActionParamSchema.builder().name("scopeKey")
+            .type(ai.fabric.intent.action.AIActionParamType.STRING).required(true)
+            .askUser(false).visibility("INTERNAL")
+            .resolveFrom(Map.of("source", "RUNTIME_CONTEXT", "field", "userId")).build();
+        AIActionMetaData metadata = AIActionMetaData.builder().name("inspect")
+            .accessMode(ActionAccessMode.READ).parameters(Map.of("query", "Public query", "scopeKey", "Trusted scope"))
+            .parameterSchemas(Map.of("scopeKey", binding)).requiredParameters(java.util.Set.of("scopeKey"))
+            .inputSchema(Map.of("type", "object", "properties", Map.of(
+                "query", Map.of("type", "string"), "scopeKey", Map.of("type", "string")),
+                "required", List.of("query", "scopeKey"), "additionalProperties", false)).build();
+        var publicMetadata = ActionMetadataVisibilitySupport.publicActionMetadata(metadata);
+        assertThat(publicMetadata.getRequiredParameters()).isEmpty();
+        assertThat(ai.fabric.intent.action.ActionNativeSchemaSupport.json(publicMetadata.getInputSchema())).doesNotContain("scopeKey");
+        var context = OrchestrationContext.forUser("verified-scope");
+        var resolved = new ActionContextParamResolutionSupport(mock(AIActionRegistry.class)).resolveContextActionParams(
+            metadata, Map.of("query", "inspect", "scopeKey", "model-spoof"), context, PipelineContext.from("Inspect", context));
+        assertThat(resolved.params()).containsEntry("scopeKey", "verified-scope");
+        assertThat(resolved.resolvedParameters()).containsExactly("scopeKey");
+        ai.fabric.intent.action.ActionParameterContractValidator.validateExecutable(metadata, resolved.params());
+        org.assertj.core.api.Assertions.assertThatThrownBy(() ->
+            ai.fabric.intent.action.ActionParameterContractValidator.validateExecutable(metadata, Map.of("query", "inspect")))
+            .isInstanceOf(ai.fabric.intent.action.ActionParameterContractValidator.ActionParameterContractException.class);
+    }
+
+    @Test
     void shouldReplaceModelValueForHiddenAttachmentResolvedParam() {
         AIActionMetaData meta = AIActionMetaData.builder()
             .parameterSchemas(Map.of(

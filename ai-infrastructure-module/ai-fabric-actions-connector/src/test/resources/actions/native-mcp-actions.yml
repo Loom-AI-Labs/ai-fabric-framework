@@ -1,0 +1,58 @@
+mcpServers:
+  - serverRef: business-mcp
+    endpointUrl: https://business.example/mcp
+actions:
+  - name: inspect_request
+    description: Inspect an authorized request
+    accessMode: READ
+    anonymousAllowed: true
+    groundingEligible: false
+    readActionResolutionEligible: true
+    adapterType: mcp-tool
+    inputSchema:
+      type: object
+      properties:
+        selection:
+          oneOf:
+            - type: 'null'
+            - $ref: '#/$defs/selection'
+      required: [selection]
+      additionalProperties: false
+      $defs:
+        selection:
+          type: object
+          properties:
+            price: {type: number, minimum: 0.25, maximum: 2.75}
+            tier: {enum: [1, 2]}
+            note: {type: [string, 'null']}
+          required: [price, tier, note]
+          additionalProperties: false
+    outputSchema:
+      type: object
+      properties:
+        accepted: {type: boolean}
+        receipt: {type: [string, 'null']}
+      required: [accepted]
+    execution:
+      mcp:
+        serverRef: business-mcp
+        toolName: request.inspect
+  - name: inspect_variants
+    description: Inspect the supported response variants
+    accessMode: READ
+    inputSchema: {}
+    outputSchema:
+      type: array
+      items:
+        oneOf:
+          - type: string
+          - type: 'null'
+          - enum: [1, 2]
+  - name: optional_native_schemas_absent
+    accessMode: READ
+    inputSchema: null
+    outputSchema: null
+    params:
+      - name: count
+        type: INTEGER
+        required: true

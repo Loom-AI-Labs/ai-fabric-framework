@@ -96,6 +96,45 @@ class MultiStepIntentExtractionStrategyTest {
     }
 
     @Test
+    void nativeSchemasReachParameterFillWithoutAskingForTrustedBindings() {
+        var rawInput = Map.<String, Object>of("type", "object", "properties", Map.of(
+            "selection", Map.of("oneOf", List.of(Map.of("type", "null"), Map.of("type", "number", "minimum", 0.25))),
+            "scopeKey", Map.of("type", "string")), "required", List.of("selection", "scopeKey"));
+        var action = AIActionMetaData.builder().name("inspect_request")
+            .parameters(Map.of("selection", "Public selection", "scopeKey", "Internal trusted scope"))
+            .requiredParameters(Set.of("scopeKey"))
+            .parameterSchemas(Map.of("scopeKey", AIActionParamSchema.builder().askUser(false).visibility("INTERNAL")
+                .resolveFrom(Map.of("source", "RUNTIME_CONTEXT", "field", "userId")).build()))
+            .inputSchema(rawInput).outputSchema(Map.of("type", "object", "properties", Map.of("accepted", Map.of("type", "boolean"))))
+            .build();
+        when(actionHandlerRegistry.getAllMetadata()).thenReturn(List.of(action));
+        when(validator.validate(any())).thenReturn(
+            new IntentExtractionValidator.ValidationResult(true, IntentExtractionValidator.ErrorCategory.NONE, List.of(), List.of()));
+        when(aiCoreService.generateContent(any(AIGenerationRequest.class), eq(LlmPurpose.ORCHESTRATION)))
+            .thenReturn(AIGenerationResponse.builder().content("""
+                {"intents":[{"type":"ACTION","intent":"inspect_request","actionHint":"inspect",
+                 "requiresRetrieval":false,"requiresGeneration":false}]}
+                """).build())
+            .thenReturn(AIGenerationResponse.builder().content("""
+                {"mappings":[{"intentIndex":0,"resolution":"ACTION","selectedAction":"inspect_request"}]}
+                """).build())
+            .thenReturn(AIGenerationResponse.builder().content("""
+                {"mappings":[{"intentIndex":0,"actionParams":{"selection":null}}]}
+                """).build());
+        var strategy = new MultiStepIntentExtractionStrategy(aiCoreService, actionHandlerRegistry, jsonSupport,
+            validator, promptRenderer, promptTemplateResolver);
+        var attempt = strategy.attemptExtract(input("Inspect my selection"), OrchestrationContext.forUser("verified-user"));
+        assertThat(attempt.isSuccess()).isTrue();
+        assertThat(attempt.getResponse().getIntents().getFirst().getActionParams())
+            .containsEntry("selection", null).doesNotContainKey("scopeKey");
+        var requests = ArgumentCaptor.forClass(AIGenerationRequest.class);
+        verify(aiCoreService, times(3)).generateContent(requests.capture(), eq(LlmPurpose.ORCHESTRATION));
+        assertThat(requests.getAllValues().get(2).getPrompt()).contains("inputSchema", "oneOf", "0.25", "outputSchema", "accepted")
+            .doesNotContain("scopeKey", "Internal trusted scope");
+        assertThat(action.getInputSchema()).isEqualTo(rawInput);
+    }
+
+    @Test
     void shouldCountOnlyClassificationCallWhenNoActionIntentsPresent() {
         when(validator.validate(any())).thenReturn(
             new IntentExtractionValidator.ValidationResult(true, IntentExtractionValidator.ErrorCategory.NONE, List.of(), List.of())
