@@ -43,9 +43,8 @@ final class InformationGenerationResponseSupport {
 
     static OrchestrationResult directAnswer(Intent intent,
                                             OrchestrationContext context) {
-        String answer = intent != null && StringUtils.hasText(intent.getDirectAnswer())
-            ? intent.getDirectAnswer()
-            : "Okay.";
+        boolean answerProvided = intent != null && StringUtils.hasText(intent.getDirectAnswer());
+        String answer = answerProvided ? intent.getDirectAnswer() : null;
 
         Map<String, Object> data = new LinkedHashMap<>();
         data.put(DATA_KEY_ANSWER, answer);
@@ -59,12 +58,15 @@ final class InformationGenerationResponseSupport {
         metadata.put(METADATA_KEY_USER_ID, context != null ? context.getIdentifier() : null);
         metadata.put(METADATA_KEY_SESSION_ID, context != null ? context.getSessionId() : null);
         metadata.put(METADATA_KEY_AUTHENTICATED, context != null && context.isAuthenticated());
+        metadata.put("answerSource", answerProvided ? "MODEL_DIRECT_ANSWER" : "MISSING_MODEL_DIRECT_ANSWER");
         data.put(DATA_KEY_METADATA, Collections.unmodifiableMap(metadata));
 
+        // A final direct response requires authored content; missing content is not successful execution.
         return OrchestrationResult.builder()
-            .type(OrchestrationResultType.INFORMATION_PROVIDED)
-            .success(true)
-            .message(answer)
+            .type(answerProvided ? OrchestrationResultType.INFORMATION_PROVIDED : OrchestrationResultType.ERROR)
+            .success(answerProvided)
+            .errorCode(answerProvided ? null : "MODEL_DIRECT_ANSWER_MISSING")
+            .message(answerProvided ? answer : "The model did not provide an answer for this request.")
             .data(Collections.unmodifiableMap(data))
             .nextSteps(extractNextSteps(intent))
             .build();

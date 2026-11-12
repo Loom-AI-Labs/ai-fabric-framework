@@ -60,8 +60,9 @@ class ReadActionPlannerPromptOverlayTest {
             .contains("Request query:\n" + query + "\n\nResolved mode:\nresolver")
             .contains("Extracted intent JSON:\n" + intent)
             .contains("Authorized knowledge-source catalogue JSON (server-owned; names are retrieval choices, not evidence):\n"
-                + catalogue + "\n\nEligible READ actions JSON:\n" + actions)
+                + catalogue + "\n\nREAD planning catalog JSON (authenticationRequired/executableNow are server-owned permissions):\n" + actions)
             .containsOnlyOnce(catalogue)
+            .contains("request authentication before collecting or checking execution inputs")
             .contains("Prior read-action evidence JSON:\n" + priorEvidence)
             .contains("""
                 Planner budgets:

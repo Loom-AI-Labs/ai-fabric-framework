@@ -7,6 +7,8 @@ import ai.fabric.intent.action.ActionResult;
 import ai.fabric.intent.action.ActionTargetRef;
 import ai.fabric.intent.orchestration.OrchestrationContext;
 import ai.fabric.intent.orchestration.OrchestrationResult;
+import ai.fabric.intent.orchestration.OrchestrationResultType;
+import ai.fabric.intent.orchestration.auth.AuthenticationRequirement;
 import ai.fabric.intent.orchestration.information.ReadActionExecutionScope;
 import ai.fabric.intent.orchestration.information.ReadActionResolutionService;
 import ai.fabric.intent.orchestration.pipeline.PipelineContext;
@@ -139,6 +141,21 @@ final class ReadActionResolutionSupport {
         }
         result.setData(Collections.unmodifiableMap(data));
         return result;
+    }
+
+    static OrchestrationResult authenticationRequiredResult(ReadActionResolutionService.ResolutionOutcome outcome) {
+        String action = outcome != null ? outcome.authenticationRequiredAction() : null;
+        if (!StringUtils.hasText(action)) {
+            return null;
+        }
+        return attachDiagnostics(OrchestrationResult.builder()
+            .type(OrchestrationResultType.ACTION_DENIED)
+            .success(false)
+            .errorCode(AuthenticationRequirement.ERROR_CODE)
+            .message("Sign in to continue with this request.")
+            .data(Map.of("action", action, AuthenticationRequirement.DATA_KEY,
+                AuthenticationRequirement.forAction(action)))
+            .build(), outcome);
     }
 
     private static List<Object> projectActionResults(ReadActionResolutionService.ResolutionOutcome resolutionOutcome) {

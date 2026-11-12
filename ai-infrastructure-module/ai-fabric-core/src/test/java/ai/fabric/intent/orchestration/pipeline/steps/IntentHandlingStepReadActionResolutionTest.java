@@ -67,6 +67,34 @@ import static org.mockito.Mockito.when;
 class IntentHandlingStepReadActionResolutionTest {
 
     @ParameterizedTest
+    @CsvSource({"false,false", "false,true", "true,false", "true,true"})
+    void protectedReadSelectionReturnsCanonicalSignInBeforeGenerationOrRetrieval(boolean retrieval,
+                                                                                boolean generation) {
+        var rag = mock(RAGProvider.class);
+        var ai = mock(AICoreService.class);
+        var resolver = mock(ReadActionResolutionService.class);
+        when(resolver.resolve(any(), any(), any())).thenReturn(
+            ReadActionResolutionService.ResolutionOutcome.authenticationRequired(
+                "private_lookup", List.of(), Map.of("modelDecision", "REQUEST_AUTHENTICATION")));
+        var step = buildStep(rag, ai);
+        ReflectionTestUtils.setField(step, "readActionResolutionServiceProvider", providerOf(resolver));
+        var intent = Intent.builder().type(IntentType.INFORMATION).intent("current_status")
+            .requiresRetrieval(retrieval).requiresGeneration(generation).build();
+        var input = PipelineContext.from("What is my current status?", OrchestrationContext.anonymous())
+            .toBuilder().intentResponse(MultiIntentResponse.builder().intents(List.of(intent)).build()).build();
+
+        var result = step.process(input).getIntentResult();
+
+        assertThat(result.getType()).isEqualTo(OrchestrationResultType.ACTION_DENIED);
+        assertThat(result.isSuccess()).isFalse();
+        assertThat(result.getErrorCode()).isEqualTo("AUTHENTICATION_REQUIRED");
+        assertThat(result.getData()).containsEntry("action", "private_lookup")
+            .containsKey("authenticationRequirement");
+        verify(resolver).resolve(any(), any(), any());
+        verifyNoInteractions(ai, rag);
+    }
+
+    @ParameterizedTest
     @CsvSource({"true,true,true", "false,true,true", "true,false,true", "false,false,true",
         "true,true,false", "false,true,false"})
     void productionExecutorPlansNativeReadBeforeCheckingIndexedRetrieval(boolean retrievalEnabled,

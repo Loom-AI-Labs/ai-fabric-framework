@@ -191,6 +191,7 @@ class RAGIntegrationFlowTest {
                     Intent.builder()
                         .type(IntentType.INFORMATION)
                         .intent("show_special_offers")
+                        .directAnswer("Here are current offers.")
                         .confidence(0.85)
                         // Vector spaces are validated against configured entity types; use a valid test space.
                         .vectorSpace("document")

@@ -164,6 +164,7 @@ public class ReadActionResolutionService {
         List<Map<String, Object>> rejectedActionProposals = new ArrayList<>();
         Set<String> executionKeys = new LinkedHashSet<>();
         PlannerDecision lastDecision = null;
+        boolean anonymous = isAnonymous(orchestrationContext, pipelineContext);
         Map<String, Object> knowledgeSources = buildKnowledgeSourceCatalog(policy, orchestrationContext, pipelineContext);
         String targetContext = ConversationPromptContext.activeTargets(pipelineContext, readPolicy.maxPlannerContextChars());
         ConversationPromptContext.Projection conversation = ConversationPromptContext.history(
@@ -182,7 +183,8 @@ public class ReadActionResolutionService {
                 maxIterations,
                 knowledgeSources,
                 conversation,
-                targetContext
+                targetContext,
+                anonymous
             );
             if (decision == null) {
                 plannerIterations.add(Map.of(
@@ -194,6 +196,25 @@ public class ReadActionResolutionService {
             }
             lastDecision = decision;
             plannerIterations.add(decision.diagnostics());
+
+            String authenticationAction = selectedProtectedRead(decision, eligibleActions, anonymous,
+                readPolicy.maxActionsPerIteration());
+            if (authenticationAction != null) {
+                Map<String, Object> diagnostics = new LinkedHashMap<>();
+                diagnostics.put("attempted", true);
+                diagnostics.put("planningMode", readPolicy.planningMode().name());
+                diagnostics.put("ragCooperationMode", readPolicy.ragCooperationMode().name());
+                diagnostics.put("iterations", List.copyOf(plannerIterations));
+                diagnostics.put("modelDecision", decision.decision().name());
+                diagnostics.put("eligibleReadActionNames", eligibleActions.stream().map(EligibleReadAction::name).toList());
+                diagnostics.put("executedActionsCount", executedActions.size());
+                return ResolutionOutcome.authenticationRequired(authenticationAction, executedActions, diagnostics);
+            }
+            if (decision.decision() == PlannerDecisionType.REQUEST_AUTHENTICATION) {
+                rejectedActionProposals.add(Map.of("iteration", iteration,
+                    "reason", "AUTHENTICATION_ACTION_NOT_ELIGIBLE"));
+                break;
+            }
 
             int rejectedBeforeApproval = rejectedActionProposals.size();
             List<PlannerActionProposal> approved = approveActionProposals(
@@ -263,6 +284,8 @@ public class ReadActionResolutionService {
         diagnostics.put("attempted", true);
         diagnostics.put("eligibleReadActionsCount", eligibleActions.size());
         diagnostics.put("eligibleReadActionNames", eligibleActions.stream().map(EligibleReadAction::name).toList());
+        diagnostics.put("authenticationRequiredReadActionNames", eligibleActions.stream()
+            .filter(action -> anonymous && !action.metadata().isAnonymousAllowed()).map(EligibleReadAction::name).toList());
         if (!eligibility.intentVectorSpaces().isEmpty()) {
             diagnostics.put("intentVectorSpaces", eligibility.intentVectorSpaces());
         }
@@ -337,8 +360,7 @@ public class ReadActionResolutionService {
         Map<String, EligibleReadAction> eligible = new LinkedHashMap<>();
         List<String> scopeFilteredActionNames = new ArrayList<>();
         for (AIActionMetaData metadata : actions) {
-            if (!ReadActionEligibilitySupport.eligible(metadata, context, readPolicy,
-                isAnonymous(context, pipelineContext))) {
+            if (!ReadActionEligibilitySupport.eligibleForPlanning(metadata, context, readPolicy)) {
                 continue;
             }
             String normalizedName = metadata.getName().trim().toLowerCase(Locale.ROOT);
@@ -395,7 +417,8 @@ public class ReadActionResolutionService {
                                         int maxIterations,
                                         Map<String, Object> knowledgeSources,
                                         ConversationPromptContext.Projection conversation,
-                                        String targetContext) {
+                                        String targetContext,
+                                        boolean anonymous) {
         try {
             String systemPrompt =
                 SpecialistPromptInstructionSupport.appendToSystemPrompt(
@@ -416,7 +439,7 @@ public class ReadActionResolutionService {
                         : ""),
                     Map.entry(PLACEHOLDER_QUERY, query),
                     Map.entry(PLACEHOLDER_INTENT_JSON, writeJson(buildIntentPromptModel(intent))),
-                    Map.entry(PLACEHOLDER_ELIGIBLE_ACTIONS_JSON, writeJson(buildEligibleActionsPromptModel(eligibleActions))),
+                    Map.entry(PLACEHOLDER_ELIGIBLE_ACTIONS_JSON, writeJson(buildEligibleActionsPromptModel(eligibleActions, anonymous))),
                     Map.entry(PLACEHOLDER_KNOWLEDGE_SOURCES_JSON, writeJson(knowledgeSources)),
                     Map.entry(PLACEHOLDER_PRIOR_EVIDENCE_JSON, writeJson(buildPriorEvidencePromptModel(
                         executedActions,
@@ -500,6 +523,25 @@ public class ReadActionResolutionService {
             log.warn("Read-action planner failed: {}", ex.getMessage(), ex);
             return null;
         }
+    }
+
+    private String selectedProtectedRead(PlannerDecision decision, List<EligibleReadAction> actions,
+                                         boolean anonymous, int maxActions) {
+        if (!anonymous || decision == null || decision.actions() == null
+            || (decision.decision() != PlannerDecisionType.REQUEST_AUTHENTICATION
+                && decision.decision() != PlannerDecisionType.EXECUTE_READ_ACTIONS
+                && decision.decision() != PlannerDecisionType.EXECUTE_READ_ACTIONS_AND_RAG)) {
+            return null;
+        }
+        // Planning visibility does not grant execution: stop before resolving or invoking a protected read.
+        for (PlannerActionProposal proposal : decision.actions().stream().limit(maxActions).toList()) {
+            for (EligibleReadAction action : actions) {
+                if (action.name().equalsIgnoreCase(proposal.name()) && !action.metadata().isAnonymousAllowed()) {
+                    return action.name();
+                }
+            }
+        }
+        return null;
     }
 
     private List<PlannerActionProposal> approveActionProposals(PlannerDecision decision,
@@ -757,6 +799,7 @@ public class ReadActionResolutionService {
             return readPolicy.ragCooperationMode() != ai.fabric.config.OrchestrationProperties.ReadActionResolutionRagCooperationMode.NONE;
         }
         return switch (decision.decision) {
+            case REQUEST_AUTHENTICATION -> false;
             case ANSWER_FROM_CONTEXT -> (!hasSuccessfulActionEvidence || hasInsufficientActionEvidence)
                 && readPolicy.ragCooperationMode() != ai.fabric.config.OrchestrationProperties.ReadActionResolutionRagCooperationMode.NONE;
             case EXECUTE_READ_ACTIONS -> (!hasSuccessfulActionEvidence || hasInsufficientActionEvidence)
@@ -1152,7 +1195,8 @@ public class ReadActionResolutionService {
         return Collections.unmodifiableMap(catalog);
     }
 
-    private List<Map<String, Object>> buildEligibleActionsPromptModel(List<EligibleReadAction> eligibleActions) {
+    private List<Map<String, Object>> buildEligibleActionsPromptModel(List<EligibleReadAction> eligibleActions,
+                                                                     boolean anonymous) {
         if (eligibleActions == null || eligibleActions.isEmpty()) {
             return List.of();
         }
@@ -1171,6 +1215,8 @@ public class ReadActionResolutionService {
                     item.put("outputSchema", action.metadata().getOutputSchema());
                 }
                 item.put("groundingEligible", action.metadata().isGroundingEligible());
+                item.put("authenticationRequired", anonymous && !action.metadata().isAnonymousAllowed());
+                item.put("executableNow", !anonymous || action.metadata().isAnonymousAllowed());
                 return Collections.unmodifiableMap(item);
             })
             .toList();
@@ -1311,6 +1357,7 @@ public class ReadActionResolutionService {
 
     private enum PlannerDecisionType {
         ANSWER_FROM_CONTEXT,
+        REQUEST_AUTHENTICATION,
         EXECUTE_READ_ACTIONS,
         EXECUTE_READ_ACTIONS_AND_RAG,
         USE_RAG_ONLY;
@@ -1391,6 +1438,28 @@ public class ReadActionResolutionService {
         List<ExecutedReadAction> executedActions,
         Map<String, Object> diagnostics
     ) {
+        public static ResolutionOutcome authenticationRequired(String actionName,
+                                                               List<ExecutedReadAction> executedActions,
+                                                               Map<String, Object> diagnostics) {
+            if (!StringUtils.hasText(actionName)) {
+                throw new IllegalArgumentException("An authentication requirement needs a selected action.");
+            }
+            Map<String, Object> details = new LinkedHashMap<>(diagnostics != null ? diagnostics : Map.of());
+            details.put("authenticationRequiredAction", actionName);
+            details.put("finalDecision", PlannerDecisionType.REQUEST_AUTHENTICATION.name());
+            details.put("useRag", false);
+            return new ResolutionOutcome(true, null, PlannerDecisionType.REQUEST_AUTHENTICATION,
+                false, false, null, List.of(), null,
+                executedActions != null ? List.copyOf(executedActions) : List.of(),
+                Collections.unmodifiableMap(details));
+        }
+
+        public String authenticationRequiredAction() {
+            Object action = diagnostics != null ? diagnostics.get("authenticationRequiredAction") : null;
+            return decision == PlannerDecisionType.REQUEST_AUTHENTICATION
+                && action instanceof String name && StringUtils.hasText(name) ? name : null;
+        }
+
         public static ResolutionOutcome skipped(String reason) {
             return new ResolutionOutcome(
                 false,

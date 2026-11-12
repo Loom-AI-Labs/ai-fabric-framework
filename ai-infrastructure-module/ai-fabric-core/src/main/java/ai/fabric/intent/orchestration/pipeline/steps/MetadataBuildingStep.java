@@ -121,6 +121,18 @@ public class MetadataBuildingStep implements PipelineStep {
         metadata.put(METADATA_KEY_AUTHENTICATED, context.isAuthenticated());
         
         attachIntentMetadata(metadata, intentResponse);
+        if (intentResponse != null && intentResponse.getIntents() != null) {
+            metadata.put("intentDecisions", intentResponse.getIntents().stream()
+                .filter(java.util.Objects::nonNull)
+                .map(intent -> {
+                    Map<String, Object> decision = new LinkedHashMap<>();
+                    decision.put("type", intent.getType() != null ? intent.getType().name() : null);
+                    decision.put("requiresRetrieval", intent.getRequiresRetrieval());
+                    decision.put("requiresGeneration", intent.getRequiresGeneration());
+                    decision.put("directAnswerPresent", org.springframework.util.StringUtils.hasText(intent.getDirectAnswer()));
+                    return Collections.unmodifiableMap(decision);
+                }).toList());
+        }
 
         attachPinnedTargetsTargetResolution(metadata, result);
 

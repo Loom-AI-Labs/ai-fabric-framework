@@ -1934,6 +1934,11 @@ public class IntentHandlingStep implements PipelineStep {
                     metadata,
                     readActionExecutionScope
                 );
+                OrchestrationResult authenticationRequired =
+                    ReadActionResolutionSupport.authenticationRequiredResult(readActionResolution);
+                if (authenticationRequired != null) {
+                    return authenticationRequired;
+                }
                 if (isGenerationEnabled()
                     && readActionResolution.attempted()
                     && (readActionResolution.hasGroundingEvidence() || readActionResolution.useRag())) {
@@ -1978,6 +1983,11 @@ public class IntentHandlingStep implements PipelineStep {
                 metadata,
                 readActionExecutionScope
             );
+        }
+        OrchestrationResult authenticationRequired =
+            ReadActionResolutionSupport.authenticationRequiredResult(readActionResolution);
+        if (authenticationRequired != null) {
+            return authenticationRequired;
         }
         if (!needsGeneration
             && isGenerationEnabled()

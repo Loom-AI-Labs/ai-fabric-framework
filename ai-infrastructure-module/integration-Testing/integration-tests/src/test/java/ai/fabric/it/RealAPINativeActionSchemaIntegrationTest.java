@@ -13,6 +13,11 @@ import ai.fabric.intent.orchestration.OrchestrationContext;
 import ai.fabric.intent.orchestration.OrchestrationResult;
 import ai.fabric.intent.orchestration.OrchestrationResultType;
 import ai.fabric.intent.orchestration.RAGOrchestrator;
+import ai.fabric.dto.Intent;
+import ai.fabric.dto.IntentType;
+import ai.fabric.intent.orchestration.information.ReadActionResolutionService;
+import ai.fabric.intent.orchestration.pipeline.PipelineContext;
+import ai.fabric.intent.orchestration.pipeline.steps.OrchestrationPolicyResolutionStep;
 import ai.fabric.it.support.RealAPITestSupport;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -25,6 +30,8 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -102,6 +109,8 @@ class RealAPINativeActionSchemaIntegrationTest {
     @Autowired private AIActionRegistry registry;
     @Autowired private RecordingMcpExecutor receiver;
     @Autowired private ChatSessionService chatSessions;
+    @Autowired private ReadActionResolutionService readPlanner;
+    @Autowired private OrchestrationPolicyResolutionStep policyResolution;
     @Value("${ai.providers.openai.model}") private String model;
     private final AtomicInteger queries = new AtomicInteger();
 
@@ -113,7 +122,7 @@ class RealAPINativeActionSchemaIntegrationTest {
             .isTrue();
         assertThat(registry.findMetadata("native_read_setting").orElseThrow().getInputSchema()).isNotEmpty();
         assertThat(registry.findMetadata("native_read_setting").orElseThrow().getGroundingVectorSpaces()).isEmpty();
-        System.out.printf("Native schema qualification: provider=openai model=%s maxQueries=10 syntheticReceiver=true%n", model);
+        System.out.printf("Native schema qualification: provider=openai model=%s maxQueries=13 syntheticReceiver=true%n", model);
     }
 
     @BeforeEach
@@ -177,6 +186,38 @@ class RealAPINativeActionSchemaIntegrationTest {
             .containsEntry("scopeKey", context.getUserId());
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {
+        "What is the current value of my private synthetic setting?",
+        "Use the connected private setting tool to read my current setting. This is read-only; do not change anything."
+    })
+    void anonymousPrivateInformationRequestsSignInWithoutInvokingReceiver(String question) {
+        var context = OrchestrationContext.builder().sessionId("private-auth-" + UUID.randomUUID()).build();
+        var result = query(question, context);
+        assertThat(result.isSuccess()).isFalse();
+        assertThat(result.getErrorCode()).isEqualTo("AUTHENTICATION_REQUIRED");
+        assertThat(result.getData()).containsKey("authenticationRequirement");
+        assertThat(receiver.calls).isEmpty();
+        System.out.printf("Native protected INFO diagnostics: intents=%s readPlan=%s%n",
+            result.getMetadata().get("intentDecisions"), result.getMetadata().get("readActionResolution"));
+    }
+
+    @Test
+    void realReadPlannerSelectsAuthenticationForSuppliedInformationIntent() {
+        assertThat(queries.incrementAndGet()).as("Bounded thirteen-query native qualification").isLessThanOrEqualTo(13);
+        String question = "What is the current value of my private synthetic setting?";
+        var input = policyResolution.process(PipelineContext.from(question, OrchestrationContext.anonymous()));
+        var intent = Intent.builder().type(IntentType.INFORMATION).intent("current_setting")
+            .requiresRetrieval(false).requiresGeneration(false).build();
+        var outcome = readPlanner.resolve(intent, input.getOrchestrationContext(), input);
+
+        assertThat(outcome.authenticationRequiredAction()).isEqualTo("native_read_private_setting");
+        assertThat(outcome.executedActions()).isEmpty();
+        assertThat(receiver.calls).isEmpty();
+        System.out.printf("Native real READ planner component turn %d: diagnostics=%s%n",
+            queries.get(), outcome.diagnostics());
+    }
+
     @Test
     void collectsRequiredNullableArgumentAndResolvesTrustedContextBeforeConfirmedWrite() {
         var context = signedInContext();
@@ -222,11 +263,12 @@ class RealAPINativeActionSchemaIntegrationTest {
     }
 
     private OrchestrationResult query(String text, OrchestrationContext context) {
-        assertThat(queries.incrementAndGet()).as("Bounded ten-query native qualification").isLessThanOrEqualTo(10);
+        assertThat(queries.incrementAndGet()).as("Bounded thirteen-query native qualification").isLessThanOrEqualTo(13);
         var result = orchestrator.orchestrate(text, context);
         assertThat(result).isNotNull();
         System.out.printf("Native schema real-provider turn %d: type=%s success=%s receiverCalls=%d%n",
             queries.get(), result.getType(), result.isSuccess(), receiver.calls.size());
+        System.out.printf("Native schema turn diagnostics: metadata=%s data=%s%n", result.getMetadata(), result.getData());
         return result;
     }
 

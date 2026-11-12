@@ -30,7 +30,7 @@ public final class ReadActionEligibilitySupport {
             return false;
         }
         return CapabilityAwareActionMetadataSupport.visibleActions(registry, context).stream()
-            .anyMatch(metadata -> eligible(metadata, context, readPolicy, context.isAnonymous())
+            .anyMatch(metadata -> eligibleForPlanning(metadata, context, readPolicy)
                 && registry.findHandler(metadata.getName()).isPresent());
     }
 
@@ -38,12 +38,18 @@ public final class ReadActionEligibilitySupport {
                             OrchestrationContext context,
                             OrchestrationPolicy.ReadActionResolutionPolicy readPolicy,
                             boolean anonymous) {
+        return eligibleForPlanning(metadata, context, readPolicy)
+            && (!anonymous || metadata.isAnonymousAllowed());
+    }
+
+    static boolean eligibleForPlanning(AIActionMetaData metadata,
+                                       OrchestrationContext context,
+                                       OrchestrationPolicy.ReadActionResolutionPolicy readPolicy) {
         if (metadata == null || !StringUtils.hasText(metadata.getName())
             || readPolicy == null || !readPolicy.enabled()
             || metadata.getAccessMode() != ActionAccessMode.READ
             || !metadata.isReadActionResolutionEligible()
-            || (readPolicy.requireGroundingEligible() && !metadata.isGroundingEligible())
-            || (anonymous && !metadata.isAnonymousAllowed())) {
+            || (readPolicy.requireGroundingEligible() && !metadata.isGroundingEligible())) {
             return false;
         }
         var effective = context != null ? context.getEffectiveCapabilityProfile() : null;

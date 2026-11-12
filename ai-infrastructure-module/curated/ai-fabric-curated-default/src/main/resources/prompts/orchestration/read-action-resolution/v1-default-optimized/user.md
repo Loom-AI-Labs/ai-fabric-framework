@@ -10,7 +10,7 @@ Extracted intent JSON:
 Authorized knowledge-source catalogue JSON (server-owned; names are retrieval choices, not evidence):
 {{knowledge_sources_json}}
 
-Eligible READ actions JSON:
+READ planning catalog JSON (authenticationRequired/executableNow are server-owned permissions):
 {{eligible_actions_json}}
 
 Prior read-action evidence JSON:
@@ -26,6 +26,7 @@ Instructions:
 - If current evidence is already sufficient, return decision=ANSWER_FROM_CONTEXT with no actions.
 - Determine available help from the authorized capability and knowledge catalogues, not from whether the request uses technical vocabulary. Approved product setup and troubleshooting documentation may discuss deployments, indexing, providers, or integrations. This never authorizes undisclosed internals, secrets, or private diagnostic reads without their declared permission.
 - If one or more eligible READ actions would materially improve the answer, return those actions.
+- If the relevant private READ is marked authenticationRequired=true, return REQUEST_AUTHENTICATION with that action's exact name and empty params. Do not ask for its trusted identity fields; sign-in must happen before a new explicit request can execute it.
 - If live READ actions are helpful but indexed knowledge is still needed, return decision=EXECUTE_READ_ACTIONS_AND_RAG.
 - If READ actions are not the right tool, return decision=USE_RAG_ONLY.
 - When indexed knowledge is needed, select its relevant vectorSpace name(s) from the authorized catalogue in suggestedVectorSpaces, even if extraction initially requested no retrieval. Do not repeat an absent source selection merely because it is absent from the extracted intent.
@@ -42,8 +43,8 @@ Instructions:
 - Keep params minimal and only use values that are directly implied by the request.
 - Do not turn display names, titles, labels, example ids, or generated summaries into executable identifiers unless the eligible action schema explicitly accepts that kind of value.
 - For detail reads that require a concrete identifier, do not select the action when the request only says "this item", "this record", "this document", or "it" and the request/context does not include a concrete id/reference. Use RAG instead when available, or leave the missing evidence for answer generation in natural user-facing language.
-- For private or user-owned resource reads, select the action only when the eligible action schema indicates it can use trusted session/context binding, or when the request/context supplies the required owned-resource identifier. Do not infer ownership from conversation text alone.
-- For current-user/current-tenant/current-session resource reads, select an eligible READ action only when the action schema indicates it can use trusted context or when the request/context supplies the required owned-resource identifier.
+- For private or user-owned resource reads marked authenticationRequired=true, request authentication before collecting or checking execution inputs. For executable private reads, select the action only when the eligible action schema indicates it can use trusted session/context binding, or when the request/context supplies the required owned-resource identifier. Do not infer ownership from conversation text alone.
+- For current-user/current-tenant/current-session resource reads that are executableNow=true, select an eligible READ action only when the action schema indicates it can use trusted context or when the request/context supplies the required owned-resource identifier.
 - Never ask the user for internal action parameters such as userId, accountId, tenantId, sessionId, hidden database ids, provider ids, or trace ids.
 - Put material filters and criteria into typed params whenever the eligible action schema exposes them. For example, use numeric bound params for price ceilings and boolean params for availability instead of placing those constraints in query text.
 - Keep free-text query/search params focused on the subject to retrieve or compare. If a material constraint cannot be represented by typed params and the action result may be insufficient, combine the read action with RAG or use RAG according to the rag cooperation mode.

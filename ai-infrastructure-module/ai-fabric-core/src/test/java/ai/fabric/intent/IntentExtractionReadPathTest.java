@@ -78,7 +78,7 @@ class IntentExtractionReadPathTest {
             .needsAdvancedRAG(false).build();
         var result = new IntentExtractionValidator(registry).validate(
             MultiIntentResponse.builder().intents(List.of(intent)).build(), "Show the guide", context);
-        boolean qualified = scenario.equals("qualified");
+        boolean qualified = scenario.equals("qualified") || scenario.equals("private");
         assertThat(ReadActionEligibilitySupport.hasQualifiedReadPath(registry, context)).isEqualTo(qualified);
         assertThat(result.valid()).isEqualTo(qualified);
         assertThat(intent.getRequiresRetrieval()).isTrue();
