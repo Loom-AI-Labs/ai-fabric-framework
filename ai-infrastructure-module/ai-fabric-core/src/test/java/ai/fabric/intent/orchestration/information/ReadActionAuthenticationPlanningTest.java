@@ -31,7 +31,7 @@ import static org.mockito.Mockito.*;
 
 class ReadActionAuthenticationPlanningTest {
     @ParameterizedTest
-    @ValueSource(strings = {"REQUEST_AUTHENTICATION", "EXECUTE_READ_ACTIONS", "EXECUTE_READ_ACTIONS_AND_RAG"})
+    @ValueSource(strings = {"EXECUTE_READ_ACTIONS", "EXECUTE_READ_ACTIONS_AND_RAG"})
     void selectedProtectedReadRequestsAuthenticationWithoutResolvingOrExecutingIt(String decision) {
         var fixture = fixture(decision, "private_lookup", List.of("private_lookup", "public_guide"));
         var outcome = fixture.service.resolve(information(), OrchestrationContext.anonymous(),
@@ -44,6 +44,9 @@ class ReadActionAuthenticationPlanningTest {
         verify(fixture.ai).generateContent(capture.capture(), eq(LlmPurpose.ORCHESTRATION));
         assertThat(capture.getValue().getPrompt()).contains("private_lookup", "authenticationRequired", "executableNow")
             .doesNotContain("actorId");
+        assertThat(capture.getValue().getParameters().toString()).doesNotContain("REQUEST_AUTHENTICATION");
+        assertThat(outcome.diagnostics()).containsEntry("modelDecision", decision)
+            .containsEntry("finalDecision", "REQUEST_AUTHENTICATION");
     }
 
     @Test
@@ -69,24 +72,26 @@ class ReadActionAuthenticationPlanningTest {
     @ParameterizedTest
     @ValueSource(strings = {"private_lookup", "hidden_lookup", "write_action"})
     void unlistedOrWriteCapabilityCannotBecomeAnAuthenticationRequest(String selected) {
-        var fixture = fixture("REQUEST_AUTHENTICATION", selected, List.of("public_guide"));
+        var fixture = fixture("EXECUTE_READ_ACTIONS", selected, List.of("public_guide"));
         var context = OrchestrationContext.anonymous();
         var outcome = fixture.service.resolve(information(), context, pipeline(context, List.of("public_guide")));
         assertThat(outcome.authenticationRequiredAction()).isNull();
         assertThat(outcome.executedActions()).isEmpty();
         verifyNoInteractions(fixture.handler);
         var capture = ArgumentCaptor.forClass(AIGenerationRequest.class);
-        verify(fixture.ai).generateContent(capture.capture(), eq(LlmPurpose.ORCHESTRATION));
+        verify(fixture.ai, times(2)).generateContent(capture.capture(), eq(LlmPurpose.ORCHESTRATION));
         assertThat(capture.getValue().getPrompt()).doesNotContain("private_lookup", "hidden_lookup", "write_action");
     }
 
-    @Test
-    void requestingAuthenticationForPublicReadDoesNotExecuteIt() {
-        var fixture = fixture("REQUEST_AUTHENTICATION", "public_guide", List.of("public_guide"));
-        var context = OrchestrationContext.anonymous();
-        var outcome = fixture.service.resolve(information(), context, pipeline(context, List.of("public_guide")));
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void modelCannotOwnAuthenticationOrConvertAnUnknownDecisionIntoExecution(boolean signedIn) {
+        var fixture = fixture("REQUEST_AUTHENTICATION", "private_lookup", List.of("private_lookup"));
+        var context = signedIn ? OrchestrationContext.forUser("verified-owner") : OrchestrationContext.anonymous();
+        var outcome = fixture.service.resolve(information(), context, pipeline(context, List.of("private_lookup")));
         assertThat(outcome.authenticationRequiredAction()).isNull();
         assertThat(outcome.executedActions()).isEmpty();
+        assertThat(outcome.diagnostics().get("iterations").toString()).contains("PLANNER_RETURNED_NO_DECISION");
         verifyNoInteractions(fixture.handler);
     }
 

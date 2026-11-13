@@ -60,9 +60,13 @@ class ReadActionPlannerPromptOverlayTest {
             .contains("Request query:\n" + query + "\n\nResolved mode:\nresolver")
             .contains("Extracted intent JSON:\n" + intent)
             .contains("Authorized knowledge-source catalogue JSON (server-owned; names are retrieval choices, not evidence):\n"
-                + catalogue + "\n\nREAD planning catalog JSON (authenticationRequired/executableNow are server-owned permissions):\n" + actions)
+                + catalogue + "\n\nREAD planning catalog JSON (public inputs only; the server owns authentication and hidden inputs):\n" + actions)
             .containsOnlyOnce(catalogue)
-            .contains("request authentication before collecting or checking execution inputs")
+            .contains("the server will request sign-in before execution if needed")
+            .contains("Choose only from availableDecisions")
+            .contains("ragAvailable=true")
+            .doesNotContain("REQUEST_AUTHENTICATION")
+            .doesNotContain("schema indicates it can use trusted")
             .contains("Prior read-action evidence JSON:\n" + priorEvidence)
             .contains("""
                 Planner budgets:
@@ -76,7 +80,7 @@ class ReadActionPlannerPromptOverlayTest {
         assertThat(renderer.requiredPlaceholders(rendered)).isEmpty();
         if ("v1-default-optimized".equals(version)) {
             assertThat(rendered)
-                .contains("For current-user/current-tenant/current-session resource reads")
+                .contains("For current-user/current-tenant/current-session reads")
                 .contains("Never ask the user for internal action parameters");
         }
     }

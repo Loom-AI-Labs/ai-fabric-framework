@@ -75,7 +75,10 @@ class DefaultCuratedPackTest {
             .contains("Translate failed lookups into user-facing missing live evidence");
 
         assertThat(readResource("prompts/orchestration/read-action-resolution/v1/user.md"))
-            .contains("For private or user-owned resource reads")
+            .contains("For private or user-owned reads")
+            .contains("The server supplies trusted bindings and enforces ownership")
+            .contains("Choose only from availableDecisions")
+            .doesNotContain("REQUEST_AUTHENTICATION")
             .contains("Do not turn display names, titles, labels, example ids, or generated summaries into executable identifiers");
 
         assertThat(readResource("prompts/orchestration/post-action-generation/v1/user-generic-managed.md"))
@@ -88,7 +91,9 @@ class DefaultCuratedPackTest {
     void shouldGuideReferencesAndConditionalRequirementsWithoutTechnicalTopicDenials() throws Exception {
         assertThat(readResource("prompts/orchestration/read-action-resolution/v1/system.md"))
             .contains("Preserve the originating user's issue order")
-            .contains("Do not spend a diagnostic read solely to restate case metadata");
+            .contains("Do not spend a diagnostic read solely to restate case metadata")
+            .contains("cannot be supplied by any available authorized route and is identified in missingEvidenceReason")
+            .doesNotContain("Do not return ANSWER_FROM_CONTEXT until");
         for (String version : List.of("v1", "v1-default-optimized")) {
             for (String name : List.of("answer", "answer-managed")) {
                 assertThat(readResource("prompts/rag/generation/" + version + "/" + name + ".md"))
@@ -132,7 +137,8 @@ class DefaultCuratedPackTest {
             .contains("Do not infer missing live facts or missing action parameters");
 
         assertThat(readResource("prompts/orchestration/read-action-resolution/v1-default-optimized/user.md"))
-            .contains("current-user/current-tenant/current-session resource reads")
+            .contains("current-user/current-tenant/current-session reads")
+            .contains("hidden bindings are resolved by the server after its authentication check")
             .contains("Never ask the user for internal action parameters");
 
         assertThat(readResource("prompts/orchestration/post-action-generation/v1-default-optimized/user-generic-managed.md"))

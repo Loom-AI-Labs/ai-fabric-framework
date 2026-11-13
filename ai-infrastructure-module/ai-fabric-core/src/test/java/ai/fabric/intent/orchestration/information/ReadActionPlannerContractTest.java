@@ -116,6 +116,8 @@ class ReadActionPlannerContractTest {
 
         assertThat(sentCatalog().path("retrievalEnabled").asBoolean()).isFalse();
         assertThat(sentCatalog().path("vectorSpaces").isEmpty()).isTrue();
+        assertThat(sentCatalog().path("ragAvailable").asBoolean()).isFalse();
+        assertThat(sentCatalog().path("ragUnavailableReasons").toString()).contains("RETRIEVAL_DISABLED");
         verify(entities, never()).getSupportedEntityTypes();
     }
 
@@ -125,7 +127,44 @@ class ReadActionPlannerContractTest {
         resolve(policy(true, true, List.of(), 5, 8_000), null);
 
         assertThat(sentCatalog().path("vectorSpaces").isEmpty()).isTrue();
+        assertThat(sentCatalog().path("retrievalEnabled").asBoolean()).isTrue();
+        assertThat(sentCatalog().path("ragAvailable").asBoolean()).isFalse();
+        assertThat(sentCatalog().path("ragUnavailableReasons").toString()).contains("NO_AUTHORIZED_VECTOR_SOURCES");
+        assertThat(json.convertValue(sentCatalog().path("availableDecisions"), List.class))
+            .containsExactly("ANSWER_FROM_CONTEXT", "EXECUTE_READ_ACTIONS");
         verify(entities, never()).getSupportedEntityTypes();
+    }
+
+    @Test
+    void ragCooperationDisabledDoesNotAdvertiseAnIndexedRouteEvenWithAuthorizedSources() throws Exception {
+        var initial = policy(true, true, List.of("policy"), 5, 8_000);
+        var read = initial.readActionResolutionPolicy();
+        var disabled = new OrchestrationPolicy(initial.profile(), initial.mode(), initial.position(), initial.informationMode(),
+            initial.capabilities(), new OrchestrationPolicy.ReadActionResolutionPolicy(true, read.planningMode(),
+                read.allowedReadActions(), read.requireAllowlist(), read.maxIterations(), read.maxActionsPerIteration(),
+                read.maxTotalActions(), read.maxParallelActions(), read.maxPlannerContextChars(),
+                read.maxActionEvidenceCharsPerAction(), read.maxActionEvidenceItems(),
+                OrchestrationProperties.ReadActionResolutionRagCooperationMode.NONE, read.requireGroundingEligible()), initial.ragBudgets());
+        var outcome = resolve(disabled, null);
+        var catalog = sentCatalog();
+        assertThat(catalog.path("retrievalEnabled").asBoolean()).isTrue();
+        assertThat(catalog.path("ragAvailable").asBoolean()).isFalse();
+        assertThat(json.convertValue(catalog.path("vectorSpaces"), List.class)).containsExactly("policy");
+        assertThat(json.convertValue(catalog.path("ragUnavailableReasons"), List.class)).containsExactly("RAG_COOPERATION_DISABLED");
+        assertThat(json.convertValue(catalog.path("availableDecisions"), List.class))
+            .containsExactly("ANSWER_FROM_CONTEXT", "EXECUTE_READ_ACTIONS");
+        assertThat(outcome.useRag()).isFalse();
+        verify(handler, never()).executeAction(any(), any());
+    }
+
+    @Test
+    void usableIndexedRouteAdvertisesBothReadAndRagChoicesWithoutChoosingASource() throws Exception {
+        resolve(policy(true, true, List.of("policy"), 5, 8_000), null);
+        var catalog = sentCatalog();
+        assertThat(catalog.path("ragAvailable").asBoolean()).isTrue();
+        assertThat(catalog.path("ragUnavailableReasons").isEmpty()).isTrue();
+        assertThat(json.convertValue(catalog.path("availableDecisions"), List.class))
+            .containsExactly("ANSWER_FROM_CONTEXT", "EXECUTE_READ_ACTIONS", "EXECUTE_READ_ACTIONS_AND_RAG", "USE_RAG_ONLY");
     }
 
     @Test

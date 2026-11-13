@@ -4,10 +4,18 @@ import ai.fabric.chat.exception.ChatSessionAccessDeniedException;
 import ai.fabric.chat.service.ChatSessionService;
 import ai.fabric.chat.spi.ChatSessionAccessControlPolicy;
 import ai.fabric.intent.action.AIActionRegistry;
+import ai.fabric.intent.action.AIActionMetaData;
+import ai.fabric.intent.action.AIActionParamSchema;
+import ai.fabric.intent.action.AIActionParamType;
+import ai.fabric.intent.action.AIActionRegistryContributor;
 import ai.fabric.intent.action.ActionAccessMode;
 import ai.fabric.intent.action.ActionContext;
+import ai.fabric.intent.action.ActionNativeSchemaSupport;
 import ai.fabric.intent.action.ActionPayload;
 import ai.fabric.intent.action.ActionResult;
+import ai.fabric.intent.action.connector.ActionConnectorExecutor;
+import ai.fabric.intent.action.connector.ConnectorAIActionHandler;
+import ai.fabric.intent.action.connector.ConnectorActionLlmFactsDefinition;
 import ai.fabric.intent.action.connector.McpActionExecutor;
 import ai.fabric.intent.orchestration.OrchestrationContext;
 import ai.fabric.intent.orchestration.OrchestrationResult;
@@ -24,6 +32,7 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.BeforeAll;
@@ -44,8 +53,13 @@ import org.springframework.util.StringUtils;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.junit.jupiter.api.Assertions.assertAll;
 
-/** Real extraction and confirmation; only the business receiver is synthetic. */
+/**
+ * Real extraction, planning and confirmation; only the business receiver is synthetic.
+ * Ten scenario invocations use fourteen orchestration turns and one direct planner call.
+ * This entry-call cap is not a count of the framework's internal provider requests.
+ */
 @SpringBootTest(classes = TestApplication.class, webEnvironment = SpringBootTest.WebEnvironment.NONE)
 @ActiveProfiles("real-api-test")
 @Import(RealAPINativeActionSchemaIntegrationTest.FixtureConfiguration.class)
@@ -82,6 +96,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
     "ai.orchestration.modes.executor.read-action-resolution.allowed-read-actions[0]=native_read_setting",
     "ai.orchestration.modes.executor.read-action-resolution.allowed-read-actions[1]=native_read_private_setting",
     "ai.orchestration.modes.executor.read-action-resolution.allowed-read-actions[2]=native_read_public_guide",
+    "ai.orchestration.modes.executor.read-action-resolution.allowed-read-actions[3]=native_read_subscription_status",
     "ai.orchestration.modes.executor.read-action-resolution.max-total-actions=1",
     "ai.orchestration.modes.executor.read-action-resolution.rag-cooperation-mode=NONE",
     "ai.orchestration.modes.guide-without-index.actions-enabled=true",
@@ -98,6 +113,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
     "ai.orchestration.modes.guide-without-index.read-action-resolution.rag-cooperation-mode=NONE"
 })
 class RealAPINativeActionSchemaIntegrationTest {
+    private static final int MAX_QUERIES = 15;
+    private static final String PRIVATE_STATUS_ACTION = "native_read_subscription_status";
+    private static final String NATURAL_STATUS_QUESTION = "What is the current status of my subscription?";
     private static final String PUBLIC_GUIDE = "In this fictional service, subscription cancellation takes effect "
         + "at the end of the current billing period. Reading the guide does not cancel a subscription.";
     static {
@@ -122,7 +140,12 @@ class RealAPINativeActionSchemaIntegrationTest {
             .isTrue();
         assertThat(registry.findMetadata("native_read_setting").orElseThrow().getInputSchema()).isNotEmpty();
         assertThat(registry.findMetadata("native_read_setting").orElseThrow().getGroundingVectorSpaces()).isEmpty();
-        System.out.printf("Native schema qualification: provider=openai model=%s maxQueries=13 syntheticReceiver=true%n", model);
+        var privateStatus = registry.findMetadata(PRIVATE_STATUS_ACTION).orElseThrow();
+        assertThat(privateStatus.isAnonymousAllowed()).isFalse();
+        assertThat(ActionNativeSchemaSupport.publicInputSchema(privateStatus).get("properties"))
+            .isEqualTo(Map.of());
+        System.out.printf("Native schema qualification: provider=openai model=%s scenarios=10 "
+            + "maxQueries=%d orchestrationTurns=14 directPlannerCalls=1 syntheticReceiver=true%n", model, MAX_QUERIES);
     }
 
     @BeforeEach
@@ -172,6 +195,24 @@ class RealAPINativeActionSchemaIntegrationTest {
         assertThat(result.getData().get("readActionResolution")).isInstanceOf(Map.class);
         assertThat(((Map<?, ?>) result.getData().get("readActionResolution")).get("useRag"))
             .isEqualTo(false);
+        var plan = (Map<?, ?>) result.getData().get("readActionResolution");
+        assertThat(plan.get("knowledgeSourceCatalog")).isInstanceOf(Map.class);
+        var sources = (Map<?, ?>) plan.get("knowledgeSourceCatalog");
+        assertThat(sources.get("ragAvailable")).isEqualTo(false);
+        assertThat(sources.get("vectorSpaces")).isEqualTo(List.of());
+        assertThat(sources.get("availableDecisions"))
+            .isEqualTo(List.of("ANSWER_FROM_CONTEXT", "EXECUTE_READ_ACTIONS"));
+        assertThat(sources.get("ragUnavailableReasons")).isInstanceOf(List.class);
+        var unavailableReasons = ((List<?>) sources.get("ragUnavailableReasons")).stream()
+            .map(String.class::cast).toList();
+        assertThat(unavailableReasons).contains("RAG_COOPERATION_DISABLED", "NO_AUTHORIZED_VECTOR_SOURCES");
+        assertThat(plan.get("iterations")).isInstanceOf(List.class);
+        for (Object rawIteration : (List<?>) plan.get("iterations")) {
+            assertThat(rawIteration).isInstanceOf(Map.class);
+            var iteration = (Map<?, ?>) rawIteration;
+            assertThat(iteration.get("decision")).as("An unavailable RAG route must not be selected")
+                .isIn("ANSWER_FROM_CONTEXT", "EXECUTE_READ_ACTIONS");
+        }
     }
 
     @Test
@@ -188,34 +229,61 @@ class RealAPINativeActionSchemaIntegrationTest {
 
     @ParameterizedTest
     @ValueSource(strings = {
-        "What is the current value of my private synthetic setting?",
-        "Use the connected private setting tool to read my current setting. This is read-only; do not change anything."
+        NATURAL_STATUS_QUESTION,
+        "Use the connected subscription tool to read my subscription and its current status. "
+            + "This is read-only; do not cancel or change anything."
     })
-    void anonymousPrivateInformationRequestsSignInWithoutInvokingReceiver(String question) {
-        var context = OrchestrationContext.builder().sessionId("private-auth-" + UUID.randomUUID()).build();
-        var result = query(question, context);
-        assertThat(result.isSuccess()).isFalse();
-        assertThat(result.getErrorCode()).isEqualTo("AUTHENTICATION_REQUIRED");
-        assertThat(result.getData()).containsKey("authenticationRequirement");
-        assertThat(receiver.calls).isEmpty();
-        System.out.printf("Native protected INFO diagnostics: intents=%s readPlan=%s%n",
-            result.getMetadata().get("intentDecisions"), result.getMetadata().get("readActionResolution"));
+    void samePrivateQuestionChallengesAnonymouslyAndExecutesAfterSignIn(String question) {
+        var anonymous = OrchestrationContext.builder().sessionId("private-auth-" + UUID.randomUUID()).build();
+        var challenge = query(question, anonymous);
+        var anonymousCalls = List.copyOf(receiver.calls);
+        // The host supplies verified identity and an owned conversation after sign-in; no borrowed chat history.
+        var authenticated = signedInContext().toBuilder().sessionId(anonymous.getSessionId()).build();
+        var result = query(question, authenticated);
+        var authenticatedCalls = List.copyOf(receiver.calls.subList(anonymousCalls.size(), receiver.calls.size()));
+
+        assertAll("The exact same question must work on both sides of the authentication boundary",
+            () -> {
+                assertThat(challenge.isSuccess()).isFalse();
+                assertThat(challenge.getErrorCode()).isEqualTo("AUTHENTICATION_REQUIRED");
+                assertThat(challenge.getData()).containsKey("authenticationRequirement")
+                    .containsEntry("action", PRIVATE_STATUS_ACTION);
+                assertThat(anonymousCalls).as("No private receiver call before sign-in").isEmpty();
+            },
+            () -> {
+                assertThat(result.isSuccess()).as("Signed-in result: %s / %s", result.getType(), result.getErrorCode())
+                    .isTrue();
+                assertThat(result.getData()).doesNotContainKey("authenticationRequirement");
+                assertThat(authenticatedCalls).as("Exactly one real private READ after sign-in").hasSize(1);
+                var call = authenticatedCalls.getFirst();
+                assertThat(call.action()).isEqualTo(PRIVATE_STATUS_ACTION);
+                assertThat(call.mode()).isEqualTo(ActionAccessMode.READ);
+                assertThat(call.parameters()).containsOnlyKeys("scopeKey")
+                    .containsEntry("scopeKey", authenticated.getUserId());
+                assertThat(call.result().isSuccess()).isTrue();
+                assertThat(call.result().getData().toMap()).containsEntry("status", "ACTIVE");
+            });
     }
 
     @Test
-    void realReadPlannerSelectsAuthenticationForSuppliedInformationIntent() {
-        assertThat(queries.incrementAndGet()).as("Bounded thirteen-query native qualification").isLessThanOrEqualTo(13);
-        String question = "What is the current value of my private synthetic setting?";
-        var input = policyResolution.process(PipelineContext.from(question, OrchestrationContext.anonymous()));
-        var intent = Intent.builder().type(IntentType.INFORMATION).intent("current_setting")
+    void realReadSelectionDerivesAuthenticationForSuppliedInformationIntent() {
+        int turn = nextQuery();
+        var input = policyResolution.process(PipelineContext.from(NATURAL_STATUS_QUESTION, OrchestrationContext.anonymous()));
+        var intent = Intent.builder().type(IntentType.INFORMATION).intent("current_subscription_status")
             .requiresRetrieval(false).requiresGeneration(false).build();
         var outcome = readPlanner.resolve(intent, input.getOrchestrationContext(), input);
 
-        assertThat(outcome.authenticationRequiredAction()).isEqualTo("native_read_private_setting");
+        System.out.printf("Native real READ planner component turn %d: intent=%s diagnostics=%s receiver=%s%n",
+            turn, intent.getType(), outcome.diagnostics(), receiver.calls);
+        assertThat(outcome.diagnostics()).containsEntry("modelDecision", "EXECUTE_READ_ACTIONS");
+        assertThat(outcome.diagnostics().get("iterations")).isInstanceOf(List.class);
+        var iterations = (List<?>) outcome.diagnostics().get("iterations");
+        assertThat(iterations).hasSize(1);
+        assertThat(((Map<?, ?>) iterations.getFirst()).get("decision")).isEqualTo("EXECUTE_READ_ACTIONS");
+        assertThat(outcome.authenticationRequiredAction()).isEqualTo(PRIVATE_STATUS_ACTION);
+        assertThat(outcome.useRag()).isFalse();
         assertThat(outcome.executedActions()).isEmpty();
         assertThat(receiver.calls).isEmpty();
-        System.out.printf("Native real READ planner component turn %d: diagnostics=%s%n",
-            queries.get(), outcome.diagnostics());
     }
 
     @Test
@@ -263,13 +331,23 @@ class RealAPINativeActionSchemaIntegrationTest {
     }
 
     private OrchestrationResult query(String text, OrchestrationContext context) {
-        assertThat(queries.incrementAndGet()).as("Bounded thirteen-query native qualification").isLessThanOrEqualTo(13);
+        int turn = nextQuery();
+        int callsBefore = receiver.calls.size();
+        System.out.printf("Native schema real-provider turn %d: question=%s authenticated=%s%n",
+            turn, text, context.isAuthenticated());
         var result = orchestrator.orchestrate(text, context);
         assertThat(result).isNotNull();
-        System.out.printf("Native schema real-provider turn %d: type=%s success=%s receiverCalls=%d%n",
-            queries.get(), result.getType(), result.isSuccess(), receiver.calls.size());
+        System.out.printf("Native schema real-provider turn %d: type=%s success=%s errorCode=%s receiver=%s%n",
+            turn, result.getType(), result.isSuccess(), result.getErrorCode(),
+            receiver.calls.subList(callsBefore, receiver.calls.size()));
         System.out.printf("Native schema turn diagnostics: metadata=%s data=%s%n", result.getMetadata(), result.getData());
         return result;
+    }
+
+    private int nextQuery() {
+        int turn = queries.incrementAndGet();
+        assertThat(turn).as("Bounded native qualification entry calls").isLessThanOrEqualTo(MAX_QUERIES);
+        return turn;
     }
 
     private OrchestrationContext signedInContext() {
@@ -280,6 +358,32 @@ class RealAPINativeActionSchemaIntegrationTest {
     @TestConfiguration(proxyBeanMethods = false)
     static class FixtureConfiguration {
         @Bean RecordingMcpExecutor nativeSchemaMcpExecutor() { return new RecordingMcpExecutor(); }
+
+        @Bean
+        AIActionRegistryContributor nativeSubscriptionStatus(ActionConnectorExecutor executor) {
+            var inputSchema = Map.<String, Object>of("type", "object",
+                "properties", Map.of("scopeKey", Map.of("type", "string")),
+                "required", List.of("scopeKey"), "additionalProperties", false);
+            var outputSchema = Map.<String, Object>of("type", "object",
+                "properties", Map.of("status", Map.of("type", "string")), "required", List.of("status"));
+            var metadata = AIActionMetaData.builder().name(PRIVATE_STATUS_ACTION)
+                .description("Read the signed-in customer's current subscription status. No user-supplied inputs "
+                    + "are needed. Account scope comes only from trusted runtime identity. This does not change "
+                    + "the subscription or explain general cancellation policy.")
+                .category("subscriptions").accessMode(ActionAccessMode.READ).anonymousAllowed(false)
+                .groundingEligible(true).readActionResolutionEligible(true)
+                .parameters(Map.of("scopeKey", "STRING")).requiredParameters(Set.of("scopeKey"))
+                .parameterSchemas(Map.of("scopeKey", AIActionParamSchema.builder().name("scopeKey")
+                    .type(AIActionParamType.STRING).required(true).askUser(false).visibility("INTERNAL")
+                    .resolveFrom(Map.of("source", "RUNTIME_CONTEXT", "field", "userId")).build()))
+                .inputSchema(inputSchema).outputSchema(outputSchema).build();
+            var handler = new ConnectorAIActionHandler(metadata, false, null, Set.of(), executor,
+                new ConnectorActionLlmFactsDefinition(null, List.of("status"), List.of(), List.of()),
+                Map.of("adapterType", "mcp-tool", "accessMode", "READ", "inputSchema", inputSchema,
+                    "outputSchema", outputSchema, "execution",
+                    Map.of("mcp", Map.of("connectionId", "native-schema-fixture", "toolName", "subscriptions.status"))));
+            return () -> List.of(handler);
+        }
 
         @Bean
         ChatSessionAccessControlPolicy nativeSchemaChatPolicy() {
@@ -310,16 +414,29 @@ class RealAPINativeActionSchemaIntegrationTest {
         @Override
         public ActionResult execute(String actionId, ActionAccessMode mode, Map<String, Object> params,
                                     ActionContext context, Map<String, Object> config) {
-            calls.add(new Call(actionId, mode, Collections.unmodifiableMap(new LinkedHashMap<>(params))));
+            ActionResult result;
             if (actionId.equals("native_read_public_guide")) {
-                return ActionResult.builder().success(true)
+                result = ActionResult.builder().success(true)
                     .data(ActionPayload.object(Map.of("guide", PUBLIC_GUIDE)))
                     .build();
+            } else if (actionId.equals(PRIVATE_STATUS_ACTION)) {
+                // Receiver-owned account isolation remains necessary even after planner authorization.
+                if (context == null || !context.isAuthenticated() || !StringUtils.hasText(context.userId())
+                    || !context.userId().equals(params.get("scopeKey"))) {
+                    result = ActionResult.builder().success(false).errorCode("FIXTURE_SCOPE_DENIED")
+                        .message("The trusted account scope is missing or does not match.").build();
+                } else {
+                    result = ActionResult.builder().success(true)
+                        .data(ActionPayload.object(Map.of("status", "ACTIVE"))).build();
+                }
+            } else {
+                result = ActionResult.builder().success(true).message("Synthetic fixture accepted the setting.")
+                    .data(ActionPayload.object(Map.of("accepted", true))).build();
             }
-            return ActionResult.builder().success(true).message("Synthetic fixture accepted the setting.")
-                .data(ActionPayload.object(Map.of("accepted", true))).build();
+            calls.add(new Call(actionId, mode, Collections.unmodifiableMap(new LinkedHashMap<>(params)), result));
+            return result;
         }
     }
 
-    record Call(String action, ActionAccessMode mode, Map<String, Object> parameters) {}
+    record Call(String action, ActionAccessMode mode, Map<String, Object> parameters, ActionResult result) {}
 }

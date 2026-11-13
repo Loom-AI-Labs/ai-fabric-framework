@@ -32,6 +32,7 @@ import ai.fabric.intent.orchestration.pipeline.steps.ActionRuntimeContextParamSu
 import ai.fabric.intent.orchestration.policy.OrchestrationPolicy;
 import ai.fabric.prompt.PromptRenderer;
 import ai.fabric.prompt.PromptTemplateResolver;
+import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -210,12 +211,6 @@ public class ReadActionResolutionService {
                 diagnostics.put("executedActionsCount", executedActions.size());
                 return ResolutionOutcome.authenticationRequired(authenticationAction, executedActions, diagnostics);
             }
-            if (decision.decision() == PlannerDecisionType.REQUEST_AUTHENTICATION) {
-                rejectedActionProposals.add(Map.of("iteration", iteration,
-                    "reason", "AUTHENTICATION_ACTION_NOT_ELIGIBLE"));
-                break;
-            }
-
             int rejectedBeforeApproval = rejectedActionProposals.size();
             List<PlannerActionProposal> approved = approveActionProposals(
                 decision,
@@ -478,10 +473,10 @@ public class ReadActionResolutionService {
                 return null;
             }
             PlannerPayload payload = jsonSupport.parsePayload(content, PlannerPayload.class);
-            PlannerDecisionType decisionType = PlannerDecisionType.from(payload.decision);
-            if (decisionType == null) {
+            if (payload.decision == null) {
                 return null;
             }
+            PlannerDecisionType decisionType = PlannerDecisionType.valueOf(payload.decision.name());
             List<PlannerActionProposal> proposals = new ArrayList<>();
             if (payload.actions != null) {
                 for (PlannerActionPayload action : payload.actions) {
@@ -528,8 +523,7 @@ public class ReadActionResolutionService {
     private String selectedProtectedRead(PlannerDecision decision, List<EligibleReadAction> actions,
                                          boolean anonymous, int maxActions) {
         if (!anonymous || decision == null || decision.actions() == null
-            || (decision.decision() != PlannerDecisionType.REQUEST_AUTHENTICATION
-                && decision.decision() != PlannerDecisionType.EXECUTE_READ_ACTIONS
+            || (decision.decision() != PlannerDecisionType.EXECUTE_READ_ACTIONS
                 && decision.decision() != PlannerDecisionType.EXECUTE_READ_ACTIONS_AND_RAG)) {
             return null;
         }
@@ -1187,6 +1181,23 @@ public class ReadActionResolutionService {
         Map<String, Object> catalog = new LinkedHashMap<>();
         catalog.put("retrievalEnabled", retrievalEnabled);
         catalog.put("vectorSpaces", spaces.stream().sorted().toList());
+        List<String> unavailableReasons = new ArrayList<>();
+        if (!retrievalEnabled) {
+            unavailableReasons.add("RETRIEVAL_DISABLED");
+        }
+        if (policy.readActionResolutionPolicy().ragCooperationMode()
+            == ai.fabric.config.OrchestrationProperties.ReadActionResolutionRagCooperationMode.NONE) {
+            unavailableReasons.add("RAG_COOPERATION_DISABLED");
+        }
+        if (spaces.isEmpty()) {
+            unavailableReasons.add("NO_AUTHORIZED_VECTOR_SOURCES");
+        }
+        boolean ragAvailable = unavailableReasons.isEmpty();
+        catalog.put("ragAvailable", ragAvailable);
+        catalog.put("ragUnavailableReasons", List.copyOf(unavailableReasons));
+        catalog.put("availableDecisions", ragAvailable
+            ? List.of("ANSWER_FROM_CONTEXT", "EXECUTE_READ_ACTIONS", "EXECUTE_READ_ACTIONS_AND_RAG", "USE_RAG_ONLY")
+            : List.of("ANSWER_FROM_CONTEXT", "EXECUTE_READ_ACTIONS"));
         catalog.put("selectionRequired", policy.capabilities().vectorSpaceSelectionRequired());
         catalog.put("allowlistRequired", policy.capabilities().retrievalAllowlistRequired());
         catalog.put("fanoutEnabled", Boolean.TRUE.equals(policy.ragBudgets().fanoutEnabled()));
@@ -1360,9 +1371,18 @@ public class ReadActionResolutionService {
         REQUEST_AUTHENTICATION,
         EXECUTE_READ_ACTIONS,
         EXECUTE_READ_ACTIONS_AND_RAG,
+        USE_RAG_ONLY
+    }
+
+    // Authentication is a server outcome, never a model-owned planning decision.
+    private enum ModelPlannerDecisionType {
+        ANSWER_FROM_CONTEXT,
+        EXECUTE_READ_ACTIONS,
+        EXECUTE_READ_ACTIONS_AND_RAG,
         USE_RAG_ONLY;
 
-        static PlannerDecisionType from(String raw) {
+        @JsonCreator
+        public static ModelPlannerDecisionType from(String raw) {
             if (!StringUtils.hasText(raw)) {
                 return null;
             }
@@ -1618,7 +1638,7 @@ public class ReadActionResolutionService {
 
     @JsonIgnoreProperties(ignoreUnknown = true)
     private static final class PlannerPayload {
-        public String decision;
+        public ModelPlannerDecisionType decision;
         public List<PlannerActionPayload> actions = List.of();
         public Boolean needsMoreSteps;
         public String missingEvidenceReason;
