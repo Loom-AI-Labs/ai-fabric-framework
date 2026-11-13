@@ -490,7 +490,10 @@ class IntentHandlingStepCompoundReadEvidenceTest {
         when(ragProvider.performRag(any(RAGRequest.class))).thenReturn(policyResponse);
         when(ragProvider.performRAGQuery(any(RAGRequest.class))).thenReturn(policyResponse);
 
-        IntentHandlingStep step = newStep(registry, ragProvider, mock(AICoreService.class));
+        AICoreService ai = mock(AICoreService.class);
+        when(ai.generateTextResponse(anyString(), eq(LlmPurpose.GENERATION)))
+            .thenReturn(AIGenerationResponse.builder().content("Delivery costs GBP 49.").build());
+        IntentHandlingStep step = newStep(registry, ragProvider, ai);
         Intent write = Intent.builder().type(IntentType.ACTION).action("request_delivery").build();
         OrchestrationContext orchestrationContext = OrchestrationContext.builder()
             .userId("user-1")
@@ -885,7 +888,7 @@ class IntentHandlingStepCompoundReadEvidenceTest {
         assertThat(result.getType()).isEqualTo(OrchestrationResultType.ERROR);
         assertThat(result.isSuccess()).isFalse();
         assertThat(result.getErrorCode()).isEqualTo("GENERATION_FAILED");
-        assertThat(result.getData()).containsEntry("generationError", "Final synthesis returned no content.");
+        assertThat(result.getData()).containsEntry("generationError", "Generation returned no content.");
         @SuppressWarnings("unchecked")
         Map<String, Object> diagnostics = (Map<String, Object>) result.getData().get("compoundEvidence");
         assertThat(diagnostics)

@@ -15,7 +15,6 @@ import ai.fabric.intent.orchestration.conversation.ConversationPromptContext;
 import ai.fabric.intent.orchestration.policy.OrchestrationPolicy;
 import ai.fabric.prompt.PromptRenderer;
 import ai.fabric.prompt.PromptTemplateResolver;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.util.StringUtils;
 
 import java.util.Collections;
@@ -31,7 +30,6 @@ import static ai.fabric.intent.orchestration.pipeline.steps.ManagedGenerationPro
 /**
  * Handles RAG answer generation prompts, budget selection, and generation trace metadata.
  */
-@Slf4j
 final class RagResponseGenerationSupport {
 
     private static final String METADATA_KEY_RESPONSE_GENERATION_PROCESSING_TIME_MS = "responseGenerationProcessingTimeMs";
@@ -84,28 +82,18 @@ final class RagResponseGenerationSupport {
             if (aiServiceConfig != null
                 && aiServiceConfig.getFeatures() != null
                 && Boolean.TRUE.equals(aiServiceConfig.getFeatures().getEnableGeneration())) {
-                try {
-                    String prompt = buildRagNoContextPrompt(safeQuery, promptPreview);
-                    ResponseGenerationTrace response = generatePromptResponse(
-                        prompt,
-                        "rag",
-                        "no_context",
-                        LlmPurpose.GENERATION,
-                        responseGenerationPath(responseProfile, true),
-                        maxTokens,
-                        pipelineContext
-                    );
-                    if (response != null && StringUtils.hasText(response.content())) {
-                        return response;
-                    }
-                } catch (Exception ex) {
-                    if (!ConversationPromptContext.history(pipelineContext,
-                        ConversationPromptContext.characterBudget(pipelineContext)).messages().isEmpty()) {
-                        throw new IllegalStateException("Conversation-bound generation failed without discarding history.", ex);
-                    }
-                    log.warn("No-context generation failed; falling back to static response: {}", ex.getMessage());
-                }
+                String prompt = buildRagNoContextPrompt(safeQuery, promptPreview);
+                return generatePromptResponse(
+                    prompt,
+                    "rag",
+                    "no_context",
+                    LlmPurpose.GENERATION,
+                    responseGenerationPath(responseProfile, true),
+                    maxTokens,
+                    pipelineContext
+                );
             }
+            // No generation was attempted; this remains the disabled-generation policy response.
             return new ResponseGenerationTrace(
                 RAG_NO_INFO_MESSAGE_PREFIX + safeQuery,
                 null,
@@ -238,21 +226,21 @@ final class RagResponseGenerationSupport {
                     .build(),
                 purpose
             );
-            if (response == null || !StringUtils.hasText(response.getContent())) {
-                if (!conversation.messages().isEmpty()) {
-                    throw new IllegalStateException("Generation returned no content for a conversation-bound request.");
-                }
-                response = aiCoreService.generateTextResponse(effectivePrompt, purpose);
-            }
         } else {
             response = aiCoreService.generateTextResponse(effectivePrompt, purpose);
         }
+        // A generated answer requires provider-authored content, not a replacement call or static text.
+        if (response == null || !StringUtils.hasText(response.getContent())) {
+            throw new IllegalStateException(conversation.messages().isEmpty()
+                ? "Generation returned no content."
+                : "Generation returned no content for a conversation-bound request.");
+        }
         long elapsedMs = java.util.concurrent.TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startNanos);
         return new ResponseGenerationTrace(
-            response != null ? response.getContent() : null,
+            response.getContent(),
             elapsedMs,
-            response != null ? response.getProcessingTimeMs() : null,
-            response != null ? response.getModel() : null,
+            response.getProcessingTimeMs(),
+            response.getModel(),
             path,
             conversation.messages().isEmpty() ? Map.of() : conversation.diagnostics()
         );

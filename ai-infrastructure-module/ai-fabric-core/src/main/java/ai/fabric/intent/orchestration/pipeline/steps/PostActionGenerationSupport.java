@@ -404,8 +404,6 @@ final class PostActionGenerationSupport {
             );
             return new PostActionGenerationOutcome(null, actionResult.getMessage(), metadata);
         }
-        boolean hasAnswerableFacts = hasAnswerablePostActionFacts(factsMap);
-
         FactsPayload facts = buildFactsPayload(factsMap, postActionGenerationProperties.getMaxChars());
 
         String instruction = request != null ? request.generationInstructions() : null;
@@ -443,33 +441,14 @@ final class PostActionGenerationSupport {
         try {
             generationResponse = aiCoreService.generateContent(generationRequest, LlmPurpose.GENERATION);
         } catch (Exception ex) {
-            Map<String, Object> metadata = postActionGenerationSkippedMetadata(
-                "generation_failed",
-                ex.getMessage(),
-                facts
-            );
-            if (forced && hasAnswerableFacts) {
-                String fallback = deterministicPostActionSummary(actionName, actionResult, factsMap);
-                if (StringUtils.hasText(fallback)) {
-                    return new PostActionGenerationOutcome(fallback, fallback, withDeterministicFallbackMetadata(metadata));
-                }
-            }
+            log.warn("Post-action generation failed for '{}': {}", actionName, ex.getClass().getSimpleName());
+            Map<String, Object> metadata = genericGenerationFailureMetadata("generation_failed", facts);
             return new PostActionGenerationOutcome(null, actionResult.getMessage(), metadata);
         }
 
         String summary = generationResponse != null ? generationResponse.getContent() : null;
         if (!StringUtils.hasText(summary)) {
-            Map<String, Object> metadata = postActionGenerationSkippedMetadata(
-                "empty_generation_response",
-                null,
-                facts
-            );
-            if (forced && hasAnswerableFacts) {
-                String fallback = deterministicPostActionSummary(actionName, actionResult, factsMap);
-                if (StringUtils.hasText(fallback)) {
-                    return new PostActionGenerationOutcome(fallback, fallback, withDeterministicFallbackMetadata(metadata));
-                }
-            }
+            Map<String, Object> metadata = genericGenerationFailureMetadata("empty_generation_response", facts);
             return new PostActionGenerationOutcome(null, actionResult.getMessage(), metadata);
         }
 
@@ -525,6 +504,22 @@ final class PostActionGenerationSupport {
         if (facts != null) {
             metadata.put("includedItems", facts.includedItems());
             metadata.put("truncated", facts.truncated());
+        }
+        return Collections.unmodifiableMap(metadata);
+    }
+
+    private Map<String, Object> genericGenerationFailureMetadata(String reason, FactsPayload facts) {
+        Map<String, Object> metadata = new LinkedHashMap<>(postActionGenerationSkippedMetadata(reason, null, facts));
+        metadata.put("errorCode", "GENERATION_FAILED");
+        return Collections.unmodifiableMap(metadata);
+    }
+
+    static Map<String, Object> publicGenerationMetadata(PostActionGenerationOutcome outcome) {
+        if (outcome == null || outcome.metadata() == null) return Map.of();
+        Map<String, Object> metadata = new LinkedHashMap<>();
+        for (String key : List.of("used", "skippedReason", "errorCode")) {
+            Object value = outcome.metadata().get(key);
+            if (value instanceof Boolean || value instanceof String) metadata.put(key, value);
         }
         return Collections.unmodifiableMap(metadata);
     }

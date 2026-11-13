@@ -11,6 +11,8 @@ import ai.fabric.intent.orchestration.OrchestrationResultType;
 import ai.fabric.privacy.pii.PIIDetectionService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.ApplicationEventPublisher;
@@ -120,6 +122,21 @@ class ResponseSanitizerTest {
         ArgumentCaptor<SanitizationEvent> eventCaptor = ArgumentCaptor.forClass(SanitizationEvent.class);
         verify(eventPublisher).publishEvent(eventCaptor.capture());
         assertThat(eventCaptor.getValue().getRiskLevel()).isEqualTo(ResponseSanitizer.RiskLevel.HIGH);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"", "Request created."})
+    void failedNarrationNeverCreatesASuccessSummaryButPreservesHandlerText(String message) {
+        var result = OrchestrationResult.builder().type(OrchestrationResultType.ACTION_EXECUTED).success(true)
+            .message(message).data(Map.of("actionResult", Map.of("success", true, "data", Map.of("receiptId", "created-1"))))
+            .metadata(Map.of("postActionGeneration", Map.of("used", false, "errorCode", "GENERATION_FAILED",
+                "skippedReason", "generation_failed"))).build();
+
+        var payload = sanitizer.sanitize(result, "owner");
+
+        assertThat(payload.get("safeSummary")).isEqualTo(message.isEmpty() ? null : message);
+        assertThat(payload).containsEntry("success", true);
+        assertThat(payload.get("data")).isNotNull();
     }
 
     @Test

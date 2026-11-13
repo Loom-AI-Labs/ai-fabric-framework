@@ -130,24 +130,24 @@ final class InformationRagExecutionSupport {
                 generationTrace = ragResponseGenerationSupport.generateRagAnswer(intent, generationQuery, generationContext, pipelineContext);
                 answer = generationTrace != null ? generationTrace.content() : null;
             } catch (Exception ex) {
-                log.error("RAG generation failed for request {}: {}",
+                log.warn("RAG generation failed for request {}: {}",
                     pipelineContext != null ? pipelineContext.getRequestId() : "unknown",
-                    ex.getMessage(),
-                    ex);
+                    ex.getClass().getSimpleName());
 
                 Map<String, Object> errorData = new LinkedHashMap<>();
                 errorData.put(DATA_KEY_ANSWER, null);
                 errorData.put(DATA_KEY_DOCUMENTS, ragResponse.getDocuments());
                 errorData.put(DATA_KEY_RAG_RESPONSE, ragResponse);
                 errorData.put(DATA_KEY_REQUIRES_GENERATION, true);
-                errorData.put(DATA_KEY_GENERATION_ERROR, ex.getMessage());
+                errorData.put(DATA_KEY_GENERATION_ERROR, "GENERATION_FAILED");
 
                 return OrchestrationResult.builder()
                     .type(OrchestrationResultType.ERROR)
                     .success(false)
-                    .message("Failed to generate response: " + ex.getMessage())
+                    .errorCode("GENERATION_FAILED")
+                    .message("The AI response could not be generated.")
                     .data(Collections.unmodifiableMap(errorData))
-                    .nextSteps(extractNextSteps(intent))
+                    .nextSteps(List.of())
                     .build();
             }
         }
@@ -336,26 +336,26 @@ final class InformationRagExecutionSupport {
                 generationTrace = ragResponseGenerationSupport.generateRagAnswer(intent, generationQuery, generationContext, pipelineContext);
                 answer = generationTrace != null ? generationTrace.content() : null;
             } catch (Exception ex) {
-                log.error("Fan-out RAG generation failed for request {}: {}",
+                log.warn("Fan-out RAG generation failed for request {}: {}",
                     pipelineContext != null ? pipelineContext.getRequestId() : "unknown",
-                    ex.getMessage(),
-                    ex);
+                    ex.getClass().getSimpleName());
 
                 Map<String, Object> errorData = new LinkedHashMap<>();
                 errorData.put(DATA_KEY_ANSWER, null);
                 errorData.put(DATA_KEY_DOCUMENTS, merged);
                 errorData.put(DATA_KEY_RAG_RESPONSE, mergedResponse);
                 errorData.put(DATA_KEY_REQUIRES_GENERATION, true);
-                errorData.put(DATA_KEY_GENERATION_ERROR, ex.getMessage());
+                errorData.put(DATA_KEY_GENERATION_ERROR, "GENERATION_FAILED");
                 errorData.put(DATA_KEY_CANDIDATE_VECTOR_SPACES, vectorSpaces);
                 errorData.put(DATA_KEY_ROUTING_STRATEGY, "FAN_OUT");
 
                 return OrchestrationResult.builder()
                     .type(OrchestrationResultType.ERROR)
                     .success(false)
-                    .message("Failed to generate response: " + ex.getMessage())
+                    .errorCode("GENERATION_FAILED")
+                    .message("The AI response could not be generated.")
                     .data(Collections.unmodifiableMap(errorData))
-                    .nextSteps(extractNextSteps(intent))
+                    .nextSteps(List.of())
                     .build();
             }
         }

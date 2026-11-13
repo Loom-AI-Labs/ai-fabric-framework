@@ -993,11 +993,15 @@ public class IntentHandlingStep implements PipelineStep {
 
             enqueuePostPolicies(actionName, effectiveParams, actionResult, actionContext);
 
+            Map<String, Object> resultMetadata = new LinkedHashMap<>(publicActionParamValidationMetadata(meta, validation));
+            if (postActionGeneration != null && !"relationship_query".equalsIgnoreCase(actionName)) {
+                resultMetadata.put("postActionGeneration", PostActionGenerationSupport.publicGenerationMetadata(postActionGeneration));
+            }
             return OrchestrationResult.builder()
                 .type(OrchestrationResultType.ACTION_EXECUTED)
                 .success(success)
                 .message(message)
-                .metadata(publicActionParamValidationMetadata(meta, validation))
+                .metadata(Collections.unmodifiableMap(resultMetadata))
                 .data(resultData)
                 .nextSteps(extractNextSteps(intent))
                 .build();

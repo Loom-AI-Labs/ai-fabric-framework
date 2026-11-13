@@ -28,6 +28,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.core.io.DefaultResourceLoader;
@@ -45,6 +46,51 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class PostActionGenerationSupportTest {
+
+    @ParameterizedTest
+    @ValueSource(strings = {"OK", "success", "Action executed.", "MCP tool result", "Your request is complete."})
+    void genericGenerationFailurePreservesHandlerMessageRegardlessOfItsWording(String message) {
+        for (boolean forced : List.of(false, true)) {
+            for (String failure : List.of("exception", "null", "blank")) {
+                AICoreService ai = mock(AICoreService.class);
+                if ("exception".equals(failure)) {
+                    when(ai.generateContent(any(AIGenerationRequest.class), eq(LlmPurpose.GENERATION)))
+                        .thenThrow(new IllegalStateException("private-provider-detail"));
+                } else if ("blank".equals(failure)) {
+                    when(ai.generateContent(any(AIGenerationRequest.class), eq(LlmPurpose.GENERATION)))
+                        .thenReturn(AIGenerationResponse.builder().content("  ").build());
+                }
+                PostActionGenerationProperties properties = new PostActionGenerationProperties();
+                properties.setEnabled(!forced);
+                var support = newSupport(ai, new RelationshipQueryPostActionGenerationProperties(), properties);
+                var handler = mock(AIActionHandler.class);
+                var receipt = ActionResult.builder().success(true).message(message)
+                    .data(ActionResultContracts.object(Map.of("receiptId", "receipt-1"))).build();
+                when(handler.buildPostActionLlmFacts(eq(receipt), any())).thenReturn(Optional.of(Map.of("status", "complete", "itemCount", 2)));
+                var outcome = support.maybeGeneratePostActionSummary("business_operation", handler,
+                    Intent.builder().action("business_operation").build(), receipt, OrchestrationContext.forUser("owner"),
+                    PipelineContext.from("request", OrchestrationContext.forUser("owner")), Map.of(),
+                    new PostActionGenerationSupport.ResolvedPostActionGeneration(true, "Explain the receipt.", forced));
+                assertThat(outcome.summary()).isNull();
+                assertThat(outcome.message()).isEqualTo(message);
+                assertThat(outcome.metadata()).containsEntry("used", false).containsEntry("errorCode", "GENERATION_FAILED")
+                    .containsEntry("skippedReason", "exception".equals(failure) ? "generation_failed" : "empty_generation_response")
+                    .doesNotContainKeys("error", "deterministicFallbackUsed", "deterministicFallbackSource");
+                assertThat(receipt.isSuccess()).isTrue();
+                assertThat(receipt.getData().toMap()).containsEntry("receiptId", "receipt-1");
+                verify(ai).generateContent(any(AIGenerationRequest.class), eq(LlmPurpose.GENERATION));
+            }
+        }
+    }
+
+    @Test
+    void publicGenerationStatusDoesNotExposeProviderErrorsOrFacts() {
+        var outcome = new PostActionGenerationSupport.PostActionGenerationOutcome(null, "Receipt saved.", Map.of(
+            "used", false, "skippedReason", "generation_failed", "errorCode", "GENERATION_FAILED",
+            "error", "private-provider-detail", "facts", Map.of("private", "value")));
+        assertThat(PostActionGenerationSupport.publicGenerationMetadata(outcome)).containsExactlyInAnyOrderEntriesOf(Map.of(
+            "used", false, "skippedReason", "generation_failed", "errorCode", "GENERATION_FAILED"));
+    }
 
     @Test
     void shouldResolveDisabledWhenGenerationPropertiesAreOffAndReadActionIsNotForced() {

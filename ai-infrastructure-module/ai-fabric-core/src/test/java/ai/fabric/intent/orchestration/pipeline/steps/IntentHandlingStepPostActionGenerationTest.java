@@ -465,7 +465,7 @@ class IntentHandlingStepPostActionGenerationTest {
     }
 
     @Test
-    void shouldUseDeterministicFallbackForForcedGroundingEligibleReadActionWhenGenerationFails() {
+    void shouldPreserveReadReceiptAndExposeNarrationFailureWithoutDeterministicFallback() {
         AIActionRegistry registry = mock(AIActionRegistry.class);
         AIActionHandler handler = mock(AIActionHandler.class);
         AIActionMetaData metadata = AIActionMetaData.builder()
@@ -553,18 +553,19 @@ class IntentHandlingStepPostActionGenerationTest {
 
         assertThat(result.getType()).isEqualTo(OrchestrationResultType.ACTION_EXECUTED);
         assertThat(result.isSuccess()).isTrue();
-        assertThat(result.getMessage())
-            .contains("grounded evidence")
-            .doesNotContain("Action executed");
+        assertThat(result.getMessage()).isEqualTo("Action executed.");
         assertThat(result.getData())
-            .containsEntry("summary", result.getMessage())
-            .containsEntry("answer", result.getMessage());
+            .containsEntry("actionResult", actionResult)
+            .doesNotContainKeys("summary", "answer");
         @SuppressWarnings("unchecked")
         Map<String, Object> generationMetadata = (Map<String, Object>) result.getData().get("postActionGeneration");
         assertThat(generationMetadata)
             .containsEntry("used", false)
             .containsEntry("skippedReason", "generation_failed")
-            .containsEntry("deterministicFallbackUsed", true);
+            .containsEntry("errorCode", "GENERATION_FAILED")
+            .doesNotContainKeys("deterministicFallbackUsed", "error");
+        assertThat(result.getMetadata()).containsEntry("postActionGeneration", Map.of(
+            "used", false, "skippedReason", "generation_failed", "errorCode", "GENERATION_FAILED"));
 
         verify(handler).executeAction(any(), any());
         ArgumentCaptor<AIGenerationRequest> generationRequest = ArgumentCaptor.forClass(AIGenerationRequest.class);
@@ -648,6 +649,7 @@ class IntentHandlingStepPostActionGenerationTest {
         ActionResult actionResult = ActionResult.builder()
             .success(true)
             .message("OK")
+            .data(ActionResultContracts.object(Map.of("receiptId", "completed-write-1")))
             .build();
         when(handler.executeAction(any(), any())).thenReturn(actionResult);
         when(handler.buildPostActionLlmFacts(eq(actionResult), any())).thenReturn(Optional.of(Map.of("status", "ok")));
@@ -697,7 +699,13 @@ class IntentHandlingStepPostActionGenerationTest {
         assertThat(result.getType()).isEqualTo(OrchestrationResultType.ACTION_EXECUTED);
         assertThat(result.isSuccess()).isTrue();
         assertThat(result.getMessage()).isEqualTo("OK");
-        assertThat(result.getData()).containsKey("postActionGeneration");
+        assertThat(result.getData()).containsEntry("actionResult", actionResult)
+            .containsKey("actionExecutionId").doesNotContainKeys("answer", "summary");
+        assertThat(result.getErrorCode()).isNull();
+        assertThat(result.getMetadata()).containsEntry("postActionGeneration", Map.of(
+            "used", false, "skippedReason", "generation_failed", "errorCode", "GENERATION_FAILED"));
+        verify(handler).executeAction(any(), any());
+        assertThat(actionResult.getData().toMap()).containsEntry("receiptId", "completed-write-1");
     }
 
     @Test

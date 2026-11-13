@@ -2,7 +2,7 @@
 
 These standalone Spring Boot applications are public examples used to validate AI Fabric Framework capabilities in realistic product shapes.
 
-Current source and image pins target **0.8.51**. Check Maven Central before
+Current source and image pins target **0.8.52**. Check Maven Central before
 building images. Version pins do not certify the examples or live demos.
 
 For the detailed capability matrix and per-app proof notes, see

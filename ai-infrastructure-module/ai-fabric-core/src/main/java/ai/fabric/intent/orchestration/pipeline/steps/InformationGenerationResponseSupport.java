@@ -8,7 +8,6 @@ import ai.fabric.intent.orchestration.OrchestrationResult;
 import ai.fabric.intent.orchestration.OrchestrationResultType;
 import ai.fabric.intent.orchestration.information.ReadActionResolutionService;
 import ai.fabric.intent.orchestration.pipeline.PipelineContext;
-import ai.fabric.intent.orchestration.conversation.ConversationPromptContext;
 import ai.fabric.intent.orchestration.pipeline.steps.RagResponseGenerationSupport.ResponseGenerationTrace;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.util.StringUtils;
@@ -78,7 +77,7 @@ final class InformationGenerationResponseSupport {
                                               Map<String, Object> metadata,
                                               RagResponseGenerationSupport generationSupport) {
         ResponseGenerationTrace generationTrace = null;
-        String answer;
+        String answer = null;
         try {
             String pinnedTargetsContext = RagContextSupport.prependPinnedTargetsContext(null, pipelineContext);
             if (StringUtils.hasText(pinnedTargetsContext)) {
@@ -101,23 +100,9 @@ final class InformationGenerationResponseSupport {
                 answer = generationTrace != null ? generationTrace.content() : null;
             }
         } catch (Exception ex) {
-            log.error("Generation-only response failed for request {}: {}",
+            log.warn("Generation-only response failed for request {}: {}",
                 pipelineContext != null ? pipelineContext.getRequestId() : "unknown",
-                ex.getMessage(),
-                ex);
-            Map<String, Object> errorData = new LinkedHashMap<>();
-            errorData.put(DATA_KEY_ANSWER, null);
-            errorData.put(DATA_KEY_DOCUMENTS, List.of());
-            errorData.put(DATA_KEY_RAG_RESPONSE, null);
-            errorData.put(DATA_KEY_REQUIRES_GENERATION, true);
-            errorData.put(DATA_KEY_GENERATION_ERROR, ex.getMessage());
-            return OrchestrationResult.builder()
-                .type(OrchestrationResultType.ERROR)
-                .success(false)
-                .message("Failed to generate response: " + ex.getMessage())
-                .data(Collections.unmodifiableMap(errorData))
-                .nextSteps(extractNextSteps(intent))
-                .build();
+                ex.getClass().getSimpleName());
         }
 
         Map<String, Object> data = new LinkedHashMap<>();
@@ -130,14 +115,16 @@ final class InformationGenerationResponseSupport {
             data.put(DATA_KEY_METADATA, Collections.unmodifiableMap(new LinkedHashMap<>(metadata)));
         }
 
-        String message = StringUtils.hasText(answer) ? answer : RAG_NO_CONTEXT_MESSAGE;
+        boolean generated = StringUtils.hasText(answer);
+        if (!generated) data.put(DATA_KEY_GENERATION_ERROR, "GENERATION_FAILED");
         return OrchestrationResult.builder()
-            .type(OrchestrationResultType.INFORMATION_PROVIDED)
-            .success(StringUtils.hasText(answer))
-            .message(message)
+            .type(generated ? OrchestrationResultType.INFORMATION_PROVIDED : OrchestrationResultType.ERROR)
+            .success(generated)
+            .errorCode(generated ? null : "GENERATION_FAILED")
+            .message(generated ? answer : "The AI response could not be generated.")
             .data(Collections.unmodifiableMap(data))
             .metadata(generationSupport.responseGenerationMetadata(generationTrace))
-            .nextSteps(extractNextSteps(intent))
+            .nextSteps(generated ? extractNextSteps(intent) : List.of())
             .build();
     }
 
@@ -159,26 +146,9 @@ final class InformationGenerationResponseSupport {
             generationTrace = generationSupport.generateRagAnswer(intent, generationQuery, evidenceContext, pipelineContext);
             answer = generationTrace != null ? generationTrace.content() : null;
         } catch (Exception ex) {
-            log.error("Read-action evidence generation failed for request {}: {}",
+            log.warn("Read-action evidence generation failed for request {}: {}",
                 pipelineContext != null ? pipelineContext.getRequestId() : "unknown",
-                ex.getMessage(),
-                ex);
-            if (!ConversationPromptContext.history(pipelineContext,
-                ConversationPromptContext.characterBudget(pipelineContext)).messages().isEmpty()) {
-                Map<String, Object> errorData = new LinkedHashMap<>();
-                errorData.put(DATA_KEY_ANSWER, null);
-                errorData.put(DATA_KEY_DOCUMENTS, List.of());
-                errorData.put(DATA_KEY_REQUIRES_GENERATION, true);
-                errorData.put(DATA_KEY_GENERATION_ERROR, ex.getMessage());
-                return ReadActionResolutionSupport.attachDiagnostics(OrchestrationResult.builder()
-                    .type(OrchestrationResultType.ERROR)
-                    .success(false)
-                    .errorCode("GENERATION_FAILED")
-                    .message("Failed to generate the conversation response.")
-                    .data(Collections.unmodifiableMap(errorData))
-                    .nextSteps(extractNextSteps(intent))
-                    .build(), resolutionOutcome);
-            }
+                ex.getClass().getSimpleName());
         }
 
         Map<String, Object> data = new LinkedHashMap<>();
@@ -192,19 +162,17 @@ final class InformationGenerationResponseSupport {
             data.put(DATA_KEY_METADATA, Collections.unmodifiableMap(new LinkedHashMap<>(metadata)));
         }
 
-        String message = StringUtils.hasText(answer)
-            ? answer
-            : (StringUtils.hasText(resolutionOutcome != null ? resolutionOutcome.evidenceContext() : null)
-                ? resolutionOutcome.evidenceContext()
-                : RAG_NO_CONTEXT_MESSAGE);
+        boolean generated = StringUtils.hasText(answer);
+        if (!generated) data.put(DATA_KEY_GENERATION_ERROR, "GENERATION_FAILED");
 
         OrchestrationResult result = OrchestrationResult.builder()
-            .type(OrchestrationResultType.INFORMATION_PROVIDED)
-            .success(StringUtils.hasText(answer) || StringUtils.hasText(evidenceContext))
-            .message(message)
+            .type(generated ? OrchestrationResultType.INFORMATION_PROVIDED : OrchestrationResultType.ERROR)
+            .success(generated)
+            .errorCode(generated ? null : "GENERATION_FAILED")
+            .message(generated ? answer : "The AI response could not be generated.")
             .data(Collections.unmodifiableMap(data))
             .metadata(generationSupport.responseGenerationMetadata(generationTrace))
-            .nextSteps(extractNextSteps(intent))
+            .nextSteps(generated ? extractNextSteps(intent) : List.of())
             .build();
         return ReadActionResolutionSupport.attachDiagnostics(result, resolutionOutcome);
     }

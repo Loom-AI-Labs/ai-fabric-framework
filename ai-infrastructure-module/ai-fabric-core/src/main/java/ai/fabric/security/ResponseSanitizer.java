@@ -509,6 +509,10 @@ public class ResponseSanitizer {
         if (result.getMessage() instanceof String original && StringUtils.hasText(original)) {
             return original;
         }
+        if (result.getMetadata() != null && result.getMetadata().get("postActionGeneration") instanceof Map<?, ?> generation
+            && Boolean.FALSE.equals(generation.get("used")) && "GENERATION_FAILED".equals(generation.get("errorCode"))) {
+            return null;
+        }
         return "Response generated successfully.";
     }
 

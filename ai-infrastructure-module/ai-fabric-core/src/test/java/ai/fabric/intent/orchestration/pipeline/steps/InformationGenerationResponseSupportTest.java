@@ -5,16 +5,22 @@ import ai.fabric.config.PromptBundleProperties;
 import ai.fabric.core.AICoreService;
 import ai.fabric.core.LlmPurpose;
 import ai.fabric.dto.AIGenerationResponse;
+import ai.fabric.dto.AIGenerationRequest;
+import ai.fabric.dto.AIChatMessage;
 import ai.fabric.dto.Intent;
 import ai.fabric.intent.orchestration.OrchestrationContext;
 import ai.fabric.intent.orchestration.OrchestrationResult;
 import ai.fabric.intent.orchestration.OrchestrationResultType;
+import ai.fabric.intent.action.ActionResult;
+import ai.fabric.intent.action.ActionResultContracts;
 import ai.fabric.intent.orchestration.information.ReadActionResolutionService;
 import ai.fabric.intent.orchestration.pipeline.PipelineContext;
 import ai.fabric.prompt.ClasspathPromptTemplateStore;
 import ai.fabric.prompt.PromptRenderer;
 import ai.fabric.prompt.PromptTemplateResolver;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.core.io.DefaultResourceLoader;
 
 import java.util.LinkedHashMap;
@@ -23,9 +29,11 @@ import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.when;
 
 class InformationGenerationResponseSupportTest {
@@ -130,6 +138,58 @@ class InformationGenerationResponseSupportTest {
         assertThat(data.get("metadata")).isEqualTo(Map.of("readActionResolutionForcedGeneration", true));
         Map<?, ?> diagnostics = (Map<?, ?>) data.get("readActionResolution");
         assertThat(diagnostics.get("executedActionsCount")).isEqualTo(1);
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void failedOrEmptyReadNarrationRetainsExecutedEvidenceWithoutSuccessSubstitution(boolean withHistory) {
+        for (String failure : List.of("exception", "null", "blank")) {
+            AICoreService ai = mock(AICoreService.class);
+            if ("exception".equals(failure)) {
+                when(ai.generateTextResponse(anyString(), eq(LlmPurpose.GENERATION))).thenThrow(new IllegalStateException("private-provider-detail"));
+                when(ai.generateContent(any(AIGenerationRequest.class), eq(LlmPurpose.GENERATION))).thenThrow(new IllegalStateException("private-provider-detail"));
+            } else if ("blank".equals(failure)) {
+                when(ai.generateTextResponse(anyString(), eq(LlmPurpose.GENERATION))).thenReturn(AIGenerationResponse.builder().content("  ").build());
+                when(ai.generateContent(any(AIGenerationRequest.class), eq(LlmPurpose.GENERATION))).thenReturn(AIGenerationResponse.builder().content("  ").build());
+            }
+            OrchestrationContext orchestration = OrchestrationContext.forUser("owner-1");
+            orchestration.setConversationId("conversation-1");
+            PipelineContext pipeline = PipelineContext.from("where is my order", orchestration).toBuilder()
+                .historyMessages(withHistory ? List.of(AIChatMessage.user("my order")) : List.of()).build();
+            ActionResult receipt = ActionResult.builder().success(true).message("Read completed.")
+                .data(ActionResultContracts.object(Map.of("status", "delayed"))).build();
+            var executed = new ReadActionResolutionService.ExecutedReadAction("execution-1", "order_status", Map.of(),
+                null, receipt, true, "authorized facts", null);
+            var outcome = ReadActionResolutionService.ResolutionOutcome.answerFromActionsOnly("authorized facts",
+                List.of(), List.of(executed), Map.of("executedActionsCount", 1));
+            OrchestrationResult result = InformationGenerationResponseSupport.fromReadActionEvidence(
+                Intent.builder().requiresGeneration(true).build(), pipeline, "where is my order", Map.of(), outcome, newSupport(ai));
+            assertThat(result.isSuccess()).as(failure).isFalse();
+            assertThat(result.getType()).isEqualTo(OrchestrationResultType.ERROR);
+            assertThat(result.getErrorCode()).isEqualTo("GENERATION_FAILED");
+            assertThat(result.getMessage()).doesNotContain("authorized facts", "private-provider-detail");
+            assertThat(result.getData().get("answer")).isNull();
+            assertThat(result.getData().get("generationError")).isEqualTo("GENERATION_FAILED");
+            assertThat((List<?>) result.getData().get("actions")).singleElement().satisfies(value -> {
+                var action = (Map<?, ?>) value;
+                assertThat(action.get("actionExecutionId")).isEqualTo("execution-1");
+                var retained = (ActionResult) action.get("actionResult");
+                assertThat(retained.isSuccess()).isTrue();
+                assertThat(retained.getData().toMap()).containsEntry("status", "delayed");
+            });
+            assertThat(result.getNextSteps()).isEmpty();
+            if (withHistory) verify(ai, never()).generateTextResponse(anyString(), eq(LlmPurpose.GENERATION));
+        }
+    }
+
+    @Test
+    void emptyGenerationOnlyIsAnExplicitFailureNotAContextAnswer() {
+        var result = InformationGenerationResponseSupport.generationOnly(Intent.builder().requiresGeneration(true).build(),
+            PipelineContext.from("question", OrchestrationContext.forUser("owner")), "question", Map.of(), newSupport(mock(AICoreService.class)));
+        assertThat(result.getType()).isEqualTo(OrchestrationResultType.ERROR);
+        assertThat(result.getErrorCode()).isEqualTo("GENERATION_FAILED");
+        assertThat(result.isSuccess()).isFalse();
+        assertThat(result.getData().get("answer")).isNull();
     }
 
     private RagResponseGenerationSupport newSupport(AICoreService aiCoreService) {

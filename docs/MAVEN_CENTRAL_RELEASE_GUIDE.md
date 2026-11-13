@@ -5,10 +5,10 @@ AI Fabric Framework publishes to **Maven Central** via the Sonatype Central Port
 - Group: `io.github.loom-ai-labs`
 - BOM artifact: `ai-fabric-bom`
 - Release tag format: `ai-fabric-framework-v<version>`
-- Release version: `0.8.51`
-- Previous immutable release: `0.8.49`
+- Release version: `0.8.52`
+- Previous immutable release: `0.8.51`
 
-See [0.8.51 notes](release-notes/0.8.51.md) for scope and actual qualification.
+See [0.8.52 notes](release-notes/0.8.52.md) for scope and actual qualification.
 Local installs do not prove publication, Central-only consumption or hosted adoption.
 
 ## Consume From Maven Central
@@ -23,7 +23,7 @@ Check publication before adopting these coordinates.
     <dependency>
       <groupId>io.github.loom-ai-labs</groupId>
       <artifactId>ai-fabric-bom</artifactId>
-      <version>0.8.51</version>
+      <version>0.8.52</version>
       <type>pom</type>
       <scope>import</scope>
     </dependency>
@@ -76,8 +76,8 @@ the generated bundle layout remains valid.
 Only after separate approval, tag and create a GitHub Release; the release workflow publishes automatically:
 
 ```bash
-git tag -a ai-fabric-framework-v0.8.51 -m "AI Fabric Framework 0.8.51"
-git push origin ai-fabric-framework-v0.8.51
+git tag -a ai-fabric-framework-v0.8.52 -m "AI Fabric Framework 0.8.52"
+git push origin ai-fabric-framework-v0.8.52
 ```
 
 Then create a GitHub Release from the tag. The workflow runs:
@@ -103,7 +103,7 @@ Use `curl` before publishing to confirm whether a version already exists:
 
 ```bash
 curl -s -o /dev/null -w '%{http_code}\n' \
-  https://repo1.maven.org/maven2/io/github/loom-ai-labs/ai-fabric-bom/0.8.51/ai-fabric-bom-0.8.51.pom
+  https://repo1.maven.org/maven2/io/github/loom-ai-labs/ai-fabric-bom/0.8.52/ai-fabric-bom-0.8.52.pom
 ```
 
 ## Boundary

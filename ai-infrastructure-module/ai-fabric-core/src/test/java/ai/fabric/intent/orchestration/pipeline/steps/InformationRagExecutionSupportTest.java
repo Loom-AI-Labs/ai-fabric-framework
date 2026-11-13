@@ -19,6 +19,8 @@ import ai.fabric.prompt.PromptTemplateResolver;
 import ai.fabric.spi.AdvancedRAGProvider;
 import ai.fabric.spi.RAGProvider;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.core.io.DefaultResourceLoader;
@@ -34,6 +36,37 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class InformationRagExecutionSupportTest {
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void attemptedGenerationFailureRetainsDocumentsAndDoesNotMasqueradeAsSearchSuccess(boolean fanout) {
+        RAGProvider provider = mock(RAGProvider.class);
+        var document = doc("approved-1", 0.9, "Approved policy evidence");
+        when(provider.performRAGQuery(any())).thenReturn(RAGResponse.builder().success(true)
+            .documents(List.of(document)).context("Approved policy evidence").build());
+        RagResponseGenerationSupport generation = mock(RagResponseGenerationSupport.class);
+        when(generation.generateRagAnswer(any(), any(), any(), any())).thenThrow(new IllegalStateException("private-provider-detail"));
+        var config = new AIServiceConfig();
+        var support = new InformationRagExecutionSupport(providerOf(provider),
+            new AdvancedRagSupport(providerOf((AdvancedRAGProvider) null), config, new OrchestrationProperties()),
+            new VectorSpaceRoutingProperties(), new RankBasedMerger(), generation);
+        var intent = Intent.builder().vectorSpace("policies").requiresGeneration(true).build();
+        var context = OrchestrationContext.forUser("owner");
+        var pipeline = PipelineContext.from("question", context);
+        var result = fanout
+            ? support.fanOut(intent, context, pipeline, false, true, "question", "question", Map.of(), List.of("policies"), null, null)
+            : support.basic(intent, context, pipeline, true, "question", "question", Map.of(), null, null);
+        assertThat(result.isSuccess()).isFalse();
+        assertThat(result.getType()).isEqualTo(OrchestrationResultType.ERROR);
+        assertThat(result.getErrorCode()).isEqualTo("GENERATION_FAILED");
+        assertThat(result.getMessage()).doesNotContain("private-provider-detail");
+        assertThat(result.getData().get("answer")).isNull();
+        assertThat((List<?>) result.getData().get("documents")).hasSize(1);
+        assertThat(result.getData().get("ragResponse")).isNotNull();
+        assertThat(result.getData().get("generationError")).isEqualTo("GENERATION_FAILED");
+        assertThat(result.getNextSteps()).isEmpty();
+        verify(generation).generateRagAnswer(any(), any(), any(), any());
+    }
 
     @Test
     void shouldReturnNoContextResultWhenRagProviderIsUnavailable() {
