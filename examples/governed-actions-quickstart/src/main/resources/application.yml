@@ -1,0 +1,32 @@
+spring:
+  application:
+    name: governed-actions-quickstart
+
+ai:
+  enabled: true
+
+  providers:
+    enabled: true
+    llm-provider: quickstart
+
+  service:
+    features:
+      enable-generation: true
+      enable-embeddings: false
+      enable-search: false
+
+  vector-db:
+    type: false
+
+  infrastructure:
+    rag:
+      enabled: false
+      advanced:
+        enabled: false
+
+  ai:
+    chat:
+      enabled: true
+      window-size: 12
+      max-context-chars: 8000
+      auto-create-sessions: true
