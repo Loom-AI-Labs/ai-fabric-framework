@@ -1,5 +1,6 @@
 package ai.fabric.intent.orchestration.pipeline.steps;
 
+import ai.fabric.config.AIEntityConfigurationLoader;
 import ai.fabric.config.OrchestrationProperties;
 import ai.fabric.intent.orchestration.OrchestrationContext;
 import ai.fabric.intent.orchestration.OrchestrationContextMetadataKeys;
@@ -22,6 +23,7 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 
 /**
  * Resolves the server-authoritative {@link OrchestrationPolicy} for the current request.
@@ -45,6 +47,9 @@ public class OrchestrationPolicyResolutionStep implements PipelineStep {
 
     @Autowired(required = false)
     private AIActionRegistry actionRegistry;
+
+    @Autowired(required = false)
+    private AIEntityConfigurationLoader entityConfigurationLoader;
 
     @Override
     public String getStepName() {
@@ -291,7 +296,10 @@ public class OrchestrationPolicyResolutionStep implements PipelineStep {
         if (effectiveCapabilities == null && actionRegistry != null) {
             effectiveCapabilities = new DefaultEffectiveCapabilitiesResolver().resolveLegacy(
                 policy,
-                actionRegistry.getAllMetadata()
+                actionRegistry.getAllMetadata(),
+                entityConfigurationLoader != null
+                    ? entityConfigurationLoader.getSupportedEntityTypes()
+                    : Set.of()
             );
         }
         if (hasPreResolvedCapabilities) {

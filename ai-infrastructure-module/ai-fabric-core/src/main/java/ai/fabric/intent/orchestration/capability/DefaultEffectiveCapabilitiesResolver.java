@@ -118,6 +118,17 @@ public final class DefaultEffectiveCapabilitiesResolver implements EffectiveCapa
         OrchestrationPolicy policy,
         Collection<AIActionMetaData> registeredActions
     ) {
+        return resolveLegacy(policy, registeredActions,
+            policy != null && policy.ragBudgets() != null
+                ? Set.copyOf(policy.ragBudgets().retrievalVectorSpacesAllowlist())
+                : Set.of());
+    }
+
+    public EffectiveCapabilityProfile resolveLegacy(
+        OrchestrationPolicy policy,
+        Collection<AIActionMetaData> registeredActions,
+        Set<String> registeredVectorSpaces
+    ) {
         Set<String> visible = new LinkedHashSet<>();
         Set<String> reads = new LinkedHashSet<>();
         Set<String> writes = new LinkedHashSet<>();
@@ -135,11 +146,14 @@ public final class DefaultEffectiveCapabilitiesResolver implements EffectiveCapa
                 }
             }
         }
+        Set<String> requestedSpaces = normalizeSpaces(registeredVectorSpaces);
+        if (policy != null && policy.capabilities().retrievalAllowlistRequired()
+            && !policy.ragBudgets().hasVectorSpaceAllowlist()) {
+            requestedSpaces = Set.of();
+        }
         RequestedCapabilityProfile requested = new RequestedCapabilityProfile(
             true,
-            policy != null && policy.ragBudgets() != null
-                ? Set.copyOf(policy.ragBudgets().retrievalVectorSpacesAllowlist())
-                : Set.of(),
+            requestedSpaces,
             visible,
             reads,
             writes
@@ -148,7 +162,7 @@ public final class DefaultEffectiveCapabilitiesResolver implements EffectiveCapa
             requested,
             policy,
             registeredActions,
-            requested.requestedVectorSpaces(),
+            registeredVectorSpaces,
             Set.of(),
             Set.of(),
             null

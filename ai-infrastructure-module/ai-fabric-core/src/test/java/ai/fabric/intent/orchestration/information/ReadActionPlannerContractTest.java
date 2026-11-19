@@ -20,6 +20,7 @@ import ai.fabric.intent.action.ActionResult;
 import ai.fabric.intent.orchestration.OrchestrationContext;
 import ai.fabric.intent.orchestration.capability.EffectiveCapabilityProfile;
 import ai.fabric.intent.orchestration.pipeline.PipelineContext;
+import ai.fabric.intent.orchestration.pipeline.steps.OrchestrationPolicyResolutionStep;
 import ai.fabric.intent.orchestration.policy.OrchestrationPolicy;
 import ai.fabric.prompt.PromptRenderer;
 import ai.fabric.prompt.PromptTemplate;
@@ -33,6 +34,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
+import org.springframework.context.annotation.AnnotationConfigApplicationContext;
 
 import java.util.List;
 import java.util.Map;
@@ -187,6 +189,41 @@ class ReadActionPlannerContractTest {
         resolve(policy(true, false, List.of(), 5, 8_000), null);
 
         assertThat(json.convertValue(sentCatalog().path("vectorSpaces"), List.class)).containsExactly("policy", "records");
+    }
+
+    @Test
+    void ordinaryChatKeepsRegisteredSourcesInThePlannerCatalogueWithoutAnOptionalAllowlist() throws Exception {
+        when(entities.getSupportedEntityTypes()).thenReturn(Set.of("records", "policy"));
+        var properties = new OrchestrationProperties();
+        var mode = new OrchestrationProperties.ModeOverrides();
+        mode.setRetrievalAllowlistRequired(false);
+        var read = new OrchestrationProperties.ReadActionResolutionModeOverrides();
+        read.setEnabled(true);
+        read.setPlanningMode(OrchestrationProperties.ReadActionResolutionPlanningMode.SINGLE_PASS);
+        read.setRequireAllowlist(true);
+        read.setAllowedReadActions(List.of("list_records"));
+        read.setRagCooperationMode(OrchestrationProperties.ReadActionResolutionRagCooperationMode.PARALLEL_ACTIONS_AND_RAG);
+        mode.setReadActionResolution(read);
+        properties.getModes().put("resolver", mode);
+        properties.setDefaultMode("resolver");
+        try (var beans = new AnnotationConfigApplicationContext()) {
+            beans.registerBean(OrchestrationProperties.class, () -> properties);
+            beans.registerBean(AIActionRegistry.class, () -> registry);
+            beans.registerBean(AIEntityConfigurationLoader.class, () -> entities);
+            beans.register(OrchestrationPolicyResolutionStep.class);
+            beans.refresh();
+            var context = OrchestrationContext.forUser("user-1");
+            var pipeline = beans.getBean(OrchestrationPolicyResolutionStep.class)
+                .process(PipelineContext.from("Read the approved policy", context));
+            service.resolve(Intent.builder().type(IntentType.INFORMATION).intent("Read the approved policy")
+                .requiresRetrieval(true).requiresGeneration(true).build(), pipeline.getOrchestrationContext(), pipeline);
+
+            assertThat(pipeline.getEffectiveCapabilityProfile().effectiveVectorSpaces())
+                .containsExactlyInAnyOrder("policy", "records");
+            assertThat(json.convertValue(sentCatalog().path("vectorSpaces"), List.class)).containsExactly("policy", "records");
+            assertThat(sentCatalog().path("ragAvailable").asBoolean()).isTrue();
+            assertThat(sentCatalog().path("ragRequiredWithReadActions").asBoolean()).isTrue();
+        }
     }
 
     @Test

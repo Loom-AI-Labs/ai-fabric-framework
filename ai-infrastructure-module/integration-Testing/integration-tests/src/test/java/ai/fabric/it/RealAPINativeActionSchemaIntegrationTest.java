@@ -64,7 +64,7 @@ import static org.junit.jupiter.api.Assertions.assertAll;
 
 /**
  * Real extraction, planning, confirmation, embeddings and search over fictional fixture data.
- * Nineteen scenario invocations use twenty-three orchestration turns and one direct planner call.
+ * Twenty-one scenario invocations use twenty-five orchestration turns and one direct planner call.
  * This entry-call cap is not a count of the framework's internal provider requests.
  */
 @SpringBootTest(classes = TestApplication.class, webEnvironment = SpringBootTest.WebEnvironment.NONE)
@@ -121,11 +121,11 @@ import static org.junit.jupiter.api.Assertions.assertAll;
     "ai.orchestration.modes.guide-without-index.read-action-resolution.rag-cooperation-mode=NONE",
     "ai.orchestration.modes.history-parallel.actions-enabled=false",
     "ai.orchestration.modes.history-parallel.retrieval-enabled=true",
+    "ai.orchestration.modes.history-parallel.retrieval-allowlist-required=false",
     "ai.orchestration.modes.history-parallel.vector-space-selection-required=false",
     "ai.orchestration.modes.history-parallel.knowledge-base-overview-enabled=false",
     "ai.orchestration.modes.history-parallel.suggestions-enabled=false",
     "ai.orchestration.modes.history-parallel.semantic-recovery.confirmation-without-pending=LLM_REPLAN_THEN_FAIL",
-    "ai.orchestration.modes.history-parallel.rag.retrieval-vector-spaces-allowlist[0]=test-article",
     "ai.orchestration.modes.history-parallel.read-action-resolution.enabled=true",
     "ai.orchestration.modes.history-parallel.read-action-resolution.planning-mode=ITERATIVE",
     "ai.orchestration.modes.history-parallel.read-action-resolution.require-allowlist=true",
@@ -134,7 +134,7 @@ import static org.junit.jupiter.api.Assertions.assertAll;
     "ai.orchestration.modes.history-parallel.read-action-resolution.rag-cooperation-mode=PARALLEL_ACTIONS_AND_RAG"
 })
 class RealAPINativeActionSchemaIntegrationTest {
-    private static final int MAX_QUERIES = 24;
+    private static final int MAX_QUERIES = 26;
     private static final String PRIVATE_STATUS_ACTION = "native_read_subscription_status";
     private static final String NATURAL_STATUS_QUESTION = "What is the current status of my subscription?";
     private static final String PUBLIC_GUIDE = "In this fictional service, subscription cancellation takes effect "
@@ -154,6 +154,7 @@ class RealAPINativeActionSchemaIntegrationTest {
     @Autowired private VectorDatabaseService vectors;
     @Autowired private ReadActionResolutionService readPlanner;
     @Autowired private OrchestrationPolicyResolutionStep policyResolution;
+    @Autowired private ai.fabric.config.AIEntityConfigurationLoader entityConfiguration;
     @Value("${ai.providers.openai.model}") private String model;
     private final AtomicInteger queries = new AtomicInteger();
 
@@ -388,6 +389,31 @@ class RealAPINativeActionSchemaIntegrationTest {
             .contains("native-approved-guide");
         assertThat(result.getData().get("readActionResolution")).isInstanceOf(Map.class);
         assertThat(((Map<?, ?>) result.getData().get("readActionResolution")).get("useRag")).isEqualTo(true);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+        "How does subscription cancellation work? Please explain the steps using the approved guide.",
+        "What should I do to cancel my subscription, and when would it take effect? Explain only; do not cancel anything."
+    })
+    void ordinaryChatFindsTheIndexedGuideWithoutAnOptionalSourceAllowlist(String question) {
+        var result = query(question, signedInContext().toBuilder().mode("history-parallel").build());
+
+        assertThat(result.isSuccess()).isTrue();
+        assertThat(result.getType()).isEqualTo(OrchestrationResultType.INFORMATION_PROVIDED);
+        assertThat(result.getMessage()).containsIgnoringCase("billing");
+        assertThat(result.getData().get("ragResponse")).isInstanceOf(RAGResponse.class);
+        var indexed = (RAGResponse) result.getData().get("ragResponse");
+        assertThat(indexed.getSuccess()).isTrue();
+        assertThat(indexed.getDocuments()).extracting(RAGResponse.RAGDocument::getId)
+            .contains("native-approved-guide");
+        var plan = (Map<?, ?>) result.getData().get("readActionResolution");
+        var catalogue = (Map<?, ?>) plan.get("knowledgeSourceCatalog");
+        assertThat(catalogue.get("vectorSpaces")).isEqualTo(entityConfiguration.getSupportedEntityTypes().stream()
+            .map(name -> name.trim().toLowerCase(java.util.Locale.ROOT)).distinct().sorted().toList());
+        assertThat(catalogue.get("ragAvailable")).isEqualTo(true);
+        assertThat(catalogue.get("ragRequiredWithReadActions")).isEqualTo(true);
+        assertThat(receiver.calls).allMatch(call -> call.mode().isReadOnly());
     }
 
     private void assertInformationalOffer(String followup, String mode) {
