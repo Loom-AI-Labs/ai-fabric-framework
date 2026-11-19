@@ -19,4 +19,7 @@ for check in "${checks[@]}"; do
   "${script_dir}/${check}"
 done
 
+echo "==> validate-ai-fabric-skill.py"
+python3 "${script_dir}/validate-ai-fabric-skill.py"
+
 echo "Framework release guard validation passed."
