@@ -142,7 +142,9 @@ class IntentHandlingStepReadActionResolutionTest {
             ReadActionResolutionService.ResolutionOutcome.continueWithRag(null, List.of(), List.of(
                 new ReadActionResolutionService.ExecutedReadAction("read_status", Map.of("private", "not-public"),
                     null, receipt, true, "Ready", null)),
-                Map.of("attempted", true, "finalDecision", "USE_RAG_ONLY", "useRag", true)));
+                Map.of("attempted", true, "finalDecision", "USE_RAG_ONLY", "useRag", true,
+                    "executedActions", List.of(Map.of("action", "read_status", "params", Map.of("scopeKey", "not-public"))),
+                    "iterations", List.of(Map.of("proposedActions", List.of(Map.of("params", Map.of("scopeKey", "not-public"))))))));
         var step = buildStep(rag, ai);
         ReflectionTestUtils.setField(step, "readActionResolutionServiceProvider", providerOf(resolver));
         var intent = Intent.builder().type(IntentType.INFORMATION).intent("find_setup_policy")

@@ -2052,7 +2052,7 @@ public class IntentHandlingStep implements PipelineStep {
                 vectorSpaceSelectionSupport
             );
         if (routedVectorSpaces.terminalResult() != null) {
-            return ReadActionResolutionSupport.attachDiagnostics(
+            return ReadActionResolutionSupport.attachRoutingDiagnostics(
                 routedVectorSpaces.terminalResult(), readActionResolution);
         }
         List<String> vectorSpaces = routedVectorSpaces.vectorSpaces();

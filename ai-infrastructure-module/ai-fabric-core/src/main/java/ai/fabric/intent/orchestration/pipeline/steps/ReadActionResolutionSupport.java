@@ -114,6 +114,17 @@ final class ReadActionResolutionSupport {
 
     static OrchestrationResult attachDiagnostics(OrchestrationResult result,
                                                  ReadActionResolutionService.ResolutionOutcome resolutionOutcome) {
+        return attachDiagnostics(result, resolutionOutcome, false);
+    }
+
+    static OrchestrationResult attachRoutingDiagnostics(OrchestrationResult result,
+                                                        ReadActionResolutionService.ResolutionOutcome resolutionOutcome) {
+        return attachDiagnostics(result, resolutionOutcome, true);
+    }
+
+    private static OrchestrationResult attachDiagnostics(OrchestrationResult result,
+                                                          ReadActionResolutionService.ResolutionOutcome resolutionOutcome,
+                                                          boolean routingFailure) {
         if (result == null || resolutionOutcome == null) {
             return result;
         }
@@ -127,20 +138,43 @@ final class ReadActionResolutionSupport {
         if (result.getMetadata() != null && !result.getMetadata().isEmpty()) {
             metadata.putAll(result.getMetadata());
         }
-        metadata.put(METADATA_KEY, Collections.unmodifiableMap(new LinkedHashMap<>(resolutionOutcome.diagnostics())));
+        Map<String, Object> diagnostics = routingFailure
+            ? routingDiagnostics(resolutionOutcome.diagnostics())
+            : Collections.unmodifiableMap(new LinkedHashMap<>(resolutionOutcome.diagnostics()));
+        metadata.put(METADATA_KEY, diagnostics);
         result.setMetadata(Collections.unmodifiableMap(metadata));
 
         Map<String, Object> data = new LinkedHashMap<>();
         if (result.getData() != null && !result.getData().isEmpty()) {
             data.putAll(result.getData());
         }
-        data.put(METADATA_KEY, Collections.unmodifiableMap(new LinkedHashMap<>(resolutionOutcome.diagnostics())));
+        data.put(METADATA_KEY, diagnostics);
         List<Object> actionResults = projectActionResults(resolutionOutcome);
         if (!actionResults.isEmpty() && firstList(data.get(ACTIONS_KEY)).isEmpty()) {
             data.put(ACTIONS_KEY, actionResults);
         }
         result.setData(Collections.unmodifiableMap(data));
         return result;
+    }
+
+    private static Map<String, Object> routingDiagnostics(Map<String, Object> source) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        source.forEach((key, value) -> {
+            // Routing diagnostics must not newly expose trusted invocation bindings.
+            if (!"params".equals(key)) result.put(key, routingDiagnosticValue(value));
+        });
+        return Collections.unmodifiableMap(result);
+    }
+
+    private static Object routingDiagnosticValue(Object value) {
+        if (value instanceof Map<?, ?> map) {
+            Map<String, Object> result = new LinkedHashMap<>();
+            map.forEach((key, entry) -> {
+                if (!"params".equals(key)) result.put(String.valueOf(key), routingDiagnosticValue(entry));
+            });
+            return Collections.unmodifiableMap(result);
+        }
+        return value instanceof List<?> list ? list.stream().map(ReadActionResolutionSupport::routingDiagnosticValue).toList() : value;
     }
 
     static OrchestrationResult authenticationRequiredResult(ReadActionResolutionService.ResolutionOutcome outcome) {

@@ -1219,6 +1219,9 @@ public class ReadActionResolutionService {
         }
         boolean ragAvailable = unavailableReasons.isEmpty();
         catalog.put("ragAvailable", ragAvailable);
+        catalog.put("ragRequiredWithReadActions", ragAvailable
+            && policy.readActionResolutionPolicy().ragCooperationMode()
+                == ai.fabric.config.OrchestrationProperties.ReadActionResolutionRagCooperationMode.PARALLEL_ACTIONS_AND_RAG);
         catalog.put("ragUnavailableReasons", List.copyOf(unavailableReasons));
         catalog.put("availableDecisions", ragAvailable
             ? List.of("ANSWER_FROM_CONTEXT", "EXECUTE_READ_ACTIONS", "EXECUTE_READ_ACTIONS_AND_RAG", "USE_RAG_ONLY")

@@ -68,6 +68,9 @@ class ReadActionResolutionServiceTest {
         assertThat(result.useRag()).isFalse();
         assertThat(result.hasGroundingEvidence()).isFalse();
         assertThat(result.executedActions()).isEmpty();
+        assertThat(((Map<?, ?>) result.diagnostics().get("knowledgeSourceCatalog"))
+            .get("ragRequiredWithReadActions")).isEqualTo(cooperation
+                == OrchestrationProperties.ReadActionResolutionRagCooperationMode.PARALLEL_ACTIONS_AND_RAG);
         verify(fixture.handler(), never()).executeAction(any(), any());
     }
 
