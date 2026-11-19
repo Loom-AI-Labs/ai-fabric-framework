@@ -166,6 +166,8 @@ public class ReadActionResolutionService {
         List<Map<String, Object>> rejectedActionProposals = new ArrayList<>();
         Set<String> executionKeys = new LinkedHashSet<>();
         PlannerDecision lastDecision = null;
+        PlannerDecision latestRetrievalPlan = null;
+        int latestRetrievalPlanIteration = 0;
         boolean anonymous = isAnonymous(orchestrationContext, pipelineContext);
         Map<String, Object> knowledgeSources = buildKnowledgeSourceCatalog(policy, orchestrationContext, pipelineContext);
         String targetContext = ConversationPromptContext.activeTargets(pipelineContext, readPolicy.maxPlannerContextChars());
@@ -197,6 +199,10 @@ public class ReadActionResolutionService {
                 break;
             }
             lastDecision = decision;
+            if (!normalizeVectorSpaces(decision.suggestedVectorSpaces).isEmpty()) {
+                latestRetrievalPlan = decision;
+                latestRetrievalPlanIteration = iteration;
+            }
             plannerIterations.add(decision.diagnostics());
 
             String authenticationAction = selectedProtectedRead(decision, eligibleActions, anonymous,
@@ -273,8 +279,12 @@ public class ReadActionResolutionService {
             readPolicy
         );
         String evidenceContext = evidenceProjection.context();
-        List<String> preferredVectorSpaces = lastDecision != null
-            ? normalizeVectorSpaces(lastDecision.suggestedVectorSpaces)
+        // A later read-only planning step may finish reasoning without replacing its retrieval plan.
+        boolean retrievalPlanCarriedForward = useRag && latestRetrievalPlan != null
+            && lastDecision != latestRetrievalPlan;
+        PlannerDecision retrievalPlan = retrievalPlanCarriedForward ? latestRetrievalPlan : lastDecision;
+        List<String> preferredVectorSpaces = retrievalPlan != null
+            ? normalizeVectorSpaces(retrievalPlan.suggestedVectorSpaces)
             : List.of();
 
         Map<String, Object> diagnostics = new LinkedHashMap<>();
@@ -325,7 +335,12 @@ public class ReadActionResolutionService {
         if (!preferredVectorSpaces.isEmpty()) {
             diagnostics.put("preferredVectorSpaces", preferredVectorSpaces);
         }
-        String retrievalQuery = lastDecision != null ? lastDecision.retrievalQuery : null;
+        if (retrievalPlanCarriedForward) {
+            diagnostics.put("retrievalPlanCarriedForward", true);
+            diagnostics.put("retrievalPlanIteration", latestRetrievalPlanIteration);
+            diagnostics.put("preferredVectorSpacesSource", "READ_ACTION_PLANNER_CARRIED_FORWARD");
+        }
+        String retrievalQuery = retrievalPlan != null ? retrievalPlan.retrievalQuery : null;
         if (StringUtils.hasText(retrievalQuery)) {
             diagnostics.put("retrievalQuery", retrievalQuery);
             diagnostics.put("retrievalQuerySource", "MODEL");

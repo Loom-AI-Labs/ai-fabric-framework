@@ -38,6 +38,10 @@ class AccountResolverOrchestrationConfigurationTest {
         assertThat(resolver.getActionsPreferred()).isTrue();
         assertThat(resolver.getRetrievalEnabled()).isTrue();
         assertThat(resolver.getRetrievalAllowlistRequired()).isTrue();
+        assertThat(resolver.getSemanticRecovery().getMissingVectorSpace())
+            .isEqualTo(OrchestrationProperties.MissingVectorSpaceRecovery.BOUNDED_ALLOWED_FAN_OUT);
+        assertThat(resolver.getRag().getFanoutEnabled()).isTrue();
+        assertThat(resolver.getRag().getMaxSpaces()).isEqualTo(2);
         assertThat(resolver.getInformationMode())
             .isEqualTo(OrchestrationProperties.InformationMode.DETERMINISTIC_RAG_GENERATE);
         assertThat(resolver.getRag().getRetrievalVectorSpacesAllowlist())

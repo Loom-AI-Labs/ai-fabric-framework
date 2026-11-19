@@ -54,6 +54,143 @@ import static org.mockito.Mockito.when;
 
 class ReadActionResolutionServiceTest {
 
+    @Test
+    void iterativeReadRetainsSelectedRetrievalPlanWhenFinalStepOmitsIt() {
+        var fixture = iterativeRetrievalFixture("""
+            {"decision":"ANSWER_FROM_CONTEXT","actions":[],"needsMoreSteps":false}
+            """);
+
+        var result = fixture.service().resolve(fixture.intent(), fixture.context(), fixture.pipeline());
+
+        assertThat(result.useRag()).isTrue();
+        assertThat(result.preferredVectorSpaces()).containsExactly("document");
+        assertThat(result.retrievalQuery()).isEqualTo("approved setup requirements");
+        assertThat(result.diagnostics()).containsEntry("retrievalPlanCarriedForward", true)
+            .containsEntry("retrievalPlanIteration", 1)
+            .containsEntry("preferredVectorSpacesSource", "READ_ACTION_PLANNER_CARRIED_FORWARD")
+            .containsEntry("retrievalQuerySource", "MODEL");
+        assertThat(result.executedActions()).hasSize(1);
+        verify(fixture.handler()).executeAction(any(), any());
+        verify(fixture.ai(), times(2)).generateContent(any(), eq(LlmPurpose.ORCHESTRATION));
+    }
+
+    @Test
+    void laterSourceSelectionReplacesTheEarlierPlanInsteadOfMergingSources() {
+        var fixture = iterativeRetrievalFixture("""
+            {"decision":"USE_RAG_ONLY","actions":[],"needsMoreSteps":false,
+             "suggestedVectorSpaces":["policy"],"retrievalQuery":"current policy requirements"}
+            """);
+
+        var result = fixture.service().resolve(fixture.intent(), fixture.context(), fixture.pipeline());
+
+        assertThat(result.preferredVectorSpaces()).containsExactly("policy");
+        assertThat(result.retrievalQuery()).isEqualTo("current policy requirements");
+        assertThat(result.diagnostics()).doesNotContainKey("retrievalPlanCarriedForward");
+    }
+
+    @Test
+    void replacementSourceWithoutQueryDoesNotReuseThePreviousSourcesQuery() {
+        var fixture = iterativeRetrievalFixture("""
+            {"decision":"USE_RAG_ONLY","actions":[],"needsMoreSteps":false,
+             "suggestedVectorSpaces":["policy"]}
+            """);
+
+        var result = fixture.service().resolve(fixture.intent(), fixture.context(), fixture.pipeline());
+
+        assertThat(result.preferredVectorSpaces()).containsExactly("policy");
+        assertThat(result.retrievalQuery()).isNull();
+    }
+
+    @Test
+    void explicitInvalidReplacementIsNotReplacedWithAnEarlierSource() {
+        var fixture = iterativeRetrievalFixture("""
+            {"decision":"USE_RAG_ONLY","actions":[],"needsMoreSteps":false,
+             "suggestedVectorSpaces":["unregistered"],"retrievalQuery":"new selection"}
+            """);
+
+        var result = fixture.service().resolve(fixture.intent(), fixture.context(), fixture.pipeline());
+
+        assertThat(result.preferredVectorSpaces()).containsExactly("unregistered");
+        assertThat(result.retrievalQuery()).isEqualTo("new selection");
+        assertThat(result.diagnostics()).doesNotContainKey("retrievalPlanCarriedForward");
+    }
+
+    @Test
+    void carriedRetrievalPlanDoesNotSurviveTheCurrentResolutionCall() {
+        var fixture = iterativeRetrievalFixture("""
+            {"decision":"ANSWER_FROM_CONTEXT","actions":[],"needsMoreSteps":false}
+            """);
+        var first = fixture.service().resolve(fixture.intent(), fixture.context(), fixture.pipeline());
+        assertThat(first.preferredVectorSpaces()).containsExactly("document");
+        when(fixture.ai().generateContent(any(), eq(LlmPurpose.ORCHESTRATION))).thenReturn(
+            AIGenerationResponse.builder().content("""
+                {"decision":"USE_RAG_ONLY","actions":[],"needsMoreSteps":false}
+                """).build());
+
+        var next = fixture.service().resolve(fixture.intent(), fixture.context(), fixture.pipeline());
+
+        assertThat(next.preferredVectorSpaces()).isEmpty();
+        assertThat(next.retrievalQuery()).isNull();
+        assertThat(next.diagnostics()).doesNotContainKey("retrievalPlanCarriedForward");
+    }
+
+    @Test
+    void noSelectedSourceIsNotInventedFromTheCatalogue() {
+        var fixture = iterativeRetrievalFixture("""
+            {"decision":"ANSWER_FROM_CONTEXT","actions":[],"needsMoreSteps":false}
+            """);
+        when(fixture.ai().generateContent(any(), eq(LlmPurpose.ORCHESTRATION))).thenReturn(
+            AIGenerationResponse.builder().content("""
+                {"decision":"EXECUTE_READ_ACTIONS","actions":[{"name":"read_guide","params":{}}],
+                 "needsMoreSteps":true}
+                """).build(),
+            AIGenerationResponse.builder().content("""
+                {"decision":"ANSWER_FROM_CONTEXT","actions":[],"needsMoreSteps":false}
+                """).build());
+
+        var result = fixture.service().resolve(fixture.intent(), fixture.context(), fixture.pipeline());
+
+        assertThat(result.useRag()).isTrue();
+        assertThat(result.preferredVectorSpaces()).isEmpty();
+        assertThat(result.retrievalQuery()).isNull();
+    }
+
+    @Test
+    void optionalRagIsNotForcedByAnEarlierSelectedSource() {
+        var fixture = iterativeRetrievalFixture("""
+            {"decision":"ANSWER_FROM_CONTEXT","actions":[],"needsMoreSteps":false}
+            """);
+        var pipeline = fixture.pipeline().toBuilder().orchestrationPolicy(readActionPolicy("thinker",
+            List.of("read_guide"), OrchestrationProperties.ReadActionResolutionPlanningMode.ITERATIVE,
+            OrchestrationProperties.ReadActionResolutionRagCooperationMode.NONE)).build();
+
+        var result = fixture.service().resolve(fixture.intent(), fixture.context(), pipeline);
+
+        assertThat(result.useRag()).isFalse();
+        assertThat(result.preferredVectorSpaces()).isEmpty();
+        assertThat(result.diagnostics()).doesNotContainKey("retrievalPlanCarriedForward");
+    }
+
+    private ContextContinuationFixture iterativeRetrievalFixture(String finalPlan) {
+        var fixture = contextContinuationFixture(
+            OrchestrationProperties.ReadActionResolutionRagCooperationMode.PARALLEL_ACTIONS_AND_RAG);
+        fixture.intent().setRequiresRetrieval(true);
+        when(fixture.handler().validateActionAllowed(any())).thenReturn(true);
+        when(fixture.handler().executeAction(any(), any())).thenReturn(ActionResult.builder().success(true)
+            .data(ActionPayload.object(Map.of("ready", true))).build());
+        when(fixture.ai().generateContent(any(), eq(LlmPurpose.ORCHESTRATION))).thenReturn(
+            AIGenerationResponse.builder().content("""
+                {"decision":"EXECUTE_READ_ACTIONS","actions":[{"name":"read_guide","params":{}}],
+                 "needsMoreSteps":true,"suggestedVectorSpaces":["document"],
+                 "retrievalQuery":"approved setup requirements"}
+                """).build(), AIGenerationResponse.builder().content(finalPlan).build());
+        var pipeline = fixture.pipeline().toBuilder().orchestrationPolicy(readActionPolicy("thinker",
+            List.of("read_guide"), OrchestrationProperties.ReadActionResolutionPlanningMode.ITERATIVE,
+            OrchestrationProperties.ReadActionResolutionRagCooperationMode.PARALLEL_ACTIONS_AND_RAG)).build();
+        return new ContextContinuationFixture(fixture.service(), fixture.ai(), fixture.handler(), fixture.context(),
+            pipeline, fixture.intent());
+    }
+
     @ParameterizedTest
     @EnumSource(value = OrchestrationProperties.ReadActionResolutionRagCooperationMode.class,
         names = {"PARALLEL_ACTIONS_AND_RAG", "RAG_IF_ACTIONS_INSUFFICIENT"})

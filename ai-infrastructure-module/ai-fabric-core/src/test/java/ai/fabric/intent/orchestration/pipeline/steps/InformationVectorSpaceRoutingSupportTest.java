@@ -7,6 +7,8 @@ import ai.fabric.intent.orchestration.OrchestrationResultType;
 import ai.fabric.intent.orchestration.information.ReadActionResolutionService;
 import ai.fabric.intent.orchestration.policy.OrchestrationPolicy;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -18,6 +20,37 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 class InformationVectorSpaceRoutingSupportTest {
+
+    @ParameterizedTest
+    @ValueSource(strings = {"unregistered", "outside_allowlist", "fanout_disabled", "over_budget"})
+    void carriedPlannerSelectionStillPassesThroughExistingRoutingBoundaries(String boundary) {
+        var loader = mock(AIEntityConfigurationLoader.class);
+        when(loader.getSupportedEntityTypes()).thenReturn(Set.of("document", "policy"));
+        List<String> selected = switch (boundary) {
+            case "unregistered" -> List.of("unknown");
+            case "outside_allowlist" -> List.of("policy");
+            default -> List.of("document", "policy");
+        };
+        var outcome = ReadActionResolutionService.ResolutionOutcome.continueWithRag(null, selected, List.of(),
+            Map.of("retrievalPlanCarriedForward", true, "retrievalPlanIteration", 1,
+                "preferredVectorSpacesSource", "READ_ACTION_PLANNER_CARRIED_FORWARD"));
+        var budgets = new OrchestrationPolicy.RagBudgets(true, boundary.equals("over_budget") ? 1 : 2,
+            null, null, null, null, boundary.equals("outside_allowlist")
+                ? List.of("document") : List.of("document", "policy"));
+
+        var result = InformationVectorSpaceRoutingSupport.route(Intent.builder().build(), new LinkedHashMap<>(),
+            budgets, false, !boundary.equals("fanout_disabled"), false, outcome, loader, supportWithoutCatalog());
+
+        assertThat(result.vectorSpaces()).isEmpty();
+        assertThat(result.terminalResult()).isNotNull();
+        assertThat(result.terminalResult().getType()).isEqualTo(OrchestrationResultType.CLARIFICATION_REQUIRED);
+        assertThat(((Map<?, ?>) result.terminalResult().getData()).get("reason")).isEqualTo(switch (boundary) {
+            case "unregistered" -> "VECTOR_SPACE_SELECTION_REQUIRED";
+            case "outside_allowlist" -> "VECTOR_SPACE_NOT_ALLOWED_BY_POLICY";
+            case "fanout_disabled" -> "VECTOR_SPACE_FANOUT_DISABLED";
+            default -> "VECTOR_SPACE_FANOUT_LIMIT_EXCEEDED";
+        });
+    }
 
     @Test
     void shouldUseReadActionPreferredVectorSpacesWhenIntentDoesNotProvideAny() {

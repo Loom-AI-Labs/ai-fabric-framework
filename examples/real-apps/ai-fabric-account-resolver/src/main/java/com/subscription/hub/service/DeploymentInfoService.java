@@ -37,16 +37,18 @@ public class DeploymentInfoService {
         health.put("status", "UP");
         health.put("service", "ai-fabric-account-resolver");
         health.put("version", firstText(
-            env("APP_VERSION"),
             appProperties.getProperty("version"),
+            fileBuildProperties.getProperty("version"),
+            env("APP_VERSION"),
             "unknown"
         ));
         health.put("aiFabricVersion", firstText(
-            env("AI_FABRIC_VERSION"),
             fileBuildProperties.getProperty("aiFabricVersion"),
+            env("AI_FABRIC_VERSION"),
             "unknown"
         ));
         health.put("commit", firstText(
+            fileBuildProperties.getProperty("commit"),
             env("APP_BUILD_COMMIT"),
             env("COOLIFY_GIT_COMMIT_SHA"),
             env("SOURCE_COMMIT"),
@@ -54,22 +56,21 @@ public class DeploymentInfoService {
             env("COMMIT_SHA"),
             env("RAILWAY_GIT_COMMIT_SHA"),
             env("git_commit"),
-            fileBuildProperties.getProperty("commit"),
             "unknown"
         ));
         health.put("branch", firstText(
+            fileBuildProperties.getProperty("branch"),
             env("APP_BUILD_BRANCH"),
             env("COOLIFY_GIT_BRANCH"),
             env("GIT_BRANCH"),
             env("SOURCE_BRANCH"),
             env("git_branch"),
-            fileBuildProperties.getProperty("branch"),
             "unknown"
         ));
         health.put("builtAt", firstText(
+            fileBuildProperties.getProperty("builtAt"),
             env("APP_BUILD_TIME"),
             env("BUILD_TIME"),
-            fileBuildProperties.getProperty("builtAt"),
             "unknown"
         ));
         health.put("startedAt", startedAt.toString());

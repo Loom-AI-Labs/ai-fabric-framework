@@ -60,6 +60,8 @@ ai:
         retrieval-enabled: true
         retrieval-allowlist-required: true
         vector-space-selection-required: false
+        semantic-recovery:
+          missing-vector-space: BOUNDED_ALLOWED_FAN_OUT
         information-mode: DETERMINISTIC_RAG_GENERATE
         expose-read-probe-fallback-attempt: true
         force-grounding-eligible-read-action-post-generation: true
