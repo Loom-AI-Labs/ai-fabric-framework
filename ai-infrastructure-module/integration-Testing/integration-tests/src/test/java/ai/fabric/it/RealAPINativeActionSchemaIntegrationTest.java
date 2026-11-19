@@ -52,8 +52,12 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.boot.env.YamlPropertySourceLoader;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
+import org.springframework.context.annotation.Primary;
+import org.springframework.core.env.StandardEnvironment;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.util.StringUtils;
@@ -125,6 +129,7 @@ import static org.junit.jupiter.api.Assertions.assertAll;
     "ai.orchestration.modes.history-parallel.vector-space-selection-required=false",
     "ai.orchestration.modes.history-parallel.knowledge-base-overview-enabled=false",
     "ai.orchestration.modes.history-parallel.suggestions-enabled=false",
+    "ai.orchestration.modes.history-parallel.rag.similarity-threshold=0.5",
     "ai.orchestration.modes.history-parallel.semantic-recovery.confirmation-without-pending=LLM_REPLAN_THEN_FAIL",
     "ai.orchestration.modes.history-parallel.read-action-resolution.enabled=true",
     "ai.orchestration.modes.history-parallel.read-action-resolution.planning-mode=ITERATIVE",
@@ -164,6 +169,7 @@ class RealAPINativeActionSchemaIntegrationTest {
             || StringUtils.hasText(System.getenv("OPENAI_API_KEY")))
             .as("This gate requires a privately injected real OpenAI key; no fake LLM or skipped qualification")
             .isTrue();
+        assertThat(entityConfiguration.getSupportedEntityTypes()).containsExactly("test-article");
         assertThat(registry.findMetadata("native_read_setting").orElseThrow().getInputSchema()).isNotEmpty();
         assertThat(registry.findMetadata("native_read_setting").orElseThrow().getGroundingVectorSpaces()).isEmpty();
         var privateStatus = registry.findMetadata(PRIVATE_STATUS_ACTION).orElseThrow();
@@ -175,8 +181,21 @@ class RealAPINativeActionSchemaIntegrationTest {
         var vectorId = vectors.storeVector("test-article", "native-approved-guide", PUBLIC_GUIDE, embedding.getEmbedding(),
             Map.of("title", "Approved cancellation guide", "published", true));
         assertThat(vectors.getVector(vectorId)).isPresent();
-        System.out.printf("Native schema qualification: provider=openai model=%s scenarios=19 "
-            + "maxQueries=%d orchestrationTurns=23 directPlannerCalls=1 syntheticReceiver=true indexedFixture=true%n", model, MAX_QUERIES);
+        var queryEmbedding = embeddings.generateEmbedding(AIEmbeddingRequest.builder().text(
+            "Cancellation steps from the approved indexed cancellation guide, including how to cancel and any "
+                + "billing-period timing details. cancellation steps approved indexed guide").build()).getEmbedding();
+        double dot = 0, queryNorm = 0, guideNorm = 0;
+        for (int i = 0; i < queryEmbedding.size(); i++) {
+            double queryValue = queryEmbedding.get(i), guideValue = embedding.getEmbedding().get(i);
+            dot += queryValue * guideValue;
+            queryNorm += queryValue * queryValue;
+            guideNorm += guideValue * guideValue;
+        }
+        double calibrationScore = dot / Math.sqrt(queryNorm * guideNorm);
+        assertThat(calibrationScore).isBetween(0.5d, 1.0d);
+        System.out.printf("Native indexed fixture calibration: cosine=%.6f configuredThreshold=0.5%n", calibrationScore);
+        System.out.printf("Native schema qualification: provider=openai model=%s scenarios=21 "
+            + "maxQueries=%d orchestrationTurns=25 directPlannerCalls=1 syntheticReceiver=true indexedFixture=true%n", model, MAX_QUERIES);
     }
 
     @BeforeEach
@@ -464,6 +483,16 @@ class RealAPINativeActionSchemaIntegrationTest {
 
     @TestConfiguration(proxyBeanMethods = false)
     static class FixtureConfiguration {
+        @Bean
+        @Primary
+        ai.fabric.config.AIEntityConfigurationLoader nativeEntityConfiguration() throws java.io.IOException {
+            var environment = new StandardEnvironment();
+            var sources = new YamlPropertySourceLoader().load("native-schema-entities",
+                new ClassPathResource("ai-entity-config-native-schema.yml"));
+            sources.forEach(source -> environment.getPropertySources().addLast(source));
+            return new ai.fabric.config.AIEntityConfigurationLoader(environment);
+        }
+
         @Bean RecordingMcpExecutor nativeSchemaMcpExecutor() { return new RecordingMcpExecutor(); }
 
         @Bean
