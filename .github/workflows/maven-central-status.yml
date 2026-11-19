@@ -1,0 +1,52 @@
+name: Maven Central Deployment Status
+
+on:
+  workflow_dispatch:
+    inputs:
+      deployment_id:
+        description: Existing Central deployment UUID. This workflow never uploads or publishes.
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  status:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Read existing Central deployment status
+        env:
+          CENTRAL_TOKEN_USERNAME: ${{ secrets.CENTRAL_TOKEN_USERNAME }}
+          CENTRAL_TOKEN_PASSWORD: ${{ secrets.CENTRAL_TOKEN_PASSWORD }}
+          DEPLOYMENT_ID: ${{ inputs.deployment_id }}
+        run: |
+          python3 - <<'PY'
+          import base64
+          import json
+          import os
+          import urllib.error
+          import urllib.parse
+          import urllib.request
+          import uuid
+
+          deployment = str(uuid.UUID(os.environ["DEPLOYMENT_ID"]))
+          credentials = ":".join((os.environ["CENTRAL_TOKEN_USERNAME"], os.environ["CENTRAL_TOKEN_PASSWORD"]))
+          token = base64.b64encode(credentials.encode()).decode()
+          url = "https://central.sonatype.com/api/v1/publisher/status?" + urllib.parse.urlencode({"id": deployment})
+          request = urllib.request.Request(url, data=b"", method="POST", headers={
+              "Authorization": "Bearer " + token, "Accept": "application/json"})
+          try:
+              with urllib.request.urlopen(request, timeout=30) as response:
+                  result = json.load(response)
+          except urllib.error.HTTPError as error:
+              raise SystemExit("Central status request failed: HTTP " + str(error.code))
+          purls = result.get("purls") or []
+          print("CENTRAL_DEPLOYMENT_STATUS=" + json.dumps({
+              "deploymentId": result.get("deploymentId"),
+              "state": result.get("deploymentState"),
+              "componentCount": len(purls),
+              "errorCount": len(result.get("errors") or {}),
+              "warningCount": len(result.get("warnings") or []),
+          }, sort_keys=True))
+          PY
