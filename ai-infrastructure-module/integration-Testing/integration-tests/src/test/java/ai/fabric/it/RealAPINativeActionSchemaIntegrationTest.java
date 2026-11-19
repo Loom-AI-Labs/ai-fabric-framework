@@ -21,6 +21,9 @@ import ai.fabric.intent.orchestration.OrchestrationContext;
 import ai.fabric.intent.orchestration.OrchestrationResult;
 import ai.fabric.intent.orchestration.OrchestrationResultType;
 import ai.fabric.intent.orchestration.RAGOrchestrator;
+import ai.fabric.intent.orchestration.conversation.ApprovedConversationSnapshot;
+import ai.fabric.dto.AIChatMessage;
+import java.time.Instant;
 import ai.fabric.dto.Intent;
 import ai.fabric.dto.IntentType;
 import ai.fabric.intent.orchestration.information.ReadActionResolutionService;
@@ -57,7 +60,7 @@ import static org.junit.jupiter.api.Assertions.assertAll;
 
 /**
  * Real extraction, planning and confirmation; only the business receiver is synthetic.
- * Ten scenario invocations use fourteen orchestration turns and one direct planner call.
+ * Fourteen scenario invocations use eighteen orchestration turns and one direct planner call.
  * This entry-call cap is not a count of the framework's internal provider requests.
  */
 @SpringBootTest(classes = TestApplication.class, webEnvironment = SpringBootTest.WebEnvironment.NONE)
@@ -90,6 +93,7 @@ import static org.junit.jupiter.api.Assertions.assertAll;
     "ai.orchestration.modes.executor.vector-space-selection-required=false",
     "ai.orchestration.modes.executor.knowledge-base-overview-enabled=false",
     "ai.orchestration.modes.executor.suggestions-enabled=false",
+    "ai.orchestration.modes.executor.semantic-recovery.confirmation-without-pending=LLM_REPLAN_THEN_FAIL",
     "ai.orchestration.modes.executor.read-action-resolution.enabled=true",
     "ai.orchestration.modes.executor.read-action-resolution.planning-mode=ITERATIVE",
     "ai.orchestration.modes.executor.read-action-resolution.require-allowlist=true",
@@ -113,11 +117,13 @@ import static org.junit.jupiter.api.Assertions.assertAll;
     "ai.orchestration.modes.guide-without-index.read-action-resolution.rag-cooperation-mode=NONE"
 })
 class RealAPINativeActionSchemaIntegrationTest {
-    private static final int MAX_QUERIES = 15;
+    private static final int MAX_QUERIES = 19;
     private static final String PRIVATE_STATUS_ACTION = "native_read_subscription_status";
     private static final String NATURAL_STATUS_QUESTION = "What is the current status of my subscription?";
     private static final String PUBLIC_GUIDE = "In this fictional service, subscription cancellation takes effect "
-        + "at the end of the current billing period. Reading the guide does not cancel a subscription.";
+        + "at the end of the current billing period. The documented customer steps are to open Account, "
+        + "select Subscription, review the billing-period end date, then request cancellation through the service. "
+        + "Reading the guide does not cancel a subscription.";
     static {
         RealAPITestSupport.ensureProviderConfigured();
         RealAPITestSupport.ensureLLMProviderSet();
@@ -144,8 +150,8 @@ class RealAPINativeActionSchemaIntegrationTest {
         assertThat(privateStatus.isAnonymousAllowed()).isFalse();
         assertThat(ActionNativeSchemaSupport.publicInputSchema(privateStatus).get("properties"))
             .isEqualTo(Map.of());
-        System.out.printf("Native schema qualification: provider=openai model=%s scenarios=10 "
-            + "maxQueries=%d orchestrationTurns=14 directPlannerCalls=1 syntheticReceiver=true%n", model, MAX_QUERIES);
+        System.out.printf("Native schema qualification: provider=openai model=%s scenarios=14 "
+            + "maxQueries=%d orchestrationTurns=18 directPlannerCalls=1 syntheticReceiver=true%n", model, MAX_QUERIES);
     }
 
     @BeforeEach
@@ -328,6 +334,29 @@ class RealAPINativeActionSchemaIntegrationTest {
         assertThat(result.isSuccess()).isTrue();
         assertThat(receiver.calls).hasSize(1);
         assertThat(receiver.calls.getFirst().parameters()).containsEntry("scopeKey", context.getUserId());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"yes please do", "do that please", "please continue", "go ahead with the checklist"})
+    void acceptsAnInformationalOfferWithoutConfirmingAnAbsentAction(String followup) {
+        var context = signedInContext();
+        var history = new ApprovedConversationSnapshot("followup-" + UUID.randomUUID(), context.getUserId(),
+            context.getConversationId(), "support", "a".repeat(64), 1,
+            List.of(AIChatMessage.user("Explain the subscription cancellation policy."),
+                AIChatMessage.assistant(PUBLIC_GUIDE + " I can turn this into a short step-by-step checklist for you.")),
+            Instant.now());
+        var result = query(followup, context.toBuilder().approvedConversationSnapshot(history).build());
+        assertThat(result.isSuccess()).isTrue();
+        assertThat(result.getType()).isEqualTo(OrchestrationResultType.INFORMATION_PROVIDED);
+        assertThat(result.getMessage()).doesNotContain("There is no pending action to confirm.");
+        assertThat(result.getMessage()).containsIgnoringCase("billing")
+            .doesNotContain("extract intents", "analyze the user's question");
+        assertThat(result.getMessage()).satisfiesAnyOf(
+            answer -> assertThat(answer).containsIgnoringCase("checklist"),
+            answer -> assertThat(answer.lines().filter(line -> line.matches("\\s*(?:[-*]|[0-9]+[.)])\\s+.*")).count())
+                .isGreaterThanOrEqualTo(2L));
+        assertThat(receiver.calls).allMatch(call -> call.mode().isReadOnly());
+        System.out.printf("Informational follow-up real-provider answer: followup=%s answer=%s%n", followup, result.getMessage());
     }
 
     private OrchestrationResult query(String text, OrchestrationContext context) {

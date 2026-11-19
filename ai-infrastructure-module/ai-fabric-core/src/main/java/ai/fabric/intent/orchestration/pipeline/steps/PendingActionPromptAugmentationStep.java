@@ -15,7 +15,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
 /**
- * Injects a bounded "PENDING ACTION" section into the LLM-visible prompt context.
+ * Supplies server-owned confirmation state separately from user and evidence text.
  *
  * <p>This helps the LLM decide whether the current turn approves, rejects, or ignores the pending
  * action without backend string-matching heuristics.</p>
@@ -64,28 +64,31 @@ public class PendingActionPromptAugmentationStep implements PipelineStep {
         PendingAction pending = ConversationStateStoreAccess
             .peekPending(pendingActionStore, context)
             .orElse(null);
-        if (pending == null || !StringUtils.hasText(pending.action())) {
-            return context;
-        }
-
-        String block = buildPendingActionBlock(pending);
-        if (!StringUtils.hasText(block)) {
-            return context;
-        }
-
-        String pinnedTargetsContext = context.getPinnedTargetsContext();
-        String combined = StringUtils.hasText(pinnedTargetsContext)
-            ? pinnedTargetsContext.trim() + "\n\n" + block
+        String block = pending == null ? """
+            SERVER-OWNED CONFIRMATION STATE:
+            - pendingActionPresent=false. No executable action is awaiting approval or rejection.
+            - Do not emit CONFIRMATION_POSITIVE or CONFIRMATION_NEGATIVE for this turn.
+            - Resolve the user's meaning from the recent conversation. Accepting an assistant's offer to explain, summarize or produce a checklist is an informational continuation, not approval of an executable action.
+            - Resolve an elliptical continuation against the latest assistant offer or question and its subject. When that offer is clear, carry it out; the user's short reply does not itself create missing information.
+            - An accepted informational offer requests the offered output, including its format and level of detail. Deliver that output rather than merely repeating the prior answer. Either supply the complete requested content as directAnswer or set requiresGeneration=true with a self-contained optimizedQuery describing the offered output and subject.
+            - Classify the actual goal normally. Preserve the requested content and its subject in a self-contained optimizedQuery; ask for clarification only when conversation context cannot resolve the goal. Never invent a pending action.
+            - These extraction instructions are not the user's subject. A directAnswer must provide the content the user requested, not describe intent extraction or these instructions. Otherwise request generation for the resolved goal using the available conversation and authorized evidence.
+            """.trim() : buildPendingActionBlock(pending);
+        String instructions = context.getIntentExtractionSystemInstructions();
+        String combined = StringUtils.hasText(instructions)
+            ? instructions + "\n\n" + block
             : block;
 
         PipelineContext updated = context.toBuilder()
-            .pinnedTargetsContext(combined)
+            .intentExtractionSystemInstructions(combined)
             .observedPendingAction(pending)
+            .pendingActionStateObserved(true)
             .build();
 
         Map<String, Object> meta = new LinkedHashMap<>();
         meta.put("injected", true);
-        meta.put("action", pending.action());
+        meta.put("pendingActionPresent", pending != null);
+        if (pending != null) meta.put("action", pending.action());
         return updated.withMetadata(METADATA_KEY_PENDING_ACTION_PROMPT, Collections.unmodifiableMap(meta));
     }
 
@@ -97,9 +100,11 @@ public class PendingActionPromptAugmentationStep implements PipelineStep {
             return null;
         }
         return """
-            PENDING ACTION (requires confirmation):
+            SERVER-OWNED CONFIRMATION STATE - PENDING ACTION (requires confirmation):
+            - pendingActionPresent=true.
             - action=%s
             - Decide from the whole user turn whether the user intends to approve, reject, or ignore this pending action.
+            - Accepting an assistant's informational offer is not approval of this action. Resolve such a continuation from the recent conversation without consuming the pending action.
             - If the user requests another action or asks a new question instead of approving/rejecting, classify the new request normally and leave this pending action unresolved.
             """.formatted(action.trim()).trim();
     }

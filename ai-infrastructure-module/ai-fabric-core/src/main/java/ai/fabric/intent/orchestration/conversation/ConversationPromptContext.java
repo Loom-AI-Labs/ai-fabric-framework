@@ -35,6 +35,11 @@ public final class ConversationPromptContext {
         tool question and retrieval query consistent with the resolved subject. When the reference
         is genuinely ambiguous, ask a short customer-facing clarification rather than guessing
         a different issue or asking for an internal source name.
+        When the user accepts an assistant's offered explanation, checklist or transformation,
+        fulfill that offer in its promised form using the resolved subject and available evidence.
+        Do not merely repeat the earlier answer or offer the same work again. Historical statements
+        may be summarized with attribution, but do not invent additional policies or operational
+        steps to fill out the response. An informational offer never grants permission for a write.
         """;
 
     private ConversationPromptContext() {

@@ -15,12 +15,16 @@ import ai.fabric.intent.extraction.ProgressiveIntentExtractionEngine;
 import ai.fabric.intent.orchestration.OrchestrationContext;
 import ai.fabric.intent.orchestration.pipeline.PipelineContext;
 import ai.fabric.intent.orchestration.policy.SemanticRecoveryPolicy;
+import ai.fabric.intent.orchestration.policy.OrchestrationPolicy;
+import ai.fabric.config.OrchestrationProperties;
 import ai.fabric.intent.orchestration.request.ConversationPersistencePolicy;
 import ai.fabric.intent.orchestration.request.OrchestrationIntentPolicy;
 import ai.fabric.intent.orchestration.request.OrchestrationRequest;
 import ai.fabric.intent.orchestration.request.OrchestrationRequestPurpose;
 import java.time.Instant;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.ObjectProvider;
 
@@ -584,8 +588,39 @@ class IntentExtractionStepProgressiveEngineTest {
             .isEqualTo("SERVICE");
     }
 
+    @ParameterizedTest
+    @EnumSource(OrchestrationProperties.ConfirmationWithoutPendingRecovery.class)
+    void absentConfirmationUsesItsOwnTerminalPolicyRatherThanGenericClarification(
+        OrchestrationProperties.ConfirmationWithoutPendingRecovery confirmationPolicy
+    ) {
+        var policy = new SemanticRecoveryPolicy(
+            OrchestrationProperties.ExtractionFailureRecovery.LLM_REPAIR_THEN_CLARIFY,
+            null, null, null, null, null, null, confirmationPolicy
+        );
+        var updated = processTypedFailure(
+            IntentExtractionValidator.IssueCode.CONFIRMATION_WITHOUT_PENDING_ACTION,
+            policy
+        );
+        assertThat(updated.getEarlyTerminationResult().getType())
+            .isEqualTo(ai.fabric.intent.orchestration.OrchestrationResultType.ERROR);
+        assertThat(updated.getEarlyTerminationResult().getErrorCode())
+            .isEqualTo("CONFIRMATION_WITHOUT_PENDING_ACTION");
+        assertThat(semanticDecision(updated))
+            .containsEntry("decision", "CONFIRMATION_STATE")
+            .containsEntry("recoveryPolicy", confirmationPolicy.name())
+            .containsEntry("effectiveSource", "NONE")
+            .containsEntry("effectiveValue", "FAILURE");
+    }
+
     private PipelineContext processTypedFailure(
         IntentExtractionValidator.IssueCode issueCode
+    ) {
+        return processTypedFailure(issueCode, SemanticRecoveryPolicy.strictDefaults());
+    }
+
+    private PipelineContext processTypedFailure(
+        IntentExtractionValidator.IssueCode issueCode,
+        SemanticRecoveryPolicy policy
     ) {
         IntentQueryExtractor extractor = mock(IntentQueryExtractor.class);
         ProgressiveIntentExtractionEngine engine =
@@ -621,6 +656,9 @@ class IntentExtractionStepProgressiveEngineTest {
         ));
         return new IntentExtractionStep(extractor, provider).process(
             PipelineContext.from("q", OrchestrationContext.forUser("user"))
+                .toBuilder().orchestrationPolicy(new OrchestrationPolicy(
+                    null, null, null, null, null, null, null, null, policy
+                )).build()
         );
     }
 

@@ -305,6 +305,12 @@ public class OrchestrationProperties {
         private UnknownActionRecovery unknownAction;
         private ActionDomainMismatchRecovery actionDomainMismatch;
         private AdvancedNoEvidenceRecovery advancedNoEvidence;
+        private ConfirmationWithoutPendingRecovery confirmationWithoutPending;
+    }
+
+    public enum ConfirmationWithoutPendingRecovery {
+        FAIL,
+        LLM_REPLAN_THEN_FAIL
     }
 
     public enum ExtractionFailureRecovery {

@@ -14,7 +14,8 @@ public record SemanticRecoveryPolicy(
     OrchestrationProperties.InvalidVectorSpaceRecovery invalidVectorSpace,
     OrchestrationProperties.UnknownActionRecovery unknownAction,
     OrchestrationProperties.ActionDomainMismatchRecovery actionDomainMismatch,
-    OrchestrationProperties.AdvancedNoEvidenceRecovery advancedNoEvidence
+    OrchestrationProperties.AdvancedNoEvidenceRecovery advancedNoEvidence,
+    OrchestrationProperties.ConfirmationWithoutPendingRecovery confirmationWithoutPending
 ) {
     public SemanticRecoveryPolicy {
         extractionFailure = Objects.requireNonNullElse(
@@ -45,6 +46,19 @@ public record SemanticRecoveryPolicy(
             advancedNoEvidence,
             OrchestrationProperties.AdvancedNoEvidenceRecovery.RETURN_NO_EVIDENCE
         );
+        confirmationWithoutPending = Objects.requireNonNullElse(confirmationWithoutPending,
+            OrchestrationProperties.ConfirmationWithoutPendingRecovery.FAIL);
+    }
+
+    public SemanticRecoveryPolicy(OrchestrationProperties.ExtractionFailureRecovery extractionFailure,
+        OrchestrationProperties.MissingTargetRecovery missingTarget,
+        OrchestrationProperties.MissingVectorSpaceRecovery missingVectorSpace,
+        OrchestrationProperties.InvalidVectorSpaceRecovery invalidVectorSpace,
+        OrchestrationProperties.UnknownActionRecovery unknownAction,
+        OrchestrationProperties.ActionDomainMismatchRecovery actionDomainMismatch,
+        OrchestrationProperties.AdvancedNoEvidenceRecovery advancedNoEvidence) {
+        this(extractionFailure, missingTarget, missingVectorSpace, invalidVectorSpace, unknownAction,
+            actionDomainMismatch, advancedNoEvidence, null);
     }
 
     public static SemanticRecoveryPolicy strictDefaults() {

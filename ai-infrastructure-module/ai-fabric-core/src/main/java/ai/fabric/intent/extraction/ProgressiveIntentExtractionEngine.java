@@ -141,7 +141,7 @@ public class ProgressiveIntentExtractionEngine {
         if (!"multi_step".equals(forceMode)) {
             ExtractionAttempt rawAttempt = compoundStrategy.attemptExtract(input, safeContext);
             totalLlmCalls += rawAttempt.getLlmCalls();
-            compoundAttempt = assessAttempt(rawAttempt, userQuery, safeContext);
+            compoundAttempt = assessAttempt(rawAttempt, userQuery, safeContext, input.pendingActionPresent());
             attemptEvents.add(toAttemptEvent(compoundAttempt));
             attempts.add(compoundAttempt);
 
@@ -191,7 +191,7 @@ public class ProgressiveIntentExtractionEngine {
                 ExtractionAttempt rawRepairAttempt = repairStrategy.attemptRepair(input, safeContext, compoundAttempt);
                 totalLlmCalls += rawRepairAttempt.getLlmCalls();
                 ExtractionAttempt repairAttempt = enforceSemanticRecoveryPolicy(
-                    assessAttempt(rawRepairAttempt, userQuery, safeContext),
+                    assessAttempt(rawRepairAttempt, userQuery, safeContext, input.pendingActionPresent()),
                     attempts,
                     recoveryPolicy,
                     userQuery,
@@ -251,7 +251,7 @@ public class ProgressiveIntentExtractionEngine {
                 );
                 totalLlmCalls += rawCompletionAttempt.getLlmCalls();
                 ExtractionAttempt completed = enforceSemanticRecoveryPolicy(
-                    assessAttempt(rawCompletionAttempt, userQuery, safeContext),
+                    assessAttempt(rawCompletionAttempt, userQuery, safeContext, input.pendingActionPresent()),
                     attempts,
                     recoveryPolicy,
                     userQuery,
@@ -275,6 +275,9 @@ public class ProgressiveIntentExtractionEngine {
                 }
 
                 current = completed;
+                if (SemanticRecoveryPromptSupport.requiresSemanticReplan(current)) {
+                    break;
+                }
                 if (current.getValidationResult() == null
                     || (current.getValidationResult().errorCategory() != IntentExtractionValidator.ErrorCategory.INCOMPLETE
                         && current.getValidationResult().errorCategory() != IntentExtractionValidator.ErrorCategory.UNSAFE)) {
@@ -317,7 +320,7 @@ public class ProgressiveIntentExtractionEngine {
             );
             totalLlmCalls += rawMultiStepAttempt.getLlmCalls();
             ExtractionAttempt multiStepAttempt = enforceSemanticRecoveryPolicy(
-                assessAttempt(rawMultiStepAttempt, userQuery, safeContext),
+                assessAttempt(rawMultiStepAttempt, userQuery, safeContext, input.pendingActionPresent()),
                 attempts,
                 recoveryPolicy,
                 userQuery,
@@ -500,7 +503,7 @@ public class ProgressiveIntentExtractionEngine {
     }
 
     private ExtractionAttempt assessAttempt(ExtractionAttempt attempt, String originalQuery,
-                                             OrchestrationContext context) {
+                                             OrchestrationContext context, Boolean pendingActionPresent) {
         if (attempt == null) {
             return null;
         }
@@ -561,6 +564,16 @@ public class ProgressiveIntentExtractionEngine {
         }
 
         IntentExtractionValidator.ValidationResult validation = validator.validate(processed, originalQuery, context);
+        List<IntentExtractionValidator.ValidationIssue> confirmationIssues =
+            IntentExtractionValidator.confirmationStateIssues(processed, pendingActionPresent);
+        if (!confirmationIssues.isEmpty()) {
+            List<IntentExtractionValidator.ValidationIssue> issues = new ArrayList<>(validation.issues());
+            issues.addAll(confirmationIssues);
+            List<String> errors = new ArrayList<>(validation.errors());
+            confirmationIssues.forEach(issue -> errors.add(issue.message()));
+            validation = new IntentExtractionValidator.ValidationResult(false,
+                IntentExtractionValidator.ErrorCategory.UNSAFE, List.copyOf(issues), List.copyOf(errors), validation.warnings());
+        }
         return ExtractionAttempt.builder()
             .success(validation.valid())
             .response(processed)
@@ -584,7 +597,12 @@ public class ProgressiveIntentExtractionEngine {
         String originalQuery,
         OrchestrationContext context
     ) {
-        if (candidate == null || !candidate.isSuccess() || candidate.getResponse() == null) {
+        if (candidate == null || candidate.getResponse() == null) {
+            return candidate;
+        }
+
+        SemanticRecoveryPolicy effectivePolicy = policy != null ? policy : SemanticRecoveryPolicy.strictDefaults();
+        if (!candidate.isSuccess() && policyContinuationCandidate(List.of(candidate), effectivePolicy) == null) {
             return candidate;
         }
 
@@ -597,9 +615,6 @@ public class ProgressiveIntentExtractionEngine {
             return candidate;
         }
 
-        SemanticRecoveryPolicy effectivePolicy = policy != null
-            ? policy
-            : SemanticRecoveryPolicy.strictDefaults();
         List<Intent> originalIntents = origin.getResponse().getIntents();
         List<Intent> candidateIntents = candidate.getResponse().getIntents() != null
             ? new ArrayList<>(candidate.getResponse().getIntents())
@@ -690,7 +705,17 @@ public class ProgressiveIntentExtractionEngine {
                 String policyName;
                 String outcome;
                 String rejection = null;
-                if (issue.code()
+                if (issue.code() == IntentExtractionValidator.IssueCode.CONFIRMATION_WITHOUT_PENDING_ACTION) {
+                    policyName = effectivePolicy.confirmationWithoutPending().name();
+                    if (effectivePolicy.confirmationWithoutPending()
+                        != OrchestrationProperties.ConfirmationWithoutPendingRecovery.LLM_REPLAN_THEN_FAIL) {
+                        rejection = "Confirmation-state model correction is disabled by extraction recovery policy";
+                    } else if (effectiveIntent.getType() == IntentType.CONFIRMATION_POSITIVE
+                        || effectiveIntent.getType() == IntentType.CONFIRMATION_NEGATIVE) {
+                        rejection = "Confirmation-state recovery still refers to an absent operation";
+                    }
+                    outcome = "MODEL_CONFIRMATION_STATE_REPLAN";
+                } else if (issue.code()
                     == IntentExtractionValidator.IssueCode.ACTION_UNREGISTERED) {
                     policyName = effectivePolicy.unknownAction().name();
                     if (effectiveIntent.getType() == IntentType.INFORMATION) {
@@ -787,10 +812,10 @@ public class ProgressiveIntentExtractionEngine {
             .filter(issue -> issue.severity()
                 == IntentExtractionValidator.Severity.ERROR)
             .filter(issue -> isActionSemanticRecoveryIssue(issue.code()))
-            .allMatch(issue -> issue.code()
-                    == IntentExtractionValidator.IssueCode.ACTION_UNREGISTERED
-                || effectivePolicy.actionDomainMismatch()
-                    == OrchestrationProperties.ActionDomainMismatchRecovery.DENY_AND_LLM_REPLAN);
+            .allMatch(issue -> issue.code() == IntentExtractionValidator.IssueCode.CONFIRMATION_WITHOUT_PENDING_ACTION
+                ? effectivePolicy.confirmationWithoutPending() == OrchestrationProperties.ConfirmationWithoutPendingRecovery.LLM_REPLAN_THEN_FAIL
+                : issue.code() == IntentExtractionValidator.IssueCode.ACTION_UNREGISTERED
+                    || effectivePolicy.actionDomainMismatch() == OrchestrationProperties.ActionDomainMismatchRecovery.DENY_AND_LLM_REPLAN);
     }
 
     private ExtractionAttempt semanticRecoveryOrigin(List<ExtractionAttempt> attempts) {
@@ -842,7 +867,8 @@ public class ProgressiveIntentExtractionEngine {
         IntentExtractionValidator.IssueCode code
     ) {
         return code == IntentExtractionValidator.IssueCode.ACTION_UNREGISTERED
-            || code == IntentExtractionValidator.IssueCode.ACTION_GROUNDING_VECTOR_SPACE_MISMATCH;
+            || code == IntentExtractionValidator.IssueCode.ACTION_GROUNDING_VECTOR_SPACE_MISMATCH
+            || code == IntentExtractionValidator.IssueCode.CONFIRMATION_WITHOUT_PENDING_ACTION;
     }
 
     private Intent correspondingIntent(Intent original,
@@ -1227,6 +1253,7 @@ public class ProgressiveIntentExtractionEngine {
         summary.put("unknownAction", safePolicy.unknownAction().name());
         summary.put("actionDomainMismatch", safePolicy.actionDomainMismatch().name());
         summary.put("advancedNoEvidence", safePolicy.advancedNoEvidence().name());
+        summary.put("confirmationWithoutPending", safePolicy.confirmationWithoutPending().name());
         return Collections.unmodifiableMap(summary);
     }
 

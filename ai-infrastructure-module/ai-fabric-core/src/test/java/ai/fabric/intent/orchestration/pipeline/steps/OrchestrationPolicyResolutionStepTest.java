@@ -388,8 +388,29 @@ class OrchestrationPolicyResolutionStepTest {
                 "invalidVectorSpace", "LLM_REPAIR_THEN_FAIL",
                 "unknownAction", "LLM_REPAIR_THEN_FAIL",
                 "actionDomainMismatch", "DENY_AND_FAIL",
-                "advancedNoEvidence", "RETURN_NO_EVIDENCE"
+                "advancedNoEvidence", "RETURN_NO_EVIDENCE",
+                "confirmationWithoutPending", "FAIL"
             ));
+        }
+
+        @Test
+        void confirmationReplanMustBeEnabledByServerPolicyAndCanBeDisabledPerMode() {
+            var properties = new OrchestrationProperties();
+            properties.getSemanticRecovery().setConfirmationWithoutPending(
+                OrchestrationProperties.ConfirmationWithoutPendingRecovery.LLM_REPLAN_THEN_FAIL);
+            var mode = new OrchestrationProperties.ModeOverrides();
+            var recovery = new OrchestrationProperties.SemanticRecoveryProperties();
+            recovery.setConfirmationWithoutPending(OrchestrationProperties.ConfirmationWithoutPendingRecovery.FAIL);
+            mode.setSemanticRecovery(recovery);
+            properties.getModes().put("strict-confirmation", mode);
+            var step = new OrchestrationPolicyResolutionStep(properties);
+            var ordinary = step.process(PipelineContext.from("continue", OrchestrationContext.forUser("owner")));
+            var strict = step.process(PipelineContext.from("continue", OrchestrationContext.forUser("owner")
+                .toBuilder().mode("strict-confirmation").build()));
+            assertThat(ordinary.getOrchestrationPolicy().semanticRecoveryPolicy().confirmationWithoutPending())
+                .isEqualTo(OrchestrationProperties.ConfirmationWithoutPendingRecovery.LLM_REPLAN_THEN_FAIL);
+            assertThat(strict.getOrchestrationPolicy().semanticRecoveryPolicy().confirmationWithoutPending())
+                .isEqualTo(OrchestrationProperties.ConfirmationWithoutPendingRecovery.FAIL);
         }
 
         @Test

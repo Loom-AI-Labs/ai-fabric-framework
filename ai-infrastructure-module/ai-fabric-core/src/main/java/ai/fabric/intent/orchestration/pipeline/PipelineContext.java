@@ -221,6 +221,10 @@ public class PipelineContext {
     @ToString.Exclude
     private final transient PendingAction observedPendingAction;
 
+    /** Distinguishes an observed empty confirmation store from unavailable state. */
+    @JsonIgnore
+    private final transient boolean pendingActionStateObserved;
+
     /** Trusted draft snapshot used for conditional cancellation, never public prompt data. */
     @JsonIgnore
     @ToString.Exclude

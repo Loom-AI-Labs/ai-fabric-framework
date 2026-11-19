@@ -52,8 +52,7 @@ public class ActionDraftPromptAugmentationStep implements PipelineStep {
         if (context == null
             || context.isShouldTerminate()
             || conversationStateDisabled(context)
-            || (context.getMetadata() != null
-                && context.getMetadata().containsKey("pendingActionPrompt"))) {
+            || context.getObservedPendingAction() != null) {
             return context;
         }
         OrchestrationContext orchestrationContext =

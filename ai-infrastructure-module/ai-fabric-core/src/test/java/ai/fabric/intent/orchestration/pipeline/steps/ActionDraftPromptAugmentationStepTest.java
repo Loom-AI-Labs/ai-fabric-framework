@@ -53,9 +53,10 @@ class ActionDraftPromptAugmentationStepTest {
 
         PipelineContext updated =
             new ActionDraftPromptAugmentationStep(store, registry)
-                .process(context);
+                .process(new PendingActionPromptAugmentationStep(new ai.fabric.intent.action.InMemoryPendingActionStore()).process(context));
 
         assertThat(updated.getIntentExtractionSystemInstructions())
+            .contains("pendingActionPresent=false")
             .contains("INCOMPLETE ACTION DRAFT CONTEXT")
             .contains("action=update_address")
             .contains("street")
@@ -74,6 +75,19 @@ class ActionDraftPromptAugmentationStepTest {
         assertThat(updated.toString())
             .doesNotContain("16 Dairy Drive")
             .doesNotContain("subscription-secret");
+    }
+
+    @Test
+    void realPendingConfirmationStillTakesPrecedenceOverAnIncompleteDraft() {
+        var pending = new ai.fabric.intent.action.InMemoryPendingActionStore();
+        pending.pushPendingAction("conversation-1", "user-1", new ai.fabric.intent.action.PendingAction(
+            "update_address", Map.of(), "Confirm", Instant.now()));
+        var context = new PendingActionPromptAugmentationStep(pending).process(PipelineContext.from("yes",
+            OrchestrationContext.builder().userId("user-1").conversationId("conversation-1").build()));
+        var updated = new ActionDraftPromptAugmentationStep(new InMemoryActionDraftStore(), mock(AIActionRegistry.class)).process(context);
+        assertThat(updated).isSameAs(context);
+        assertThat(updated.getActionDraftContinuation()).isNull();
+        assertThat(pending.peekPendingAction("conversation-1", "user-1")).isPresent();
     }
 
     @Test

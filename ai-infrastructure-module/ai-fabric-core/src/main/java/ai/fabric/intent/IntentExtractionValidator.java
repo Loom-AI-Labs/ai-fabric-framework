@@ -41,6 +41,23 @@ public class IntentExtractionValidator {
         return validate(response, null);
     }
 
+    /** Protects the pending-operation execution contract, not natural-language meaning. */
+    public static List<ValidationIssue> confirmationStateIssues(MultiIntentResponse response,
+                                                               Boolean pendingActionPresent) {
+        if (!Boolean.FALSE.equals(pendingActionPresent) || response == null || response.getIntents() == null)
+            return List.of();
+        List<ValidationIssue> issues = new ArrayList<>();
+        for (int i = 0; i < response.getIntents().size(); i++) {
+            Intent intent = response.getIntents().get(i);
+            if (intent != null && (intent.getType() == IntentType.CONFIRMATION_POSITIVE
+                || intent.getType() == IntentType.CONFIRMATION_NEGATIVE)) {
+                issues.add(ValidationIssue.error(IssueCode.CONFIRMATION_WITHOUT_PENDING_ACTION, i, "type",
+                    "The server observed no pending executable action. Re-evaluate this obligation using the recent conversation; confirmation cannot identify an absent operation."));
+            }
+        }
+        return List.copyOf(issues);
+    }
+
     /**
      * Validate an extraction response using optional original-query context.
      *
@@ -447,6 +464,7 @@ public class IntentExtractionValidator {
     }
 
     public enum IssueCode {
+        CONFIRMATION_WITHOUT_PENDING_ACTION,
         RESPONSE_NULL,
         RESPONSE_EMPTY_INTENTS,
         INTENT_NULL,

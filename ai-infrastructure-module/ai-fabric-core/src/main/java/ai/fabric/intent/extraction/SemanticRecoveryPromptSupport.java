@@ -23,6 +23,7 @@ final class SemanticRecoveryPromptSupport {
         return errorIssues(attempt).stream().anyMatch(issue ->
             issue.code() == IntentExtractionValidator.IssueCode.ACTION_UNREGISTERED
                 || issue.code() == IntentExtractionValidator.IssueCode.ACTION_GROUNDING_VECTOR_SPACE_MISMATCH
+                || issue.code() == IntentExtractionValidator.IssueCode.CONFIRMATION_WITHOUT_PENDING_ACTION
         );
     }
 
@@ -79,6 +80,10 @@ final class SemanticRecoveryPromptSupport {
             == OrchestrationProperties.ActionDomainMismatchRecovery.DENY_AND_LLM_REPLAN
             ? "For only an ACTION_GROUNDING_VECTOR_SPACE_MISMATCH obligation, you may produce a model replan that remains within the exact registered action and knowledge catalogs."
             : "For an ACTION_GROUNDING_VECTOR_SPACE_MISMATCH obligation, an action-to-information model replan is not permitted in this extraction attempt.";
+        String confirmationInstruction = effectivePolicy.confirmationWithoutPending()
+            == OrchestrationProperties.ConfirmationWithoutPendingRecovery.LLM_REPLAN_THEN_FAIL
+            ? "For only a CONFIRMATION_WITHOUT_PENDING_ACTION obligation, reclassify the user's actual goal from the supplied recent conversation. An informational offer can become INFORMATION; a new supported operation can become ACTION under its normal authorization and confirmation rules. Do not invent a pending action or force a particular replacement intent."
+            : "For CONFIRMATION_WITHOUT_PENDING_ACTION, semantic correction is disabled; leave a visible unresolved result.";
 
         String addon = """
             BOUNDED SEMANTIC RECOVERY (server-owned policy):
@@ -87,6 +92,7 @@ final class SemanticRecoveryPromptSupport {
             Recovery policy:
             - unknownAction=%s
             - actionDomainMismatch=%s
+            - confirmationWithoutPending=%s
 
             Validation issues:
             %s
@@ -99,20 +105,23 @@ final class SemanticRecoveryPromptSupport {
             Recovery rules:
             - Re-evaluate every obligation independently against the exact registered action and knowledge catalogs.
             - Preserve every prior obligation. Keep its obligationId when present; otherwise preserve its position and emit a new stable obligationId.
-            - Preserve each obligation's exact intent type unless a listed validation issue and the server policy below explicitly permit an action-to-information replan for that same obligation.
-            - Preserve the exact type and exact registered action ID of every sibling obligation that has no ACTION_UNREGISTERED or ACTION_GROUNDING_VECTOR_SPACE_MISMATCH error.
+            - Preserve each obligation's exact intent type unless a listed validation issue and the server policy below explicitly permit a replan for that same obligation.
+            - Preserve the exact type and exact registered action ID of every sibling obligation that has no ACTION_UNREGISTERED, ACTION_GROUNDING_VECTOR_SPACE_MISMATCH or CONFIRMATION_WITHOUT_PENDING_ACTION error.
             - Do not replace a rejected action with an unrelated action merely because the replacement is registered. A selected action's described outcome must directly satisfy that obligation's userGoal.
             - If no registered action directly satisfies an ACTION obligation, return null at action selection rather than guessing.
+            - %s
             - %s
             - %s
             - Configuration grants permission only for the transitions stated above. It never chooses an action or knowledge source for you.
             """.formatted(
             effectivePolicy.unknownAction().name(),
             effectivePolicy.actionDomainMismatch().name(),
+            effectivePolicy.confirmationWithoutPending().name(),
             issueSummary,
             priorJson,
             unknownActionInstruction,
-            mismatchInstruction
+            mismatchInstruction,
+            confirmationInstruction
         ).trim();
         if (addon.length() > MAX_RECOVERY_ADDON_CHARS) {
             throw new IllegalStateException(

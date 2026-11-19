@@ -348,7 +348,8 @@ public class OrchestrationPolicyResolutionStep implements PipelineStep {
             "invalidVectorSpace", recovery.invalidVectorSpace().name(),
             "unknownAction", recovery.unknownAction().name(),
             "actionDomainMismatch", recovery.actionDomainMismatch().name(),
-            "advancedNoEvidence", recovery.advancedNoEvidence().name()
+            "advancedNoEvidence", recovery.advancedNoEvidence().name(),
+            "confirmationWithoutPending", recovery.confirmationWithoutPending().name()
         ));
         if (policy.readActionResolutionPolicy() != null) {
             OrchestrationPolicy.ReadActionResolutionPolicy readPolicy = policy.readActionResolutionPolicy();
@@ -563,7 +564,10 @@ public class OrchestrationPolicyResolutionStep implements PipelineStep {
                 : global != null ? global.getActionDomainMismatch() : null,
             mode != null && mode.getAdvancedNoEvidence() != null
                 ? mode.getAdvancedNoEvidence()
-                : global != null ? global.getAdvancedNoEvidence() : null
+                : global != null ? global.getAdvancedNoEvidence() : null,
+            mode != null && mode.getConfirmationWithoutPending() != null
+                ? mode.getConfirmationWithoutPending()
+                : global != null ? global.getConfirmationWithoutPending() : null
         );
     }
 

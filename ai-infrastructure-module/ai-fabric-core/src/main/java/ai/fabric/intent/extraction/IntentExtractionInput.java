@@ -20,7 +20,8 @@ public record IntentExtractionInput(
     String currentUserMessage,
     List<AIChatMessage> historyMessages,
     AIAccessSubjectContext resolvedAuthContext,
-    String trustedSystemContext
+    String trustedSystemContext,
+    Boolean pendingActionPresent
 ) {
 
     public IntentExtractionInput {
@@ -28,6 +29,14 @@ public record IntentExtractionInput(
         trustedSystemContext = hasText(trustedSystemContext)
             ? trustedSystemContext.trim()
             : null;
+    }
+
+    public IntentExtractionInput(String userQuery, String currentUserMessage,
+                                 List<AIChatMessage> historyMessages,
+                                 AIAccessSubjectContext resolvedAuthContext,
+                                 String trustedSystemContext) {
+        this(userQuery, currentUserMessage, historyMessages, resolvedAuthContext,
+            trustedSystemContext, null);
     }
 
     public IntentExtractionInput(

@@ -132,7 +132,8 @@ public class IntentExtractionStep implements PipelineStep {
                 : OrchestrationAuthContextResolver.from(
                     context.getOrchestrationContext()
                 ),
-            context.getIntentExtractionSystemInstructions()
+            context.getIntentExtractionSystemInstructions(),
+            context.isPendingActionStateObserved() ? context.getObservedPendingAction() != null : null
         );
 
         ProgressiveIntentExtractionEngine engine = progressiveEngineProvider != null
@@ -224,6 +225,18 @@ public class IntentExtractionStep implements PipelineStep {
                     false
                 )
             );
+        }
+
+        List<IntentExtractionValidator.ValidationIssue> confirmationIssues =
+            IntentExtractionValidator.confirmationStateIssues(intentResponse, input.pendingActionPresent());
+        if (!confirmationIssues.isEmpty()) {
+            return terminateExtractionFailure(updatedContext,
+                new ProgressiveIntentExtractionEngine.ExtractionFailure(
+                    EXTRACTION_FAILURE_REASON,
+                    "AI intent analysis could not resolve this follow-up against the current conversation state.",
+                    false,
+                    confirmationIssues.stream().map(IntentExtractionValidator.ValidationIssue::code).toList()
+                ));
         }
 
         ActionDraftContinuationSupport.MergeOutcome draftMerge =
@@ -468,6 +481,17 @@ public class IntentExtractionStep implements PipelineStep {
     ) {
         List<IntentExtractionValidator.IssueCode> safeIssueCodes =
             issueCodes != null ? issueCodes : List.of();
+        if (safeIssueCodes.contains(
+            IntentExtractionValidator.IssueCode.CONFIRMATION_WITHOUT_PENDING_ACTION
+        )) {
+            return new TerminalRecoveryDecision(
+                "CONFIRMATION_STATE",
+                policy.confirmationWithoutPending().name(),
+                false,
+                "CONFIRMATION_WITHOUT_PENDING_ACTION",
+                "The AI selected an operation confirmation, but no pending operation exists."
+            );
+        }
         if (safeIssueCodes.contains(
             IntentExtractionValidator.IssueCode.ACTION_GROUNDING_VECTOR_SPACE_MISMATCH
         )) {
