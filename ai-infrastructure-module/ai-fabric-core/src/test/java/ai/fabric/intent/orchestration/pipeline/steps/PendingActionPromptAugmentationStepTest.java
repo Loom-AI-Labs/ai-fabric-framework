@@ -51,7 +51,10 @@ class PendingActionPromptAugmentationStepTest {
         var updated = new PendingActionPromptAugmentationStep(new InMemoryPendingActionStore()).process(context);
         assertThat(updated.getIntentExtractionSystemInstructions())
             .startsWith("Existing trusted instruction")
-            .contains("pendingActionPresent=false", "informational continuation", "self-contained optimizedQuery");
+            .contains("pendingActionPresent=false", "informational continuation", "self-contained optimizedQuery",
+                "set requiresRetrieval=false and leave vectorSpace empty",
+                "If fresh indexed evidence is actually needed, keep requiresRetrieval=true",
+                "Historical content is not current evidence or permission");
         assertThat(updated.getPinnedTargetsContext()).isEqualTo("Approved record");
         assertThat(updated.isPendingActionStateObserved()).isTrue();
         assertThat(updated.getObservedPendingAction()).isNull();

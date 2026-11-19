@@ -114,10 +114,23 @@ import static org.junit.jupiter.api.Assertions.assertAll;
     "ai.orchestration.modes.guide-without-index.read-action-resolution.require-allowlist=true",
     "ai.orchestration.modes.guide-without-index.read-action-resolution.allowed-read-actions[0]=native_read_public_guide",
     "ai.orchestration.modes.guide-without-index.read-action-resolution.max-total-actions=1",
-    "ai.orchestration.modes.guide-without-index.read-action-resolution.rag-cooperation-mode=NONE"
+    "ai.orchestration.modes.guide-without-index.read-action-resolution.rag-cooperation-mode=NONE",
+    "ai.orchestration.modes.history-parallel.actions-enabled=false",
+    "ai.orchestration.modes.history-parallel.retrieval-enabled=true",
+    "ai.orchestration.modes.history-parallel.vector-space-selection-required=false",
+    "ai.orchestration.modes.history-parallel.knowledge-base-overview-enabled=false",
+    "ai.orchestration.modes.history-parallel.suggestions-enabled=false",
+    "ai.orchestration.modes.history-parallel.semantic-recovery.confirmation-without-pending=LLM_REPLAN_THEN_FAIL",
+    "ai.orchestration.modes.history-parallel.rag.retrieval-vector-spaces-allowlist[0]=document",
+    "ai.orchestration.modes.history-parallel.read-action-resolution.enabled=true",
+    "ai.orchestration.modes.history-parallel.read-action-resolution.planning-mode=ITERATIVE",
+    "ai.orchestration.modes.history-parallel.read-action-resolution.require-allowlist=true",
+    "ai.orchestration.modes.history-parallel.read-action-resolution.allowed-read-actions[0]=native_read_public_guide",
+    "ai.orchestration.modes.history-parallel.read-action-resolution.max-total-actions=1",
+    "ai.orchestration.modes.history-parallel.read-action-resolution.rag-cooperation-mode=PARALLEL_ACTIONS_AND_RAG"
 })
 class RealAPINativeActionSchemaIntegrationTest {
-    private static final int MAX_QUERIES = 19;
+    private static final int MAX_QUERIES = 23;
     private static final String PRIVATE_STATUS_ACTION = "native_read_subscription_status";
     private static final String NATURAL_STATUS_QUESTION = "What is the current status of my subscription?";
     private static final String PUBLIC_GUIDE = "In this fictional service, subscription cancellation takes effect "
@@ -150,8 +163,8 @@ class RealAPINativeActionSchemaIntegrationTest {
         assertThat(privateStatus.isAnonymousAllowed()).isFalse();
         assertThat(ActionNativeSchemaSupport.publicInputSchema(privateStatus).get("properties"))
             .isEqualTo(Map.of());
-        System.out.printf("Native schema qualification: provider=openai model=%s scenarios=14 "
-            + "maxQueries=%d orchestrationTurns=18 directPlannerCalls=1 syntheticReceiver=true%n", model, MAX_QUERIES);
+        System.out.printf("Native schema qualification: provider=openai model=%s scenarios=18 "
+            + "maxQueries=%d orchestrationTurns=22 directPlannerCalls=1 syntheticReceiver=true%n", model, MAX_QUERIES);
     }
 
     @BeforeEach
@@ -339,7 +352,17 @@ class RealAPINativeActionSchemaIntegrationTest {
     @ParameterizedTest
     @ValueSource(strings = {"yes please do", "do that please", "please continue", "go ahead with the checklist"})
     void acceptsAnInformationalOfferWithoutConfirmingAnAbsentAction(String followup) {
-        var context = signedInContext();
+        assertInformationalOffer(followup, null);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"yes please do", "do that please", "please continue", "go ahead with the checklist"})
+    void acceptsAnInformationalOfferWithParallelRagCooperation(String followup) {
+        assertInformationalOffer(followup, "history-parallel");
+    }
+
+    private void assertInformationalOffer(String followup, String mode) {
+        var context = signedInContext().toBuilder().mode(mode).build();
         var history = new ApprovedConversationSnapshot("followup-" + UUID.randomUUID(), context.getUserId(),
             context.getConversationId(), "support", "a".repeat(64), 1,
             List.of(AIChatMessage.user("Explain the subscription cancellation policy."),

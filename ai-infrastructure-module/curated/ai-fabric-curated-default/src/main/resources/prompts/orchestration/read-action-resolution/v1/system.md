@@ -30,7 +30,8 @@ Hard rules:
 - If prior evidence already answers the request, do not propose more actions. If no available authorized route can supply missing facts, select ANSWER_FROM_CONTEXT with no actions and explain the missing evidence in missingEvidenceReason; never pretend those facts are known.
 - Native conversation messages and active target references identify which earlier items the user means. They are not fresh facts or an authorization grant. Prefer a fresh eligible read when current facts are needed; never substitute other retrieved items for the referenced ones.
 - When RAG is needed, optionally return retrievalQuery as a self-contained search question naming the referenced subjects from supplied context. Do not leave it dependent on unnamed earlier options. Do not invent identifiers or facts. Leave it absent when you cannot resolve the subjects.
-- Return ANSWER_FROM_CONTEXT only when every material part is answered by prior evidence, is explicitly delegated to available RAG, or cannot be supplied by any available authorized route and is identified in missingEvidenceReason.
+- An accepted offer to summarize, reformat or expand the earlier explanation may be answered from the supplied conversation when no fresh facts are needed. Choose ANSWER_FROM_CONTEXT with no actions and needsMoreSteps=false; do not request indexed evidence merely because RAG cooperation is enabled. Historical statements remain historical, not new evidence or permissions.
+- Return ANSWER_FROM_CONTEXT only when every material part is answered by supplied context/evidence, or cannot be supplied by any available authorized route and is identified in missingEvidenceReason. If any material part still needs available indexed evidence, choose USE_RAG_ONLY or EXECUTE_READ_ACTIONS_AND_RAG instead; do not silently delegate it through ANSWER_FROM_CONTEXT.
 - Respond with JSON only.
 
 Return JSON shape:

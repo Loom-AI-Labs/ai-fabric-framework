@@ -9,6 +9,7 @@ import ai.fabric.config.VectorSpaceRoutingProperties;
 import ai.fabric.core.AICoreService;
 import ai.fabric.core.LlmPurpose;
 import ai.fabric.dto.AIGenerationResponse;
+import ai.fabric.dto.AIGenerationRequest;
 import ai.fabric.dto.AIChatMessage;
 import ai.fabric.dto.AdvancedRAGResponse;
 import ai.fabric.dto.Intent;
@@ -44,6 +45,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.core.io.DefaultResourceLoader;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -65,6 +67,102 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 class IntentHandlingStepReadActionResolutionTest {
+
+    @ParameterizedTest
+    @ValueSource(booleans = {true, false})
+    void contextOnlyFollowupGeneratesFromOwnedHistoryWithoutDomainSelection(boolean generationSucceeds) {
+        var registry = mock(AIActionRegistry.class);
+        var action = AIActionMetaData.builder().name("read_guide").accessMode(ActionAccessMode.READ)
+            .groundingEligible(true).readActionResolutionEligible(true).build();
+        when(registry.getAllMetadata()).thenReturn(List.of(action));
+        when(registry.findMetadata("read_guide")).thenReturn(Optional.of(action));
+        when(registry.findHandler("read_guide")).thenReturn(Optional.of(mock(AIActionHandler.class)));
+        var ai = mock(AICoreService.class);
+        when(ai.generateContent(any(), eq(LlmPurpose.ORCHESTRATION))).thenReturn(AIGenerationResponse.builder()
+            .content("{\"decision\":\"ANSWER_FROM_CONTEXT\",\"actions\":[],\"needsMoreSteps\":false}").build());
+        when(ai.generateContent(any(), eq(LlmPurpose.GENERATION))).thenReturn(generationSucceeds
+            ? AIGenerationResponse.builder().content("1. Connect your source.\n2. Review settings.\n3. Test.").build()
+            : null);
+        var properties = new OrchestrationProperties();
+        properties.setProfile(OrchestrationProfile.PRODUCTION_CHAT);
+        properties.setDefaultMode("thinker");
+        var mode = new OrchestrationProperties.ModeOverrides();
+        mode.setRetrievalEnabled(true);
+        mode.setVectorSpaceSelectionRequired(false);
+        var reads = new OrchestrationProperties.ReadActionResolutionModeOverrides();
+        reads.setEnabled(true);
+        reads.setPlanningMode(OrchestrationProperties.ReadActionResolutionPlanningMode.SINGLE_PASS);
+        reads.setRequireAllowlist(true);
+        reads.setAllowedReadActions(List.of("read_guide"));
+        reads.setRagCooperationMode(OrchestrationProperties.ReadActionResolutionRagCooperationMode.PARALLEL_ACTIONS_AND_RAG);
+        mode.setReadActionResolution(reads);
+        properties.getModes().put("thinker", mode);
+        var policyStep = new OrchestrationPolicyResolutionStep(properties);
+        ReflectionTestUtils.setField(policyStep, "actionRegistry", registry);
+        var context = OrchestrationContext.forUser("owner-1");
+        context.setConversationId("conversation-1");
+        var history = List.of(AIChatMessage.user("Explain the setup process."),
+            AIChatMessage.assistant("Connect your source, review settings, then test. I can make a checklist."));
+        var intent = Intent.builder().type(IntentType.INFORMATION).intent("make_setup_checklist")
+            .requiresRetrieval(false).requiresGeneration(true).build();
+        var input = policyStep.process(PipelineContext.from("do that please", context).toBuilder()
+            .historyMessages(history).intentResponse(MultiIntentResponse.builder().intents(List.of(intent)).build()).build());
+        var rag = mock(RAGProvider.class);
+        var service = new ReadActionResolutionService(ai, registry, new IntentExtractionJsonSupport(new ObjectMapper()),
+            promptTemplateResolver(), new PromptRenderer(), mock(AIEntityConfigurationLoader.class));
+        var step = buildStep(rag, ai);
+        ReflectionTestUtils.setField(step, "readActionResolutionServiceProvider", providerOf(service));
+
+        var result = step.process(input).getIntentResult();
+
+        assertThat(result.isSuccess()).isEqualTo(generationSucceeds);
+        assertThat(result.getType()).isEqualTo(generationSucceeds
+            ? OrchestrationResultType.INFORMATION_PROVIDED : OrchestrationResultType.ERROR);
+        assertThat(result.getData()).containsEntry("requiresRetrieval", false);
+        assertThat(result.getMetadata().get("readActionResolution").toString())
+            .contains("contextOnlyContinuation=true");
+        if (!generationSucceeds) assertThat(result.getErrorCode()).isEqualTo("GENERATION_FAILED");
+        var generation = ArgumentCaptor.forClass(AIGenerationRequest.class);
+        verify(ai).generateContent(generation.capture(), eq(LlmPurpose.GENERATION));
+        assertThat(generation.getValue().getMessages()).containsExactlyElementsOf(history);
+        assertThat(generation.getValue().getSystemPrompt()).contains("CONVERSATION REFERENCE POLICY",
+            "historical statements", "not fresh system evidence");
+        verifyNoInteractions(rag);
+    }
+
+    @Test
+    void missingDomainTerminalRetainsPlannerDiagnosticsAndExecutedReadReceipts() {
+        var rag = mock(RAGProvider.class);
+        var ai = mock(AICoreService.class);
+        var resolver = mock(ReadActionResolutionService.class);
+        var receipt = ActionResult.builder().success(true).data(ActionPayload.object(Map.of("status", "ready")))
+            .pinnedTargets(List.of(new ai.fabric.intent.action.ActionTargetRef("record-1", "records", "Ready", Map.of())))
+            .build();
+        when(resolver.resolve(any(), any(), any())).thenReturn(
+            ReadActionResolutionService.ResolutionOutcome.continueWithRag(null, List.of(), List.of(
+                new ReadActionResolutionService.ExecutedReadAction("read_status", Map.of("private", "not-public"),
+                    null, receipt, true, "Ready", null)),
+                Map.of("attempted", true, "finalDecision", "USE_RAG_ONLY", "useRag", true)));
+        var step = buildStep(rag, ai);
+        ReflectionTestUtils.setField(step, "readActionResolutionServiceProvider", providerOf(resolver));
+        var intent = Intent.builder().type(IntentType.INFORMATION).intent("find_setup_policy")
+            .requiresRetrieval(false).requiresGeneration(true).build();
+        var input = PipelineContext.from("How do I complete setup?", OrchestrationContext.forUser("owner-1"))
+            .toBuilder().intentResponse(MultiIntentResponse.builder().intents(List.of(intent)).build()).build();
+
+        var result = step.process(input).getIntentResult();
+
+        assertThat(result.getType()).isEqualTo(OrchestrationResultType.CLARIFICATION_REQUIRED);
+        assertThat(result.isSuccess()).isFalse();
+        assertThat(result.getMessage()).isEqualTo("Which knowledge base domain should I search?");
+        assertThat(((Map<?, ?>) result.getMetadata().get("readActionResolution"))
+            .get("finalDecision")).isEqualTo("USE_RAG_ONLY");
+        assertThat((List<?>) result.getData().get("actions")).hasSize(1);
+        assertThat(result.getInternalPinnedTargets()).singleElement().satisfies(target ->
+            assertThat(target.id()).isEqualTo("record-1"));
+        assertThat(new ObjectMapper().valueToTree(result).toString()).doesNotContain("not-public", "internalPinnedTargets");
+        verifyNoInteractions(ai, rag);
+    }
 
     @ParameterizedTest
     @CsvSource({"false,false", "false,true", "true,false", "true,true"})

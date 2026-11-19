@@ -37,6 +37,7 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
@@ -261,7 +262,11 @@ public class ReadActionResolutionService {
         long insufficientActionEvidenceCount = executedActions.stream()
             .filter(action -> action != null && !action.groundingUsable())
             .count();
-        boolean useRag = shouldUseRag(
+        boolean contextOnlyContinuation = executedActions.isEmpty()
+            && rejectedActionProposals.isEmpty()
+            && deduplicatedActions.isEmpty()
+            && isContextOnlyContinuation(lastDecision, intent, orchestrationContext, pipelineContext, conversation);
+        boolean useRag = !contextOnlyContinuation && shouldUseRag(
             lastDecision,
             hasSuccessfulActionEvidence,
             insufficientActionEvidenceCount > 0 || evidenceProjection.omittedActions() > 0,
@@ -304,6 +309,7 @@ public class ReadActionResolutionService {
         diagnostics.put("groundingUsableActionCount", executedActions.stream().filter(ExecutedReadAction::groundingUsable).count());
         diagnostics.put("insufficientActionEvidenceCount", insufficientActionEvidenceCount);
         diagnostics.put("useRag", useRag);
+        diagnostics.put("contextOnlyContinuation", contextOnlyContinuation);
         diagnostics.put("knowledgeSourceCatalog", knowledgeSources);
         diagnostics.put("maxActionEvidenceItems", readPolicy.maxActionEvidenceItems());
         diagnostics.put("conversationContext", conversation.diagnostics());
@@ -777,6 +783,25 @@ public class ReadActionResolutionService {
             }
         }
         return true;
+    }
+
+    private boolean isContextOnlyContinuation(PlannerDecision decision,
+                                              Intent intent,
+                                              OrchestrationContext context,
+                                              PipelineContext pipeline,
+                                              ConversationPromptContext.Projection conversation) {
+        // Conversation history may support a transformation, but is never fresh grounding evidence.
+        return decision != null
+            && decision.decision() == PlannerDecisionType.ANSWER_FROM_CONTEXT
+            && !Boolean.TRUE.equals(decision.needsMoreSteps())
+            && CollectionUtils.isEmpty(decision.actions())
+            && Boolean.FALSE.equals(intent.getRequiresRetrieval())
+            && !conversation.messages().isEmpty()
+            && (pipeline == null || (CollectionUtils.isEmpty(pipeline.getResolvedTargets())
+                && !StringUtils.hasText(pipeline.getPinnedTargetsContext())))
+            && (context == null || (CollectionUtils.isEmpty(context.getAttachments())
+                && CollectionUtils.isEmpty(context.getAttachmentsNormalized())
+                && CollectionUtils.isEmpty(context.getTransientInputParts())));
     }
 
     private boolean shouldUseRag(PlannerDecision decision,

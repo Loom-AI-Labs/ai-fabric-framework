@@ -32,6 +32,9 @@ import ai.fabric.prompt.ResolvedPromptTemplate;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.mockito.ArgumentCaptor;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -40,6 +43,7 @@ import java.util.Optional;
 import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
@@ -49,6 +53,146 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class ReadActionResolutionServiceTest {
+
+    @ParameterizedTest
+    @EnumSource(value = OrchestrationProperties.ReadActionResolutionRagCooperationMode.class,
+        names = {"PARALLEL_ACTIONS_AND_RAG", "RAG_IF_ACTIONS_INSUFFICIENT"})
+    void contextOnlyContinuationDoesNotBecomeRagUnderCooperation(
+        OrchestrationProperties.ReadActionResolutionRagCooperationMode cooperation) {
+        var fixture = contextContinuationFixture(cooperation);
+        var result = fixture.service().resolve(fixture.intent(), fixture.context(), fixture.pipeline());
+
+        assertThat(result.attempted()).isTrue();
+        assertThat(result.diagnostics()).containsEntry("finalDecision", "ANSWER_FROM_CONTEXT")
+            .containsEntry("contextOnlyContinuation", true);
+        assertThat(result.useRag()).isFalse();
+        assertThat(result.hasGroundingEvidence()).isFalse();
+        assertThat(result.executedActions()).isEmpty();
+        verify(fixture.handler(), never()).executeAction(any(), any());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"retrieval_true", "retrieval_unspecified", "empty_history", "persistence_disabled",
+        "resolved_target", "pinned_context", "attachment", "normalized_attachment", "transient_input",
+        "unfinished_plan", "explicit_rag", "unavailable_action"})
+    void contextOnlyExceptionPreservesRetrievalAndCurrentInputRequirements(String condition) {
+        var fixture = contextContinuationFixture(
+            OrchestrationProperties.ReadActionResolutionRagCooperationMode.PARALLEL_ACTIONS_AND_RAG);
+        var pipeline = fixture.pipeline();
+        switch (condition) {
+            case "retrieval_true" -> fixture.intent().setRequiresRetrieval(true);
+            case "retrieval_unspecified" -> fixture.intent().setRequiresRetrieval(null);
+            case "empty_history" -> pipeline = pipeline.toBuilder().historyMessages(List.of()).build();
+            case "persistence_disabled" -> fixture.context().getMetadata().put("queryPersistenceMode", "NEVER_PERSIST");
+            case "resolved_target" -> pipeline = pipeline.toBuilder().resolvedTargets(List.of(
+                ai.fabric.intent.orchestration.targets.ResolvedTarget.builder().id("target-1").build())).build();
+            case "pinned_context" -> pipeline = pipeline.toBuilder().pinnedTargetsContext("Current selection").build();
+            case "attachment" -> fixture.context().setAttachments(List.of(
+                ai.fabric.intent.orchestration.attachment.OrchestrationAttachment.builder().id("file-1").build()));
+            case "normalized_attachment" -> fixture.context().setAttachmentsNormalized(List.of(
+                ai.fabric.intent.orchestration.attachment.NormalizedAttachment.builder().id("file-1").build()));
+            case "transient_input" -> fixture.context().setTransientInputParts(List.of(
+                ai.fabric.dto.AIGenerationInputPart.builder().fileName("guide.pdf").build()));
+            case "unfinished_plan" -> when(fixture.ai().generateContent(any(), eq(LlmPurpose.ORCHESTRATION)))
+                .thenReturn(AIGenerationResponse.builder().content("""
+                    {"decision":"ANSWER_FROM_CONTEXT","actions":[],"needsMoreSteps":true}
+                    """).build());
+            case "explicit_rag" -> when(fixture.ai().generateContent(any(), eq(LlmPurpose.ORCHESTRATION)))
+                .thenReturn(AIGenerationResponse.builder().content("""
+                    {"decision":"USE_RAG_ONLY","actions":[],"needsMoreSteps":false}
+                    """).build());
+            case "unavailable_action" -> when(fixture.ai().generateContent(any(), eq(LlmPurpose.ORCHESTRATION)))
+                .thenReturn(AIGenerationResponse.builder().content("""
+                    {"decision":"ANSWER_FROM_CONTEXT","actions":[{"name":"unknown_read","params":{}}],"needsMoreSteps":false}
+                    """).build());
+            default -> throw new IllegalArgumentException(condition);
+        }
+        var result = fixture.service().resolve(fixture.intent(), fixture.context(), pipeline);
+
+        assertThat(result.useRag()).as(condition).isTrue();
+        assertThat(result.diagnostics()).containsEntry("contextOnlyContinuation", false);
+        assertThat(result.hasGroundingEvidence()).isFalse();
+    }
+
+    @Test
+    void contextOnlyContinuationStillRejectsConversationOwnershipMismatch() {
+        var fixture = contextContinuationFixture(
+            OrchestrationProperties.ReadActionResolutionRagCooperationMode.PARALLEL_ACTIONS_AND_RAG);
+        fixture.context().setConversationId("another-conversation");
+        assertThatThrownBy(() -> fixture.service().resolve(fixture.intent(), fixture.context(), fixture.pipeline()))
+            .isInstanceOf(IllegalStateException.class).hasMessageContaining("bound conversation");
+        verify(fixture.ai(), never()).generateContent(any(), any());
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void contextOnlyDecisionAfterInsufficientReadDoesNotSuppressRag(boolean readSucceeded) {
+        var cooperation = OrchestrationProperties.ReadActionResolutionRagCooperationMode.PARALLEL_ACTIONS_AND_RAG;
+        var fixture = contextContinuationFixture(cooperation);
+        when(fixture.handler().validateActionAllowed(any())).thenReturn(true);
+        when(fixture.handler().executeAction(any(), any())).thenReturn(ActionResult.builder()
+            .success(readSucceeded).groundingSufficiency(ActionGroundingSufficiency.INSUFFICIENT)
+            .data(ActionPayload.object(Map.of("guide", "No matching approved setup steps."))).build());
+        when(fixture.ai().generateContent(any(), eq(LlmPurpose.ORCHESTRATION))).thenReturn(
+            AIGenerationResponse.builder().content("""
+                {"decision":"EXECUTE_READ_ACTIONS","actions":[{"name":"read_guide","params":{}}],"needsMoreSteps":true}
+                """).build(),
+            AIGenerationResponse.builder().content("""
+                {"decision":"ANSWER_FROM_CONTEXT","actions":[],"needsMoreSteps":false}
+                """).build());
+        var pipeline = fixture.pipeline().toBuilder().orchestrationPolicy(readActionPolicy("thinker",
+            List.of("read_guide"), OrchestrationProperties.ReadActionResolutionPlanningMode.ITERATIVE,
+            cooperation)).build();
+
+        var result = fixture.service().resolve(fixture.intent(), fixture.context(), pipeline);
+
+        assertThat(result.diagnostics()).containsEntry("finalDecision", "ANSWER_FROM_CONTEXT")
+            .containsEntry("contextOnlyContinuation", false).containsEntry("insufficientActionEvidenceCount", 1L);
+        assertThat(result.useRag()).isTrue();
+        assertThat(result.executedActions()).hasSize(1);
+    }
+
+    private ContextContinuationFixture contextContinuationFixture(
+        OrchestrationProperties.ReadActionResolutionRagCooperationMode cooperation) {
+        var ai = mock(AICoreService.class);
+        var registry = mock(AIActionRegistry.class);
+        var templates = mock(PromptTemplateResolver.class);
+        var loader = mock(AIEntityConfigurationLoader.class);
+        var handler = mock(AIActionHandler.class);
+        var action = AIActionMetaData.builder().name("read_guide").accessMode(ActionAccessMode.READ)
+            .groundingEligible(true).readActionResolutionEligible(true).build();
+        when(registry.getAllMetadata()).thenReturn(List.of(action));
+        when(registry.findMetadata("read_guide")).thenReturn(Optional.of(action));
+        when(registry.findHandler("read_guide")).thenReturn(Optional.of(handler));
+        when(loader.getSupportedEntityTypes()).thenReturn(Set.of("document"));
+        when(templates.resolve("orchestration/read-action-resolution", "system"))
+            .thenReturn(resolvedTemplate("system", "Plan authorized reads."));
+        when(templates.resolve("orchestration/read-action-resolution", "user"))
+            .thenReturn(resolvedTemplate("user", "{{query}}"));
+        when(ai.generateContent(any(), eq(LlmPurpose.ORCHESTRATION))).thenReturn(
+            AIGenerationResponse.builder().content("""
+                {"decision":"ANSWER_FROM_CONTEXT","actions":[],"needsMoreSteps":false}
+                """).build());
+        var context = OrchestrationContext.forUser("owner-1");
+        context.setConversationId("conversation-1");
+        var history = List.of(AIChatMessage.user("Explain the documented setup process."),
+            AIChatMessage.assistant("Connect your source, review settings, then test. I can make a checklist."));
+        context.setApprovedConversationSnapshot(new ai.fabric.intent.orchestration.conversation.ApprovedConversationSnapshot(
+            "turn-1", "owner-1", "conversation-1", "support", "a".repeat(64), 2, history, java.time.Instant.now()));
+        var pipeline = PipelineContext.from("do that please", context).toBuilder()
+            .historyMessages(history).orchestrationPolicy(readActionPolicy("thinker", List.of("read_guide"),
+                OrchestrationProperties.ReadActionResolutionPlanningMode.SINGLE_PASS,
+                cooperation)).build();
+        var service = new ReadActionResolutionService(ai, registry, new IntentExtractionJsonSupport(new ObjectMapper()),
+            templates, new PromptRenderer(), loader);
+        return new ContextContinuationFixture(service, ai, handler, context, pipeline,
+            Intent.builder().type(IntentType.INFORMATION).intent("make_setup_checklist")
+                .requiresRetrieval(false).requiresGeneration(true).build());
+    }
+
+    private record ContextContinuationFixture(ReadActionResolutionService service, AICoreService ai,
+                                              AIActionHandler handler, OrchestrationContext context,
+                                              PipelineContext pipeline, Intent intent) { }
 
     @Test
     void nativeReadPlannerReceivesSchemaWithoutVectorRequirementOrTrustedCollectionFields() {
