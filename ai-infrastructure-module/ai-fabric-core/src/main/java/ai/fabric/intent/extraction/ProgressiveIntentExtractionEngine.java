@@ -684,7 +684,8 @@ public class ProgressiveIntentExtractionEngine {
                     }
                     Intent preservedIntent = preserveValidatedSibling(
                         originalIntent,
-                        effectiveIntent
+                        effectiveIntent,
+                        intentIssues
                     );
                     candidateIntents.set(candidateIndex, preservedIntent);
                     transitions.add(siblingPreservationTransition(
@@ -692,7 +693,8 @@ public class ProgressiveIntentExtractionEngine {
                         originalIntent,
                         effectiveIntent,
                         preservedIntent,
-                        preservationFailure
+                        preservationFailure,
+                        intentIssues
                     ));
                 }
                 continue;
@@ -902,7 +904,8 @@ public class ProgressiveIntentExtractionEngine {
     }
 
     private Intent preserveValidatedSibling(Intent original,
-                                            Intent modelProposal) {
+                                            Intent modelProposal,
+                                            List<IntentExtractionValidator.ValidationIssue> originalIssues) {
         String obligationId = StringUtils.hasText(original.getObligationId())
             ? original.getObligationId().trim()
             : modelProposal != null && StringUtils.hasText(modelProposal.getObligationId())
@@ -915,13 +918,17 @@ public class ProgressiveIntentExtractionEngine {
             .action(original.getAction())
             .actionParams(original.getActionParams())
             .vectorSpace(original.getVectorSpace())
-            .requiresRetrieval(original.getRequiresRetrieval())
-            .requiresGeneration(original.getRequiresGeneration())
+            .requiresRetrieval(preserveOrCompleteDecision(original.getRequiresRetrieval(), modelProposal.getRequiresRetrieval(),
+                originalIssues, IntentExtractionValidator.IssueCode.INTENT_MISSING_RETRIEVAL_DECISION))
+            .requiresGeneration(preserveOrCompleteDecision(original.getRequiresGeneration(), modelProposal.getRequiresGeneration(),
+                originalIssues, IntentExtractionValidator.IssueCode.INTENT_MISSING_GENERATION_DECISION))
             .responseProfile(original.getResponseProfile())
-            .requiresTargetResolution(original.getRequiresTargetResolution())
+            .requiresTargetResolution(preserveOrCompleteDecision(original.getRequiresTargetResolution(), modelProposal.getRequiresTargetResolution(),
+                originalIssues, IntentExtractionValidator.IssueCode.INTENT_MISSING_TARGET_DECISION))
             .directAnswer(original.getDirectAnswer())
             .generationInstructions(original.getGenerationInstructions())
-            .needsAdvancedRAG(original.getNeedsAdvancedRAG())
+            .needsAdvancedRAG(preserveOrCompleteDecision(original.getNeedsAdvancedRAG(), modelProposal.getNeedsAdvancedRAG(),
+                originalIssues, IntentExtractionValidator.IssueCode.INFORMATION_MISSING_ADVANCED_RAG_DECISION))
             .optimizedQuery(original.getOptimizedQuery())
             .obligationId(obligationId)
             .userGoal(original.getUserGoal())
@@ -930,6 +937,23 @@ public class ProgressiveIntentExtractionEngine {
             .uncertaintyReason(original.getUncertaintyReason())
             .nextStepRecommended(original.getNextStepRecommended())
             .build();
+    }
+
+    private Boolean preserveOrCompleteDecision(Boolean original,
+                                                Boolean modelProposal,
+                                                List<IntentExtractionValidator.ValidationIssue> originalIssues,
+                                                IntentExtractionValidator.IssueCode missingDecision) {
+        // Preserve validated choices, but never undo a model's completion of a rejected missing field.
+        boolean completionAllowed = original == null && originalIssues != null && originalIssues.stream()
+            .anyMatch(issue -> issue != null && issue.code() == missingDecision);
+        return completionAllowed ? modelProposal : original;
+    }
+
+    private boolean isMissingDecision(IntentExtractionValidator.IssueCode code) {
+        return code == IntentExtractionValidator.IssueCode.INTENT_MISSING_RETRIEVAL_DECISION
+            || code == IntentExtractionValidator.IssueCode.INTENT_MISSING_GENERATION_DECISION
+            || code == IntentExtractionValidator.IssueCode.INTENT_MISSING_TARGET_DECISION
+            || code == IntentExtractionValidator.IssueCode.INFORMATION_MISSING_ADVANCED_RAG_DECISION;
     }
 
     private String siblingPreservationFailure(
@@ -1010,14 +1034,22 @@ public class ProgressiveIntentExtractionEngine {
         Intent original,
         Intent modelProposal,
         Intent effective,
-        String reason
+        String reason,
+        List<IntentExtractionValidator.ValidationIssue> originalIssues
     ) {
         Map<String, Object> transition = new LinkedHashMap<>();
         transition.put("intentIndex", intentIndex);
         if (effective != null && StringUtils.hasText(effective.getObligationId())) {
             transition.put("obligationId", effective.getObligationId().trim());
         }
-        transition.put("decision", "VALID_SIBLING_PRESERVATION");
+        List<String> repairedFields = originalIssues.stream()
+            .filter(issue -> isMissingDecision(issue.code()))
+            .map(IntentExtractionValidator.ValidationIssue::field)
+            .filter(Objects::nonNull)
+            .distinct()
+            .toList();
+        transition.put("decision", repairedFields.isEmpty()
+            ? "VALID_SIBLING_PRESERVATION" : "VALIDATED_FIELDS_PRESERVATION");
         transition.put("originalType", original != null && original.getType() != null
             ? original.getType().name()
             : "MISSING");
@@ -1037,7 +1069,11 @@ public class ProgressiveIntentExtractionEngine {
         if (StringUtils.hasText(actionId(effective))) {
             transition.put("effectiveActionId", actionId(effective));
         }
-        transition.put("outcome", "SERVER_PRESERVED_VALID_SIBLING");
+        transition.put("outcome", repairedFields.isEmpty()
+            ? "SERVER_PRESERVED_VALID_SIBLING" : "SERVER_PRESERVED_VALIDATED_FIELDS");
+        if (!repairedFields.isEmpty()) {
+            transition.put("repairedDecisionFields", repairedFields);
+        }
         transition.put("policyOrReason", reason);
         return Collections.unmodifiableMap(transition);
     }

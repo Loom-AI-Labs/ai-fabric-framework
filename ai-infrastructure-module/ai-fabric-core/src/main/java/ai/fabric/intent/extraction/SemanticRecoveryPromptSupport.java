@@ -107,6 +107,7 @@ final class SemanticRecoveryPromptSupport {
             - Preserve every prior obligation. Keep its obligationId when present; otherwise preserve its position and emit a new stable obligationId.
             - Preserve each obligation's exact intent type unless a listed validation issue and the server policy below explicitly permit a replan for that same obligation.
             - Preserve the exact type and exact registered action ID of every sibling obligation that has no ACTION_UNREGISTERED, ACTION_GROUNDING_VECTOR_SPACE_MISMATCH or CONFIRMATION_WITHOUT_PENDING_ACTION error.
+            - Complete required fields named by missing-decision validation issues. Preserve already validated action, type and knowledge-source choices while supplying those missing decisions; an incomplete obligation is not an already valid whole result.
             - Do not replace a rejected action with an unrelated action merely because the replacement is registered. A selected action's described outcome must directly satisfy that obligation's userGoal.
             - If no registered action directly satisfies an ACTION obligation, return null at action selection rather than guessing.
             - %s

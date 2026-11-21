@@ -8,9 +8,12 @@ import ai.fabric.dto.MultiIntentResponse;
 import ai.fabric.exception.AIServiceException;
 import ai.fabric.intent.IntentExtractionPostProcessor;
 import ai.fabric.intent.IntentExtractionValidator;
+import ai.fabric.intent.action.AIActionRegistry;
 import ai.fabric.intent.orchestration.OrchestrationContext;
 import ai.fabric.intent.orchestration.policy.SemanticRecoveryPolicy;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 
 import java.util.List;
 import java.util.Map;
@@ -25,6 +28,76 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class ProgressiveIntentExtractionEngineTest {
+
+    @ParameterizedTest
+    @CsvSource({
+        "completion, requiresRetrieval", "completion, requiresGeneration",
+        "completion, requiresTargetResolution", "completion, needsAdvancedRAG",
+        "multi_step, requiresRetrieval", "multi_step, requiresGeneration",
+        "multi_step, requiresTargetResolution", "multi_step, needsAdvancedRAG"
+    })
+    void preservesRepairedDecisionsWhenRestoringAValidatedSource(String strategy, String field) {
+        Intent original = informationIntent("account-policy", "document");
+        switch (field) {
+            case "requiresRetrieval" -> original.setRequiresRetrieval(null);
+            case "requiresGeneration" -> original.setRequiresGeneration(null);
+            case "requiresTargetResolution" -> original.setRequiresTargetResolution(null);
+            case "needsAdvancedRAG" -> original.setNeedsAdvancedRAG(null);
+            default -> throw new IllegalArgumentException(field);
+        }
+        Intent proposed = informationIntent("account-policy", "other-document");
+        proposed.setRequiresTargetResolution(true);
+        proposed.setNeedsAdvancedRAG(true);
+        var run = runContractCompletion(original, proposed, strategy);
+
+        assertThat(run.output().failure()).isNull();
+        assertThat(run.output().response().getIntents()).singleElement().satisfies(intent -> {
+            assertThat(intent.getVectorSpace()).isEqualTo("document");
+            assertThat(intent.getRequiresRetrieval()).isTrue();
+            assertThat(intent.getRequiresGeneration()).isTrue();
+            assertThat(intent.getRequiresTargetResolution()).isEqualTo(field.equals("requiresTargetResolution"));
+            assertThat(intent.getNeedsAdvancedRAG()).isEqualTo(field.equals("needsAdvancedRAG"));
+        });
+        assertThat(run.output().diagnostics()).containsEntry("llmCalls", 2);
+        assertThat(recoveryTransitions(run.output())).singleElement().satisfies(transition ->
+            assertThat(transition)
+                .containsEntry("decision", "VALIDATED_FIELDS_PRESERVATION")
+                .containsEntry("repairedDecisionFields", List.of(field)));
+    }
+
+    @Test
+    void preservesBothModelRepairedMissingDecisionsWithoutAcceptingAChangedSource() {
+        Intent original = informationIntent("account-policy", "document");
+        original.setRequiresTargetResolution(null);
+        original.setNeedsAdvancedRAG(null);
+        Intent proposed = informationIntent("account-policy", "other-document");
+        proposed.setRequiresTargetResolution(false);
+        proposed.setNeedsAdvancedRAG(false);
+
+        var run = runContractCompletion(original, proposed, "multi_step");
+
+        assertThat(run.output().failure()).isNull();
+        assertThat(run.output().response().getIntents()).singleElement().satisfies(intent -> {
+            assertThat(intent.getVectorSpace()).isEqualTo("document");
+            assertThat(intent.getRequiresTargetResolution()).isFalse();
+            assertThat(intent.getNeedsAdvancedRAG()).isFalse();
+        });
+    }
+
+    @Test
+    void doesNotInventARepairWhenTheModelStillOmitsTheRequiredDecision() {
+        Intent original = informationIntent("account-policy", "document");
+        original.setRequiresTargetResolution(null);
+        Intent proposed = informationIntent("account-policy", "other-document");
+        proposed.setRequiresTargetResolution(null);
+
+        var run = runContractCompletion(original, proposed, "completion");
+
+        assertThat(run.output().response()).isNull();
+        assertThat(run.output().failure().issueCodes())
+            .contains(IntentExtractionValidator.IssueCode.INTENT_MISSING_TARGET_DECISION);
+        assertThat(run.output().diagnostics()).containsEntry("llmCalls", 2);
+    }
 
     @Test
     void preservesTypedFailureAndAllowsOnlyNamedMissingSpaceRecovery() {
@@ -932,6 +1005,36 @@ class ProgressiveIntentExtractionEngineTest {
             .containsEntry("recoveryPolicy", "DENY_AND_FAIL")
             .containsEntry("effectiveValue", "DEFER_TO_ACTION_DOMAIN_POLICY");
         verify(run.multiStep(), never()).attemptExtract(any(), any(), any(), any());
+    }
+
+    private RecoveryRun runContractCompletion(Intent original, Intent proposed, String strategy) {
+        var properties = new ProgressiveIntentExtractionProperties();
+        properties.setRepairEnabled(false);
+        properties.setCompletionEnabled(strategy.equals("completion"));
+        properties.setMultiStepEnabled(strategy.equals("multi_step"));
+        properties.setForceMode(strategy.equals("completion") ? "completion" : "auto");
+        properties.setMaxTotalLlmCalls(strategy.equals("completion") ? 2 : 4);
+        var compound = mock(CompoundIntentExtractionStrategy.class);
+        var repair = mock(RepairIntentExtractionStrategy.class);
+        var completion = mock(CompletionIntentExtractionStrategy.class);
+        var multiStep = mock(MultiStepIntentExtractionStrategy.class);
+        var processor = mock(IntentExtractionPostProcessor.class);
+        var validator = new IntentExtractionValidator(mock(AIActionRegistry.class));
+        var rejected = MultiIntentResponse.builder().intents(List.of(original)).build();
+        var candidate = MultiIntentResponse.builder().intents(List.of(proposed)).build();
+        when(processor.postProcess(any(), anyString())).thenAnswer(call -> call.getArgument(0));
+        when(compound.attemptExtract(any(), any())).thenReturn(ExtractionAttempt.builder()
+            .response(rejected).strategyName("compound").llmCalls(1).build());
+        var modelRepair = ExtractionAttempt.builder().response(candidate).strategyName(strategy).llmCalls(1).build();
+        if (strategy.equals("completion")) {
+            when(completion.attemptComplete(any(), any(), any(), any())).thenReturn(modelRepair);
+        } else {
+            when(multiStep.attemptExtract(any(), any(), any(), any())).thenReturn(modelRepair);
+        }
+        var engine = new ProgressiveIntentExtractionEngine(properties, compound, repair, completion,
+            multiStep, processor, validator);
+        return new RecoveryRun(engine.extract(new IntentExtractionInput("q", "q", List.of()),
+            OrchestrationContext.forUser("user"), SemanticRecoveryPolicy.strictDefaults()), completion, multiStep);
     }
 
     private RecoveryRun runUnknownActionRecovery(
