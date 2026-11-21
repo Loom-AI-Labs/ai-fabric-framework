@@ -14,11 +14,13 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.List;
 import java.util.UUID;
 
 @AIAction(
     name = "get_account_profile",
-    description = "Read factual current-account profile data for policy reasoning without returning blockers or recommendations",
+    description = "Read current-account subscription, payment and address facts for policy reasoning without returning blockers or recommendations. "
+        + "This source does not report identity verification, fraud-check results or order history.",
     category = "account-resolver",
     accessMode = ActionAccessMode.READ,
     requiresConfirmation = false,
@@ -68,6 +70,7 @@ public class GetAccountProfileActionHandler extends BaseActionHandler {
         AccountResolutionService.AccountProfile profile = resolveProfile(context);
         Map<String, Object> facts = new LinkedHashMap<>();
         facts.put("factSource", "current_authenticated_account_profile");
+        facts.put("notReportedByThisSource", List.of("identity verification status", "fraud-check results", "order history"));
         facts.put("subscriptionStatus", profile.subscription().status());
         facts.put("subscriptionActive", profile.subscription().active());
         facts.put("billingCycle", profile.subscription().billingCycle());

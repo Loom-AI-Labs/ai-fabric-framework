@@ -17,6 +17,7 @@ import org.springframework.context.annotation.AnnotationConfigApplicationContext
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.Map;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -290,6 +291,7 @@ class AccountResolverActionHandlerTest {
         Map<String, Object> facts = handler.facts(ActionResult.builder().success(true).build(), context);
 
         assertThat(facts)
+            .containsEntry("notReportedByThisSource", List.of("identity verification status", "fraud-check results", "order history"))
             .containsEntry("subscriptionActive", true)
             .containsEntry("paymentMethodVerified", true)
             .containsEntry("billingAddressPresent", false)
@@ -297,7 +299,9 @@ class AccountResolverActionHandlerTest {
         assertThat(facts.toString())
             .doesNotContain("canContinue")
             .doesNotContain("recommendedActions")
-            .doesNotContain("blockers");
+            .doesNotContain("blockers")
+            .doesNotContain("identityVerified")
+            .doesNotContain("fraudChecksPassed");
     }
 
     @Test
