@@ -147,7 +147,7 @@ class InformationAdvancedRagExecutionSupportTest {
                 .build()
         );
         AICoreService aiCoreService = mock(AICoreService.class);
-        when(aiCoreService.generateTextResponse(anyString(), eq(LlmPurpose.GENERATION))).thenReturn(
+        when(aiCoreService.generateTextResponse(anyString(), eq(LlmPurpose.GENERATION), anyString())).thenReturn(
             AIGenerationResponse.builder()
                 .content("Alpha Record has score 7.5 and status ready.")
                 .build()
@@ -174,7 +174,7 @@ class InformationAdvancedRagExecutionSupportTest {
 
         assertThat(result.getMessage()).isEqualTo("Alpha Record has score 7.5 and status ready.");
         ArgumentCaptor<String> promptCaptor = ArgumentCaptor.forClass(String.class);
-        verify(aiCoreService).generateTextResponse(promptCaptor.capture(), eq(LlmPurpose.GENERATION));
+        verify(aiCoreService).generateTextResponse(promptCaptor.capture(), eq(LlmPurpose.GENERATION), anyString());
         assertThat(promptCaptor.getValue())
             .contains("READ ACTION EVIDENCE POLICY")
             .contains("\"score\":7.5")

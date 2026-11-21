@@ -257,7 +257,7 @@ class IntentHandlingStepReadActionResolutionTest {
             .content(plannerReads
                 ? "{\"decision\":\"EXECUTE_READ_ACTIONS\",\"actions\":[{\"name\":\"inspect_public_guide\",\"params\":{}}]}"
                 : "{\"decision\":\"USE_RAG_ONLY\",\"actions\":[]}").build());
-        when(ai.generateTextResponse(anyString(), eq(LlmPurpose.GENERATION)))
+        when(ai.generateTextResponse(anyString(), eq(LlmPurpose.GENERATION), anyString()))
             .thenReturn(AIGenerationResponse.builder().content("Use approved setup instructions.").build());
         var readService = new ReadActionResolutionService(ai, registry,
             new IntentExtractionJsonSupport(new ObjectMapper()), promptTemplateResolver(), new PromptRenderer(),
@@ -285,7 +285,7 @@ class IntentHandlingStepReadActionResolutionTest {
             assertThat(result.getData()).containsEntry("reason", retrievalEnabled
                 ? "RETRIEVAL_ALLOWLIST_REQUIRED" : "RETRIEVAL_DISABLED_BY_POLICY");
             verify(handler, never()).executeAction(any(), any());
-            verify(ai, never()).generateTextResponse(anyString(), any());
+            verify(ai, never()).generateTextResponse(anyString(), any(), anyString());
         }
     }
 
@@ -315,7 +315,7 @@ class IntentHandlingStepReadActionResolutionTest {
         assertThat(result.getErrorCode()).isEqualTo("GENERATION_FAILED");
         assertThat(result.getMessage()).doesNotContain("Alpha=42");
         assertThat(result.getData()).containsKey("generationError");
-        verify(ai, never()).generateTextResponse(anyString(), any());
+        verify(ai, never()).generateTextResponse(anyString(), any(), anyString());
         verifyNoInteractions(ragProvider);
     }
 
@@ -323,7 +323,7 @@ class IntentHandlingStepReadActionResolutionTest {
     void shouldAnswerFromReadActionEvidenceWithoutRag() {
         RAGProvider ragProvider = mock(RAGProvider.class);
         AICoreService aiCoreService = mock(AICoreService.class);
-        when(aiCoreService.generateTextResponse(anyString(), any(LlmPurpose.class)))
+        when(aiCoreService.generateTextResponse(anyString(), any(LlmPurpose.class), anyString()))
             .thenReturn(AIGenerationResponse.builder().content("Alpha Record is ready right now.").build());
 
         ReadActionResolutionService readActionResolutionService = mock(ReadActionResolutionService.class);
@@ -369,7 +369,7 @@ class IntentHandlingStepReadActionResolutionTest {
         assertThat(result.getMetadata()).containsKey("readActionResolution");
         assertThat(result.getData()).containsKey("readActionResolution");
         ArgumentCaptor<String> promptCaptor = ArgumentCaptor.forClass(String.class);
-        verify(aiCoreService).generateTextResponse(promptCaptor.capture(), eq(LlmPurpose.GENERATION));
+        verify(aiCoreService).generateTextResponse(promptCaptor.capture(), eq(LlmPurpose.GENERATION), anyString());
         assertThat(promptCaptor.getValue())
             .contains("READ ACTION EVIDENCE POLICY")
             .contains("If a named lookup failed or returned no matching record")
@@ -382,7 +382,7 @@ class IntentHandlingStepReadActionResolutionTest {
     void shouldRunReadActionPlannerBeforeReturningInformationDirectAnswer() {
         RAGProvider ragProvider = mock(RAGProvider.class);
         AICoreService aiCoreService = mock(AICoreService.class);
-        when(aiCoreService.generateTextResponse(anyString(), any(LlmPurpose.class)))
+        when(aiCoreService.generateTextResponse(anyString(), any(LlmPurpose.class), anyString()))
             .thenReturn(AIGenerationResponse.builder().content("SKU-0001 is available with 6 in stock.").build());
 
         ReadActionResolutionService readActionResolutionService = mock(ReadActionResolutionService.class);
@@ -427,7 +427,7 @@ class IntentHandlingStepReadActionResolutionTest {
         assertThat(result.getMetadata()).containsKey("readActionResolution");
         assertThat(result.getData()).containsKey("readActionResolution");
         verify(readActionResolutionService).resolve(any(), any(), any());
-        verify(aiCoreService).generateTextResponse(anyString(), eq(LlmPurpose.GENERATION));
+        verify(aiCoreService).generateTextResponse(anyString(), eq(LlmPurpose.GENERATION), anyString());
         verify(ragProvider, never()).performRag(any());
         verify(ragProvider, never()).performRAGQuery(any());
     }
@@ -436,7 +436,7 @@ class IntentHandlingStepReadActionResolutionTest {
     void shouldForceRagWhenReadActionPlannerRequestsAdditionalGrounding() {
         RAGProvider ragProvider = mock(RAGProvider.class);
         AICoreService aiCoreService = mock(AICoreService.class);
-        when(aiCoreService.generateTextResponse(anyString(), any(LlmPurpose.class)))
+        when(aiCoreService.generateTextResponse(anyString(), any(LlmPurpose.class), anyString()))
             .thenReturn(AIGenerationResponse.builder().content("Refunds are allowed within 30 days.").build());
         when(ragProvider.performRAGQuery(any())).thenReturn(RAGResponse.builder()
             .documents(List.of(
@@ -570,7 +570,7 @@ class IntentHandlingStepReadActionResolutionTest {
     void shouldGenerateFinalAnswerWhenReadActionPlannerUsesRagEvenIfExtractorDidNotRequestGeneration() {
         RAGProvider ragProvider = mock(RAGProvider.class);
         AICoreService aiCoreService = mock(AICoreService.class);
-        when(aiCoreService.generateTextResponse(anyString(), any(LlmPurpose.class)))
+        when(aiCoreService.generateTextResponse(anyString(), any(LlmPurpose.class), anyString()))
             .thenReturn(AIGenerationResponse.builder()
                 .content("No negative review or safety complaint evidence was found in the live store data.")
                 .build());
@@ -641,7 +641,7 @@ class IntentHandlingStepReadActionResolutionTest {
     void shouldUseReadActionEvidenceInsteadOfFanoutClarificationWhenRagIsAmbiguous() {
         RAGProvider ragProvider = mock(RAGProvider.class);
         AICoreService aiCoreService = mock(AICoreService.class);
-        when(aiCoreService.generateTextResponse(anyString(), any(LlmPurpose.class)))
+        when(aiCoreService.generateTextResponse(anyString(), any(LlmPurpose.class), anyString()))
             .thenReturn(AIGenerationResponse.builder()
                 .content("SKU-001 is in stock, but I could not find a refund policy in the indexed knowledge base.")
                 .build());
@@ -716,7 +716,7 @@ class IntentHandlingStepReadActionResolutionTest {
         RAGProvider ragProvider = mock(RAGProvider.class);
         AdvancedRAGProvider advancedRagProvider = mock(AdvancedRAGProvider.class);
         AICoreService aiCoreService = mock(AICoreService.class);
-        when(aiCoreService.generateTextResponse(anyString(), any(LlmPurpose.class)))
+        when(aiCoreService.generateTextResponse(anyString(), any(LlmPurpose.class), anyString()))
             .thenReturn(AIGenerationResponse.builder()
                 .content("Alpha Record has score 7.5 and status ready.")
                 .build());
@@ -781,7 +781,7 @@ class IntentHandlingStepReadActionResolutionTest {
         );
         verify(advancedRagProvider).performAdvancedRAG(any());
         ArgumentCaptor<String> promptCaptor = ArgumentCaptor.forClass(String.class);
-        verify(aiCoreService).generateTextResponse(promptCaptor.capture(), eq(LlmPurpose.GENERATION));
+        verify(aiCoreService).generateTextResponse(promptCaptor.capture(), eq(LlmPurpose.GENERATION), anyString());
         assertThat(promptCaptor.getValue())
             .contains("READ ACTION EVIDENCE POLICY")
             .contains("\"score\":7.5")

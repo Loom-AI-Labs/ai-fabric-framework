@@ -108,7 +108,7 @@ class IntentHandlingStepAdvancedRecoveryPolicyTest {
         serviceConfig.getFeatures().setEnableGeneration(true);
         serviceConfig.getFeatures().setEnableAdvancedRAG(true);
         AICoreService aiCoreService = mock(AICoreService.class);
-        when(aiCoreService.generateTextResponse(anyString(), eq(LlmPurpose.GENERATION)))
+        when(aiCoreService.generateTextResponse(anyString(), eq(LlmPurpose.GENERATION), anyString()))
             .thenReturn(AIGenerationResponse.builder().content("Grounded response").build());
 
         return new IntentHandlingStep(

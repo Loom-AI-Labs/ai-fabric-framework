@@ -223,7 +223,7 @@ class IntentHandlingStepFanOutTest {
         );
 
         AICoreService aiCoreService = mock(AICoreService.class);
-        when(aiCoreService.generateTextResponse(anyString(), eq(LlmPurpose.GENERATION))).thenReturn(
+        when(aiCoreService.generateTextResponse(anyString(), eq(LlmPurpose.GENERATION), anyString())).thenReturn(
             AIGenerationResponse.builder()
                 .content("Generated safe answer")
                 .build()
@@ -273,7 +273,7 @@ class IntentHandlingStepFanOutTest {
         assertThat(result.getMessage()).isEqualTo("Generated safe answer");
         assertThat(result.getData()).containsEntry("vectorSpaceRoutingStrategy", "FAN_OUT");
         assertThat(result.getData()).containsEntry("bestScore", 0.1d);
-        verify(aiCoreService).generateTextResponse(anyString(), eq(LlmPurpose.GENERATION));
+        verify(aiCoreService).generateTextResponse(anyString(), eq(LlmPurpose.GENERATION), anyString());
     }
 
     @Test
@@ -347,7 +347,7 @@ class IntentHandlingStepFanOutTest {
         ArgumentCaptor<AIGenerationRequest> requestCaptor = ArgumentCaptor.forClass(AIGenerationRequest.class);
         verify(aiCoreService).generateContent(requestCaptor.capture(), eq(LlmPurpose.GENERATION));
         assertThat(requestCaptor.getValue().getMaxTokens()).isEqualTo(400);
-        verify(aiCoreService, never()).generateTextResponse(anyString(), eq(LlmPurpose.GENERATION));
+        verify(aiCoreService, never()).generateTextResponse(anyString(), eq(LlmPurpose.GENERATION), anyString());
         verify(aiCoreService, never()).generateTextResponse(anyString(), eq(LlmPurpose.ORCHESTRATION));
     }
 
@@ -369,7 +369,7 @@ class IntentHandlingStepFanOutTest {
         );
 
         AICoreService aiCoreService = mock(AICoreService.class);
-        when(aiCoreService.generateTextResponse(anyString(), eq(LlmPurpose.GENERATION))).thenReturn(
+        when(aiCoreService.generateTextResponse(anyString(), eq(LlmPurpose.GENERATION), anyString())).thenReturn(
             AIGenerationResponse.builder()
                 .content("Answer")
                 .build()
@@ -393,7 +393,7 @@ class IntentHandlingStepFanOutTest {
         step.process(context);
 
         ArgumentCaptor<String> promptCaptor = ArgumentCaptor.forClass(String.class);
-        verify(aiCoreService).generateTextResponse(promptCaptor.capture(), eq(LlmPurpose.GENERATION));
+        verify(aiCoreService).generateTextResponse(promptCaptor.capture(), eq(LlmPurpose.GENERATION), anyString());
         String prompt = promptCaptor.getValue();
         assertThat(prompt).contains("doc-1", "doc-2", "doc-3", "doc-4");
         assertThat(prompt).doesNotContain("doc-5", "doc-6");
@@ -489,7 +489,7 @@ class IntentHandlingStepFanOutTest {
         );
 
         AICoreService aiCoreService = mock(AICoreService.class);
-        when(aiCoreService.generateTextResponse(anyString(), eq(LlmPurpose.GENERATION))).thenReturn(
+        when(aiCoreService.generateTextResponse(anyString(), eq(LlmPurpose.GENERATION), anyString())).thenReturn(
             AIGenerationResponse.builder()
                 .content("Answer")
                 .processingTimeMs(175L)

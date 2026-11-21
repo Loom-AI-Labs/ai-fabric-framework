@@ -102,7 +102,7 @@ class IntentHandlingStepAlwaysGenerateInformationTest {
 
         verify(ragProvider).performRag(any());
         verify(ragProvider, never()).performRAGQuery(any());
-        verify(aiCoreService, never()).generateTextResponse(anyString(), any());
+        verify(aiCoreService, never()).generateTextResponse(anyString(), any(), anyString());
     }
 
     @Test
@@ -149,7 +149,7 @@ class IntentHandlingStepAlwaysGenerateInformationTest {
                 .success(true)
                 .build()
         );
-        when(aiCoreService.generateTextResponse(anyString(), any())).thenReturn(
+        when(aiCoreService.generateTextResponse(anyString(), any(), anyString())).thenReturn(
             AIGenerationResponse.builder()
                 .content("Generated answer")
                 .model("gpt-5.4-mini")
@@ -177,7 +177,7 @@ class IntentHandlingStepAlwaysGenerateInformationTest {
 
         verify(ragProvider, never()).performRag(any());
         verify(ragProvider).performRAGQuery(any());
-        verify(aiCoreService).generateTextResponse(anyString(), any());
+        verify(aiCoreService).generateTextResponse(anyString(), any(), anyString());
     }
 
     @Test
@@ -224,7 +224,7 @@ class IntentHandlingStepAlwaysGenerateInformationTest {
                 .success(true)
                 .build()
         );
-        when(aiCoreService.generateTextResponse(anyString(), any())).thenReturn(
+        when(aiCoreService.generateTextResponse(anyString(), any(), anyString())).thenReturn(
             AIGenerationResponse.builder()
                 .content("Generated answer")
                 .model("gpt-5.4-mini")
@@ -249,7 +249,7 @@ class IntentHandlingStepAlwaysGenerateInformationTest {
 
         assertThat(updated.getIntentResult().getMessage()).isEqualTo("Generated answer");
         ArgumentCaptor<String> promptCaptor = ArgumentCaptor.forClass(String.class);
-        verify(aiCoreService).generateTextResponse(promptCaptor.capture(), any());
+        verify(aiCoreService).generateTextResponse(promptCaptor.capture(), any(), anyString());
         assertThat(promptCaptor.getValue())
             .contains("ATTACHMENTS (user-provided text evidence visible to the assistant; authoritative for this turn)")
             .contains("AtlasBook 14 Laptop product evidence");

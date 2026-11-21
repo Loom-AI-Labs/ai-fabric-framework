@@ -69,7 +69,7 @@ class IntentHandlingStepCompoundReadEvidenceTest {
             "record-1", "document", "approved-source", "Referenced record evidence."
         )));
         AICoreService aiCoreService = mock(AICoreService.class);
-        when(aiCoreService.generateTextResponse(anyString(), eq(LlmPurpose.GENERATION)))
+        when(aiCoreService.generateTextResponse(anyString(), eq(LlmPurpose.GENERATION), anyString()))
             .thenReturn(AIGenerationResponse.builder().content("Grounded comparison.").build());
         ReadActionResolutionService resolutionService = mock(ReadActionResolutionService.class);
         String modelQuery = "Compare record Alpha and record Beta mileage and body style";
@@ -107,7 +107,7 @@ class IntentHandlingStepCompoundReadEvidenceTest {
             "Grounded evidence."
         )));
         AICoreService aiCoreService = mock(AICoreService.class);
-        when(aiCoreService.generateTextResponse(anyString(), eq(LlmPurpose.GENERATION)))
+        when(aiCoreService.generateTextResponse(anyString(), eq(LlmPurpose.GENERATION), anyString()))
             .thenReturn(AIGenerationResponse.builder().content("Combined grounded answer.").build());
         ReadActionResolutionService resolutionService = mock(ReadActionResolutionService.class);
         when(resolutionService.resolve(any(), any(), any(), any(ReadActionExecutionScope.class)))
@@ -161,7 +161,7 @@ class IntentHandlingStepCompoundReadEvidenceTest {
         });
 
         AICoreService aiCoreService = mock(AICoreService.class);
-        when(aiCoreService.generateTextResponse(anyString(), eq(LlmPurpose.GENERATION)))
+        when(aiCoreService.generateTextResponse(anyString(), eq(LlmPurpose.GENERATION), anyString()))
             .thenReturn(AIGenerationResponse.builder().content("The Aster E1 is available and qualifies for local delivery.").build());
 
         IntentHandlingStep step = newStep(mock(AIActionRegistry.class), ragProvider, aiCoreService);
@@ -195,7 +195,7 @@ class IntentHandlingStepCompoundReadEvidenceTest {
         verify(ragProvider, never()).performRAGQuery(any(RAGRequest.class));
 
         ArgumentCaptor<String> promptCaptor = ArgumentCaptor.forClass(String.class);
-        verify(aiCoreService, times(1)).generateTextResponse(promptCaptor.capture(), eq(LlmPurpose.GENERATION));
+        verify(aiCoreService, times(1)).generateTextResponse(promptCaptor.capture(), eq(LlmPurpose.GENERATION), anyString());
         assertThat(promptCaptor.getValue())
             .contains("Aster E1 is available", "Home delivery is available", "OBLIGATION 1", "OBLIGATION 2");
     }
@@ -232,7 +232,7 @@ class IntentHandlingStepCompoundReadEvidenceTest {
         )));
 
         AICoreService aiCoreService = mock(AICoreService.class);
-        when(aiCoreService.generateTextResponse(anyString(), eq(LlmPurpose.GENERATION)))
+        when(aiCoreService.generateTextResponse(anyString(), eq(LlmPurpose.GENERATION), anyString()))
             .thenReturn(AIGenerationResponse.builder().content("The vehicle is available and local delivery is supported.").build());
 
         IntentHandlingStep step = newStep(registry, ragProvider, aiCoreService);
@@ -263,7 +263,7 @@ class IntentHandlingStepCompoundReadEvidenceTest {
         assertThat((List<?>) diagnostics.get("actionExecutionIds")).hasSize(1);
         verify(handler, times(1)).executeAction(any(), any());
         ArgumentCaptor<String> promptCaptor = ArgumentCaptor.forClass(String.class);
-        verify(aiCoreService, times(1)).generateTextResponse(promptCaptor.capture(), eq(LlmPurpose.GENERATION));
+        verify(aiCoreService, times(1)).generateTextResponse(promptCaptor.capture(), eq(LlmPurpose.GENERATION), anyString());
         assertThat(promptCaptor.getValue())
             .contains("Aster E1", "AVAILABLE", "Home delivery is available", "OBLIGATION 1", "OBLIGATION 2");
     }
@@ -299,7 +299,7 @@ class IntentHandlingStepCompoundReadEvidenceTest {
             "Home delivery is available within 30 miles."
         )));
         AICoreService aiCoreService = mock(AICoreService.class);
-        when(aiCoreService.generateTextResponse(anyString(), eq(LlmPurpose.GENERATION)))
+        when(aiCoreService.generateTextResponse(anyString(), eq(LlmPurpose.GENERATION), anyString()))
             .thenReturn(AIGenerationResponse.builder()
                 .content("The Aster E1 is available and local delivery is supported.")
                 .build());
@@ -359,7 +359,7 @@ class IntentHandlingStepCompoundReadEvidenceTest {
         });
 
         AICoreService aiCoreService = mock(AICoreService.class);
-        when(aiCoreService.generateTextResponse(anyString(), eq(LlmPurpose.GENERATION)))
+        when(aiCoreService.generateTextResponse(anyString(), eq(LlmPurpose.GENERATION), anyString()))
             .thenReturn(AIGenerationResponse.builder()
                 .content("The Aster E1 is available, but no delivery-policy evidence was returned.")
                 .build());
@@ -382,7 +382,7 @@ class IntentHandlingStepCompoundReadEvidenceTest {
             .containsEntry("finalSynthesisPerformed", true);
 
         ArgumentCaptor<String> promptCaptor = ArgumentCaptor.forClass(String.class);
-        verify(aiCoreService).generateTextResponse(promptCaptor.capture(), eq(LlmPurpose.GENERATION));
+        verify(aiCoreService).generateTextResponse(promptCaptor.capture(), eq(LlmPurpose.GENERATION), anyString());
         assertThat(promptCaptor.getValue())
             .contains("Aster E1 is available", "No sufficient grounded evidence was returned for this obligation");
     }
@@ -397,7 +397,7 @@ class IntentHandlingStepCompoundReadEvidenceTest {
                 : response(document("vehicle-1", "dealer-vehicle", "autotrader-stock", "Aster E1 is electric."));
         });
         AICoreService aiCoreService = mock(AICoreService.class);
-        when(aiCoreService.generateTextResponse(anyString(), eq(LlmPurpose.GENERATION)))
+        when(aiCoreService.generateTextResponse(anyString(), eq(LlmPurpose.GENERATION), anyString()))
             .thenReturn(AIGenerationResponse.builder().content("Electric stock and delivery policy are both covered.").build());
 
         IntentHandlingStep step = newStep(mock(AIActionRegistry.class), ragProvider, aiCoreService);
@@ -412,7 +412,7 @@ class IntentHandlingStepCompoundReadEvidenceTest {
         assertThat(documents).extracting(RAGResponse.RAGDocument::getId)
             .containsExactly("policy-1", "vehicle-1");
         verify(ragProvider, times(2)).performRag(any(RAGRequest.class));
-        verify(aiCoreService, times(1)).generateTextResponse(anyString(), eq(LlmPurpose.GENERATION));
+        verify(aiCoreService, times(1)).generateTextResponse(anyString(), eq(LlmPurpose.GENERATION), anyString());
     }
 
     @Test
@@ -435,7 +435,7 @@ class IntentHandlingStepCompoundReadEvidenceTest {
 
         RAGProvider basicRagProvider = mock(RAGProvider.class);
         AICoreService aiCoreService = mock(AICoreService.class);
-        when(aiCoreService.generateTextResponse(anyString(), eq(LlmPurpose.GENERATION)))
+        when(aiCoreService.generateTextResponse(anyString(), eq(LlmPurpose.GENERATION), anyString()))
             .thenReturn(AIGenerationResponse.builder().content("Combined advanced evidence.").build());
 
         Intent inventory = information("Find electric inventory", "dealer-vehicle");
@@ -462,7 +462,7 @@ class IntentHandlingStepCompoundReadEvidenceTest {
             .containsExactly("dealer-vehicle-1", "document-1");
         verify(advancedRagProvider, times(2)).performAdvancedRAG(any(AdvancedRAGRequest.class));
         verify(basicRagProvider, never()).performRag(any(RAGRequest.class));
-        verify(aiCoreService, times(1)).generateTextResponse(anyString(), eq(LlmPurpose.GENERATION));
+        verify(aiCoreService, times(1)).generateTextResponse(anyString(), eq(LlmPurpose.GENERATION), anyString());
     }
 
     @Test
@@ -491,7 +491,7 @@ class IntentHandlingStepCompoundReadEvidenceTest {
         when(ragProvider.performRAGQuery(any(RAGRequest.class))).thenReturn(policyResponse);
 
         AICoreService ai = mock(AICoreService.class);
-        when(ai.generateTextResponse(anyString(), eq(LlmPurpose.GENERATION)))
+        when(ai.generateTextResponse(anyString(), eq(LlmPurpose.GENERATION), anyString()))
             .thenReturn(AIGenerationResponse.builder().content("Delivery costs GBP 49.").build());
         IntentHandlingStep step = newStep(registry, ragProvider, ai);
         Intent write = Intent.builder().type(IntentType.ACTION).action("request_delivery").build();
@@ -520,7 +520,7 @@ class IntentHandlingStepCompoundReadEvidenceTest {
     @Test
     void excludesFailedOrGroundingUnusableActionSummariesFromFinalSynthesis() {
         AICoreService aiCoreService = mock(AICoreService.class);
-        when(aiCoreService.generateTextResponse(anyString(), eq(LlmPurpose.GENERATION)))
+        when(aiCoreService.generateTextResponse(anyString(), eq(LlmPurpose.GENERATION), anyString()))
             .thenReturn(AIGenerationResponse.builder().content("Only approved policy evidence was available.").build());
         RagResponseGenerationSupport generationSupport = new RagResponseGenerationSupport(
             aiCoreService,
@@ -568,7 +568,7 @@ class IntentHandlingStepCompoundReadEvidenceTest {
 
         assertThat(result.getType()).isEqualTo(OrchestrationResultType.INFORMATION_PROVIDED);
         ArgumentCaptor<String> promptCaptor = ArgumentCaptor.forClass(String.class);
-        verify(aiCoreService).generateTextResponse(promptCaptor.capture(), eq(LlmPurpose.GENERATION));
+        verify(aiCoreService).generateTextResponse(promptCaptor.capture(), eq(LlmPurpose.GENERATION), anyString());
         assertThat(promptCaptor.getValue())
             .contains("Delivery costs GBP 49", "No sufficient grounded evidence was returned")
             .doesNotContain("Do not expose this failed action payload");
@@ -597,7 +597,7 @@ class IntentHandlingStepCompoundReadEvidenceTest {
     @Test
     void fairlyPacksProviderRankedCompoundDocumentsAndReportsOnlyDocumentsActuallyUsed() {
         AICoreService aiCoreService = mock(AICoreService.class);
-        when(aiCoreService.generateTextResponse(anyString(), eq(LlmPurpose.GENERATION)))
+        when(aiCoreService.generateTextResponse(anyString(), eq(LlmPurpose.GENERATION), anyString()))
             .thenReturn(AIGenerationResponse.builder()
                 .content("Delivery costs GBP 49 and matching inventory is available.")
                 .build());
@@ -653,7 +653,7 @@ class IntentHandlingStepCompoundReadEvidenceTest {
         );
 
         ArgumentCaptor<String> prompt = ArgumentCaptor.forClass(String.class);
-        verify(aiCoreService).generateTextResponse(prompt.capture(), eq(LlmPurpose.GENERATION));
+        verify(aiCoreService).generateTextResponse(prompt.capture(), eq(LlmPurpose.GENERATION), anyString());
         assertThat(prompt.getValue())
             .contains("Standard local delivery is available within 25 miles for GBP 49")
             .contains("Aster E1 costs GBP 31950");
@@ -676,7 +676,7 @@ class IntentHandlingStepCompoundReadEvidenceTest {
     @Test
     void preservesProviderRankedOrderBeforeApplyingGlobalGenerationDocumentBudget() {
         AICoreService aiCoreService = mock(AICoreService.class);
-        when(aiCoreService.generateTextResponse(anyString(), eq(LlmPurpose.GENERATION)))
+        when(aiCoreService.generateTextResponse(anyString(), eq(LlmPurpose.GENERATION), anyString()))
             .thenReturn(AIGenerationResponse.builder().content("Grounded compound answer.").build());
         RagResponseGenerationSupport generationSupport = new RagResponseGenerationSupport(
             aiCoreService,
@@ -737,7 +737,7 @@ class IntentHandlingStepCompoundReadEvidenceTest {
         );
 
         ArgumentCaptor<String> prompt = ArgumentCaptor.forClass(String.class);
-        verify(aiCoreService).generateTextResponse(prompt.capture(), eq(LlmPurpose.GENERATION));
+        verify(aiCoreService).generateTextResponse(prompt.capture(), eq(LlmPurpose.GENERATION), anyString());
         assertThat(prompt.getValue())
             .contains("Local delivery charge is GBP 49", "Aster E1 electric inventory is available")
             .doesNotContain("General warranty and account administration reference");
@@ -769,7 +769,7 @@ class IntentHandlingStepCompoundReadEvidenceTest {
         )));
 
         AICoreService aiCoreService = mock(AICoreService.class);
-        when(aiCoreService.generateTextResponse(anyString(), eq(LlmPurpose.GENERATION)))
+        when(aiCoreService.generateTextResponse(anyString(), eq(LlmPurpose.GENERATION), anyString()))
             .thenReturn(AIGenerationResponse.builder()
                 .content("Delivery is available, but the inventory clause could not be completed.")
                 .build());
@@ -804,7 +804,7 @@ class IntentHandlingStepCompoundReadEvidenceTest {
         assertThat(actions).isEmpty();
 
         ArgumentCaptor<String> promptCaptor = ArgumentCaptor.forClass(String.class);
-        verify(aiCoreService).generateTextResponse(promptCaptor.capture(), eq(LlmPurpose.GENERATION));
+        verify(aiCoreService).generateTextResponse(promptCaptor.capture(), eq(LlmPurpose.GENERATION), anyString());
         assertThat(promptCaptor.getValue())
             .contains("This obligation could not be completed", "Home delivery is available")
             .doesNotContain("No action handler registered");
@@ -845,13 +845,13 @@ class IntentHandlingStepCompoundReadEvidenceTest {
         );
 
         assertThat(result).isNull();
-        verify(aiCoreService, never()).generateTextResponse(anyString(), any());
+        verify(aiCoreService, never()).generateTextResponse(anyString(), any(), anyString());
     }
 
     @Test
     void reportsBlankFinalSynthesisAsFailureInsteadOfSuccessfulEmptyAnswer() {
         AICoreService aiCoreService = mock(AICoreService.class);
-        when(aiCoreService.generateTextResponse(anyString(), eq(LlmPurpose.GENERATION)))
+        when(aiCoreService.generateTextResponse(anyString(), eq(LlmPurpose.GENERATION), anyString()))
             .thenReturn(AIGenerationResponse.builder().content("   ").build());
         RagResponseGenerationSupport generationSupport = new RagResponseGenerationSupport(
             aiCoreService,

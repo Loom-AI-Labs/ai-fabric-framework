@@ -101,7 +101,7 @@ class IntentHandlingStepConciseGenerationTest {
         ArgumentCaptor<AIGenerationRequest> requestCaptor = ArgumentCaptor.forClass(AIGenerationRequest.class);
         verify(aiCoreService).generateContent(requestCaptor.capture(), eq(LlmPurpose.GENERATION));
         assertThat(requestCaptor.getValue().getMaxTokens()).isEqualTo(400);
-        verify(aiCoreService, never()).generateTextResponse(anyString(), eq(LlmPurpose.GENERATION));
+        verify(aiCoreService, never()).generateTextResponse(anyString(), eq(LlmPurpose.GENERATION), anyString());
     }
 
     @Test
@@ -118,7 +118,7 @@ class IntentHandlingStepConciseGenerationTest {
         );
 
         AICoreService aiCoreService = mock(AICoreService.class);
-        when(aiCoreService.generateTextResponse(anyString(), eq(LlmPurpose.GENERATION))).thenReturn(
+        when(aiCoreService.generateTextResponse(anyString(), eq(LlmPurpose.GENERATION), anyString())).thenReturn(
             AIGenerationResponse.builder()
                 .content("Detailed analysis answer")
                 .model("gpt-5.4-mini")
@@ -153,7 +153,7 @@ class IntentHandlingStepConciseGenerationTest {
             .containsEntry("responseGenerationProviderProcessingTimeMs", 210L)
             .containsEntry("responseGenerationModel", "gpt-5.4-mini");
 
-        verify(aiCoreService).generateTextResponse(anyString(), eq(LlmPurpose.GENERATION));
+        verify(aiCoreService).generateTextResponse(anyString(), eq(LlmPurpose.GENERATION), anyString());
         verify(aiCoreService, never()).generateContent(any(AIGenerationRequest.class), eq(LlmPurpose.GENERATION));
     }
 

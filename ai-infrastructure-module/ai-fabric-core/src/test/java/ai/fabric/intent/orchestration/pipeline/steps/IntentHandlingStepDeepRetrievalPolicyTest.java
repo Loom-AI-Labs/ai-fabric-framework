@@ -60,7 +60,7 @@ class IntentHandlingStepDeepRetrievalPolicyTest {
             .build());
 
         AICoreService aiCoreService = mock(AICoreService.class);
-        when(aiCoreService.generateTextResponse(anyString(), eq(LlmPurpose.GENERATION))).thenReturn(
+        when(aiCoreService.generateTextResponse(anyString(), eq(LlmPurpose.GENERATION), anyString())).thenReturn(
             AIGenerationResponse.builder().content("answer").build()
         );
 
@@ -118,7 +118,7 @@ class IntentHandlingStepDeepRetrievalPolicyTest {
             .build());
 
         AICoreService aiCoreService = mock(AICoreService.class);
-        when(aiCoreService.generateTextResponse(anyString(), eq(LlmPurpose.GENERATION))).thenReturn(
+        when(aiCoreService.generateTextResponse(anyString(), eq(LlmPurpose.GENERATION), anyString())).thenReturn(
             AIGenerationResponse.builder().content("answer").build()
         );
 

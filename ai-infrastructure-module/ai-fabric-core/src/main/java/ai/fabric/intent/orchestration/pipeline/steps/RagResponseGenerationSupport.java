@@ -206,6 +206,11 @@ final class RagResponseGenerationSupport {
         List<AIGenerationInputPart> transientInputParts = transientInputParts(pipelineContext);
         ConversationPromptContext.Projection conversation = ConversationPromptContext.history(
             pipelineContext, ConversationPromptContext.characterBudget(pipelineContext));
+        String systemPrompt = promptRenderer.render(
+            promptTemplateResolver.resolve(TEMPLATE_FAMILY_RAG_GENERATION, "system").template(), Map.of());
+        if (!conversation.messages().isEmpty()) {
+            systemPrompt += "\n\n" + ConversationPromptContext.REFERENCE_POLICY;
+        }
         if ((maxTokens != null && maxTokens > 0) || !transientInputParts.isEmpty() || !conversation.messages().isEmpty()) {
             response = aiCoreService.generateContent(
                 AIGenerationRequest.builder()
@@ -213,7 +218,7 @@ final class RagResponseGenerationSupport {
                     .entityType(StringUtils.hasText(entityType) ? entityType : "adhoc")
                     .generationType(StringUtils.hasText(generationType) ? generationType : "text")
                     .prompt(effectivePrompt)
-                    .systemPrompt(conversation.messages().isEmpty() ? null : ConversationPromptContext.REFERENCE_POLICY)
+                    .systemPrompt(systemPrompt)
                     .messages(conversation.messages())
                     .maxTokens(maxTokens)
                     .inputParts(transientInputParts)
@@ -227,7 +232,7 @@ final class RagResponseGenerationSupport {
                 purpose
             );
         } else {
-            response = aiCoreService.generateTextResponse(effectivePrompt, purpose);
+            response = aiCoreService.generateTextResponse(effectivePrompt, purpose, systemPrompt);
         }
         // A generated answer requires provider-authored content, not a replacement call or static text.
         if (response == null || !StringUtils.hasText(response.getContent())) {

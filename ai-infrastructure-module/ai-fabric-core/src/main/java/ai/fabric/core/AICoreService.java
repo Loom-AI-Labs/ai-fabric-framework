@@ -409,6 +409,11 @@ public class AICoreService {
      * Generate text using AI for a specific purpose and return the full generation response.
      */
     public AIGenerationResponse generateTextResponse(String prompt, LlmPurpose purpose) {
+        return generateTextResponse(prompt, purpose, null);
+    }
+
+    /** Generate once with static application instructions separate from user content. */
+    public AIGenerationResponse generateTextResponse(String prompt, LlmPurpose purpose, String systemPrompt) {
         try {
             LlmPurpose effectivePurpose = purpose != null ? purpose : LlmPurpose.DEFAULT;
             AIProviderConfig.GenerationDefaults defaults = resolveDefaultsForPurpose(effectivePurpose);
@@ -418,6 +423,7 @@ public class AICoreService {
                 .entityType("adhoc")
                 .generationType("text")
                 .prompt(prompt)
+                .systemPrompt(systemPrompt)
                 .model(defaults.model())
                 .maxTokens(defaults.maxTokens() != null ? Math.min(defaults.maxTokens(), 1000) : null)
                 .temperature(defaults.temperature())

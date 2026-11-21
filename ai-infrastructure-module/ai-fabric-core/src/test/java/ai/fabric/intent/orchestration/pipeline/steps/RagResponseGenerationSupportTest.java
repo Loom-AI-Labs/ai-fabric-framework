@@ -20,6 +20,9 @@ import ai.fabric.intent.orchestration.request.OrchestrationRequest;
 import ai.fabric.prompt.ClasspathPromptTemplateStore;
 import ai.fabric.prompt.PromptRenderer;
 import ai.fabric.prompt.PromptTemplateResolver;
+import ai.fabric.prompt.PromptTemplate;
+import ai.fabric.prompt.PromptTemplateKey;
+import ai.fabric.prompt.ResolvedPromptTemplate;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
@@ -41,9 +44,51 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 class RagResponseGenerationSupportTest {
+
+    @Test
+    void rejectsDynamicInputsInTrustedSystemTemplateBeforeCallingProvider() {
+        var ai = mock(AICoreService.class);
+        var templates = mock(PromptTemplateResolver.class);
+        when(templates.resolve("rag/generation", "answer")).thenReturn(new ResolvedPromptTemplate(
+            new PromptTemplate(new PromptTemplateKey("rag/generation", "v1", "answer"), "{{query}}\n{{context}}"), List.of("v1")));
+        when(templates.resolve("rag/generation", "system")).thenReturn(new ResolvedPromptTemplate(
+            new PromptTemplate(new PromptTemplateKey("rag/generation", "v1", "system"), "Policy plus {{query}}"), List.of("v1")));
+        var support = new RagResponseGenerationSupport(ai, new AIServiceConfig(), templates, new PromptRenderer());
+
+        assertThatThrownBy(() -> support.generateRagAnswer(Intent.builder().requiresGeneration(true).build(),
+            "UNTRUSTED_QUESTION", "UNTRUSTED_EVIDENCE", generationContext(false)))
+            .isInstanceOf(IllegalStateException.class).hasMessageContaining("Missing prompt placeholders");
+        verifyNoInteractions(ai);
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void keepsTrustedAnswerPolicySeparateFromQuestionsEvidenceAndHistory(boolean withHistory) {
+        var ai = mock(AICoreService.class);
+        when(ai.generateContent(any(), eq(LlmPurpose.GENERATION)))
+            .thenReturn(AIGenerationResponse.builder().content("Supported answer").build());
+        var support = newSupport(ai, true);
+        var pipeline = generationContext(withHistory).toBuilder().historyMessages(withHistory
+            ? List.of(AIChatMessage.user("UNTRUSTED_HISTORY_QUESTION"), AIChatMessage.assistant("UNTRUSTED_HISTORY_ANSWER"))
+            : List.of()).build();
+
+        support.generateRagAnswer(Intent.builder().requiresGeneration(true)
+                .responseProfile(ResponseGenerationProfile.CONCISE).build(),
+            "UNTRUSTED_CURRENT_QUESTION", "UNTRUSTED_RETRIEVED_DOCUMENT", pipeline);
+
+        var request = ArgumentCaptor.forClass(AIGenerationRequest.class);
+        verify(ai).generateContent(request.capture(), eq(LlmPurpose.GENERATION));
+        assertThat(request.getValue().getSystemPrompt()).contains("TRUSTED ANSWER POLICY")
+            .doesNotContain("UNTRUSTED_CURRENT_QUESTION", "UNTRUSTED_RETRIEVED_DOCUMENT", "UNTRUSTED_HISTORY_QUESTION", "UNTRUSTED_HISTORY_ANSWER");
+        assertThat(request.getValue().getPrompt()).contains("UNTRUSTED_CURRENT_QUESTION", "UNTRUSTED_RETRIEVED_DOCUMENT");
+        assertThat(request.getValue().getMessages()).hasSize(withHistory ? 2 : 0);
+        assertThat(request.getValue().getMaxTokens()).isEqualTo(400);
+    }
 
     @Test
     void carriesNativeHistoryToBothGroundedAndNoCurrentEvidenceGenerationWithoutTextPacking() {
@@ -71,7 +116,7 @@ class RagResponseGenerationSupportTest {
             assertThat(request.getPrompt()).doesNotContain("Aster4850");
             assertThat(request.getSystemPrompt()).contains("historical statements", "takes precedence");
         }
-        verify(ai, never()).generateTextResponse(anyString(), eq(LlmPurpose.GENERATION));
+        verify(ai, never()).generateTextResponse(anyString(), eq(LlmPurpose.GENERATION), anyString());
     }
 
     @Test
@@ -88,7 +133,7 @@ class RagResponseGenerationSupportTest {
         assertThatThrownBy(() -> support.generateRagAnswer(Intent.builder().requiresGeneration(true).build(),
             "follow-up", "", pipeline)).isInstanceOf(IllegalStateException.class)
             .hasMessageContaining("conversation-bound");
-        verify(ai, never()).generateTextResponse(anyString(), eq(LlmPurpose.GENERATION));
+        verify(ai, never()).generateTextResponse(anyString(), eq(LlmPurpose.GENERATION), anyString());
     }
 
     @ParameterizedTest
@@ -97,7 +142,7 @@ class RagResponseGenerationSupportTest {
         AICoreService ai = mock(AICoreService.class);
         RuntimeException failure = new IllegalStateException("provider unavailable");
         when(ai.generateContent(any(AIGenerationRequest.class), eq(LlmPurpose.GENERATION))).thenThrow(failure);
-        when(ai.generateTextResponse(anyString(), eq(LlmPurpose.GENERATION))).thenThrow(failure);
+        when(ai.generateTextResponse(anyString(), eq(LlmPurpose.GENERATION), anyString())).thenThrow(failure);
         RagResponseGenerationSupport support = newSupport(ai, true);
 
         assertThatThrownBy(() -> support.generateRagAnswer(Intent.builder().requiresGeneration(true).build(),
@@ -113,7 +158,7 @@ class RagResponseGenerationSupportTest {
                                                                   AIGenerationResponse response) {
         AICoreService ai = mock(AICoreService.class);
         when(ai.generateContent(any(AIGenerationRequest.class), eq(LlmPurpose.GENERATION))).thenReturn(response);
-        when(ai.generateTextResponse(anyString(), eq(LlmPurpose.GENERATION))).thenReturn(response);
+        when(ai.generateTextResponse(anyString(), eq(LlmPurpose.GENERATION), anyString())).thenReturn(response);
         RagResponseGenerationSupport support = newSupport(ai, true);
 
         assertThatThrownBy(() -> support.generateRagAnswer(Intent.builder().requiresGeneration(true).build(),
@@ -193,7 +238,7 @@ class RagResponseGenerationSupportTest {
 
         assertThat(trace.content()).isEqualTo("I don't have enough information to answer your question: where is my order");
         assertThat(support.responseGenerationMetadata(trace)).isEmpty();
-        verify(aiCoreService, never()).generateTextResponse(anyString(), eq(LlmPurpose.GENERATION));
+        verify(aiCoreService, never()).generateTextResponse(anyString(), eq(LlmPurpose.GENERATION), anyString());
         verify(aiCoreService, never()).generateContent(any(AIGenerationRequest.class), eq(LlmPurpose.GENERATION));
     }
 
@@ -235,7 +280,7 @@ class RagResponseGenerationSupportTest {
     @Test
     void shouldUseGenerateTextResponseForStandardContextAnswerWithoutTokenBudget() {
         AICoreService aiCoreService = mock(AICoreService.class);
-        when(aiCoreService.generateTextResponse(anyString(), eq(LlmPurpose.GENERATION))).thenReturn(
+        when(aiCoreService.generateTextResponse(anyString(), eq(LlmPurpose.GENERATION), anyString())).thenReturn(
             AIGenerationResponse.builder()
                 .content("Contextual answer")
                 .model("gpt-test")
@@ -256,14 +301,16 @@ class RagResponseGenerationSupportTest {
 
         assertThat(trace.content()).isEqualTo("Contextual answer");
         assertThat(trace.path()).isEqualTo("RAG_ANSWER");
-        verify(aiCoreService).generateTextResponse(anyString(), eq(LlmPurpose.GENERATION));
+        var system = ArgumentCaptor.forClass(String.class);
+        verify(aiCoreService).generateTextResponse(anyString(), eq(LlmPurpose.GENERATION), system.capture());
+        assertThat(system.getValue()).contains("TRUSTED ANSWER POLICY").doesNotContain("retrieved context");
         verify(aiCoreService, never()).generateContent(any(AIGenerationRequest.class), eq(LlmPurpose.GENERATION));
     }
 
     @Test
     void shouldAppendServerOwnedResponseInstructionsOnlyToFinalGenerationPrompt() {
         AICoreService aiCoreService = mock(AICoreService.class);
-        when(aiCoreService.generateTextResponse(anyString(), eq(LlmPurpose.GENERATION))).thenReturn(
+        when(aiCoreService.generateTextResponse(anyString(), eq(LlmPurpose.GENERATION), anyString())).thenReturn(
             AIGenerationResponse.builder().content("{\"assessment\":\"READY\"}").build()
         );
         RagResponseGenerationSupport support = newSupport(aiCoreService, true);
@@ -291,7 +338,8 @@ class RagResponseGenerationSupportTest {
         ArgumentCaptor<String> promptCaptor = ArgumentCaptor.forClass(String.class);
         verify(aiCoreService).generateTextResponse(
             promptCaptor.capture(),
-            eq(LlmPurpose.GENERATION)
+            eq(LlmPurpose.GENERATION),
+            anyString()
         );
         assertThat(promptCaptor.getValue())
             .contains("The account has a verified payment method.")
@@ -435,11 +483,12 @@ class RagResponseGenerationSupportTest {
     private void verifySingleGenerationCall(AICoreService ai, boolean structured) {
         if (structured) {
             verify(ai).generateContent(any(AIGenerationRequest.class), eq(LlmPurpose.GENERATION));
-            verify(ai, never()).generateTextResponse(anyString(), eq(LlmPurpose.GENERATION));
+            verify(ai, never()).generateTextResponse(anyString(), eq(LlmPurpose.GENERATION), anyString());
         } else {
-            verify(ai).generateTextResponse(anyString(), eq(LlmPurpose.GENERATION));
+            verify(ai).generateTextResponse(anyString(), eq(LlmPurpose.GENERATION), anyString());
             verify(ai, never()).generateContent(any(AIGenerationRequest.class), eq(LlmPurpose.GENERATION));
         }
+        verifyNoMoreInteractions(ai);
     }
 
     private void verifyBudgetedAttachmentRequest(AICoreService ai, PipelineContext pipeline) {
@@ -455,7 +504,7 @@ class RagResponseGenerationSupportTest {
         assertThat(request.getMessages()).containsExactlyElementsOf(pipeline.getHistoryMessages());
         assertThat(request.getAuthContext()).isNotNull();
         assertThat(request.getPrompt()).contains("current authorized evidence");
-        verify(ai, never()).generateTextResponse(anyString(), eq(LlmPurpose.GENERATION));
+        verify(ai, never()).generateTextResponse(anyString(), eq(LlmPurpose.GENERATION), anyString());
     }
 
     private PromptTemplateResolver promptTemplateResolver() {

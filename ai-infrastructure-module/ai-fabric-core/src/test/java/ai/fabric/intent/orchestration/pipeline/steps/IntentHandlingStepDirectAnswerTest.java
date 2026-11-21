@@ -94,7 +94,7 @@ class IntentHandlingStepDirectAnswerTest {
         verifyNoInteractions(actionRegistry);
         verify(ragProvider, never()).performRag(any());
         verify(ragProvider, never()).performRAGQuery(any());
-        verify(aiCoreService, never()).generateTextResponse(anyString(), any());
+        verify(aiCoreService, never()).generateTextResponse(anyString(), any(), anyString());
     }
 
     @Test
@@ -130,7 +130,7 @@ class IntentHandlingStepDirectAnswerTest {
 
         verify(ragProvider, never()).performRag(any());
         verify(ragProvider, never()).performRAGQuery(any());
-        verify(aiCoreService, never()).generateTextResponse(anyString(), any());
+        verify(aiCoreService, never()).generateTextResponse(anyString(), any(), anyString());
     }
 
     private IntentHandlingStep step(

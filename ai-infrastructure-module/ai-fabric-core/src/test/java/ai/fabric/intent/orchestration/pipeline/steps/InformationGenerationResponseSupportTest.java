@@ -68,7 +68,7 @@ class InformationGenerationResponseSupportTest {
     @Test
     void shouldGenerateInformationWithoutRetrievalAndCopyMetadata() {
         AICoreService aiCoreService = mock(AICoreService.class);
-        when(aiCoreService.generateTextResponse(anyString(), eq(LlmPurpose.GENERATION))).thenReturn(
+        when(aiCoreService.generateTextResponse(anyString(), eq(LlmPurpose.GENERATION), anyString())).thenReturn(
             AIGenerationResponse.builder()
                 .content("Generated answer")
                 .model("gpt-test")
@@ -91,7 +91,7 @@ class InformationGenerationResponseSupportTest {
         assertThat(result.isSuccess()).isTrue();
         assertThat(result.getMessage()).isEqualTo("Generated answer");
         assertThat(result.getMetadata()).containsEntry("responseGenerationModel", "gpt-test");
-        verify(aiCoreService).generateTextResponse(anyString(), eq(LlmPurpose.GENERATION));
+        verify(aiCoreService).generateTextResponse(anyString(), eq(LlmPurpose.GENERATION), anyString());
 
         Map<?, ?> data = result.getData();
         assertThat(data.get("answer")).isEqualTo("Generated answer");
@@ -104,7 +104,7 @@ class InformationGenerationResponseSupportTest {
     @Test
     void shouldGenerateAnswerFromReadActionEvidenceAndAttachDiagnostics() {
         AICoreService aiCoreService = mock(AICoreService.class);
-        when(aiCoreService.generateTextResponse(anyString(), eq(LlmPurpose.GENERATION))).thenReturn(
+        when(aiCoreService.generateTextResponse(anyString(), eq(LlmPurpose.GENERATION), anyString())).thenReturn(
             AIGenerationResponse.builder()
                 .content("Order 42 is delayed.")
                 .build()
@@ -146,10 +146,10 @@ class InformationGenerationResponseSupportTest {
         for (String failure : List.of("exception", "null", "blank")) {
             AICoreService ai = mock(AICoreService.class);
             if ("exception".equals(failure)) {
-                when(ai.generateTextResponse(anyString(), eq(LlmPurpose.GENERATION))).thenThrow(new IllegalStateException("private-provider-detail"));
+                when(ai.generateTextResponse(anyString(), eq(LlmPurpose.GENERATION), anyString())).thenThrow(new IllegalStateException("private-provider-detail"));
                 when(ai.generateContent(any(AIGenerationRequest.class), eq(LlmPurpose.GENERATION))).thenThrow(new IllegalStateException("private-provider-detail"));
             } else if ("blank".equals(failure)) {
-                when(ai.generateTextResponse(anyString(), eq(LlmPurpose.GENERATION))).thenReturn(AIGenerationResponse.builder().content("  ").build());
+                when(ai.generateTextResponse(anyString(), eq(LlmPurpose.GENERATION), anyString())).thenReturn(AIGenerationResponse.builder().content("  ").build());
                 when(ai.generateContent(any(AIGenerationRequest.class), eq(LlmPurpose.GENERATION))).thenReturn(AIGenerationResponse.builder().content("  ").build());
             }
             OrchestrationContext orchestration = OrchestrationContext.forUser("owner-1");
@@ -178,7 +178,7 @@ class InformationGenerationResponseSupportTest {
                 assertThat(retained.getData().toMap()).containsEntry("status", "delayed");
             });
             assertThat(result.getNextSteps()).isEmpty();
-            if (withHistory) verify(ai, never()).generateTextResponse(anyString(), eq(LlmPurpose.GENERATION));
+            if (withHistory) verify(ai, never()).generateTextResponse(anyString(), eq(LlmPurpose.GENERATION), anyString());
         }
     }
 

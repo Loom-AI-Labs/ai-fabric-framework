@@ -160,7 +160,7 @@ class RAGIntegrationFlowTest {
             .documents(List.of())
             .success(true)
             .build()).when(ragProvider).performRAGQuery(any(RAGRequest.class));
-        when(aiCoreService.generateTextResponse(anyString(), any(LlmPurpose.class))).thenReturn(
+        when(aiCoreService.generateTextResponse(anyString(), any(LlmPurpose.class), anyString())).thenReturn(
             AIGenerationResponse.builder()
                 .content("Refunds are processed within 5 business days.")
                 .build()

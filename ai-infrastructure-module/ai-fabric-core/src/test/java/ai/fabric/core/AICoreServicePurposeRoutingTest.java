@@ -14,6 +14,8 @@ import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.core.read.ListAppender;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
 
@@ -28,8 +30,38 @@ import static org.mockito.ArgumentCaptor.forClass;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
 
 class AICoreServicePurposeRoutingTest {
+
+    @ParameterizedTest
+    @ValueSource(ints = {500, 2500})
+    void separatedInstructionsPreserveTextGenerationBudgetAndSingleProviderCall(int configuredTokens) {
+        var config = new AIProviderConfig();
+        config.setLlmProvider("openai");
+        config.getOpenai().setModel("answer-model");
+        config.getOpenai().setMaxTokens(configuredTokens);
+        var manager = mock(AIProviderManager.class);
+        when(manager.generateContent(any(AIGenerationRequest.class), eq("openai")))
+            .thenReturn(AIGenerationResponse.builder().content("provider answer").build());
+        @SuppressWarnings("unchecked")
+        ObjectProvider<AIEmbeddingService> embeddings = mock(ObjectProvider.class);
+        @SuppressWarnings("unchecked")
+        ObjectProvider<AISearchService> search = mock(ObjectProvider.class);
+        var core = new AICoreService(config, manager, embeddings, search,
+            mock(PromptTemplateResolver.class), mock(PromptRenderer.class));
+
+        var result = core.generateTextResponse("UNTRUSTED_QUESTION_AND_FACTS", LlmPurpose.GENERATION, "STATIC_POLICY");
+
+        var captured = forClass(AIGenerationRequest.class);
+        verify(manager).generateContent(captured.capture(), eq("openai"));
+        assertThat(captured.getValue().getPrompt()).isEqualTo("UNTRUSTED_QUESTION_AND_FACTS");
+        assertThat(captured.getValue().getSystemPrompt()).isEqualTo("STATIC_POLICY");
+        assertThat(captured.getValue().getMaxTokens()).isEqualTo(Math.min(configuredTokens, 1000));
+        assertThat(captured.getValue().getModel()).isEqualTo("answer-model");
+        assertThat(result.getContent()).isEqualTo("provider answer");
+        verifyNoMoreInteractions(manager);
+    }
 
     @Test
     void providerFailureDoesNotExposePromptOrProviderDetails() {

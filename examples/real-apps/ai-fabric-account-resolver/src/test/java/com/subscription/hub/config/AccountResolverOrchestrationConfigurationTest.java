@@ -140,16 +140,20 @@ class AccountResolverOrchestrationConfigurationTest {
 
         var ragAnswer = resolver.resolve("rag/generation", "answer").template();
         assertThat(ragAnswer.key().version()).isEqualTo("v1-account-resolver");
-        assertThat(ragAnswer.template())
+        assertThat(ragAnswer.template()).contains("{{query}}", "{{context}}")
+            .doesNotContain("ACCOUNT RESOLVER ANSWER RULES", "ACCOUNT RESOLVER DECISION FIRST");
+        var answerPolicy = resolver.resolve("rag/generation", "system").template();
+        assertThat(answerPolicy.key().version()).isEqualTo("v1-account-resolver");
+        assertThat(answerPolicy.template()).doesNotContain("{{query}}", "{{context}}")
             .contains("ACCOUNT RESOLVER DECISION FIRST")
             .contains("If any required check is unsatisfied, the account is not ready")
-            .contains("Evidence for payment verification or address validation does not establish another kind of verification")
+            .contains("Payment verification and address validation do not establish identity verification")
             .contains("ACCOUNT RESOLVER ANSWER RULES")
-            .contains("live account profile facts")
-            .contains("billingAddressValidated=false")
+            .contains("current live account facts")
             .contains("billingAddressValidated=true")
+            .contains("If either is false, the required billing address is missing or unvalidated")
             .contains("The wording of the user's question is not evidence of a blocker")
-            .contains("do not turn unknown into failed")
+            .contains("do not turn unknown into failed or satisfied")
             .contains("no account blocker");
     }
 
