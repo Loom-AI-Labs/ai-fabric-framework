@@ -124,6 +124,9 @@ class AccountResolverOrchestrationConfigurationTest {
         var ragAnswer = resolver.resolve("rag/generation", "answer").template();
         assertThat(ragAnswer.key().version()).isEqualTo("v1-account-resolver");
         assertThat(ragAnswer.template())
+            .contains("ACCOUNT RESOLVER DECISION FIRST")
+            .contains("If any required check is unsatisfied, the account is not ready")
+            .contains("Evidence for payment verification or address validation does not establish another kind of verification")
             .contains("ACCOUNT RESOLVER ANSWER RULES")
             .contains("live account profile facts")
             .contains("billingAddressValidated=false")

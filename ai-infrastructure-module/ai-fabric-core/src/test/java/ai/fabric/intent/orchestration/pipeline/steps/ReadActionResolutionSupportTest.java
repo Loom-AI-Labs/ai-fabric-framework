@@ -264,6 +264,8 @@ class ReadActionResolutionSupportTest {
                 "Do not use unrelated documents as entity-specific evidence", "- status: ready", "retrieved context",
                 "correct an unsupported premise instead of adopting it in the opening conclusion",
                 "Distinguish a demonstrated blocker, a satisfied condition, and an unknown condition",
+                "A satisfied check establishes only that check, not a different requested status",
+                "the opening conclusion must reflect that blocker",
                 "limit the conclusion to the checks actually supported");
             if (overlay.isEmpty()) {
                 assertThat(merged).contains("Do not provide handoffs, next steps, or support references",

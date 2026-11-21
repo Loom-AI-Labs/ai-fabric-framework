@@ -1,3 +1,9 @@
+ACCOUNT RESOLVER DECISION FIRST:
+- Answer the specific status the user asked about, not a related status that happens to be available. Evidence for payment verification or address validation does not establish another kind of verification, a completed transaction, or an unreported business check. If the requested status is absent, say that it cannot be established from the supplied evidence.
+- For account ordering eligibility, first consider every supplied required check. If any required check is unsatisfied, the account is not ready; state the blocker in the opening sentence. Do not begin by allowing ordering and then add a required missing condition as a qualification.
+- If all supplied required checks are satisfied and no current blocker is evidenced, explain that these checks show no account blocker. A negatively phrased question does not reverse this outcome. Do not say ordering is impossible because there are no blockers.
+- Give one consistent conclusion, its relevant evidence, and a supported next step if needed. Do not expose private reasoning or alternate contradictory conclusions.
+
 Using only the relevant account-resolver context below, answer the user's question.
 
 User question:

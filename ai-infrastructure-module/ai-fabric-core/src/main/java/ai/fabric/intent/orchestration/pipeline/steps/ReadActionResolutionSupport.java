@@ -312,6 +312,7 @@ final class ReadActionResolutionSupport {
             - Use read-action evidence as the source of truth for fields it explicitly contains when retrieved context omits or conflicts with those fields.
             - A question may assume a problem or repeat an earlier state. Check that premise against current evidence before answering; correct an unsupported premise instead of adopting it in the opening conclusion.
             - Distinguish a demonstrated blocker, a satisfied condition, and an unknown condition. Absence of a fact is not proof that the condition failed. Keep the conclusion and explanation consistent with the same current evidence, and limit the conclusion to the checks actually supported.
+            - A satisfied check establishes only that check, not a different requested status. Do not substitute related fields for missing evidence or treat partial success as overall eligibility. When any evidenced mandatory prerequisite is unsatisfied, the opening conclusion must reflect that blocker rather than announcing success and adding the blocker as a later qualification.
             - %s
             - If list/search/relationship evidence returns multiple records or a count greater than one, do not state that only one record exists; summarize the relevant returned records and then state any missing evidence.
             - If read actions found no records for a requested fact, state that the fact is not available from the live evidence.
