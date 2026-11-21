@@ -1515,9 +1515,6 @@ public class IntentHandlingStep implements PipelineStep {
     private String fallbackReadActionEvidenceSummary(ActionResult actionResult) {
         Map<String, Object> summary = new LinkedHashMap<>();
         summary.put("success", actionResult != null && actionResult.isSuccess());
-        if (actionResult != null && actionResult.getData() != null) {
-            summary.put("actionResultData", actionResult.getData().toMap());
-        }
         if (actionResult != null && StringUtils.hasText(actionResult.getMessage())) {
             summary.put("message", boundedEvidenceText(actionResult.getMessage(), 300));
         }

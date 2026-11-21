@@ -364,24 +364,26 @@ class ReadActionPlannerContractTest {
     }
 
     @Test
-    void itemBudgetAlsoAppliesWithoutCustomFactsProjection() throws Exception {
+    void missingFactsDoNotFallBackToRawRecords() throws Exception {
         prepareReadEvidence();
         when(handler.buildPostActionLlmFacts(any(), any())).thenReturn(Optional.empty());
         var outcome = resolve(policy(true, true, List.of("records"), 6, 8_000), null);
         JsonNode evidence = json.readTree(outcome.executedActions().getFirst().evidenceSummary());
 
-        assertThat(evidence.path("data").path("_items").size()).isEqualTo(6);
-        assertThat(evidence.path("data").path("_items").get(5).has("_truncatedItems")).isFalse();
+        assertThat(evidence.has("data")).isFalse();
+        assertThat(outcome.hasGroundingEvidence()).isFalse();
+        assertThat(outcome.useRag()).isTrue();
     }
 
     @Test
-    void fallbackProjectionKeepsOriginalOmittedCountAndNumericTypes() throws Exception {
+    void preparedProjectionKeepsOriginalOmittedCountAndNumericTypes() throws Exception {
         prepareReadEvidence();
         var records = IntStream.rangeClosed(1, 20)
             .mapToObj(index -> Map.of("id", "record-" + index, "amount", index)).toList();
         when(handler.executeAction(eq(Map.of()), any(ActionContext.class)))
             .thenReturn(ActionResult.builder().success(true).data(ActionPayload.list(records)).build());
-        when(handler.buildPostActionLlmFacts(any(), any())).thenReturn(Optional.empty());
+        when(handler.buildPostActionLlmFacts(any(), any()))
+            .thenReturn(Optional.of(Map.of("data", Map.of("_items", records))));
         var outcome = resolve(policy(true, true, List.of("records"), 6, 8_000), null);
         JsonNode evidence = json.readTree(outcome.executedActions().getFirst().evidenceSummary());
 

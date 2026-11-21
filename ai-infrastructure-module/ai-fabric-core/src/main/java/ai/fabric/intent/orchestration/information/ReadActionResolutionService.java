@@ -859,7 +859,7 @@ public class ReadActionResolutionService {
         }
         try {
             Optional<Map<String, Object>> llmFacts = handler.buildPostActionLlmFacts(result, actionContext);
-            if (llmFacts.isPresent() && llmFacts.get() != null && !llmFacts.get().isEmpty()) {
+            if (llmFacts != null && llmFacts.isPresent()) {
                 Object sanitized = sanitizeValue(llmFacts.get(), 0, maxItems, maxChars);
                 return retainedEvidenceSnippet(sanitized, maxChars, maxItems);
             }
@@ -874,12 +874,6 @@ public class ReadActionResolutionService {
         }
         if (StringUtils.hasText(result.getErrorCode())) {
             payload.put("errorCode", result.getErrorCode());
-        }
-        if (result.getData() != null) {
-            payload.put("data", result.getData().toMap());
-        }
-        if (result.getPinnedTargets() != null && !result.getPinnedTargets().isEmpty()) {
-            payload.put("pinnedTargets", result.getPinnedTargets());
         }
         Object sanitized = sanitizeValue(payload, 0, maxItems, maxChars);
         return retainedEvidenceSnippet(sanitized, maxChars, maxItems);

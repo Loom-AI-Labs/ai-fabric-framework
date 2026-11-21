@@ -2083,6 +2083,37 @@ class ReadActionResolutionServiceTest {
         ActionResult actionResult,
         Map<String, Object> llmFacts
     ) {
+        return resolveSingleReadAction(actionResult, Optional.of(llmFacts), false);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"selected", "empty-selection", "absent", "failure"})
+    void readPlanningNeverReattachesRawOutputWhenPreparingEvidence(String mode) {
+        var result = ActionResult.builder().success(true).message("Search completed.")
+            .data(ActionPayload.object(Map.of("apiKey", "RAW_ONLY_SECRET_CANARY",
+                "unselected", "RAW_ONLY_SECRET_CANARY"))).build();
+        Optional<Map<String, Object>> facts = switch (mode) {
+            case "selected" -> Optional.of(Map.of("price", 499));
+            case "empty-selection" -> Optional.of(Map.of());
+            default -> Optional.empty();
+        };
+        var outcome = resolveSingleReadAction(result, facts, mode.equals("failure"));
+        assertThat(outcome.executedActions()).hasSize(1);
+        assertThat(outcome.executedActions().getFirst().toDiagnosticMap().toString())
+            .doesNotContain("RAW_ONLY_SECRET_CANARY", "pinnedTargets");
+        assertThat(outcome.evidenceContext()).doesNotContain("RAW_ONLY_SECRET_CANARY");
+        if (mode.equals("selected")) {
+            assertThat(outcome.evidenceContext()).contains("499");
+        } else {
+            assertThat(outcome.hasGroundingEvidence()).isFalse();
+        }
+    }
+
+    private ReadActionResolutionService.ResolutionOutcome resolveSingleReadAction(
+        ActionResult actionResult,
+        Optional<Map<String, Object>> llmFacts,
+        boolean failProjection
+    ) {
         AICoreService aiCoreService = mock(AICoreService.class);
         AIActionRegistry actionRegistry = mock(AIActionRegistry.class);
         PromptTemplateResolver templateResolver = mock(PromptTemplateResolver.class);
@@ -2099,8 +2130,13 @@ class ReadActionResolutionServiceTest {
         when(handler.validateActionAllowed(any(ActionContext.class))).thenReturn(true);
         when(handler.executeAction(eq(Map.of("query", "exact identifier")), any(ActionContext.class)))
             .thenReturn(actionResult);
-        when(handler.buildPostActionLlmFacts(any(ActionResult.class), any(ActionContext.class)))
-            .thenReturn(Optional.of(llmFacts));
+        if (failProjection) {
+            when(handler.buildPostActionLlmFacts(any(ActionResult.class), any(ActionContext.class)))
+                .thenThrow(new IllegalStateException("projection unavailable"));
+        } else {
+            when(handler.buildPostActionLlmFacts(any(ActionResult.class), any(ActionContext.class)))
+                .thenReturn(llmFacts);
+        }
 
         when(actionRegistry.getAllMetadata()).thenReturn(List.of(metadata));
         when(actionRegistry.findHandler("search_records")).thenReturn(Optional.of(handler));

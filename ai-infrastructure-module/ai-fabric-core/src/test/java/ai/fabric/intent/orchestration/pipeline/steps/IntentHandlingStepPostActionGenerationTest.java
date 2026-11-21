@@ -571,9 +571,8 @@ class IntentHandlingStepPostActionGenerationTest {
         ArgumentCaptor<AIGenerationRequest> generationRequest = ArgumentCaptor.forClass(AIGenerationRequest.class);
         verify(aiCoreService).generateContent(generationRequest.capture(), eq(LlmPurpose.GENERATION));
         assertThat(generationRequest.getValue().getPrompt())
-            .contains("actionResultData")
-            .contains("example.catalog.search")
-            .contains("SaaS Launch Readiness");
+            .contains("Action executed.")
+            .doesNotContain("actionResultData", "SaaS Launch Readiness");
     }
 
     @Test

@@ -22,6 +22,10 @@ public interface AIActionHandler {
 
     ActionResult executeAction(Map<String, Object> params, ActionContext context);
 
+    /**
+     * Approved evidence for model planning and answer generation. Empty or absent
+     * facts opt out; callers must not substitute the raw action result.
+     */
     default Optional<Map<String, Object>> buildPostActionLlmFacts(ActionResult actionResult, ActionContext context) {
         return Optional.empty();
     }

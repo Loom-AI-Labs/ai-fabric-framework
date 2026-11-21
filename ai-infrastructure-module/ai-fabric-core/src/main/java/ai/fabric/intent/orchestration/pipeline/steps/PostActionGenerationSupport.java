@@ -181,11 +181,11 @@ final class PostActionGenerationSupport {
                 actionName,
                 ex.getMessage()
             );
+            return Optional.empty();
         }
 
-        Map<String, Object> groundedFacts =
-            includeActionResultDataForForcedReadGeneration(facts, actionResult);
-        if (!hasAnswerablePostActionFacts(groundedFacts)) {
+        // The handler's projection is the evidence boundary, including an empty selection.
+        if (!hasAnswerablePostActionFacts(facts)) {
             return Optional.empty();
         }
 
@@ -193,7 +193,7 @@ final class PostActionGenerationSupport {
             ? postActionGenerationProperties.getMaxChars()
             : 4_000;
         FactsPayload payload = buildFactsPayload(
-            groundedFacts,
+            facts,
             Math.max(1, configuredMax)
         );
         if (!StringUtils.hasText(payload.payload())) {
@@ -394,9 +394,6 @@ final class PostActionGenerationSupport {
         }
 
         Map<String, Object> factsMap = factsOpt.orElse(Map.of());
-        if (forced) {
-            factsMap = includeActionResultDataForForcedReadGeneration(factsMap, actionResult);
-        }
         if (factsMap == null || factsMap.isEmpty()) {
             Map<String, Object> metadata = Map.of(
                 "used", false,
@@ -484,17 +481,6 @@ final class PostActionGenerationSupport {
             return trimmedExisting;
         }
         return trimmedExisting + "\n\nEvidence contract: " + trimmedAddition;
-    }
-
-    private Map<String, Object> includeActionResultDataForForcedReadGeneration(Map<String, Object> factsMap,
-                                                                               ActionResult actionResult) {
-        Map<String, Object> actionResultData = actionResult != null ? coerceToMap(actionResult.getData()) : null;
-        if (actionResultData == null || actionResultData.isEmpty()) {
-            return factsMap;
-        }
-        Map<String, Object> merged = new LinkedHashMap<>(factsMap != null ? factsMap : Map.of());
-        merged.put("actionResultData", Collections.unmodifiableMap(new LinkedHashMap<>(actionResultData)));
-        return Collections.unmodifiableMap(merged);
     }
 
     private Map<String, Object> postActionGenerationSkippedMetadata(String skippedReason,
