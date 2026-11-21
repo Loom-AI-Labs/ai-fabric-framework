@@ -1239,13 +1239,16 @@ public class ReadActionResolutionService {
         }
         boolean ragAvailable = unavailableReasons.isEmpty();
         catalog.put("ragAvailable", ragAvailable);
-        catalog.put("ragRequiredWithReadActions", ragAvailable
+        boolean ragRequiredWithReadActions = ragAvailable
             && policy.readActionResolutionPolicy().ragCooperationMode()
-                == ai.fabric.config.OrchestrationProperties.ReadActionResolutionRagCooperationMode.PARALLEL_ACTIONS_AND_RAG);
+                == ai.fabric.config.OrchestrationProperties.ReadActionResolutionRagCooperationMode.PARALLEL_ACTIONS_AND_RAG;
+        catalog.put("ragRequiredWithReadActions", ragRequiredWithReadActions);
         catalog.put("ragUnavailableReasons", List.copyOf(unavailableReasons));
-        catalog.put("availableDecisions", ragAvailable
-            ? List.of("ANSWER_FROM_CONTEXT", "EXECUTE_READ_ACTIONS", "EXECUTE_READ_ACTIONS_AND_RAG", "USE_RAG_ONLY")
-            : List.of("ANSWER_FROM_CONTEXT", "EXECUTE_READ_ACTIONS"));
+        catalog.put("availableDecisions", ragRequiredWithReadActions
+            ? List.of("ANSWER_FROM_CONTEXT", "EXECUTE_READ_ACTIONS_AND_RAG", "USE_RAG_ONLY")
+            : ragAvailable
+                ? List.of("ANSWER_FROM_CONTEXT", "EXECUTE_READ_ACTIONS", "EXECUTE_READ_ACTIONS_AND_RAG", "USE_RAG_ONLY")
+                : List.of("ANSWER_FROM_CONTEXT", "EXECUTE_READ_ACTIONS"));
         catalog.put("selectionRequired", policy.capabilities().vectorSpaceSelectionRequired());
         catalog.put("allowlistRequired", policy.capabilities().retrievalAllowlistRequired());
         catalog.put("fanoutEnabled", Boolean.TRUE.equals(policy.ragBudgets().fanoutEnabled()));

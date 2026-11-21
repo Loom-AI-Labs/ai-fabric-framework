@@ -248,6 +248,29 @@ class ReadActionPlannerContractTest {
     }
 
     @Test
+    void parallelPolicyDoesNotAdvertiseReadOnlyButPreservesLegacyExecutionAndModelSourceChoice() throws Exception {
+        prepareReadEvidence();
+        var initial = policy(true, true, List.of("records", "policy"), 5, 8_000);
+        var read = initial.readActionResolutionPolicy();
+        var parallel = new OrchestrationPolicy(initial.profile(), initial.mode(), initial.position(), initial.informationMode(),
+            initial.capabilities(), new OrchestrationPolicy.ReadActionResolutionPolicy(true, read.planningMode(),
+                read.allowedReadActions(), read.requireAllowlist(), read.maxIterations(), read.maxActionsPerIteration(),
+                read.maxTotalActions(), read.maxParallelActions(), read.maxPlannerContextChars(),
+                read.maxActionEvidenceCharsPerAction(), read.maxActionEvidenceItems(),
+                OrchestrationProperties.ReadActionResolutionRagCooperationMode.PARALLEL_ACTIONS_AND_RAG,
+                read.requireGroundingEligible()), initial.ragBudgets());
+
+        var outcome = resolve(parallel, null);
+
+        assertThat(sentCatalog().path("ragRequiredWithReadActions").asBoolean()).isTrue();
+        assertThat(json.convertValue(sentCatalog().path("availableDecisions"), List.class))
+            .containsExactly("ANSWER_FROM_CONTEXT", "EXECUTE_READ_ACTIONS_AND_RAG", "USE_RAG_ONLY");
+        assertThat(outcome.useRag()).isTrue();
+        assertThat(outcome.executedActions()).hasSize(1);
+        assertThat(outcome.preferredVectorSpaces()).isEmpty();
+    }
+
+    @Test
     void retrievalDisabledByEffectiveProfileExposesNoSources() throws Exception {
         OrchestrationPolicy policy = policy(true, true, List.of("records", "policy"), 5, 8_000);
         var effective = new EffectiveCapabilityProfile(

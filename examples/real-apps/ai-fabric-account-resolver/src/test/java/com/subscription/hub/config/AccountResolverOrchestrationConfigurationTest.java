@@ -2,6 +2,7 @@ package com.subscription.hub.config;
 
 import ai.fabric.chat.config.ChatSessionProperties;
 import ai.fabric.config.AIEntityConfigurationLoader;
+import ai.fabric.config.AIProviderConfig;
 import ai.fabric.config.OrchestrationProperties;
 import ai.fabric.config.PromptBundleProperties;
 import ai.fabric.prompt.ClasspathPromptTemplateStore;
@@ -11,15 +12,31 @@ import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.boot.context.properties.bind.Binder;
 import org.springframework.boot.env.YamlPropertySourceLoader;
 import org.springframework.core.env.PropertySource;
+import org.springframework.core.env.MapPropertySource;
 import org.springframework.core.env.StandardEnvironment;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.core.io.DefaultResourceLoader;
 
 import java.io.IOException;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 class AccountResolverOrchestrationConfigurationTest {
+
+    @ParameterizedTest
+    @ValueSource(strings = {"application.yml", "application-prod.yml"})
+    void answerGenerationModelDoesNotReplaceTheRoutingModel(String configFile) throws IOException {
+        var environment = loadEnvironment(configFile);
+        environment.getPropertySources().addFirst(new MapPropertySource("routing-model-test",
+            Map.of("ai.providers.openai.model", "routing-model-fixture", "GENERATION_MODEL", "gpt-5.4-mini")));
+        var providers = Binder.get(environment).bind("ai.providers", AIProviderConfig.class)
+            .orElseThrow(() -> new AssertionError("ai.providers must bind from " + configFile));
+
+        assertThat(providers.resolveOrchestrationLlmDefaults().model()).isEqualTo("routing-model-fixture");
+        assertThat(providers.resolveGenerationLlmDefaults().model()).isEqualTo("gpt-5.4-mini");
+        assertThat(providers.resolveGenerationLlmDefaults().providerName()).isEqualTo("openai");
+    }
 
     @ParameterizedTest
     @ValueSource(strings = {"application.yml", "application-prod.yml"})
