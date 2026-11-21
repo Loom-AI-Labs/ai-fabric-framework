@@ -130,7 +130,7 @@ class IntentGenerationRoutingIntegrationTest {
         verify(ragProvider).performRag(captor.capture());
         assertThat(captor.getValue().getMetadata()).containsEntry("optimizedQuery", intent.getOptimizedQuery());
         verify(ragProvider, never()).performRAGQuery(any());
-        verify(aiCoreService, never()).generateTextResponse(anyString(), any(LlmPurpose.class));
+        verify(aiCoreService, never()).generateTextResponse(anyString(), any(LlmPurpose.class), anyString());
     }
 
     @Test
@@ -148,7 +148,7 @@ class IntentGenerationRoutingIntegrationTest {
         when(ragProvider.performRAGQuery(any(RAGRequest.class))).thenReturn(
             RAGResponse.builder().context("generation-context").documents(List.of()).success(true).build()
         );
-        when(aiCoreService.generateTextResponse(anyString(), eq(LlmPurpose.GENERATION))).thenReturn(
+        when(aiCoreService.generateTextResponse(anyString(), eq(LlmPurpose.GENERATION), anyString())).thenReturn(
             AIGenerationResponse.builder().content("llm-needed").build()
         );
 
@@ -161,6 +161,6 @@ class IntentGenerationRoutingIntegrationTest {
         verify(ragProvider).performRAGQuery(captor.capture());
         assertThat(captor.getValue().getMetadata()).containsEntry("requiresGeneration", true);
         verify(ragProvider, never()).performRag(any());
-        verify(aiCoreService).generateTextResponse(anyString(), eq(LlmPurpose.GENERATION));
+        verify(aiCoreService).generateTextResponse(anyString(), eq(LlmPurpose.GENERATION), anyString());
     }
 }

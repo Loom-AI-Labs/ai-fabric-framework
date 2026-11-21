@@ -26,6 +26,19 @@ class AccountResolverOrchestrationConfigurationTest {
 
     @ParameterizedTest
     @ValueSource(strings = {"application.yml", "application-prod.yml"})
+    void defaultsPinTheQualifiedAnswerSnapshotWithoutChangingRouting(String configFile) throws IOException {
+        var environment = loadEnvironment(configFile);
+        environment.getPropertySources().remove(StandardEnvironment.SYSTEM_ENVIRONMENT_PROPERTY_SOURCE_NAME);
+        environment.getPropertySources().remove(StandardEnvironment.SYSTEM_PROPERTIES_PROPERTY_SOURCE_NAME);
+        var providers = Binder.get(environment).bind("ai.providers", AIProviderConfig.class)
+            .orElseThrow(() -> new AssertionError("ai.providers must bind from " + configFile));
+
+        assertThat(providers.resolveOrchestrationLlmDefaults().model()).isEqualTo("gpt-4o-mini");
+        assertThat(providers.resolveGenerationLlmDefaults().model()).isEqualTo("gpt-5.4-mini-2026-03-17");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"application.yml", "application-prod.yml"})
     void answerGenerationModelDoesNotReplaceTheRoutingModel(String configFile) throws IOException {
         var environment = loadEnvironment(configFile);
         environment.getPropertySources().addFirst(new MapPropertySource("routing-model-test",
