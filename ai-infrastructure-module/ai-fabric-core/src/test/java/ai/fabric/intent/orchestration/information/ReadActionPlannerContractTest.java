@@ -85,6 +85,84 @@ class ReadActionPlannerContractTest {
     }
 
     @Test
+    void doesNotOfferAnUnverifiedExtractionAnswerAsPlannerEvidence() throws Exception {
+        when(templates.resolve("orchestration/read-action-resolution", "user"))
+            .thenReturn(template("user", "{{intent_json}}"));
+        var context = OrchestrationContext.forUser("user-1");
+        var intent = Intent.builder().type(IntentType.INFORMATION).intent("Explain the approved procedure")
+            .requiresRetrieval(false).requiresGeneration(false)
+            .directAnswer("UNVERIFIED_EXTRACTION_DRAFT").build();
+
+        service.resolve(intent, context, PipelineContext.from("Explain the approved procedure", context)
+            .toBuilder().orchestrationPolicy(policy(true, true, List.of("policy"), 5, 8_000)).build());
+
+        assertThat(sentCatalog().has("directAnswer")).isFalse();
+        assertThat(intent.getDirectAnswer()).isEqualTo("UNVERIFIED_EXTRACTION_DRAFT");
+    }
+
+    @Test
+    void suppliesEvidenceAvailabilityWithoutTreatingACatalogueAsReturnedFacts() throws Exception {
+        when(templates.resolve("orchestration/read-action-resolution", "user"))
+            .thenReturn(template("user", "{{evidence_inputs_json}}"));
+        when(core.generateContent(any(), eq(LlmPurpose.ORCHESTRATION))).thenReturn(
+            AIGenerationResponse.builder().content("""
+                {"decision":"ANSWER_FROM_CONTEXT","actions":[],"needsMoreSteps":false}
+                """).build());
+
+        var initial = policy(false, true, List.of(), 5, 8_000);
+        var read = initial.readActionResolutionPolicy();
+        var noRag = new OrchestrationPolicy(initial.profile(), initial.mode(), initial.position(), initial.informationMode(),
+            initial.capabilities(), new OrchestrationPolicy.ReadActionResolutionPolicy(true, read.planningMode(),
+                read.allowedReadActions(), true, read.maxIterations(), read.maxActionsPerIteration(),
+                read.maxTotalActions(), read.maxParallelActions(), read.maxPlannerContextChars(),
+                read.maxActionEvidenceCharsPerAction(), read.maxActionEvidenceItems(),
+                OrchestrationProperties.ReadActionResolutionRagCooperationMode.NONE, true), initial.ragBudgets());
+        var outcome = resolve(noRag, null);
+
+        var evidence = sentCatalog();
+        assertThat(evidence.path("completedReadActions").asInt()).isZero();
+        assertThat(evidence.path("groundingUsableReadActions").asInt()).isZero();
+        assertThat(evidence.path("conversationMessages").asInt()).isZero();
+        assertThat(evidence.path("activeTargetReferencesPresent").asBoolean()).isFalse();
+        assertThat(outcome.executedActions()).isEmpty();
+        assertThat(outcome.useRag()).isFalse();
+        verify(handler, never()).executeAction(any(), any());
+    }
+
+    @Test
+    void updatesEvidenceAvailabilityAfterAReadWithoutAddingAPlanningRound() throws Exception {
+        prepareReadEvidence();
+        when(templates.resolve("orchestration/read-action-resolution", "user"))
+            .thenReturn(template("user", "{{evidence_inputs_json}}"));
+        when(core.generateContent(any(), eq(LlmPurpose.ORCHESTRATION))).thenReturn(
+            AIGenerationResponse.builder().content("""
+                {"decision":"EXECUTE_READ_ACTIONS","actions":[{"name":"list_records","params":{}}],"needsMoreSteps":true}
+                """).build(),
+            AIGenerationResponse.builder().content("""
+                {"decision":"ANSWER_FROM_CONTEXT","actions":[],"needsMoreSteps":false}
+                """).build());
+        var initial = policy(true, true, List.of("records"), 6, 8_000);
+        var read = initial.readActionResolutionPolicy();
+        var iterative = new OrchestrationPolicy(initial.profile(), initial.mode(), initial.position(), initial.informationMode(),
+            initial.capabilities(), new OrchestrationPolicy.ReadActionResolutionPolicy(true,
+                OrchestrationProperties.ReadActionResolutionPlanningMode.ITERATIVE, read.allowedReadActions(), true,
+                2, 1, 1, 1, read.maxPlannerContextChars(), read.maxActionEvidenceCharsPerAction(),
+                read.maxActionEvidenceItems(), read.ragCooperationMode(), true), initial.ragBudgets());
+
+        var outcome = resolve(iterative, null);
+
+        var requests = ArgumentCaptor.forClass(AIGenerationRequest.class);
+        org.mockito.Mockito.verify(core, org.mockito.Mockito.times(2)).generateContent(requests.capture(), eq(LlmPurpose.ORCHESTRATION));
+        var first = json.readTree(requests.getAllValues().getFirst().getPrompt());
+        var second = json.readTree(requests.getAllValues().getLast().getPrompt());
+        assertThat(first.path("completedReadActions").asInt()).isZero();
+        assertThat(second.path("completedReadActions").asInt()).isEqualTo(1);
+        assertThat(second.path("groundingUsableReadActions").asInt()).isEqualTo(1);
+        assertThat(outcome.executedActions()).hasSize(1);
+        verify(handler).executeAction(any(), any());
+    }
+
+    @Test
     void suppliesAuthorizedChoicesWhenExtractionDidNotRequestRetrieval() throws Exception {
         when(entities.getSupportedEntityTypes()).thenReturn(Set.of("foreign-records", "private-payroll"));
         var outcome = resolve(policy(true, true, List.of("records", "policy"), 5, 8_000), null);

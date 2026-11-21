@@ -455,6 +455,12 @@ public class ReadActionResolutionService {
                         : ""),
                     Map.entry(PLACEHOLDER_QUERY, query),
                     Map.entry(PLACEHOLDER_INTENT_JSON, writeJson(buildIntentPromptModel(intent))),
+                    Map.entry("evidence_inputs_json", writeJson(Map.of(
+                        "completedReadActions", executedActions.size(),
+                        "groundingUsableReadActions", executedActions.stream().filter(ExecutedReadAction::groundingUsable).count(),
+                        "conversationMessages", conversation.messages().size(),
+                        "activeTargetReferencesPresent", StringUtils.hasText(targetContext)
+                    ))),
                     Map.entry(PLACEHOLDER_ELIGIBLE_ACTIONS_JSON, writeJson(buildEligibleActionsPromptModel(eligibleActions, anonymous))),
                     Map.entry(PLACEHOLDER_KNOWLEDGE_SOURCES_JSON, writeJson(knowledgeSources)),
                     Map.entry(PLACEHOLDER_PRIOR_EVIDENCE_JSON, writeJson(buildPriorEvidencePromptModel(
@@ -1193,7 +1199,6 @@ public class ReadActionResolutionService {
         model.put("requiresRetrieval", intent.getRequiresRetrieval());
         model.put("requiresGeneration", intent.getRequiresGeneration());
         model.put("optimizedQuery", intent.getOptimizedQuery());
-        model.put("directAnswer", intent.getDirectAnswer());
         return model;
     }
 

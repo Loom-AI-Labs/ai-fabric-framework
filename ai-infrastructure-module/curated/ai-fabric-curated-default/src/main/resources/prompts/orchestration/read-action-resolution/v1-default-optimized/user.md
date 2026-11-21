@@ -7,6 +7,9 @@ Resolved mode:
 Extracted intent JSON:
 {{intent_json}}
 
+Supplied input evidence summary (server-owned counts, not business facts):
+{{evidence_inputs_json}}
+
 Authorized knowledge-source catalogue JSON (server-owned; names are retrieval choices, not evidence):
 {{knowledge_sources_json}}
 
