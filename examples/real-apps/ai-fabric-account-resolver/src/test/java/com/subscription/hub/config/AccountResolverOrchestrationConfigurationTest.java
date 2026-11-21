@@ -138,6 +138,11 @@ class AccountResolverOrchestrationConfigurationTest {
         assertThat(resolver.resolve("intent-extraction/compound", "user").template().key().version())
             .isEqualTo("v1");
 
+        var completion = resolver.resolve("intent-extraction/completion", "system-addon").template();
+        assertThat(completion.key().version()).isEqualTo("v1-account-resolver");
+        assertThat(completion.template()).contains("ACCOUNT RESOLVER COMPLETION SCOPE", "requiresTargetResolution=false",
+            "Include needsAdvancedRAG explicitly on every INFORMATION intent", "preserving every user obligation and all already-valid fields");
+
         var ragAnswer = resolver.resolve("rag/generation", "answer").template();
         assertThat(ragAnswer.key().version()).isEqualTo("v1-account-resolver");
         assertThat(ragAnswer.template()).contains("{{query}}", "{{context}}")
