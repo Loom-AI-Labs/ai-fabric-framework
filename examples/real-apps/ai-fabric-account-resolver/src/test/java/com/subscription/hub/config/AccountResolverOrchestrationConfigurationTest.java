@@ -100,6 +100,8 @@ class AccountResolverOrchestrationConfigurationTest {
             .contains("Treat policy documents as human-readable guidance")
             .contains("For account-owned workflows, set requiresTargetResolution=false")
             .contains("ACCOUNT RESOLVER REFERENCE RESOLUTION")
+            .contains("Set requiresRetrieval, requiresGeneration, and requiresTargetResolution explicitly for every intent")
+            .contains("For every INFORMATION intent, set needsAdvancedRAG explicitly, regardless of requiresGeneration")
             .contains("ok add it")
             .contains("Generic \"it/that\" target-resolution rules apply only to external attached or pinned records");
 
@@ -111,6 +113,8 @@ class AccountResolverOrchestrationConfigurationTest {
             .contains("Treat policy documents as human-readable guidance")
             .contains("For account-owned workflows, set requiresTargetResolution=false")
             .contains("Account Resolver reference resolution")
+            .contains("Set requiresRetrieval, requiresGeneration, and requiresTargetResolution explicitly for every intent")
+            .contains("For every INFORMATION intent, set needsAdvancedRAG explicitly, regardless of requiresGeneration")
             .contains("ok add it")
             .contains("Generic \"it/that\" target-resolution rules apply only to external attached or pinned records");
 
@@ -122,7 +126,11 @@ class AccountResolverOrchestrationConfigurationTest {
         assertThat(ragAnswer.template())
             .contains("ACCOUNT RESOLVER ANSWER RULES")
             .contains("live account profile facts")
-            .contains("billingAddressValidated=false");
+            .contains("billingAddressValidated=false")
+            .contains("billingAddressValidated=true")
+            .contains("The wording of the user's question is not evidence of a blocker")
+            .contains("do not turn unknown into failed")
+            .contains("no account blocker");
     }
 
     @ParameterizedTest

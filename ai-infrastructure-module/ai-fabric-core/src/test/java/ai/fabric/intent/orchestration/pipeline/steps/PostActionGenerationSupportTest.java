@@ -48,6 +48,41 @@ import static org.mockito.Mockito.when;
 class PostActionGenerationSupportTest {
 
     @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void forcedReadGenerationReceivesTheProcessedQuestionWithoutChangingWriteNarration(boolean forced) {
+        var ai = mock(AICoreService.class);
+        when(ai.generateContent(any(AIGenerationRequest.class), eq(LlmPurpose.GENERATION)))
+            .thenReturn(AIGenerationResponse.builder().content("The requested status is not in the supplied facts.").build());
+        var properties = new PostActionGenerationProperties();
+        properties.setEnabled(true);
+        var support = newSupport(ai, new RelationshipQueryPostActionGenerationProperties(), properties);
+        var handler = mock(AIActionHandler.class);
+        var receipt = ActionResult.builder().success(true).message("Facts loaded")
+            .data(ActionResultContracts.object(Map.of("status", "ACTIVE"))).build();
+        when(handler.buildPostActionLlmFacts(eq(receipt), any()))
+            .thenReturn(Optional.of(Map.of("status", "ACTIVE")));
+        var context = OrchestrationContext.forUser("owner");
+        var pipeline = PipelineContext.from("RAW_INPUT_NOT_FOR_GENERATION", context).toBuilder()
+            .processedQuery("Is my identity verification complete?").build();
+
+        var outcome = support.maybeGeneratePostActionSummary("read_profile", handler,
+            Intent.builder().action("read_profile").build(), receipt, context, pipeline, Map.of(),
+            new PostActionGenerationSupport.ResolvedPostActionGeneration(true, "Answer from the facts.", forced));
+
+        var captured = ArgumentCaptor.forClass(AIGenerationRequest.class);
+        verify(ai).generateContent(captured.capture(), eq(LlmPurpose.GENERATION));
+        assertThat(captured.getValue().getSystemPrompt()).doesNotContain("Is my identity verification complete?");
+        assertThat(captured.getValue().getPrompt()).doesNotContain("RAW_INPUT_NOT_FOR_GENERATION");
+        if (forced) {
+            assertThat(captured.getValue().getPrompt()).contains("CURRENT USER REQUEST", "Is my identity verification complete?");
+        } else {
+            assertThat(captured.getValue().getPrompt()).doesNotContain("CURRENT USER REQUEST", "Is my identity verification complete?");
+        }
+        assertThat(outcome.summary()).isEqualTo("The requested status is not in the supplied facts.");
+        assertThat(receipt.isSuccess()).isTrue();
+    }
+
+    @ParameterizedTest
     @ValueSource(strings = {"OK", "success", "Action executed.", "MCP tool result", "Your request is complete."})
     void genericGenerationFailurePreservesHandlerMessageRegardlessOfItsWording(String message) {
         for (boolean forced : List.of(false, true)) {

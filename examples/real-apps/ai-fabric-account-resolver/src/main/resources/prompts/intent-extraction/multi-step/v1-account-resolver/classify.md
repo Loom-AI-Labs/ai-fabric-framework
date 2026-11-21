@@ -11,8 +11,8 @@ Output MUST be valid JSON and MUST match the following schema:
       "requiresGeneration": false,
       "responseProfile": "CONCISE | STANDARD | DEEP",
       "requiresTargetResolution": false,
-      "directAnswer": "required when type=INFORMATION and requiresRetrieval=false (short reply)",
-      "actionParams": {"userMessage": "required when type=OUT_OF_SCOPE; user-safe 1 sentence without implementation terms"},
+      "directAnswer": "required when type=OUT_OF_SCOPE or when type=INFORMATION and requiresRetrieval=false (short reply)",
+      "actionParams": {},
       "generationInstructions": "optional follow-up instruction when requiresGeneration is true",
       "needsAdvancedRAG": false,
       "optimizedQuery": "optional optimized query",
@@ -26,6 +26,8 @@ Output MUST be valid JSON and MUST match the following schema:
 
 Rules:
 - Keep it simple and deterministic.
+- Set requiresRetrieval, requiresGeneration, and requiresTargetResolution explicitly for every intent. Do not omit a false decision or rely on a server default.
+- For every INFORMATION intent, set needsAdvancedRAG explicitly, regardless of requiresGeneration. Decide from the requested operation and current authorized context.
 - Do NOT invent action names; for ACTION use actionHint only.
 - Highest priority: if the USER REQUEST asks about assistant implementation, infrastructure, internal status, runtime behavior, tool status, retrieval/vectorization, providers, platform internals, logs, deployments, or secrets, output OUT_OF_SCOPE. Do not classify these requests as INFORMATION and do not set requiresRetrieval=true.
 - The USER REQUEST may include a "PENDING ACTION (requires confirmation)" section describing an action awaiting approval.
@@ -61,6 +63,7 @@ Rules:
   - Use available actions, action descriptions, recent chat history, assistant recommendations, account blocker explanations, and user-friendly policy text together to classify the next supported action.
   - Treat policy documents as human-readable guidance for explaining and choosing governed actions. Do not treat policy text as an executable schema, and do not invent parameters from it.
   - When the user asks why account usage, ordering, payment, address, subscription, refund, or billing is blocked, prefer the read action that loads factual account profile data and combine those facts with retrieved policy guidance.
+  - Distinguish checking account eligibility or readiness from actually placing an order. Whether the current account can order is a supported account-information goal using profile facts and policies, not an unsupported order-placement operation. Never claim to place an order or execute an unavailable order action.
   - Do not describe an account requirement as missing when factual profile evidence says it is already satisfied. Focus resolution on facts that are false, missing, unverified, or unvalidated.
   - For account-owned workflows, set requiresTargetResolution=false unless the user explicitly refers to a separate attached or pinned item outside the current account workflow.
   - For short follow-ups, infer the intended supported action from the immediate conversation context when one action is clearly implied. Do not use OUT_OF_SCOPE for plausible account-resolution follow-ups.
@@ -78,8 +81,8 @@ Rules:
   - This includes implicit target-dependent follow-ups like: "any negative reviews on them?", "return policy for this", "alternatives to these", even if the user does not include explicit identifiers.
 - Optional: set metadata.retrievalQueryHint with short keywords/identifiers (max 200 chars) that improve retrieval. Never include sensitive personal contact details.
 - Use OUT_OF_SCOPE only when the request is clearly unrelated to the assistant, asks for an unsupported action, asks for professional/legal/medical/financial advice, or asks about assistant implementation/infrastructure such as runtime behavior, tool status, retrieval/vectorization, providers, platform internals, logs, deployments, or secrets.
-- When using OUT_OF_SCOPE, set actionParams.userMessage to a user-safe one-sentence response that redirects to supported information or actions.
-- OUT_OF_SCOPE userMessage must not repeat or quote the unsupported topic/request, and must not mention implementation terms, internal systems, retrieval, vector spaces, providers, or knowledge bases.
+- For OUT_OF_SCOPE, provide directAnswer as a brief customer-safe response and set requiresRetrieval, requiresGeneration, and requiresTargetResolution to false.
+- OUT_OF_SCOPE directAnswer must not repeat or quote the unsupported topic/request, and must not mention implementation terms, internal systems, retrieval, vector spaces, providers, or knowledge bases.
 - Never use directAnswer to discuss assistant implementation, infrastructure, internal status, tools, runtime, providers, platform systems, logs, deployments, or secrets.
 - If a request mixes internal/infrastructure wording with a valid supported capability question, answer only the user-facing capability or use OUT_OF_SCOPE; do not say internal systems, tools, runtimes, providers, or deployments are operational, working, broken, available, unavailable, enabled, or disabled.
 - For user-facing capability direct answers, describe supported knowledge, records, documents, summaries, comparisons, and approved actions in plain language.

@@ -36,10 +36,12 @@ class ReadActionPlannerPromptOverlayTest {
             """.strip();
         String actions = "[{\"name\":\"list_records\",\"requiredParameters\":[]}]";
         String priorEvidence = "[{\"action\":\"list_records\",\"success\":true}]";
+        String evidenceInputs = "{\"completedReadActions\":1,\"groundingUsableReadActions\":1,\"conversationMessages\":2,\"activeTargetReferencesPresent\":false}";
         Map<String, String> values = Map.ofEntries(
             Map.entry("mode", "resolver"),
             Map.entry("query", query),
             Map.entry("intent_json", intent),
+            Map.entry("evidence_inputs_json", evidenceInputs),
             Map.entry("knowledge_sources_json", catalogue),
             Map.entry("eligible_actions_json", actions),
             Map.entry("prior_evidence_json", priorEvidence),
@@ -59,6 +61,7 @@ class ReadActionPlannerPromptOverlayTest {
         assertThat(rendered)
             .contains("Request query:\n" + query + "\n\nResolved mode:\nresolver")
             .contains("Extracted intent JSON:\n" + intent)
+            .contains("Supplied input evidence summary (server-owned counts, not business facts):\n" + evidenceInputs)
             .contains("Authorized knowledge-source catalogue JSON (server-owned; names are retrieval choices, not evidence):\n"
                 + catalogue + "\n\nREAD planning catalog JSON (public inputs only; the server owns authentication and hidden inputs):\n" + actions)
             .containsOnlyOnce(catalogue)

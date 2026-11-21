@@ -68,7 +68,7 @@ import static org.junit.jupiter.api.Assertions.assertAll;
 
 /**
  * Real extraction, planning, confirmation, embeddings and search over fictional fixture data.
- * Twenty-one scenario invocations use twenty-five orchestration turns and one direct planner call.
+ * Twenty-four scenario invocations use twenty-eight orchestration turns and one direct planner call.
  * This entry-call cap is not a count of the framework's internal provider requests.
  */
 @SpringBootTest(classes = TestApplication.class, webEnvironment = SpringBootTest.WebEnvironment.NONE)
@@ -139,7 +139,7 @@ import static org.junit.jupiter.api.Assertions.assertAll;
     "ai.orchestration.modes.history-parallel.read-action-resolution.rag-cooperation-mode=PARALLEL_ACTIONS_AND_RAG"
 })
 class RealAPINativeActionSchemaIntegrationTest {
-    private static final int MAX_QUERIES = 26;
+    private static final int MAX_QUERIES = 29;
     private static final String PRIVATE_STATUS_ACTION = "native_read_subscription_status";
     private static final String NATURAL_STATUS_QUESTION = "What is the current status of my subscription?";
     private static final String PUBLIC_GUIDE = "In this fictional service, subscription cancellation takes effect "
@@ -194,8 +194,8 @@ class RealAPINativeActionSchemaIntegrationTest {
         double calibrationScore = dot / Math.sqrt(queryNorm * guideNorm);
         assertThat(calibrationScore).isBetween(0.5d, 1.0d);
         System.out.printf("Native indexed fixture calibration: cosine=%.6f configuredThreshold=0.5%n", calibrationScore);
-        System.out.printf("Native schema qualification: provider=openai model=%s scenarios=21 "
-            + "maxQueries=%d orchestrationTurns=25 directPlannerCalls=1 syntheticReceiver=true indexedFixture=true%n", model, MAX_QUERIES);
+        System.out.printf("Native schema qualification: provider=openai model=%s scenarios=24 "
+            + "maxQueries=%d orchestrationTurns=28 directPlannerCalls=1 syntheticReceiver=true indexedFixture=true%n", model, MAX_QUERIES);
     }
 
     @BeforeEach
@@ -218,10 +218,25 @@ class RealAPINativeActionSchemaIntegrationTest {
         assertThat(((Map<?, ?>) call.parameters().get("options")).get("note")).isNull();
     }
 
-    @Test
-    void publicInformationUsesNativeReadWithIndexedRetrievalDisabled() {
+    @ParameterizedTest
+    @ValueSource(strings = {
+        "How does subscription cancellation work?",
+        "What are the cancellation steps and when does billing stop?",
+        "Can you explain the service's cancellation procedure?"
+    })
+    void publicInformationUsesNativeReadWithIndexedRetrievalDisabled(String question) {
         assertPublicGuideInformation(OrchestrationContext.builder()
-            .sessionId("public-guide-" + UUID.randomUUID()).build());
+            .sessionId("public-guide-" + UUID.randomUUID()).build(), question);
+    }
+
+    @Test
+    void greetingDoesNotRequireAPolicyOrAccountRead() {
+        var result = query("Hello!", OrchestrationContext.builder()
+            .sessionId("greeting-" + UUID.randomUUID()).build());
+        assertThat(result.isSuccess()).isTrue();
+        assertThat(result.getType()).isEqualTo(OrchestrationResultType.INFORMATION_PROVIDED);
+        assertThat(result.getMessage()).isNotBlank();
+        assertThat(receiver.calls).isEmpty();
     }
 
     @Test
@@ -231,7 +246,11 @@ class RealAPINativeActionSchemaIntegrationTest {
     }
 
     private void assertPublicGuideInformation(OrchestrationContext context) {
-        var result = query("How does subscription cancellation work?", context);
+        assertPublicGuideInformation(context, "How does subscription cancellation work?");
+    }
+
+    private void assertPublicGuideInformation(OrchestrationContext context, String question) {
+        var result = query(question, context);
         System.out.printf("Native public INFO diagnostics: policy=%s extraction=%s%n",
             result.getMetadata() != null ? result.getMetadata().get("orchestrationPolicy") : null,
             result.getMetadata() != null ? result.getMetadata().get("extractionDiagnostics") : null);

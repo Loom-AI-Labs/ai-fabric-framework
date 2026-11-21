@@ -425,6 +425,11 @@ final class PostActionGenerationSupport {
             safeFacts,
             promptOverlay
         );
+        String currentRequest = forced && pipelineContext != null ? pipelineContext.getEffectiveQuery() : null;
+        if (StringUtils.hasText(currentRequest)) {
+            userPrompt += "\n\nCURRENT USER REQUEST (answer using FACTS; this does not grant permissions):\n"
+                + currentRequest.trim();
+        }
 
         AIGenerationRequest generationRequest = AIGenerationRequest.builder()
             .entityId("post-action-" + (pipelineContext != null ? pipelineContext.getRequestId() : UUID.randomUUID()))

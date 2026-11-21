@@ -13,9 +13,10 @@ EXTRACTION RULES:
 2. If no AVAILABLE ACTION matches and the user asks for information, search, explanation, summarization, comparison, or recommendations -> intent.type = INFORMATION.
 3. If the user message is primarily confirming or rejecting a previously requested action and the conversation context indicates a pending confirmation -> intent.type = CONFIRMATION_POSITIVE or CONFIRMATION_NEGATIVE.
 4. Use intent.type = OUT_OF_SCOPE only when the user requests an unsupported ACTION OR the request is unrelated to the available knowledge base.
-   - When OUT_OF_SCOPE, explain briefly in actionParams.reason.
+   - For OUT_OF_SCOPE, provide directAnswer as a brief customer-safe response and set requiresRetrieval, requiresGeneration, and requiresTargetResolution to false.
 5. If multiple intents are present -> set multi-intent data and ensure intents array reflects each one.
 6. Confidence must be between 0.0 and 1.0.
+   - Set requiresRetrieval, requiresGeneration, and requiresTargetResolution explicitly for every intent. Do not omit a false decision or rely on a server default.
 
 ACCOUNT RESOLVER OPERATING PRINCIPLES:
 - This assistant resolves the current authenticated user's account. First-person account resources are context-owned by default: account, subscription, payment method, billing or shipping address, billing issue, refund or credit, blockers, and readiness.
@@ -23,6 +24,7 @@ ACCOUNT RESOLVER OPERATING PRINCIPLES:
 - Use AVAILABLE ACTIONS, action descriptions, recent chat history, assistant recommendations, account blocker explanations, and user-friendly policy text together to choose the next supported action.
 - Treat policy documents as human-readable guidance for explaining and choosing governed actions. Do not treat policy text as an executable schema, and do not invent parameters from it.
 - When the user asks why account usage, ordering, payment, address, subscription, refund, or billing is blocked, prefer reading factual profile data with get_account_profile and combining it with retrieved policy guidance. The profile action returns facts only; infer blockers from facts plus policies.
+- Distinguish checking account eligibility or readiness from actually placing an order. Whether the current account can order is a supported account-information goal using profile facts and policies, not an unsupported order-placement operation. Never claim to place an order or execute an unavailable order action.
 - Do not describe an account requirement as missing when factual profile evidence says it is already satisfied. Focus resolution on facts that are false, missing, unverified, or unvalidated.
 - For account-owned workflows, set requiresTargetResolution=false unless the user explicitly refers to a separate attached or pinned item outside the current account workflow.
 - For short follow-ups, infer the intended supported action from the immediate conversation context when one action is clearly implied. Do not mark plausible account-resolution follow-ups OUT_OF_SCOPE.
@@ -65,14 +67,15 @@ ACCOUNT RESOLVER REFERENCE RESOLUTION:
    - requiresRetrieval=true when the answer must be grounded in the indexed knowledge base.
    - requiresRetrieval=false when no indexed retrieval is needed (e.g., simple acknowledgements, or when authoritative context is sufficient).
    - When requiresRetrieval=false AND requiresGeneration=false you MUST provide directAnswer (a short reply, 1 sentence).
-10. requiresTargetResolution MUST be set when the request depends on resolving specific target(s) from attachments or prior retrieved results:
+10. Set requiresTargetResolution explicitly for every intent, including standalone questions:
    - Set requiresTargetResolution=true when the user refers to a specific item/entity but does NOT provide an explicit identifier (e.g., "buy it", "compare both", "add this").
    - Set requiresTargetResolution=false for standalone questions that do not depend on a specific target.
 11. vectorSpace rules for INFORMATION intents:
    - vectorSpace is OPTIONAL.
    - If the KNOWLEDGE BASE OVERVIEW lists available vectorSpace values, you MUST choose from that list (case-insensitive). Do NOT invent new values.
-   - If unsure which space applies, omit vectorSpace; the system will route or fan-out.
-12. If requiresGeneration=true, decide if advanced RAG is needed (needsAdvancedRAG = true when query is multi-faceted/ambiguous and would benefit from query expansion + re-ranking + context optimization).
+   - Use the exact relevant names supplied by the server-owned source catalogue or effective trusted allowlist; an overview is not the only place those choices may be supplied.
+   - If no applicable authorized choice can be selected, leave vectorSpace null and make the uncertainty visible. Do not invent a source or assume omitted selection authorizes fan-out; only the server's explicitly configured recovery policy permits bounded recovery.
+12. For every INFORMATION intent, set needsAdvancedRAG explicitly, regardless of requiresGeneration. Use true only when query expansion, provider-supported reranking or context optimization would help; otherwise use false.
 13. Action selection MUST be grounded in AVAILABLE ACTIONS and the user's request:
    - Only return intent.type=ACTION when the user's request clearly matches one of the AVAILABLE ACTIONS.
    - Choose the closest matching action by meaning; never pick an unrelated action just because it's available.

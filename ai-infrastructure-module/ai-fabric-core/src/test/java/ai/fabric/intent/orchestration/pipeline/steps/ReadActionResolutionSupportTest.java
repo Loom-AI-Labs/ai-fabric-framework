@@ -261,7 +261,10 @@ class ReadActionResolutionSupportTest {
                 "retrieved context", pipeline, outcome, RagContextSupport.NO_CONTEXT_MESSAGE);
 
             assertThat(merged).contains("Use read-action evidence as the source of truth for fields it explicitly contains",
-                "Do not use unrelated documents as entity-specific evidence", "- status: ready", "retrieved context");
+                "Do not use unrelated documents as entity-specific evidence", "- status: ready", "retrieved context",
+                "correct an unsupported premise instead of adopting it in the opening conclusion",
+                "Distinguish a demonstrated blocker, a satisfied condition, and an unknown condition",
+                "limit the conclusion to the checks actually supported");
             if (overlay.isEmpty()) {
                 assertThat(merged).contains("Do not provide handoffs, next steps, or support references",
                     "Do not append generic closers").doesNotContain("permitted general advice");
