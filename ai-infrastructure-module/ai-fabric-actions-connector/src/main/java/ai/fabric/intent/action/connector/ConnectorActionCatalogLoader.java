@@ -401,11 +401,25 @@ public class ConnectorActionCatalogLoader {
         if (raw.isEmpty()) {
             return null;
         }
+        ConnectorActionLlmFactsDefinition.Mode mode;
+        String modeName = readString(raw, "mode");
+        try {
+            // An existing explicit projection must never widen because its mode was omitted.
+            mode = StringUtils.hasText(modeName)
+                ? ConnectorActionLlmFactsDefinition.Mode.valueOf(modeName.trim().toUpperCase(Locale.ROOT))
+                : ConnectorActionLlmFactsDefinition.Mode.SELECTED_FIELDS;
+        } catch (IllegalArgumentException exception) {
+            throw new IllegalStateException("Invalid action contract in " + label + " for action '" + actionName
+                + "': llmFacts.mode must be AUTOMATIC or SELECTED_FIELDS.", exception);
+        }
+        if (mode == ConnectorActionLlmFactsDefinition.Mode.AUTOMATIC) {
+            return new ConnectorActionLlmFactsDefinition(null, List.of(), List.of(), List.of(), mode);
+        }
         String rootPath = readString(raw, KEY_ROOT_PATH);
         List<String> copyFields = readStringList(raw.get(KEY_COPY_FIELDS));
         List<ConnectorActionLlmFactsListDefinition> lists = parseLlmFactLists(raw.get(KEY_LISTS), label, actionName);
         List<ConnectorActionLlmFactsObjectDefinition> objects = parseLlmFactObjects(raw.get(KEY_OBJECTS), label, actionName);
-        return new ConnectorActionLlmFactsDefinition(rootPath, copyFields, lists, objects);
+        return new ConnectorActionLlmFactsDefinition(rootPath, copyFields, lists, objects, mode);
     }
 
     private List<ConnectorActionLlmFactsListDefinition> parseLlmFactLists(Object rawLists,

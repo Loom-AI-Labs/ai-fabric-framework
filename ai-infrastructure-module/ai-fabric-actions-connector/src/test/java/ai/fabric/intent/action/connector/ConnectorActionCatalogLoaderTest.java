@@ -14,6 +14,24 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class ConnectorActionCatalogLoaderTest {
 
+    @Test void evidenceDefaultsAndExistingSelectionsKeepTheirDeclaredExposureBoundary() {
+        var source = new AIActionCatalogProperties.ActionSourceProperties();
+        source.setPath("classpath:actions/evidence-modes.yml");
+        var actions = new ConnectorActionCatalogLoader(new DefaultResourceLoader()).loadActions(List.of(source));
+        assertThat(actions.get(0).llmFacts()).isNull();
+        assertThat(actions.get(1).llmFacts().mode()).isEqualTo(ConnectorActionLlmFactsDefinition.Mode.AUTOMATIC);
+        assertThat(actions.get(2).llmFacts().mode()).isEqualTo(ConnectorActionLlmFactsDefinition.Mode.SELECTED_FIELDS);
+        assertThat(actions.get(3).llmFacts().mode()).isEqualTo(ConnectorActionLlmFactsDefinition.Mode.SELECTED_FIELDS);
+        assertThat(actions.get(3).llmFacts().copyFields()).isEmpty();
+    }
+
+    @Test void invalidEvidenceModeDoesNotSilentlyExpandResultExposure() {
+        var source = new AIActionCatalogProperties.ActionSourceProperties();
+        source.setPath("classpath:actions/invalid-evidence-mode.yml");
+        assertThatThrownBy(() -> new ConnectorActionCatalogLoader(new DefaultResourceLoader()).loadActions(List.of(source)))
+            .isInstanceOf(IllegalStateException.class).hasMessageContaining("llmFacts.mode");
+    }
+
     @Test
     void disabledActionIsAbsentFromCatalogueAndRuntimeHandlersWhileDefaultRemainsEnabled() {
         var source = new AIActionCatalogProperties.ActionSourceProperties();

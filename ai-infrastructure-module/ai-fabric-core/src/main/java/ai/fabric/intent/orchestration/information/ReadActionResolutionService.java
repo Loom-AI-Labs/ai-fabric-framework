@@ -904,7 +904,7 @@ public class ReadActionResolutionService {
     }
 
     private boolean hasSubstantiveEvidence(String key, Object value, int depth) {
-        if (value == null || depth > 6) {
+        if (value == null || depth > 8) {
             return false;
         }
         String normalizedKey = normalizeEvidenceKey(key);
@@ -1111,8 +1111,8 @@ public class ReadActionResolutionService {
             // Approved text shares the declared evidence budget, not a separate hidden leaf cap.
             return truncate(text, maxChars);
         }
-        if (depth > 3) {
-            return truncate(String.valueOf(value), 240);
+        if (depth > 8) {
+            return Map.of("_truncated", true);
         }
         if (value instanceof Map<?, ?> map) {
             Map<String, Object> sanitized = new LinkedHashMap<>();

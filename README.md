@@ -30,7 +30,7 @@
   ·
   <a href="docs/llm-context/README.md"><strong>Coding-Assistant Context</strong></a>
   ·
-  <a href="docs/release-notes/0.8.53.md"><strong>0.8.53 Release Notes</strong></a>
+  <a href="docs/release-notes/0.8.58.md"><strong>0.8.58 Release Notes</strong></a>
 </p>
 
 ![AI Fabric connects conversational, event-driven and multi-specialist execution to shared retrieval, action, memory and human-control capabilities inside an application-owned boundary.](docs/assets/ai-fabric-capabilities.svg)

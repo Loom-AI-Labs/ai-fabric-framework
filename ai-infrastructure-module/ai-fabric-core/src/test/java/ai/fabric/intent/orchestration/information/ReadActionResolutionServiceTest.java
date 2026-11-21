@@ -533,7 +533,8 @@ class ReadActionResolutionServiceTest {
             .accessMode(ActionAccessMode.READ).groundingEligible(true).readActionResolutionEligible(true).build();
         AIActionHandler handler = mock(AIActionHandler.class);
         String summary = "Approved observation. ".repeat(25) + "The registered index has thirteen active sources.";
-        Map<String, Object> facts = Map.of("findings", List.of(Map.of(
+        Map<String, Object> facts = Map.of("data", Map.of("products", List.of(Map.of("id", "record-1",
+            "specifications", Map.of("dimensions", Map.of("width", 120))))), "findings", List.of(Map.of(
             "summary", summary, "facts", Map.of("sourceCount", "13"),
             "evidenceReferenceIds", List.of("approved-evidence-1"))));
         ActionResult result = ActionResult.builder().success(true).data(ActionPayload.object(facts)).build();
@@ -561,6 +562,7 @@ class ReadActionResolutionServiceTest {
         var json = new ObjectMapper().readTree(retained);
         assertThat(json.at("/findings/0/summary").asText()).isEqualTo(summary);
         assertThat(json.at("/findings/0/facts/sourceCount").asText()).isEqualTo("13");
+        assertThat(json.at("/data/products/0/specifications/dimensions/width").asInt()).isEqualTo(120);
         assertThat(retained.length()).isLessThanOrEqualTo(1200);
         assertThat(outcome.hasGroundingEvidence()).isTrue();
     }

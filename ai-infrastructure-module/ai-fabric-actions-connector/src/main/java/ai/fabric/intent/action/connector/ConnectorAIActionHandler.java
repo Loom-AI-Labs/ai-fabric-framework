@@ -3,7 +3,6 @@ package ai.fabric.intent.action.connector;
 import ai.fabric.intent.action.AIActionHandler;
 import ai.fabric.intent.action.AIActionMetaData;
 import ai.fabric.intent.action.ActionContext;
-import ai.fabric.intent.action.ActionListPayload;
 import ai.fabric.intent.action.ActionResult;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -31,8 +30,6 @@ public final class ConnectorAIActionHandler implements AIActionHandler {
     private static final String REDACTED = "[REDACTED]";
     private static final Pattern PLACEHOLDER = Pattern.compile("\\{\\{\\s*([a-zA-Z0-9_]+)(?:\\s*\\|\\s*([^{}]*?))?\\s*}}");
     private static final ObjectMapper JSON = new ObjectMapper();
-    private static final int FALLBACK_MAX_RECORDS = 5;
-    private static final int FALLBACK_MAX_SCALAR_FIELDS = 16;
     private static final int FALLBACK_MAX_CONTENT_CHARS = 300;
 
     private final AIActionMetaData metadata;
@@ -152,13 +149,12 @@ public final class ConnectorAIActionHandler implements AIActionHandler {
         Map<String, Object> payload = actionResult.getData() != null
             ? actionResult.getData().toMap()
             : Map.of();
-        Map<String, Object> rootPayload = selectFactsRoot(payload);
-        if (llmFacts != null && llmFacts.configured()) {
-            applyConfiguredFacts(facts, rootPayload, context);
-        } else if (actionResult.getData() instanceof ActionListPayload listPayload) {
-            applyTypedListFacts(facts, listPayload);
-        } else {
-            applyFallbackFacts(facts, payload, rootPayload);
+        if (llmFacts != null && llmFacts.mode() == ConnectorActionLlmFactsDefinition.Mode.SELECTED_FIELDS) {
+            applyConfiguredFacts(facts, selectFactsRoot(payload), context);
+        } else if (actionResult.isSuccess() && !payload.isEmpty()) {
+            var projection = ConnectorAutomaticEvidence.project(payload, sensitiveParams);
+            facts.put("data", projection.data());
+            if (projection.truncated()) facts.put("truncated", true);
         }
         return Optional.of(Collections.unmodifiableMap(facts));
     }
@@ -182,52 +178,6 @@ public final class ConnectorAIActionHandler implements AIActionHandler {
         for (ConnectorActionLlmFactsObjectDefinition objectDefinition : llmFacts.objects()) {
             putConfiguredObject(facts, rootPayload, objectDefinition);
         }
-    }
-
-    private void applyFallbackFacts(Map<String, Object> facts,
-                                    Map<String, Object> payload,
-                                    Map<String, Object> rootPayload) {
-        copyCommonTopLevelFields(rootPayload, facts);
-        if (rootPayload != payload) {
-            copyCommonTopLevelFields(payload, facts);
-        }
-        boolean hasPrimaryList = putFallbackList(facts, "documents", rootPayload.get("documents"));
-        if (!hasPrimaryList) {
-            hasPrimaryList = putFallbackList(facts, "results", rootPayload.get("results"));
-        }
-        if (!hasPrimaryList) {
-            hasPrimaryList = putFallbackList(facts, "items", rootPayload.get("items"));
-        }
-        if (!hasPrimaryList) {
-            putMcpToolContentFacts(facts, rootPayload);
-            if (rootPayload != payload) {
-                putMcpToolContentFacts(facts, payload);
-            }
-        }
-        if (!hasPrimaryList && supportsObjectFallbackFacts()
-            && !facts.containsKey("documents") && !facts.containsKey("record")) {
-            putFallbackObjectFacts(facts, rootPayload);
-        }
-    }
-
-    private void applyTypedListFacts(Map<String, Object> facts, ActionListPayload listPayload) {
-        List<Map<String, Object>> items = compactFallbackRecords(listPayload.getItems());
-        facts.put("items", items);
-        facts.put("itemsCount", listPayload.getCount());
-        if (listPayload.getTotalCount() != null) {
-            facts.put("totalItemsCount", listPayload.getTotalCount());
-        }
-        if (StringUtils.hasText(listPayload.getCursor())) {
-            facts.put("cursor", listPayload.getCursor());
-        }
-        copyFallbackScalars(listPayload.getExtra(), facts);
-    }
-
-    private boolean supportsObjectFallbackFacts() {
-        if (metadata == null || metadata.getAccessMode() == null) {
-            return false;
-        }
-        return metadata.getAccessMode() != ai.fabric.intent.action.ActionAccessMode.WRITE_ONLY;
     }
 
     private void putConfiguredList(Map<String, Object> facts,
@@ -288,90 +238,6 @@ public final class ConnectorAIActionHandler implements AIActionHandler {
         }
     }
 
-    private boolean putFallbackList(Map<String, Object> facts,
-                                    String target,
-                                    Object value) {
-        List<Map<String, Object>> records = compactFallbackRecords(value);
-        if (records.isEmpty()) {
-            return false;
-        }
-        facts.put(target, records);
-        facts.put(target + "Count", records.size());
-        return true;
-    }
-
-    private boolean putFallbackObjectFacts(Map<String, Object> facts, Map<String, Object> payload) {
-        if (facts == null || payload == null || payload.isEmpty()) {
-            return false;
-        }
-        Map<String, Object> record = compactFallbackRecord(payload);
-        if (record.isEmpty()) {
-            return false;
-        }
-        facts.put("record", Collections.unmodifiableMap(record));
-        facts.put("recordCount", 1);
-        return true;
-    }
-
-    private boolean putMcpToolContentFacts(Map<String, Object> facts, Map<String, Object> payload) {
-        if (facts == null || facts.containsKey("documents") || payload == null || payload.isEmpty()) {
-            return false;
-        }
-        Object rawToolResult = mapObject(payload, "toolResult");
-        if (!(rawToolResult instanceof Map<?, ?> toolResult)) {
-            return false;
-        }
-        Object rawContent = mapObject(toolResult, "content");
-        if (!(rawContent instanceof List<?> contentItems) || contentItems.isEmpty()) {
-            return false;
-        }
-        List<Map<String, Object>> records = new ArrayList<>();
-        for (Object item : contentItems) {
-            if (records.size() >= FALLBACK_MAX_RECORDS) {
-                break;
-            }
-            if (item instanceof Map<?, ?> itemMap) {
-                String text = asString(mapObject(itemMap, "text"));
-                List<Map<String, Object>> parsedRecords = compactJsonTextRecords(text);
-                if (!parsedRecords.isEmpty()) {
-                    appendLimited(records, parsedRecords);
-                    continue;
-                }
-                Map<String, Object> compact = compactFallbackRecord(itemMap);
-                if (!compact.isEmpty()) {
-                    records.add(Collections.unmodifiableMap(compact));
-                }
-            } else if (item != null) {
-                Map<String, Object> compact = new LinkedHashMap<>();
-                putIfPresent(compact, "content", truncate(asString(item), FALLBACK_MAX_CONTENT_CHARS));
-                if (!compact.isEmpty()) {
-                    records.add(Collections.unmodifiableMap(compact));
-                }
-            }
-        }
-        if (records.isEmpty()) {
-            return false;
-        }
-        List<Map<String, Object>> limited = limit(records, FALLBACK_MAX_RECORDS);
-        facts.put("documents", limited);
-        facts.put("documentsCount", limited.size());
-        return true;
-    }
-
-    private void appendLimited(List<Map<String, Object>> target, List<Map<String, Object>> records) {
-        if (target == null || records == null || records.isEmpty()) {
-            return;
-        }
-        for (Map<String, Object> record : records) {
-            if (target.size() >= FALLBACK_MAX_RECORDS) {
-                return;
-            }
-            if (record != null && !record.isEmpty()) {
-                target.add(record);
-            }
-        }
-    }
-
     private Map<String, Object> selectFactsRoot(Map<String, Object> payload) {
         if (payload == null || payload.isEmpty()) {
             return Map.of();
@@ -414,22 +280,6 @@ public final class ConnectorAIActionHandler implements AIActionHandler {
         return limit(out, listDefinition.maxItems());
     }
 
-    private List<Map<String, Object>> compactFallbackRecords(Object value) {
-        if (!(value instanceof List<?> list) || list.isEmpty()) {
-            return List.of();
-        }
-        List<Map<String, Object>> out = new ArrayList<>();
-        for (Object item : list) {
-            if (item instanceof Map<?, ?> map) {
-                Map<String, Object> compact = compactFallbackRecord(map);
-                if (!compact.isEmpty()) {
-                    out.add(Collections.unmodifiableMap(compact));
-                }
-            }
-        }
-        return limit(out, FALLBACK_MAX_RECORDS);
-    }
-
     private Map<String, Object> compactConfiguredObject(Map<?, ?> record,
                                                         List<String> includeFields,
                                                         String fallbackContentField,
@@ -444,95 +294,6 @@ public final class ConnectorAIActionHandler implements AIActionHandler {
             putIfPresent(compact, leafKey(fallbackContentField), truncate(asString(resolvePath(record, fallbackContentField)), fallbackContentMaxChars));
         }
         return compact;
-    }
-
-    private Map<String, Object> compactFallbackRecord(Map<?, ?> record) {
-        Map<String, Object> compact = new LinkedHashMap<>();
-        copyFallbackScalars(record, compact);
-        if (!compact.containsKey("content")) {
-            Object content = mapObject(record, "content");
-            putIfPresent(compact, "content", truncate(asString(content), FALLBACK_MAX_CONTENT_CHARS));
-        }
-        return compact;
-    }
-
-    private List<Map<String, Object>> compactJsonTextRecords(String text) {
-        if (!StringUtils.hasText(text)) {
-            return List.of();
-        }
-        String trimmed = text.trim();
-        if (!trimmed.startsWith("[") && !trimmed.startsWith("{")) {
-            return List.of();
-        }
-        try {
-            Object decoded = JSON.readValue(trimmed, Object.class);
-            if (decoded instanceof List<?> list) {
-                return compactFallbackRecords(list);
-            }
-            if (decoded instanceof Map<?, ?> map) {
-                List<Map<String, Object>> nested = firstNonEmptyFallbackList(
-                    mapObject(map, "documents"),
-                    mapObject(map, "results"),
-                    mapObject(map, "items"),
-                    mapObject(map, "content")
-                );
-                if (!nested.isEmpty()) {
-                    return nested;
-                }
-                Map<String, Object> compact = compactFallbackRecord(map);
-                return compact.isEmpty() ? List.of() : List.of(Collections.unmodifiableMap(compact));
-            }
-            return List.of();
-        } catch (JsonProcessingException ex) {
-            return List.of();
-        }
-    }
-
-    private List<Map<String, Object>> firstNonEmptyFallbackList(Object... candidates) {
-        if (candidates == null) {
-            return List.of();
-        }
-        for (Object candidate : candidates) {
-            List<Map<String, Object>> records = compactFallbackRecords(candidate);
-            if (!records.isEmpty()) {
-                return records;
-            }
-        }
-        return List.of();
-    }
-
-    private void copyFallbackScalars(Map<?, ?> source, Map<String, Object> target) {
-        if (source == null || source.isEmpty() || target.size() >= FALLBACK_MAX_SCALAR_FIELDS) {
-            return;
-        }
-        for (Map.Entry<?, ?> entry : source.entrySet()) {
-            if (entry == null || entry.getKey() == null || target.size() >= FALLBACK_MAX_SCALAR_FIELDS) {
-                continue;
-            }
-            String key = String.valueOf(entry.getKey());
-            Object value = entry.getValue();
-            if (isSafeScalar(value)) {
-                putIfPresent(target, key, truncateScalar(value));
-            } else if (value instanceof Map<?, ?> nested) {
-                copyNestedFallbackScalars(nested, target);
-            }
-        }
-    }
-
-    private void copyNestedFallbackScalars(Map<?, ?> source, Map<String, Object> target) {
-        if (source == null || source.isEmpty() || target.size() >= FALLBACK_MAX_SCALAR_FIELDS) {
-            return;
-        }
-        for (Map.Entry<?, ?> entry : source.entrySet()) {
-            if (entry == null || entry.getKey() == null || target.size() >= FALLBACK_MAX_SCALAR_FIELDS) {
-                continue;
-            }
-            String key = String.valueOf(entry.getKey());
-            Object value = entry.getValue();
-            if (isSafeScalar(value) && !target.containsKey(key)) {
-                putIfPresent(target, key, truncateScalar(value));
-            }
-        }
     }
 
     private List<Map<String, Object>> filterConstraintMatches(List<Map<String, Object>> records,
@@ -791,18 +552,6 @@ public final class ConnectorAIActionHandler implements AIActionHandler {
         return recordValue.toString().trim().equalsIgnoreCase(expected.toString().trim());
     }
 
-    private void copyCommonTopLevelFields(Map<String, Object> source, Map<String, Object> target) {
-        if (source == null || source.isEmpty()) {
-            return;
-        }
-        copyPath(source, target, "query");
-        copyPath(source, target, "count");
-        copyPath(source, target, "totalResults");
-        copyPath(source, target, "returnedResults");
-        copyPath(source, target, "lookup");
-        copyPath(source, target, "lookupMethod");
-    }
-
     private void copyPath(Map<?, ?> source, Map<String, Object> target, String path) {
         if (source == null || target == null || !StringUtils.hasText(path)) {
             return;
@@ -1003,27 +752,11 @@ public final class ConnectorAIActionHandler implements AIActionHandler {
         return value == null ? null : Objects.toString(value, null);
     }
 
-    private Object truncateScalar(Object value) {
-        if (value instanceof String text) {
-            return truncate(text, FALLBACK_MAX_CONTENT_CHARS);
-        }
-        return value;
-    }
-
     private String truncate(String value, int maxChars) {
         if (value == null || maxChars <= 0 || value.length() <= maxChars) {
             return value;
         }
         return value.substring(0, Math.max(0, maxChars - 3)) + "...";
-    }
-
-    private boolean isSafeScalar(Object value) {
-        return value == null
-            || value instanceof String
-            || value instanceof Number
-            || value instanceof Boolean
-            || value instanceof Character
-            || value instanceof Enum<?>;
     }
 
     private Double numericValue(Object value) {

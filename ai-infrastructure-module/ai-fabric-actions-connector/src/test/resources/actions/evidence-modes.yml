@@ -1,0 +1,17 @@
+actions:
+  - name: automatic_default
+    accessMode: READ
+  - name: automatic_explicit
+    accessMode: READ
+    llmFacts:
+      mode: AUTOMATIC
+      copyFields: [id]
+      lists: inactive-unparsed-selection
+  - name: selected_existing
+    accessMode: READ
+    llmFacts:
+      copyFields: [id]
+  - name: selected_empty
+    accessMode: READ
+    llmFacts:
+      mode: SELECTED_FIELDS

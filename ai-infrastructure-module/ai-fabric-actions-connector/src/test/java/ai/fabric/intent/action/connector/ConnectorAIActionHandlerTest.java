@@ -336,7 +336,7 @@ class ConnectorAIActionHandlerTest {
     }
 
     @Test
-    void shouldUseGenericFallbackProjectionWhenNoCatalogProjectionIsConfigured() {
+    void shouldPreserveNestedResultsAutomaticallyWhenNoCatalogProjectionIsConfigured() {
         ActionResult actionResult = ActionResult.builder()
             .success(true)
             .message("Action executed.")
@@ -369,13 +369,14 @@ class ConnectorAIActionHandlerTest {
 
         assertThat(facts).isPresent();
         @SuppressWarnings("unchecked")
-        List<Map<String, Object>> documents = (List<Map<String, Object>>) facts.get().get("documents");
+        Map<String, Object> output = (Map<String, Object>) facts.get().get("data");
+        Map<String, Object> nested = (Map<String, Object>) output.get("data");
+        List<Map<String, Object>> documents = (List<Map<String, Object>>) nested.get("documents");
         assertThat(documents).hasSize(1);
         assertThat(documents.getFirst())
             .containsEntry("name", "Alpha Record")
-            .containsEntry("status", "ready")
-            .containsEntry("rank", 3)
-            .doesNotContainKey("ignoredNestedList");
+            .containsEntry("metadata", Map.of("status", "ready", "rank", 3, "internalPayload", "bounded scalar evidence"))
+            .containsEntry("nested", Map.of("ignoredNestedList", List.of("a", "b")));
     }
 
     @Test
@@ -406,21 +407,19 @@ class ConnectorAIActionHandlerTest {
         Optional<Map<String, Object>> facts = handler.buildPostActionLlmFacts(actionResult, null);
 
         assertThat(facts).isPresent();
-        assertThat(facts.get()).containsEntry("recordCount", 1);
         @SuppressWarnings("unchecked")
-        Map<String, Object> record = (Map<String, Object>) facts.get().get("record");
+        Map<String, Object> record = (Map<String, Object>) facts.get().get("data");
         assertThat(record)
             .containsEntry("sku", "SKU-0001")
             .containsEntry("name", "Premium Wireless Headphones")
             .containsEntry("price", 50.99)
             .containsEntry("currency", "USD")
             .containsEntry("inStockQty", 6)
-            .containsEntry("category", "Travel")
-            .doesNotContainKey("internalList");
+            .containsEntry("metadata", Map.of("category", "Travel", "internalList", List.of("ignored")));
     }
 
     @Test
-    void shouldNotUseGenericFallbackProjectionForSingleWriteObjectWhenNoCatalogProjectionIsConfigured() {
+    void shouldIncludeActualSuccessfulWriteReceiptWithoutReexecutingTheAction() {
         ActionResult actionResult = ActionResult.builder()
             .success(true)
             .message("Cart updated")
@@ -445,6 +444,7 @@ class ConnectorAIActionHandlerTest {
 
         assertThat(facts).isPresent();
         assertThat(facts.get()).doesNotContainKeys("record", "recordCount");
+        assertThat(facts.get()).containsEntry("data", Map.of("cartId", "cart-1", "checkoutUrl", "https://checkout.example"));
     }
 
     @Test
@@ -468,16 +468,18 @@ class ConnectorAIActionHandlerTest {
         Optional<Map<String, Object>> facts = handler.buildPostActionLlmFacts(actionResult, null);
 
         assertThat(facts).isPresent();
-        assertThat(facts.get())
-            .containsEntry("items", List.of())
-            .containsEntry("itemsCount", 0)
+        @SuppressWarnings("unchecked")
+        Map<String, Object> data = (Map<String, Object>) facts.get().get("data");
+        assertThat(data)
+            .containsEntry("_items", List.of())
+            .containsEntry("_count", 0)
             .containsEntry("query", "diesel SUV under 10000")
             .containsEntry("source", "live-inventory")
             .doesNotContainKeys("record", "recordCount");
     }
 
     @Test
-    void shouldExposeMcpToolTextJsonAsFallbackDocuments() {
+    void shouldPreserveApprovedMcpResultWithoutRequiringDocumentFieldNames() {
         ActionResult actionResult = ActionResult.builder()
             .success(true)
             .message("MCP tool result")
@@ -516,12 +518,10 @@ class ConnectorAIActionHandlerTest {
         Optional<Map<String, Object>> facts = handler.buildPostActionLlmFacts(actionResult, null);
 
         assertThat(facts).isPresent();
-        assertThat(facts.get()).containsEntry("documentsCount", 2);
         @SuppressWarnings("unchecked")
-        List<Map<String, Object>> documents = (List<Map<String, Object>>) facts.get().get("documents");
-        assertThat(documents.getFirst())
-            .containsEntry("question", "Do you allow customers to request and manage their own returns?")
-            .containsEntry("answer", "Customers must contact the merchant to request a return.");
+        Map<String, Object> data = (Map<String, Object>) facts.get().get("data");
+        assertThat(data).containsEntry("adapterType", "mcp-tool");
+        assertThat(data.get("toolResult").toString()).contains("Customers must contact the merchant to request a return.");
     }
 
     @Test

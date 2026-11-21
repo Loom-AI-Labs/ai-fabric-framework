@@ -12,17 +12,24 @@ public record ConnectorActionLlmFactsDefinition(
     String rootPath,
     List<String> copyFields,
     List<ConnectorActionLlmFactsListDefinition> lists,
-    List<ConnectorActionLlmFactsObjectDefinition> objects
+    List<ConnectorActionLlmFactsObjectDefinition> objects,
+    Mode mode
 ) {
+    public enum Mode { AUTOMATIC, SELECTED_FIELDS }
+
+    public ConnectorActionLlmFactsDefinition(String rootPath, List<String> copyFields,
+                                            List<ConnectorActionLlmFactsListDefinition> lists,
+                                            List<ConnectorActionLlmFactsObjectDefinition> objects) {
+        this(rootPath, copyFields, lists, objects, Mode.SELECTED_FIELDS);
+    }
+
     public ConnectorActionLlmFactsDefinition {
         copyFields = copyFields != null ? List.copyOf(copyFields) : List.of();
         lists = lists != null ? List.copyOf(lists) : List.of();
         objects = objects != null ? List.copyOf(objects) : List.of();
+        mode = mode != null ? mode : Mode.AUTOMATIC;
     }
 
-    boolean configured() {
-        return !copyFields.isEmpty() || !lists.isEmpty() || !objects.isEmpty();
-    }
 }
 
 record ConnectorActionLlmFactsListDefinition(

@@ -1,0 +1,5 @@
+actions:
+  - name: invalid_projection
+    accessMode: READ
+    llmFacts:
+      mode: UNKNOWN
