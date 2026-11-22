@@ -31,6 +31,20 @@ import static org.mockito.Mockito.when;
 
 class SpringAiDocumentIndexingAdapterTest {
 
+    @Test
+    void overlapPreservesPageBoundariesAndIsOptIn() {
+        var source = new Document("A useful policy sentence with numbered conditions. ".repeat(70), Map.of("pageNumber", 1));
+        var pageTwo = new Document("Second page content with independent conditions. ".repeat(20), Map.of("pageNumber", 2));
+        var plan = adapter.plan(List.of(source, pageTwo), options("kb", 1)
+            .splitWithTokenTextSplitter(true).tokenChunkSize(100).overlapTokens(20)
+            .minChunkSizeChars(0).minChunkLengthToEmbed(0).maxChunks(100).maxTotalContentLength(50000)
+            .allowedMetadataKey("pageNumber").build());
+        assertThat(plan.chunks().size()).isGreaterThan(3);
+        assertThat(plan.chunks().stream().filter(c -> Integer.valueOf(2).equals(c.indexDocument().vectorMetadata().get("pageNumber"))).findFirst().orElseThrow()
+            .indexDocument().semanticSearchText()).doesNotContain("numbered conditions");
+        assertThatThrownBy(() -> options("kb", 1).tokenChunkSize(100).overlapTokens(100).build()).isInstanceOf(IllegalArgumentException.class);
+    }
+
     private static final Instant OCCURRED_AT =
         Instant.parse("2026-07-24T09:30:00Z");
 

@@ -51,6 +51,14 @@ public class SpringAiRagEvaluationService {
     private final int maxMetadataKeys;
     private final int maxMetadataValueChars;
 
+    /** Reuses the configured evaluators through the provider-neutral, numeric outcome contract. */
+    public ai.fabric.rag.evaluation.RagEvaluationProvider asProvider() {
+        Map<String, Evaluator> configured = new LinkedHashMap<>();
+        configured.put("relevance", relevancyEvaluator);
+        if (factCheckingEvaluator != null) configured.put("faithfulness", factCheckingEvaluator);
+        return new ai.fabric.rag.evaluation.SpringAiRagEvaluationAdapter("spring-ai", configured);
+    }
+
     public SpringAiRagEvaluationService(Evaluator relevancyEvaluator,
                                         Evaluator factCheckingEvaluator) {
         this(

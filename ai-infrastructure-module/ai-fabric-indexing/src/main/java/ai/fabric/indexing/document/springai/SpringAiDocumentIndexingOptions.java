@@ -25,6 +25,9 @@ public record SpringAiDocumentIndexingOptions(
     List<DocumentTransformer> transformers,
     boolean splitWithTokenTextSplitter,
     int tokenChunkSize,
+    int overlapTokens,
+    Integer minChunkSizeChars,
+    Integer minChunkLengthToEmbed,
     int maxDocuments,
     int maxChunks,
     int maxContentLength,
@@ -71,6 +74,15 @@ public record SpringAiDocumentIndexingOptions(
             tokenChunkSize,
             DEFAULT_TOKEN_CHUNK_SIZE
         );
+        if (overlapTokens < 0 || overlapTokens >= tokenChunkSize) {
+            throw new IllegalArgumentException("overlapTokens must be nonnegative and smaller than tokenChunkSize");
+        }
+        if (minChunkSizeChars != null && (minChunkSizeChars < 0 || minChunkSizeChars > tokenChunkSize)) {
+            throw new IllegalArgumentException("minChunkSizeChars must be between zero and tokenChunkSize");
+        }
+        if (minChunkLengthToEmbed != null && (minChunkLengthToEmbed < 0 || minChunkLengthToEmbed > tokenChunkSize)) {
+            throw new IllegalArgumentException("minChunkLengthToEmbed must be between zero and tokenChunkSize");
+        }
         maxDocuments = positiveOrDefault(
             maxDocuments,
             DEFAULT_MAX_DOCUMENTS
@@ -176,6 +188,9 @@ public record SpringAiDocumentIndexingOptions(
         private final List<DocumentTransformer> transformers = new ArrayList<>();
         private boolean splitWithTokenTextSplitter = true;
         private int tokenChunkSize = DEFAULT_TOKEN_CHUNK_SIZE;
+        private int overlapTokens;
+        private Integer minChunkSizeChars;
+        private Integer minChunkLengthToEmbed;
         private int maxDocuments = DEFAULT_MAX_DOCUMENTS;
         private int maxChunks = DEFAULT_MAX_CHUNKS;
         private int maxContentLength = DEFAULT_MAX_CONTENT_LENGTH;
@@ -251,6 +266,10 @@ public record SpringAiDocumentIndexingOptions(
             tokenChunkSize = value;
             return this;
         }
+
+        public Builder overlapTokens(int value) { overlapTokens = value; return this; }
+        public Builder minChunkSizeChars(Integer value) { minChunkSizeChars = value; return this; }
+        public Builder minChunkLengthToEmbed(Integer value) { minChunkLengthToEmbed = value; return this; }
 
         public Builder maxDocuments(int value) {
             maxDocuments = value;
@@ -334,6 +353,9 @@ public record SpringAiDocumentIndexingOptions(
                 transformers,
                 splitWithTokenTextSplitter,
                 tokenChunkSize,
+                overlapTokens,
+                minChunkSizeChars,
+                minChunkLengthToEmbed,
                 maxDocuments,
                 maxChunks,
                 maxContentLength,

@@ -7,7 +7,7 @@
 
     <groupId>io.github.loom-ai-labs</groupId>
     <artifactId>ai-fabric-bom</artifactId>
-    <version>0.8.62</version>
+    <version>0.8.63-SNAPSHOT</version>
     <packaging>pom</packaging>
 
     <name>AI Fabric Framework BOM</name>
@@ -47,6 +47,7 @@
         <module>ai-fabric-retrieval-connector</module>
         <module>ai-fabric-data-sync</module>
         <module>ai-fabric-indexing</module>
+        <module>ai-fabric-document-readers</module>
         <module>ai-fabric-pii</module>
         <module>ai-fabric-governance</module>
         <module>ai-fabric-starter</module>
@@ -107,6 +108,11 @@
 
     <dependencyManagement>
         <dependencies>
+            <dependency>
+                <groupId>io.github.loom-ai-labs</groupId>
+                <artifactId>ai-fabric-document-readers</artifactId>
+                <version>${project.version}</version>
+            </dependency>
             <dependency>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-dependencies</artifactId>

@@ -78,6 +78,17 @@ jobs:
         env:
           MAVEN_OPTS: -Xmx2g
 
+      - name: Qualify local OCR for images and scanned PDFs
+        # Separate real-process qualification from fixture-based reader tests.
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends tesseract-ocr tesseract-ocr-eng fonts-dejavu-core
+          module=ai-infrastructure-module/ai-fabric-document-readers
+          mvn ${MAVEN_ARGS} -f "${module}/pom.xml" dependency:build-classpath -Dmdep.outputFile=target/ocr-classpath
+          java -Djava.awt.headless=true -Xmx256m \
+            -cp "$(cat "${module}/target/ocr-classpath"):${module}/target/classes:${module}/target/test-classes" \
+            ai.fabric.document.TesseractQualification /usr/bin/tesseract
+
       - name: Compile minimal consumer example
         run: |
           mvn ${MAVEN_ARGS} -f examples/minimal-spring-boot/pom.xml \

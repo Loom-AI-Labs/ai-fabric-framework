@@ -19,6 +19,8 @@ import org.springframework.ai.document.Document;
 import org.springframework.ai.document.DocumentReader;
 import org.springframework.ai.document.DocumentTransformer;
 import org.springframework.ai.transformer.splitter.TokenTextSplitter;
+import com.knuddels.jtokkit.Encodings;
+import com.knuddels.jtokkit.api.EncodingType;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -216,16 +218,29 @@ public class SpringAiDocumentIndexingAdapter {
             if (properties.getDefaultSplitter().isEnabled()
                 && options.splitWithTokenTextSplitter()) {
                 TokenTextSplitter splitter = TokenTextSplitter.builder()
-                    .withChunkSize(options.tokenChunkSize())
+                    .withChunkSize(options.tokenChunkSize() - options.overlapTokens())
                     .withMinChunkSizeChars(
-                        properties.getDefaultSplitter().getMinChunkSizeChars()
+                        options.minChunkSizeChars() == null ? properties.getDefaultSplitter().getMinChunkSizeChars() : options.minChunkSizeChars()
                     )
                     .withMinChunkLengthToEmbed(
-                        properties.getDefaultSplitter().getMinChunkLengthToEmbed()
+                        options.minChunkLengthToEmbed() == null ? properties.getDefaultSplitter().getMinChunkLengthToEmbed() : options.minChunkLengthToEmbed()
                     )
                     .withMaxNumChunks(options.maxChunks())
                     .build();
-                current = splitter.split(current);
+                // Split inputs separately so overlap never crosses source pages/documents.
+                List<Document> split = new ArrayList<>();
+                for (Document document : current) {
+                    List<Document> pieces = splitter.split(List.of(document));
+                    String previous = "";
+                    for (Document piece : pieces) {
+                        String original = piece.getText();
+                        String prefix = options.overlapTokens() == 0 ? "" : tokenSuffix(previous, options.overlapTokens());
+                        split.add(Document.builder().id(document.getId()).text(prefix.isEmpty() ? original : prefix + "\n" + original)
+                            .metadata(new LinkedHashMap<>(piece.getMetadata())).build());
+                        previous = original;
+                    }
+                }
+                current = split;
             }
             return current == null ? List.of() : current;
         } catch (RuntimeException exception) {
@@ -235,6 +250,19 @@ public class SpringAiDocumentIndexingAdapter {
                 exception
             );
         }
+    }
+
+    private static String tokenSuffix(String text, int limit) {
+        if (text.isEmpty() || limit == 0) return "";
+        var encoding = OverlapEncoding.INSTANCE;
+        var tokens = encoding.encodeOrdinary(text);
+        var tail = new com.knuddels.jtokkit.api.IntArrayList();
+        for (int i = Math.max(0, tokens.size() - limit); i < tokens.size(); i++) tail.add(tokens.get(i));
+        return encoding.decode(tail);
+    }
+
+    private static final class OverlapEncoding {
+        private static final com.knuddels.jtokkit.api.Encoding INSTANCE = Encodings.newLazyEncodingRegistry().getEncoding(EncodingType.CL100K_BASE);
     }
 
     private DocumentIngestionChunk chunk(
