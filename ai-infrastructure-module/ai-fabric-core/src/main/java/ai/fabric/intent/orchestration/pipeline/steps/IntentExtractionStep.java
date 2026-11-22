@@ -490,6 +490,7 @@ public class IntentExtractionStep implements PipelineStep {
 
     private boolean recoverableDecisionIssues(List<IntentExtractionValidator.IssueCode> issues) {
         if (issues == null || issues.isEmpty()) return true;
+        // Context narration does not make a rejected intent executable.
         java.util.Set<IntentExtractionValidator.IssueCode> allowed = java.util.Set.of(
             IntentExtractionValidator.IssueCode.RESPONSE_NULL,
             IntentExtractionValidator.IssueCode.RESPONSE_EMPTY_INTENTS,
@@ -501,6 +502,7 @@ public class IntentExtractionStep implements PipelineStep {
             IntentExtractionValidator.IssueCode.INTENT_MISSING_TARGET_DECISION,
             IntentExtractionValidator.IssueCode.INTENT_MISSING_OBLIGATION_ID,
             IntentExtractionValidator.IssueCode.INTENT_DUPLICATE_OBLIGATION_ID,
+            IntentExtractionValidator.IssueCode.ACTION_PARAMETER_CONTRACT_INVALID,
             IntentExtractionValidator.IssueCode.INFORMATION_MISSING_VECTOR_SPACE,
             IntentExtractionValidator.IssueCode.INFORMATION_INVALID_VECTOR_SPACE,
             IntentExtractionValidator.IssueCode.INFORMATION_MISSING_ADVANCED_RAG_DECISION,

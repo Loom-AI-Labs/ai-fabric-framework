@@ -12,9 +12,17 @@ import ai.fabric.dto.AIGenerationResponse;
 import ai.fabric.dto.Intent;
 import ai.fabric.dto.IntentType;
 import ai.fabric.intent.IntentExtractionJsonSupport;
+import ai.fabric.intent.IntentExtractionValidator;
+import ai.fabric.intent.IntentQueryExtractor;
+import ai.fabric.intent.extraction.IntentExtractionInput;
+import ai.fabric.intent.extraction.ProgressiveIntentExtractionEngine;
 import ai.fabric.intent.orchestration.OrchestrationContext;
+import ai.fabric.intent.orchestration.policy.SemanticRecoveryPolicy;
 import ai.fabric.intent.orchestration.pipeline.PipelineContext;
+import ai.fabric.intent.orchestration.pipeline.DecisionRecoveryBudget;
 import ai.fabric.intent.orchestration.pipeline.steps.InternalDecisionRecoveryService;
+import ai.fabric.intent.orchestration.pipeline.steps.InternalDecisionRecoveryStep;
+import ai.fabric.intent.orchestration.pipeline.steps.IntentExtractionStep;
 import ai.fabric.prompt.ClasspathPromptTemplateStore;
 import ai.fabric.prompt.PromptRenderer;
 import ai.fabric.prompt.PromptTemplateResolver;
@@ -24,6 +32,8 @@ import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.core.io.DefaultResourceLoader;
+import org.springframework.beans.factory.support.StaticListableBeanFactory;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -91,5 +101,32 @@ class DecisionRecoveryRealProviderTest {
         verify(core, never()).generateContent(any(), eq(LlmPurpose.ORCHESTRATION));
         verify(core, times(1)).generateContent(any(), eq(LlmPurpose.GENERATION));
         System.out.println("RECOVERY_REAL_PROVIDER no-current-facts REVIEW: " + result.getMessage());
+    }
+
+    @Test void invalidActionCategoryAfterRepairsStillGetsARealContextAnswerWithoutExecution() {
+        useRealAnswers();
+        var engine = mock(ProgressiveIntentExtractionEngine.class);
+        when(engine.extract(any(IntentExtractionInput.class), any(OrchestrationContext.class), any(SemanticRecoveryPolicy.class),
+            any(DecisionRecoveryBudget.class), any(DecisionRecoveryProperties.class)))
+            .thenReturn(new ProgressiveIntentExtractionEngine.ExtractionOutput(null, Map.of(),
+                new ProgressiveIntentExtractionEngine.ExtractionFailure("INTENT_EXTRACTION_FAILED",
+                    "Action parameter has an unsupported value: category", false,
+                    List.of(IntentExtractionValidator.IssueCode.ACTION_PARAMETER_CONTRACT_INVALID))));
+        var beans = new StaticListableBeanFactory(Map.of("engine", engine, "recovery", service));
+        var step = new IntentExtractionStep(mock(IntentQueryExtractor.class), beans.getBeanProvider(ProgressiveIntentExtractionEngine.class));
+        ReflectionTestUtils.setField(step, "decisionRecoveryProvider", beans.getBeanProvider(InternalDecisionRecoveryService.class));
+        var actor = OrchestrationContext.forUser("qualification");
+        actor.setConversationId("qualification-conversation");
+        var failed = step.process(PipelineContext.from("Help me choose furniture for my home office.", actor)
+            .toBuilder().historyMessages(List.of(AIChatMessage.user("I need an adjustable desk and an ergonomic chair."))).build());
+        assertThat(InternalDecisionRecoveryService.isUnresolved(failed.getEarlyTerminationResult())).isTrue();
+        assertThat(failed.getIntentResponse()).isNull();
+        var answer = new InternalDecisionRecoveryStep(service).process(failed).getEarlyTerminationResult();
+        assertThat(answer.isSuccess()).isTrue();
+        assertThat(answer.getMetadata()).containsEntry("answerSource", "AVAILABLE_CONTEXT_RECOVERY");
+        assertThat(answer.getMessage()).isNotBlank();
+        verify(core, times(1)).generateContent(any(), eq(LlmPurpose.GENERATION));
+        verifyNoMoreInteractions(core);
+        System.out.println("RECOVERY_REAL_PROVIDER invalid-category REVIEW: " + answer.getMessage());
     }
 }
