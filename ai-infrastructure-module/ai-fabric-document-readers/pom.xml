@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
-  <parent><groupId>io.github.loom-ai-labs</groupId><artifactId>ai-fabric-bom</artifactId><version>0.8.63-SNAPSHOT</version><relativePath>../pom.xml</relativePath></parent>
+  <parent><groupId>io.github.loom-ai-labs</groupId><artifactId>ai-fabric-bom</artifactId><version>0.8.63</version><relativePath>../pom.xml</relativePath></parent>
   <artifactId>ai-fabric-document-readers</artifactId>
   <name>AI Fabric Rich Document Readers</name>
   <description>Optional bounded PDF, Word and OCR readers for the existing document indexing lifecycle.</description>
