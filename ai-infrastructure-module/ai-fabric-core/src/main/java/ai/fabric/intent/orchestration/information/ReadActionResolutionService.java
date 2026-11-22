@@ -268,10 +268,11 @@ public class ReadActionResolutionService {
         long insufficientActionEvidenceCount = executedActions.stream()
             .filter(action -> action != null && !action.groundingUsable())
             .count();
+        List<String> availableContextInputs = availableContextInputs(orchestrationContext, pipelineContext, conversation);
         boolean contextOnlyContinuation = executedActions.isEmpty()
             && rejectedActionProposals.isEmpty()
             && deduplicatedActions.isEmpty()
-            && isContextOnlyContinuation(lastDecision, intent, orchestrationContext, pipelineContext, conversation);
+            && isContextOnlyContinuation(lastDecision, intent, availableContextInputs);
         boolean useRag = !contextOnlyContinuation && shouldUseRag(
             lastDecision,
             hasSuccessfulActionEvidence,
@@ -320,6 +321,7 @@ public class ReadActionResolutionService {
         diagnostics.put("insufficientActionEvidenceCount", insufficientActionEvidenceCount);
         diagnostics.put("useRag", useRag);
         diagnostics.put("contextOnlyContinuation", contextOnlyContinuation);
+        diagnostics.put("availableContextInputs", availableContextInputs);
         diagnostics.put("knowledgeSourceCatalog", knowledgeSources);
         diagnostics.put("maxActionEvidenceItems", readPolicy.maxActionEvidenceItems());
         diagnostics.put("conversationContext", conversation.diagnostics());
@@ -808,21 +810,31 @@ public class ReadActionResolutionService {
 
     private boolean isContextOnlyContinuation(PlannerDecision decision,
                                               Intent intent,
-                                              OrchestrationContext context,
-                                              PipelineContext pipeline,
-                                              ConversationPromptContext.Projection conversation) {
-        // Conversation history may support a transformation, but is never fresh grounding evidence.
+                                              List<String> availableContextInputs) {
+        // Available input supports a context answer; it does not become fresh or authoritative evidence.
         return decision != null
             && decision.decision() == PlannerDecisionType.ANSWER_FROM_CONTEXT
             && !Boolean.TRUE.equals(decision.needsMoreSteps())
             && CollectionUtils.isEmpty(decision.actions())
             && Boolean.FALSE.equals(intent.getRequiresRetrieval())
-            && !conversation.messages().isEmpty()
-            && (pipeline == null || (CollectionUtils.isEmpty(pipeline.getResolvedTargets())
-                && !StringUtils.hasText(pipeline.getPinnedTargetsContext())))
-            && (context == null || (CollectionUtils.isEmpty(context.getAttachments())
-                && CollectionUtils.isEmpty(context.getAttachmentsNormalized())
-                && CollectionUtils.isEmpty(context.getTransientInputParts())));
+            && !availableContextInputs.isEmpty();
+    }
+
+    private List<String> availableContextInputs(OrchestrationContext context,
+                                               PipelineContext pipeline,
+                                               ConversationPromptContext.Projection conversation) {
+        List<String> inputs = new ArrayList<>();
+        if (!conversation.messages().isEmpty()) inputs.add("CONVERSATION_HISTORY");
+        if (pipeline != null) {
+            if (!CollectionUtils.isEmpty(pipeline.getResolvedTargets())) inputs.add("RESOLVED_TARGETS");
+            if (StringUtils.hasText(pipeline.getPinnedTargetsContext())) inputs.add("PINNED_CONTEXT");
+        }
+        if (context != null) {
+            if (!CollectionUtils.isEmpty(context.getAttachments())) inputs.add("ATTACHMENTS");
+            if (!CollectionUtils.isEmpty(context.getAttachmentsNormalized())) inputs.add("NORMALIZED_ATTACHMENTS");
+            if (!CollectionUtils.isEmpty(context.getTransientInputParts())) inputs.add("TRANSIENT_INPUT");
+        }
+        return List.copyOf(inputs);
     }
 
     private boolean shouldUseRag(PlannerDecision decision,

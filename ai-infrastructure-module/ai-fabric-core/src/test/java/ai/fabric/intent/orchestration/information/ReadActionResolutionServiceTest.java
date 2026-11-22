@@ -213,9 +213,8 @@ class ReadActionResolutionServiceTest {
 
     @ParameterizedTest
     @ValueSource(strings = {"retrieval_true", "retrieval_unspecified", "empty_history", "persistence_disabled",
-        "resolved_target", "pinned_context", "attachment", "normalized_attachment", "transient_input",
         "unfinished_plan", "explicit_rag", "unavailable_action"})
-    void contextOnlyExceptionPreservesRetrievalAndCurrentInputRequirements(String condition) {
+    void contextOnlyExceptionPreservesRetrievalAndExecutionRequirements(String condition) {
         var fixture = contextContinuationFixture(
             OrchestrationProperties.ReadActionResolutionRagCooperationMode.PARALLEL_ACTIONS_AND_RAG);
         var pipeline = fixture.pipeline();
@@ -224,15 +223,6 @@ class ReadActionResolutionServiceTest {
             case "retrieval_unspecified" -> fixture.intent().setRequiresRetrieval(null);
             case "empty_history" -> pipeline = pipeline.toBuilder().historyMessages(List.of()).build();
             case "persistence_disabled" -> fixture.context().getMetadata().put("queryPersistenceMode", "NEVER_PERSIST");
-            case "resolved_target" -> pipeline = pipeline.toBuilder().resolvedTargets(List.of(
-                ai.fabric.intent.orchestration.targets.ResolvedTarget.builder().id("target-1").build())).build();
-            case "pinned_context" -> pipeline = pipeline.toBuilder().pinnedTargetsContext("Current selection").build();
-            case "attachment" -> fixture.context().setAttachments(List.of(
-                ai.fabric.intent.orchestration.attachment.OrchestrationAttachment.builder().id("file-1").build()));
-            case "normalized_attachment" -> fixture.context().setAttachmentsNormalized(List.of(
-                ai.fabric.intent.orchestration.attachment.NormalizedAttachment.builder().id("file-1").build()));
-            case "transient_input" -> fixture.context().setTransientInputParts(List.of(
-                ai.fabric.dto.AIGenerationInputPart.builder().fileName("guide.pdf").build()));
             case "unfinished_plan" -> when(fixture.ai().generateContent(any(), eq(LlmPurpose.ORCHESTRATION)))
                 .thenReturn(AIGenerationResponse.builder().content("""
                     {"decision":"ANSWER_FROM_CONTEXT","actions":[],"needsMoreSteps":true}
@@ -252,6 +242,70 @@ class ReadActionResolutionServiceTest {
         assertThat(result.useRag()).as(condition).isTrue();
         assertThat(result.diagnostics()).containsEntry("contextOnlyContinuation", false);
         assertThat(result.hasGroundingEvidence()).isFalse();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"resolved_targets", "pinned_context", "attachment", "normalized_attachments", "transient_input"})
+    void contextOnlyPlanAcceptsCurrentInputsWithoutForcingRetrieval(String input) {
+        var fixture = contextContinuationFixture(
+            OrchestrationProperties.ReadActionResolutionRagCooperationMode.RAG_IF_ACTIONS_INSUFFICIENT);
+        var pipeline = fixture.pipeline().toBuilder().historyMessages(List.of()).build();
+        String expectedKind;
+        switch (input) {
+            case "resolved_targets" -> {
+                pipeline = pipeline.toBuilder().resolvedTargets(List.of(
+                    ai.fabric.intent.orchestration.targets.ResolvedTarget.builder().id("desk-1").build(),
+                    ai.fabric.intent.orchestration.targets.ResolvedTarget.builder().id("chair-1").build())).build();
+                expectedKind = "RESOLVED_TARGETS";
+            }
+            case "pinned_context" -> {
+                pipeline = pipeline.toBuilder().pinnedTargetsContext("Selected desk and chair").build();
+                expectedKind = "PINNED_CONTEXT";
+            }
+            case "attachment" -> {
+                fixture.context().setAttachments(List.of(
+                    ai.fabric.intent.orchestration.attachment.OrchestrationAttachment.builder()
+                        .id("desk-1").contentText("{\"priceGbp\":499,\"stock\":8,\"adjustableHeight\":true}").build()));
+                expectedKind = "ATTACHMENTS";
+            }
+            case "normalized_attachments" -> {
+                fixture.context().setAttachmentsNormalized(List.of(
+                    ai.fabric.intent.orchestration.attachment.NormalizedAttachment.builder().id("desk-1").build(),
+                    ai.fabric.intent.orchestration.attachment.NormalizedAttachment.builder().id("chair-1").build()));
+                expectedKind = "NORMALIZED_ATTACHMENTS";
+            }
+            case "transient_input" -> {
+                fixture.context().setTransientInputParts(List.of(
+                    ai.fabric.dto.AIGenerationInputPart.builder().fileName("guide.pdf").build()));
+                expectedKind = "TRANSIENT_INPUT";
+            }
+            default -> throw new IllegalArgumentException(input);
+        }
+        fixture.context().setApprovedConversationSnapshot(null);
+
+        var result = fixture.service().resolve(fixture.intent(), fixture.context(), pipeline);
+
+        assertThat(result.useRag()).as(input).isFalse();
+        assertThat(result.diagnostics()).containsEntry("contextOnlyContinuation", true)
+            .containsEntry("availableContextInputs", List.of(expectedKind));
+        assertThat(result.hasGroundingEvidence()).isFalse();
+        verify(fixture.handler(), never()).executeAction(any(), any());
+    }
+
+    @Test
+    void twoResolvedResultsDoNotOverrideContextOnlyFollowupWithHistory() {
+        var fixture = contextContinuationFixture(
+            OrchestrationProperties.ReadActionResolutionRagCooperationMode.PARALLEL_ACTIONS_AND_RAG);
+        var pipeline = fixture.pipeline().toBuilder().resolvedTargets(List.of(
+            ai.fabric.intent.orchestration.targets.ResolvedTarget.builder().id("desk-1").build(),
+            ai.fabric.intent.orchestration.targets.ResolvedTarget.builder().id("chair-1").build())).build();
+
+        var result = fixture.service().resolve(fixture.intent(), fixture.context(), pipeline);
+
+        assertThat(result.useRag()).isFalse();
+        assertThat(result.diagnostics()).containsEntry("contextOnlyContinuation", true)
+            .containsEntry("availableContextInputs", List.of("CONVERSATION_HISTORY", "RESOLVED_TARGETS"));
+        assertThat(result.executedActions()).isEmpty();
     }
 
     @Test
