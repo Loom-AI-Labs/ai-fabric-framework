@@ -385,7 +385,7 @@ class OrchestrationPolicyResolutionStepTest {
                 "extractionFailure", "LLM_REPAIR_THEN_CLARIFY",
                 "missingTarget", "LLM_REPAIR_THEN_CLARIFY",
                 "missingVectorSpace", "BOUNDED_ALLOWED_FAN_OUT",
-                "invalidVectorSpace", "LLM_REPAIR_THEN_FAIL",
+                "invalidVectorSpace", "LLM_REPAIR_THEN_CONTEXT_ANSWER",
                 "unknownAction", "LLM_REPAIR_THEN_FAIL",
                 "actionDomainMismatch", "DENY_AND_FAIL",
                 "advancedNoEvidence", "RETURN_NO_EVIDENCE",

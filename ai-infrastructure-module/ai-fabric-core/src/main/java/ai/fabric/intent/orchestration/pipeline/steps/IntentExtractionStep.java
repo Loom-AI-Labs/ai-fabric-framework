@@ -72,6 +72,8 @@ public class IntentExtractionStep implements PipelineStep {
     
     private final IntentQueryExtractor intentQueryExtractor;
     private final ObjectProvider<ProgressiveIntentExtractionEngine> progressiveEngineProvider;
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private ObjectProvider<InternalDecisionRecoveryService> decisionRecoveryProvider;
     
     // =========================================================================
     // PipelineStep Implementation
@@ -173,11 +175,13 @@ public class IntentExtractionStep implements PipelineStep {
                     )
                 );
             } else if (engine != null) {
-                ProgressiveIntentExtractionEngine.ExtractionOutput output = engine.extract(
-                    input,
-                    context.getOrchestrationContext(),
-                    semanticRecoveryPolicy(context)
-                );
+                InternalDecisionRecoveryService recovery = decisionRecoveryProvider != null
+                    ? decisionRecoveryProvider.getIfAvailable() : null;
+                boolean recoverableChat = recovery != null && recovery.enabledFor(context);
+                ProgressiveIntentExtractionEngine.ExtractionOutput output = recoverableChat
+                    ? engine.extract(input, context.getOrchestrationContext(), semanticRecoveryPolicy(context),
+                        context.getDecisionRecoveryBudget(), recovery.getSettings())
+                    : engine.extract(input, context.getOrchestrationContext(), semanticRecoveryPolicy(context));
                 intentResponse = output != null ? output.response() : null;
                 extractionFailure = output != null ? output.failure() : null;
                 if (output != null && output.diagnostics() != null && !output.diagnostics().isEmpty()) {
@@ -410,6 +414,16 @@ public class IntentExtractionStep implements PipelineStep {
                     false
                 );
         SemanticRecoveryPolicy recoveryPolicy = semanticRecoveryPolicy(context);
+        InternalDecisionRecoveryService decisionRecovery = decisionRecoveryProvider != null
+            ? decisionRecoveryProvider.getIfAvailable() : null;
+        if (decisionRecovery != null && decisionRecovery.enabledFor(context)
+            && !PROVIDER_FAILURE_REASON.equals(safeFailure.reason())
+            && recoverableDecisionIssues(safeFailure.issueCodes())) {
+            return context.withMetadata("intentExtractionError", Map.of(
+                "reason", safeFailure.reason(), "issueCodes", safeFailure.issueCodes().stream().map(Enum::name).toList()))
+                .terminate(InternalDecisionRecoveryService.unresolved("INTENT_ATTRIBUTES_INCOMPLETE", Map.of(
+                    "issueCodes", safeFailure.issueCodes().stream().map(Enum::name).toList())));
+        }
         TerminalRecoveryDecision recovery = terminalRecoveryDecision(
             safeFailure.issueCodes(),
             recoveryPolicy,
@@ -474,6 +488,26 @@ public class IntentExtractionStep implements PipelineStep {
         );
     }
 
+    private boolean recoverableDecisionIssues(List<IntentExtractionValidator.IssueCode> issues) {
+        if (issues == null || issues.isEmpty()) return true;
+        java.util.Set<IntentExtractionValidator.IssueCode> allowed = java.util.Set.of(
+            IntentExtractionValidator.IssueCode.RESPONSE_NULL,
+            IntentExtractionValidator.IssueCode.RESPONSE_EMPTY_INTENTS,
+            IntentExtractionValidator.IssueCode.INTENT_NULL,
+            IntentExtractionValidator.IssueCode.INTENT_MISSING_TYPE,
+            IntentExtractionValidator.IssueCode.INTENT_MISSING_NAME,
+            IntentExtractionValidator.IssueCode.INTENT_MISSING_RETRIEVAL_DECISION,
+            IntentExtractionValidator.IssueCode.INTENT_MISSING_GENERATION_DECISION,
+            IntentExtractionValidator.IssueCode.INTENT_MISSING_TARGET_DECISION,
+            IntentExtractionValidator.IssueCode.INTENT_MISSING_OBLIGATION_ID,
+            IntentExtractionValidator.IssueCode.INTENT_DUPLICATE_OBLIGATION_ID,
+            IntentExtractionValidator.IssueCode.INFORMATION_MISSING_VECTOR_SPACE,
+            IntentExtractionValidator.IssueCode.INFORMATION_INVALID_VECTOR_SPACE,
+            IntentExtractionValidator.IssueCode.INFORMATION_MISSING_ADVANCED_RAG_DECISION,
+            IntentExtractionValidator.IssueCode.INFORMATION_DIRECT_ANSWER_MISSING);
+        return allowed.containsAll(issues);
+    }
+
     private TerminalRecoveryDecision terminalRecoveryDecision(
         List<IntentExtractionValidator.IssueCode> issueCodes,
         SemanticRecoveryPolicy policy,
@@ -515,31 +549,25 @@ public class IntentExtractionStep implements PipelineStep {
         if (safeIssueCodes.contains(
             IntentExtractionValidator.IssueCode.INFORMATION_INVALID_VECTOR_SPACE
         )) {
-            boolean clarify = policy.invalidVectorSpace()
-                == OrchestrationProperties.InvalidVectorSpaceRecovery.LLM_REPAIR_THEN_CLARIFY;
+            boolean clarify = false;
             return new TerminalRecoveryDecision(
                 "VECTOR_SPACE_SELECTION",
                 policy.invalidVectorSpace().name(),
                 clarify,
                 "INTENT_VECTOR_SPACE_DECISION_INVALID",
-                clarify
-                    ? "I could not validate the selected knowledge domain. Please clarify which approved domain to search."
-                    : "The AI-selected knowledge domain is not registered or allowed."
+                "The internal knowledge-source decision could not be completed."
             );
         }
         if (safeIssueCodes.contains(
             IntentExtractionValidator.IssueCode.INFORMATION_MISSING_VECTOR_SPACE
         )) {
-            boolean clarify = policy.missingVectorSpace()
-                == OrchestrationProperties.MissingVectorSpaceRecovery.LLM_REPAIR_THEN_CLARIFY;
+            boolean clarify = false;
             return new TerminalRecoveryDecision(
                 "VECTOR_SPACE_SELECTION",
                 policy.missingVectorSpace().name(),
                 clarify,
                 "INTENT_VECTOR_SPACE_DECISION_MISSING",
-                clarify
-                    ? "I could not determine which approved knowledge domain to search. Please clarify the intended domain."
-                    : "No approved bounded knowledge-domain recovery could be completed."
+                "The internal knowledge-source decision could not be completed."
             );
         }
         if (safeIssueCodes.contains(

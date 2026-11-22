@@ -325,7 +325,7 @@ class ProgressiveIntentExtractionEngineTest {
         assertThat(invalidVector.response()).isSameAs(invalidVectorResponse);
         assertThat(semanticDecision(invalidVector))
             .containsEntry("decision", "VECTOR_SPACE_SELECTION")
-            .containsEntry("recoveryPolicy", "LLM_REPAIR_THEN_FAIL")
+            .containsEntry("recoveryPolicy", "LLM_REPAIR_THEN_CONTEXT_ANSWER")
             .containsEntry("effectiveValue", "DEFER_TO_VECTOR_SPACE_POLICY")
             .containsEntry("outcome", "DEFERRED_TO_GOVERNED_PIPELINE_STEP");
         assertThat(actionMismatch.response()).isSameAs(actionMismatchResponse);
@@ -1005,6 +1005,53 @@ class ProgressiveIntentExtractionEngineTest {
             .containsEntry("recoveryPolicy", "DENY_AND_FAIL")
             .containsEntry("effectiveValue", "DEFER_TO_ACTION_DOMAIN_POLICY");
         verify(run.multiStep(), never()).attemptExtract(any(), any(), any(), any());
+    }
+
+    @Test
+    void completesMissingKnowledgeSourceWithoutRestoringItsRejectedEmptyValue() {
+        Intent original = informationIntent("account-policy", null);
+        Intent proposal = informationIntent("account-policy", "document");
+        var run = runContractCompletion(original, proposal, "completion");
+        assertThat(run.output().failure()).isNull();
+        assertThat(run.output().response().getIntents()).singleElement()
+            .satisfies(intent -> assertThat(intent.getVectorSpace()).isEqualTo("document"));
+    }
+
+    @Test
+    void eachStructuralRepairReceivesTheLatestCandidateWithinTheSharedRoundLimit() {
+        var properties = new ProgressiveIntentExtractionProperties();
+        properties.setCompletionEnabled(false);
+        properties.setMultiStepEnabled(false);
+        var compound = mock(CompoundIntentExtractionStrategy.class);
+        var repair = mock(RepairIntentExtractionStrategy.class);
+        var completion = mock(CompletionIntentExtractionStrategy.class);
+        var multiStep = mock(MultiStepIntentExtractionStrategy.class);
+        var processor = mock(IntentExtractionPostProcessor.class);
+        var validator = new IntentExtractionValidator(mock(AIActionRegistry.class));
+        var structural = new IntentExtractionValidator.ValidationResult(false,
+            IntentExtractionValidator.ErrorCategory.STRUCTURAL, List.of("Invalid JSON"), List.of());
+        when(compound.attemptExtract(any(), any())).thenReturn(ExtractionAttempt.builder()
+            .rawContent("FIRST_CANDIDATE").validationResult(structural).strategyName("compound")
+            .exception(new ai.fabric.exception.AIServiceException("Model JSON invalid"))
+            .llmCalls(1).build());
+        when(repair.attemptRepair(any(), any(), any())).thenReturn(
+            ExtractionAttempt.builder().rawContent("SECOND_CANDIDATE").validationResult(structural).strategyName("repair").llmCalls(1).build(),
+            ExtractionAttempt.builder().rawContent("THIRD_CANDIDATE").validationResult(structural).strategyName("repair").llmCalls(1).build(),
+            ExtractionAttempt.builder().response(MultiIntentResponse.builder().intents(List.of(informationIntent("policy", "document"))).build())
+                .strategyName("repair").llmCalls(1).build());
+        when(processor.postProcess(any(), anyString())).thenAnswer(call -> call.getArgument(0));
+        var engine = new ProgressiveIntentExtractionEngine(properties, compound, repair, completion, multiStep, processor, validator);
+        var budget = new ai.fabric.intent.orchestration.pipeline.DecisionRecoveryBudget();
+        var settings = new ai.fabric.config.DecisionRecoveryProperties();
+        var output = engine.extract(new IntentExtractionInput("q", "q", List.of()),
+            OrchestrationContext.forUser("user"), SemanticRecoveryPolicy.strictDefaults(), budget, settings);
+        assertThat(output.failure()).isNull();
+        var previous = org.mockito.ArgumentCaptor.forClass(ExtractionAttempt.class);
+        org.mockito.Mockito.verify(repair, org.mockito.Mockito.times(3)).attemptRepair(any(), any(), previous.capture());
+        assertThat(previous.getAllValues()).extracting(ExtractionAttempt::getRawContent)
+            .containsExactly("FIRST_CANDIDATE", "SECOND_CANDIDATE", "THIRD_CANDIDATE");
+        assertThat(budget.diagnostics(settings)).containsEntry("repairRounds", 3).containsEntry("providerFailed", false);
+        assertThat(output.diagnostics()).containsEntry("llmCalls", 4);
     }
 
     private RecoveryRun runContractCompletion(Intent original, Intent proposed, String strategy) {

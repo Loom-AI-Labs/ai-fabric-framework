@@ -154,9 +154,9 @@ class IntentHandlingStepReadActionResolutionTest {
 
         var result = step.process(input).getIntentResult();
 
-        assertThat(result.getType()).isEqualTo(OrchestrationResultType.CLARIFICATION_REQUIRED);
+        assertThat(result.getType()).isEqualTo(OrchestrationResultType.ERROR);
         assertThat(result.isSuccess()).isFalse();
-        assertThat(result.getMessage()).isEqualTo("Which knowledge base domain should I search?");
+        assertThat(result.getErrorCode()).isEqualTo(InternalDecisionRecoveryService.UNRESOLVED);
         assertThat(((Map<?, ?>) result.getMetadata().get("readActionResolution"))
             .get("finalDecision")).isEqualTo("USE_RAG_ONLY");
         assertThat((List<?>) result.getData().get("actions")).hasSize(1);

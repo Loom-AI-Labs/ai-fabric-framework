@@ -50,6 +50,8 @@ public class ExtractionAttempt {
      * Exception if failed.
      */
     private Exception exception;
+    /** True only when the provider invocation failed, not when its output failed parsing/validation. */
+    private boolean providerFailure;
 
     /**
      * Strategy name that produced this attempt.

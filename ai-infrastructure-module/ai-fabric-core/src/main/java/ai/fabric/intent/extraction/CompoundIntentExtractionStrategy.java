@@ -58,9 +58,11 @@ public class CompoundIntentExtractionStrategy implements IntentExtractionStrateg
             ))
             .build();
 
+        boolean providerCompleted = false;
         try {
             long startNanos = System.nanoTime();
             AIGenerationResponse response = aiCoreService.generateContent(request, LlmPurpose.ORCHESTRATION);
+            providerCompleted = true;
             long elapsedMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startNanos);
             String content = response != null ? response.getContent() : null;
             if (!StringUtils.hasText(content)) {
@@ -126,6 +128,7 @@ public class CompoundIntentExtractionStrategy implements IntentExtractionStrateg
                 .success(false)
                 .errorMessage(diagnostic)
                 .exception(ex)
+                .providerFailure(!providerCompleted)
                 .strategyName(getStrategyName())
                 .generationRequest(request)
                 .llmCalls(1)

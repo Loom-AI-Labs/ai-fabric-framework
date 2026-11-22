@@ -20,7 +20,7 @@ public record SemanticRecoveryPolicy(
     public SemanticRecoveryPolicy {
         extractionFailure = Objects.requireNonNullElse(
             extractionFailure,
-            OrchestrationProperties.ExtractionFailureRecovery.LLM_REPAIR_THEN_FAIL
+            OrchestrationProperties.ExtractionFailureRecovery.LLM_REPAIR_THEN_CONTEXT_ANSWER
         );
         missingTarget = Objects.requireNonNullElse(
             missingTarget,
@@ -28,11 +28,11 @@ public record SemanticRecoveryPolicy(
         );
         missingVectorSpace = Objects.requireNonNullElse(
             missingVectorSpace,
-            OrchestrationProperties.MissingVectorSpaceRecovery.LLM_REPAIR_THEN_CLARIFY
+            OrchestrationProperties.MissingVectorSpaceRecovery.LLM_REPAIR_THEN_CONTEXT_ANSWER
         );
         invalidVectorSpace = Objects.requireNonNullElse(
             invalidVectorSpace,
-            OrchestrationProperties.InvalidVectorSpaceRecovery.LLM_REPAIR_THEN_FAIL
+            OrchestrationProperties.InvalidVectorSpaceRecovery.LLM_REPAIR_THEN_CONTEXT_ANSWER
         );
         unknownAction = Objects.requireNonNullElse(
             unknownAction,

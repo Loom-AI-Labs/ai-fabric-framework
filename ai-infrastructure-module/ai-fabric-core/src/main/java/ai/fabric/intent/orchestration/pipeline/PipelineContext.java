@@ -146,6 +146,11 @@ public class PipelineContext {
      */
     private final OrchestrationPolicy orchestrationPolicy;
 
+    @JsonIgnore
+    @ToString.Exclude
+    @Builder.Default
+    private final transient DecisionRecoveryBudget decisionRecoveryBudget = new DecisionRecoveryBudget();
+
     /**
      * Server-resolved action, retrieval, and vector-space capability intersection.
      */

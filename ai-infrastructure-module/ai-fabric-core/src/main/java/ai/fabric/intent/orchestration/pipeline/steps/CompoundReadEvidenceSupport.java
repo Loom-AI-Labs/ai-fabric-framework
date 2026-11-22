@@ -37,6 +37,29 @@ final class CompoundReadEvidenceSupport {
     private CompoundReadEvidenceSupport() {
     }
 
+    static String preparedRecoveryContext(PipelineContext context, List<OrchestrationResult> children) {
+        List<Intent> intents = context.getIntentResponse() != null ? context.getIntentResponse().getIntents() : List.of();
+        if (intents == null || intents.size() != children.size()) {
+            return ai.fabric.intent.orchestration.conversation.ConversationPromptContext.activeTargets(
+                context, RagContextSupport.resolveGenerationContextMaxChars(resolveRagBudgets(context)));
+        }
+        List<ObligationEvidence> obligations = collectObligations(intents, children);
+        List<DocumentEvidence> selected = roundRobinDocuments(obligations,
+            RagContextSupport.resolveGenerationContextDocumentLimit(resolveRagBudgets(context)));
+        String prepared = buildGenerationContext(obligations, selected, context).content();
+        StringBuilder states = new StringBuilder();
+        for (OrchestrationResult child : children) {
+            if (child.getType() == OrchestrationResultType.ACTION_EXECUTED
+                || child.getType() == OrchestrationResultType.CONFIRMATION_REQUIRED) {
+                states.append("\nACTUAL OPERATION STATE: ").append(child.getType())
+                    .append("; successful=").append(child.isSuccess());
+                if (child.getData() != null && child.getData().get("action") instanceof String action)
+                    states.append("; action=").append(action);
+            }
+        }
+        return prepared + states;
+    }
+
     static OrchestrationResult synthesize(List<Intent> intents,
                                           List<OrchestrationResult> children,
                                           List<NextStepRecommendation> nextSteps,
@@ -208,8 +231,10 @@ final class CompoundReadEvidenceSupport {
             Intent intent = intents.get(index);
             OrchestrationResult child = children.get(index);
             boolean successful = child != null && child.isSuccess();
-            List<RAGResponse.RAGDocument> documents = successful ? extractDocuments(child) : List.of();
-            List<ActionEvidence> actionEvidence = successful ? extractActionEvidence(child) : List.of();
+            List<RAGResponse.RAGDocument> documents = successful || InternalDecisionRecoveryService.isUnresolved(child)
+                ? extractDocuments(child) : List.of();
+            List<ActionEvidence> actionEvidence = successful || InternalDecisionRecoveryService.isUnresolved(child)
+                ? extractActionEvidence(child) : List.of();
             List<Map<String, Object>> publicActions = successful ? extractPublicActions(child) : List.of();
             obligations.add(new ObligationEvidence(
                 index,
@@ -609,9 +634,15 @@ final class CompoundReadEvidenceSupport {
             block.append("Effective knowledge domains: ").append(obligation.intent().getVectorSpace()).append('\n');
         }
 
-        if (!obligation.child().isSuccess()) {
+        if (!obligation.child().isSuccess() && !InternalDecisionRecoveryService.isUnresolved(obligation.child())) {
             block.append("This obligation could not be completed. Do not infer an answer for it.\n\n");
             return new ObligationContext(truncate(block.toString(), maxChars), List.of());
+        }
+
+        if (InternalDecisionRecoveryService.isUnresolved(obligation.child())
+            && "WEAK_FAN_OUT_EVIDENCE".equals(obligation.child().getData().get("reason"))) {
+            block.append("Retrieved matches have weak relevance. Use only facts that actually address the question; "
+                + "state uncertainty and do not treat a match as confirmation of an unrelated fact.\n");
         }
 
         int availableForEvidence = Math.max(0, maxChars - block.length() - 2);
@@ -1015,7 +1046,7 @@ final class CompoundReadEvidenceSupport {
         return vectorSpaces.isEmpty() ? null : String.join(",", vectorSpaces);
     }
 
-    private static List<ActionTargetRef> collectPinnedTargets(List<OrchestrationResult> children) {
+    static List<ActionTargetRef> collectPinnedTargets(List<OrchestrationResult> children) {
         Map<String, ActionTargetRef> targets = new LinkedHashMap<>();
         for (OrchestrationResult child : children) {
             if (child == null || child.getInternalPinnedTargets() == null) {

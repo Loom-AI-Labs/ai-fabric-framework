@@ -370,18 +370,18 @@ class IntentExtractionStepProgressiveEngineTest {
     }
 
     @Test
-    void missingVectorSpaceDecisionUsesTheTypedClarificationPolicy() {
+    void missingVectorSpaceDecisionRemainsInternalRatherThanAskingTheUser() {
         PipelineContext updated = processTypedFailure(
             IntentExtractionValidator.IssueCode.INFORMATION_MISSING_VECTOR_SPACE
         );
 
         assertThat(updated.getEarlyTerminationResult().getType())
-            .isEqualTo(ai.fabric.intent.orchestration.OrchestrationResultType.CLARIFICATION_REQUIRED);
+            .isEqualTo(ai.fabric.intent.orchestration.OrchestrationResultType.ERROR);
         assertThat(updated.getEarlyTerminationResult().getErrorCode())
             .isEqualTo("INTENT_VECTOR_SPACE_DECISION_MISSING");
         assertThat(semanticDecision(updated))
             .containsEntry("decision", "VECTOR_SPACE_SELECTION")
-            .containsEntry("recoveryPolicy", "LLM_REPAIR_THEN_CLARIFY")
+            .containsEntry("recoveryPolicy", "LLM_REPAIR_THEN_CONTEXT_ANSWER")
             .containsEntry(
                 "issueCodes",
                 List.of("INFORMATION_MISSING_VECTOR_SPACE")
@@ -400,7 +400,7 @@ class IntentExtractionStepProgressiveEngineTest {
             .isEqualTo("INTENT_VECTOR_SPACE_DECISION_INVALID");
         assertThat(semanticDecision(updated))
             .containsEntry("decision", "VECTOR_SPACE_SELECTION")
-            .containsEntry("recoveryPolicy", "LLM_REPAIR_THEN_FAIL")
+            .containsEntry("recoveryPolicy", "LLM_REPAIR_THEN_CONTEXT_ANSWER")
             .containsEntry("effectiveSource", "NONE")
             .containsEntry("effectiveValue", "FAILURE");
     }

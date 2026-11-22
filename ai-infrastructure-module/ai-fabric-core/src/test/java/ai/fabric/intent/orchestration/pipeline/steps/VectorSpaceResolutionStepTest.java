@@ -49,10 +49,10 @@ class VectorSpaceResolutionStepTest {
 
         assertThat(updated.isShouldTerminate()).isTrue();
         assertThat(updated.getEarlyTerminationResult().getType()).isEqualTo(OrchestrationResultType.ERROR);
-        assertThat(updated.getEarlyTerminationResult().getErrorCode()).isEqualTo("INVALID_VECTOR_SPACE_DECISION");
+        assertThat(updated.getEarlyTerminationResult().getErrorCode()).isEqualTo(InternalDecisionRecoveryService.UNRESOLVED);
         assertThat(intent.getVectorSpace()).isEqualTo("commerce");
         assertThat(String.valueOf(updated.getEarlyTerminationResult().getMetadata()))
-            .contains("LLM_REPAIR_THEN_FAIL")
+            .contains("LLM_REPAIR_THEN_CONTEXT_ANSWER")
             .contains("REJECTED_NOT_REGISTERED");
     }
 
@@ -78,7 +78,7 @@ class VectorSpaceResolutionStepTest {
 
         assertThat(updated.isShouldTerminate()).isTrue();
         assertThat(updated.getEarlyTerminationResult().getType())
-            .isEqualTo(OrchestrationResultType.CLARIFICATION_REQUIRED);
+            .isEqualTo(OrchestrationResultType.ERROR);
         assertThat(updated.getEarlyTerminationResult().getData())
             .containsEntry("candidateVectorSpaces", List.of("policy"));
         assertThat(intent.getVectorSpace()).isEqualTo("policies");
@@ -150,7 +150,7 @@ class VectorSpaceResolutionStepTest {
 
         assertThat(updated.isShouldTerminate()).isTrue();
         assertThat(updated.getEarlyTerminationResult().getType())
-            .isEqualTo(OrchestrationResultType.CLARIFICATION_REQUIRED);
+            .isEqualTo(OrchestrationResultType.ERROR);
         assertThat(updated.getEarlyTerminationResult().getData())
             .containsEntry("reason", "VECTOR_SPACE_FANOUT_LIMIT_EXCEEDED")
             .containsEntry("maxSpaces", 2);
@@ -184,7 +184,7 @@ class VectorSpaceResolutionStepTest {
 
         assertThat(updated.isShouldTerminate()).isTrue();
         assertThat(updated.getEarlyTerminationResult().getType())
-            .isEqualTo(OrchestrationResultType.CLARIFICATION_REQUIRED);
+            .isEqualTo(OrchestrationResultType.ERROR);
         assertThat(updated.getEarlyTerminationResult().getData())
             .containsEntry("candidateVectorSpaces", List.of("dealer-vehicle", "document"));
         assertThat(intent.getVectorSpace()).isNull();
@@ -254,7 +254,7 @@ class VectorSpaceResolutionStepTest {
 
         assertThat(updated.isShouldTerminate()).isTrue();
         assertThat(updated.getEarlyTerminationResult().getType())
-            .isEqualTo(OrchestrationResultType.CLARIFICATION_REQUIRED);
+            .isEqualTo(OrchestrationResultType.ERROR);
         assertThat(intent.getVectorSpace()).isNull();
         assertThat(String.valueOf(updated.getEarlyTerminationResult().getMetadata()))
             .contains("EXPLICIT_FAN_OUT_BUDGET_REQUIRED");
@@ -308,7 +308,7 @@ class VectorSpaceResolutionStepTest {
 
         assertThat(updated.isShouldTerminate()).isTrue();
         assertThat(updated.getEarlyTerminationResult().getType())
-            .isEqualTo(OrchestrationResultType.CLARIFICATION_REQUIRED);
+            .isEqualTo(OrchestrationResultType.ERROR);
         assertThat(intent.getVectorSpace()).isNull();
     }
 

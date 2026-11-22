@@ -200,6 +200,18 @@ final class RagResponseGenerationSupport {
                                                    String path,
                                                    Integer maxTokens,
                                                    PipelineContext pipelineContext) {
+        return generatePromptResponse(prompt, entityType, generationType, purpose, path, maxTokens,
+            pipelineContext, null);
+    }
+
+    ResponseGenerationTrace generatePromptResponse(String prompt,
+                                                   String entityType,
+                                                   String generationType,
+                                                   LlmPurpose purpose,
+                                                   String path,
+                                                   Integer maxTokens,
+                                                   PipelineContext pipelineContext,
+                                                   String additionalSystemInstructions) {
         long startNanos = System.nanoTime();
         String effectivePrompt = appendResponseInstructions(prompt, pipelineContext);
         AIGenerationResponse response;
@@ -208,10 +220,14 @@ final class RagResponseGenerationSupport {
             pipelineContext, ConversationPromptContext.characterBudget(pipelineContext));
         String systemPrompt = promptRenderer.render(
             promptTemplateResolver.resolve(TEMPLATE_FAMILY_RAG_GENERATION, "system").template(), Map.of());
+        if (StringUtils.hasText(additionalSystemInstructions)) {
+            systemPrompt += "\n\n" + additionalSystemInstructions;
+        }
         if (!conversation.messages().isEmpty()) {
             systemPrompt += "\n\n" + ConversationPromptContext.REFERENCE_POLICY;
         }
-        if ((maxTokens != null && maxTokens > 0) || !transientInputParts.isEmpty() || !conversation.messages().isEmpty()) {
+        if ((maxTokens != null && maxTokens > 0) || !transientInputParts.isEmpty() || !conversation.messages().isEmpty()
+            || StringUtils.hasText(additionalSystemInstructions)) {
             response = aiCoreService.generateContent(
                 AIGenerationRequest.builder()
                     .entityId("adhoc-" + UUID.randomUUID())

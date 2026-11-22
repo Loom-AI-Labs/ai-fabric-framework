@@ -134,7 +134,7 @@ class IntentHandlingStepExecutorModeTest {
             .build();
 
         OrchestrationResult result = step.process(context).getIntentResult();
-        assertThat(result.getType()).isEqualTo(OrchestrationResultType.CLARIFICATION_REQUIRED);
+        assertThat(result.getType()).isEqualTo(OrchestrationResultType.ERROR);
         assertThat(result.isSuccess()).isFalse();
         assertThat(result.getData()).containsEntry("reason", "VECTOR_SPACE_REQUIRED_BY_POLICY");
         assertThat(result.getData()).containsEntry("allowedVectorSpaces", List.of("policy", "product"));
@@ -186,7 +186,7 @@ class IntentHandlingStepExecutorModeTest {
             .build();
 
         OrchestrationResult result = step.process(context).getIntentResult();
-        assertThat(result.getType()).isEqualTo(OrchestrationResultType.CLARIFICATION_REQUIRED);
+        assertThat(result.getType()).isEqualTo(OrchestrationResultType.ERROR);
         assertThat(result.isSuccess()).isFalse();
         assertThat(result.getData()).containsEntry("reason", "VECTOR_SPACE_NOT_ALLOWED_BY_POLICY");
     }

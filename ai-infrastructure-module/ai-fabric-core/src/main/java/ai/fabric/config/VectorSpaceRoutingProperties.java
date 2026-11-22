@@ -49,7 +49,7 @@ public class VectorSpaceRoutingProperties {
      * Minimum similarity score to consider fan-out successful.
      *
      * <p>If retrieval scores are available and the best score is below this threshold,
-     * the pipeline will ask the user to clarify the desired domain.</p>
+     * ordinary chat uses bounded internal decision recovery, not a customer domain question.</p>
      */
     @DecimalMin("0.0")
     @DecimalMax("1.0")

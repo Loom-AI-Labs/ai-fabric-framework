@@ -191,6 +191,8 @@ public class IntentHandlingStep implements PipelineStep {
     private ObjectProvider<ActionPostPolicyEngine> actionPostPolicyEngineProvider;
     @Autowired(required = false)
     private ObjectProvider<ReadActionResolutionService> readActionResolutionServiceProvider;
+    @Autowired(required = false)
+    private ObjectProvider<InternalDecisionRecoveryService> decisionRecoveryProvider;
 
     public IntentHandlingStep(AIActionRegistry actionHandlerRegistry,
                               ObjectProvider<RAGProvider> ragProvider,
@@ -1990,6 +1992,11 @@ public class IntentHandlingStep implements PipelineStep {
         if (authenticationRequired != null) {
             return authenticationRequired;
         }
+        if (pipelineContext != null && pipelineContext.getDecisionRecoveryBudget().isProviderFailed()) {
+            return ReadActionResolutionSupport.attachRoutingDiagnostics(OrchestrationResult.error(
+                "The AI service could not complete planning.").toBuilder()
+                .errorCode("INTENT_PROVIDER_FAILED").build(), readActionResolution);
+        }
         if (!needsGeneration
             && isGenerationEnabled()
             && readActionResolution.attempted()
@@ -2048,6 +2055,35 @@ public class IntentHandlingStep implements PipelineStep {
                 entityConfigurationLoader,
                 vectorSpaceSelectionSupport
             );
+        InternalDecisionRecoveryService recovery = decisionRecoveryProvider != null
+            ? decisionRecoveryProvider.getIfAvailable() : null;
+        while (routedVectorSpaces.terminalResult() != null && recovery != null
+            && InternalDecisionRecoveryService.isUnresolved(routedVectorSpaces.terminalResult())) {
+            List<String> candidates = ragBudgets != null && ragBudgets.hasVectorSpaceAllowlist()
+                ? ragBudgets.retrievalVectorSpacesAllowlist() : vectorSpaceSelectionSupport.resolveAllVectorSpaces();
+            int maxSpaces = !fanoutAllowed ? 1
+                : ragBudgets != null && ragBudgets.maxSpaces() != null ? ragBudgets.maxSpaces() : 3;
+            if (!recovery.repairRouting(intent, pipelineContext, routedVectorSpaces.terminalResult(), candidates,
+                maxSpaces, !informationPlan.retrievalForced()
+                    && !(readActionResolution.executedActions() != null && !readActionResolution.executedActions().isEmpty()
+                        && pipelineContext.getOrchestrationPolicy() != null
+                        && pipelineContext.getOrchestrationPolicy().readActionResolutionPolicy().ragCooperationMode()
+                            == OrchestrationProperties.ReadActionResolutionRagCooperationMode.PARALLEL_ACTIONS_AND_RAG))) break;
+            if (!Boolean.TRUE.equals(intent.getRequiresRetrieval())) {
+                if (readActionResolution.hasGroundingEvidence()) {
+                    return collectEvidenceOnly
+                        ? InformationGenerationResponseSupport.collectReadActionEvidence(intent, metadata, readActionResolution)
+                        : handleInformationFromReadActionEvidence(intent, pipelineContext, generationQuery, metadata, readActionResolution);
+                }
+                OrchestrationResult contextResult = collectEvidenceOnly
+                    ? InformationGenerationResponseSupport.collectGenerationOnly(intent, metadata)
+                    : handleInformationGenerationOnly(intent, pipelineContext, generationQuery, metadata);
+                return ReadActionResolutionSupport.attachDiagnostics(contextResult, readActionResolution);
+            }
+            routedVectorSpaces = InformationVectorSpaceRoutingSupport.route(intent, metadata, ragBudgets,
+                vectorSpaceSelectionRequired, fanoutAllowed, false, readActionResolution,
+                entityConfigurationLoader, vectorSpaceSelectionSupport);
+        }
         if (routedVectorSpaces.terminalResult() != null) {
             return ReadActionResolutionSupport.attachRoutingDiagnostics(
                 routedVectorSpaces.terminalResult(), readActionResolution);

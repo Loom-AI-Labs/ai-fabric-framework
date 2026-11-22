@@ -280,20 +280,15 @@ final class InformationRagExecutionSupport {
             && !hasReadActionEvidence
             && !needsGeneration) {
             Map<String, Object> data = new LinkedHashMap<>();
+            data.put("documents", List.copyOf(merged));
             data.put(DATA_KEY_CANDIDATE_VECTOR_SPACES, vectorSpaces);
             data.put(DATA_KEY_ROUTING_STRATEGY, "FAN_OUT");
             if (bestScore != null) {
                 data.put("bestScore", bestScore);
             }
 
-            return OrchestrationResult.builder()
-                .type(OrchestrationResultType.CLARIFICATION_REQUIRED)
-                .success(false)
-                .message("I couldn't confidently determine which domain to search. Please specify one of: "
-                    + String.join(", ", vectorSpaces))
-                .data(Collections.unmodifiableMap(data))
-                .nextSteps(extractNextSteps(intent))
-                .build();
+            return InternalDecisionRecoveryService.unresolved("WEAK_FAN_OUT_EVIDENCE", data)
+                .toBuilder().nextSteps(extractNextSteps(intent)).build();
         }
         if (!deterministic && weakFanOutEvidence && (hasReadActionEvidence || needsGeneration)) {
             metadata.put(

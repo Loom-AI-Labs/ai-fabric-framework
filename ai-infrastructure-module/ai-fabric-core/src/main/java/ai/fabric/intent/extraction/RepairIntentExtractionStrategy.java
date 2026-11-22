@@ -65,6 +65,12 @@ public class RepairIntentExtractionStrategy {
                 PLACEHOLDER_MALFORMED_RESPONSE, previousAttempt.getRawContent()
             )
         );
+        if (previousAttempt.getValidationResult() != null) {
+            repairPrompt += "\n\nLATEST VALIDATION FINDINGS\n"
+                + previousAttempt.getValidationResult().issues().stream()
+                    .map(issue -> issue.code().name() + ": " + issue.message())
+                    .collect(java.util.stream.Collectors.joining("\n"));
+        }
 
         AIGenerationRequest repairRequest = AIGenerationRequest.builder()
             .entityId(originalRequest.getEntityId() + "-repair")
@@ -77,9 +83,13 @@ public class RepairIntentExtractionStrategy {
             .authContext(originalRequest.getAuthContext())
             .build();
 
+        boolean providerCompleted = false;
+        String latestContent = null;
         try {
             long startNanos = System.nanoTime();
             AIGenerationResponse repairResponse = aiCoreService.generateContent(repairRequest, LlmPurpose.ORCHESTRATION);
+            providerCompleted = true;
+            latestContent = repairResponse != null ? repairResponse.getContent() : null;
             long elapsedMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startNanos);
             String repairedContent = repairResponse != null ? repairResponse.getContent() : null;
             if (!StringUtils.hasText(repairedContent)) {
@@ -121,6 +131,10 @@ public class RepairIntentExtractionStrategy {
                 .strategyName(getStrategyName())
                 .errorMessage(diagnostic)
                 .exception(ex)
+                .providerFailure(!providerCompleted)
+                .rawContent(latestContent)
+                .validationResult(providerCompleted ? new IntentExtractionValidator.ValidationResult(false,
+                    IntentExtractionValidator.ErrorCategory.STRUCTURAL, List.of("Invalid repair JSON"), List.of()) : null)
                 .generationRequest(repairRequest)
                 .llmCalls(1)
                 .build();

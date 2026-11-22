@@ -181,7 +181,7 @@ class InformationRagExecutionSupportTest {
     }
 
     @Test
-    void shouldReturnClarificationWhenFanOutEvidenceIsWeakAndNotDeterministic() {
+    void shouldRetainWeakFanOutEvidenceForInternalContextRecovery() {
         RAGProvider ragProvider = mock(RAGProvider.class);
         when(ragProvider.performRag(any(RAGRequest.class))).thenReturn(
             RAGResponse.builder()
@@ -208,9 +208,10 @@ class InformationRagExecutionSupportTest {
             null
         );
 
-        assertThat(result.getType()).isEqualTo(OrchestrationResultType.CLARIFICATION_REQUIRED);
+        assertThat(result.getType()).isEqualTo(OrchestrationResultType.ERROR);
+        assertThat(result.getErrorCode()).isEqualTo(InternalDecisionRecoveryService.UNRESOLVED);
         assertThat(result.isSuccess()).isFalse();
-        assertThat(result.getMessage()).contains("Please specify one of: faq, policies");
+        assertThat((List<?>) result.getData().get("documents")).hasSize(1);
         assertThat(result.getData().get("bestScore")).isEqualTo(0.1d);
         assertThat(result.getData().get("candidateVectorSpaces")).isEqualTo(List.of("faq", "policies"));
     }

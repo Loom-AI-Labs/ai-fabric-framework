@@ -314,6 +314,7 @@ public class OrchestrationProperties {
     }
 
     public enum ExtractionFailureRecovery {
+        LLM_REPAIR_THEN_CONTEXT_ANSWER,
         LLM_REPAIR_THEN_FAIL,
         LLM_REPAIR_THEN_CLARIFY
     }
@@ -323,11 +324,13 @@ public class OrchestrationProperties {
     }
 
     public enum MissingVectorSpaceRecovery {
+        LLM_REPAIR_THEN_CONTEXT_ANSWER,
         LLM_REPAIR_THEN_CLARIFY,
         BOUNDED_ALLOWED_FAN_OUT
     }
 
     public enum InvalidVectorSpaceRecovery {
+        LLM_REPAIR_THEN_CONTEXT_ANSWER,
         LLM_REPAIR_THEN_FAIL,
         LLM_REPAIR_THEN_CLARIFY
     }

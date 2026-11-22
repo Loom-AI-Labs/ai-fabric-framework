@@ -572,8 +572,9 @@ public class ConversationRecordingStep implements PipelineStep {
         return result.getType() == OrchestrationResultType.CLARIFICATION_REQUIRED
             || (result.getType() == OrchestrationResultType.INFORMATION_PROVIDED
                 && result.isSuccess()
-                && result.getData() != null
-                && Boolean.TRUE.equals(result.getData().get("actionDraftCancelled")));
+                && ((result.getData() != null && Boolean.TRUE.equals(result.getData().get("actionDraftCancelled")))
+                    || (result.getMetadata() != null
+                        && "AVAILABLE_CONTEXT_RECOVERY".equals(result.getMetadata().get("answerSource")))));
     }
 
     private String sanitizedMessage(PipelineContext context) {

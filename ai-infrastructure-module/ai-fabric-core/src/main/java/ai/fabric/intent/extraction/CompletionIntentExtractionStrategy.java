@@ -160,9 +160,13 @@ public class CompletionIntentExtractionStrategy {
             .build();
 
         int llmCalls = 1;
+        boolean providerCompleted = false;
+        String latestContent = null;
         try {
             long startNanos = System.nanoTime();
             AIGenerationResponse response = aiCoreService.generateContent(request, LlmPurpose.ORCHESTRATION);
+            providerCompleted = true;
+            latestContent = response != null ? response.getContent() : null;
             long elapsedMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startNanos);
             String content = response != null ? response.getContent() : null;
             if (!StringUtils.hasText(content)) {
@@ -204,6 +208,8 @@ public class CompletionIntentExtractionStrategy {
                 .strategyName(getStrategyName())
                 .errorMessage(diagnostic)
                 .exception(ex)
+                .providerFailure(!providerCompleted)
+                .rawContent(latestContent)
                 .generationRequest(request)
                 .llmCalls(llmCalls)
                 .build();

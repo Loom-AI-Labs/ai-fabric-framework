@@ -188,7 +188,8 @@ public class ReadActionResolutionService {
                 knowledgeSources,
                 conversation,
                 targetContext,
-                anonymous
+                anonymous,
+                pipelineContext != null ? pipelineContext.getDecisionRecoveryBudget() : null
             );
             if (decision == null) {
                 plannerIterations.add(Map.of(
@@ -436,7 +437,9 @@ public class ReadActionResolutionService {
                                         Map<String, Object> knowledgeSources,
                                         ConversationPromptContext.Projection conversation,
                                         String targetContext,
-                                        boolean anonymous) {
+                                        boolean anonymous,
+                                        ai.fabric.intent.orchestration.pipeline.DecisionRecoveryBudget recoveryBudget) {
+        boolean providerCompleted = false;
         try {
             String systemPrompt =
                 SpecialistPromptInstructionSupport.appendToSystemPrompt(
@@ -498,6 +501,7 @@ public class ReadActionResolutionService {
             );
 
             String content = response != null ? response.getContent() : null;
+            providerCompleted = true;
             if (!StringUtils.hasText(content)) {
                 return null;
             }
@@ -544,6 +548,7 @@ public class ReadActionResolutionService {
                 Collections.unmodifiableMap(diagnostics)
             );
         } catch (Exception ex) {
+            if (!providerCompleted && recoveryBudget != null) recoveryBudget.providerFailed();
             log.warn("Read-action planner failed: {}", ex.getMessage(), ex);
             return null;
         }

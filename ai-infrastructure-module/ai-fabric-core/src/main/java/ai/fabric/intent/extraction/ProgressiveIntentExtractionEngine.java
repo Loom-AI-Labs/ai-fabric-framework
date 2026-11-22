@@ -112,6 +112,14 @@ public class ProgressiveIntentExtractionEngine {
     public ExtractionOutput extract(IntentExtractionInput input,
                                     OrchestrationContext context,
                                     SemanticRecoveryPolicy semanticRecoveryPolicy) {
+        return extract(input, context, semanticRecoveryPolicy, null, null);
+    }
+
+    public ExtractionOutput extract(IntentExtractionInput input,
+                                    OrchestrationContext context,
+                                    SemanticRecoveryPolicy semanticRecoveryPolicy,
+                                    ai.fabric.intent.orchestration.pipeline.DecisionRecoveryBudget recoveryBudget,
+                                    ai.fabric.config.DecisionRecoveryProperties recoverySettings) {
         long startNanos = System.nanoTime();
         SemanticRecoveryPolicy recoveryPolicy = semanticRecoveryPolicy != null
             ? semanticRecoveryPolicy
@@ -144,6 +152,10 @@ public class ProgressiveIntentExtractionEngine {
             compoundAttempt = assessAttempt(rawAttempt, userQuery, safeContext, input.pendingActionPresent());
             attemptEvents.add(toAttemptEvent(compoundAttempt));
             attempts.add(compoundAttempt);
+            if (recoveryBudget != null && compoundAttempt.isProviderFailure()) {
+                recoveryBudget.providerFailed();
+                return terminalOutput(attempts, attemptEvents, totalLlmCalls, startNanos, recoveryPolicy);
+            }
 
             if (compoundAttempt.isSuccess()) {
                 MultiIntentResponse finalized = compoundAttempt.getResponse();
@@ -185,10 +197,12 @@ public class ProgressiveIntentExtractionEngine {
             && compoundAttempt.isStructuralFailure()
             && totalLlmCalls < maxCalls) {
 
-            int configuredAttempts = properties != null ? properties.getRepairMaxAttempts() : 1;
+            int configuredAttempts = recoveryBudget != null && recoverySettings != null
+                ? recoverySettings.getMaxRepairRounds() : properties != null ? properties.getRepairMaxAttempts() : 1;
             int maxRepairAttempts = Math.max("repair".equals(forceMode) ? 1 : 0, configuredAttempts);
-            for (int attempt = 0; attempt < maxRepairAttempts && totalLlmCalls < maxCalls; attempt++) {
-                ExtractionAttempt rawRepairAttempt = repairStrategy.attemptRepair(input, safeContext, compoundAttempt);
+            for (int attempt = 0; attempt < maxRepairAttempts && totalLlmCalls < maxCalls
+                && acquireRecoveryRound(recoveryBudget, recoverySettings, "EXTRACTION_REPAIR"); attempt++) {
+                ExtractionAttempt rawRepairAttempt = repairStrategy.attemptRepair(input, safeContext, latestAttempt);
                 totalLlmCalls += rawRepairAttempt.getLlmCalls();
                 ExtractionAttempt repairAttempt = enforceSemanticRecoveryPolicy(
                     assessAttempt(rawRepairAttempt, userQuery, safeContext, input.pendingActionPresent()),
@@ -200,6 +214,11 @@ public class ProgressiveIntentExtractionEngine {
                 attemptEvents.add(toAttemptEvent(repairAttempt));
                 attempts.add(repairAttempt);
                 latestAttempt = repairAttempt;
+                recordRecoveryAttempt(recoveryBudget, repairAttempt);
+                if (repairAttempt.isProviderFailure()) {
+                    if (recoveryBudget != null) recoveryBudget.providerFailed();
+                    break;
+                }
 
                 if (repairAttempt.isSuccess()) {
                     MultiIntentResponse finalized = repairAttempt.getResponse();
@@ -239,10 +258,13 @@ public class ProgressiveIntentExtractionEngine {
                 || attemptForCompletion.getValidationResult().errorCategory() == IntentExtractionValidator.ErrorCategory.UNSAFE)
             && totalLlmCalls < maxCalls) {
 
-            int maxAttempts = Math.max("completion".equals(forceMode) ? 1 : 0, completionMaxAttempts);
+            int maxAttempts = recoveryBudget != null && recoverySettings != null
+                ? recoverySettings.getMaxRepairRounds()
+                : Math.max("completion".equals(forceMode) ? 1 : 0, completionMaxAttempts);
             ExtractionAttempt current = attemptForCompletion;
 
-            for (int attempt = 0; attempt < maxAttempts && totalLlmCalls < maxCalls; attempt++) {
+            for (int attempt = 0; attempt < maxAttempts && totalLlmCalls < maxCalls
+                && acquireRecoveryRound(recoveryBudget, recoverySettings, "EXTRACTION_COMPLETION"); attempt++) {
                 ExtractionAttempt rawCompletionAttempt = completionStrategy.attemptComplete(
                     input,
                     safeContext,
@@ -259,6 +281,11 @@ public class ProgressiveIntentExtractionEngine {
                 );
                 attemptEvents.add(toAttemptEvent(completed));
                 attempts.add(completed);
+                recordRecoveryAttempt(recoveryBudget, completed);
+                if (completed.isProviderFailure()) {
+                    if (recoveryBudget != null) recoveryBudget.providerFailed();
+                    break;
+                }
 
                 if (completed.isSuccess()) {
                     MultiIntentResponse finalized = completed.getResponse();
@@ -311,7 +338,8 @@ public class ProgressiveIntentExtractionEngine {
         boolean multiStepEnabled = "multi_step".equals(forceMode) || properties == null || properties.isMultiStepEnabled();
         int remainingCalls = maxCalls - totalLlmCalls;
         // Multi-step extraction can use up to 3 LLM calls: classify + select actions + fill action params.
-        if (multiStepEnabled && remainingCalls >= 3) {
+        if (multiStepEnabled && remainingCalls >= 3
+            && acquireRecoveryRound(recoveryBudget, recoverySettings, "EXTRACTION_MULTI_STEP")) {
             ExtractionAttempt rawMultiStepAttempt = multiStepStrategy.attemptExtract(
                 input,
                 safeContext,
@@ -351,6 +379,24 @@ public class ProgressiveIntentExtractionEngine {
             startNanos,
             recoveryPolicy
         );
+    }
+
+    private boolean acquireRecoveryRound(
+        ai.fabric.intent.orchestration.pipeline.DecisionRecoveryBudget budget,
+        ai.fabric.config.DecisionRecoveryProperties settings,
+        String stage) {
+        return budget == null || settings == null || budget.acquire(settings, stage);
+    }
+
+    private void recordRecoveryAttempt(ai.fabric.intent.orchestration.pipeline.DecisionRecoveryBudget budget,
+                                        ExtractionAttempt attempt) {
+        if (budget == null) return;
+        Map<String, Object> event = new LinkedHashMap<>();
+        event.put("status", attempt.isSuccess() ? "REPAIRED" : "INVALID_OR_INCOMPLETE");
+        event.put("modelCalls", attempt.getLlmCalls());
+        if (attempt.getModel() != null) event.put("model", attempt.getModel());
+        if (attempt.getProcessingTimeMs() != null) event.put("processingTimeMs", attempt.getProcessingTimeMs());
+        budget.recordOutcome(event);
     }
 
     private ExtractionOutput terminalOutput(
@@ -532,6 +578,7 @@ public class ProgressiveIntentExtractionEngine {
                 .generationRequest(attempt.getGenerationRequest())
                 .errorMessage(attempt.getErrorMessage())
                 .exception(attempt.getException())
+                .providerFailure(attempt.isProviderFailure())
                 .strategyName(attempt.getStrategyName())
                 .llmCalls(attempt.getLlmCalls())
                 .processingTimeMs(attempt.getProcessingTimeMs())
@@ -555,6 +602,7 @@ public class ProgressiveIntentExtractionEngine {
                 .generationRequest(attempt.getGenerationRequest())
                 .errorMessage(attempt.getErrorMessage())
                 .exception(attempt.getException())
+                .providerFailure(attempt.isProviderFailure())
                 .strategyName(attempt.getStrategyName())
                 .llmCalls(attempt.getLlmCalls())
                 .processingTimeMs(attempt.getProcessingTimeMs())
@@ -582,6 +630,7 @@ public class ProgressiveIntentExtractionEngine {
             .generationRequest(attempt.getGenerationRequest())
             .errorMessage(attempt.getErrorMessage())
             .exception(attempt.getException())
+            .providerFailure(attempt.isProviderFailure())
             .strategyName(attempt.getStrategyName())
             .llmCalls(attempt.getLlmCalls())
             .processingTimeMs(attempt.getProcessingTimeMs())
@@ -791,6 +840,7 @@ public class ProgressiveIntentExtractionEngine {
                 ? candidate.getErrorMessage()
                 : "Server-preserved semantic recovery result did not validate")
             .exception(candidate.getException())
+            .providerFailure(candidate.isProviderFailure())
             .strategyName(candidate.getStrategyName())
             .llmCalls(candidate.getLlmCalls())
             .processingTimeMs(candidate.getProcessingTimeMs())
@@ -912,12 +962,16 @@ public class ProgressiveIntentExtractionEngine {
                 ? modelProposal.getObligationId().trim()
                 : null;
         return Intent.builder()
-            .type(original.getType())
-            .intent(original.getIntent())
+            .type(hasIssue(originalIssues, IntentExtractionValidator.IssueCode.INTENT_MISSING_TYPE)
+                ? modelProposal.getType() : original.getType())
+            .intent(hasIssue(originalIssues, IntentExtractionValidator.IssueCode.INTENT_MISSING_NAME)
+                ? modelProposal.getIntent() : original.getIntent())
             .confidence(original.getConfidence())
             .action(original.getAction())
             .actionParams(original.getActionParams())
-            .vectorSpace(original.getVectorSpace())
+            .vectorSpace(hasIssue(originalIssues, IntentExtractionValidator.IssueCode.INFORMATION_MISSING_VECTOR_SPACE,
+                IntentExtractionValidator.IssueCode.INFORMATION_INVALID_VECTOR_SPACE)
+                ? modelProposal.getVectorSpace() : original.getVectorSpace())
             .requiresRetrieval(preserveOrCompleteDecision(original.getRequiresRetrieval(), modelProposal.getRequiresRetrieval(),
                 originalIssues, IntentExtractionValidator.IssueCode.INTENT_MISSING_RETRIEVAL_DECISION))
             .requiresGeneration(preserveOrCompleteDecision(original.getRequiresGeneration(), modelProposal.getRequiresGeneration(),
@@ -925,7 +979,8 @@ public class ProgressiveIntentExtractionEngine {
             .responseProfile(original.getResponseProfile())
             .requiresTargetResolution(preserveOrCompleteDecision(original.getRequiresTargetResolution(), modelProposal.getRequiresTargetResolution(),
                 originalIssues, IntentExtractionValidator.IssueCode.INTENT_MISSING_TARGET_DECISION))
-            .directAnswer(original.getDirectAnswer())
+            .directAnswer(hasIssue(originalIssues, IntentExtractionValidator.IssueCode.INFORMATION_DIRECT_ANSWER_MISSING)
+                ? modelProposal.getDirectAnswer() : original.getDirectAnswer())
             .generationInstructions(original.getGenerationInstructions())
             .needsAdvancedRAG(preserveOrCompleteDecision(original.getNeedsAdvancedRAG(), modelProposal.getNeedsAdvancedRAG(),
                 originalIssues, IntentExtractionValidator.IssueCode.INFORMATION_MISSING_ADVANCED_RAG_DECISION))
@@ -937,6 +992,12 @@ public class ProgressiveIntentExtractionEngine {
             .uncertaintyReason(original.getUncertaintyReason())
             .nextStepRecommended(original.getNextStepRecommended())
             .build();
+    }
+
+    private boolean hasIssue(List<IntentExtractionValidator.ValidationIssue> issues,
+                             IntentExtractionValidator.IssueCode... codes) {
+        return issues != null && issues.stream().filter(Objects::nonNull)
+            .anyMatch(issue -> java.util.Arrays.asList(codes).contains(issue.code()));
     }
 
     private Boolean preserveOrCompleteDecision(Boolean original,
@@ -961,10 +1022,13 @@ public class ProgressiveIntentExtractionEngine {
         Intent effective,
         List<IntentExtractionValidator.ValidationIssue> originalIssues
     ) {
-        if (original.getType() != effective.getType()) {
+        if (original.getType() != effective.getType()
+            && !hasIssue(originalIssues, IntentExtractionValidator.IssueCode.INTENT_MISSING_TYPE)) {
             return "Model recovery changed the type of a sibling obligation that was not rejected for action semantics";
         }
         if (original.getType() == IntentType.ACTION
+            && !hasIssue(originalIssues, IntentExtractionValidator.IssueCode.INTENT_MISSING_NAME,
+                IntentExtractionValidator.IssueCode.ACTION_MISSING_NAME)
             && !Objects.equals(actionId(original), actionId(effective))) {
             return "Model recovery changed the action ID of a sibling obligation that was already valid";
         }
@@ -1106,6 +1170,7 @@ public class ProgressiveIntentExtractionEngine {
             .generationRequest(candidate.getGenerationRequest())
             .errorMessage(reason)
             .exception(candidate.getException())
+            .providerFailure(candidate.isProviderFailure())
             .strategyName(candidate.getStrategyName())
             .llmCalls(candidate.getLlmCalls())
             .processingTimeMs(candidate.getProcessingTimeMs())
@@ -1121,9 +1186,9 @@ public class ProgressiveIntentExtractionEngine {
         List<IntentExtractionValidator.IssueCode> issueCodes = issueCodes(attempts);
         boolean providerFailure = attempts != null && attempts.stream()
             .filter(Objects::nonNull)
-            .map(ExtractionAttempt::getException)
-            .filter(Objects::nonNull)
-            .anyMatch(error -> hasCause(error, AIServiceException.class));
+            .anyMatch(attempt -> attempt.isProviderFailure()
+                || attempt.getValidationResult() == null && attempt.getException() != null
+                    && hasCause(attempt.getException(), AIServiceException.class));
         if (providerFailure) {
             return new ExtractionFailure(
                 PROVIDER_FAILURE_REASON,

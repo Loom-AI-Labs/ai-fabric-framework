@@ -48,13 +48,13 @@ public class VectorSpaceResolutionStep implements PipelineStep {
 
     private static final String METADATA_KEY_ROUTING = "vectorSpaceRouting";
 
-    private static final String MSG_CLARIFICATION_PREFIX = "Which knowledge base domain should I search?";
-
     private final VectorSpaceRoutingProperties vectorSpaceRoutingProperties;
     private final ObjectProvider<KnowledgeBaseOverviewService> knowledgeBaseOverviewServiceProvider;
 
     @Autowired(required = false)
     private AIActionRegistry actionRegistry;
+    @Autowired(required = false)
+    private ObjectProvider<InternalDecisionRecoveryService> decisionRecoveryProvider;
 
     @Override
     public String getStepName() {
@@ -68,6 +68,34 @@ public class VectorSpaceResolutionStep implements PipelineStep {
 
     @Override
     public PipelineContext process(PipelineContext context) {
+        PipelineContext outcome = processOnce(context);
+        InternalDecisionRecoveryService recovery = decisionRecoveryProvider != null
+            ? decisionRecoveryProvider.getIfAvailable() : null;
+        while (recovery != null && recovery.enabledFor(context)
+            && InternalDecisionRecoveryService.isUnresolved(outcome.getIntentResult())) {
+            OrchestrationResult failure = outcome.getIntentResult();
+            Object events = failure.getMetadata() != null ? failure.getMetadata().get(METADATA_KEY_ROUTING) : null;
+            int index = events instanceof List<?> list && !list.isEmpty() && list.getLast() instanceof Map<?, ?> event
+                && event.get("intentIndex") instanceof Number number ? number.intValue() : -1;
+            if (index < 0 || index >= context.getIntentResponse().getIntents().size()) return outcome;
+            var budgets = context.getOrchestrationPolicy() != null ? context.getOrchestrationPolicy().ragBudgets() : null;
+            boolean fanout = budgets == null || budgets.fanoutEnabled() == null || Boolean.TRUE.equals(budgets.fanoutEnabled());
+            int max = resolveEffectiveMaxSpaces(budgets, fanout);
+            List<String> candidates = resolvePolicySelectionCandidates(budgets, null);
+            if (!recovery.repairRouting(context.getIntentResponse().getIntents().get(index), context,
+                failure, candidates, max, !requiresForcedRetrieval(context))) return outcome;
+            outcome = processOnce(context);
+        }
+        return outcome;
+    }
+
+    private boolean requiresForcedRetrieval(PipelineContext context) {
+        var capabilities = context.getOrchestrationPolicy() != null ? context.getOrchestrationPolicy().capabilities() : null;
+        return capabilities != null && capabilities.forceRetrievalWhenTargetsPresent()
+            && !context.getResolvedTargets().isEmpty();
+    }
+
+    private PipelineContext processOnce(PipelineContext context) {
         MultiIntentResponse intentResponse = context.getIntentResponse();
         if (intentResponse == null || intentResponse.getIntents() == null || intentResponse.getIntents().isEmpty()) {
             return context;
@@ -509,9 +537,6 @@ public class VectorSpaceResolutionStep implements PipelineStep {
                                                          PipelineContext context,
                                                          List<Map<String, Object>> routingEvents) {
         List<String> safeCandidates = candidates != null ? candidates : List.of();
-        String message = safeCandidates.isEmpty()
-            ? MSG_CLARIFICATION_PREFIX
-            : MSG_CLARIFICATION_PREFIX + " Options: " + String.join(", ", safeCandidates);
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("candidateVectorSpaces", safeCandidates);
 
@@ -523,13 +548,8 @@ public class VectorSpaceResolutionStep implements PipelineStep {
             metadata.put(METADATA_KEY_ROUTING, Collections.unmodifiableList(new ArrayList<>(routingEvents)));
         }
 
-        return OrchestrationResult.builder()
-            .type(OrchestrationResultType.CLARIFICATION_REQUIRED)
-            .success(false)
-            .message(message)
-            .data(Collections.unmodifiableMap(data))
-            .metadata(Collections.unmodifiableMap(metadata))
-            .build();
+        return InternalDecisionRecoveryService.unresolved("MISSING_VECTOR_SPACE_DECISION", data)
+            .toBuilder().metadata(Collections.unmodifiableMap(metadata)).build();
     }
 
     private OrchestrationResult buildInvalidVectorSpaceResult(
@@ -556,14 +576,8 @@ public class VectorSpaceResolutionStep implements PipelineStep {
             "recoveryAttempted", false,
             "effectiveSource", "NONE"
         ));
-        return OrchestrationResult.builder()
-            .type(OrchestrationResultType.ERROR)
-            .success(false)
-            .errorCode("INVALID_VECTOR_SPACE_DECISION")
-            .message("The AI-selected knowledge domain was not registered or allowed.")
-            .data(Collections.unmodifiableMap(data))
-            .metadata(Collections.unmodifiableMap(metadata))
-            .build();
+        return InternalDecisionRecoveryService.unresolved("INVALID_VECTOR_SPACE_DECISION", data)
+            .toBuilder().metadata(Collections.unmodifiableMap(metadata)).build();
     }
 
     private OrchestrationResult buildInvalidTrustedHintResult(
@@ -650,16 +664,11 @@ public class VectorSpaceResolutionStep implements PipelineStep {
         metadata.put("semanticDecision", Collections.unmodifiableMap(event));
 
         boolean serverOwned = "TRUSTED_SERVER_HINT".equals(originalSource);
-        return OrchestrationResult.builder()
-            .type(serverOwned ? OrchestrationResultType.ERROR : OrchestrationResultType.CLARIFICATION_REQUIRED)
-            .success(false)
-            .errorCode(serverOwned ? reason : null)
-            .message(serverOwned
-                ? "The server-provided knowledge-domain selection exceeds the configured retrieval policy."
-                : "This request needs more knowledge domains than this mode permits. Please narrow the request.")
-            .data(Collections.unmodifiableMap(data))
-            .metadata(Collections.unmodifiableMap(metadata))
-            .build();
+        if (!serverOwned) return InternalDecisionRecoveryService.unresolved(reason, data)
+            .toBuilder().metadata(Collections.unmodifiableMap(metadata)).build();
+        return OrchestrationResult.builder().type(OrchestrationResultType.ERROR).success(false)
+            .errorCode(reason).message("The server-provided selection exceeds the configured retrieval policy.")
+            .data(Collections.unmodifiableMap(data)).metadata(Collections.unmodifiableMap(metadata)).build();
     }
 
     private List<String> parseVectorSpaces(String value) {

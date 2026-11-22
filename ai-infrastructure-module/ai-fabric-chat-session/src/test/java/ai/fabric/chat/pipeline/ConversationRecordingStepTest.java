@@ -59,6 +59,26 @@ import static org.mockito.Mockito.when;
 class ConversationRecordingStepTest {
 
     @Test
+    void recordsSuccessfulContextRecoveryButNeverATerminatedAccessFailure() {
+        var service = mock(ChatSessionService.class);
+        var properties = new ChatSessionProperties();
+        properties.setEnabled(true);
+        @SuppressWarnings("unchecked") ObjectProvider<PIIDetectionService> provider = mock(ObjectProvider.class);
+        var step = new ConversationRecordingStep(service, properties, provider);
+        var answer = OrchestrationResult.builder().type(OrchestrationResultType.INFORMATION_PROVIDED)
+            .success(true).message("Here is the comparison from our earlier conversation.")
+            .metadata(Map.of("answerSource", "AVAILABLE_CONTEXT_RECOVERY")).build();
+        var actor = OrchestrationContext.builder().userId("user-1").conversationId("conv-1").build();
+        var context = PipelineContext.from("Compare them", actor).terminate(answer);
+        assertThat(step.shouldSkip(context)).isFalse();
+        step.process(context);
+        verify(service).recordTurn("conv-1", "user-1", "Compare them", answer.getMessage(),
+            Map.of("_resultType", "INFORMATION_PROVIDED"));
+        assertThat(step.shouldSkip(PipelineContext.from("private data", actor)
+            .terminate(OrchestrationResult.error("Access denied")))).isTrue();
+    }
+
+    @Test
     void shouldRecordSuccessfulDraftCancellationAfterPipelineTermination() {
         var service = mock(ChatSessionService.class);
         var properties = new ChatSessionProperties();

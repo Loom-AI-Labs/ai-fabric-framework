@@ -100,6 +100,7 @@ import jakarta.persistence.EntityManagerFactory;
     AttachmentsProperties.class,
     PromptBundleProperties.class,
     ProgressiveIntentExtractionProperties.class,
+    DecisionRecoveryProperties.class,
     RelationshipQueryPostActionGenerationProperties.class,
     PostActionGenerationProperties.class,
     VectorSpaceRoutingProperties.class,

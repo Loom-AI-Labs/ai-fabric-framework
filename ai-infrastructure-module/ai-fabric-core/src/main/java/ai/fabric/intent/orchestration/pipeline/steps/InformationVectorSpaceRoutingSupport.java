@@ -102,11 +102,7 @@ final class InformationVectorSpaceRoutingSupport {
                     ? "VECTOR_SPACE_REQUIRED_BY_POLICY"
                     : "VECTOR_SPACE_SELECTION_REQUIRED"
             );
-            return clarification(
-                "Which knowledge base domain should I search?",
-                data,
-                intent
-            );
+            return unresolved(data, intent);
         }
 
         if (ragBudgets != null && ragBudgets.hasVectorSpaceAllowlist()) {
@@ -122,11 +118,7 @@ final class InformationVectorSpaceRoutingSupport {
                 data.put("requestedVectorSpaces", vectorSpaces);
                 data.put("deniedVectorSpaces", denied);
                 data.put("reason", "VECTOR_SPACE_NOT_ALLOWED_BY_POLICY");
-                return clarification(
-                    "I can answer using the information approved for this assistant, including products, policies, comparisons, cart, and approved order help.",
-                    data,
-                    intent
-                );
+                return unresolved(data, intent);
             }
         }
 
@@ -135,11 +127,7 @@ final class InformationVectorSpaceRoutingSupport {
             data.put("reason", "VECTOR_SPACE_FANOUT_DISABLED");
             data.put("requestedVectorSpaces", List.copyOf(vectorSpaces));
             data.put("selectionSource", vectorSpacesSelectionSource);
-            return clarification(
-                "This request needs more than one knowledge domain, but this mode permits only one. Please narrow the request or enable approved fan-out.",
-                data,
-                intent
-            );
+            return unresolved(data, intent);
         }
 
         Integer maxSpaces = ragBudgets != null ? ragBudgets.maxSpaces() : null;
@@ -149,11 +137,7 @@ final class InformationVectorSpaceRoutingSupport {
             data.put("requestedVectorSpaces", List.copyOf(vectorSpaces));
             data.put("maxSpaces", maxSpaces);
             data.put("selectionSource", vectorSpacesSelectionSource);
-            return clarification(
-                "This request needs more knowledge domains than this mode permits. Please narrow the request.",
-                data,
-                intent
-            );
+            return unresolved(data, intent);
         }
 
         if (vectorSpacesSelectionSource == null) {
@@ -192,16 +176,10 @@ final class InformationVectorSpaceRoutingSupport {
         return "READ_ACTION_PLANNER";
     }
 
-    private static RoutedVectorSpaces clarification(String message, Map<String, Object> data, Intent intent) {
+    private static RoutedVectorSpaces unresolved(Map<String, Object> data, Intent intent) {
         return new RoutedVectorSpaces(
             List.of(),
-            OrchestrationResult.builder()
-                .type(OrchestrationResultType.CLARIFICATION_REQUIRED)
-                .success(false)
-                .message(message)
-                .data(Collections.unmodifiableMap(data))
-                .nextSteps(extractNextSteps(intent))
-                .build()
+            InternalDecisionRecoveryService.unresolved(String.valueOf(data.get("reason")), data)
         );
     }
 

@@ -207,7 +207,8 @@ class IntentHandlingStepFanOutTest {
         PipelineContext updated = step.process(context);
         OrchestrationResult result = updated.getIntentResult();
 
-        assertThat(result.getType()).isEqualTo(OrchestrationResultType.CLARIFICATION_REQUIRED);
+        assertThat(result.getType()).isEqualTo(OrchestrationResultType.ERROR);
+        assertThat(result.getErrorCode()).isEqualTo(InternalDecisionRecoveryService.UNRESOLVED);
         assertThat(result.isSuccess()).isFalse();
         assertThat(result.getData()).containsEntry("candidateVectorSpaces", List.of("faq", "policies"));
     }
@@ -475,7 +476,7 @@ class IntentHandlingStepFanOutTest {
         verify(ragProvider, never()).performRag(any(RAGRequest.class));
         assertThat(updated.isShouldTerminate()).isFalse();
         assertThat(updated.getIntentResult().getType())
-            .isEqualTo(OrchestrationResultType.CLARIFICATION_REQUIRED);
+            .isEqualTo(OrchestrationResultType.ERROR);
         assertThat(updated.getIntentResult().getData())
             .containsEntry("reason", "VECTOR_SPACE_FANOUT_DISABLED")
             .containsEntry("requestedVectorSpaces", List.of("faq", "policies"));
@@ -556,7 +557,7 @@ class IntentHandlingStepFanOutTest {
         verify(ragProvider, never()).performRAGQuery(any(RAGRequest.class));
         assertThat(updated.getIntentResult()).isNotNull();
         assertThat(updated.getIntentResult().getType())
-            .isEqualTo(OrchestrationResultType.CLARIFICATION_REQUIRED);
+            .isEqualTo(OrchestrationResultType.ERROR);
         assertThat(updated.getIntentResult().getData())
             .containsEntry("reason", "VECTOR_SPACE_SELECTION_REQUIRED");
     }

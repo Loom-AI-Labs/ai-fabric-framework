@@ -1,4 +1,5 @@
 {{managed_system_prompt}}
+Internal source selection is your planning responsibility. Never ask the customer to choose a knowledge domain, namespace, vector space or routing attribute. Ask only genuine business-level questions when the user's goal or choice is unclear.
 
 {{behavior_context_section}}
 {{available_actions_section}}

@@ -43,7 +43,8 @@ class InformationVectorSpaceRoutingSupportTest {
 
         assertThat(result.vectorSpaces()).isEmpty();
         assertThat(result.terminalResult()).isNotNull();
-        assertThat(result.terminalResult().getType()).isEqualTo(OrchestrationResultType.CLARIFICATION_REQUIRED);
+        assertThat(result.terminalResult().getType()).isEqualTo(OrchestrationResultType.ERROR);
+        assertThat(result.terminalResult().getErrorCode()).isEqualTo(InternalDecisionRecoveryService.UNRESOLVED);
         assertThat(((Map<?, ?>) result.terminalResult().getData()).get("reason")).isEqualTo(switch (boundary) {
             case "unregistered" -> "VECTOR_SPACE_SELECTION_REQUIRED";
             case "outside_allowlist" -> "VECTOR_SPACE_NOT_ALLOWED_BY_POLICY";
@@ -155,13 +156,13 @@ class InformationVectorSpaceRoutingSupportTest {
 
         assertThat(routed.terminalResult()).isNotNull();
         assertThat(routed.terminalResult().getType())
-            .isEqualTo(OrchestrationResultType.CLARIFICATION_REQUIRED);
+            .isEqualTo(OrchestrationResultType.ERROR);
         assertThat(metadata)
             .containsEntry("readActionVectorSpacesInvalidRequested", List.of("dealer-vehicle"));
     }
 
     @Test
-    void shouldReturnClarificationWhenVectorSpaceRequiredByAllowlistPolicy() {
+    void shouldReturnInternalRecoveryWhenVectorSpaceRequiredByAllowlistPolicy() {
         Intent intent = Intent.builder().build();
         Map<String, Object> metadata = new LinkedHashMap<>();
         OrchestrationPolicy.RagBudgets ragBudgets =
@@ -182,8 +183,9 @@ class InformationVectorSpaceRoutingSupportTest {
 
         OrchestrationResult result = routed.terminalResult();
         assertThat(result).isNotNull();
-        assertThat(result.getType()).isEqualTo(OrchestrationResultType.CLARIFICATION_REQUIRED);
-        assertThat(result.getMessage()).isEqualTo("Which knowledge base domain should I search?");
+        assertThat(result.getType()).isEqualTo(OrchestrationResultType.ERROR);
+        assertThat(result.getErrorCode()).isEqualTo(InternalDecisionRecoveryService.UNRESOLVED);
+        assertThat(result.getMessage()).doesNotContain("Which knowledge base domain");
 
         Map<?, ?> data = (Map<?, ?>) result.getData();
         assertThat(data.get("reason")).isEqualTo("VECTOR_SPACE_REQUIRED_BY_POLICY");
@@ -215,7 +217,7 @@ class InformationVectorSpaceRoutingSupportTest {
 
         OrchestrationResult result = routed.terminalResult();
         assertThat(result).isNotNull();
-        assertThat(result.getType()).isEqualTo(OrchestrationResultType.CLARIFICATION_REQUIRED);
+        assertThat(result.getType()).isEqualTo(OrchestrationResultType.ERROR);
 
         Map<?, ?> data = (Map<?, ?>) result.getData();
         assertThat(data.get("reason")).isEqualTo("VECTOR_SPACE_NOT_ALLOWED_BY_POLICY");
@@ -247,7 +249,7 @@ class InformationVectorSpaceRoutingSupportTest {
         assertThat(routed.vectorSpaces()).isEmpty();
         assertThat(routed.terminalResult()).isNotNull();
         assertThat(routed.terminalResult().getType())
-            .isEqualTo(OrchestrationResultType.CLARIFICATION_REQUIRED);
+            .isEqualTo(OrchestrationResultType.ERROR);
         assertThat(intent.getVectorSpace()).isEqualTo("product,policy");
         assertThat(metadata).isEmpty();
         Map<?, ?> data = (Map<?, ?>) routed.terminalResult().getData();
@@ -277,7 +279,7 @@ class InformationVectorSpaceRoutingSupportTest {
 
         assertThat(routed.terminalResult()).isNotNull();
         assertThat(routed.terminalResult().getType())
-            .isEqualTo(OrchestrationResultType.CLARIFICATION_REQUIRED);
+            .isEqualTo(OrchestrationResultType.ERROR);
         assertThat(intent.getVectorSpace()).isNull();
         Map<?, ?> data = (Map<?, ?>) routed.terminalResult().getData();
         assertThat(data.get("reason")).isEqualTo("VECTOR_SPACE_SELECTION_REQUIRED");
@@ -335,7 +337,7 @@ class InformationVectorSpaceRoutingSupportTest {
 
         assertThat(routed.terminalResult()).isNotNull();
         assertThat(routed.terminalResult().getType())
-            .isEqualTo(OrchestrationResultType.CLARIFICATION_REQUIRED);
+            .isEqualTo(OrchestrationResultType.ERROR);
         assertThat(intent.getVectorSpace()).isNull();
     }
 
@@ -363,7 +365,7 @@ class InformationVectorSpaceRoutingSupportTest {
 
         assertThat(routed.terminalResult()).isNotNull();
         assertThat(routed.terminalResult().getType())
-            .isEqualTo(OrchestrationResultType.CLARIFICATION_REQUIRED);
+            .isEqualTo(OrchestrationResultType.ERROR);
         assertThat(intent.getVectorSpace()).isNull();
         assertThat(metadata).isEmpty();
     }

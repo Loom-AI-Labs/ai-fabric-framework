@@ -170,7 +170,7 @@ class ReadActionPlannerContractTest {
         JsonNode catalog = sentCatalog();
         assertThat(json.convertValue(catalog.path("vectorSpaces"), List.class)).containsExactly("policy", "records");
         assertThat(catalog.path("selectionRequired").asBoolean()).isTrue();
-        assertThat(catalog.path("missingVectorSpaceRecovery").asText()).isEqualTo("LLM_REPAIR_THEN_CLARIFY");
+        assertThat(catalog.path("missingVectorSpaceRecovery").asText()).isEqualTo("LLM_REPAIR_THEN_CONTEXT_ANSWER");
         assertThat(catalog.has("totalIndexedDocuments")).isFalse();
         assertThat(catalog.has("documentsByType")).isFalse();
         assertThat(outcome.preferredVectorSpaces()).containsExactly("policy");

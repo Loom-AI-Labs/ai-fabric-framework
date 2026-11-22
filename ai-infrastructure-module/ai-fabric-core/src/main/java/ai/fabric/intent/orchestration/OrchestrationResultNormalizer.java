@@ -33,6 +33,13 @@ public class OrchestrationResultNormalizer {
         if (raw == null) {
             return null;
         }
+        // Recovery already retains actual operation children; do not replace its authored answer with a status wrapper.
+        if (raw.getType() == OrchestrationResultType.COMPOUND_HANDLED
+            && raw.getMetadata() != null && "AVAILABLE_CONTEXT_RECOVERY".equals(raw.getMetadata().get("answerSource"))
+            && raw.getChildren() != null && raw.getChildren().stream().noneMatch(child ->
+                child.getType() == OrchestrationResultType.ERROR || child.getType() == OrchestrationResultType.ACTION_DENIED)) {
+            return raw;
+        }
 
         // Rule: treat "pending" compound children (confirmation/clarification) as pending rather than "failed".
         // This prevents misleading wrappers like "Some intents failed" when intents are simply awaiting user input.
