@@ -25,6 +25,9 @@ public class RAGRequest {
 
     /** Explicit shared retrieval policy; null retains the existing provider path. */
     private ai.fabric.rag.RetrievalProfile retrievalProfile;
+
+    /** False opts out for this request; true/null cannot enable a host-disabled reranker. */
+    private Boolean rerankingEnabled;
     
     /**
      * The query text for RAG processing.

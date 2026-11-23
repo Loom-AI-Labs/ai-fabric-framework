@@ -35,6 +35,9 @@ results are not accepted and cannot start another leg or reranking. Source
 adapters still own finite native transport timeouts: this synchronous contract
 does not forcibly preempt a blocked third-party SDK call.
 
+Keyword-only retrieval does not request an embedding or call the dense service.
+Its metadata states `embeddingUsed:false`; no provider/model receipt is invented.
+
 Inspect `retrievalCapabilities` for the actual corpus before claiming lexical
 readiness. Weaviate uses native BM25F over its searchable content field. A dense-
 only adapter or absent text index does not become hybrid because a flag was set.
@@ -96,6 +99,12 @@ not used; funding, credentials and invalid receipts remain failures. An unknown
 native outcome can still incur a held cost when this fallback is selected.
 
 ## Qualification
+
+For an unreranked baseline, set `RAGRequest.rerankingEnabled(false)` (also
+supported by Advanced RAG). This only opts out for that request; it cannot
+enable a host-disabled provider, create consent, change funding, or change the
+saved profile. Diagnostics record `REQUEST_DISABLED`. Keep all other experiment
+inputs/bounds and source authorization identical when comparing results.
 
 Compare reviewed questions against the same active corpus, generation policy,
 candidate/context allowances and evaluation engine. Record both retrieval recall

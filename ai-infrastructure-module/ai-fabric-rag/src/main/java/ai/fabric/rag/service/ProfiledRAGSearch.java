@@ -81,8 +81,9 @@ final class ProfiledRAGSearch {
         List<Map<String, Object>> candidates = profile.mode() == RetrievalProfile.Mode.HYBRID && lexicalRan
             ? ReciprocalRankFusion.fuse(lists, profile.rankConstant(), profile.maxCandidates())
             : ReciprocalRankFusion.rankSingleLeg(lists, profile.maxCandidates());
-        Map<String, Object> rerankingDiagnostics = Map.of("used", false, "status", "OFF");
-        if (reranker != null) {
+        Map<String, Object> rerankingDiagnostics = Map.of("used", false, "status",
+            Boolean.FALSE.equals(request.getRerankingEnabled()) ? "REQUEST_DISABLED" : "OFF");
+        if (reranker != null && !Boolean.FALSE.equals(request.getRerankingEnabled())) {
             var ranked = reranker.rank(request.getQuery(), candidates, deadline);
             candidates = ranked.candidates();
             rerankingDiagnostics = ranked.diagnostics();

@@ -104,7 +104,7 @@
         <jmh.version>1.37</jmh.version>
         <javafaker.version>1.0.2</javafaker.version>
         <swagger-request-validator.version>2.40.0</swagger-request-validator.version>
-        <json-schema-validator.version>3.0.0</json-schema-validator.version>
+        <json-schema-validator.version>3.0.4</json-schema-validator.version>
     </properties>
 
     <dependencyManagement>

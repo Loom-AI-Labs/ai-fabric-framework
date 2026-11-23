@@ -239,10 +239,10 @@ public class RAGService implements RAGProvider {
                 effectiveRequest.getEntityType(),
                 effectiveRequest.getRequestId());
 
-            AIEmbeddingService.EmbeddingExecution embeddingExecution = executeEmbedding(embeddingQuery, false);
+            AIEmbeddingService.EmbeddingExecution embeddingExecution = executeEmbedding(embeddingQuery, false, effectiveRequest);
             AISearchRequest searchRequest = buildSearchRequest(effectiveRequest, embeddingQuery, true);
             RAGSearchExecutor.SearchExecutionAggregate searchExecution = searchExecutor.performSearch(
-                embeddingExecution.response().getEmbedding(),
+                embeddingExecution == null ? List.of() : embeddingExecution.response().getEmbedding(),
                 effectiveRequest,
                 searchRequest,
                 false
@@ -290,7 +290,7 @@ public class RAGService implements RAGProvider {
                 .requestId(effectiveRequest.getRequestId())
                 .originalQuery(StringUtils.hasText(originalUserQuery) ? originalUserQuery : processedQuery)
                 .entityType(effectiveRequest.getEntityType())
-                .model(config.resolveEmbeddingDefaults().model())
+                .model(embeddingExecution == null ? null : config.resolveEmbeddingDefaults().model())
                 .timestamp(LocalDateTime.now())
                 .hybridSearchUsed(searchExecution.hybridSearchUsed())
                 .contextualSearchUsed(searchExecution.contextualSearchUsed())
@@ -318,10 +318,10 @@ public class RAGService implements RAGProvider {
                 effectiveRequest.getRequestId());
 
             long startTime = System.currentTimeMillis();
-            AIEmbeddingService.EmbeddingExecution embeddingExecution = executeEmbedding(embeddingQuery, true);
+            AIEmbeddingService.EmbeddingExecution embeddingExecution = executeEmbedding(embeddingQuery, true, effectiveRequest);
             AISearchRequest searchRequest = buildSearchRequest(effectiveRequest, embeddingQuery, false);
             RAGSearchExecutor.SearchExecutionAggregate searchExecution = searchExecutor.performSearch(
-                embeddingExecution.response().getEmbedding(),
+                embeddingExecution == null ? List.of() : embeddingExecution.response().getEmbedding(),
                 effectiveRequest,
                 searchRequest,
                 true
@@ -359,7 +359,7 @@ public class RAGService implements RAGProvider {
                     .collect(Collectors.toList()))
                 .processingTimeMs(processingTime)
                 .requestId(effectiveRequest.getRequestId())
-                .model(config.resolveEmbeddingDefaults().model())
+                .model(embeddingExecution == null ? null : config.resolveEmbeddingDefaults().model())
                 .success(true)
                 .hybridSearchUsed(searchExecution.hybridSearchUsed())
                 .contextualSearchUsed(searchExecution.contextualSearchUsed())
@@ -374,7 +374,9 @@ public class RAGService implements RAGProvider {
         }
     }
 
-    private AIEmbeddingService.EmbeddingExecution executeEmbedding(String embeddingQuery, boolean includeModel) {
+    private AIEmbeddingService.EmbeddingExecution executeEmbedding(String embeddingQuery, boolean includeModel, RAGRequest request) {
+        if (request.getRetrievalProfile() != null
+            && request.getRetrievalProfile().mode() == ai.fabric.rag.RetrievalProfile.Mode.KEYWORD) return null;
         AIEmbeddingRequest.AIEmbeddingRequestBuilder builder = AIEmbeddingRequest.builder()
             .text(embeddingQuery);
         if (includeModel) {
@@ -427,14 +429,16 @@ public class RAGService implements RAGProvider {
                                                  long processingTimeMs) {
         Map<String, Object> metadata = RAGMetadataSupport.buildAggregatedMetadata(request.getMetadata(), embeddingQuery);
         metadata.put(METADATA_KEY_RAG_TOTAL_PROCESSING_TIME_MS, processingTimeMs);
-        metadata.put(METADATA_KEY_EMBEDDING_PROCESSING_TIME_MS, serviceProcessingTime(embeddingExecution));
-        metadata.put(METADATA_KEY_EMBEDDING_PROVIDER_PROCESSING_TIME_MS, embeddingExecution.providerProcessingTimeMs());
-        metadata.put(METADATA_KEY_EMBEDDING_CACHE_HIT, embeddingExecution.cacheHit());
-        metadata.put(METADATA_KEY_EMBEDDING_PROVIDER_NAME, embeddingExecution.providerName());
-        metadata.put(METADATA_KEY_EMBEDDING_MODEL, embeddingExecution.effectiveModel());
-        if (embeddingExecution.providerRecovery() != null
-            && !embeddingExecution.providerRecovery().isEmpty()) {
-            metadata.put("embeddingProviderRecovery", embeddingExecution.providerRecovery());
+        metadata.put("embeddingUsed", embeddingExecution != null);
+        if (embeddingExecution != null) {
+            metadata.put(METADATA_KEY_EMBEDDING_PROCESSING_TIME_MS, serviceProcessingTime(embeddingExecution));
+            metadata.put(METADATA_KEY_EMBEDDING_PROVIDER_PROCESSING_TIME_MS, embeddingExecution.providerProcessingTimeMs());
+            metadata.put(METADATA_KEY_EMBEDDING_CACHE_HIT, embeddingExecution.cacheHit());
+            metadata.put(METADATA_KEY_EMBEDDING_PROVIDER_NAME, embeddingExecution.providerName());
+            metadata.put(METADATA_KEY_EMBEDDING_MODEL, embeddingExecution.effectiveModel());
+            if (embeddingExecution.providerRecovery() != null && !embeddingExecution.providerRecovery().isEmpty()) {
+                metadata.put("embeddingProviderRecovery", embeddingExecution.providerRecovery());
+            }
         }
         metadata.put(METADATA_KEY_SEARCH_PROCESSING_TIME_MS, searchResponse.getProcessingTimeMs());
         if (StringUtils.hasText(searchResponse.getRequestId())) {
@@ -563,6 +567,7 @@ public class RAGService implements RAGProvider {
         }
         return RAGRequest.builder()
             .retrievalProfile(request.getRetrievalProfile() != null ? request.getRetrievalProfile() : defaultRetrievalProfile)
+            .rerankingEnabled(request.getRerankingEnabled())
             .query(request.getQuery())
             .entityType(request.getEntityType())
             .retrievalEntityTypes(request.getRetrievalEntityTypes() == null ? null : List.copyOf(request.getRetrievalEntityTypes()))

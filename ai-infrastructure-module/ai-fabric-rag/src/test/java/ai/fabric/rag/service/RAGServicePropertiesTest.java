@@ -67,8 +67,82 @@ class RAGServicePropertiesTest {
 
     @Mock
     private AIEmbeddingService embeddingService;
+
+    @Test
+    void keywordOnlyUsesNoEmbeddingOrDenseProviderInEitherRetrievalEntryPoint() {
+        var profile = new ai.fabric.rag.RetrievalProfile(ai.fabric.rag.RetrievalProfile.Mode.KEYWORD,
+            20, 20, 40, 6, 60, ai.fabric.rag.RetrievalProfile.FailurePolicy.FAIL);
+        when(vectorDatabaseService.retrievalCapabilities("product"))
+            .thenReturn(new ai.fabric.rag.RetrievalCapabilities(true, true, "BM25", "existing", ""));
+        when(vectorDatabaseService.keywordSearch(anyString(), any())).thenReturn(AISearchResponse.builder().results(List.of(
+            Map.of("id", "exact", "content", "approved keyword evidence", "score", 2.5))).build());
+        for (boolean queryOnly : List.of(false, true)) {
+            var request = RAGRequest.builder().query("exact identifier").entityType("product").retrievalProfile(profile).build();
+            var response = queryOnly ? ragService.performRAGQuery(request) : ragService.performRag(request);
+            assertThat(response.getSuccess()).isTrue();
+            assertThat(response.getDocuments()).extracting(RAGResponse.RAGDocument::getId).containsExactly("exact");
+            assertThat(response.getModel()).isNull();
+            assertThat(response.getMetadata()).containsEntry("embeddingUsed", false);
+        }
+        org.mockito.Mockito.verifyNoInteractions(embeddingService, searchService);
+        verify(vectorDatabaseService, org.mockito.Mockito.times(2)).keywordSearch(anyString(), any());
+    }
+
+    @Test
+    void requestCanDisableRankingForABaselineWithoutMutatingTheHostProfile() {
+        var reranker = org.mockito.Mockito.mock(ai.fabric.spi.RerankingProvider.class);
+        when(reranker.providerId()).thenReturn("cohere");
+        when(reranker.modelId()).thenReturn("qualified-model");
+        when(reranker.rerank(any())).thenReturn(new ai.fabric.spi.RerankingProvider.Result(List.of(
+            new ai.fabric.spi.RerankingProvider.RankedCandidate("candidate-1", .9),
+            new ai.fabric.spi.RerankingProvider.RankedCandidate("candidate-0", .2)),
+            new ai.fabric.spi.RerankingProvider.Usage(Map.of("input_tokens", 80L)), "native-receipt"));
+        properties.setRetrievalProfile(ai.fabric.rag.RetrievalProfile.dense());
+        properties.getReranking().setEnabled(true);
+        properties.getReranking().setProvider("cohere");
+        properties.getReranking().setModel("qualified-model");
+        when(vectorDatabaseService.retrievalCapabilities("product"))
+            .thenReturn(ai.fabric.rag.RetrievalCapabilities.denseOnly("dense fixture"));
+        when(searchService.search(any(), any())).thenReturn(AISearchResponse.builder().results(List.of(
+            Map.of("id", "a", "content", "approved one", "score", .9),
+            Map.of("id", "b", "content", "approved two", "score", .8))).build());
+        var service = new RAGService(new AIProviderConfig(), embeddingService, vectorDatabaseService, vectorDatabase,
+            searchService, null, properties, reranker);
+        var request = RAGRequest.builder().query("question").entityType("product").rerankingEnabled(false).build();
+        var baseline = service.performRAGQuery(request);
+        assertThat(baseline.getSuccess()).isTrue();
+        assertThat(baseline.getDocuments()).extracting(RAGResponse.RAGDocument::getId).containsExactly("a", "b");
+        assertThat(((Map<?, ?>) baseline.getMetadata().get("retrievalDiagnostics")).get("reranking"))
+            .isEqualTo(Map.of("used", false, "status", "REQUEST_DISABLED"));
+        verify(reranker, never()).rerank(any());
+        var ranked = service.performRAGQuery(request.toBuilder().rerankingEnabled(null).build());
+        assertThat(ranked.getDocuments()).extracting(RAGResponse.RAGDocument::getId).containsExactly("b", "a");
+        verify(reranker).rerank(any());
+        assertThat(properties.getReranking().isEnabled()).isTrue();
+    }
     @Mock
     private VectorDatabaseService vectorDatabaseService;
+
+    @Test
+    void requestCannotEnableHostDisabledReranking() {
+        var reranker = org.mockito.Mockito.mock(ai.fabric.spi.RerankingProvider.class);
+        properties.setRetrievalProfile(ai.fabric.rag.RetrievalProfile.dense());
+        properties.getReranking().setEnabled(false);
+        when(vectorDatabaseService.retrievalCapabilities("product"))
+            .thenReturn(ai.fabric.rag.RetrievalCapabilities.denseOnly("dense fixture"));
+        when(searchService.search(any(), any())).thenReturn(AISearchResponse.builder().results(List.of(
+            Map.of("id", "a", "content", "approved evidence", "score", .9))).build());
+        var service = new RAGService(new AIProviderConfig(), embeddingService, vectorDatabaseService, vectorDatabase,
+            searchService, null, properties, reranker);
+
+        var response = service.performRAGQuery(RAGRequest.builder().query("question").entityType("product")
+            .rerankingEnabled(true).build());
+
+        assertThat(response.getSuccess()).isTrue();
+        org.mockito.Mockito.verifyNoInteractions(reranker);
+        assertThat(properties.getReranking().isEnabled()).isFalse();
+    }
+
     @Mock
     private VectorDatabase vectorDatabase;
     @Mock

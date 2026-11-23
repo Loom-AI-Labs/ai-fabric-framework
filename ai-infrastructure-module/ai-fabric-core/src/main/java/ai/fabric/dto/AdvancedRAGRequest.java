@@ -18,6 +18,9 @@ import java.util.Map;
 public class AdvancedRAGRequest {
 
     private ai.fabric.rag.RetrievalProfile retrievalProfile;
+
+    /** False requests an unreranked baseline without changing the host configuration. */
+    private Boolean rerankingEnabled;
     
     /**
      * Original query

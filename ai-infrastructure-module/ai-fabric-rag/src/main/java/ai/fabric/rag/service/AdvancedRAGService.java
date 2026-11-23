@@ -397,6 +397,7 @@ public class AdvancedRAGService implements AdvancedRAGProvider {
         try {
             RAGRequest.RAGRequestBuilder ragRequestBuilder = RAGRequest.builder()
                 .retrievalProfile(profile)
+                .rerankingEnabled(request.getRerankingEnabled())
                 .query(query)
                 .limit(maxResults(request))
                 .enableHybridSearch(enableHybridSearch(request))

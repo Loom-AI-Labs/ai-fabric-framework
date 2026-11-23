@@ -69,6 +69,7 @@ class AdvancedRAGServiceTest {
         when(ragProvider.performRag(any())).thenAnswer(invocation -> {
             assertThat(Thread.currentThread()).isSameAs(caller);
             assertThat(((RAGRequest) invocation.getArgument(0)).getRetrievalProfile()).isSameAs(profile);
+            assertThat(((RAGRequest) invocation.getArgument(0)).getRerankingEnabled()).isFalse();
             return RAGResponse.builder().success(true).context("[approved attribution] bounded context")
                 .totalDocuments(2).documents(List.of(
                     RAGResponse.RAGDocument.builder().id("first").content("approved first").score(.1).build(),
@@ -80,7 +81,7 @@ class AdvancedRAGServiceTest {
             promptTemplateResolver(), new PromptRenderer(), new RAGProperties(),
             task -> { throw new AssertionError("Shared search must not detach the host budget thread"); });
         var response = service.performAdvancedRAG(AdvancedRAGRequest.builder().query("original")
-            .maxDocuments(1).contextOptimizationLevel("high").build());
+            .maxDocuments(1).contextOptimizationLevel("high").rerankingEnabled(false).build());
         assertThat(response.getSuccess()).isTrue();
         assertThat(response.getContext()).isEqualTo("[approved attribution] bounded context");
         assertThat(response.getDocuments()).extracting(doc -> doc.getId()).containsExactly("first", "second");
