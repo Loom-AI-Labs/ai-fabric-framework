@@ -15,6 +15,8 @@ import ai.fabric.dto.MultiIntentResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
@@ -38,6 +40,8 @@ public class TargetResolutionStep implements PipelineStep {
 
     private static final String METADATA_KEY_TARGET_RESOLUTION = "targetResolution";
     private static final String MSG_CLARIFICATION_REQUIRED = "Which item are you referring to? Select an attachment or specify an explicit identifier.";
+    @Autowired(required = false)
+    private ObjectProvider<InternalDecisionRecoveryService> decisionRecoveryProvider;
 
     @Override
     public String getStepName() {
@@ -90,10 +94,10 @@ public class TargetResolutionStep implements PipelineStep {
             updated = updated.withMetadata(METADATA_KEY_TARGET_RESOLUTION, Collections.unmodifiableMap(meta));
         }
 
-        // Fail-closed only when target resolution is explicitly required.
+        // The model flag is repairable; actual required inputs and authority remain governed downstream.
         if (requiresTargets && (updated.getResolvedTargets() == null || updated.getResolvedTargets().isEmpty())) {
             SemanticRecoveryPolicy recoveryPolicy = semanticRecoveryPolicy(updated);
-            Map<String, Object> semanticDecision = Map.of(
+            Map<String, Object> semanticDecision = new LinkedHashMap<>(Map.of(
                 "decision", "TARGET_RESOLUTION",
                 "originalSource", "MODEL",
                 "originalValue", "TARGET_REQUIRED",
@@ -102,17 +106,48 @@ public class TargetResolutionStep implements PipelineStep {
                 "recoveryAttempted", false,
                 "effectiveSource", "RECOVERY_POLICY",
                 "effectiveValue", "CLARIFICATION_REQUIRED"
-            );
+            ));
+            String clarification = MSG_CLARIFICATION_REQUIRED;
+            InternalDecisionRecoveryService recovery = decisionRecoveryProvider == null ? null : decisionRecoveryProvider.getIfAvailable();
+            boolean repairEnabled = recovery != null && recovery.enabledForTargetRepair(updated);
+            boolean unresolved = false;
+            if (repairEnabled) {
+                int before = updated.getDecisionRecoveryBudget().remaining(recovery.getSettings());
+                for (Intent intent : intentResponse.getIntents()) {
+                    if (intent == null || !Boolean.TRUE.equals(intent.getRequiresTargetResolution())) continue;
+                    var decision = recovery.repairTargetDecision(intent, updated);
+                    if (decision == null) { unresolved = true; break; }
+                    if (decision.requiresTargetResolution()) { clarification = decision.clarification(); break; }
+                }
+                semanticDecision.put("recoveryAttempted", before > updated.getDecisionRecoveryBudget().remaining(recovery.getSettings()));
+                semanticDecision.put("effectiveSource", "MODEL_REPAIR");
+                if (!unresolved && !anyIntentRequiresTargetResolution(intentResponse.getIntents())) {
+                    semanticDecision.put("effectiveValue", "TARGET_NOT_REQUIRED");
+                    return updated.withMetadata("semanticDecision", Map.copyOf(semanticDecision))
+                        .withMetadata("decisionRecovery", updated.getDecisionRecoveryBudget().diagnostics(recovery.getSettings()));
+                }
+                if (unresolved) semanticDecision.put("effectiveValue", "REPAIR_EXHAUSTED");
+            }
             PipelineContext withDecision = updated.withMetadata(
                 "semanticDecision",
-                semanticDecision
+                Map.copyOf(semanticDecision)
             );
+            Map<String, Object> metadata = new LinkedHashMap<>();
+            metadata.put("semanticDecision", Map.copyOf(semanticDecision));
+            if (repairEnabled) {
+                metadata.put("decisionRecovery", updated.getDecisionRecoveryBudget().diagnostics(recovery.getSettings()));
+                if (unresolved) {
+                    OrchestrationResult failure = InternalDecisionRecoveryService.unresolved("TARGET_DECISION_REPAIR_EXHAUSTED", Map.of())
+                        .toBuilder().metadata(Map.copyOf(metadata)).build();
+                    return withDecision.terminate(recovery.finalContextAnswer(withDecision, failure));
+                }
+            }
             return withDecision.terminate(OrchestrationResult.builder()
                 .type(OrchestrationResultType.CLARIFICATION_REQUIRED)
                 .success(false)
-                .message(MSG_CLARIFICATION_REQUIRED)
+                .message(clarification)
                 .data(Map.of("reason", "TARGET_REQUIRED"))
-                .metadata(Map.of("semanticDecision", semanticDecision))
+                .metadata(Map.copyOf(metadata))
                 .build());
         }
         return updated;

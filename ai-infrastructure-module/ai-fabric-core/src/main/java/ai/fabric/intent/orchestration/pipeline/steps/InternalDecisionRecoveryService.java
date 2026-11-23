@@ -9,6 +9,10 @@ import ai.fabric.dto.AIGenerationResponse;
 import ai.fabric.dto.Intent;
 import ai.fabric.dto.ResponseGenerationProfile;
 import ai.fabric.intent.IntentExtractionJsonSupport;
+import ai.fabric.intent.SpecialistPromptInstructionSupport;
+import ai.fabric.intent.action.AIActionRegistry;
+import ai.fabric.intent.action.ActionNativeSchemaSupport;
+import ai.fabric.intent.orchestration.capability.CapabilityAwareActionMetadataSupport;
 import ai.fabric.intent.orchestration.OrchestrationAuthContextResolver;
 import ai.fabric.intent.orchestration.OrchestrationResult;
 import ai.fabric.intent.orchestration.OrchestrationResultType;
@@ -24,6 +28,7 @@ import java.util.List;
 import java.util.Map;
 import lombok.Getter;
 import org.springframework.stereotype.Component;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.util.StringUtils;
 
 @Component
@@ -37,6 +42,8 @@ public class InternalDecisionRecoveryService {
     private final PromptTemplateResolver prompts;
     private final PromptRenderer renderer;
     private final RagResponseGenerationSupport generation;
+    @Autowired(required = false)
+    private AIActionRegistry actionRegistry;
 
     public InternalDecisionRecoveryService(DecisionRecoveryProperties settings, AICoreService core,
         AIServiceConfig serviceConfig, IntentExtractionJsonSupport json,
@@ -55,6 +62,91 @@ public class InternalDecisionRecoveryService {
             && (context.getOrchestrationRequest() == null
                 || (context.getOrchestrationRequest().intentPolicy() == OrchestrationIntentPolicy.MODEL_DIRECTED
                     && context.getOrchestrationRequest().purpose() == OrchestrationRequestPurpose.GENERAL));
+    }
+
+    public boolean enabledForTargetRepair(PipelineContext context) {
+        return settings.isEnabled() && context != null && context.getDecisionRecoveryBudget() != null
+            && (context.getOrchestrationRequest() == null
+                || context.getOrchestrationRequest().intentPolicy() == OrchestrationIntentPolicy.MODEL_DIRECTED);
+    }
+
+    /** Repairs a semantic flag only; target values and action authority are never generated here. */
+    public TargetDecision repairTargetDecision(Intent intent, PipelineContext context) {
+        if (!enabledForTargetRepair(context) || intent == null) return null;
+        var budget = context.getDecisionRecoveryBudget();
+        String finding = "MODEL_REQUESTED_TARGET_WITHOUT_AVAILABLE_TARGET";
+        Object candidate = Map.of("requiresTargetResolution", true);
+        List<Map<String, Object>> contracts = new ArrayList<>();
+        for (var action : CapabilityAwareActionMetadataSupport.visibleActions(actionRegistry, context.getOrchestrationContext())) {
+            if (!action.getName().equals(intent.getAction())) continue;
+            Map<String, Object> contract = new LinkedHashMap<>();
+            contract.put("name", action.getName());
+            contract.put("description", action.getDescription() == null ? "" : action.getDescription());
+            contract.put("requiredParameters", action.getRequiredParameters());
+            contract.put("publicInputSchema", ActionNativeSchemaSupport.publicInputSchema(action));
+            Map<String, Object> shapes = new LinkedHashMap<>();
+            (action.getParameterSchemas() == null ? Map.<String, ai.fabric.intent.action.AIActionParamSchema>of() : action.getParameterSchemas()).forEach((name, schema) -> {
+                if (schema == null) return;
+                Map<String, Object> shape = new LinkedHashMap<>();
+                shape.put("required", schema.getRequired()); shape.put("askUser", schema.getAskUser());
+                shape.put("visibility", schema.getVisibility()); shape.put("evidenceBound", schema.getEvidenceBound());
+                shape.put("batchTargets", schema.getBatchTargets());
+                shapes.put(name, shape);
+            });
+            contract.put("parameterRequirements", shapes);
+            contracts.add(contract);
+        }
+        while (budget.acquire(settings, "TARGET_RESOLUTION")) {
+            Map<String, Object> feedback = new LinkedHashMap<>();
+            feedback.put("latestCandidate", candidate); feedback.put("finding", finding);
+            feedback.put("selectedAction", intent.getAction());
+            feedback.put("providedParameterNames", intent.getActionParams() == null ? List.of() : intent.getActionParams().keySet());
+            feedback.put("visibleActionContracts", contracts);
+            String prompt;
+            try {
+                prompt = renderer.render(prompts.resolve(FAMILY, "target-user").template(), Map.of(
+                    "query", context.getEffectiveQuery(), "feedback", json.objectMapper().writeValueAsString(feedback),
+                    "context", ConversationPromptContext.activeTargets(context, ConversationPromptContext.characterBudget(context))));
+            } catch (Exception ex) { throw new IllegalStateException("Cannot prepare target feedback", ex); }
+            AIGenerationResponse response;
+            long start = System.nanoTime();
+            try {
+                response = core.generateContent(AIGenerationRequest.builder()
+                    .entityId(context.getRequestId() + "-target-repair").entityType("intent_extraction")
+                    .generationType("target_decision_repair")
+                    .systemPrompt(SpecialistPromptInstructionSupport.appendToSystemPrompt(
+                        renderer.render(prompts.resolve(FAMILY, "target-system").template(), Map.of()), context.getOrchestrationContext()))
+                    .prompt(prompt).messages(ConversationPromptContext.history(context, ConversationPromptContext.characterBudget(context)).messages())
+                    .parameters(json.jsonOnlyResponseParameters(TargetDecision.class)).maxTokens(400)
+                    .authContext(OrchestrationAuthContextResolver.from(context.getOrchestrationContext())).build(), LlmPurpose.ORCHESTRATION);
+            } catch (Exception ex) {
+                budget.providerFailed();
+                budget.recordOutcome(Map.of("status", "PROVIDER_FAILED", "modelCalls", 1,
+                    "exceptionType", ex.getClass().getSimpleName()));
+                return null;
+            }
+            Map<String, Object> trace = new LinkedHashMap<>();
+            trace.put("modelCalls", 1);
+            trace.put("processingTimeMs", java.util.concurrent.TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start));
+            if (response != null && response.getModel() != null) trace.put("model", response.getModel());
+            candidate = response != null && response.getContent() != null ? response.getContent() : "<empty model output>";
+            try {
+                TargetDecision decision = json.parsePayload(response != null ? response.getContent() : null, TargetDecision.class);
+                candidate = decision;
+                if (decision.requiresTargetResolution() == null) finding = "MISSING_TARGET_DECISION";
+                else if (decision.requiresTargetResolution() && !StringUtils.hasText(decision.clarification()))
+                    finding = "MISSING_USER_INPUT_QUESTION";
+                else {
+                    intent.setRequiresTargetResolution(decision.requiresTargetResolution());
+                    trace.put("status", decision.requiresTargetResolution() ? "USER_INPUT_REQUIRED" : "REPAIRED");
+                    trace.put("requiresTargetResolution", decision.requiresTargetResolution());
+                    budget.recordOutcome(trace);
+                    return decision;
+                }
+            } catch (Exception ex) { finding = "INVALID_TARGET_DECISION_OUTPUT"; }
+            trace.put("status", finding); budget.recordOutcome(trace);
+        }
+        return null;
     }
 
     public static OrchestrationResult unresolved(String reason, Map<String, Object> data) {
@@ -247,4 +339,5 @@ public class InternalDecisionRecoveryService {
     }
 
     public record RoutingDecision(Boolean requiresRetrieval, List<String> vectorSpaces) {}
+    public record TargetDecision(Boolean requiresTargetResolution, String clarification) {}
 }
