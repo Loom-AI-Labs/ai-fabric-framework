@@ -4,26 +4,16 @@ import ai.fabric.dto.AIAccessSubjectContext;
 import ai.fabric.intent.action.ActionContext;
 import com.ai.fabric.realapps.incident.domain.AuthorizedIncidentScope;
 import com.ai.fabric.realapps.incident.domain.IncidentScenario;
-import java.util.Set;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 @Service
 public class IncidentActionScopeResolver {
 
-    private static final Set<String> TRUSTED_MODES = Set.of(
-        "TRUSTED_APPLICATION",
-        "TRUSTED_INTERACTIVE"
-    );
-    private static final Set<String> CALLER_TYPES = Set.of(
-        "SERVICE",
-        "END_USER"
-    );
+    private final IncidentCallerScopeResolver callerScopes;
 
-    private final IncidentScenarioCatalog catalog;
-
-    public IncidentActionScopeResolver(IncidentScenarioCatalog catalog) {
-        this.catalog = catalog;
+    public IncidentActionScopeResolver(IncidentCallerScopeResolver callerScopes) {
+        this.callerScopes = callerScopes;
     }
 
     public boolean allowed(ActionContext context, String actionName) {
@@ -44,18 +34,11 @@ public class IncidentActionScopeResolver {
         }
         AIAccessSubjectContext auth = context.authContext();
         if (auth == null
-            || !StringUtils.hasText(auth.getSubjectId())
-            || !TRUSTED_MODES.contains(auth.getAuthMode())
-            || !CALLER_TYPES.contains(auth.getCallerType())
-            || !"public-demo".equals(auth.getTenantId())
             || auth.getGrantedScopes() == null
             || !auth.getGrantedScopes().contains("action:" + actionName)) {
             throw denied();
         }
-        IncidentScenario scenario = catalog.require(auth.getSubjectId());
-        if (!scenario.deploymentId().equals(auth.getDeploymentId())) {
-            throw denied();
-        }
+        IncidentScenario scenario = callerScopes.resolve(auth);
         return new AuthorizedIncidentScope(
             auth.getTenantId(),
             scenario.id(),

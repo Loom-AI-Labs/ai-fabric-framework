@@ -3,6 +3,7 @@ package com.ai.fabric.realapps.incident.service;
 import com.ai.fabric.realapps.incident.domain.IncidentDemoSession;
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface IncidentDemoSessionRepository
@@ -11,4 +12,6 @@ public interface IncidentDemoSessionRepository
     long countByExpiresAtAfter(Instant now);
 
     List<IncidentDemoSession> findByExpiresAtLessThanEqual(Instant now);
+
+    Optional<IncidentDemoSession> findByOwnerIdAndExpiresAtAfter(String ownerId, Instant now);
 }

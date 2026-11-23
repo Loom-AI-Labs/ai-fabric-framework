@@ -131,7 +131,10 @@ final class ProfiledRAGSearch {
     private static AISearchResponse withinDeadline(long deadline, java.util.function.Supplier<AISearchResponse> operation) {
         if (Thread.currentThread().isInterrupted()) throw new java.util.concurrent.CancellationException();
         if (System.nanoTime() >= deadline) throw new IllegalStateException("Retrieval request deadline exhausted");
-        return operation.get();
+        AISearchResponse response = operation.get();
+        if (Thread.currentThread().isInterrupted()) throw new java.util.concurrent.CancellationException();
+        if (System.nanoTime() >= deadline) throw new IllegalStateException("Retrieval request deadline exhausted");
+        return response;
     }
 
     private static int allocation(int allowance, int sourceCount, int index) {

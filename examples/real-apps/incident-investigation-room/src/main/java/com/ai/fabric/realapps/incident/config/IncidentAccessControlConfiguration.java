@@ -2,12 +2,11 @@ package com.ai.fabric.realapps.incident.config;
 
 import ai.fabric.access.policy.EntityAccessPolicy;
 import ai.fabric.dto.AIAccessSubjectContext;
-import com.ai.fabric.realapps.incident.service.IncidentScenarioCatalog;
+import com.ai.fabric.realapps.incident.service.IncidentCallerScopeResolver;
 import java.util.Map;
 import java.util.Set;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.util.StringUtils;
 
 @Configuration(proxyBeanMethods = false)
 public class IncidentAccessControlConfiguration {
@@ -20,16 +19,17 @@ public class IncidentAccessControlConfiguration {
         "specialist:service-health-reader@2",
         "specialist:change-risk-reader@2",
         "specialist:incident-intake@2",
-        "specialist:incident-conversation-manager@2"
+        "specialist:incident-conversation-manager@2",
+        "specialist:incident-chain-manager@3"
     );
 
     @Bean
     EntityAccessPolicy incidentEntityAccessPolicy(
-        IncidentScenarioCatalog catalog
+        IncidentCallerScopeResolver scopes
     ) {
         return (authContext, entity) -> trustedIncidentContext(
             authContext,
-            catalog
+            scopes
         )
             && "rag:intent".equals(value(entity, "resourceId"))
             && "READ".equalsIgnoreCase(value(entity, "operationType"));
@@ -37,20 +37,16 @@ public class IncidentAccessControlConfiguration {
 
     private boolean trustedIncidentContext(
         AIAccessSubjectContext context,
-        IncidentScenarioCatalog catalog
+        IncidentCallerScopeResolver scopes
     ) {
-        return context != null
-            && StringUtils.hasText(context.getSubjectId())
-            && Set.of("TRUSTED_APPLICATION", "TRUSTED_INTERACTIVE")
-                .contains(context.getAuthMode())
-            && Set.of("SERVICE", "END_USER").contains(context.getCallerType())
-            && "public-demo".equals(context.getTenantId())
-            && catalog.all().stream().anyMatch(scenario ->
-                scenario.id().equals(context.getSubjectId())
-                    && scenario.deploymentId().equals(context.getDeploymentId())
-            )
-            && context.getGrantedScopes() != null
-            && context.getGrantedScopes().stream().anyMatch(APPROVED_SCOPES::contains);
+        if (context == null || context.getGrantedScopes() == null
+            || context.getGrantedScopes().stream().noneMatch(APPROVED_SCOPES::contains)) return false;
+        try {
+            scopes.resolve(context);
+            return true;
+        } catch (IllegalArgumentException denied) {
+            return false;
+        }
     }
 
     private String value(Map<String, Object> entity, String key) {

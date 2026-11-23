@@ -65,6 +65,22 @@ class ProfiledRAGSearchTest {
     }
 
     @Test
+    void lateNativeResultsCannotBecomeAcceptedEvidenceOrStartAnotherLeg() {
+        when(database.retrievalCapabilities("document")).thenReturn(ready());
+        when(search.search(any(), any())).thenAnswer(call -> {
+            Thread.sleep(100);
+            return response("late", .9);
+        });
+        var request = RAGRequest.builder().query("delivery").entityType("document").timeoutMs(50L)
+            .retrievalProfile(new RetrievalProfile(RetrievalProfile.Mode.DENSE, 20, 20, 40, 6, 60,
+                RetrievalProfile.FailurePolicy.FAIL)).build();
+        assertThatThrownBy(() -> new RAGSearchExecutor(database, search, null)
+            .performSearch(List.of(1.0), request, base, false)).isInstanceOf(IllegalStateException.class)
+            .hasMessageContaining("deadline exhausted");
+        verify(database, never()).keywordSearch(any(), any());
+    }
+
+    @Test
     void onlyTypedAvailabilityFailureMayDegradeNeverAuthorizationOrBudget() {
         when(database.retrievalCapabilities("document")).thenReturn(ready());
         when(search.search(any(), any())).thenReturn(response("dense", .9));

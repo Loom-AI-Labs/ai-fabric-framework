@@ -21,7 +21,7 @@ class IncidentReadActionSupportTest {
 
     private final IncidentReadActionSupport support =
         new IncidentReadActionSupport(
-            new IncidentActionScopeResolver(new IncidentScenarioCatalog()),
+            scopes(),
             new InMemoryIncidentEventRepository(),
             new IncidentInvocationMetrics()
         );
@@ -106,9 +106,7 @@ class IncidentReadActionSupportTest {
             .thenReturn(List.of());
         IncidentReadActionSupport emptySupport =
             new IncidentReadActionSupport(
-                new IncidentActionScopeResolver(
-                    new IncidentScenarioCatalog()
-                ),
+                scopes(),
                 emptyEvents,
                 new IncidentInvocationMetrics()
             );
@@ -130,6 +128,12 @@ class IncidentReadActionSupportTest {
             .containsEntry("candidateEventCount", 0)
             .containsEntry("candidateEventIds", List.of())
             .containsEntry("events", List.of());
+    }
+
+    private static IncidentActionScopeResolver scopes() {
+        return new IncidentActionScopeResolver(new com.ai.fabric.realapps.incident.service.IncidentCallerScopeResolver(
+            new IncidentScenarioCatalog(), mock(com.ai.fabric.realapps.incident.service.IncidentDemoSessionRepository.class),
+            java.time.Clock.systemUTC()));
     }
 
     private ActionContext context(

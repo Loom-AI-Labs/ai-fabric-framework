@@ -30,6 +30,11 @@ allowances are shared across the selected eligible sources, not multiplied by
 the number of namespaces. One framework-owned RRF stage combines the lists.
 Final context selection preserves attribution and reports truncation.
 
+The shared deadline is checked before and after each retrieval leg; late native
+results are not accepted and cannot start another leg or reranking. Source
+adapters still own finite native transport timeouts: this synchronous contract
+does not forcibly preempt a blocked third-party SDK call.
+
 Inspect `retrievalCapabilities` for the actual corpus before claiming lexical
 readiness. Weaviate uses native BM25F over its searchable content field. A dense-
 only adapter or absent text index does not become hybrid because a flag was set.
