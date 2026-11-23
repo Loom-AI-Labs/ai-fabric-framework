@@ -93,6 +93,38 @@ class DefaultSpecialistClientFactoryTest {
     }
 
     @Test
+    void identifiesOnlyPostExecutionTypedOutputFailureWithoutLeakingPayload() {
+        var compiled = new DefaultSpecialistManifestCompiler().compile(
+            ManifestTestFixtures.manifest(),
+            ManifestTestFixtures.compilationContext()
+        ).specialist();
+        var registry = new DefaultSpecialistRegistry(
+            List.of(compiled), ManifestTestFixtures.definitionValidator()
+        );
+        AIExecutionGateway gateway = mock(AIExecutionGateway.class);
+        when(gateway.execute(any())).thenReturn(new AIExecutionResult<>(
+            "exec-binding-1", SpecialistId.of("support-knowledge", "1"),
+            AIExecutionStatus.SUCCEEDED,
+            ManifestTestFixtures.objectMapper().createObjectNode()
+                .put("answer", "private-output-canary-too-long"),
+            List.of(), Map.of(), null, Instant.EPOCH, Instant.EPOCH
+        ));
+        var client = new DefaultSpecialistClientFactory(
+            registry, gateway, ManifestTestFixtures.objectMapper()
+        ).bind(SpecialistId.of("support-knowledge", "1"),
+            Question.class, BoundedAnswer.class);
+
+        assertThatThrownBy(() -> client.execute(new Question("Help"), trustedContext()))
+            .isInstanceOfSatisfying(SpecialistOutputBindingException.class, ex -> {
+                assertThat(ex.invocationId()).isEqualTo("exec-binding-1");
+                assertThat(ex.getMessage()).contains(BoundedAnswer.class.getName())
+                    .doesNotContain("private-output-canary");
+                assertThat(ex.getCause()).isNull();
+            });
+        verify(gateway).execute(any());
+    }
+
+    @Test
     void convertsTypedDtosAcrossTheInteractiveGateway() {
         var compiled = new DefaultSpecialistManifestCompiler()
             .compile(
@@ -409,4 +441,12 @@ class DefaultSpecialistClientFactoryTest {
     record WrongQuestion(String prompt) {}
 
     record Answer(String answer) {}
+
+    record BoundedAnswer(String answer) {
+        BoundedAnswer {
+            if (answer.length() > 8) {
+                throw new IllegalArgumentException("Invalid answer: " + answer);
+            }
+        }
+    }
 }

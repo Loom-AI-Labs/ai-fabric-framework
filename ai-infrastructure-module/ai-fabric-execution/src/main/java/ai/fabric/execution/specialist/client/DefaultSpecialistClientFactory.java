@@ -334,7 +334,7 @@ public final class DefaultSpecialistClientFactory
         private AIExecutionResult<O> convertExecution(
             AIExecutionResult<?> raw
         ) {
-            O output = convertOutput(raw.output());
+            O output = convertOutput(raw.output(), raw.invocationId());
             return new AIExecutionResult<>(
                 raw.invocationId(),
                 raw.specialistId(),
@@ -350,7 +350,7 @@ public final class DefaultSpecialistClientFactory
             );
         }
 
-        private O convertOutput(Object output) {
+        private O convertOutput(Object output, String invocationId) {
             if (output == null) {
                 return null;
             }
@@ -358,7 +358,15 @@ public final class DefaultSpecialistClientFactory
                 return outputType.cast(output);
             }
             if (schemaBound) {
-                return objectMapper.convertValue(output, outputType);
+                try {
+                    return objectMapper.convertValue(output, outputType);
+                } catch (IllegalArgumentException ex) {
+                    // Jackson's message/cause can contain the untrusted output.
+                    throw new SpecialistOutputBindingException(
+                        invocationId,
+                        outputType
+                    );
+                }
             }
             throw new IllegalStateException(
                 "Specialist returned an output outside its native binding"

@@ -44,6 +44,7 @@ import ai.fabric.execution.specialist.SpecialistId;
 import ai.fabric.execution.specialist.client.SpecialistClient;
 import ai.fabric.execution.specialist.client.SpecialistClientFactory;
 import ai.fabric.execution.specialist.client.SpecialistInvocation;
+import ai.fabric.execution.specialist.client.SpecialistOutputBindingException;
 import ai.fabric.execution.specialist.manifest.CanonicalJsonSupport;
 import ai.fabric.intent.orchestration.conversation.ApprovedConversationSnapshot;
 import java.time.Clock;
@@ -1129,6 +1130,41 @@ public final class DefaultSpecialistChainGateway
                         correctionAttempt
                     )
                 ));
+            } catch (SpecialistOutputBindingException ex) {
+                if (!clock.instant().isBefore(cursor.record.deadline())) {
+                    return failDeadline(cursor, registered.contentHash());
+                }
+                log.info(
+                    "Specialist chain {} manager output rejected "
+                        + "phase=typed-binding invocationId={} "
+                        + "reason=CHAIN_MANAGER_DIRECTIVE_BINDING_FAILED "
+                        + "correctionAttempt={} completedResults={}",
+                    cursor.record.executionId(),
+                    ex.invocationId(),
+                    correctionAttempt,
+                    cursor.checkpoint.projectedResults().size()
+                );
+                if (correctionAttempt < maxDirectiveCorrections) {
+                    directiveFeedback = directiveBindingFeedback(managerInput);
+                    metrics.managerCorrection(
+                        registered.id(),
+                        "CHAIN_MANAGER_DIRECTIVE_BINDING_FAILED"
+                    );
+                    continue;
+                }
+                terminal(
+                    cursor,
+                    failedResult(
+                        cursor.record,
+                        registered.contentHash(),
+                        SpecialistChainExecutionStatus.INVALID,
+                        "CHAIN_MANAGER_DIRECTIVE_BINDING_FAILED",
+                        "The chain manager could not return an executable directive.",
+                        false,
+                        cursor.checkpoint
+                    )
+                );
+                return false;
             } catch (RuntimeException ex) {
                 terminal(
                     cursor,
@@ -1300,6 +1336,23 @@ public final class DefaultSpecialistChainGateway
             remainingBudget(definition, cursor),
             directiveFeedback
         );
+    }
+
+    private String directiveBindingFeedback(SpecialistChainManagerInput input) {
+        return "REQUIRED CORRECTION: the previous output could not satisfy "
+            + "the executable directive contract. Return a single directive "
+            + "with a nonblank reason (at most 500 characters). COMPLETE and "
+            + "ASK_USER require targets=[] and a nonblank message (at most "
+            + "2000 characters). INVOKE_ONE and HANDOFF require exactly one "
+            + "target; INVOKE_PARALLEL requires 2 to 8 targets within the "
+            + "remaining budget. All invocation directives require message=null "
+            + "and supportingResultIds=[]. ASK_USER also requires "
+            + "supportingResultIds=[]. For COMPLETE use supportingResultIds "
+            + "exactly " + catalog(input.completedResults().stream()
+                .map(SpecialistChainResultView::resultId).toList())
+            + ". Completed results remain available; do not replay them. "
+            + "Choose only from the current approvedTargets and remaining "
+            + "budget. Do not invent missing user facts or permissions.";
     }
 
     private String correctionFeedback(

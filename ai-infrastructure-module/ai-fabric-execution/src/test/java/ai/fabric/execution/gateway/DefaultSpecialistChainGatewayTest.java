@@ -60,6 +60,7 @@ import ai.fabric.execution.specialist.SpecialistDefinition;
 import ai.fabric.execution.specialist.client.SpecialistClient;
 import ai.fabric.execution.specialist.client.SpecialistClientFactory;
 import ai.fabric.execution.specialist.client.SpecialistInvocation;
+import ai.fabric.execution.specialist.client.SpecialistOutputBindingException;
 import ai.fabric.execution.specialist.manifest.CanonicalJsonSupport;
 import ai.fabric.intent.orchestration.conversation.ApprovedConversationSnapshot;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -78,6 +79,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.h2.jdbcx.JdbcDataSource;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
@@ -613,6 +616,124 @@ class DefaultSpecialistChainGatewayTest {
             assertThat(managerKeys).hasSize(3).doesNotHaveDuplicates();
             verify(fixture.managerClient, times(3)).execute(any());
             verify(fixture.delegation).delegate(any(), any(), any());
+        }
+    }
+
+    @Test
+    void repairsTypedDirectiveAfterWorkerWithoutReplayingCompletedWork(CapturedOutput output) {
+        try (Fixture fixture = fixture()) {
+            AtomicInteger calls = new AtomicInteger();
+            List<String> keys = new java.util.ArrayList<>();
+            when(fixture.managerClient.execute(any())).thenAnswer(call -> {
+                SpecialistInvocation<SpecialistChainManagerInput> invocation = call.getArgument(0);
+                var input = invocation.input();
+                keys.add(invocation.idempotencyKey());
+                return switch (calls.getAndIncrement()) {
+                    case 0 -> managerSuccess("typed-initial", invokeOne(HEALTH, "Inspect health."));
+                    case 1 -> {
+                        assertThat(input.completedResults()).hasSize(1);
+                        throw new SpecialistOutputBindingException("typed-invalid", SpecialistChainDirective.class);
+                    }
+                    default -> {
+                        assertThat(input.completedResults()).hasSize(1);
+                        assertThat(input.previousDirectiveFeedback())
+                            .contains("REQUIRED CORRECTION", "targets=[]", "message=null",
+                                "do not replay", input.completedResults().get(0).resultId());
+                        yield groundedManagerSuccess("typed-repaired", "Health is observed.", input);
+                    }
+                };
+            });
+            when(fixture.delegation.delegate(any(), eq(String.class), eq(String.class)))
+                .thenAnswer(call -> {
+                    var request = (ai.fabric.execution.delegation.SpecialistDelegationRequest<?, ?>) call.getArgument(0);
+                    return delegationSuccess(request.sourceExecution(), request.targetSpecialistId(), "Approved health projection.");
+                });
+
+            var result = fixture.gateway.execute(request("Inspect health", "typed-repair-1"));
+
+            assertThat(result.status()).isEqualTo(SpecialistChainExecutionStatus.COMPLETED);
+            assertThat(result.projectedResults()).hasSize(1);
+            assertThat(keys).hasSize(3).doesNotHaveDuplicates();
+            verify(fixture.delegation).delegate(any(), any(), any());
+            assertThat(output.getAll()).contains("phase=typed-binding", "typed-invalid", "completedResults=1");
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+        "{\"type\":\"INVOKE_ONE\",\"targets\":[{\"targetSpecialist\":\"health-reader@1\",\"objective\":\"Inspect\"}],\"message\":null,\"reason\":\"Inspect\",\"supportingResultIds\":[\"result-1\"]}",
+        "{\"type\":\"COMPLETE\",\"targets\":[{\"targetSpecialist\":\"health-reader@1\",\"objective\":\"Inspect\"}],\"message\":\"Done\",\"reason\":\"Done\",\"supportingResultIds\":[]}",
+        "{\"type\":\"INVOKE_ONE\",\"targets\":[{\"targetSpecialist\":\"health-reader@1\",\"objective\":\"Inspect\"}],\"message\":\"Inspect\",\"reason\":\"Inspect\",\"supportingResultIds\":[]}",
+        "{\"type\":\"COMPLETE\",\"targets\":[],\"message\":\" \",\"reason\":\"Done\",\"supportingResultIds\":[]}"
+    })
+    void repairsCrossFieldAndBlankMessageContractFailures(String json) throws Exception {
+        try (Fixture fixture = fixture()) {
+            var mapper = new ObjectMapper();
+            var output = mapper.readTree(json);
+            AtomicInteger calls = new AtomicInteger();
+            when(fixture.managerClient.execute(any())).thenAnswer(call -> {
+                if (calls.getAndIncrement() == 0) {
+                    try {
+                        mapper.convertValue(output, SpecialistChainDirective.class);
+                        throw new AssertionError("The invalid typed directive was accepted");
+                    } catch (IllegalArgumentException ex) {
+                        throw new SpecialistOutputBindingException("typed-cross-field", SpecialistChainDirective.class);
+                    }
+                }
+                SpecialistInvocation<SpecialistChainManagerInput> invocation = call.getArgument(0);
+                return groundedManagerSuccess("typed-corrected", "No observation is available yet.", invocation.input());
+            });
+
+            var result = fixture.gateway.execute(request("Review context", "typed-cross-field-1"));
+
+            assertThat(result.status()).isEqualTo(SpecialistChainExecutionStatus.COMPLETED);
+            verify(fixture.managerClient, times(2)).execute(any());
+            verify(fixture.delegation, never()).delegate(any(), any(), any());
+        }
+    }
+
+    @Test
+    void typedDirectiveRepairStopsAtExistingCorrectionLimit() {
+        try (Fixture fixture = fixture()) {
+            when(fixture.managerClient.execute(any())).thenThrow(
+                new SpecialistOutputBindingException("typed-exhausted", SpecialistChainDirective.class));
+
+            var result = fixture.gateway.execute(request("Inspect health", "typed-exhausted-1"));
+
+            assertThat(result.status()).isEqualTo(SpecialistChainExecutionStatus.INVALID);
+            assertThat(result.failure().reason()).isEqualTo("CHAIN_MANAGER_DIRECTIVE_BINDING_FAILED");
+            verify(fixture.managerClient, times(2)).execute(any());
+            verify(fixture.delegation, never()).delegate(any(), any(), any());
+        }
+    }
+
+    @Test
+    void typedDirectiveRepairRespectsDisabledCorrectionPolicy() {
+        try (Fixture fixture = fixture(
+            new InMemorySpecialistChainExecutionRepository(), false,
+            "a".repeat(64), "b".repeat(64), definition(), null, null, 0
+        )) {
+            when(fixture.managerClient.execute(any())).thenThrow(
+                new SpecialistOutputBindingException("typed-disabled", SpecialistChainDirective.class));
+
+            var result = fixture.gateway.execute(request("Inspect health", "typed-disabled-1"));
+
+            assertThat(result.failure().reason()).isEqualTo("CHAIN_MANAGER_DIRECTIVE_BINDING_FAILED");
+            verify(fixture.managerClient).execute(any());
+            verify(fixture.delegation, never()).delegate(any(), any(), any());
+        }
+    }
+
+    @Test
+    void permissionFailureIsNotTreatedAsTypedDirectiveRepair() {
+        try (Fixture fixture = fixture()) {
+            when(fixture.managerClient.execute(any())).thenThrow(new SecurityException("private-auth-canary"));
+
+            var result = fixture.gateway.execute(request("Inspect health", "typed-auth-1"));
+
+            assertThat(result.failure().reason()).isEqualTo("CHAIN_MANAGER_INVOCATION_FAILED");
+            verify(fixture.managerClient).execute(any());
+            verify(fixture.delegation, never()).delegate(any(), any(), any());
         }
     }
 
@@ -1841,6 +1962,20 @@ class DefaultSpecialistChainGatewayTest {
         SharedInteractiveTurnCoordinator turnCoordinator,
         AIExecutionConversationRecorder conversationRecorder
     ) {
+        return fixture(repository, durable, chainContentHash, managerContentHash,
+            definition, turnCoordinator, conversationRecorder, 1);
+    }
+
+    private Fixture fixture(
+        SpecialistChainExecutionRepository repository,
+        boolean durable,
+        String chainContentHash,
+        String managerContentHash,
+        SpecialistChainDefinition<String> definition,
+        SharedInteractiveTurnCoordinator turnCoordinator,
+        AIExecutionConversationRecorder conversationRecorder,
+        int maxDirectiveCorrections
+    ) {
         ObjectMapper objectMapper =
             new ObjectMapper().findAndRegisterModules();
         CanonicalJsonSupport canonicalJson =
@@ -1896,6 +2031,7 @@ class DefaultSpecialistChainGatewayTest {
         AIExecutionProperties.SpecialistChains properties =
             new AIExecutionProperties().getSpecialistChains();
         properties.setAllowEphemeral(!durable);
+        properties.setMaxDirectiveCorrections(maxDirectiveCorrections);
         var gateway = new DefaultSpecialistChainGateway(
             registry,
             clientFactory,
