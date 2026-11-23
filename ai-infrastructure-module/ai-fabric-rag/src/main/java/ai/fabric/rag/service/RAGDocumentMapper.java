@@ -12,6 +12,31 @@ import java.util.stream.Collectors;
 
 final class RAGDocumentMapper {
 
+    record ContextSelection(List<RAGResponse.RAGDocument> documents, String context, boolean truncated) { }
+
+    ContextSelection selectContext(List<RAGResponse.RAGDocument> candidates, int maxItems, int maxCharacters) {
+        List<RAGResponse.RAGDocument> selected = new java.util.ArrayList<>();
+        boolean truncated = false;
+        for (RAGResponse.RAGDocument candidate : candidates) {
+            if (selected.size() >= maxItems) { truncated = true; break; }
+            List<RAGResponse.RAGDocument> proposed = new java.util.ArrayList<>(selected);
+            proposed.add(candidate);
+            int excess = buildContextFromDocuments(proposed).length() - maxCharacters;
+            if (excess <= 0) { selected.add(candidate); continue; }
+            truncated = true;
+            String content = candidate.getContent() == null ? "" : candidate.getContent();
+            if (excess >= content.length()) break;
+            Map<String, Object> metadata = new LinkedHashMap<>(candidate.getMetadata() == null ? Map.of() : candidate.getMetadata());
+            metadata.put("retrievalContextTruncated", true);
+            metadata.put("retrievalOriginalCharacters", content.length());
+            selected.add(RAGResponse.RAGDocument.builder().id(candidate.getId()).title(candidate.getTitle())
+                .type(candidate.getType()).source(candidate.getSource()).score(candidate.getScore()).similarity(candidate.getSimilarity())
+                .metadata(metadata).content(content.substring(0, content.length() - excess)).build());
+            break;
+        }
+        return new ContextSelection(List.copyOf(selected), buildContextFromDocuments(selected), truncated);
+    }
+
     static final String RESULT_KEY_CONTENT = "content";
     static final String RESULT_KEY_SCORE = "score";
     static final String RESULT_KEY_SIMILARITY = "similarity";

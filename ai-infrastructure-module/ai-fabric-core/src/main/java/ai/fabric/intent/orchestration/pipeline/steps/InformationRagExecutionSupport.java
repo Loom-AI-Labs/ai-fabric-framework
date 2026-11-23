@@ -71,6 +71,15 @@ final class InformationRagExecutionSupport {
                               Map<String, Object> metadata,
                               OrchestrationPolicy.RagBudgets ragBudgets,
                               ReadActionResolutionService.ResolutionOutcome readActionResolution) {
+        return basic(intent, context, pipelineContext, needsGeneration, generationQuery, retrievalQuery,
+            metadata, ragBudgets, readActionResolution, null);
+    }
+
+    private OrchestrationResult basic(Intent intent, OrchestrationContext context, PipelineContext pipelineContext,
+                                     boolean needsGeneration, String generationQuery, String retrievalQuery,
+                                     Map<String, Object> metadata, OrchestrationPolicy.RagBudgets ragBudgets,
+                                     ReadActionResolutionService.ResolutionOutcome readActionResolution,
+                                     List<String> retrievalEntityTypes) {
         RAGProvider provider = ragProvider != null ? ragProvider.getIfAvailable() : null;
         if (provider == null) {
             Map<String, Object> data = new LinkedHashMap<>();
@@ -96,7 +105,9 @@ final class InformationRagExecutionSupport {
 
         RAGRequest ragRequest = RAGRequest.builder()
             .query(retrievalQuery)
-            .entityType(intent.getVectorSpace())
+            .entityType(retrievalEntityTypes == null ? intent.getVectorSpace() : retrievalEntityTypes.getFirst())
+            .retrievalEntityTypes(retrievalEntityTypes)
+            .retrievalProfile(provider.sharedRetrievalProfile())
             .limit(limit)
             .threshold(advancedRagSupport.resolveSimilarityThreshold(ragBudgets, DEFAULT_RAG_THRESHOLD))
             .metadata(Collections.unmodifiableMap(metadata))
@@ -108,6 +119,19 @@ final class InformationRagExecutionSupport {
             : provider.performRag(ragRequest);
         if (ragResponse == null) {
             return OrchestrationResult.error(ERROR_MSG_RAG_NULL_RESPONSE);
+        }
+
+        // Retrieval authorization, funding and provider failures cannot be narrated as a successful search.
+        if (ragRequest.getRetrievalProfile() != null && Boolean.FALSE.equals(ragResponse.getSuccess())) {
+            Map<String, Object> failed = new LinkedHashMap<>();
+            failed.put(DATA_KEY_ANSWER, null);
+            failed.put(DATA_KEY_DOCUMENTS, ragResponse.getDocuments() != null ? ragResponse.getDocuments() : List.of());
+            failed.put(DATA_KEY_RAG_RESPONSE, ragResponse);
+            failed.put(DATA_KEY_REQUIRES_GENERATION, needsGeneration);
+            copySharedRouting(metadata, failed);
+            return OrchestrationResult.builder().type(OrchestrationResultType.ERROR).success(false)
+                .errorCode("RETRIEVAL_FAILED").message("The configured search could not be completed.")
+                .data(Collections.unmodifiableMap(failed)).nextSteps(List.of()).build();
         }
 
         String answer = null;
@@ -158,6 +182,8 @@ final class InformationRagExecutionSupport {
         data.put(DATA_KEY_RAG_RESPONSE, ragResponse);
         data.put(DATA_KEY_REQUIRES_GENERATION, needsGeneration);
 
+        copySharedRouting(metadata, data);
+
         String message = StringUtils.hasText(answer)
             ? answer
             : MSG_SEARCH_COMPLETED;
@@ -170,6 +196,13 @@ final class InformationRagExecutionSupport {
             .metadata(ragResponseGenerationSupport.responseGenerationMetadata(generationTrace))
             .nextSteps(extractNextSteps(intent))
             .build();
+    }
+
+    private static void copySharedRouting(Map<String, Object> metadata, Map<String, Object> data) {
+        if ("SHARED_PROFILE".equals(metadata.get(DATA_KEY_ROUTING_STRATEGY))) {
+            data.put(DATA_KEY_ROUTING_STRATEGY, "SHARED_PROFILE");
+            data.put(DATA_KEY_CANDIDATE_VECTOR_SPACES, metadata.get(DATA_KEY_CANDIDATE_VECTOR_SPACES));
+        }
     }
 
     OrchestrationResult fanOut(Intent intent,
@@ -201,6 +234,14 @@ final class InformationRagExecutionSupport {
                 .data(Collections.unmodifiableMap(data))
                 .nextSteps(extractNextSteps(intent))
                 .build();
+        }
+
+        if (provider.sharedRetrievalProfile() != null) {
+            Map<String, Object> sharedMetadata = new LinkedHashMap<>(metadata);
+            sharedMetadata.put(DATA_KEY_CANDIDATE_VECTOR_SPACES, List.copyOf(vectorSpaces));
+            sharedMetadata.put(DATA_KEY_ROUTING_STRATEGY, "SHARED_PROFILE");
+            return basic(intent, context, pipelineContext, needsGeneration, generationQuery, retrievalQuery,
+                sharedMetadata, ragBudgets, readActionResolution, List.copyOf(vectorSpaces));
         }
 
         int topKPerSpace = ragBudgets != null && ragBudgets.topKPerSpace() != null && ragBudgets.topKPerSpace() > 0

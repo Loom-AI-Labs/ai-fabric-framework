@@ -132,7 +132,8 @@ public class RAGAutoConfiguration {
             VectorDatabase vectorDatabase,
             AISearchService searchService,
             RAGProperties properties,
-            ObjectProvider<SearchSourceRegistry> searchSourceRegistryProvider) {
+            ObjectProvider<SearchSourceRegistry> searchSourceRegistryProvider,
+            ObjectProvider<ai.fabric.spi.RerankingProvider> rerankingProvider) {
         
         log.info(LOG_RAG_SERVICE_CREATED);
         
@@ -143,7 +144,8 @@ public class RAGAutoConfiguration {
             vectorDatabase,
             searchService,
             searchSourceRegistryProvider.getIfAvailable(),
-            properties
+            properties,
+            properties.getReranking().isEnabled() ? rerankingProvider.getIfAvailable() : null
         );
     }
 

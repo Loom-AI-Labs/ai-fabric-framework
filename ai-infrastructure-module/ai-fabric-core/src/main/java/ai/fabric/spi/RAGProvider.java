@@ -98,6 +98,11 @@ public interface RAGProvider {
      * @see #performRAGQuery(RAGRequest) for generation-focused operations
      */
     RAGResponse performRag(RAGRequest request);
+
+    /** Non-null only when this provider supports request-wide profiled multi-space retrieval. */
+    default ai.fabric.rag.RetrievalProfile sharedRetrievalProfile() {
+        return null;
+    }
     
     /**
      * Perform RAG query with context-building support.

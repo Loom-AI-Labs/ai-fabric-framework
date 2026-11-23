@@ -28,6 +28,44 @@ import static org.mockito.Mockito.when;
 
 class RAGAutoConfigurationTest {
 
+    @Test
+    void disabledRerankingNeverResolvesOrUsesAvailableProvider() {
+        var reranker = mock(ai.fabric.spi.RerankingProvider.class);
+        contextRunner.withBean(ai.fabric.spi.RerankingProvider.class, () -> reranker)
+            .withPropertyValues("ai.infrastructure.rag.advanced.enabled=false").run(context -> {
+                assertThat(context).hasNotFailed();
+                org.mockito.Mockito.verifyNoInteractions(reranker);
+            });
+    }
+
+    @Test
+    void cannotEnableLearnedRerankingWithoutTheSharedExecutionContract() {
+        contextRunner.withPropertyValues("ai.infrastructure.rag.reranking.enabled=true",
+            "ai.infrastructure.rag.advanced.enabled=false").run(context -> assertThat(context).hasFailed());
+    }
+
+    @Test
+    void bindsCompiledEnvironmentNamesToTypedSharedProfile() {
+        java.util.Map<String, Object> environment = java.util.Map.of(
+            "AI_INFRASTRUCTURE_RAG_RETRIEVALPROFILE_MODE", "HYBRID",
+            "AI_INFRASTRUCTURE_RAG_RETRIEVALPROFILE_VECTORCANDIDATES", "20",
+            "AI_INFRASTRUCTURE_RAG_RETRIEVALPROFILE_LEXICALCANDIDATES", "20",
+            "AI_INFRASTRUCTURE_RAG_RETRIEVALPROFILE_MAXCANDIDATES", "40",
+            "AI_INFRASTRUCTURE_RAG_RETRIEVALPROFILE_MAXRESULTS", "6",
+            "AI_INFRASTRUCTURE_RAG_RETRIEVALPROFILE_MAXCONTEXTCHARACTERS", "8000",
+            "AI_INFRASTRUCTURE_RAG_RETRIEVALPROFILE_RANKCONSTANT", "60",
+            "AI_INFRASTRUCTURE_RAG_RETRIEVALPROFILE_FAILUREPOLICY", "FAIL");
+        contextRunner.withInitializer(context -> context.getEnvironment().getPropertySources().addFirst(
+            new org.springframework.core.env.SystemEnvironmentPropertySource("systemEnvironment", environment)))
+            .withPropertyValues("ai.infrastructure.rag.advanced.enabled=false").run(context -> {
+                assertThat(context).hasNotFailed();
+                var profile = context.getBean(RAGProperties.class).getRetrievalProfile();
+                assertThat(profile).isNotNull();
+                assertThat(profile.mode()).isEqualTo(ai.fabric.rag.RetrievalProfile.Mode.HYBRID);
+                assertThat(profile.maxResults()).isEqualTo(6);
+            });
+    }
+
     private final ApplicationContextRunner contextRunner = new ApplicationContextRunner()
         .withConfiguration(AutoConfigurations.of(RAGAutoConfiguration.class))
         .withBean(AIProviderConfig.class, AIProviderConfig::new)

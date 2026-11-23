@@ -11,6 +11,11 @@ AI Fabric Framework publishes to **Maven Central** via the Sonatype Central Port
 See [0.8.66 notes](release-notes/0.8.66.md) for scope and actual qualification.
 Local installs do not prove publication, Central-only consumption or hosted adoption.
 
+The local 0.8.67 source candidate is in release qualification; see its
+[candidate notes](release-notes/0.8.67.md). Maintainer approval to publish after
+passing release checks was received on 23 November 2026. Publication, Central-only
+consumption and hosted adoption are not yet verified for that candidate.
+
 ## Consume From Maven Central
 
 No repository configuration and no credentials are needed to consume — Central is the default

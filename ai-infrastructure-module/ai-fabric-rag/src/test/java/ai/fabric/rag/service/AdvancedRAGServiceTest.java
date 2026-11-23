@@ -35,6 +35,78 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class AdvancedRAGServiceTest {
 
+    @Test
+    void sharedProfileOwnsFusionAndAvoidsExpansionAndSemanticRescoring() {
+        var profile = new ai.fabric.rag.RetrievalProfile(ai.fabric.rag.RetrievalProfile.Mode.HYBRID,
+            20, 20, 40, 6, 60, ai.fabric.rag.RetrievalProfile.FailurePolicy.FAIL);
+        when(ragProvider.performRag(any())).thenReturn(RAGResponse.builder().success(true)
+            .context("approved fact")
+            .documents(List.of(RAGResponse.RAGDocument.builder().id("exact-match").content("approved fact")
+                .score(.02).similarity(.6).build())).build());
+        when(aiCoreService.generateText(any())).thenReturn("answer");
+        var properties = new RAGProperties();
+        properties.setRetrievalProfile(profile);
+        var service = new AdvancedRAGService(aiSearchService, aiEmbeddingService, aiCoreService, ragProvider,
+            promptTemplateResolver(), new PromptRenderer(), properties, Runnable::run);
+        var response = service.performAdvancedRAG(AdvancedRAGRequest.builder().query("original").expansionLevel(3)
+            .rerankingStrategy("semantic").build());
+        assertThat(response.getSuccess()).isTrue();
+        assertThat(response.getExpandedQueries()).containsExactly("original");
+        assertThat(response.getExpansionLevel()).isZero();
+        assertThat(response.getRerankingStrategy()).isEqualTo("shared-retrieval-profile");
+        assertThat(response.getConfidenceScore()).isNull();
+        verify(ragProvider, times(1)).performRag(any());
+        verify(aiCoreService, times(1)).generateText(any());
+        org.mockito.Mockito.verifyNoInteractions(aiEmbeddingService);
+    }
+
+    @Test
+    void providerProfileKeepsBoundedContextOrderDiagnosticsAndCallingThread() {
+        var profile = new ai.fabric.rag.RetrievalProfile(ai.fabric.rag.RetrievalProfile.Mode.HYBRID,
+            20, 20, 40, 6, 60, ai.fabric.rag.RetrievalProfile.FailurePolicy.FAIL);
+        when(ragProvider.sharedRetrievalProfile()).thenReturn(profile);
+        Thread caller = Thread.currentThread();
+        when(ragProvider.performRag(any())).thenAnswer(invocation -> {
+            assertThat(Thread.currentThread()).isSameAs(caller);
+            assertThat(((RAGRequest) invocation.getArgument(0)).getRetrievalProfile()).isSameAs(profile);
+            return RAGResponse.builder().success(true).context("[approved attribution] bounded context")
+                .totalDocuments(2).documents(List.of(
+                    RAGResponse.RAGDocument.builder().id("first").content("approved first").score(.1).build(),
+                    RAGResponse.RAGDocument.builder().id("second").content("approved second").score(.9).build()))
+                .metadata(Map.of("retrieval", Map.of("degraded", true, "effectiveMode", "HYBRID"))).build();
+        });
+        when(aiCoreService.generateText(any())).thenReturn("answer");
+        var service = new AdvancedRAGService(aiSearchService, aiEmbeddingService, aiCoreService, ragProvider,
+            promptTemplateResolver(), new PromptRenderer(), new RAGProperties(),
+            task -> { throw new AssertionError("Shared search must not detach the host budget thread"); });
+        var response = service.performAdvancedRAG(AdvancedRAGRequest.builder().query("original")
+            .maxDocuments(1).contextOptimizationLevel("high").build());
+        assertThat(response.getSuccess()).isTrue();
+        assertThat(response.getContext()).isEqualTo("[approved attribution] bounded context");
+        assertThat(response.getDocuments()).extracting(doc -> doc.getId()).containsExactly("first", "second");
+        assertThat(response.getMetadata()).containsEntry("retrieval", Map.of("degraded", true, "effectiveMode", "HYBRID"));
+        assertThat(response.getUsedDocuments()).isEqualTo(2);
+        ArgumentCaptor<String> prompt = ArgumentCaptor.forClass(String.class);
+        verify(aiCoreService).generateText(prompt.capture());
+        assertThat(prompt.getValue()).contains("[approved attribution] bounded context");
+        org.mockito.Mockito.verifyNoInteractions(aiEmbeddingService);
+    }
+
+    @Test
+    void failedSharedRetrievalRetainsDiagnosticsWithoutGeneratingAnAnswer() {
+        var profile = new ai.fabric.rag.RetrievalProfile(ai.fabric.rag.RetrievalProfile.Mode.HYBRID,
+            20, 20, 40, 6, 60, ai.fabric.rag.RetrievalProfile.FailurePolicy.FAIL);
+        when(ragProvider.sharedRetrievalProfile()).thenReturn(profile);
+        when(ragProvider.performRag(any())).thenReturn(RAGResponse.builder().success(false)
+            .metadata(Map.of("retrieval", Map.of("failed", true))).build());
+        var service = new AdvancedRAGService(aiSearchService, aiEmbeddingService, aiCoreService, ragProvider,
+            promptTemplateResolver(), new PromptRenderer());
+        var response = service.performAdvancedRAG(AdvancedRAGRequest.builder().query("original").build());
+        assertThat(response.getSuccess()).isFalse();
+        assertThat(response.getMetadata()).containsEntry("retrieval", Map.of("failed", true));
+        org.mockito.Mockito.verifyNoInteractions(aiCoreService, aiEmbeddingService);
+    }
+
     @Mock
     private AISearchService aiSearchService;
 

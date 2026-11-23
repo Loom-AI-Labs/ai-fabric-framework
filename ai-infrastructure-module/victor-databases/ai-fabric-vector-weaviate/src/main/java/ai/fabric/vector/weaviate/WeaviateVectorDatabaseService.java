@@ -9,6 +9,8 @@ import ai.fabric.dto.VectorScanPage;
 import ai.fabric.dto.VectorScanRequest;
 import ai.fabric.exception.AIServiceException;
 import ai.fabric.rag.VectorDatabaseService;
+import ai.fabric.rag.RetrievalCapabilities;
+import io.weaviate.client.v1.graphql.query.argument.Bm25Argument;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.core.type.TypeReference;
 import ai.fabric.util.MetadataJsonSerializer;
@@ -435,6 +437,88 @@ public class WeaviateVectorDatabaseService implements VectorDatabaseService {
             .requestId(UUID.randomUUID().toString())
             .model(MODEL_NAME)
             .build();
+    }
+
+    @Override
+    public boolean supportsKeywordSearch() {
+        return true;
+    }
+
+    @Override
+    public RetrievalCapabilities retrievalCapabilities(String entityType) {
+        ensureEnabled();
+        if (!hasText(entityType)) return RetrievalCapabilities.denseOnly("A scoped entity type is required");
+        String className = toClassName(entityType);
+        Result<WeaviateClass> result = client.schema().classGetter().withClassName(className).run();
+        if (result.hasErrors()) {
+            if (isNotFound(result.getError())) return RetrievalCapabilities.denseOnly("Corpus does not exist");
+            throw new AIServiceException("Cannot verify lexical corpus readiness");
+        }
+        WeaviateClass schema = result.getResult();
+        boolean searchable = schema != null && schema.getProperties() != null && schema.getProperties().stream()
+            .anyMatch(property -> PROPERTY_CONTENT.equals(property.getName())
+                && property.getDataType() != null && property.getDataType().contains(DataType.TEXT)
+                && !Boolean.FALSE.equals(property.getIndexSearchable())
+                && !Boolean.FALSE.equals(property.getIndexInverted()));
+        return new RetrievalCapabilities(true, searchable, searchable ? "BM25F" : "", className,
+            searchable ? "" : "Approved content property has no searchable text index");
+    }
+
+    @Override
+    public AISearchResponse keywordSearch(String queryText, AISearchRequest request) {
+        ensureEnabled();
+        if (request == null || !hasText(request.getEntityType()) || !hasText(queryText)) {
+            throw new AIServiceException("Weaviate lexical search requires query and scoped entity type");
+        }
+        String className = toClassName(request.getEntityType());
+        int limit = normalizeSearchLimit(request.getLimit());
+        long started = System.currentTimeMillis();
+        var query = client.graphQL().get().withClassName(className)
+            .withBm25(Bm25Argument.builder().query(queryText).properties(new String[]{PROPERTY_CONTENT}).build())
+            .withLimit(limit).withFields(
+                Field.builder().name(PROPERTY_ENTITY_TYPE).build(),
+                Field.builder().name(PROPERTY_ENTITY_ID).build(),
+                Field.builder().name(PROPERTY_CONTENT).build(),
+                Field.builder().name(PROPERTY_RAW).build(),
+                Field.builder().name("_additional").fields(Field.builder().name("id").build(),
+                    Field.builder().name("score").build()).build());
+        Optional<WhereFilter> where = buildWhereFilter(request.getMetadata());
+        if (where.isPresent()) query = query.withWhere(where.get());
+        Result<GraphQLResponse> receipt = applyTenant(query).run();
+        if (receipt.hasErrors() && receipt.getError() != null
+            && Set.of(408, 502, 503, 504).contains(receipt.getError().getStatusCode())) {
+            throw new ai.fabric.rag.LexicalSearchUnavailableException("Weaviate lexical service is temporarily unavailable");
+        }
+        if (receipt.hasErrors() || receipt.getResult() == null
+            || (receipt.getResult().getErrors() != null && receipt.getResult().getErrors().length > 0)) {
+            // Provider failures are not permission to switch to another credential or scope.
+            throw new AIServiceException("Weaviate lexical search failed");
+        }
+        List<Map<String, Object>> rows = new ArrayList<>();
+        for (Object entry : graphQLRows(className, receipt.getResult())) {
+            Optional<VectorRecord> parsed = parseGraphQLScanRow(entry);
+            if (parsed.isEmpty()) continue;
+            VectorRecord record = parsed.get();
+            if (!request.getEntityType().equals(record.getEntityType())
+                || !VectorMetadataFilterSupport.matchesPortableEquals(record.getMetadata(), request.getMetadata())) continue;
+            Map<?, ?> additional = (Map<?, ?>) ((Map<?, ?>) entry).get("_additional");
+            Double score = toDouble(additional.get("score")).orElse(null);
+            if (score == null || !Double.isFinite(score)) throw new AIServiceException("Invalid BM25 score receipt");
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("vectorId", record.getVectorId());
+            row.put("id", record.getEntityId());
+            row.put("entityId", record.getEntityId());
+            row.put("entityType", record.getEntityType());
+            row.put("vectorSpace", record.getEntityType());
+            row.put("content", record.getContent());
+            row.put("metadata", record.getMetadata());
+            row.put("score", score);
+            rows.add(row);
+        }
+        return AISearchResponse.builder().results(List.copyOf(rows)).totalResults(rows.size()).query(queryText)
+            .processingTimeMs(System.currentTimeMillis() - started).model(MODEL_NAME)
+            .diagnostics(Map.of("scoreType", "BM25", "lexicalAlgorithm", "BM25F", "effectiveMode", "KEYWORD"))
+            .maxScore(rows.isEmpty() ? null : ((Number) rows.getFirst().get("score")).doubleValue()).build();
     }
 
     @Override

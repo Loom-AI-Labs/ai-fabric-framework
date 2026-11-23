@@ -16,6 +16,8 @@ import java.util.Map;
 @NoArgsConstructor
 @AllArgsConstructor
 public class AdvancedRAGRequest {
+
+    private ai.fabric.rag.RetrievalProfile retrievalProfile;
     
     /**
      * Original query

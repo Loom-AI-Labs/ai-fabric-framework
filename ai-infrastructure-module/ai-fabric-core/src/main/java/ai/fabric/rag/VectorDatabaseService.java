@@ -34,6 +34,11 @@ import java.util.stream.Collectors;
  */
 public interface VectorDatabaseService {
 
+    /** Override only after verifying lexical schema/index readiness for this corpus. */
+    default RetrievalCapabilities retrievalCapabilities(String entityType) {
+        return RetrievalCapabilities.denseOnly("Lexical index readiness is not reported for this corpus");
+    }
+
     /**
      * Capability check: does this provider support paged scan operations?
      */

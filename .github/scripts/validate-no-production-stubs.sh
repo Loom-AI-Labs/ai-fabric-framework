@@ -26,6 +26,9 @@ patterns = [
 ]
 
 allowed_unsupported_operations = {
+    "ai-infrastructure-module/ai-fabric-core/src/main/java/ai/fabric/rag/source/SearchSource.java": [
+        "Source does not support lexical retrieval",
+    ],
     "ai-infrastructure-module/providers/ai-fabric-provider-spring-ai/src/main/java/ai/fabric/provider/springai/SpringAiChatProvider.java": [
         "does not support embeddings through Spring AI",
     ],

@@ -88,6 +88,7 @@ public class RAGService implements RAGProvider {
     private final boolean defaultHybridSearch;
     private final boolean defaultContextualSearch;
     private final int maxIndexContentLength;
+    private final ai.fabric.rag.RetrievalProfile defaultRetrievalProfile;
 
     public RAGService(AIProviderConfig config,
                       AIEmbeddingService embeddingService,
@@ -105,24 +106,40 @@ public class RAGService implements RAGProvider {
                       AISearchService searchService,
                       SearchSourceRegistry searchSourceRegistry,
                       RAGProperties properties) {
+        this(config, embeddingService, vectorDatabaseService, vectorDatabase, searchService, searchSourceRegistry, properties, null);
+    }
+
+    public RAGService(AIProviderConfig config, AIEmbeddingService embeddingService, VectorDatabaseService vectorDatabaseService,
+                      VectorDatabase vectorDatabase, AISearchService searchService, SearchSourceRegistry searchSourceRegistry,
+                      RAGProperties properties, ai.fabric.spi.RerankingProvider rerankingProvider) {
         this.config = Objects.requireNonNull(config, "config must not be null");
         this.embeddingService = Objects.requireNonNull(embeddingService, "embeddingService must not be null");
         this.vectorDatabaseService = Objects.requireNonNull(vectorDatabaseService, "vectorDatabaseService must not be null");
         this.vectorDatabase = Objects.requireNonNull(vectorDatabase, "vectorDatabase must not be null");
         this.searchService = Objects.requireNonNull(searchService, "searchService must not be null");
-        this.searchExecutor = new RAGSearchExecutor(vectorDatabaseService, searchService, searchSourceRegistry);
         this.documentMapper = new RAGDocumentMapper();
         RAGProperties resolvedProperties = properties != null ? properties : legacyDefaults();
+        if (resolvedProperties.getReranking().isEnabled() && resolvedProperties.getRetrievalProfile() == null) {
+            throw new IllegalArgumentException("Learned reranking requires the shared retrieval profile");
+        }
+        this.searchExecutor = new RAGSearchExecutor(vectorDatabaseService, searchService, searchSourceRegistry,
+            resolvedProperties.getReranking().isEnabled() ? new RerankingStage(rerankingProvider, resolvedProperties.getReranking()) : null);
         this.defaultResultLimit = normalizeDefaultLimit(resolvedProperties.getDefaultLimit());
         this.defaultSearchThreshold = normalizeDefaultThreshold(resolvedProperties.getDefaultThreshold());
         this.defaultHybridSearch = resolvedProperties.isEnableHybridSearch();
         this.defaultContextualSearch = resolvedProperties.isEnableContextualSearch();
         this.maxIndexContentLength = normalizeMaxIndexContentLength(resolvedProperties);
+        this.defaultRetrievalProfile = resolvedProperties.getRetrievalProfile();
     }
 
     @Override
     public String getProviderName() {
         return PROVIDER_NAME;
+    }
+
+    @Override
+    public ai.fabric.rag.RetrievalProfile sharedRetrievalProfile() {
+        return defaultRetrievalProfile;
     }
 
     @Override
@@ -236,7 +253,9 @@ public class RAGService implements RAGProvider {
                 safeResults(searchResponse),
                 effectiveRequest.getFilters()
             );
-            String context = documentMapper.buildContextFromDocuments(documents);
+            RAGDocumentMapper.ContextSelection selection = selectContext(documents, effectiveRequest);
+            documents = selection.documents();
+            String context = selection.context();
             long totalProcessingTimeMs = System.currentTimeMillis() - startTime;
             Map<String, Object> metadata = responseMetadata(
                 effectiveRequest,
@@ -247,6 +266,7 @@ public class RAGService implements RAGProvider {
                 totalProcessingTimeMs
             );
 
+            appendContextDiagnostics(metadata, effectiveRequest, selection);
             String originalUserQuery = RAGMetadataSupport.extractUserQuery(effectiveRequest.getMetadata());
 
             return RAGResponse.builder()
@@ -312,7 +332,9 @@ public class RAGService implements RAGProvider {
                 safeResults(searchResponse),
                 effectiveRequest.getFilters()
             );
-            String context = documentMapper.buildContextFromDocuments(documents);
+            RAGDocumentMapper.ContextSelection selection = selectContext(documents, effectiveRequest);
+            documents = selection.documents();
+            String context = selection.context();
             long processingTime = System.currentTimeMillis() - startTime;
             Map<String, Object> metadata = responseMetadata(
                 effectiveRequest,
@@ -323,6 +345,7 @@ public class RAGService implements RAGProvider {
                 processingTime
             );
 
+            appendContextDiagnostics(metadata, effectiveRequest, selection);
             String originalUserQuery = RAGMetadataSupport.extractUserQuery(effectiveRequest.getMetadata());
 
             return RAGResponse.builder()
@@ -330,7 +353,7 @@ public class RAGService implements RAGProvider {
                 .documents(documents)
                 .totalDocuments(safeTotalResults(searchResponse))
                 .usedDocuments(documents.size())
-                .confidenceScore(calculateConfidence(documents))
+                .confidenceScore(effectiveRequest.getRetrievalProfile() == null ? calculateConfidence(documents) : null)
                 .relevanceScores(documents.stream()
                     .map(RAGResponse.RAGDocument::getSimilarity)
                     .collect(Collectors.toList()))
@@ -358,6 +381,22 @@ public class RAGService implements RAGProvider {
             builder.model(config.resolveEmbeddingDefaults().model());
         }
         return embeddingService.executeEmbedding(builder.build());
+    }
+
+    private RAGDocumentMapper.ContextSelection selectContext(List<RAGResponse.RAGDocument> documents, RAGRequest request) {
+        var profile = request.getRetrievalProfile();
+        return profile == null
+            ? new RAGDocumentMapper.ContextSelection(documents, documentMapper.buildContextFromDocuments(documents), false)
+            : documentMapper.selectContext(documents, profile.maxResults(), profile.maxContextCharacters());
+    }
+
+    private void appendContextDiagnostics(Map<String, Object> metadata, RAGRequest request,
+                                           RAGDocumentMapper.ContextSelection selection) {
+        if (request.getRetrievalProfile() != null) {
+            metadata.put("retrievalContext", Map.of("truncated", selection.truncated(),
+                "characters", selection.context().length(), "items", selection.documents().size(),
+                "maxCharacters", request.getRetrievalProfile().maxContextCharacters()));
+        }
     }
 
     private AISearchRequest buildSearchRequest(RAGRequest request, String embeddingQuery, boolean includeContextAndMetadata) {
@@ -406,6 +445,9 @@ public class RAGService implements RAGProvider {
         }
         appendSearchSourceMetadata(metadata, searchResponse);
         appendSearchExecutionMetadata(metadata, searchExecution);
+        if (request.getRetrievalProfile() != null && searchResponse.getDiagnostics() != null) {
+            metadata.put("retrievalDiagnostics", searchResponse.getDiagnostics());
+        }
         return metadata;
     }
 
@@ -515,9 +557,15 @@ public class RAGService implements RAGProvider {
     }
 
     private RAGRequest withEffectiveDefaults(RAGRequest request) {
+        if (request.getRetrievalEntityTypes() != null && !request.getRetrievalEntityTypes().isEmpty()
+            && request.getRetrievalProfile() == null && defaultRetrievalProfile == null) {
+            throw new IllegalArgumentException("Multi-space retrieval requires the shared retrieval profile");
+        }
         return RAGRequest.builder()
+            .retrievalProfile(request.getRetrievalProfile() != null ? request.getRetrievalProfile() : defaultRetrievalProfile)
             .query(request.getQuery())
             .entityType(request.getEntityType())
+            .retrievalEntityTypes(request.getRetrievalEntityTypes() == null ? null : List.copyOf(request.getRetrievalEntityTypes()))
             .limit(effectiveLimit(request))
             .threshold(effectiveThreshold(request))
             .context(request.getContext())

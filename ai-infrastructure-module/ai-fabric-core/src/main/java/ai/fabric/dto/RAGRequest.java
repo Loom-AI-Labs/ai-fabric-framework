@@ -18,10 +18,13 @@ import java.util.Map;
  * @version 1.0.0
  */
 @Data
-@Builder
+@Builder(toBuilder = true)
 @NoArgsConstructor
 @AllArgsConstructor
 public class RAGRequest {
+
+    /** Explicit shared retrieval policy; null retains the existing provider path. */
+    private ai.fabric.rag.RetrievalProfile retrievalProfile;
     
     /**
      * The query text for RAG processing.
@@ -35,6 +38,9 @@ public class RAGRequest {
      * The type of entity being queried
      */
     private String entityType;
+
+    /** Selected, already authorized spaces for one shared retrieval pass; not an access grant. */
+    private List<String> retrievalEntityTypes;
     
     /**
      * Maximum number of results to retrieve

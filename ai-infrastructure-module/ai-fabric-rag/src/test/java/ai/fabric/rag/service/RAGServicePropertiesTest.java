@@ -36,6 +36,35 @@ import static org.mockito.Mockito.when;
 @MockitoSettings(strictness = Strictness.LENIENT)
 class RAGServicePropertiesTest {
 
+    @Test
+    void configuredLearnedRerankingRunsOnSharedRetrievalBeforeFinalContextSelection() {
+        var reranker = org.mockito.Mockito.mock(ai.fabric.spi.RerankingProvider.class);
+        when(reranker.providerId()).thenReturn("cohere");
+        when(reranker.modelId()).thenReturn("qualified-model");
+        when(reranker.rerank(any())).thenReturn(new ai.fabric.spi.RerankingProvider.Result(List.of(
+            new ai.fabric.spi.RerankingProvider.RankedCandidate("candidate-1", .9),
+            new ai.fabric.spi.RerankingProvider.RankedCandidate("candidate-0", .2)),
+            new ai.fabric.spi.RerankingProvider.Usage(Map.of("search_units", 1L)), "request-1"));
+        properties.setRetrievalProfile(ai.fabric.rag.RetrievalProfile.dense());
+        properties.getReranking().setEnabled(true);
+        properties.getReranking().setProvider("cohere");
+        properties.getReranking().setModel("qualified-model");
+        when(vectorDatabaseService.retrievalCapabilities("product"))
+            .thenReturn(ai.fabric.rag.RetrievalCapabilities.denseOnly("dense fixture"));
+        when(searchService.search(any(), any())).thenReturn(AISearchResponse.builder().results(List.of(
+            Map.of("id", "a", "content", "approved one", "score", .9),
+            Map.of("id", "b", "content", "approved two", "score", .8))).build());
+        var service = new RAGService(new AIProviderConfig(), embeddingService, vectorDatabaseService, vectorDatabase,
+            searchService, null, properties, reranker);
+        var response = service.performRag(RAGRequest.builder().query("question").entityType("product").build());
+        assertThat(response.getSuccess()).isTrue();
+        assertThat(response.getDocuments()).extracting(RAGResponse.RAGDocument::getId).containsExactly("b", "a");
+        assertThat(response.getContext()).contains("approved one", "approved two");
+        var diagnostic = (Map<?, ?>) response.getMetadata().get("retrievalDiagnostics");
+        assertThat(((Map<?, ?>) diagnostic.get("reranking")).get("used")).isEqualTo(true);
+        verify(reranker).rerank(any());
+    }
+
     @Mock
     private AIEmbeddingService embeddingService;
     @Mock

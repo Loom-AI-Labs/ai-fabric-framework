@@ -12,6 +12,7 @@ import ai.fabric.dto.RAGResponse;
 import ai.fabric.prompt.PromptRenderer;
 import ai.fabric.prompt.PromptTemplateResolver;
 import ai.fabric.rag.config.RAGProperties;
+import ai.fabric.rag.RetrievalProfile;
 import ai.fabric.spi.AdvancedRAGProvider;
 import ai.fabric.spi.RAGProvider;
 import lombok.extern.slf4j.Slf4j;
@@ -132,6 +133,7 @@ public class AdvancedRAGService implements AdvancedRAGProvider {
     private final int defaultMaxResultsPerQuery;
     private final int defaultMaxSemanticRerankDocuments;
     private final boolean defaultHybridSearch;
+    private final ai.fabric.rag.RetrievalProfile defaultRetrievalProfile;
     private final boolean defaultContextualSearch;
 
     private final AtomicLong totalRequests = new AtomicLong();
@@ -189,6 +191,7 @@ public class AdvancedRAGService implements AdvancedRAGProvider {
         this.defaultMaxResultsPerQuery = normalizePositive(advanced.getMaxResultsPerQuery(), 10);
         this.defaultMaxSemanticRerankDocuments = normalizePositive(advanced.getMaxSemanticRerankDocuments(), 100);
         this.defaultHybridSearch = resolvedProperties.isEnableHybridSearch();
+        this.defaultRetrievalProfile = resolvedProperties.getRetrievalProfile();
         this.defaultContextualSearch = resolvedProperties.isEnableContextualSearch();
     }
 
@@ -228,14 +231,17 @@ public class AdvancedRAGService implements AdvancedRAGProvider {
         log.info("Performing advanced RAG for query: {}", request.getQuery());
         
         try {
+            RetrievalProfile profile = retrievalProfile(request);
+            if (profile != null) {
+                return performSharedRetrieval(request, profile, startTime);
+            }
             List<String> expandedQueries = expandQuery(request.getQuery(), expansionLevel(request));
             log.debug("Expanded queries: {}", expandedQueries);
             
             List<RAGResponse> searchResults = performMultiStrategySearch(expandedQueries, request);
             
-            List<RAGResponse.RAGDocument> rerankedDocuments = rerankDocuments(
-                searchResults, request.getQuery(), rerankingStrategy(request)
-            );
+            List<RAGResponse.RAGDocument> rerankedDocuments =
+                rerankDocuments(searchResults, request.getQuery(), rerankingStrategy(request));
             
             String optimizedContext = optimizeContext(
                 rerankedDocuments, contextOptimizationLevel(request));
@@ -278,6 +284,41 @@ public class AdvancedRAGService implements AdvancedRAGProvider {
                 .errorMessage(e.getMessage())
                 .build();
         }
+    }
+
+    private RetrievalProfile retrievalProfile(AdvancedRAGRequest request) {
+        if (request.getRetrievalProfile() != null) return request.getRetrievalProfile();
+        return defaultRetrievalProfile != null ? defaultRetrievalProfile : ragProvider.sharedRetrievalProfile();
+    }
+
+    private AdvancedRAGResponse performSharedRetrieval(AdvancedRAGRequest request, RetrievalProfile profile,
+                                                       long startTime) {
+        // One synchronous owner retains the host's call budget and the bounded, attributed context.
+        RAGResponse retrieved = executeSearch(request.getQuery(), request, profile);
+        Map<String, Object> metadata = new HashMap<>();
+        if (retrieved != null && retrieved.getMetadata() != null) metadata.putAll(retrieved.getMetadata());
+        long processingTime = System.currentTimeMillis() - startTime;
+        if (retrieved == null || !Boolean.TRUE.equals(retrieved.getSuccess())) {
+            String message = "Shared retrieval did not complete";
+            recordFailure(processingTime, message);
+            return AdvancedRAGResponse.builder().query(request.getQuery()).success(false)
+                .errorMessage(message).metadata(metadata).processingTimeMs(processingTime).build();
+        }
+        List<RAGResponse.RAGDocument> documents = safeDocuments(retrieved);
+        String context = retrieved.getContext() != null ? retrieved.getContext() : "";
+        String response = generateResponse(request.getQuery(), context, request);
+        processingTime = System.currentTimeMillis() - startTime;
+        metadata.put(METADATA_KEY_PROCESSING_TIME_MS, processingTime);
+        metadata.put(METADATA_KEY_EXPANSION_LEVEL, 0);
+        metadata.put(METADATA_KEY_RERANKING_STRATEGY, "shared-retrieval-profile");
+        metadata.put(METADATA_KEY_CONTEXT_OPTIMIZATION_LEVEL, "shared-retrieval-profile");
+        recordSuccess(processingTime);
+        return AdvancedRAGResponse.builder().query(request.getQuery()).expandedQueries(List.of(request.getQuery()))
+            .response(response).context(context).documents(documents.stream().map(this::convertToAdvancedDocument).toList())
+            .totalDocuments(retrieved.getTotalDocuments()).usedDocuments(documents.size())
+            .relevanceScores(retrieved.getRelevanceScores()).confidenceScore(null).processingTimeMs(processingTime)
+            .success(true).rerankingStrategy("shared-retrieval-profile").expansionLevel(0)
+            .contextOptimizationLevel("shared-retrieval-profile").metadata(metadata).build();
     }
 
     public Map<String, Object> getStatistics() {
@@ -349,8 +390,13 @@ public class AdvancedRAGService implements AdvancedRAGProvider {
     }
     
     private RAGResponse executeSearch(String query, AdvancedRAGRequest request) {
+        return executeSearch(query, request, null);
+    }
+
+    private RAGResponse executeSearch(String query, AdvancedRAGRequest request, RetrievalProfile profile) {
         try {
             RAGRequest.RAGRequestBuilder ragRequestBuilder = RAGRequest.builder()
+                .retrievalProfile(profile)
                 .query(query)
                 .limit(maxResults(request))
                 .enableHybridSearch(enableHybridSearch(request))

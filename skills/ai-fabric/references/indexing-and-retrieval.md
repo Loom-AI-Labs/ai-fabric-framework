@@ -16,6 +16,7 @@ Read the authoritative guides before implementing:
 - [RAG Indexing Lifecycle](../../../docs/Framework-Dev-Guides/retrieval-vectorization/RAG_INDEXING_LIFECYCLE_GUIDE.md)
 - [Document Indexing Migration](../../../docs/Framework-Dev-Guides/retrieval-vectorization/DOCUMENT_INDEXING_0_8_MIGRATION_GUIDE.md)
 - [Embedding Query Composition](../../../docs/Framework-Dev-Guides/retrieval-vectorization/RAG_EMBEDDING_QUERY_COMPOSITION_GUIDE.md)
+- [Shared Retrieval And Optional Reranking](../../../docs/Framework-Dev-Guides/retrieval-vectorization/HYBRID_RETRIEVAL_AND_OPTIONAL_RERANKING.md)
 
 ## Preserve Source Authority
 

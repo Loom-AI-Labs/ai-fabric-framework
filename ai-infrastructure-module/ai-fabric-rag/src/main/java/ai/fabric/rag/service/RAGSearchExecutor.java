@@ -54,19 +54,30 @@ final class RAGSearchExecutor {
     private final VectorDatabaseService vectorDatabaseService;
     private final AISearchService searchService;
     private final SearchSourceRegistry searchSourceRegistry;
+    private final RerankingStage reranker;
 
     RAGSearchExecutor(VectorDatabaseService vectorDatabaseService,
                       AISearchService searchService,
                       SearchSourceRegistry searchSourceRegistry) {
+        this(vectorDatabaseService, searchService, searchSourceRegistry, null);
+    }
+
+    RAGSearchExecutor(VectorDatabaseService vectorDatabaseService, AISearchService searchService,
+                      SearchSourceRegistry searchSourceRegistry, RerankingStage reranker) {
         this.vectorDatabaseService = vectorDatabaseService;
         this.searchService = searchService;
         this.searchSourceRegistry = searchSourceRegistry;
+        this.reranker = reranker;
     }
 
     SearchExecutionAggregate performSearch(List<Double> queryVector,
                                             RAGRequest ragRequest,
                                             AISearchRequest baseSearchRequest,
                                             boolean honorSearchMode) {
+        if (ragRequest.getRetrievalProfile() != null) {
+            return ProfiledRAGSearch.execute(queryVector, ragRequest, baseSearchRequest,
+                vectorDatabaseService, searchService, searchSourceRegistry, reranker);
+        }
         if (searchSourceRegistry == null) {
             if (honorSearchMode && Boolean.TRUE.equals(ragRequest.getEnableHybridSearch())) {
                 boolean providerSupportsHybrid = vectorDatabaseService.supportsHybridSearch();

@@ -37,6 +37,60 @@ import static org.mockito.Mockito.when;
 
 class InformationRagExecutionSupportTest {
 
+    @Test
+    void sharedProfileSearchesSelectedSpacesOnceWithoutLegacyMergingOrScoreClarification() {
+        var provider = mock(RAGProvider.class);
+        var profile = new ai.fabric.rag.RetrievalProfile(ai.fabric.rag.RetrievalProfile.Mode.HYBRID,
+            20, 20, 40, 6, 60, ai.fabric.rag.RetrievalProfile.FailurePolicy.FAIL);
+        when(provider.sharedRetrievalProfile()).thenReturn(profile);
+        var evidence = doc("approved", .032, "Approved policy");
+        when(provider.performRag(any())).thenReturn(RAGResponse.builder().success(true).documents(List.of(evidence))
+            .metadata(Map.of("retrievalDiagnostics", Map.of("effectiveMode", "HYBRID", "fusionOwner", "framework"))).build());
+        var merger = mock(RankBasedMerger.class);
+        var support = new InformationRagExecutionSupport(providerOf(provider),
+            new AdvancedRagSupport(providerOf((AdvancedRAGProvider) null), new AIServiceConfig(), new OrchestrationProperties()),
+            new VectorSpaceRoutingProperties(), merger, mock(RagResponseGenerationSupport.class));
+        var context = OrchestrationContext.forUser("owner");
+        var result = support.fanOut(Intent.builder().vectorSpace("document,product").build(), context,
+            PipelineContext.from("delivery", context), false, false, "delivery", "delivery", Map.of(),
+            List.of("document", "product"), null, null);
+        assertThat(result.isSuccess()).isTrue();
+        assertThat(result.getData().get("documents")).isEqualTo(List.of(evidence));
+        assertThat(result.getData()).containsEntry("vectorSpaceRoutingStrategy", "SHARED_PROFILE")
+            .containsEntry("candidateVectorSpaces", List.of("document", "product"));
+        var captured = ArgumentCaptor.forClass(RAGRequest.class);
+        verify(provider).performRag(captured.capture());
+        assertThat(captured.getValue().getRetrievalEntityTypes()).containsExactly("document", "product");
+        assertThat(captured.getValue().getRetrievalProfile()).isEqualTo(profile);
+        assertThat(captured.getValue().getAuthContext().getSubjectId()).isEqualTo("owner");
+        org.mockito.Mockito.verifyNoInteractions(merger);
+    }
+
+    @Test void failedProfiledSearchDoesNotStartAnswerGenerationOrBecomeAClarification() {
+        var provider = mock(RAGProvider.class);
+        when(provider.sharedRetrievalProfile()).thenReturn(new ai.fabric.rag.RetrievalProfile(
+            ai.fabric.rag.RetrievalProfile.Mode.DENSE, 20, 20, 40, 6, 60,
+            ai.fabric.rag.RetrievalProfile.FailurePolicy.FAIL));
+        var response = RAGResponse.builder().success(false).documents(List.of())
+            .metadata(Map.of("retrievalStatus", "PROVIDER_FAILURE")).build();
+        when(provider.performRAGQuery(any())).thenReturn(response);
+        var generation = mock(RagResponseGenerationSupport.class);
+        var merger = mock(RankBasedMerger.class);
+        var support = new InformationRagExecutionSupport(providerOf(provider),
+            new AdvancedRagSupport(providerOf((AdvancedRAGProvider) null), new AIServiceConfig(), new OrchestrationProperties()),
+            new VectorSpaceRoutingProperties(), merger, generation);
+        var context = OrchestrationContext.forUser("owner");
+        var result = support.fanOut(Intent.builder().vectorSpace("document").build(), context,
+            PipelineContext.from("question", context), false, true, "question", "question", Map.of(),
+            List.of("document", "product"), null, null);
+        assertThat(result.isSuccess()).isFalse();
+        assertThat(result.getType()).isEqualTo(OrchestrationResultType.ERROR);
+        assertThat(result.getErrorCode()).isEqualTo("RETRIEVAL_FAILED");
+        assertThat(result.getData()).containsEntry("ragResponse", response).containsEntry("answer", null);
+        assertThat(result.getNextSteps()).isEmpty();
+        org.mockito.Mockito.verifyNoInteractions(generation, merger);
+    }
+
     @ParameterizedTest
     @ValueSource(booleans = {false, true})
     void attemptedGenerationFailureRetainsDocumentsAndDoesNotMasqueradeAsSearchSuccess(boolean fanout) {

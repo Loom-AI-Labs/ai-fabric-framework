@@ -42,6 +42,24 @@ import org.springframework.validation.annotation.Validated;
 @Validated
 @ConfigurationProperties(prefix = "ai.infrastructure.rag")
 public class RAGProperties {
+
+    /** Optional shared retrieval profile. Absent means retain the existing serving configuration. */
+    private ai.fabric.rag.RetrievalProfile retrievalProfile;
+    private RerankingProperties reranking = new RerankingProperties();
+
+    @Data
+    public static class RerankingProperties {
+        public enum FailurePolicy { FAIL, VISIBLE_PRE_RERANK_FALLBACK }
+        private boolean enabled = false;
+        private String provider;
+        private String model;
+        private int maxCandidates = 40;
+        private int maxCharactersPerCandidate = 4000;
+        private int maxTotalCharacters = 160000;
+        private int maxTokensPerDocument = 1024;
+        private long timeoutMs = 5000;
+        private FailurePolicy failurePolicy = FailurePolicy.FAIL;
+    }
     
     // =========================================================================
     // Core Settings
