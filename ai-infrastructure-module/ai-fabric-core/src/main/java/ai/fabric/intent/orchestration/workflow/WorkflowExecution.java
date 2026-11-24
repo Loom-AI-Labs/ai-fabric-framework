@@ -54,6 +54,8 @@ public record WorkflowExecution(BoundedWorkflowRunner.Request request, WorkflowP
         void verify(BoundedWorkflowRunner.Request request);
         String fingerprint(Map<String, Object> parameters);
         BoundedWorkflowRunner.Outcome reconcile(WorkflowCheckpoint.Step step);
+        /** Validate an explicitly declared execution outcome using trusted receipts only. */
+        default BoundedWorkflowRunner.CompletionFinding validateCompletion(WorkflowCheckpoint checkpoint) { return null; }
         /** Apply the existing approved action evidence/secret projection, not raw transport output. */
         Map<String, Object> observation(AIActionMetaData metadata, ActionContext context, GovernedActionInvocationOutcome outcome);
         /** Typed application findings only; never classify error prose or user intent. */

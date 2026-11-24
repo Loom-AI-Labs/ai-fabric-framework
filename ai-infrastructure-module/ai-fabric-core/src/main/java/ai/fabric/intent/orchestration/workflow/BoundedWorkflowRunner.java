@@ -14,7 +14,20 @@ import java.util.concurrent.atomic.AtomicReference;
 /** Model-directed single-next-action execution over the host's governed action boundary. */
 public final class BoundedWorkflowRunner {
     public static final class PlanningFinding extends RuntimeException {
-        public PlanningFinding() { super("WORKFLOW_DECISION_INVALID"); }
+        private final String detail;
+        public PlanningFinding() { this("Return a workflow decision with type ACTION, COMPLETE, NEEDS_INPUT or UNSUPPORTED; parameters must be an object and questions an array of strings."); }
+        public PlanningFinding(String detail) {
+            super("WORKFLOW_DECISION_INVALID");
+            if (detail == null || detail.isBlank() || detail.length() > 2000) throw new IllegalArgumentException("Invalid workflow planning finding");
+            this.detail = detail;
+        }
+        public String detail() { return detail; }
+    }
+    public record CompletionFinding(String code, String detail) {
+        public CompletionFinding {
+            if (code == null || !code.matches("[A-Z][A-Z0-9_]{0,127}") || detail == null || detail.isBlank() || detail.length() > 2000)
+                throw new IllegalArgumentException("Invalid workflow completion finding");
+        }
     }
     public enum DecisionType { ACTION, COMPLETE, NEEDS_INPUT, UNSUPPORTED }
     public record Decision(DecisionType type, String action, Map<String, Object> parameters,
@@ -53,6 +66,8 @@ public final class BoundedWorkflowRunner {
         Outcome invoke(Step reserved, WorkflowAllowance allowance);
         /** Consult receiver receipts, never blindly dispatch a reserved write again. */
         Outcome reconcile(Step reserved);
+        /** Optional host execution contract, not a semantic-confidence or wording check. */
+        default CompletionFinding validateCompletion(WorkflowCheckpoint checkpoint) { return null; }
     }
     private final WorkflowCheckpointStore store;
     private final Clock clock;
@@ -121,12 +136,21 @@ public final class BoundedWorkflowRunner {
                 Decision decision;
                 try { decision = planner.next(current.get(), allowance); }
                 catch (PlanningFinding finding) {
-                    allowance.correction();
                     current.set(persist(current.get(), allowance.usage(), steps, State.RUNNING,
-                        null, List.of(), finding.getMessage()));
+                        finding.detail(), List.of(), finding.getMessage()));
+                    allowance.correction();
                     continue;
                 }
                 allowance.verify(); store.verifyLease(request.workId()); actions.verifyAuthority(request);
+                if (decision.type() == DecisionType.COMPLETE) {
+                    var finding = actions.validateCompletion(current.get());
+                    if (finding != null) {
+                        current.set(persist(current.get(), allowance.usage(), steps, State.RUNNING,
+                            finding.detail(), List.of(), finding.code()));
+                        allowance.correction();
+                        continue;
+                    }
+                }
                 if (decision.type() != DecisionType.ACTION) {
                     State state = switch (decision.type()) {
                         case COMPLETE -> State.COMPLETE;
@@ -158,7 +182,7 @@ public final class BoundedWorkflowRunner {
             }
         } catch (WorkflowAllowance.Stop stop) {
             WorkflowCheckpoint old = current.get();
-            return persist(old, allowance.usage(), old.steps(), State.STOPPED, null, List.of(), stop.code());
+            return persist(old, allowance.usage(), old.steps(), State.STOPPED, old.message(), List.of(), stop.code());
         } catch (ai.fabric.intent.orchestration.control.OrchestrationControlException denied) {
             WorkflowCheckpoint old = current.get();
             return persist(old, allowance.usage(), old.steps(), State.STOPPED, null, List.of(), denied.code());

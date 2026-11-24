@@ -69,6 +69,9 @@ public class BoundedWorkflowStep implements PipelineStep {
             }
             public String fingerprint(Map<String, Object> parameters) { return authority.fingerprint(parameters); }
             public BoundedWorkflowRunner.Outcome reconcile(WorkflowCheckpoint.Step step) { return authority.reconcile(step); }
+            public BoundedWorkflowRunner.CompletionFinding validateCompletion(WorkflowCheckpoint checkpoint) {
+                return authority.validateCompletion(checkpoint);
+            }
             public BoundedWorkflowRunner.Outcome invoke(WorkflowCheckpoint.Step step, WorkflowAllowance allowance) {
                 isWrite(step.action());
                 var metadata = registry.findMetadata(step.action()).orElseThrow();
@@ -105,7 +108,10 @@ public class BoundedWorkflowStep implements PipelineStep {
                 "writes", execution.policy().maxWrites() - allowance.usage().writes(),
                 "modelCalls", execution.policy().maxModelCalls() - allowance.usage().modelCalls()));
             input.put("previewOnly", execution.request().previewOnly());
-            if (checkpoint.stopCode() != null) input.put("previousFinding", checkpoint.stopCode());
+            if (checkpoint.stopCode() != null) {
+                input.put("previousFinding", checkpoint.stopCode());
+                if (checkpoint.message() != null) input.put("previousFindingDetail", checkpoint.message());
+            }
             List<AIActionMetaData> catalogue = new ArrayList<>();
             for (var metadata : registry.getAllMetadata()) {
                 if (metadata != null && effective.isActionVisible(metadata.getName())
@@ -128,7 +134,9 @@ public class BoundedWorkflowStep implements PipelineStep {
                 .build());
             if (!call.isSuccess()) {
                 if (call.getLastFailure() != null && call.getLastFailure().type() != StructuredJsonFailureType.CALL_ERROR)
-                    throw new BoundedWorkflowRunner.PlanningFinding();
+                    throw new BoundedWorkflowRunner.PlanningFinding("Previous decision failure: " + call.getLastFailure().type()
+                        + ". Return one object using type ACTION, COMPLETE, NEEDS_INPUT or UNSUPPORTED. ACTION needs an action name and parameters object. NEEDS_INPUT questions are strings, not objects."
+                        + (call.getLastFailure().truncationSuspected() ? " The previous JSON may have been truncated; keep the next decision bounded." : ""));
                 throw new WorkflowAllowance.Stop("WORKFLOW_PLANNING_UNAVAILABLE");
             }
             return call.getValue();

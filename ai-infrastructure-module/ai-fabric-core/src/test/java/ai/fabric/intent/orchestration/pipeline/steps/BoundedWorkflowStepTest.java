@@ -109,6 +109,22 @@ class BoundedWorkflowStepTest {
         assertThat(result.getType()).isEqualTo(OrchestrationResultType.CLARIFICATION_REQUIRED);
         assertThat(store.value.usage().modelCalls()).isEqualTo(2);
         assertThat(store.value.usage().corrections()).isEqualTo(1);
+        var requests = org.mockito.ArgumentCaptor.forClass(AIGenerationRequest.class);
+        verify(core, times(2)).generateContent(requests.capture(), any());
+        assertThat(requests.getAllValues().get(1).getPrompt()).contains("previousFindingDetail", "questions are strings, not objects");
+        verify(writer, never()).executeAction(anyMap(), any());
+    }
+    @Test void hostCompletionFindingIsFedBackWithinTheSameBudgetWithoutPerformingAWrite() {
+        when(authority.validateCompletion(any())).thenReturn(new BoundedWorkflowRunner.CompletionFinding(
+            "DRAFT_EFFECT_MISSING", "The checked candidate has no saved receipt."));
+        replies.add("{\"type\":\"COMPLETE\",\"message\":\"Saved\"}");
+        replies.add("{\"type\":\"NEEDS_INPUT\",\"questions\":[\"Which connection?\"]}");
+        var result = step.process(context).getIntentResult();
+        assertThat(result.getType()).isEqualTo(OrchestrationResultType.CLARIFICATION_REQUIRED);
+        assertThat(store.value.usage().corrections()).isEqualTo(1);
+        var requests = org.mockito.ArgumentCaptor.forClass(AIGenerationRequest.class);
+        verify(core, times(2)).generateContent(requests.capture(), any());
+        assertThat(requests.getAllValues().get(1).getPrompt()).contains("DRAFT_EFFECT_MISSING", "no saved receipt");
         verify(writer, never()).executeAction(anyMap(), any());
     }
     @Test void providerFailureStopsWithoutAnotherCallOrCannedAnswer() {

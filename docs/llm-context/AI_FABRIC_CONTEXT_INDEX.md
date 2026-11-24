@@ -10,6 +10,11 @@ decision. Require minimal execution fields; improve guided LLM decisions and use
 only configured bounded repair. Do not hide decisions with text matching or
 unapproved fallbacks. READ actions need not be backed by vector spaces.
 
+For bounded read/write assistance and completion feedback, read
+`docs/guides/bounded-read-write-workflows.md`. Host completion checks protect
+declared execution outcomes using actual receipts; they do not choose actions
+or classify the wording of the model's answer.
+
 | User asks for | Read first | Then read |
 | --- | --- | --- |
 | "What can AI Fabric unlock in this app?" | `docs/llm-context/AI_FABRIC_OPPORTUNITY_SCANNER.md` | `docs/llm-context/AI_FABRIC_CAPABILITY_MAP.md`, `docs/getting-started/12-real-apps-map.md` |

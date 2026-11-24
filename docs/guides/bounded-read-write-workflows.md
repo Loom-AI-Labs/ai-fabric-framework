@@ -93,3 +93,21 @@ protecting canonical message bodies at rest; existing products remain unchanged
 by default. `INTERRUPT_AI` advances the control epoch without closing the owned
 conversation. Application erasure should retain closed ownership tombstones and
 independent financial records while removing private content.
+
+## Declared Completion Contracts
+
+A trusted host can optionally implement `WorkflowExecution.Authority.validateCompletion`.
+It returns a bounded `CompletionFinding` only when the requested execution outcome
+is not established by actual observations or receipts. For example, an explicit
+draft-save command cannot be completed from a validation-only receipt while its
+checked changes remain unapplied. A no-op or preview does not require a write.
+
+This protects an execution-result contract, not semantic confidence or answer
+wording. Do not classify a model's prose, require an arbitrary number of actions,
+or invent a replacement action. The finding is supplied to the model within the
+same correction, call, action and deadline allowance. The model still selects the
+next authorized action or chooses NEEDS_INPUT/UNSUPPORTED. Zero corrections stops
+with visible findings; completion checks never dispatch effects automatically.
+Existing hosts return no finding by default. Ordinary chat and read-only flows
+remain unchanged. Schema repair also receives a bounded decision-contract detail
+without provider exception bodies or raw invalid model output.

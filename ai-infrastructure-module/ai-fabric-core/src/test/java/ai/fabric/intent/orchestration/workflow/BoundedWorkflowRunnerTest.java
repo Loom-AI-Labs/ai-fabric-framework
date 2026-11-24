@@ -46,6 +46,51 @@ class BoundedWorkflowRunnerTest {
         assertThat(runner.run(request(false), policy(2), (c, a) -> { throw new AssertionError(); }, actions)).isEqualTo(result);
         assertThat(actions.dispatched).hasSize(1);
     }
+    @Test void anUnmetExplicitCompletionContractReturnsFeedbackAndLetsTheModelChooseTheWrite() {
+        var guarded = new Fixture() {
+            @Override public CompletionFinding validateCompletion(WorkflowCheckpoint checkpoint) {
+                return value == 0 ? new CompletionFinding("DRAFT_EFFECT_MISSING", "The checked candidate has no matching saved receipt.") : null;
+            }
+        };
+        var replies = new ArrayDeque<>(List.of(done(), action("write", 2), done()));
+        var calls = new java.util.concurrent.atomic.AtomicInteger();
+        var result = runner.run(request(false), policy(1), (checkpoint, allowance) -> {
+            WorkflowModelCallScope.beforeModelCall();
+            if (calls.incrementAndGet() == 2) {
+                assertThat(checkpoint.stopCode()).isEqualTo("DRAFT_EFFECT_MISSING");
+                assertThat(checkpoint.message()).contains("matching saved receipt");
+            }
+            return replies.remove();
+        }, guarded);
+        assertThat(result.state()).isEqualTo(State.COMPLETE);
+        assertThat(result.usage()).isEqualTo(new WorkflowAllowance.Usage(1, 1, 3, 1));
+        assertThat(guarded.dispatched).hasSize(1);
+    }
+    @Test void completionFeedbackCannotForceAWrittenEffectOrOverrideNeedsInput() {
+        var guarded = new Fixture() {
+            @Override public CompletionFinding validateCompletion(WorkflowCheckpoint checkpoint) {
+                return new CompletionFinding("DRAFT_EFFECT_MISSING", "A checked draft is not saved.");
+            }
+        };
+        var result = runner.run(request(false), policy(1), sequence(done(),
+            new Decision(DecisionType.NEEDS_INPUT, null, null, "Which connection?", List.of("Connection reference?"))), guarded);
+        assertThat(result.state()).isEqualTo(State.NEEDS_INPUT);
+        assertThat(guarded.dispatched).isEmpty();
+        assertThat(result.usage().corrections()).isEqualTo(1);
+    }
+    @Test void completionFindingsRespectTheSharedCorrectionLimitAndRemainVisible() {
+        var guarded = new Fixture() {
+            @Override public CompletionFinding validateCompletion(WorkflowCheckpoint checkpoint) {
+                return new CompletionFinding("DRAFT_EFFECT_MISSING", "A checked draft is not saved.");
+            }
+        };
+        var result = runner.run(request(false), policy(0), sequence(done()), guarded);
+        assertThat(result.state()).isEqualTo(State.STOPPED);
+        assertThat(result.stopCode()).isEqualTo("WORKFLOW_CORRECTION_LIMIT");
+        assertThat(result.message()).isEqualTo("A checked draft is not saved.");
+        assertThat(result.usage().modelCalls()).isEqualTo(1);
+        assertThat(guarded.dispatched).isEmpty();
+    }
     @Test void differentPayloadUnderSameWorkIdConflictsBeforeInference() {
         runner.run(request(false), policy(2), sequence(done()), actions);
         var other = new Request("work", "other", "authority", "definition", NOW.plusSeconds(120), false);
