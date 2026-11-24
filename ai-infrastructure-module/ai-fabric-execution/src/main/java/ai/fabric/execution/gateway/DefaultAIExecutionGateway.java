@@ -881,6 +881,13 @@ public final class DefaultAIExecutionGateway
                 definition.outputAdapter().orchestrationIntentPolicy()
             );
             OrchestrationResult orchestrationResult = pipeline.execute(orchestrationRequest);
+            if (definition.executionProfile().workflowPolicy().goalMode() && orchestrationResult != null
+                && orchestrationResult.getData() != null && orchestrationResult.getData().get("workflow") instanceof Map<?, ?> workflow) {
+                String state = String.valueOf(workflow.get("state"));
+                if ("YIELDED".equals(state) || "PAUSED".equals(state) || "NEEDS_INPUT".equals(state))
+                    return new AIExecutionResult<>(invocationId, definition.id(), "NEEDS_INPUT".equals(state) ? AIExecutionStatus.PAUSED : AIExecutionStatus.valueOf(state), null,
+                        List.of(), diagnostics(definition, effective, orchestrationResult, 0), null, startedAt, clock.instant());
+            }
             if (deadline != null && !clock.instant().isBefore(deadline)) {
                 return failure(
                     invocationId,
@@ -1000,6 +1007,8 @@ public final class DefaultAIExecutionGateway
                         evidence
                     );
                     output = finalization.output();
+                } catch (ai.fabric.intent.orchestration.workflow.WorkflowAllowance.Stop stop) {
+                    throw stop;
                 } catch (SpecialistOutputFinalizationException ex) {
                     Map<String, Object> failureDiagnostics =
                         new LinkedHashMap<>(
@@ -1216,6 +1225,19 @@ public final class DefaultAIExecutionGateway
                 startedAt,
                 Map.of()
             );
+        } catch (ai.fabric.intent.orchestration.workflow.WorkflowAllowance.Stop stop) {
+            var policy = definition.executionProfile().workflowPolicy();
+            if (!policy.goalMode()) return failure(invocationId, definition.id(), AIExecutionStatus.FAILED, "EXECUTION_FAILED",
+                "AI execution failed.", false, startedAt, Map.of());
+            boolean segment = List.of("WORKFLOW_MODEL_LIMIT", "WORKFLOW_SEGMENT_DEADLINE", "WORKFLOW_ACTION_LIMIT",
+                "WORKFLOW_WRITE_LIMIT", "WORKFLOW_CORRECTION_LIMIT").contains(stop.code());
+            if (segment) return new AIExecutionResult<>(invocationId, definition.id(), AIExecutionStatus.YIELDED, null, List.of(),
+                Map.of("workflow", Map.of("state", "YIELDED", "stopCode", stop.code(),
+                    "nextEligibleAt", clock.instant().plus(policy.goal().continuationDelay()).toString(),
+                    "usage", ai.fabric.intent.orchestration.workflow.WorkflowModelCallScope.current().orElseThrow().usage())),
+                null, startedAt, clock.instant());
+            return failure(invocationId, definition.id(), "WORKFLOW_CANCELLED".equals(stop.code()) ? AIExecutionStatus.CANCELLED : AIExecutionStatus.PAUSED,
+                stop.code(), "Workflow execution reached an operational boundary.", true, startedAt, Map.of());
         } catch (ContractValidationException ex) {
             return failure(
                 invocationId,
@@ -1297,7 +1319,13 @@ public final class DefaultAIExecutionGateway
         return requested.enabled() && requested.maxActions() <= published.maxActions()
             && requested.maxWrites() <= published.maxWrites() && requested.maxModelCalls() <= published.maxModelCalls()
             && requested.maxCorrections() <= published.maxCorrections()
-            && requested.timeout().compareTo(published.timeout()) <= 0;
+            && requested.timeout().compareTo(published.timeout()) <= 0
+            && (!requested.goalMode() || (published.goalMode()
+                && requested.goal().maxElapsed().compareTo(published.goal().maxElapsed()) <= 0
+                && requested.goal().continuationDelay().compareTo(published.goal().continuationDelay()) >= 0
+                && requested.goal().maxConsecutiveNoProgress() <= published.goal().maxConsecutiveNoProgress()
+                && requested.goal().maxConsecutivePlannerFailures() <= published.goal().maxConsecutivePlannerFailures()
+                && published.goal().delegatedProfiles().containsAll(requested.goal().delegatedProfiles())));
     }
 
     private <I, O> AIExecutionResult<O> waitForInput(
@@ -2093,7 +2121,11 @@ public final class DefaultAIExecutionGateway
         }
         if (definition.executionProfile().workflowPolicy().enabled() && result != null
             && result.getData() != null && result.getData().get("workflow") instanceof Map<?, ?> workflow) {
-            diagnostics.put("workflow", workflow);
+            var projection = new LinkedHashMap<Object, Object>(workflow);
+            ai.fabric.intent.orchestration.workflow.WorkflowModelCallScope.current().ifPresent(allowance -> {
+                projection.put("usage", allowance.usage()); projection.put("segmentUsage", allowance.segmentUsage());
+            });
+            diagnostics.put("workflow", projection);
         }
         if (result != null
             && result.getMetadata() != null
@@ -2157,7 +2189,8 @@ public final class DefaultAIExecutionGateway
         SpecialistDefinition<?, ?> definition
     ) {
         Instant specialistDeadline = definition != null
-            ? clock.instant().plus(definition.limits().maxDuration())
+            ? clock.instant().plus(definition.executionProfile().workflowPolicy().goalMode()
+                ? definition.executionProfile().workflowPolicy().goal().maxElapsed() : definition.limits().maxDuration())
             : null;
         if (request.deadline() == null) {
             return specialistDeadline;

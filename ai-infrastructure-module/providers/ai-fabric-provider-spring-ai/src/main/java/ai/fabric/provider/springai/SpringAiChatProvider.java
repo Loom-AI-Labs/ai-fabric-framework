@@ -202,6 +202,13 @@ public class SpringAiChatProvider implements AIProvider {
             .model(model != null ? model : request != null ? request.getModel() : null)
             .tokensUsed(usage != null ? usage.getTotalTokens() : null)
             .usage(usage != null ? usage.getNativeUsage() : null)
+            .providerOutcome(new ai.fabric.dto.ProviderOutcome(request == null ? null : request.getPurpose(),
+                model != null ? model : request == null ? null : request.getModel(), request == null ? null : request.getMaxTokens(),
+                springResponse == null || springResponse.getMetadata() == null ? null : springResponse.getMetadata().getId(),
+                generation == null || generation.getMetadata() == null ? null : generation.getMetadata().getFinishReason(),
+                usage == null || usage.getPromptTokens() == null ? null : usage.getPromptTokens().longValue(),
+                usage == null || usage.getCompletionTokens() == null ? null : usage.getCompletionTokens().longValue(),
+                null, content == null ? 0 : content.length(), "SUCCESS"))
             .processingTimeMs(elapsedMs)
             .metadata(immutableNonNullMap(metadata))
             .generatedAt(LocalDateTime.now())

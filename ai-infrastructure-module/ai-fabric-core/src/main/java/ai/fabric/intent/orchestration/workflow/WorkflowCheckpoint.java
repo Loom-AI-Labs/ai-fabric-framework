@@ -9,8 +9,14 @@ import java.util.Objects;
 public record WorkflowCheckpoint(String workId, String requestFingerprint, String authorityFingerprint,
                                  String definitionFingerprint, Instant deadline, long version,
                                  WorkflowAllowance.Usage usage, List<Step> steps, State state,
-                                 String message, List<String> questions, String stopCode) {
-    public enum State { RUNNING, COMPLETE, NEEDS_INPUT, UNSUPPORTED, CONFIRMATION_REQUIRED, STOPPED }
+                                 String message, List<String> questions, String stopCode, WorkflowGoalProgress goal) {
+    public WorkflowCheckpoint(String workId, String requestFingerprint, String authorityFingerprint,
+        String definitionFingerprint, Instant deadline, long version, WorkflowAllowance.Usage usage,
+        List<Step> steps, State state, String message, List<String> questions, String stopCode) {
+        this(workId, requestFingerprint, authorityFingerprint, definitionFingerprint, deadline, version, usage,
+            steps, state, message, questions, stopCode, null);
+    }
+    public enum State { RUNNING, YIELDED, PAUSED, COMPLETE, NEEDS_INPUT, UNSUPPORTED, CONFIRMATION_REQUIRED, STOPPED }
     public enum Effect { DISPATCHING, EXECUTED, REJECTED, CONFIRMATION_REQUIRED, OUTCOME_UNKNOWN }
     public record Step(String operationId, String action, boolean write, Map<String, Object> parameters,
                        String parameterFingerprint, Effect effect, Map<String, Object> observation, String code) {

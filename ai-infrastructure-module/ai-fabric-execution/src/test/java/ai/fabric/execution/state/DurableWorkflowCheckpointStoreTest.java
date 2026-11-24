@@ -79,4 +79,39 @@ class DurableWorkflowCheckpointStoreTest {
         assertThat(repository.compareAndSet(current, cancelled)).isTrue();
         assertThatThrownBy(() -> store.create(initial())).hasMessage("WORKFLOW_EXECUTION_LEASE_LOST");
     }
+
+    @Test void fencedWorkerMaySettleOnlyItsOriginalPendingReceiptWithoutReopeningExecution() {
+        var store = store(running); var initial = initial(); store.create(initial);
+        var pending = new WorkflowCheckpoint.Step("work:step:1", "write", true, Map.of("value", 7), hash('e'),
+            WorkflowCheckpoint.Effect.DISPATCHING, Map.of(), null);
+        var reserved = new WorkflowCheckpoint("work", hash('d'), hash('b'), hash('a'), initial.deadline(), 1,
+            new WorkflowAllowance.Usage(1, 1, 1, 0), List.of(pending), WorkflowCheckpoint.State.RUNNING, null, List.of(), null);
+        assertThat(store.compareAndSet(initial, reserved)).isTrue();
+        var current = repository.findById("work").orElseThrow();
+        assertThat(repository.compareAndSet(current, current.completed(ExecutionHandleStatus.CANCELLED, null, "cancelled", now, Duration.ofDays(1)))).isTrue();
+        assertThat(store.recordFencedOutcome("work", pending.observed(WorkflowCheckpoint.Effect.EXECUTED, Map.of("receipt", "saved"), null))).isTrue();
+        assertThat(repository.findById("work").orElseThrow().status()).isEqualTo(ExecutionHandleStatus.CANCELLED);
+        var protectedJournal = repository.findById("work").orElseThrow();
+        var payload = security.unprotect(protectedJournal.protectedWorkflowCheckpoint(), "workflow-checkpoint:work");
+        var settled = mapper.convertValue(payload.get("checkpoint"), WorkflowCheckpoint.class);
+        assertThat(settled.steps().getFirst().effect()).isEqualTo(WorkflowCheckpoint.Effect.EXECUTED);
+        assertThat(settled.usage().writes()).isEqualTo(1);
+        assertThat(store.recordFencedOutcome("work", pending.observed(WorkflowCheckpoint.Effect.REJECTED, Map.of(), null))).isFalse();
+        assertThatThrownBy(() -> store.verifyLease("work")).hasMessage("WORKFLOW_EXECUTION_LEASE_LOST");
+    }
+
+    @Test void cumulativeUsageAndExecutedReceiptCannotBeReset() {
+        var store = store(running); var initial = initial(); store.create(initial);
+        var step = new WorkflowCheckpoint.Step("work:step:1", "write", true, Map.of("value", 7), hash('e'),
+            WorkflowCheckpoint.Effect.EXECUTED, Map.of("receipt", "saved"), null);
+        var next = new WorkflowCheckpoint("work", hash('d'), hash('b'), hash('a'), initial.deadline(), 1,
+            new WorkflowAllowance.Usage(1, 1, 1, 0), List.of(step), WorkflowCheckpoint.State.RUNNING, null, List.of(), null);
+        assertThat(store.compareAndSet(initial, next)).isTrue();
+        var reset = new WorkflowCheckpoint("work", hash('d'), hash('b'), hash('a'), initial.deadline(), 2,
+            WorkflowAllowance.Usage.empty(), List.of(step), WorkflowCheckpoint.State.RUNNING, null, List.of(), null);
+        assertThatThrownBy(() -> store.compareAndSet(next, reset)).hasMessage("WORKFLOW_JOURNAL_RESET_DENIED");
+        var replay = new WorkflowCheckpoint("work", hash('d'), hash('b'), hash('a'), initial.deadline(), 2,
+            next.usage(), List.of(step.observed(WorkflowCheckpoint.Effect.DISPATCHING, Map.of(), null)), WorkflowCheckpoint.State.RUNNING, null, List.of(), null);
+        assertThatThrownBy(() -> store.compareAndSet(next, replay)).hasMessage("WORKFLOW_RECEIPT_REPLAY_DENIED");
+    }
 }

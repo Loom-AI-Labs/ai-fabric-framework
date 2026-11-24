@@ -18,6 +18,33 @@
     }
   ],
   "$defs": {
+    "workflow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled", "maxActions", "maxWrites", "maxModelCalls", "maxCorrections", "timeout"],
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "maxActions": {"type": "integer", "minimum": 1, "maximum": 64},
+        "maxWrites": {"type": "integer", "minimum": 0, "maximum": 64},
+        "maxModelCalls": {"type": "integer", "minimum": 1, "maximum": 64},
+        "maxCorrections": {"type": "integer", "minimum": 0, "maximum": 8},
+        "timeout": {"type": "string", "format": "duration"},
+        "goal": {"$ref": "#/$defs/workflowGoal"}
+      }
+    },
+    "workflowGoal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled", "maxElapsed", "continuationDelay", "maxConsecutiveNoProgress", "maxConsecutivePlannerFailures", "delegatedProfiles"],
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "maxElapsed": {"type": "string", "format": "duration"},
+        "continuationDelay": {"type": "string", "format": "duration"},
+        "maxConsecutiveNoProgress": {"type": "integer", "minimum": 1, "maximum": 1000},
+        "maxConsecutivePlannerFailures": {"type": "integer", "minimum": 1, "maximum": 100},
+        "delegatedProfiles": {"type": "array", "maxItems": 64, "uniqueItems": true, "items": {"type": "string", "minLength": 1}}
+      }
+    },
     "name": {
       "type": "string",
       "pattern": "^[a-z][a-z0-9-]{0,79}$"
@@ -185,7 +212,8 @@
                 "ACTION_POLICY",
                 "CONFIRMATION_RECEIPT_REQUIRED"
               ]
-            }
+            },
+            "workflow": {"$ref": "#/$defs/workflow"}
           }
         },
         "capabilities": {

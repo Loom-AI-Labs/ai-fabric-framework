@@ -14,6 +14,10 @@ public final class WorkflowAllowance {
                 throw new IllegalArgumentException("Invalid workflow usage");
         }
         public static Usage empty() { return new Usage(0, 0, 0, 0); }
+        public Usage minus(Usage baseline) {
+            return new Usage(actions - baseline.actions, writes - baseline.writes,
+                modelCalls - baseline.modelCalls, corrections - baseline.corrections);
+        }
     }
     public static final class Stop extends RuntimeException {
         private final String code;
@@ -27,44 +31,55 @@ public final class WorkflowAllowance {
     private final AtomicBoolean cancelled = new AtomicBoolean();
     private Usage usage;
     private final Consumer<Usage> admissionRecorder;
+    private final Usage segmentStart;
+    private final Instant segmentDeadline;
 
     public WorkflowAllowance(WorkflowPolicy policy, Instant deadline, Clock clock, Usage usage) {
         this(policy, deadline, clock, usage, ignored -> {});
     }
     public WorkflowAllowance(WorkflowPolicy policy, Instant deadline, Clock clock, Usage usage, Consumer<Usage> admissionRecorder) {
+        this(policy, deadline, clock, usage, admissionRecorder, null);
+    }
+    public WorkflowAllowance(WorkflowPolicy policy, Instant deadline, Clock clock, Usage usage,
+                             Consumer<Usage> admissionRecorder, WorkflowGoalProgress goal) {
         this.policy = Objects.requireNonNull(policy);
         this.deadline = Objects.requireNonNull(deadline);
         this.clock = Objects.requireNonNull(clock);
         this.usage = Objects.requireNonNull(usage);
         this.admissionRecorder = Objects.requireNonNull(admissionRecorder);
+        this.segmentStart = goal == null ? Usage.empty() : goal.segmentStartUsage();
+        this.segmentDeadline = goal == null ? deadline : goal.segmentDeadline();
         if (!policy.enabled()) throw new IllegalArgumentException("Workflow is disabled");
-        if (usage.actions() > policy.maxActions() || usage.writes() > policy.maxWrites()
-            || usage.modelCalls() > policy.maxModelCalls() || usage.corrections() > policy.maxCorrections())
+        var segment = segmentUsage();
+        if (segment.actions() > policy.maxActions() || segment.writes() > policy.maxWrites()
+            || segment.modelCalls() > policy.maxModelCalls() || segment.corrections() > policy.maxCorrections())
             throw new IllegalArgumentException("Persisted usage exceeds workflow policy");
     }
 
     public void verify() {
         if (cancelled.get() || Thread.currentThread().isInterrupted()) throw new Stop("WORKFLOW_CANCELLED");
         if (!clock.instant().isBefore(deadline)) throw new Stop("WORKFLOW_DEADLINE_EXCEEDED");
+        if (!clock.instant().isBefore(segmentDeadline)) throw new Stop("WORKFLOW_SEGMENT_DEADLINE");
     }
     public synchronized void modelCall() {
         verify();
-        if (usage.modelCalls() >= policy.maxModelCalls()) throw new Stop("WORKFLOW_MODEL_LIMIT");
+        if (segmentUsage().modelCalls() >= policy.maxModelCalls()) throw new Stop("WORKFLOW_MODEL_LIMIT");
         admit(new Usage(usage.actions(), usage.writes(), usage.modelCalls() + 1, usage.corrections()));
     }
     public synchronized void action(boolean write) {
         verify();
-        if (usage.actions() >= policy.maxActions()) throw new Stop("WORKFLOW_ACTION_LIMIT");
-        if (write && usage.writes() >= policy.maxWrites()) throw new Stop("WORKFLOW_WRITE_LIMIT");
+        if (segmentUsage().actions() >= policy.maxActions()) throw new Stop("WORKFLOW_ACTION_LIMIT");
+        if (write && segmentUsage().writes() >= policy.maxWrites()) throw new Stop("WORKFLOW_WRITE_LIMIT");
         admit(new Usage(usage.actions() + 1, usage.writes() + (write ? 1 : 0), usage.modelCalls(), usage.corrections()));
     }
     public synchronized void correction() {
         verify();
-        if (usage.corrections() >= policy.maxCorrections()) throw new Stop("WORKFLOW_CORRECTION_LIMIT");
+        if (segmentUsage().corrections() >= policy.maxCorrections()) throw new Stop("WORKFLOW_CORRECTION_LIMIT");
         admit(new Usage(usage.actions(), usage.writes(), usage.modelCalls(), usage.corrections() + 1));
     }
     private void admit(Usage next) { admissionRecorder.accept(next); usage = next; }
     public synchronized Usage usage() { return usage; }
+    public synchronized Usage segmentUsage() { return usage.minus(segmentStart); }
     public Instant deadline() { return deadline; }
     public void cancel() { cancelled.set(true); }
 }

@@ -72,6 +72,8 @@ public record AIExecutionResult<O>(
         if (status != AIExecutionStatus.SUCCEEDED
             && status != AIExecutionStatus.CONFIRMATION_REQUIRED
             && status != AIExecutionStatus.WAITING_FOR_INPUT
+            && status != AIExecutionStatus.YIELDED
+            && status != AIExecutionStatus.PAUSED
             && failure == null) {
             throw new IllegalArgumentException("Non-success execution requires failure");
         }

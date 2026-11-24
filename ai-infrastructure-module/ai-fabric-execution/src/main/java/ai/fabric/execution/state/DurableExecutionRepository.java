@@ -8,6 +8,8 @@ import java.util.Optional;
  * Optimistic durable-state boundary for asynchronous specialist jobs.
  */
 public interface DurableExecutionRepository {
+    /** Pending post-commit host notifications, including terminal records. */
+    default java.util.List<DurableExecutionRecord> findGoalNotifications(java.time.Instant now, int limit) { return java.util.List.of(); }
 
     DurableExecutionRecord create(DurableExecutionRecord record);
 

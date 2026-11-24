@@ -35,8 +35,10 @@ import ai.fabric.execution.state.DurableExecutionRecord;
 import ai.fabric.execution.state.DurableExecutionRepository;
 import ai.fabric.execution.state.DurableExecutionSecurity;
 import ai.fabric.execution.state.DurableExecutionSubmissionPolicy;
+import ai.fabric.execution.state.DurableWorkflowCheckpointStore;
 import ai.fabric.execution.state.JdbcDurableExecutionRepository;
 import ai.fabric.intent.orchestration.OrchestrationResult;
+import ai.fabric.intent.orchestration.workflow.*;
 import ai.fabric.intent.orchestration.capability.RequestedCapabilityProfile;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Clock;
@@ -64,6 +66,167 @@ class DurableAIExecutionGatewayTest {
         "durable-encryption-secret-for-tests-0001";
     private static final String FINGERPRINT_SECRET =
         "durable-fingerprint-secret-for-tests-0002";
+
+    @Test void goalSegmentsSurviveDatabaseRestartAndExceedCrashAttemptBudgetWithoutResettingUsage() {
+        var source = dataSource(); var repository = new JdbcDurableExecutionRepository(source, true);
+        var security = security(); var registry = goalRegistry(); var runner = runner();
+        var clock = Clock.fixed(NOW, ZoneOffset.UTC);
+        var actualWrites = new java.util.ArrayList<String>();
+        var hostCalls = new java.util.concurrent.atomic.AtomicInteger();
+        org.mockito.Mockito.doAnswer(invocation -> {
+            String id = invocation.getArgument(0);
+            var record = repository.findById(id).orElseThrow();
+            var store = new DurableWorkflowCheckpointStore(repository, security, objectMapper(), clock, record);
+            var coreRequest = new BoundedWorkflowRunner.Request(id, record.requestFingerprint(), record.accessFingerprint(),
+                record.specialistContentHash(), record.deadline(), false);
+            var result = new BoundedWorkflowRunner(store, clock).run(coreRequest, goalPolicy(), (checkpoint, allowance) -> {
+                allowance.modelCall();
+                return checkpoint.steps().size() < 18
+                    ? new BoundedWorkflowRunner.Decision(BoundedWorkflowRunner.DecisionType.ACTION, "save", Map.of("value", checkpoint.steps().size()), null, null)
+                    : new BoundedWorkflowRunner.Decision(BoundedWorkflowRunner.DecisionType.COMPLETE, null, null, "Saved", null);
+            }, new BoundedWorkflowRunner.Actions() {
+                public void verifyAuthority(BoundedWorkflowRunner.Request request) {}
+                public boolean isWrite(String name) { return true; }
+                public String fingerprint(Map<String, Object> parameters) { return security.canonicalHash(parameters); }
+                public BoundedWorkflowRunner.Outcome invoke(WorkflowCheckpoint.Step step, WorkflowAllowance allowance) {
+                    actualWrites.add(step.operationId());
+                    return new BoundedWorkflowRunner.Outcome(WorkflowCheckpoint.Effect.EXECUTED, Map.of("receipt", step.operationId()), null, false);
+                }
+                public BoundedWorkflowRunner.Outcome reconcile(WorkflowCheckpoint.Step step) { throw new AssertionError("No dispatch should be replayed"); }
+            });
+            var data = new LinkedHashMap<String, Object>();
+            data.put("state", result.state().name()); data.put("usage", result.usage());
+            if (result.goal().nextEligibleAt() != null) data.put("nextEligibleAt", result.goal().nextEligibleAt().toString());
+            return new AIExecutionResult<>(id, SPECIALIST_ID, result.state() == WorkflowCheckpoint.State.COMPLETE
+                ? AIExecutionStatus.SUCCEEDED : AIExecutionStatus.YIELDED, result.state() == WorkflowCheckpoint.State.COMPLETE
+                    ? new ResolverOutput("Saved all selected operations") : null, List.of(), Map.of("workflow", data), null, NOW, NOW);
+        }).when(runner).executeAssigned(anyString(), any());
+        var first = gateway(runner, registry, repository, security, rejectingExecutor());
+        first.setDurableGoalExecutionHost(passthroughHost(hostCalls));
+        var request = request(new ResolverInput("Prepare all selected operations"), "goal", context("owner", "account-42"));
+        var accepted = first.submitGoal(new GoalExecutionRequest(request, "owned-work-authority"));
+        assertThat(accepted.status()).isEqualTo(ExecutionHandleStatus.QUEUED);
+        for (int i = 0; i < 12; i++) {
+            var restarted = gateway(runner, registry, new JdbcDurableExecutionRepository(source, false), security, directExecutor());
+            restarted.setDurableGoalExecutionHost(passthroughHost(hostCalls));
+            restarted.recover();
+            var snapshot = restarted.find(accepted.invocationId(), request.trustedExecutionContext()).orElseThrow();
+            if (snapshot.handle().status() == ExecutionHandleStatus.SUCCEEDED) break;
+            assertThat(snapshot.handle().status()).as("segment %s reason=%s result=%s checkpoint=%s", i, snapshot.handle().failureReason(),
+                snapshot.result(), restarted.findWorkflowCheckpoint(accepted.invocationId(), request.trustedExecutionContext()))
+                .isEqualTo(ExecutionHandleStatus.YIELDED);
+        }
+        var finalGateway = gateway(runner, registry, repository, security, directExecutor());
+        assertThat(finalGateway.find(accepted.invocationId(), request.trustedExecutionContext()).orElseThrow().handle().status())
+            .isEqualTo(ExecutionHandleStatus.SUCCEEDED);
+        var journal = finalGateway.findWorkflowCheckpoint(accepted.invocationId(), request.trustedExecutionContext()).orElseThrow();
+        assertThat(journal.steps()).hasSize(18);
+        assertThat(journal.usage().writes()).isEqualTo(18);
+        assertThat(journal.usage().modelCalls()).isGreaterThan(16);
+        assertThat(journal.goal().segmentNumber()).isGreaterThan(3);
+        assertThat(actualWrites).doesNotHaveDuplicates().hasSize(18);
+        assertThat(hostCalls.get()).isGreaterThan(3);
+        assertThat(finalGateway.findWorkflowCheckpoint(accepted.invocationId(), context("foreign", "account-42"))).isEmpty();
+    }
+
+    @Test void goalPauseResumeCancelAreAuthorizedAndNotificationIsRetriedAfterRestartWithoutInference() {
+        var source = dataSource(); var repository = new JdbcDurableExecutionRepository(source, true);
+        var runner = runner(); var registry = goalRegistry(); var security = security();
+        var first = gateway(runner, registry, repository, security, rejectingExecutor());
+        first.setDurableGoalExecutionHost(new DurableGoalExecutionHost() {
+            public AIExecutionRequest<?> prepareSubmission(GoalExecutionRequest request) { return request.request(); }
+            public AIExecutionResult<?> executeSegment(GoalExecutionClaim claim, AIExecutionRequest<?> request,
+                java.util.function.Function<AIExecutionRequest<?>, AIExecutionResult<?>> execute) { return execute.apply(request); }
+            public void executionUpdated(ExecutionSnapshot snapshot, String reference) { throw new IllegalStateException("lost callback"); }
+        });
+        var owner = context("owner", "account-42");
+        var accepted = first.submitGoal(new GoalExecutionRequest(request(new ResolverInput("Goal"), "pause-goal", owner), "authority"));
+        assertThat(first.controlGoal(accepted.invocationId(), GoalExecutionControl.PAUSE, context("foreign", "account-42"))).isFalse();
+        assertThat(first.controlGoal(accepted.invocationId(), GoalExecutionControl.PAUSE, owner)).isTrue();
+        assertThat(repository.findById(accepted.invocationId()).orElseThrow().goalNotificationPending()).isTrue();
+        var notifications = new java.util.ArrayList<ExecutionHandleStatus>();
+        var restarted = gateway(runner, registry, repository, security, directExecutor());
+        restarted.setDurableGoalExecutionHost(new DurableGoalExecutionHost() {
+            public AIExecutionRequest<?> prepareSubmission(GoalExecutionRequest request) { return request.request(); }
+            public AIExecutionResult<?> executeSegment(GoalExecutionClaim claim, AIExecutionRequest<?> request,
+                java.util.function.Function<AIExecutionRequest<?>, AIExecutionResult<?>> execute) {
+                assertThat(claim.resumeRequested()).isTrue(); return execute.apply(request);
+            }
+            public void executionUpdated(ExecutionSnapshot snapshot, String reference) {
+                assertThat(reference).isEqualTo("authority"); notifications.add(snapshot.handle().status());
+            }
+        });
+        restarted.recover();
+        assertThat(notifications).containsExactly(ExecutionHandleStatus.PAUSED);
+        verify(runner, never()).executeAssigned(anyString(), any());
+        assertThat(restarted.controlGoal(accepted.invocationId(), GoalExecutionControl.RESUME, owner)).isTrue();
+        assertThat(restarted.find(accepted.invocationId(), owner).orElseThrow().handle().status()).isEqualTo(ExecutionHandleStatus.SUCCEEDED);
+        assertThat(notifications).containsExactly(ExecutionHandleStatus.PAUSED, ExecutionHandleStatus.QUEUED, ExecutionHandleStatus.SUCCEEDED);
+        assertThat(restarted.controlGoal(accepted.invocationId(), GoalExecutionControl.CANCEL, owner)).isFalse();
+    }
+
+    @Test void unconfiguredGoalHostAndRestoredScopeExpansionFailClosed() {
+        var registry = goalRegistry(); var runner = runner(); var repository = new JdbcDurableExecutionRepository(dataSource(), true);
+        var gateway = gateway(runner, registry, repository, security(), directExecutor());
+        var owner = context("owner", "account-42");
+        var request = request(new ResolverInput("Goal"), "denied-goal", owner);
+        assertThat(gateway.submitGoal(new GoalExecutionRequest(request, "authority")).failureReason()).isEqualTo("DURABLE_GOAL_HOST_UNAVAILABLE");
+        gateway.setDurableGoalExecutionHost(new DurableGoalExecutionHost() {
+            public AIExecutionRequest<?> prepareSubmission(GoalExecutionRequest request) { return request.request(); }
+            public AIExecutionResult<?> executeSegment(GoalExecutionClaim claim, AIExecutionRequest<?> persisted,
+                java.util.function.Function<AIExecutionRequest<?>, AIExecutionResult<?>> execute) {
+                return execute.apply(new AIExecutionRequest<>(persisted.specialistId(), persisted.input(),
+                    context("foreign", "account-42"), null, persisted.deadline(), persisted.idempotencyKey()));
+            }
+        });
+        var accepted = gateway.submitGoal(new GoalExecutionRequest(request, "authority"));
+        var denied = gateway.find(accepted.invocationId(), owner).orElseThrow();
+        assertThat(denied.handle().status()).isEqualTo(ExecutionHandleStatus.FAILED);
+        assertThat(denied.result().status()).isEqualTo(AIExecutionStatus.DENIED);
+        verify(runner, never()).executeAssigned(anyString(), any());
+    }
+
+    @Test void retiredGoalDefinitionPausesAndRemainsReadableWithoutInferenceOrLosingItsCheckpoint() {
+        var registry = goalRegistry(); var runner = runner(); var security = security();
+        var repository = new JdbcDurableExecutionRepository(dataSource(), true);
+        var owner = context("owner", "account-42");
+        var first = gateway(runner, registry, repository, security, rejectingExecutor());
+        first.setDurableGoalExecutionHost(passthroughHost(new java.util.concurrent.atomic.AtomicInteger()));
+        var accepted = first.submitGoal(new GoalExecutionRequest(request(new ResolverInput("Goal"), "retired-goal", owner), "authority"));
+        when(registry.requireRegistered(SPECIALIST_ID)).thenThrow(new IllegalArgumentException("Definition retired"));
+        var restarted = gateway(runner, registry, repository, security, directExecutor());
+        restarted.setDurableGoalExecutionHost(passthroughHost(new java.util.concurrent.atomic.AtomicInteger()));
+        restarted.recover();
+        var snapshot = restarted.find(accepted.invocationId(), owner).orElseThrow();
+        assertThat(snapshot.handle().status()).isEqualTo(ExecutionHandleStatus.PAUSED);
+        assertThat(snapshot.handle().failureReason()).isEqualTo("SPECIALIST_DEFINITION_UNAVAILABLE");
+        assertThat(snapshot.result().status()).isEqualTo(AIExecutionStatus.PAUSED);
+        assertThat(repository.findById(accepted.invocationId()).orElseThrow().goalAuthorityReference()).isEqualTo("authority");
+        verify(runner, never()).executeAssigned(anyString(), any());
+    }
+
+    private WorkflowPolicy goalPolicy() {
+        return new WorkflowPolicy(true, 4, 3, 4, 2, Duration.ofSeconds(120),
+            new WorkflowGoalPolicy(true, Duration.ofDays(1), Duration.ZERO, 8, 4, List.of()));
+    }
+    private SpecialistRegistry goalRegistry() {
+        var base = definition();
+        var profile = new SpecialistExecutionProfile("resolver", base.executionProfile().requestedCapabilities(),
+            ExecutionStrategy.BOUNDED_ITERATIVE, SpecialistWritePolicy.DISABLED, goalPolicy());
+        var definition = new SpecialistDefinition<>(base.identity(), base.instructions(), profile, base.limits(), base.inputAdapter(), base.outputAdapter());
+        var registry = mock(SpecialistRegistry.class);
+        when(registry.requireRegistered(SPECIALIST_ID)).thenReturn(RegisteredSpecialist.javaDefinition(definition));
+        return registry;
+    }
+    private DurableGoalExecutionHost passthroughHost(java.util.concurrent.atomic.AtomicInteger calls) {
+        return new DurableGoalExecutionHost() {
+            public AIExecutionRequest<?> prepareSubmission(GoalExecutionRequest request) { return request.request(); }
+            public AIExecutionResult<?> executeSegment(GoalExecutionClaim claim, AIExecutionRequest<?> request,
+                java.util.function.Function<AIExecutionRequest<?>, AIExecutionResult<?>> execute) {
+                calls.incrementAndGet(); return execute.apply(request);
+            }
+        };
+    }
 
     @Test
     void queuedExecutionSurvivesRestartAndReplaysWithoutExecutingTwice() {

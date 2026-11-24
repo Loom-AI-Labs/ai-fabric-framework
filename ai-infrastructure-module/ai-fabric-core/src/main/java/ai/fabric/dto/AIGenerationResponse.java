@@ -51,4 +51,6 @@ public class AIGenerationResponse {
     private String status;
     
     private String error;
+
+    private ProviderOutcome providerOutcome;
 }

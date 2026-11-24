@@ -52,6 +52,9 @@ public final class DurableAIExecutionGateway implements AIExecutionGateway {
     private final int maxAttempts;
     private final boolean cleanupEnabled;
     private final String workerId;
+    private DurableGoalExecutionHost goalHost;
+
+    public void setDurableGoalExecutionHost(DurableGoalExecutionHost host) { this.goalHost = host; }
 
     public DurableAIExecutionGateway(
         AIExecutionGateway delegate,
@@ -116,9 +119,27 @@ public final class DurableAIExecutionGateway implements AIExecutionGateway {
 
     @Override
     public ExecutionHandle submit(AIExecutionRequest<?> request) {
+        return submitPrepared(request, null);
+    }
+
+    @Override public ExecutionHandle submitGoal(GoalExecutionRequest goal) {
+        Objects.requireNonNull(goal);
+        if (goalHost == null) return rejected(invocationId(), goal.request().deadline(), "DURABLE_GOAL_HOST_UNAVAILABLE");
+        try {
+            var prepared = Objects.requireNonNull(goalHost.prepareSubmission(goal));
+            if (!sameIdentity(goal.request(), prepared) || prepared.conversationBinding() != null
+                || prepared.trustedExecutionContext().subject() == null)
+                return rejected(invocationId(), goal.request().deadline(), "DURABLE_GOAL_AUTHORITY_INVALID");
+            return submitPrepared(prepared, goal.authorityReference());
+        } catch (RuntimeException denied) {
+            return rejected(invocationId(), goal.request().deadline(), "DURABLE_GOAL_AUTHORITY_INVALID");
+        }
+    }
+
+    private ExecutionHandle submitPrepared(AIExecutionRequest<?> request, String goalAuthority) {
         Objects.requireNonNull(request, "request is required");
         if (
-            request.trustedExecutionContext().source()
+            goalAuthority == null && request.trustedExecutionContext().source()
             == ExecutionSource.INTERACTIVE
         ) {
             return delegate.submit(request);
@@ -134,7 +155,11 @@ public final class DurableAIExecutionGateway implements AIExecutionGateway {
                 request,
                 specialist.definition()
             );
-            submissionPolicy.validate(request, specialist);
+            // Persist a narrowing precision shared by JDBC TIMESTAMP implementations.
+            if (goalAuthority != null) deadline = deadline.truncatedTo(java.time.temporal.ChronoUnit.MILLIS);
+            if (goalAuthority == null) submissionPolicy.validate(request, specialist);
+            else if (!specialist.definition().executionProfile().workflowPolicy().goalMode())
+                throw new UnsupportedDurableExecutionException("WORKFLOW_GOAL_DISABLED", "The published profile does not enable goals.");
         } catch (UnsupportedDurableExecutionException ex) {
             return rejected(invocationId, request.deadline(), ex.reason());
         } catch (RuntimeException ex) {
@@ -159,10 +184,10 @@ public final class DurableAIExecutionGateway implements AIExecutionGateway {
                     request.trustedExecutionContext(),
                     request.idempotencyKey()
                 );
-            requestFingerprint = requestFingerprint(request);
+            requestFingerprint = requestFingerprint(request, goalAuthority);
             protectedRequest = codec.protectRequest(
                 invocationId,
-                withDeadline(request, deadline)
+                withDeadline(request, deadline), goalAuthority
             );
         } catch (RuntimeException ex) {
             return rejected(
@@ -195,6 +220,7 @@ public final class DurableAIExecutionGateway implements AIExecutionGateway {
             now,
             retention
         );
+        if (goalAuthority != null) queued = queued.withGoalAuthority(goalAuthority);
         try {
             repository.create(queued);
         } catch (DurableExecutionRepository.DuplicateExecutionException ex) {
@@ -225,6 +251,53 @@ public final class DurableAIExecutionGateway implements AIExecutionGateway {
 
         dispatch(invocationId);
         return handle(queued);
+    }
+
+    @Override public boolean controlGoal(String invocationId, GoalExecutionControl command, TrustedExecutionContext context) {
+        Objects.requireNonNull(command); Objects.requireNonNull(context);
+        for (int attempt = 0; attempt < 3; attempt++) {
+            var current = repository.findById(invocationId).orElse(null);
+            if (current == null || !current.goalExecution() || current.terminal() || !authorized(current, context)) return false;
+            DurableExecutionRecord next;
+            if (command == GoalExecutionControl.CANCEL || command == GoalExecutionControl.PAUSE) {
+                boolean cancelled = command == GoalExecutionControl.CANCEL;
+                String reason = cancelled ? "CANCELLED" : "GOAL_USER_PAUSED";
+                String protectedCheckpoint = current.protectedWorkflowCheckpoint();
+                var checkpoint = codec.unprotectWorkflowCheckpoint(current).orElse(null);
+                Map<String, Object> diagnostics = Map.of();
+                if (checkpoint != null) {
+                    var state = cancelled ? ai.fabric.intent.orchestration.workflow.WorkflowCheckpoint.State.STOPPED
+                        : ai.fabric.intent.orchestration.workflow.WorkflowCheckpoint.State.PAUSED;
+                    var controlled = new ai.fabric.intent.orchestration.workflow.WorkflowCheckpoint(checkpoint.workId(), checkpoint.requestFingerprint(),
+                        checkpoint.authorityFingerprint(), checkpoint.definitionFingerprint(), checkpoint.deadline(), checkpoint.version() + 1,
+                        checkpoint.usage(), checkpoint.steps(), state, checkpoint.message(), checkpoint.questions(), reason, checkpoint.goal());
+                    protectedCheckpoint = codec.protectWorkflowCheckpoint(controlled);
+                    diagnostics = Map.of("workflow", Map.of("state", state.name(), "usage", checkpoint.usage(), "stopCode", reason));
+                }
+                var result = new AIExecutionResult<>(current.invocationId(), current.specialistId(), cancelled ? AIExecutionStatus.CANCELLED : AIExecutionStatus.PAUSED,
+                    null, java.util.List.of(), diagnostics, new AIExecutionFailure(reason, cancelled ? "Goal cancelled." : "Goal paused.", !cancelled),
+                    current.createdAt(), clock.instant());
+                next = current.controlled(cancelled ? ExecutionHandleStatus.CANCELLED : ExecutionHandleStatus.PAUSED,
+                    codec.protectResult(current, result), protectedCheckpoint, reason, clock.instant(), retention);
+            }
+            else {
+                if (current.status() != ExecutionHandleStatus.PAUSED || !clock.instant().isBefore(current.deadline())) return false;
+                next = current.controlled(ExecutionHandleStatus.QUEUED, current.protectedResult(), current.protectedWorkflowCheckpoint(),
+                    "GOAL_RESUME_REQUESTED", clock.instant(), retention);
+            }
+            if (repository.compareAndSet(current, next)) {
+                notifyHost(next);
+                if (command == GoalExecutionControl.RESUME) dispatch(invocationId);
+                return true;
+            }
+        }
+        return false;
+    }
+
+    @Override public Optional<ai.fabric.intent.orchestration.workflow.WorkflowCheckpoint> findWorkflowCheckpoint(
+        String invocationId, TrustedExecutionContext context) {
+        return repository.findById(invocationId).filter(record -> authorized(record, context))
+            .flatMap(codec::unprotectWorkflowCheckpoint);
     }
 
     @Override
@@ -281,6 +354,7 @@ public final class DurableAIExecutionGateway implements AIExecutionGateway {
                 if (current.terminal()) {
                     return false;
                 }
+                if (current.goalExecution()) return controlGoal(invocationId, GoalExecutionControl.CANCEL, trustedExecutionContext);
                 DurableExecutionRecord cancelled = current.completed(
                     ExecutionHandleStatus.CANCELLED,
                     null,
@@ -289,6 +363,7 @@ public final class DurableAIExecutionGateway implements AIExecutionGateway {
                     retention
                 );
                 if (repository.compareAndSet(current, cancelled)) {
+                    notifyHost(cancelled);
                     return true;
                 }
             }
@@ -313,6 +388,11 @@ public final class DurableAIExecutionGateway implements AIExecutionGateway {
         for (DurableExecutionRecord record :
             repository.findRecoverable(now, recoveryBatchSize)) {
             if (!now.isBefore(record.deadline())) {
+                if (record.goalExecution()) {
+                    repository.compareAndSet(record, record.goalTransition(ExecutionHandleStatus.PAUSED, record.protectedResult(),
+                        "WORKFLOW_GOAL_DEADLINE", null, now, false));
+                    continue;
+                }
                 if (terminalize(
                     record,
                     ExecutionHandleStatus.EXPIRED,
@@ -324,6 +404,11 @@ public final class DurableAIExecutionGateway implements AIExecutionGateway {
                 continue;
             }
             if (record.attemptCount() >= maxAttempts) {
+                if (record.goalExecution()) {
+                    repository.compareAndSet(record, record.goalTransition(ExecutionHandleStatus.PAUSED, record.protectedResult(),
+                        "RECOVERY_ATTEMPTS_EXHAUSTED", null, now, false));
+                    continue;
+                }
                 if (terminalize(
                     record,
                     ExecutionHandleStatus.FAILED,
@@ -338,6 +423,7 @@ public final class DurableAIExecutionGateway implements AIExecutionGateway {
                 dispatched++;
             }
         }
+        for (var record : repository.findGoalNotifications(now, recoveryBatchSize)) notifyHost(record);
 
         int deleted = 0;
         if (cleanupEnabled) {
@@ -380,10 +466,13 @@ public final class DurableAIExecutionGateway implements AIExecutionGateway {
         }
         AIExecutionResult<?> result;
         try {
-            RegisteredSpecialist specialist =
-                specialistRegistry.requireRegistered(
-                    claimed.specialistId()
-                );
+            RegisteredSpecialist specialist;
+            try { specialist = specialistRegistry.requireRegistered(claimed.specialistId()); }
+            catch (RuntimeException unavailable) {
+                if (!claimed.goalExecution()) throw unavailable;
+                persistResult(claimed, paused(claimed, "SPECIALIST_DEFINITION_UNAVAILABLE"));
+                return;
+            }
             if (!security.sameFingerprint(
                 specialist.contentHash(),
                 claimed.specialistContentHash()
@@ -394,19 +483,31 @@ public final class DurableAIExecutionGateway implements AIExecutionGateway {
                     "The specialist definition changed before durable execution.",
                     false
                 );
+                if (claimed.goalExecution()) result = paused(claimed, "SPECIALIST_DEFINITION_CHANGED");
             } else {
                 AIExecutionRequest<Object> request =
                     codec.unprotectRequest(claimed);
-                result = supportedResult(
-                    claimed,
-                    runner.executeAssigned(
-                        claimed.invocationId(),
-                        request
-                    )
-                );
+                if (claimed.goalExecution()) {
+                    if (goalHost == null) result = paused(claimed, "DURABLE_GOAL_HOST_UNAVAILABLE");
+                    else {
+                        var claim = new GoalExecutionClaim(claimed.invocationId(), claimed.goalAuthorityReference(),
+                            claimed.leaseOwner(), claimed.deadline(), claimed.attemptCount(), "GOAL_RESUME_REQUESTED".equals(claimed.failureReason()));
+                        result = goalHost.executeSegment(claim, request, restored -> {
+                            if (!sameIdentity(request, restored) || !security.sameFingerprint(security.canonicalHash(request.input()),
+                                security.canonicalHash(restored.input())) || restored.deadline() == null || restored.deadline().isAfter(claimed.deadline()))
+                                throw new SecurityException("DURABLE_GOAL_RESTORATION_CONFLICT");
+                            return runner.executeAssigned(claimed.invocationId(), restored);
+                        });
+                    }
+                } else result = supportedResult(claimed, runner.executeAssigned(claimed.invocationId(), request));
             }
         } catch (RuntimeException ex) {
-            result = failure(
+            result = claimed.goalExecution() ? (ex instanceof SecurityException
+                ? new AIExecutionResult<>(claimed.invocationId(), claimed.specialistId(), AIExecutionStatus.DENIED, null,
+                    java.util.List.of(), Map.of(), new AIExecutionFailure("DURABLE_GOAL_AUTHORITY_DENIED", "Goal authority was denied.", false),
+                    claimed.createdAt(), clock.instant())
+                : paused(claimed, ex instanceof ai.fabric.intent.orchestration.workflow.WorkflowAllowance.Stop stop
+                    ? stop.code() : "DURABLE_GOAL_HOST_UNAVAILABLE")) : failure(
                 claimed,
                 "DURABLE_EXECUTION_FAILED",
                 "The durable specialist execution failed.",
@@ -414,6 +515,30 @@ public final class DurableAIExecutionGateway implements AIExecutionGateway {
             );
         }
         persistResult(claimed, result);
+    }
+
+    private boolean sameIdentity(AIExecutionRequest<?> original, AIExecutionRequest<?> restored) {
+        var a = original.trustedExecutionContext(); var b = restored.trustedExecutionContext();
+        return original.specialistId().equals(restored.specialistId()) && a.initiator().equals(b.initiator())
+            && Objects.equals(a.subject(), b.subject()) && a.source() == b.source()
+            && Objects.equals(a.tenantId(), b.tenantId()) && Objects.equals(a.deploymentId(), b.deploymentId())
+            && a.grantedScopes().equals(b.grantedScopes());
+    }
+
+    private AIExecutionResult<?> paused(DurableExecutionRecord record, String code) {
+        return new AIExecutionResult<>(record.invocationId(), record.specialistId(), AIExecutionStatus.PAUSED, null,
+            java.util.List.of(), Map.of(), new AIExecutionFailure(code, "Goal execution requires host attention.", true),
+            record.createdAt(), clock.instant());
+    }
+
+    private void notifyHost(DurableExecutionRecord record) {
+        if (!record.goalNotificationPending() || goalHost == null) return;
+        try {
+            goalHost.executionUpdated(snapshot(record), record.goalAuthorityReference());
+            repository.compareAndSet(record, record.notificationDelivered());
+        } catch (RuntimeException unavailable) {
+            log.warn("Goal {} host notification remains pending", record.invocationId());
+        }
     }
 
     private Optional<DurableExecutionRecord> claim(String invocationId) {
@@ -431,13 +556,21 @@ public final class DurableAIExecutionGateway implements AIExecutionGateway {
             DurableExecutionRecord claimed = current.claimed(
                 workerId,
                 now,
-                now.plus(leaseDuration)
+                now.plus(current.goalExecution() ? goalLeaseDuration(current) : leaseDuration)
             );
             if (repository.compareAndSet(current, claimed)) {
                 return Optional.of(claimed);
             }
         }
         return Optional.empty();
+    }
+
+    private Duration goalLeaseDuration(DurableExecutionRecord record) {
+        try {
+            var segment = specialistRegistry.requireRegistered(record.specialistId()).definition()
+                .executionProfile().workflowPolicy().timeout().plusSeconds(30);
+            return segment.compareTo(leaseDuration) > 0 ? segment : leaseDuration;
+        } catch (RuntimeException retired) { return leaseDuration; }
     }
 
     private AIExecutionResult<?> supportedResult(
@@ -466,9 +599,26 @@ public final class DurableAIExecutionGateway implements AIExecutionGateway {
             DurableExecutionRecord latest = repository.findById(claimed.invocationId()).orElse(null);
             if (latest == null || latest.status() != ExecutionHandleStatus.RUNNING
                 || !Objects.equals(latest.leaseOwner(), claimed.leaseOwner())
-                || latest.attemptCount() != claimed.attemptCount()) return;
+                || latest.attemptCount() != claimed.attemptCount() || latest.leaseUntil() == null
+                || !clock.instant().isBefore(latest.leaseUntil())) return;
             claimed = latest;
             String protectedResult = codec.protectResult(claimed, result);
+            if (claimed.goalExecution() && (result.status() == AIExecutionStatus.YIELDED || result.status() == AIExecutionStatus.PAUSED
+                || result.status() == AIExecutionStatus.WAITING_FOR_INPUT || result.status() == AIExecutionStatus.CONFIRMATION_REQUIRED)) {
+                boolean yielded = result.status() == AIExecutionStatus.YIELDED;
+                Instant eligibleAt = clock.instant();
+                if (yielded && result.diagnostics().get("workflow") instanceof Map<?, ?> workflow
+                    && workflow.get("nextEligibleAt") instanceof String value) eligibleAt = Instant.parse(value);
+                String reason = result.failure() == null ? result.status().name() : result.failure().reason();
+                if (result.failure() == null && result.diagnostics().get("workflow") instanceof Map<?, ?> workflow
+                    && workflow.get("stopCode") instanceof String code) reason = code;
+                else if (result.failure() == null && result.diagnostics().get("workflow") instanceof Map<?, ?> workflow
+                    && "NEEDS_INPUT".equals(workflow.get("state"))) reason = "NEEDS_INPUT";
+                var next = claimed.goalTransition(yielded ? ExecutionHandleStatus.YIELDED : ExecutionHandleStatus.PAUSED,
+                    protectedResult, reason, yielded ? eligibleAt : null, clock.instant(), true);
+                if (repository.compareAndSet(claimed, next)) notifyHost(next);
+                return;
+            }
             ExecutionHandleStatus status = handleStatus(result);
             DurableExecutionRecord completed = claimed.completed(
                 status,
@@ -484,7 +634,7 @@ public final class DurableAIExecutionGateway implements AIExecutionGateway {
                     "Durable execution {} completed after its state changed",
                     claimed.invocationId()
                 );
-            }
+            } else notifyHost(completed);
         } catch (RuntimeException ex) {
             log.error(
                 "Durable execution {} result could not be persisted",
@@ -612,11 +762,12 @@ public final class DurableAIExecutionGateway implements AIExecutionGateway {
         }
     }
 
-    private String requestFingerprint(AIExecutionRequest<?> request) {
+    private String requestFingerprint(AIExecutionRequest<?> request, String goalAuthority) {
         Map<String, Object> canonical = new LinkedHashMap<>();
         canonical.put("specialistId", request.specialistId().toString());
         canonical.put("input", request.input());
         canonical.put("conversationBinding", request.conversationBinding());
+        if (goalAuthority != null) canonical.put("goalAuthority", goalAuthority);
         return security.canonicalHash(canonical);
     }
 

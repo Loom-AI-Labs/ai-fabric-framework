@@ -568,7 +568,8 @@ public class AIExecutionAutoConfiguration {
         ObjectProvider<DurableExecutionRepository> durableRepository,
         ObjectProvider<DurableExecutionSecurity> durableSecurity,
         AIExecutionConversationSnapshotRegistry conversationSnapshotRegistry,
-        ObjectProvider<ai.fabric.execution.gateway.WorkflowExecutionBindingProvider> workflowBindings
+        ObjectProvider<ai.fabric.execution.gateway.WorkflowExecutionBindingProvider> workflowBindings,
+        ObjectProvider<ai.fabric.execution.gateway.DurableGoalExecutionHost> goalHosts
     ) {
         DefaultAIExecutionGateway gateway = new DefaultAIExecutionGateway(
             specialistRegistry,
@@ -608,7 +609,7 @@ public class AIExecutionAutoConfiguration {
                     + "ai.execution.async secrets of at least 32 characters"
             );
         }
-        return new DurableAIExecutionGateway(
+        var durable = new DurableAIExecutionGateway(
             gateway,
             gateway,
             specialistRegistry,
@@ -628,6 +629,8 @@ public class AIExecutionAutoConfiguration {
             properties.getAsync().getMaxAttempts(),
             properties.getAsync().isCleanupEnabled()
         );
+        durable.setDurableGoalExecutionHost(goalHosts.getIfAvailable());
+        return durable;
     }
 
     @Bean

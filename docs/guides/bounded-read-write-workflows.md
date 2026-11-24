@@ -5,6 +5,10 @@ The model chooses one next action, observes its approved result, and chooses
 again. Existing chat, read planning and specialist chains are unchanged when
 workflow execution is disabled, which is the default.
 
+For opt-in durable goals, nonterminal segment continuation, current directive
+revisions and scoped profile focus, see [Goal Execution](goal-execution-contract.md).
+The limits and terminal stops described below remain the ordinary bounded mode.
+
 ```yaml
 execution:
   strategy: BOUNDED_ITERATIVE

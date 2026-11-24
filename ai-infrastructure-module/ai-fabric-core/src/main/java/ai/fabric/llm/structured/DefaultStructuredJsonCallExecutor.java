@@ -54,8 +54,8 @@ public class DefaultStructuredJsonCallExecutor implements StructuredJsonCallExec
                 if (ex instanceof ai.fabric.intent.orchestration.workflow.WorkflowAllowance.Stop stop) throw stop;
                 StructuredJsonFailure failure = new StructuredJsonFailure(
                     StructuredJsonFailureType.CALL_ERROR,
-                    safeMessage(ex),
-                    false
+                    "Provider call failed (" + ex.getClass().getSimpleName() + ")",
+                    false, providerOutcome(ex)
                 );
                 failures.add(failure);
                 boolean shouldRetry = spec.isRetryOnCallError() && attemptIndex < maxAttempts - 1;
@@ -76,12 +76,13 @@ public class DefaultStructuredJsonCallExecutor implements StructuredJsonCallExec
             }
 
             String rawContent = response != null ? response.getContent() : null;
+            var providerOutcome = response == null ? null : response.getProviderOutcome();
             previousRaw = rawContent;
             if (!StringUtils.hasText(rawContent)) {
                 StructuredJsonFailure failure = new StructuredJsonFailure(
                     StructuredJsonFailureType.EMPTY_RESPONSE,
                     "Empty response from provider",
-                    false
+                    false, providerOutcome
                 );
                 failures.add(failure);
                 boolean lastAttempt = attemptIndex == maxAttempts - 1;
@@ -102,9 +103,10 @@ public class DefaultStructuredJsonCallExecutor implements StructuredJsonCallExec
             previousJson = extraction.payload();
             if (!extraction.jsonFound() || !StringUtils.hasText(extraction.payload())) {
                 StructuredJsonFailure failure = new StructuredJsonFailure(
-                    StructuredJsonFailureType.NO_JSON_FOUND,
+                    providerOutcome != null && providerOutcome.outputLimited()
+                        ? StructuredJsonFailureType.TRUNCATED_RESPONSE : StructuredJsonFailureType.NO_JSON_FOUND,
                     "No JSON payload found in provider response",
-                    false
+                    providerOutcome != null && providerOutcome.outputLimited(), providerOutcome
                 );
                 failures.add(failure);
                 boolean lastAttempt = attemptIndex == maxAttempts - 1;
@@ -128,9 +130,10 @@ public class DefaultStructuredJsonCallExecutor implements StructuredJsonCallExec
                     : mapper.readValue(extraction.payload(), spec.getTargetType());
             } catch (Exception ex) {
                 StructuredJsonFailure failure = new StructuredJsonFailure(
-                    StructuredJsonFailureType.PARSE_ERROR,
-                    "Unable to parse structured JSON: " + safeMessage(ex),
-                    extraction.truncationSuspected()
+                    extraction.truncationSuspected() || (providerOutcome != null && providerOutcome.outputLimited())
+                        ? StructuredJsonFailureType.TRUNCATED_RESPONSE : StructuredJsonFailureType.PARSE_ERROR,
+                    "Unable to parse required structured JSON",
+                    extraction.truncationSuspected() || (providerOutcome != null && providerOutcome.outputLimited()), providerOutcome
                 );
                 failures.add(failure);
                 boolean lastAttempt = attemptIndex == maxAttempts - 1;
@@ -154,7 +157,7 @@ public class DefaultStructuredJsonCallExecutor implements StructuredJsonCallExec
                     StructuredJsonFailure failure = new StructuredJsonFailure(
                         StructuredJsonFailureType.VALIDATION_ERROR,
                         safeMessage(ex),
-                        false
+                        false, providerOutcome
                     );
                     failures.add(failure);
                     boolean lastAttempt = attemptIndex == maxAttempts - 1;
@@ -199,5 +202,11 @@ public class DefaultStructuredJsonCallExecutor implements StructuredJsonCallExec
         }
         String message = ex.getMessage();
         return StringUtils.hasText(message) ? message : ex.getClass().getSimpleName();
+    }
+
+    private ai.fabric.dto.ProviderOutcome providerOutcome(Throwable failure) {
+        for (int depth = 0; failure != null && depth < 8; depth++, failure = failure.getCause())
+            if (failure instanceof ProviderOutcomeException safe) return safe.outcome();
+        return null;
     }
 }

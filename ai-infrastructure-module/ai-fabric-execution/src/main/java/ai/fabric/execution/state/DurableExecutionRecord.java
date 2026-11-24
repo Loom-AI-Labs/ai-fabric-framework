@@ -30,9 +30,23 @@ public record DurableExecutionRecord(
     Instant leaseUntil,
     int attemptCount,
     long version,
-    String protectedWorkflowCheckpoint
+    String protectedWorkflowCheckpoint,
+    String goalAuthorityReference,
+    Instant nextEligibleAt,
+    boolean goalNotificationPending
 ) {
     private static final Pattern SHA_256 = Pattern.compile("[a-f0-9]{64}");
+
+    public DurableExecutionRecord(String invocationId, SpecialistId specialistId, String specialistContentHash,
+        String accessFingerprint, String idempotencyFingerprint, String requestFingerprint, String protectedRequest,
+        String protectedResult, ExecutionHandleStatus status, String failureReason, Instant deadline,
+        Instant createdAt, Instant updatedAt, Instant completedAt, Instant expiresAt, String leaseOwner,
+        Instant leaseUntil, int attemptCount, long version, String protectedWorkflowCheckpoint) {
+        this(invocationId, specialistId, specialistContentHash, accessFingerprint, idempotencyFingerprint,
+            requestFingerprint, protectedRequest, protectedResult, status, failureReason, deadline, createdAt,
+            updatedAt, completedAt, expiresAt, leaseOwner, leaseUntil, attemptCount, version, protectedWorkflowCheckpoint,
+            null, null, false);
+    }
 
     public DurableExecutionRecord(String invocationId, SpecialistId specialistId, String specialistContentHash,
         String accessFingerprint, String idempotencyFingerprint, String requestFingerprint, String protectedRequest,
@@ -49,7 +63,60 @@ public record DurableExecutionRecord(
             throw new IllegalStateException("A workflow checkpoint requires an owned running execution");
         return new DurableExecutionRecord(invocationId, specialistId, specialistContentHash, accessFingerprint,
             idempotencyFingerprint, requestFingerprint, protectedRequest, protectedResult, status, failureReason,
-            deadline, createdAt, now, completedAt, expiresAt, leaseOwner, leaseUntil, attemptCount, version + 1, checkpoint);
+            deadline, createdAt, now, completedAt, expiresAt, leaseOwner, leaseUntil, attemptCount, version + 1, checkpoint,
+            goalAuthorityReference, nextEligibleAt, goalNotificationPending);
+    }
+
+    public boolean goalExecution() { return goalAuthorityReference != null; }
+
+    public DurableExecutionRecord withGoalAuthority(String reference) {
+        if (reference == null || reference.isBlank() || reference.length() > 512 || status != ExecutionHandleStatus.QUEUED)
+            throw new IllegalArgumentException("Invalid durable goal authority reference");
+        return new DurableExecutionRecord(invocationId, specialistId, specialistContentHash, accessFingerprint,
+            idempotencyFingerprint, requestFingerprint, protectedRequest, protectedResult, status, failureReason,
+            deadline, createdAt, updatedAt, completedAt, expiresAt, leaseOwner, leaseUntil, attemptCount, version,
+            protectedWorkflowCheckpoint, reference, null, false);
+    }
+
+    public DurableExecutionRecord goalTransition(ExecutionHandleStatus newStatus, String result, String reason,
+        Instant eligibleAt, Instant now, boolean successfulSegment) {
+        if (!goalExecution() || terminal() || (newStatus != ExecutionHandleStatus.YIELDED
+            && newStatus != ExecutionHandleStatus.PAUSED && newStatus != ExecutionHandleStatus.QUEUED))
+            throw new IllegalStateException("Invalid nonterminal goal transition");
+        return new DurableExecutionRecord(invocationId, specialistId, specialistContentHash, accessFingerprint,
+            idempotencyFingerprint, requestFingerprint, protectedRequest, result, newStatus, reason,
+            deadline, createdAt, now, null, expiresAt, null, null,
+            newStatus == ExecutionHandleStatus.QUEUED ? 0 : successfulSegment ? Math.max(0, attemptCount - 1) : attemptCount, version + 1,
+            protectedWorkflowCheckpoint, goalAuthorityReference, eligibleAt, true);
+    }
+
+    public DurableExecutionRecord controlled(ExecutionHandleStatus newStatus, String result, String checkpoint,
+        String reason, Instant now, Duration retention) {
+        if (!goalExecution() || terminal() || (newStatus != ExecutionHandleStatus.QUEUED
+            && newStatus != ExecutionHandleStatus.PAUSED && newStatus != ExecutionHandleStatus.CANCELLED))
+            throw new IllegalStateException("Invalid goal control transition");
+        boolean cancelled = newStatus == ExecutionHandleStatus.CANCELLED;
+        return new DurableExecutionRecord(invocationId, specialistId, specialistContentHash, accessFingerprint,
+            idempotencyFingerprint, requestFingerprint, protectedRequest, result, newStatus, reason, deadline, createdAt,
+            now, cancelled ? now : null, cancelled ? now.plus(retention) : expiresAt, null, null,
+            newStatus == ExecutionHandleStatus.QUEUED ? 0 : attemptCount, version + 1, checkpoint,
+            goalAuthorityReference, newStatus == ExecutionHandleStatus.QUEUED ? now : null, true);
+    }
+
+    public DurableExecutionRecord notificationDelivered() {
+        return new DurableExecutionRecord(invocationId, specialistId, specialistContentHash, accessFingerprint,
+            idempotencyFingerprint, requestFingerprint, protectedRequest, protectedResult, status, failureReason,
+            deadline, createdAt, updatedAt, completedAt, expiresAt, leaseOwner, leaseUntil, attemptCount, version + 1,
+            protectedWorkflowCheckpoint, goalAuthorityReference, nextEligibleAt, false);
+    }
+
+    public DurableExecutionRecord withFencedWorkflowOutcome(String checkpoint, Instant now) {
+        if (status != ExecutionHandleStatus.PAUSED && status != ExecutionHandleStatus.CANCELLED)
+            throw new IllegalStateException("Receipt settlement requires an explicit control fence");
+        return new DurableExecutionRecord(invocationId, specialistId, specialistContentHash, accessFingerprint,
+            idempotencyFingerprint, requestFingerprint, protectedRequest, protectedResult, status, failureReason,
+            deadline, createdAt, now, completedAt, expiresAt, leaseOwner, leaseUntil, attemptCount, version + 1,
+            checkpoint, goalAuthorityReference, nextEligibleAt, goalExecution());
     }
 
     public DurableExecutionRecord {
@@ -149,6 +216,7 @@ public record DurableExecutionRecord(
             return false;
         }
         return status == ExecutionHandleStatus.QUEUED
+            || (status == ExecutionHandleStatus.YIELDED && (nextEligibleAt == null || !now.isBefore(nextEligibleAt)))
             || (
                 status == ExecutionHandleStatus.RUNNING
                     && leaseUntil != null
@@ -175,7 +243,7 @@ public record DurableExecutionRecord(
         return copy(
             protectedResult,
             ExecutionHandleStatus.RUNNING,
-            null,
+            "GOAL_RESUME_REQUESTED".equals(failureReason) ? failureReason : null,
             now,
             completedAt,
             expiresAt,
@@ -243,7 +311,10 @@ public record DurableExecutionRecord(
             newLeaseUntil,
             newAttemptCount,
             version + 1,
-            protectedWorkflowCheckpoint
+            protectedWorkflowCheckpoint,
+            goalAuthorityReference,
+            nextEligibleAt,
+            goalExecution() && isTerminal(newStatus) || goalNotificationPending
         );
     }
 

@@ -285,6 +285,7 @@ public final class DefaultStructuredSpecialistOutputFinalizer
         String correction = switch (previous.type()) {
             case EMPTY_RESPONSE ->
                 "The previous response was empty.";
+            case TRUNCATED_RESPONSE -> "The previous JSON was truncated; return a smaller complete object.";
             case NO_JSON_FOUND ->
                 "The previous response did not contain one JSON object.";
             case PARSE_ERROR ->
@@ -571,6 +572,7 @@ public final class DefaultStructuredSpecialistOutputFinalizer
         String reason = switch (type) {
             case CALL_ERROR -> "OUTPUT_FINALIZATION_PROVIDER_FAILED";
             case EMPTY_RESPONSE -> "OUTPUT_FINALIZATION_EMPTY_RESPONSE";
+            case TRUNCATED_RESPONSE -> "OUTPUT_FINALIZATION_TRUNCATED_RESPONSE";
             case NO_JSON_FOUND -> "OUTPUT_FINALIZATION_NO_JSON";
             case PARSE_ERROR -> "OUTPUT_FINALIZATION_PARSE_FAILED";
             case VALIDATION_ERROR -> "OUTPUT_FINALIZATION_VALIDATION_FAILED";
@@ -580,6 +582,7 @@ public final class DefaultStructuredSpecialistOutputFinalizer
                 "The specialist output provider call failed.";
             case EMPTY_RESPONSE ->
                 "The specialist output provider returned no content.";
+            case TRUNCATED_RESPONSE -> "The specialist output provider returned truncated JSON.";
             case NO_JSON_FOUND ->
                 "The specialist output provider did not return JSON.";
             case PARSE_ERROR ->

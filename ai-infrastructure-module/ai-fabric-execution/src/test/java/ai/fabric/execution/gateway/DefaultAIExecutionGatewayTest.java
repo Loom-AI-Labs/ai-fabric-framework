@@ -82,6 +82,19 @@ class DefaultAIExecutionGatewayTest {
         SpecialistId.of("account-resolver", "1");
     private static final Instant NOW = Instant.parse("2026-07-28T10:00:00Z");
 
+    @Test void goalLifetimeIsNotClampedToSpecialistSegmentDuration() {
+        var base = definition(false);
+        var workflow = new ai.fabric.intent.orchestration.workflow.WorkflowPolicy(true, 8, 3, 16, 4, Duration.ofSeconds(120),
+            new ai.fabric.intent.orchestration.workflow.WorkflowGoalPolicy(true, Duration.ofDays(1), Duration.ofSeconds(1), 8, 4, List.of()));
+        var profile = new SpecialistExecutionProfile(base.executionProfile().mode(), base.executionProfile().requestedCapabilities(),
+            ExecutionStrategy.BOUNDED_ITERATIVE, SpecialistWritePolicy.DISABLED, workflow);
+        var goal = new SpecialistDefinition<>(base.identity(), base.instructions(), profile, base.limits(), base.inputAdapter(), base.outputAdapter());
+        var gateway = gateway(successPipeline(new AtomicReference<>()), goal, Set.of("account-policy"));
+        var request = new AIExecutionRequest<>(SPECIALIST_ID, new ResolverInput("Goal"), applicationContext(authorizedScopes()), null, NOW.plusSeconds(86400), null);
+        assertThat(gateway.resolveDeadline(request, goal)).isEqualTo(NOW.plusSeconds(86400));
+        assertThat(gateway.resolveDeadline(request, base)).isEqualTo(NOW.plus(base.limits().maxDuration()));
+    }
+
     @Test
     void executesThroughRealPipelineWithTrustedEnvelopeAndCanonicalEvidence() {
         AtomicReference<PipelineContext> observed = new AtomicReference<>();

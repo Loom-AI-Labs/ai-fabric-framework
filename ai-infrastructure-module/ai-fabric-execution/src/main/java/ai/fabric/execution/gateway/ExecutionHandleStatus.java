@@ -3,6 +3,8 @@ package ai.fabric.execution.gateway;
 public enum ExecutionHandleStatus {
     QUEUED,
     RUNNING,
+    YIELDED,
+    PAUSED,
     WAITING_FOR_INPUT,
     SUCCEEDED,
     FAILED,

@@ -9,4 +9,6 @@ public interface WorkflowCheckpointStore {
     Optional<WorkflowCheckpoint> find(String workId);
     boolean create(WorkflowCheckpoint initial);
     boolean compareAndSet(WorkflowCheckpoint expected, WorkflowCheckpoint updated);
+    /** Receipt-only settlement after a user control fence; never admits or dispatches another operation. */
+    default boolean recordFencedOutcome(String workId, WorkflowCheckpoint.Step observed) { return false; }
 }

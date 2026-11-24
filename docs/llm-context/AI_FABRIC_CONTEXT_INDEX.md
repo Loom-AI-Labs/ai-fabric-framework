@@ -10,6 +10,10 @@ decision. Require minimal execution fields; improve guided LLM decisions and use
 only configured bounded repair. Do not hide decisions with text matching or
 unapproved fallbacks. READ actions need not be backed by vector spaces.
 
+For opt-in durable goal segments, host authority restoration, adaptive recovery
+and scoped one-level profile focus, read `docs/guides/goal-execution-contract.md`.
+Ordinary bounded workflows and read-only SpecialistChains retain their defaults.
+
 For bounded read/write assistance and completion feedback, read
 `docs/guides/bounded-read-write-workflows.md`. Host completion checks protect
 declared execution outcomes using actual receipts; they do not choose actions

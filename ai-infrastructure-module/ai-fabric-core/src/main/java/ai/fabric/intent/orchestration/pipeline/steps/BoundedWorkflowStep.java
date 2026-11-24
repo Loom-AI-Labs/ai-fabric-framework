@@ -72,6 +72,14 @@ public class BoundedWorkflowStep implements PipelineStep {
             public BoundedWorkflowRunner.CompletionFinding validateCompletion(WorkflowCheckpoint checkpoint) {
                 return authority.validateCompletion(checkpoint);
             }
+            public List<WorkflowDelegationProfile> delegatedProfiles() { return authority.delegatedProfiles(); }
+            public void verifyDelegation(WorkflowDelegation delegation) { authority.verifyDelegation(delegation); }
+            public void verifyDelegatedAction(WorkflowDelegation delegation, String action, Map<String, Object> parameters) {
+                authority.verifyDelegatedAction(delegation, action, parameters);
+            }
+            public BoundedWorkflowRunner.CompletionFinding validateDelegatedCompletion(WorkflowCheckpoint checkpoint, WorkflowDelegation delegation) {
+                return authority.validateDelegatedCompletion(checkpoint, delegation);
+            }
             public BoundedWorkflowRunner.Outcome invoke(WorkflowCheckpoint.Step step, WorkflowAllowance allowance) {
                 isWrite(step.action());
                 var metadata = registry.findMetadata(step.action()).orElseThrow();
@@ -102,11 +110,29 @@ public class BoundedWorkflowStep implements PipelineStep {
             var input = new LinkedHashMap<String, Object>();
             input.put("request", context.getEffectiveQuery());
             input.put("history", ConversationPromptContext.history(context, 16000).messages());
-            input.put("observations", checkpoint.steps().stream().map(step -> Map.of(
+            var visibleSteps = execution.policy().goalMode() && checkpoint.steps().size() > 8
+                ? checkpoint.steps().subList(checkpoint.steps().size() - 8, checkpoint.steps().size()) : checkpoint.steps();
+            input.put("observations", visibleSteps.stream().map(step -> Map.of(
                 "operationId", step.operationId(), "action", step.action(), "effect", step.effect(), "result", step.observation())).toList());
-            input.put("remaining", Map.of("actions", execution.policy().maxActions() - allowance.usage().actions(),
-                "writes", execution.policy().maxWrites() - allowance.usage().writes(),
-                "modelCalls", execution.policy().maxModelCalls() - allowance.usage().modelCalls()));
+            if (execution.policy().goalMode()) input.put("observations", WorkflowObservationWindow.project(checkpoint, mapper));
+            input.put("remaining", Map.of("actions", execution.policy().maxActions() - allowance.segmentUsage().actions(),
+                "writes", execution.policy().maxWrites() - allowance.segmentUsage().writes(),
+                "modelCalls", execution.policy().maxModelCalls() - allowance.segmentUsage().modelCalls()));
+            WorkflowDelegationProfile activeProfile = null;
+            if (checkpoint.goal() != null) {
+                input.put("directiveContext", authority.directiveContext());
+                input.put("goal", checkpoint.goal()); input.put("cumulativeUsage", checkpoint.usage());
+                input.put("journalSize", checkpoint.steps().size());
+                input.put("delegatedProfiles", authority.delegatedProfiles().stream()
+                    .filter(p -> execution.policy().goal().delegatedProfiles().contains(p.profileId()))
+                    .map(p -> Map.of("profileId", p.profileId(), "allowedActions", p.allowedActions())).toList());
+                if (checkpoint.goal().activeDelegation() != null) {
+                    activeProfile = authority.delegatedProfiles().stream()
+                        .filter(p -> p.profileId().equals(checkpoint.goal().activeDelegation().task().profileId()))
+                        .findFirst().orElseThrow(() -> new SecurityException("WORKFLOW_PROFILE_UNAVAILABLE"));
+                    input.put("delegatedInstructions", activeProfile.instructions());
+                }
+            }
             input.put("previewOnly", execution.request().previewOnly());
             if (checkpoint.stopCode() != null) {
                 input.put("previousFinding", checkpoint.stopCode());
@@ -114,13 +140,15 @@ public class BoundedWorkflowStep implements PipelineStep {
             }
             List<AIActionMetaData> catalogue = new ArrayList<>();
             for (var metadata : registry.getAllMetadata()) {
-                if (metadata != null && effective.isActionVisible(metadata.getName())
+                if (metadata != null && (activeProfile == null || activeProfile.allowedActions().contains(metadata.getName()))
+                    && effective.isActionVisible(metadata.getName())
                     && (metadata.getAccessMode() == ActionAccessMode.READ
                         ? effective.canExecuteReadAction(metadata.getName())
                         : orchestration.isSpecialistActionPolicyWrites() && effective.canProposeWriteAction(metadata.getName())))
                     catalogue.add(ActionMetadataVisibilitySupport.publicActionMetadata(metadata));
             }
             input.put("actions", catalogue);
+            String delegatedInstructions = activeProfile == null ? "" : "\nActive pinned delegated profile:\n" + activeProfile.instructions();
             String encodedInput = json(input);
             if (encodedInput.length() > 120000) throw new WorkflowAllowance.Stop("WORKFLOW_CONTEXT_LIMIT");
             var call = structured.execute(StructuredJsonCallSpec.<BoundedWorkflowRunner.Decision>builder()
@@ -129,27 +157,43 @@ public class BoundedWorkflowStep implements PipelineStep {
                 .caller(attempt -> core.generateContent(AIGenerationRequest.builder()
                     .entityId(checkpoint.workId()).entityType("workflow").generationType("bounded_workflow")
                     .systemPrompt(SpecialistPromptInstructionSupport.appendToSystemPrompt(
-                        renderer.render(prompts.resolve("orchestration/workflow", "system").template(), Map.of()), orchestration))
+                        renderer.render(prompts.resolve("orchestration/workflow", "system").template(), Map.of()), orchestration) + delegatedInstructions)
                     .prompt(encodedInput).authContext(OrchestrationAuthContextResolver.from(orchestration)).build(), LlmPurpose.GENERATION))
                 .build());
             if (!call.isSuccess()) {
-                if (call.getLastFailure() != null && call.getLastFailure().type() != StructuredJsonFailureType.CALL_ERROR)
-                    throw new BoundedWorkflowRunner.PlanningFinding("Previous decision failure: " + call.getLastFailure().type()
+                if (call.getLastFailure() != null && (execution.policy().goalMode() || call.getLastFailure().type() != StructuredJsonFailureType.CALL_ERROR))
+                    throw new BoundedWorkflowRunner.PlanningFinding(execution.policy().goalMode()
+                        ? "WORKFLOW_" + call.getLastFailure().type() : "WORKFLOW_DECISION_INVALID", "Previous decision failure: " + call.getLastFailure().type()
                         + ". Return one object using type ACTION, COMPLETE, NEEDS_INPUT or UNSUPPORTED. ACTION needs an action name and parameters object. NEEDS_INPUT questions are strings, not objects."
-                        + (call.getLastFailure().truncationSuspected() ? " The previous JSON may have been truncated; keep the next decision bounded." : ""));
+                        + (execution.policy().goalMode() && !execution.policy().goal().delegatedProfiles().isEmpty()
+                            ? " DELEGATE is also allowed with delegation {profileId, task, workReferences: [], sourceReferences: []}; use only published listed profiles and authorized references." : "")
+                        + (call.getLastFailure().truncationSuspected() ? " The previous JSON may have been truncated; keep the next decision bounded." : ""),
+                        call.getLastFailure().providerOutcome(), call.getLastFailure().type() == StructuredJsonFailureType.CALL_ERROR
+                            || call.getLastFailure().type() == StructuredJsonFailureType.EMPTY_RESPONSE);
                 throw new WorkflowAllowance.Stop("WORKFLOW_PLANNING_UNAVAILABLE");
             }
             return call.getValue();
         };
         var result = authority.resumeConfirmedReceipt()
             ? runner.resumeConfirmed(execution.request(), execution.policy(), planner, actions)
-            : runner.run(execution.request(), execution.policy(), planner, actions);
+            : authority.resumeGoal() && execution.policy().goalMode()
+                ? runner.resumeGoal(execution.request(), execution.policy(), planner, actions)
+                : runner.run(execution.request(), execution.policy(), planner, actions);
         var data = new LinkedHashMap<String, Object>();
         data.put("workId", result.workId()); data.put("state", result.state().name());
         if (result.stopCode() != null) data.put("stopCode", result.stopCode());
         if (result.message() != null) data.put("message", result.message());
         data.put("questions", result.questions()); data.put("usage", result.usage());
-        data.put("steps", result.steps().stream().map(step -> Map.of("operationId", step.operationId(),
+        if (result.goal() != null) {
+            data.put("segmentNumber", result.goal().segmentNumber());
+            data.put("segmentUsage", result.usage().minus(result.goal().segmentStartUsage()));
+            if (result.goal().nextEligibleAt() != null) data.put("nextEligibleAt", result.goal().nextEligibleAt().toString());
+            data.put("recentFailures", result.goal().recentFailures().stream().map(f -> new WorkflowGoalProgress.Failure(f.code(),
+                f.providerOutcome() == null ? null : f.providerOutcome().withoutProviderRequestId())).toList());
+        }
+        int stepOffset = execution.policy().goalMode() ? Math.max(0, result.steps().size() - 16) : 0;
+        data.put("totalStepCount", result.steps().size()); data.put("stepOffset", stepOffset); data.put("hasMore", stepOffset > 0);
+        data.put("steps", result.steps().subList(stepOffset, result.steps().size()).stream().map(step -> Map.of("operationId", step.operationId(),
             "action", step.action(), "write", step.write(), "effect", step.effect().name())).toList());
         OrchestrationResultType type = switch (result.state()) {
             case COMPLETE -> OrchestrationResultType.INFORMATION_PROVIDED;

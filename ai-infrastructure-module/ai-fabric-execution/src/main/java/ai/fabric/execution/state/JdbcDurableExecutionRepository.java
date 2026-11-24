@@ -27,7 +27,8 @@ public final class JdbcDurableExecutionRepository
         idempotency_fingerprint, request_fingerprint,
         protected_request, protected_result, status, failure_reason,
         deadline, created_at, updated_at, completed_at, expires_at,
-        lease_owner, lease_until, attempt_count, version, protected_workflow_checkpoint
+        lease_owner, lease_until, attempt_count, version, protected_workflow_checkpoint,
+        goal_authority_reference, next_eligible_at, goal_notification_pending
         """;
 
     private final JdbcTemplate jdbc;
@@ -53,9 +54,10 @@ public final class JdbcDurableExecutionRepository
                   idempotency_fingerprint, request_fingerprint,
                   protected_request, protected_result, status, failure_reason,
                   deadline, created_at, updated_at, completed_at, expires_at,
-                  lease_owner, lease_until, attempt_count, version, protected_workflow_checkpoint
+                  lease_owner, lease_until, attempt_count, version, protected_workflow_checkpoint,
+                  goal_authority_reference, next_eligible_at, goal_notification_pending
                 ) VALUES (
-                  ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                  ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
                 )
                 """,
                 record.invocationId(),
@@ -78,7 +80,7 @@ public final class JdbcDurableExecutionRepository
                 timestamp(record.leaseUntil()),
                 record.attemptCount(),
                 record.version(),
-                record.protectedWorkflowCheckpoint()
+                record.protectedWorkflowCheckpoint(), record.goalAuthorityReference(), timestamp(record.nextEligibleAt()), record.goalNotificationPending()
             );
             return record;
         } catch (DuplicateKeyException ex) {
@@ -138,7 +140,9 @@ public final class JdbcDurableExecutionRepository
                    lease_until = ?,
                    attempt_count = ?,
                    version = ?,
-                   protected_workflow_checkpoint = ?
+                   protected_workflow_checkpoint = ?,
+                   next_eligible_at = ?,
+                   goal_notification_pending = ?
              WHERE invocation_id = ?
                AND status = ?
                AND version = ?
@@ -158,6 +162,7 @@ public final class JdbcDurableExecutionRepository
             updated.attemptCount(),
             updated.version(),
             updated.protectedWorkflowCheckpoint(),
+            timestamp(updated.nextEligibleAt()), updated.goalNotificationPending(),
             expected.invocationId(),
             expected.status().name(),
             expected.version(),
@@ -176,13 +181,20 @@ public final class JdbcDurableExecutionRepository
             "SELECT " + SELECT_COLUMNS + " FROM " + TABLE
                 + " WHERE status = ?"
                 + " OR (status = ? AND lease_until <= ?)"
+                + " OR (status = ? AND (next_eligible_at IS NULL OR next_eligible_at <= ?))"
                 + " ORDER BY updated_at ASC LIMIT ?",
             this::map,
             ExecutionHandleStatus.QUEUED.name(),
             ExecutionHandleStatus.RUNNING.name(),
             timestamp(now),
+            ExecutionHandleStatus.YIELDED.name(), timestamp(now),
             positiveLimit(limit)
         );
+    }
+
+    @Override public List<DurableExecutionRecord> findGoalNotifications(Instant now, int limit) {
+        return jdbc.query("SELECT " + SELECT_COLUMNS + " FROM " + TABLE
+            + " WHERE goal_notification_pending = TRUE ORDER BY updated_at ASC LIMIT ?", this::map, positiveLimit(limit));
     }
 
     @Override
@@ -193,7 +205,7 @@ public final class JdbcDurableExecutionRepository
         return jdbc.query(
             "SELECT " + SELECT_COLUMNS + " FROM " + TABLE
                 + " WHERE status IN (?, ?, ?, ?, ?)"
-                + " AND completed_at < ?"
+                + " AND completed_at < ? AND goal_notification_pending = FALSE"
                 + " ORDER BY completed_at ASC LIMIT ?",
             this::map,
             ExecutionHandleStatus.SUCCEEDED.name(),
@@ -253,7 +265,8 @@ public final class JdbcDurableExecutionRepository
             instant(resultSet, "lease_until"),
             resultSet.getInt("attempt_count"),
             resultSet.getLong("version"),
-            resultSet.getString("protected_workflow_checkpoint")
+            resultSet.getString("protected_workflow_checkpoint"), resultSet.getString("goal_authority_reference"),
+            instant(resultSet, "next_eligible_at"), resultSet.getBoolean("goal_notification_pending")
         );
     }
 
@@ -284,6 +297,11 @@ public final class JdbcDurableExecutionRepository
             )
             """);
         jdbc.execute("ALTER TABLE ai_specialist_execution ADD COLUMN IF NOT EXISTS protected_workflow_checkpoint TEXT NULL");
+        jdbc.execute("ALTER TABLE ai_specialist_execution ADD COLUMN IF NOT EXISTS goal_authority_reference VARCHAR(512) NULL");
+        jdbc.execute("ALTER TABLE ai_specialist_execution ADD COLUMN IF NOT EXISTS next_eligible_at TIMESTAMP NULL");
+        jdbc.execute("ALTER TABLE ai_specialist_execution ADD COLUMN IF NOT EXISTS goal_notification_pending BOOLEAN NOT NULL DEFAULT FALSE");
+        jdbc.execute("CREATE INDEX IF NOT EXISTS idx_ai_execution_goal_schedule ON " + TABLE + " (status, next_eligible_at, updated_at)");
+        jdbc.execute("CREATE INDEX IF NOT EXISTS idx_ai_execution_goal_notifications ON " + TABLE + " (goal_notification_pending, updated_at)");
         jdbc.execute(
             "CREATE INDEX IF NOT EXISTS idx_ai_execution_recovery"
                 + " ON " + TABLE + " (status, lease_until, updated_at)"

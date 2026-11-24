@@ -26,6 +26,10 @@ patterns = [
 ]
 
 allowed_unsupported_operations = {
+    # Ordinary/ephemeral gateways cannot grant durable goal authority or fall back to memory.
+    "ai-infrastructure-module/ai-fabric-execution/src/main/java/ai/fabric/execution/gateway/AIExecutionGateway.java": [
+        "DURABLE_GOAL_HOST_UNAVAILABLE",
+    ],
     "ai-infrastructure-module/ai-fabric-core/src/main/java/ai/fabric/rag/source/SearchSource.java": [
         "Source does not support lexical retrieval",
     ],

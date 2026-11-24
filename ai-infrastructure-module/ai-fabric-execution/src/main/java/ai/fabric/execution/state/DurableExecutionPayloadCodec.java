@@ -59,10 +59,15 @@ public final class DurableExecutionPayloadCodec {
         String invocationId,
         AIExecutionRequest<?> request
     ) {
+        return protectRequest(invocationId, request, null);
+    }
+
+    public String protectRequest(String invocationId, AIExecutionRequest<?> request, String goalAuthorityReference) {
         Objects.requireNonNull(request, "request is required");
         TrustedExecutionContext context =
             request.trustedExecutionContext();
         Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("goalAuthorityReference", goalAuthorityReference);
         payload.put("input", objectMapper.valueToTree(request.input()));
         payload.put("principalId", context.initiator().principalId());
         payload.put(
@@ -93,6 +98,8 @@ public final class DurableExecutionPayloadCodec {
             record.protectedRequest(),
             binding(record.invocationId(), "request")
         );
+        if (!Objects.equals(optional(payload, "goalAuthorityReference"), record.goalAuthorityReference()))
+            throw new SecurityException("DURABLE_GOAL_AUTHORITY_BINDING_MISMATCH");
         RegisteredSpecialist specialist =
             specialistRegistry.requireRegistered(record.specialistId());
         Object input = convert(
@@ -158,6 +165,22 @@ public final class DurableExecutionPayloadCodec {
         );
     }
 
+    public java.util.Optional<ai.fabric.intent.orchestration.workflow.WorkflowCheckpoint> unprotectWorkflowCheckpoint(DurableExecutionRecord record) {
+        if (record.protectedWorkflowCheckpoint() == null) return java.util.Optional.empty();
+        var payload = security.unprotect(record.protectedWorkflowCheckpoint(), "workflow-checkpoint:" + record.invocationId());
+        var checkpoint = objectMapper.convertValue(payload.get("checkpoint"), ai.fabric.intent.orchestration.workflow.WorkflowCheckpoint.class);
+        if (!checkpoint.workId().equals(record.invocationId())
+            || !security.sameFingerprint(checkpoint.authorityFingerprint(), record.accessFingerprint())
+            || !security.sameFingerprint(checkpoint.definitionFingerprint(), record.specialistContentHash())
+            || !security.sameFingerprint(checkpoint.requestFingerprint(), record.requestFingerprint()))
+            throw new SecurityException("WORKFLOW_EXECUTION_SCOPE_MISMATCH");
+        return java.util.Optional.of(checkpoint);
+    }
+
+    public String protectWorkflowCheckpoint(ai.fabric.intent.orchestration.workflow.WorkflowCheckpoint checkpoint) {
+        return security.protect(Map.of("checkpoint", objectMapper.valueToTree(checkpoint)), "workflow-checkpoint:" + checkpoint.workId());
+    }
+
     public AIExecutionResult<?> unprotectResult(
         DurableExecutionRecord record
     ) {
@@ -168,11 +191,10 @@ public final class DurableExecutionPayloadCodec {
             record.protectedResult(),
             binding(record.invocationId(), "result")
         );
-        RegisteredSpecialist specialist =
-            specialistRegistry.requireRegistered(record.specialistId());
         Object output = null;
         Object rawOutput = payload.get("output");
         if (rawOutput != null && !node(rawOutput).isNull()) {
+            RegisteredSpecialist specialist = specialistRegistry.requireRegistered(record.specialistId());
             output = convert(
                 rawOutput,
                 specialist.definition().outputAdapter().outputType()
