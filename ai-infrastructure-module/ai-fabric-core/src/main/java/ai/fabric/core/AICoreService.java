@@ -104,6 +104,7 @@ public class AICoreService {
      * @return generated content response
      */
     public AIGenerationResponse generateContent(AIGenerationRequest request, LlmPurpose purpose) {
+        ai.fabric.intent.orchestration.workflow.WorkflowModelCallScope.beforeModelCall();
         try {
             LlmPurpose effectivePurpose = purpose != null ? purpose : LlmPurpose.DEFAULT;
             AIProviderConfig.GenerationDefaults defaults = resolveDefaultsForPurpose(effectivePurpose);

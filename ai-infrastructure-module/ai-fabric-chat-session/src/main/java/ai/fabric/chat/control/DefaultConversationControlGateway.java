@@ -170,6 +170,7 @@ public final class DefaultConversationControlGateway implements ConversationCont
                 ConversationControlState.AI_ACTIVE,
                 true
             );
+            case INTERRUPT_AI -> new Transition(ConversationControlState.AI_ACTIVE, ConversationControlState.AI_ACTIVE, true);
             case CLOSE -> new Transition(null, ConversationControlState.CLOSED, true);
         };
     }

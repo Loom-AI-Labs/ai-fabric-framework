@@ -17,6 +17,9 @@ page for coding assistant sessions. Keep this `docs/guides` section as the deepe
 If you are building training material for external users, start from
 [Build AI-Enabled Applications with Java and Spring Boot](../course/AI_FABRIC_EXTERNAL_USER_COURSE.md).
 
+For opt-in specialist planning over governed reads and writes, see
+[Bounded Read/Write Workflows](bounded-read-write-workflows.md).
+
 | # | Guide | What you'll get |
 |---|-------|-----------------|
 | 1 | [Installation & Setup](01-installation.md) | Requirements, the BOM, your first dependency set, local ONNX assets. |

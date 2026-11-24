@@ -461,6 +461,13 @@ public final class DurableAIExecutionGateway implements AIExecutionGateway {
         AIExecutionResult<?> result
     ) {
         try {
+            // Step checkpoints can advance the record while it runs. Do not overwrite
+            // a newer worker, cancellation or terminal result when committing output.
+            DurableExecutionRecord latest = repository.findById(claimed.invocationId()).orElse(null);
+            if (latest == null || latest.status() != ExecutionHandleStatus.RUNNING
+                || !Objects.equals(latest.leaseOwner(), claimed.leaseOwner())
+                || latest.attemptCount() != claimed.attemptCount()) return;
+            claimed = latest;
             String protectedResult = codec.protectResult(claimed, result);
             ExecutionHandleStatus status = handleStatus(result);
             DurableExecutionRecord completed = claimed.completed(

@@ -142,6 +142,14 @@ public class OrchestrationContext {
     @JsonIgnore
     private boolean specialistActionPolicyWrites;
 
+    /** Explicit host-owned workflow binding; absent by default and never a browser grant. */
+    @JsonIgnore
+    private ai.fabric.intent.orchestration.workflow.WorkflowExecution workflowExecution;
+
+    /** Trusted current dispatch identity for receiver-side atomic idempotency. */
+    @JsonIgnore
+    private String workflowOperationId;
+
     /**
      * Backend-frozen history projection for one explicitly owned interactive turn.
      *

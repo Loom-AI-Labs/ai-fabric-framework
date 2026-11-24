@@ -46,6 +46,7 @@ public final class JdbcConversationControlStore implements ConversationControlSt
     private final JdbcTemplate jdbc;
     private final TransactionTemplate transactions;
     private final ObjectMapper objectMapper;
+    private final ConversationMessageProtection messageProtection;
 
     public JdbcConversationControlStore(
         DataSource dataSource,
@@ -62,12 +63,18 @@ public final class JdbcConversationControlStore implements ConversationControlSt
         boolean initializeSchema,
         PlatformTransactionManager transactionManager
     ) {
+        this(dataSource, objectMapper, initializeSchema, transactionManager, ConversationMessageProtection.plaintext());
+    }
+
+    public JdbcConversationControlStore(DataSource dataSource, ObjectMapper objectMapper, boolean initializeSchema,
+        PlatformTransactionManager transactionManager, ConversationMessageProtection messageProtection) {
         if (dataSource == null || objectMapper == null || transactionManager == null) {
             throw new IllegalArgumentException("dataSource, objectMapper and transactionManager are required");
         }
         this.jdbc = new JdbcTemplate(dataSource);
         this.transactions = new TransactionTemplate(transactionManager);
         this.objectMapper = objectMapper.copy();
+        this.messageProtection = java.util.Objects.requireNonNull(messageProtection);
         if (initializeSchema) {
             initializeSchema();
         }
@@ -216,6 +223,8 @@ public final class JdbcConversationControlStore implements ConversationControlSt
                 command.scope().conversationId()
             );
             long sequence = (maximum == null ? 0 : maximum) + 1;
+            var stored = messageProtection.protect(command.scope(), command.messageId(),
+                new ConversationMessageProtection.Body(command.content(), command.metadata()));
             try {
                 jdbc.update(
                     """
@@ -227,8 +236,8 @@ public final class JdbcConversationControlStore implements ConversationControlSt
                     """,
                     command.messageId(), command.scope().tenantId(), command.scope().deploymentId(),
                     command.scope().conversationId(), command.scope().ownerId(), sequence,
-                    command.role().name(), command.actorRef(), command.content(),
-                    command.clientMessageId(), writeJson(command.metadata()), timestamp(now)
+                    command.role().name(), command.actorRef(), stored.content(),
+                    command.clientMessageId(), writeJson(stored.metadata()), timestamp(now)
                 );
             } catch (DuplicateKeyException ex) {
                 return findMessage(command)
@@ -587,11 +596,13 @@ public final class JdbcConversationControlStore implements ConversationControlSt
             rs.getString("tenant_id"), rs.getString("deployment_id"),
             rs.getString("conversation_id"), rs.getString("owner_id")
         );
+        var body = messageProtection.unprotect(scope, rs.getString("message_id"),
+            new ConversationMessageProtection.Body(rs.getString("content"), readJson(rs.getString("metadata_json"))));
         return new ConversationMessage(
             rs.getString("message_id"), scope, rs.getLong("message_sequence"),
             ConversationParticipantRole.valueOf(rs.getString("participant_role")),
-            rs.getString("actor_ref"), rs.getString("content"),
-            rs.getString("client_message_id"), readJson(rs.getString("metadata_json")),
+            rs.getString("actor_ref"), body.content(),
+            rs.getString("client_message_id"), body.metadata(),
             instant(rs, "created_at")
         );
     }
@@ -680,7 +691,7 @@ public final class JdbcConversationControlStore implements ConversationControlSt
               message_sequence BIGINT NOT NULL,
               participant_role VARCHAR(24) NOT NULL,
               actor_ref VARCHAR(256) NOT NULL,
-              content VARCHAR(20000) NOT NULL,
+              content TEXT NOT NULL,
               client_message_id VARCHAR(200),
               metadata_json VARCHAR(16000) NOT NULL,
               created_at TIMESTAMP NOT NULL,

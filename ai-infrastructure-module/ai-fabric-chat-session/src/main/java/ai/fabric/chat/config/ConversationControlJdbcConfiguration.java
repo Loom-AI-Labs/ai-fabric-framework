@@ -29,13 +29,15 @@ class ConversationControlJdbcConfiguration {
         DataSource dataSource,
         ObjectMapper objectMapper,
         ConversationControlProperties properties,
-        ObjectProvider<PlatformTransactionManager> transactionManagers
+        ObjectProvider<PlatformTransactionManager> transactionManagers,
+        ObjectProvider<ai.fabric.chat.control.ConversationMessageProtection> messageProtection
     ) {
         return new JdbcConversationControlStore(
             dataSource,
             objectMapper,
             properties.isInitializeSchema(),
-            transactionManagers.getIfAvailable(() -> new DataSourceTransactionManager(dataSource))
+            transactionManagers.getIfAvailable(() -> new DataSourceTransactionManager(dataSource)),
+            messageProtection.getIfAvailable(ai.fabric.chat.control.ConversationMessageProtection::plaintext)
         );
     }
 

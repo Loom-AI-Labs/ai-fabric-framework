@@ -10,13 +10,21 @@ public record SpecialistExecutionProfile(
     String mode,
     RequestedCapabilityProfile requestedCapabilities,
     ExecutionStrategy strategy,
-    SpecialistWritePolicy writePolicy
+    SpecialistWritePolicy writePolicy,
+    ai.fabric.intent.orchestration.workflow.WorkflowPolicy workflowPolicy
 ) {
+    public SpecialistExecutionProfile(String mode, RequestedCapabilityProfile requestedCapabilities,
+        ExecutionStrategy strategy, SpecialistWritePolicy writePolicy) {
+        this(mode, requestedCapabilities, strategy, writePolicy, ai.fabric.intent.orchestration.workflow.WorkflowPolicy.disabled());
+    }
     public SpecialistExecutionProfile {
         mode = requireText(mode, "mode");
         Objects.requireNonNull(requestedCapabilities, "requestedCapabilities is required");
         Objects.requireNonNull(strategy, "strategy is required");
         Objects.requireNonNull(writePolicy, "writePolicy is required");
+        workflowPolicy = workflowPolicy == null ? ai.fabric.intent.orchestration.workflow.WorkflowPolicy.disabled() : workflowPolicy;
+        if (workflowPolicy.enabled() && strategy != ExecutionStrategy.BOUNDED_ITERATIVE)
+            throw new IllegalArgumentException("Workflow policy requires BOUNDED_ITERATIVE execution");
         if (!writePolicy.permitsProposals()
             && !requestedCapabilities.proposableWriteActions().isEmpty()) {
             throw new IllegalArgumentException(

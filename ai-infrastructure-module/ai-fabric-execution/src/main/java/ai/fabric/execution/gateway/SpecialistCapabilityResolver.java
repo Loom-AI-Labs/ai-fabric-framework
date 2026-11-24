@@ -138,6 +138,9 @@ public final class SpecialistCapabilityResolver {
             != ExecutionStrategy.BOUNDED_ITERATIVE) {
             return;
         }
+        var workflow = preflight.getOrchestrationContext() == null ? null
+            : preflight.getOrchestrationContext().getWorkflowExecution();
+        if (workflow != null && workflow.policy().enabled()) return;
         var readPolicy =
             preflight.getOrchestrationPolicy().readActionResolutionPolicy();
         if (readPolicy == null

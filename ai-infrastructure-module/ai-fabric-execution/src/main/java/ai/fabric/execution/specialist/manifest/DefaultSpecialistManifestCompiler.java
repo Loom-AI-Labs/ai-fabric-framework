@@ -134,7 +134,8 @@ public final class DefaultSpecialistManifestCompiler
                     spec.mode().trim().toLowerCase(Locale.ROOT),
                     capabilities,
                     spec.execution().strategy(),
-                    spec.execution().writePolicy()
+                    spec.execution().writePolicy(),
+                    spec.execution().workflow()
                 ),
                 limits,
                 delegation(spec.delegation(), context.source()),
@@ -447,6 +448,7 @@ public final class DefaultSpecialistManifestCompiler
         }
         String mode = spec.mode().trim().toLowerCase(Locale.ROOT);
         if (spec.execution().strategy() == ExecutionStrategy.BOUNDED_ITERATIVE
+            && (spec.execution().workflow() == null || !spec.execution().workflow().enabled())
             && !context.iterativeModes().contains(mode)) {
             throw failure(
                 "ITERATIVE_MODE_REQUIRED",

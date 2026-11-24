@@ -7,5 +7,6 @@ public enum ConversationControlCommandType {
     CANCEL_HUMAN_REQUEST,
     REQUEST_AI_RESUME,
     COMPLETE_AI_RESUME,
+    INTERRUPT_AI,
     CLOSE
 }

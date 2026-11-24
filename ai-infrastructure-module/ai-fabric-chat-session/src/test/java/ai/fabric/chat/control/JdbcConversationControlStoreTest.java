@@ -135,6 +135,20 @@ class JdbcConversationControlStoreTest {
             .isEqualTo("CONVERSATION_OWNER_MISMATCH");
     }
 
+    @Test void interruptInvalidatesOnlyTheActiveEpochAndPreservesHistoryAndAiAvailability() {
+        gateway.status(scope);
+        var old = gateway.acquireAiTurnLease(scope, Duration.ofMinutes(2));
+        gateway.appendMessage(message("message-1", "client-1", ConversationParticipantRole.USER, "Keep this history"), null);
+        var command = command(ConversationControlCommandType.INTERRUPT_AI, 0, "interrupt-1", null, null);
+        var interrupted = gateway.transition(command);
+        assertThat(interrupted.snapshot().state()).isEqualTo(ConversationControlState.AI_ACTIVE);
+        assertThat(interrupted.snapshot().controlEpoch()).isEqualTo(1);
+        assertThat(gateway.transition(command).outcome()).isEqualTo(ConversationControlOutcome.IDEMPOTENT_REPLAY);
+        assertThatThrownBy(() -> gateway.verifyAiTurnLease(old)).isInstanceOf(ConversationControlViolationException.class);
+        assertThat(gateway.messages(scope, 0, 20)).extracting(ConversationMessage::content).containsExactly("Keep this history");
+        assertThat(gateway.acquireAiTurnLease(scope, Duration.ofMinutes(1)).controlEpoch()).isEqualTo(1);
+    }
+
     @Test
     void commandIdempotencyRejectsChangedPayload() {
         gateway.status(scope);

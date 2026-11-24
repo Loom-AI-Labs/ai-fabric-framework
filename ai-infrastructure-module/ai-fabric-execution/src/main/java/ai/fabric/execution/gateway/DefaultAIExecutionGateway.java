@@ -106,6 +106,10 @@ public final class DefaultAIExecutionGateway
     private final CanonicalJsonSupport canonicalJson;
     private final AIExecutionConversationSnapshotRegistry
         conversationSnapshotRegistry;
+    private WorkflowExecutionBindingProvider workflowBindings;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setWorkflowExecutionBindingProvider(WorkflowExecutionBindingProvider provider) { this.workflowBindings = provider; }
 
     public DefaultAIExecutionGateway(
         SpecialistRegistry specialistRegistry,
@@ -431,7 +435,7 @@ public final class DefaultAIExecutionGateway
         }
 
         try {
-            var future = taskExecutor.submit(() -> {
+            var future = taskExecutor.submit(ai.fabric.intent.orchestration.workflow.WorkflowModelCallScope.propagate(() -> {
                 if (!executionStore.markRunning(entry)) {
                     return;
                 }
@@ -440,7 +444,7 @@ public final class DefaultAIExecutionGateway
                     castRequest(request)
                 );
                 executionStore.complete(entry, result);
-            });
+            }));
             executionStore.attachFuture(entry, future);
         } catch (RejectedExecutionException ex) {
             executionStore.reject(entry, "QUEUE_CAPACITY_EXCEEDED");
@@ -696,6 +700,7 @@ public final class DefaultAIExecutionGateway
             );
         }
 
+        ai.fabric.intent.orchestration.workflow.WorkflowModelCallScope workflowScope = null;
         try {
             SpecialistInputAdapter<I> inputAdapter = definition.inputAdapter();
             SpecialistConversationBinding conversationPolicy =
@@ -783,6 +788,18 @@ public final class DefaultAIExecutionGateway
                 request.conversationBinding(),
                 request.trustedExecutionContext()
             );
+            // Adapter input cannot enable workflow authority. The registered profile
+            // and a host-owned provider must both opt in before any model call.
+            orchestrationContext.setWorkflowExecution(null);
+            if (definition.executionProfile().workflowPolicy().enabled()) {
+                if (workflowBindings == null) throw new ContractValidationException("WORKFLOW_BINDING_UNAVAILABLE",
+                    "The configured workflow has no verified host binding.");
+                var workflow = workflowBindings.bind(invocationId, definition, request, orchestrationContext);
+                if (workflow == null || !withinWorkflowPolicy(workflow.policy(), definition.executionProfile().workflowPolicy()))
+                    throw new ContractValidationException("WORKFLOW_POLICY_EXCEEDED", "The host binding exceeds its published workflow policy.");
+                orchestrationContext.setWorkflowExecution(workflow);
+                workflowScope = workflow.openModelScope(clock);
+            }
             ConversationPersistencePolicy persistence =
                 request.conversationBinding() == null
                     ? ConversationPersistencePolicy.NEVER
@@ -1272,7 +1289,15 @@ public final class DefaultAIExecutionGateway
                 startedAt,
                 Map.of()
             );
-        }
+        } finally { if (workflowScope != null) workflowScope.close(); }
+    }
+
+    private boolean withinWorkflowPolicy(ai.fabric.intent.orchestration.workflow.WorkflowPolicy requested,
+        ai.fabric.intent.orchestration.workflow.WorkflowPolicy published) {
+        return requested.enabled() && requested.maxActions() <= published.maxActions()
+            && requested.maxWrites() <= published.maxWrites() && requested.maxModelCalls() <= published.maxModelCalls()
+            && requested.maxCorrections() <= published.maxCorrections()
+            && requested.timeout().compareTo(published.timeout()) <= 0;
     }
 
     private <I, O> AIExecutionResult<O> waitForInput(
@@ -2065,6 +2090,10 @@ public final class DefaultAIExecutionGateway
         }
         if (result != null && result.getType() != null) {
             diagnostics.put("orchestrationResultType", result.getType().name());
+        }
+        if (definition.executionProfile().workflowPolicy().enabled() && result != null
+            && result.getData() != null && result.getData().get("workflow") instanceof Map<?, ?> workflow) {
+            diagnostics.put("workflow", workflow);
         }
         if (result != null
             && result.getMetadata() != null

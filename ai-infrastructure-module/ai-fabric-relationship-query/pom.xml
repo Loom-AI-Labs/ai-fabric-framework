@@ -7,7 +7,7 @@
     <parent>
         <groupId>io.github.loom-ai-labs</groupId>
         <artifactId>ai-fabric-bom</artifactId>
-        <version>0.8.67</version>
+        <version>0.8.68</version>
         <relativePath>../pom.xml</relativePath>
     </parent>
 
@@ -19,6 +19,11 @@
         <dependency>
             <groupId>io.github.loom-ai-labs</groupId>
             <artifactId>ai-fabric-core</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>io.github.loom-ai-labs</groupId>
+            <artifactId>ai-fabric-rag</artifactId>
             <version>${project.version}</version>
         </dependency>
 

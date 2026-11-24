@@ -45,6 +45,7 @@ final class SpecialistDefinitionFingerprinter {
             definition.outputAdapter().outputType().getName(),
             definition.outputAdapter().outputMode().name()
         );
+        if (profile.workflowPolicy().enabled()) declaration += "\nworkflow:" + profile.workflowPolicy();
         return CanonicalJsonSupport.sha256(declaration);
     }
 }

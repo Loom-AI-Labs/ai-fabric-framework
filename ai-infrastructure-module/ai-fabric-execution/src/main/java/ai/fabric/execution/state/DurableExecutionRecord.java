@@ -29,9 +29,28 @@ public record DurableExecutionRecord(
     String leaseOwner,
     Instant leaseUntil,
     int attemptCount,
-    long version
+    long version,
+    String protectedWorkflowCheckpoint
 ) {
     private static final Pattern SHA_256 = Pattern.compile("[a-f0-9]{64}");
+
+    public DurableExecutionRecord(String invocationId, SpecialistId specialistId, String specialistContentHash,
+        String accessFingerprint, String idempotencyFingerprint, String requestFingerprint, String protectedRequest,
+        String protectedResult, ExecutionHandleStatus status, String failureReason, Instant deadline,
+        Instant createdAt, Instant updatedAt, Instant completedAt, Instant expiresAt, String leaseOwner,
+        Instant leaseUntil, int attemptCount, long version) {
+        this(invocationId, specialistId, specialistContentHash, accessFingerprint, idempotencyFingerprint,
+            requestFingerprint, protectedRequest, protectedResult, status, failureReason, deadline, createdAt,
+            updatedAt, completedAt, expiresAt, leaseOwner, leaseUntil, attemptCount, version, null);
+    }
+
+    public DurableExecutionRecord withWorkflowCheckpoint(String checkpoint, Instant now) {
+        if (status != ExecutionHandleStatus.RUNNING || leaseOwner == null)
+            throw new IllegalStateException("A workflow checkpoint requires an owned running execution");
+        return new DurableExecutionRecord(invocationId, specialistId, specialistContentHash, accessFingerprint,
+            idempotencyFingerprint, requestFingerprint, protectedRequest, protectedResult, status, failureReason,
+            deadline, createdAt, now, completedAt, expiresAt, leaseOwner, leaseUntil, attemptCount, version + 1, checkpoint);
+    }
 
     public DurableExecutionRecord {
         invocationId = requireText(invocationId, "invocationId");
@@ -223,7 +242,8 @@ public record DurableExecutionRecord(
             newLeaseOwner,
             newLeaseUntil,
             newAttemptCount,
-            version + 1
+            version + 1,
+            protectedWorkflowCheckpoint
         );
     }
 

@@ -49,6 +49,13 @@ public final class ActionRuntimeContextParamSupport {
             return null;
         }
         String normalized = field.trim();
+        if ("workflowOperationId".equals(normalized)) {
+            return context != null ? context.getWorkflowOperationId() : null;
+        }
+        if ("workflowWorkId".equals(normalized)) {
+            return context != null && context.getWorkflowExecution() != null
+                ? context.getWorkflowExecution().request().workId() : null;
+        }
         if ("shopperSessionId".equals(normalized) || "sessionId".equals(normalized)) {
             return context != null ? context.getSessionId() : null;
         }

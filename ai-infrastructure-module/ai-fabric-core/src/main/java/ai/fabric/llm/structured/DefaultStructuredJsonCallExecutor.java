@@ -51,6 +51,7 @@ public class DefaultStructuredJsonCallExecutor implements StructuredJsonCallExec
             try {
                 response = spec.getCaller().apply(context);
             } catch (Exception ex) {
+                if (ex instanceof ai.fabric.intent.orchestration.workflow.WorkflowAllowance.Stop stop) throw stop;
                 StructuredJsonFailure failure = new StructuredJsonFailure(
                     StructuredJsonFailureType.CALL_ERROR,
                     safeMessage(ex),

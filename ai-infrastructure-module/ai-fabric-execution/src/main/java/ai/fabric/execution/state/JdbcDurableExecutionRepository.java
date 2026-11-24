@@ -27,7 +27,7 @@ public final class JdbcDurableExecutionRepository
         idempotency_fingerprint, request_fingerprint,
         protected_request, protected_result, status, failure_reason,
         deadline, created_at, updated_at, completed_at, expires_at,
-        lease_owner, lease_until, attempt_count, version
+        lease_owner, lease_until, attempt_count, version, protected_workflow_checkpoint
         """;
 
     private final JdbcTemplate jdbc;
@@ -53,9 +53,9 @@ public final class JdbcDurableExecutionRepository
                   idempotency_fingerprint, request_fingerprint,
                   protected_request, protected_result, status, failure_reason,
                   deadline, created_at, updated_at, completed_at, expires_at,
-                  lease_owner, lease_until, attempt_count, version
+                  lease_owner, lease_until, attempt_count, version, protected_workflow_checkpoint
                 ) VALUES (
-                  ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                  ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
                 )
                 """,
                 record.invocationId(),
@@ -77,7 +77,8 @@ public final class JdbcDurableExecutionRepository
                 record.leaseOwner(),
                 timestamp(record.leaseUntil()),
                 record.attemptCount(),
-                record.version()
+                record.version(),
+                record.protectedWorkflowCheckpoint()
             );
             return record;
         } catch (DuplicateKeyException ex) {
@@ -136,7 +137,8 @@ public final class JdbcDurableExecutionRepository
                    lease_owner = ?,
                    lease_until = ?,
                    attempt_count = ?,
-                   version = ?
+                   version = ?,
+                   protected_workflow_checkpoint = ?
              WHERE invocation_id = ?
                AND status = ?
                AND version = ?
@@ -155,6 +157,7 @@ public final class JdbcDurableExecutionRepository
             timestamp(updated.leaseUntil()),
             updated.attemptCount(),
             updated.version(),
+            updated.protectedWorkflowCheckpoint(),
             expected.invocationId(),
             expected.status().name(),
             expected.version(),
@@ -249,7 +252,8 @@ public final class JdbcDurableExecutionRepository
             resultSet.getString("lease_owner"),
             instant(resultSet, "lease_until"),
             resultSet.getInt("attempt_count"),
-            resultSet.getLong("version")
+            resultSet.getLong("version"),
+            resultSet.getString("protected_workflow_checkpoint")
         );
     }
 
@@ -275,9 +279,11 @@ public final class JdbcDurableExecutionRepository
               lease_owner VARCHAR(160) NULL,
               lease_until TIMESTAMP NULL,
               attempt_count INTEGER NOT NULL,
-              version BIGINT NOT NULL
+              version BIGINT NOT NULL,
+              protected_workflow_checkpoint TEXT NULL
             )
             """);
+        jdbc.execute("ALTER TABLE ai_specialist_execution ADD COLUMN IF NOT EXISTS protected_workflow_checkpoint TEXT NULL");
         jdbc.execute(
             "CREATE INDEX IF NOT EXISTS idx_ai_execution_recovery"
                 + " ON " + TABLE + " (status, lease_until, updated_at)"

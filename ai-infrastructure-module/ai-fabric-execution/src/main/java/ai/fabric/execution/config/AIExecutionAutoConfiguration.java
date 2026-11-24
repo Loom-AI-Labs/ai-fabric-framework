@@ -567,7 +567,8 @@ public class AIExecutionAutoConfiguration {
         ObjectMapper objectMapper,
         ObjectProvider<DurableExecutionRepository> durableRepository,
         ObjectProvider<DurableExecutionSecurity> durableSecurity,
-        AIExecutionConversationSnapshotRegistry conversationSnapshotRegistry
+        AIExecutionConversationSnapshotRegistry conversationSnapshotRegistry,
+        ObjectProvider<ai.fabric.execution.gateway.WorkflowExecutionBindingProvider> workflowBindings
     ) {
         DefaultAIExecutionGateway gateway = new DefaultAIExecutionGateway(
             specialistRegistry,
@@ -591,6 +592,7 @@ public class AIExecutionAutoConfiguration {
             properties.getInputWaits(),
             conversationSnapshotRegistry
         );
+        gateway.setWorkflowExecutionBindingProvider(workflowBindings.getIfAvailable());
         if (properties.getAsync().getRepository()
             == AIExecutionProperties.AsyncRepository.IN_MEMORY) {
             return gateway;
