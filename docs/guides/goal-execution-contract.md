@@ -86,7 +86,8 @@ conversation/control epoch, release and sources on every claim. It reconstructs
 the short-lived lease/snapshot/ThreadLocal binding around `execute.apply` and
 cleans it afterward. Preparation strips transient assertions, browser secrets
 and process-local conversation snapshots: persisted request conversation binding
-must be null, subject must be present. Input contains trusted work/source refs.
+must be null, subject must be present. Any work/source references in native input
+must already be fields of its published schema, not a host-only envelope.
 Restoration may not change specialist, principal, tenant/deployment or scopes.
 The host owns canonical Pause/Resume/Cancel, history erasure and final-message
 projection. SDK checks pinned definition and durable lease/CAS on every segment.
@@ -118,8 +119,30 @@ Runtime supplies its verified current request revision/query and selected work/
 source references here. Goal planning includes `directiveContext`; the original
 input hash, root authority and operation namespace do not change. The host must
 fence stale revisions and recheck current authorization; model text is not a grant.
+The host must durably bind the exact segment's canonical lease identity and fence
+it on segment exit or Pause/Cancel; an in-memory guard alone is not durable
+revocation. This binding may use existing canonical orchestration state without
+changing the root control epoch. A resumed segment obtains fresh authority.
 The durable root deadline uses published `goal.maxElapsed`, not specialist
 `limits.maxDuration`; `workflow.timeout` still bounds every segment.
+
+## Observation Window
+
+Goal planning receives at most eight recent observations. The latest result keeps
+its original JSON shape when it fits 48,000 serialized characters, 32,000 per
+string and depth 16. This preserves bounded source chunks and contracts together
+with their real continuation offsets. The preceding seven results use compact
+4,000-character summaries. Each entry has `operationId`, `receiptRef` and
+`resultTruncated`; truncated entries also have `originalResultChars` and explicit
+truncation markers. No missing content implies completion.
+
+The planner subtracts its request/history/catalogue/directive context from the
+input allowance before sizing the window. Older observations are omitted first;
+`stepOffset`, `totalStepCount` and `hasMore` expose pagination. An oversized latest
+result is explicitly truncated, not silently treated as the complete read.
+Actual encoded planner input stays below 120,000 characters. The authoritative
+checkpoint, protected receipts and root completion validator retain the full
+journal unchanged. Ordinary bounded workflows retain their existing projection.
 
 ## One-Level Delegation
 
@@ -162,15 +185,22 @@ No raw exception bodies, credentials, or private reasoning. Empty, truncation,
 schema/validation and transport failures stay distinct. Compact recovery context
 goes through the same configured model loop. Segment corrections yield;
 repeated structural non-progress/unavailable planning pauses operationally.
+Typed host `OrchestrationControlException` interruptions (including exhausted
+funding/token admission) persist PAUSED in goal mode, while ordinary bounded runs
+remain STOPPED. After persisting a planning failure the goal runner rechecks the
+current authority before yielding, so a captured budget denial is not lost at
+the next segment. Resume requires fresh authorized admission and preserves root
+usage, failures and receipts. Security exceptions remain denied/stopped; SDK
+Pause/Cancel and durable lease fencing are never bypassed.
 
 ## Local Qualification
 
 24 November 2026, source candidate 0.8.70 (not published):
 
-- Focused workflow/gateway/checkpoint/structured-call install: 106 tests,
-  zero failures or errors. Both compiled-manifest direct and structured output
+- Focused workflow/gateway/checkpoint follow-up install: 109 tests (58 core,
+  51 execution), zero failures or errors. Both compiled-manifest direct and structured output
   paths cross segments and resume verified directives with unchanged native input.
-- Final ordinary framework reactor: all 32 projects succeeded; 2759 tests,
+- Final ordinary framework reactor: all 32 projects succeeded; 2769 tests,
   zero failures, zero errors, four explicit live-provider opt-in skips.
   This includes the added missing-definition retirement regression, real
   PostgreSQL lease-transition contracts and H2 durable goal/checkpoint tests.
@@ -182,6 +212,13 @@ repeated structural non-progress/unavailable planning pauses operationally.
   retry-after backoff, structural no-progress, profile narrowing/recursion denial,
   no-op completion, bounded observation windows and finalization-only continuation
   have focused coverage. Ordinary SpecialistChain restrictions are unchanged.
+- Follow-up fault tests cover captured provider-budget denial before yielding,
+  authorized top-up Resume with retained cumulative usage/receipts/operation IDs,
+  no tool after denial, legacy STOPPED and security denial. Observation regressions
+  preserve a full 24K chunk with its actual next offset, long contract strings,
+  deep/wide required mappings and the full completion journal. Oversize content
+  carries explicit truncation/receipt references; actual planner input stays below
+  120K even with a large base context. No authorization scope was broadened.
 
 Final ordinary-reactor command (all ordinary modules; separate integration-test
 reactors and paid/live provider qualification excluded):
@@ -190,9 +227,11 @@ reactors and paid/live provider qualification excluded):
 env -u LOOMAI_LEXICAL_LIVE_CONFIG AI_FABRIC_REAL_API_RECOVERY=false \
   mvn -B --no-transfer-progress -Dai.vector-db.lucene.cleanup-on-close=true \
   -pl '!integration-Testing/vector-contract-tests,!integration-Testing/testcontainers-support,!integration-Testing/integration-tests,!integration-Testing/relationship-query-integration-tests,!integration-Testing/chat-session-integration-tests,!integration-Testing/behavior-integration-tests' \
-  install
+  verify
 ```
 
+The focused install refreshed local 0.8.70 core/execution artifacts first; the
+subsequent full `verify` avoided replacing JARs during concurrent Runtime tests.
 Model transports in the new goal tests are scripted, not live-provider evidence.
 Public CI, immutable publication, Central-only consumer verification, Runtime/
 Platform adoption and live qualification remain separate release gates.

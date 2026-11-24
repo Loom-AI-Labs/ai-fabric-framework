@@ -110,11 +110,8 @@ public class BoundedWorkflowStep implements PipelineStep {
             var input = new LinkedHashMap<String, Object>();
             input.put("request", context.getEffectiveQuery());
             input.put("history", ConversationPromptContext.history(context, 16000).messages());
-            var visibleSteps = execution.policy().goalMode() && checkpoint.steps().size() > 8
-                ? checkpoint.steps().subList(checkpoint.steps().size() - 8, checkpoint.steps().size()) : checkpoint.steps();
-            input.put("observations", visibleSteps.stream().map(step -> Map.of(
+            if (!execution.policy().goalMode()) input.put("observations", checkpoint.steps().stream().map(step -> Map.of(
                 "operationId", step.operationId(), "action", step.action(), "effect", step.effect(), "result", step.observation())).toList());
-            if (execution.policy().goalMode()) input.put("observations", WorkflowObservationWindow.project(checkpoint, mapper));
             input.put("remaining", Map.of("actions", execution.policy().maxActions() - allowance.segmentUsage().actions(),
                 "writes", execution.policy().maxWrites() - allowance.segmentUsage().writes(),
                 "modelCalls", execution.policy().maxModelCalls() - allowance.segmentUsage().modelCalls()));
@@ -148,6 +145,7 @@ public class BoundedWorkflowStep implements PipelineStep {
                     catalogue.add(ActionMetadataVisibilitySupport.publicActionMetadata(metadata));
             }
             input.put("actions", catalogue);
+            if (execution.policy().goalMode()) input.put("observations", WorkflowObservationWindow.project(checkpoint, mapper, 119000 - json(input).length()));
             String delegatedInstructions = activeProfile == null ? "" : "\nActive pinned delegated profile:\n" + activeProfile.instructions();
             String encodedInput = json(input);
             if (encodedInput.length() > 120000) throw new WorkflowAllowance.Stop("WORKFLOW_CONTEXT_LIMIT");

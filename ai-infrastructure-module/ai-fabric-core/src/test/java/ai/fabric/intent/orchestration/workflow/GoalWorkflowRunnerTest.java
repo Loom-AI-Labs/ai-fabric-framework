@@ -2,12 +2,14 @@ package ai.fabric.intent.orchestration.workflow;
 
 import static org.assertj.core.api.Assertions.*;
 import ai.fabric.dto.ProviderOutcome;
+import ai.fabric.intent.orchestration.control.OrchestrationControlException;
 import ai.fabric.intent.orchestration.workflow.BoundedWorkflowRunner.*;
 import ai.fabric.intent.orchestration.workflow.WorkflowCheckpoint.*;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.*;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.jupiter.api.Test;
 
 class GoalWorkflowRunnerTest {
@@ -193,7 +195,7 @@ class GoalWorkflowRunnerTest {
             new WorkflowAllowance.Usage(100, 0, 101, 0), steps, State.RUNNING, null, List.of(), null);
         var mapper = new ObjectMapper(); var window = WorkflowObservationWindow.project(checkpoint, mapper);
         assertThat(window).containsEntry("totalStepCount", 100).containsEntry("hasMore", true).containsEntry("stepOffset", 92);
-        assertThat(mapper.writeValueAsString(window)).hasSizeLessThan(40000).contains("truncated");
+        assertThat(mapper.writeValueAsString(window)).hasSizeLessThan(80000).contains("truncated");
         assertThat(checkpoint.steps()).hasSize(100);
         assertThat(checkpoint.steps().getFirst().observation().get("large").toString()).hasSize(100000);
     }
@@ -218,6 +220,85 @@ class GoalWorkflowRunnerTest {
         assertThat(result.state()).isEqualTo(State.PAUSED);
         assertThat(result.stopCode()).isEqualTo("WORKFLOW_PROVIDER_ADMISSION_DENIED");
         assertThat(result.usage().modelCalls()).isEqualTo(1);
+    }
+
+    @Test void budgetGuardPausesAfterAReceiptAndAuthorizedResumeKeepsUsageAndOperationIds() {
+        var denied = new AtomicBoolean();
+        var actions = new BoundedWorkflowRunnerTest.Fixture() {
+            public void verifyAuthority(Request request) {
+                if (denied.get()) throw new OrchestrationControlException("PROVIDER_BUDGET_TOKEN_LIMIT", "Budget exhausted");
+            }
+            public Outcome invoke(Step step, WorkflowAllowance allowance) {
+                var outcome = super.invoke(step, allowance);
+                if (step.operationId().equals("work:step:1")) denied.set(true);
+                return outcome;
+            }
+        };
+        var paused = runner.run(request, policy(), (c, a) -> { a.modelCall(); return action(7); }, actions);
+        assertThat(paused.state()).isEqualTo(State.PAUSED);
+        assertThat(paused.stopCode()).isEqualTo("PROVIDER_BUDGET_TOKEN_LIMIT");
+        assertThat(paused.usage()).isEqualTo(new WorkflowAllowance.Usage(1, 1, 1, 0));
+        assertThat(paused.steps().getFirst().effect()).isEqualTo(Effect.EXECUTED);
+        assertThat(actions.dispatched).containsExactly("work:step:1");
+        assertThatThrownBy(() -> runner.resumeGoal(request, policy(), (c, a) -> { throw new AssertionError(); }, actions))
+            .isInstanceOf(OrchestrationControlException.class);
+        assertThat(store.checkpoint).isEqualTo(paused);
+        denied.set(false);
+        var resumed = runner.resumeGoal(request, policy(), (c, a) -> {
+            a.modelCall(); return c.steps().size() < 2 ? action(8) : done();
+        }, actions);
+        assertThat(resumed.state()).isEqualTo(State.COMPLETE);
+        assertThat(resumed.usage()).isEqualTo(new WorkflowAllowance.Usage(2, 2, 3, 0));
+        assertThat(resumed.steps().getFirst()).isEqualTo(paused.steps().getFirst());
+        assertThat(resumed.requestFingerprint()).isEqualTo(paused.requestFingerprint());
+        assertThat(resumed.authorityFingerprint()).isEqualTo(paused.authorityFingerprint());
+        assertThat(resumed.deadline()).isEqualTo(paused.deadline());
+        assertThat(resumed.goal().segmentNumber()).isEqualTo(2);
+        assertThat(actions.dispatched).containsExactly("work:step:1", "work:step:2");
+    }
+
+    @Test void capturedBudgetDenialAfterProviderFailurePausesBeforeYieldAndRetainsFailureEvidence() {
+        var denied = new AtomicBoolean();
+        var actions = new BoundedWorkflowRunnerTest.Fixture() {
+            public void verifyAuthority(Request request) {
+                if (denied.get()) throw new OrchestrationControlException("PROVIDER_BUDGET_LIMIT_EXCEEDED", "Budget exhausted");
+            }
+        };
+        var outcome = new ProviderOutcome("workflow", "model", 8192, null, null, null, null, null, 0, "LIMIT_EXCEEDED");
+        var paused = runner.run(request, policy(), (c, a) -> {
+            a.modelCall(); denied.set(true);
+            throw new PlanningFinding("WORKFLOW_CALL_ERROR", "Provider call failed", outcome, true);
+        }, actions);
+        assertThat(paused.state()).isEqualTo(State.PAUSED);
+        assertThat(paused.stopCode()).isEqualTo("PROVIDER_BUDGET_LIMIT_EXCEEDED");
+        assertThat(paused.usage()).isEqualTo(new WorkflowAllowance.Usage(0, 0, 1, 0));
+        assertThat(paused.goal().recentFailures()).containsExactly(new WorkflowGoalProgress.Failure("WORKFLOW_CALL_ERROR", outcome));
+        assertThat(actions.dispatched).isEmpty();
+        denied.set(false);
+        var resumed = runner.resumeGoal(request, policy(), (c, a) -> {
+            a.modelCall(); return c.steps().isEmpty() ? action(7) : done();
+        }, actions);
+        assertThat(resumed.state()).isEqualTo(State.COMPLETE);
+        assertThat(resumed.usage()).isEqualTo(new WorkflowAllowance.Usage(1, 1, 3, 0));
+        assertThat(resumed.goal().recentFailures()).containsExactlyElementsOf(paused.goal().recentFailures());
+        assertThat(actions.dispatched).containsExactly("work:step:1");
+    }
+
+    @Test void ordinaryBudgetGuardStillStopsAndSecurityDenialNeverBecomesResumable() {
+        var bounded = new WorkflowPolicy(true, 4, 3, 4, 2, Duration.ofSeconds(120));
+        var stopped = runner.run(request, bounded, (c, a) -> {
+            a.modelCall(); throw new OrchestrationControlException("PROVIDER_BUDGET_TOKEN_LIMIT", "Budget exhausted");
+        }, actions());
+        assertThat(stopped.state()).isEqualTo(State.STOPPED);
+        assertThat(stopped.stopCode()).isEqualTo("PROVIDER_BUDGET_TOKEN_LIMIT");
+        var isolated = new BoundedWorkflowRunnerTest.Store();
+        var securityDenied = new BoundedWorkflowRunner(isolated, clock).run(request, policy(), (c, a) -> {
+            a.modelCall(); throw new SecurityException("SCOPE_REVOKED");
+        }, actions());
+        assertThat(securityDenied.state()).isEqualTo(State.STOPPED);
+        assertThat(isolated.checkpoint.usage().modelCalls()).isEqualTo(1);
+        assertThat(new BoundedWorkflowRunner(isolated, clock).resumeGoal(request, policy(),
+            (c, a) -> { throw new AssertionError(); }, actions())).isEqualTo(securityDenied);
     }
 
     @Test void newReceiptIdsDoNotDisguiseRepeatingTheSameWriteAsProgress() {

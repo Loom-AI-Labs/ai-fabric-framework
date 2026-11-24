@@ -134,6 +134,41 @@ class BoundedWorkflowStepTest {
         verify(core, times(1)).generateContent(any(), any());
         verify(writer, never()).executeAction(anyMap(), any());
     }
+    @Test void goalPlannerFitsActualInputBudgetWithoutLosingLatestReadOrFullCompletionJournal() throws Exception {
+        var now = Instant.now();
+        var usage = new WorkflowAllowance.Usage(100, 0, 100, 0);
+        var goalPolicy = new WorkflowPolicy(true, 8, 3, 16, 4, Duration.ofSeconds(120),
+            new WorkflowGoalPolicy(true, Duration.ofHours(24), Duration.ZERO, 8, 4, List.of()));
+        var request = new BoundedWorkflowRunner.Request("work", "request", "authority", "definition", now.plusSeconds(86400), false);
+        context.getOrchestrationContext().setWorkflowExecution(new WorkflowExecution(request, goalPolicy, store, authority));
+        context = context.toBuilder().processedQuery("q".repeat(90000)).build();
+        var steps = new java.util.ArrayList<WorkflowCheckpoint.Step>();
+        for (int i = 1; i <= 100; i++) steps.add(new WorkflowCheckpoint.Step("work:step:" + i, "read", false,
+            Map.of(), "hash", WorkflowCheckpoint.Effect.EXECUTED,
+            Map.of("text", "x".repeat(i == 100 ? 24000 : 100000), "nextOffset", 24000), null));
+        store.value = new WorkflowCheckpoint("work", "request", "authority", "definition", request.deadline(), 1, usage, steps,
+            WorkflowCheckpoint.State.RUNNING, null, List.of(), null,
+            new WorkflowGoalProgress(25, now, now.plusSeconds(120), usage, null, 0, 0, null, List.of()));
+        replies.add("{\"type\":\"COMPLETE\",\"message\":\"Already configured.\"}");
+        var result = step.process(context).getIntentResult();
+        assertThat(result.isSuccess()).isTrue();
+        var requests = org.mockito.ArgumentCaptor.forClass(AIGenerationRequest.class);
+        verify(core).generateContent(requests.capture(), any());
+        String encoded = requests.getValue().getPrompt();
+        assertThat(encoded).hasSizeLessThan(120000);
+        var observations = mapper.readTree(encoded).path("observations");
+        var items = observations.path("items");
+        var latest = items.get(items.size() - 1);
+        assertThat(latest.path("resultTruncated").asBoolean()).isFalse();
+        assertThat(latest.path("result").path("text").asText()).isEqualTo("x".repeat(24000));
+        assertThat(latest.path("result").path("nextOffset").asInt()).isEqualTo(24000);
+        assertThat(items.size()).isLessThan(8);
+        assertThat(observations.path("totalStepCount").asInt()).isEqualTo(100);
+        verify(authority).validateCompletion(argThat(c -> c.steps().size() == 100
+            && c.steps().getFirst().observation().get("text").toString().length() == 100000));
+        assertThat(store.value.steps()).hasSize(100);
+        verify(writer, never()).executeAction(anyMap(), any());
+    }
     static class Store implements WorkflowCheckpointStore {
         WorkflowCheckpoint value;
         public void verifyLease(String workId) { }

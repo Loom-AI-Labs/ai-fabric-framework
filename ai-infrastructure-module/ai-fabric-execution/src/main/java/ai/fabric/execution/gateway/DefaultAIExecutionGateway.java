@@ -1225,6 +1225,12 @@ public final class DefaultAIExecutionGateway
                 startedAt,
                 Map.of()
             );
+        } catch (ai.fabric.intent.orchestration.control.OrchestrationControlException guard) {
+            if (!definition.executionProfile().workflowPolicy().goalMode())
+                return failure(invocationId, definition.id(), AIExecutionStatus.FAILED, "EXECUTION_FAILED",
+                    "AI execution failed.", false, startedAt, Map.of());
+            return failure(invocationId, definition.id(), AIExecutionStatus.PAUSED, guard.code(),
+                "Workflow execution requires renewed admission or control authority.", true, startedAt, Map.of());
         } catch (ai.fabric.intent.orchestration.workflow.WorkflowAllowance.Stop stop) {
             var policy = definition.executionProfile().workflowPolicy();
             if (!policy.goalMode()) return failure(invocationId, definition.id(), AIExecutionStatus.FAILED, "EXECUTION_FAILED",

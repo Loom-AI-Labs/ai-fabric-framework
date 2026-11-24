@@ -209,6 +209,10 @@ public final class BoundedWorkflowRunner {
                         new WorkflowGoalProgress.Failure(finding.code, finding.providerOutcome));
                     current.set(persist(current.get(), allowance.usage(), steps, State.RUNNING,
                         finding.detail(), List.of(), finding.code, progress));
+                    if (policy.goalMode()) {
+                        store.verifyLease(request.workId());
+                        actions.verifyAuthority(request);
+                    }
                     if (policy.goalMode() && "WORKFLOW_CALL_ERROR".equals(finding.code)) {
                         if (finding.providerOutcome != null && "ADMISSION_DENIED".equals(finding.providerOutcome.transportClassification()))
                             return persist(current.get(), allowance.usage(), steps, State.PAUSED, finding.detail(), List.of(), "WORKFLOW_PROVIDER_ADMISSION_DENIED");
@@ -322,7 +326,8 @@ public final class BoundedWorkflowRunner {
             return persist(old, allowance.usage(), old.steps(), state, old.message(), List.of(), stop.code(), progress);
         } catch (ai.fabric.intent.orchestration.control.OrchestrationControlException denied) {
             WorkflowCheckpoint old = current.get();
-            return persist(old, allowance.usage(), old.steps(), State.STOPPED, null, List.of(), denied.code());
+            return persist(old, allowance.usage(), old.steps(), policy.goalMode() ? State.PAUSED : State.STOPPED,
+                null, List.of(), denied.code());
         } catch (RuntimeException failure) {
             WorkflowCheckpoint old = current.get();
             return persist(old, allowance.usage(), old.steps(), State.STOPPED, null, List.of(), "WORKFLOW_EXECUTION_STOPPED");

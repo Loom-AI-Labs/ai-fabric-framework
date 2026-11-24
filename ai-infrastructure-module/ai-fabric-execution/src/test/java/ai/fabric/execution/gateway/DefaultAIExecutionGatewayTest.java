@@ -95,6 +95,25 @@ class DefaultAIExecutionGatewayTest {
         assertThat(gateway.resolveDeadline(request, base)).isEqualTo(NOW.plus(base.limits().maxDuration()));
     }
 
+    @Test void goalBudgetGuardBeforeRunnerPausesWithoutEnteringThePipeline() {
+        var base = definition(false);
+        var workflow = new ai.fabric.intent.orchestration.workflow.WorkflowPolicy(true, 8, 3, 16, 4, Duration.ofSeconds(120),
+            new ai.fabric.intent.orchestration.workflow.WorkflowGoalPolicy(true, Duration.ofDays(1), Duration.ZERO, 8, 4, List.of()));
+        var profile = new SpecialistExecutionProfile(base.executionProfile().mode(), base.executionProfile().requestedCapabilities(),
+            ExecutionStrategy.BOUNDED_ITERATIVE, SpecialistWritePolicy.DISABLED, workflow);
+        var goal = new SpecialistDefinition<>(base.identity(), base.instructions(), profile, base.limits(), base.inputAdapter(), base.outputAdapter());
+        var observed = new AtomicReference<PipelineContext>();
+        var gateway = gateway(successPipeline(observed), goal, Set.of("account-policy"));
+        gateway.setWorkflowExecutionBindingProvider((id, definition, request, context) -> {
+            throw new ai.fabric.intent.orchestration.control.OrchestrationControlException("PROVIDER_BUDGET_FUNDING_REQUIRED", "Private host details");
+        });
+        var result = gateway.execute(AIExecutionRequest.synchronous(SPECIALIST_ID, new ResolverInput("Goal"), applicationContext(authorizedScopes())));
+        assertThat(result.status()).isEqualTo(AIExecutionStatus.PAUSED);
+        assertThat(result.failure().reason()).isEqualTo("PROVIDER_BUDGET_FUNDING_REQUIRED");
+        assertThat(result.failure().publicMessage()).doesNotContain("Private host details");
+        assertThat(observed).hasNullValue();
+    }
+
     @Test
     void executesThroughRealPipelineWithTrustedEnvelopeAndCanonicalEvidence() {
         AtomicReference<PipelineContext> observed = new AtomicReference<>();
