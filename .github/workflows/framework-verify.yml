@@ -32,6 +32,11 @@ jobs:
       - name: Install YAML parser
         run: python3 -m pip install --disable-pip-version-check --quiet pyyaml
 
+      - name: Install source guard dependency
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ripgrep
+
       - name: Validate framework release guards
         run: .github/scripts/validate-framework-release-guards.sh
 

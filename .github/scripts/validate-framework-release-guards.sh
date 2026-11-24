@@ -14,6 +14,7 @@ checks=(
 )
 
 echo "Running AI Fabric framework release guards..."
+command -v rg >/dev/null || { echo "Framework source guards require ripgrep." >&2; exit 1; }
 for check in "${checks[@]}"; do
   echo "==> ${check}"
   "${script_dir}/${check}"
