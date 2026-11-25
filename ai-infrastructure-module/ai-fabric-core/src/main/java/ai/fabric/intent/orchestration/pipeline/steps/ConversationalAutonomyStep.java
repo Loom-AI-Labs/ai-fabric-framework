@@ -35,7 +35,8 @@ public final class ConversationalAutonomyStep implements PipelineStep {
         // Explicit execution/specialist contracts keep precedence over deployment-wide chat defaults.
         if (context.getOrchestrationRequest() != null
             && context.getOrchestrationRequest().purpose() != OrchestrationRequestPurpose.GENERAL) return true;
-        String requested = context.getOrchestrationContext().getMode();
+        String requested = OrchestrationPolicyResolutionStep.conversationalExecutionAlias(properties,
+            context.getOrchestrationContext().getMode());
         if ("standard".equalsIgnoreCase(requested)) return true;
         return !properties.getAutonomy().isDefaultEnabled() && !"autonomous".equalsIgnoreCase(requested);
     }

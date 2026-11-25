@@ -7,6 +7,8 @@ named mode policies take precedence, including case-insensitive names. The
 `standard` and `autonomous` execution aliases reuse the default policy only when
 no configured mode already owns that name. Action and retrieval restrictions are
 never widened just to choose an execution style.
+An existing mode with either name follows the published `default-enabled`
+execution preference; its name is not reinterpreted as an opt-in or opt-out.
 
 An ordinary application can opt into the Framework goal runner without creating
 a private authoring service, a second endpoint or an application-owned model loop.

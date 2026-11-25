@@ -82,11 +82,7 @@ public class OrchestrationPolicyResolutionStep implements PipelineStep {
 
         // Execution aliases apply only when no explicitly configured mode owns the name.
         // Published mode restrictions remain authoritative regardless of execution style.
-        boolean autonomyChoice = orchestrationProperties != null && orchestrationProperties.getAutonomy() != null
-            && orchestrationProperties.getAutonomy().isEnabled()
-            && ("autonomous".equals(normalizedRequestedMode) || "standard".equals(normalizedRequestedMode))
-            && lookupCaseInsensitive(orchestrationProperties.getModes(), normalizedRequestedMode) == null;
-        if (autonomyChoice) {
+        if (conversationalExecutionAlias(orchestrationProperties, requestedMode) != null) {
             normalizedRequestedMode = normalizeKey(orchestrationProperties.getDefaultMode());
         }
 
@@ -458,6 +454,13 @@ public class OrchestrationPolicyResolutionStep implements PipelineStep {
             context.getRequestId());
 
         return updated;
+    }
+
+    static String conversationalExecutionAlias(OrchestrationProperties properties, String requestedMode) {
+        if (properties == null || properties.getAutonomy() == null || !properties.getAutonomy().isEnabled()) return null;
+        String mode = normalizeKey(requestedMode);
+        return ("autonomous".equals(mode) || "standard".equals(mode))
+            && lookupCaseInsensitive(properties.getModes(), mode) == null ? mode : null;
     }
 
     private static String normalizeKey(String value) {

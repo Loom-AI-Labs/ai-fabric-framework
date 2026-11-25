@@ -93,6 +93,21 @@ class ConversationalAutonomyStepTest {
         input.getOrchestrationContext().setMode("autonomous");
         assertThat(admission.process(input).getOrchestrationContext().getWorkflowExecution().policy().goalMode()).isTrue();
     }
+    @Test void registeredStandardModeUsesThePublishedExecutionDefault() {
+        settings.getModes().put("STANDARD", new OrchestrationProperties.ModeOverrides());
+        var input = context(); input.getOrchestrationContext().setMode("standard");
+        assertThat(admission.shouldSkip(input)).isFalse();
+        settings.getAutonomy().setDefaultEnabled(false);
+        assertThat(admission.shouldSkip(input)).isTrue();
+    }
+    @Test void registeredAutonomousModeIsNotAnImplicitExecutionOptIn() {
+        settings.getModes().put("AUTONOMOUS", new OrchestrationProperties.ModeOverrides());
+        settings.getAutonomy().setDefaultEnabled(false);
+        var input = context(); input.getOrchestrationContext().setMode("autonomous");
+        assertThat(admission.shouldSkip(input)).isTrue();
+        settings.getAutonomy().setDefaultEnabled(true);
+        assertThat(admission.shouldSkip(input)).isFalse();
+    }
     @Test void existingPendingConsentStaysInOrdinaryConfirmationLifecycle() {
         var input = context().toBuilder().observedPendingAction(new PendingAction("submit", Map.of(), "Confirm?", Instant.now())).build();
         var bound = admission.process(input);
