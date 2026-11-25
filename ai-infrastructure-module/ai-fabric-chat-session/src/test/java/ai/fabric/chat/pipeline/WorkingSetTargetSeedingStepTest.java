@@ -26,6 +26,8 @@ import ai.fabric.intent.orchestration.targets.ResolvedTargetSource;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.h2.jdbcx.JdbcDataSource;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.time.LocalDateTime;
 import java.time.Clock;
@@ -380,8 +382,9 @@ class WorkingSetTargetSeedingStepTest {
         verify(service, never()).getSession(anyString(), anyString());
     }
 
-    @Test
-    void shouldSeedCanonicalPinnedTargetsWithoutReadingLegacySession() {
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void shouldSeedCanonicalPinnedTargetsWithoutReadingLegacySession(boolean workflow) {
         ChatSessionService service = mock(ChatSessionService.class);
         ChatSessionProperties properties = new ChatSessionProperties();
         properties.setEnabled(true);
@@ -421,11 +424,12 @@ class WorkingSetTargetSeedingStepTest {
                 "tenant-1", "deployment-1", "conv-1", "user-1", 0L
             )
         )).toBuilder()
-            .intentResponse(MultiIntentResponse.builder().intents(List.of(intent)).build())
+            .intentResponse(workflow ? null : MultiIntentResponse.builder().intents(List.of(intent)).build())
             .build();
 
-        PipelineContext updated = new WorkingSetTargetSeedingStep(service, properties, gateway)
-            .process(context);
+        var seed = new WorkingSetTargetSeedingStep(service, properties, gateway);
+        if (workflow) bindWorkflow(context);
+        PipelineContext updated = workflow ? new ConversationalAutonomyTargetsStep(seed).process(context) : seed.process(context);
 
         assertThat(updated.getResolvedTargets()).singleElement().satisfies(target -> {
             assertThat(target.getId()).isEqualTo("stock-42");
@@ -433,6 +437,41 @@ class WorkingSetTargetSeedingStepTest {
             assertThat(target.getSource()).isEqualTo(ResolvedTargetSource.ACTION_RESULT_ITEMS);
         });
         verify(service, never()).getSession(anyString(), anyString());
+    }
+
+    @Test void autonomousReferencesCannotReadAnotherOwnersCanonicalState() {
+        var service = mock(ChatSessionService.class);
+        var properties = new ChatSessionProperties(); properties.setEnabled(true);
+        var gateway = gateway(); var owned = new ConversationScope("tenant-1", "deployment-1", "conv-1", "user-1");
+        gateway.status(owned);
+        gateway.updateOrchestrationState(owned, 0L, metadata -> {
+            metadata.put("lastWorkingSet", List.of(Map.of("id", "PRIVATE_REFERENCE_CANARY", "contentText", "Private content")));
+            return metadata;
+        });
+        var other = OrchestrationContext.builder().userId("user-2").conversationId("conv-1")
+            .approvedConversationSnapshot(new ApprovedConversationSnapshot(
+                "turn-2", "user-2", "conv-1", "specialist-1", "a".repeat(64), 1L,
+                List.of(), Instant.parse("2026-10-16T01:00:00Z")))
+            .build();
+        var context = PipelineContext.from(new OrchestrationRequest("Show the previous item", other, trustedContext(),
+            ConversationPersistencePolicy.READ_ONLY, null, null, null,
+            ai.fabric.intent.orchestration.request.OrchestrationRequestPurpose.GENERAL,
+            ai.fabric.intent.orchestration.request.OrchestrationIntentPolicy.MODEL_DIRECTED,
+            new ConversationStateBinding("tenant-1", "deployment-1", "conv-1", "user-2", 0L)));
+        bindWorkflow(context);
+        var result = new ConversationalAutonomyTargetsStep(new WorkingSetTargetSeedingStep(service, properties, gateway)).process(context);
+        assertThat(result.isShouldTerminate()).isTrue();
+        assertThat(result.getIntentResult().getErrorCode()).isEqualTo("CONVERSATION_STATE_UNAVAILABLE");
+        assertThat(result.getResolvedTargets()).isEmpty();
+        assertThat(result.getPinnedTargetsContext()).isNullOrEmpty();
+        verify(service, never()).getSession(anyString(), anyString());
+    }
+
+    private void bindWorkflow(PipelineContext context) {
+        var workflow = mock(ai.fabric.intent.orchestration.workflow.WorkflowExecution.class);
+        var authority = mock(ai.fabric.intent.orchestration.workflow.WorkflowExecution.Authority.class);
+        when(workflow.authority()).thenReturn(authority); when(authority.continueWithinRequest()).thenReturn(true);
+        context.getOrchestrationContext().setWorkflowExecution(workflow);
     }
 
     private DefaultConversationControlGateway gateway() {

@@ -78,9 +78,16 @@ CREATE TABLE IF NOT EXISTS ai_specialist_execution (
   version BIGINT NOT NULL
 );
 
+ALTER TABLE ai_specialist_execution ADD COLUMN IF NOT EXISTS protected_workflow_checkpoint CLOB;
+ALTER TABLE ai_specialist_execution ADD COLUMN IF NOT EXISTS goal_authority_reference VARCHAR(512);
+ALTER TABLE ai_specialist_execution ADD COLUMN IF NOT EXISTS next_eligible_at TIMESTAMP;
+ALTER TABLE ai_specialist_execution ADD COLUMN IF NOT EXISTS goal_notification_pending BOOLEAN NOT NULL DEFAULT FALSE;
+
 CREATE INDEX IF NOT EXISTS idx_ai_execution_recovery ON ai_specialist_execution(status, lease_until, updated_at);
 CREATE INDEX IF NOT EXISTS idx_ai_execution_expiry ON ai_specialist_execution(completed_at);
 CREATE INDEX IF NOT EXISTS idx_ai_execution_access ON ai_specialist_execution(access_fingerprint);
+CREATE INDEX IF NOT EXISTS idx_ai_execution_goal_schedule ON ai_specialist_execution(status, next_eligible_at, updated_at);
+CREATE INDEX IF NOT EXISTS idx_ai_execution_goal_notifications ON ai_specialist_execution(goal_notification_pending, updated_at);
 
 CREATE TABLE IF NOT EXISTS intent_history (
   id VARCHAR(255) PRIMARY KEY,

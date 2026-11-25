@@ -27,7 +27,7 @@ public final class ConversationalAutonomyStep implements PipelineStep {
     private static final Set<String> REPLAN_READ = Set.of("UPSTREAM_HTTP_400", "UPSTREAM_HTTP_404",
         "KNOWLEDGE_SOURCE_SELECTION_REQUIRED");
     public String getStepName() { return "ConversationalAutonomy"; }
-    public int getOrder() { return 48; }
+    public int getOrder() { return 46; }
     public boolean shouldSkip(PipelineContext context) {
         if (context == null || context.isShouldTerminate() || context.getOrchestrationContext() == null
             || context.getOrchestrationContext().getWorkflowExecution() != null
@@ -157,6 +157,7 @@ public final class ConversationalAutonomyStep implements PipelineStep {
             + "Do not repeat an executed write. Stop for genuine missing business input or consent. "
             + "When approved history is sufficient, answer without unnecessary tools. COMPLETE.message must be the useful customer-facing answer, not just a technical execution summary. "
             + settings.getInstructions();
+        instructions += "\n" + ai.fabric.intent.orchestration.conversation.ConversationPromptContext.REFERENCE_POLICY;
         if (original.getSpecialistInstructions() != null && !original.getSpecialistInstructions().isBlank())
             instructions += "\nExisting application instructions:\n" + original.getSpecialistInstructions();
         var overlays = ai.fabric.prompt.PromptPreviewOverlaySupport.extract(original.getMetadata());

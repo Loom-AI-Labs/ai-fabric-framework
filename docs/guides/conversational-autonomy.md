@@ -44,6 +44,9 @@ authorization failures and uncertain writes are not retried as ordinary reads.
 The planner sees the effective source catalogue, never an unrestricted search.
 The provider still receives the caller identity and source restrictions and
 retains document authorization, hybrid/reranking policy and retrieval budgets.
+Each knowledge READ uses its evidence count and character limits. Multiple
+iterative READs can accumulate approved observations within the SDK's bounded
+workflow context; this is distinct from one ordinary RAG generation call.
 An explicitly configured PARALLEL_ACTIONS_AND_RAG policy remains a completion
 requirement after an executed business READ. Ordinary model-led choices do not
 require asking visitors for internal knowledge domains.

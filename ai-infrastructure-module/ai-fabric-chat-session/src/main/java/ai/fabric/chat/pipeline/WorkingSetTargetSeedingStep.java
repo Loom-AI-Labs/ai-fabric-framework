@@ -76,6 +76,14 @@ public class WorkingSetTargetSeedingStep implements PipelineStep {
 
     @Override
     public PipelineContext process(PipelineContext context) {
+        return seed(context, false);
+    }
+
+    PipelineContext seedForWorkflow(PipelineContext context) {
+        return seed(context, true);
+    }
+
+    private PipelineContext seed(PipelineContext context, boolean workflow) {
         if (context == null || context.isShouldTerminate()) {
             return context;
         }
@@ -87,10 +95,10 @@ public class WorkingSetTargetSeedingStep implements PipelineStep {
         }
 
         MultiIntentResponse response = context.getIntentResponse();
-        if (response == null || response.getIntents() == null || response.getIntents().isEmpty()) {
+        if (!workflow && (response == null || response.getIntents() == null || response.getIntents().isEmpty())) {
             return context;
         }
-        boolean extractedTargetRequirement = anyIntentRequiresTargetResolution(response.getIntents());
+        boolean extractedTargetRequirement = workflow || anyIntentRequiresTargetResolution(response.getIntents());
         if (!extractedTargetRequirement) {
             return context;
         }
@@ -155,7 +163,7 @@ public class WorkingSetTargetSeedingStep implements PipelineStep {
 
         PipelineContext updated = context.toBuilder()
             .resolvedTargets(targets)
-            .pinnedTargetsContext(buildTargetContext(targets))
+            .pinnedTargetsContext(buildTargetContext(targets, context.getIntentResponse() == null))
             .intentResponse(response)
             .build();
 
@@ -163,7 +171,7 @@ public class WorkingSetTargetSeedingStep implements PipelineStep {
         diagnostics.put("seeded", true);
         diagnostics.put("count", targets.size());
         diagnostics.put("source", seed.source());
-        diagnostics.put("activation", "MODEL_REQUESTED_TARGET_RESOLUTION");
+        diagnostics.put("activation", context.getIntentResponse() == null ? "CONVERSATIONAL_WORKFLOW_CONTEXT" : "MODEL_REQUESTED_TARGET_RESOLUTION");
         return updated.withMetadata(
             METADATA_KEY_TARGET_SEEDING,
             Collections.unmodifiableMap(diagnostics)
@@ -396,9 +404,10 @@ public class WorkingSetTargetSeedingStep implements PipelineStep {
         return ResolvedTargetSource.SESSION_METADATA;
     }
 
-    private String buildTargetContext(List<ResolvedTarget> targets) {
+    private String buildTargetContext(List<ResolvedTarget> targets, boolean workflow) {
         return ai.fabric.intent.orchestration.targets.ResolvedTargetsContextRenderer.renderGrouped(
-            "PINNED TARGETS (previously pinned; selected for this target-dependent turn):",
+            workflow ? "AVAILABLE PRIOR TARGET REFERENCES (context only; not fresh evidence or ownership):"
+                : "PINNED TARGETS (previously pinned; selected for this target-dependent turn):",
             "target",
             targets,
             List.of(ResolvedTargetSource.ACTION_RESULT_ITEMS, ResolvedTargetSource.REQUEST_ATTACHMENTS),

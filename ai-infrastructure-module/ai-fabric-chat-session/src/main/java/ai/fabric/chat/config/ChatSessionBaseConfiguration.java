@@ -155,6 +155,12 @@ class ChatSessionBaseConfiguration {
         return new ChatSessionRequiredBeansValidator(storageProvider);
     }
 
+    @Bean
+    @ConditionalOnBean(ChatSessionService.class)
+    ai.fabric.chat.pipeline.ConversationalAutonomyTargetsStep conversationalAutonomyTargetsStep(WorkingSetTargetSeedingStep targets) {
+        return new ai.fabric.chat.pipeline.ConversationalAutonomyTargetsStep(targets);
+    }
+
     static final class ChatSessionRequiredBeansValidator implements SmartLifecycle {
         private final ObjectProvider<ChatSessionStorageProvider> storageProvider;
         private final AtomicBoolean running = new AtomicBoolean(false);

@@ -120,6 +120,8 @@ public class BoundedWorkflowStep implements PipelineStep {
             var input = new LinkedHashMap<String, Object>();
             input.put("request", context.getEffectiveQuery());
             input.put("history", ConversationPromptContext.history(context, 16000).messages());
+            if (authority.conversationalConfirmation())
+                input.put("activeTargets", ConversationPromptContext.activeTargets(context, 16000));
             if (!execution.policy().goalMode()) input.put("observations", checkpoint.steps().stream().map(step -> Map.of(
                 "operationId", step.operationId(), "action", step.action(), "effect", step.effect(), "result", step.observation())).toList());
             input.put("remaining", Map.of("actions", execution.policy().maxActions() - allowance.segmentUsage().actions(),
@@ -166,7 +168,11 @@ public class BoundedWorkflowStep implements PipelineStep {
                     .entityId(checkpoint.workId()).entityType("workflow").generationType("bounded_workflow")
                     .systemPrompt(SpecialistPromptInstructionSupport.appendToSystemPrompt(
                         renderer.render(prompts.resolve("orchestration/workflow", "system").template(), Map.of()), orchestration) + delegatedInstructions)
-                    .prompt(encodedInput).authContext(OrchestrationAuthContextResolver.from(orchestration)).build(), LlmPurpose.GENERATION))
+                    .prompt(encodedInput)
+                    .inputParts(authority.conversationalConfirmation() ? orchestration.getTransientInputParts() : List.of())
+                    .transientInputPolicy(authority.conversationalConfirmation() && orchestration.getTransientInputParts() != null
+                        && !orchestration.getTransientInputParts().isEmpty() ? ai.fabric.dto.TransientInputPolicy.providerFileUrlDefaults() : null)
+                    .authContext(OrchestrationAuthContextResolver.from(orchestration)).build(), LlmPurpose.GENERATION))
                 .build());
             if (!call.isSuccess()) {
                 if (call.getLastFailure() != null && (execution.policy().goalMode() || call.getLastFailure().type() != StructuredJsonFailureType.CALL_ERROR))

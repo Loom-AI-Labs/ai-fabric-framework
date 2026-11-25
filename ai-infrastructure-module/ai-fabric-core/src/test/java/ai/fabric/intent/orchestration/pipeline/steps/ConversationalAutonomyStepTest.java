@@ -271,6 +271,19 @@ class ConversationalAutonomyStepTest {
         assertThat(result.getType()).isEqualTo(OrchestrationResultType.CLARIFICATION_REQUIRED);
         assertThat(result.getMessage()).isEqualTo("What is your preferred contact email?"); assertThat(calls).hasSize(1);
     }
+    @Test void explicitSelectionAndTransientFilesReachThePlannerWithoutPersistingFileUrls() {
+        var input = context().toBuilder().pinnedTargetsContext("User-selected item: id=item-one, price=499, stock=8").build();
+        var file = AIGenerationInputPart.builder().type(AIGenerationInputType.FILE_URL)
+            .url("https://approved.example/temporary-file?private-canary=ONE_TURN_ONLY").fileName("guide.pdf").build();
+        input.getOrchestrationContext().setTransientInputParts(List.of(file)); complete();
+        var result = workflow.process(admission.process(input)).getIntentResult();
+        assertThat(result.isSuccess()).isTrue();
+        assertThat(calls.getFirst().getPrompt()).contains("item-one", "price=499", "stock=8").doesNotContain("ONE_TURN_ONLY");
+        assertThat(calls.getFirst().getInputParts()).containsExactly(file);
+        assertThat(calls.getFirst().getTransientInputPolicy().isPersistInputs()).isFalse();
+        assertThat(calls.getFirst().getTransientInputPolicy().isLogInputs()).isFalse();
+        assertThat(mapper.valueToTree(result.getData()).toString()).doesNotContain("ONE_TURN_ONLY");
+    }
     @Test void publishedParallelSearchRequirementIsFedBackBeforeCompletion() {
         var provider = mock(RAGProvider.class); var beans = new StaticListableBeanFactory(); beans.addBean("rag", provider);
         handlers.put(AutonomyKnowledgeAction.NAME, new AutonomyKnowledgeAction(settings, beans.getBeanProvider(RAGProvider.class)).getHandlers().getFirst());
@@ -300,6 +313,24 @@ class ConversationalAutonomyStepTest {
         var result = workflow.process(admission.process(context())).getIntentResult();
         assertThat(result.isSuccess()).isFalse(); assertThat(calls).hasSize(1);
         assertThat(mapper.valueToTree(result.getData()).toString()).doesNotContain("PRIVATE_CANARY", "denied");
+    }
+    @Test void knowledgeReadRetainsConfiguredEvidenceCountAndCharacterLimits() {
+        var provider = mock(RAGProvider.class); var beans = new StaticListableBeanFactory(); beans.addBean("rag", provider);
+        handlers.put(AutonomyKnowledgeAction.NAME, new AutonomyKnowledgeAction(settings, beans.getBeanProvider(RAGProvider.class)).getHandlers().getFirst());
+        when(provider.performRAGQuery(any())).thenReturn(RAGResponse.builder().success(true).documents(List.of(
+            RAGResponse.RAGDocument.builder().id("one").content("Approved policy text").build(),
+            RAGResponse.RAGDocument.builder().id("two").content("Another result").build())).build());
+        var input = context(); var old = input.getEffectiveCapabilityProfile();
+        input = input.toBuilder().effectiveCapabilityProfile(new EffectiveCapabilityProfile(old.profile(), old.mode(), true,
+            old.effectiveVectorSpaces(), old.visibleActions(), old.executableReadActions(), old.proposableWriteActions(),
+            new OrchestrationPolicy.RagBudgets(false, 1, 10, 4, 1, 5, List.of("document"), 0.5),
+            old.readActionResolutionPolicy(), old.profileHash())).build();
+        decisions.add("{\"type\":\"ACTION\",\"action\":\"ai_search_knowledge\",\"parameters\":{\"query\":\"policy\"}}"); complete();
+        var result = workflow.process(admission.process(input)).getIntentResult();
+        assertThat(result.isSuccess()).isTrue(); verify(provider).performRAGQuery(argThat(r -> r.getLimit() == 1));
+        var documents = mapper.valueToTree(result.getData()).path("documents");
+        assertThat(documents).hasSize(1); assertThat(documents.get(0).path("content").asText()).isEqualTo("Appro");
+        assertThat(documents.get(0).path("contentTruncated").asBoolean()).isTrue();
     }
     @Test void unapprovedKnowledgeSourceIsDeniedBeforeProviderCall() {
         var provider = mock(RAGProvider.class); var beans = new StaticListableBeanFactory(); beans.addBean("rag", provider);

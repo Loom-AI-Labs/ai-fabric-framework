@@ -57,6 +57,7 @@ public final class AutonomyKnowledgeAction implements AIActionRegistryContributo
             if (provider == null) return ActionResult.builder().success(false).errorCode("KNOWLEDGE_PROVIDER_UNAVAILABLE").build();
             var budgets = profile.ragBudgets();
             int limit = budgets.maxDocumentsReturnedToClient() == null ? 5 : budgets.maxDocumentsReturnedToClient();
+            if (budgets.maxDocumentsUsedForContext() != null) limit = Math.min(limit, budgets.maxDocumentsUsedForContext());
             var request = RAGRequest.builder().query(String.valueOf(parameters.get("query"))).entityType(source)
                 .retrievalProfile(provider.sharedRetrievalProfile()).limit(limit)
                 .threshold(budgets.similarityThreshold() == null ? 0.6 : budgets.similarityThreshold())
