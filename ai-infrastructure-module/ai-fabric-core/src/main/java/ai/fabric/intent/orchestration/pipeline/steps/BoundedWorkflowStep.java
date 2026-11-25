@@ -36,6 +36,8 @@ public class BoundedWorkflowStep implements PipelineStep {
     private final PromptTemplateResolver prompts;
     private final PromptRenderer renderer;
     private final ObjectMapper mapper;
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private org.springframework.beans.factory.ObjectProvider<PendingActionStore> pendingActions;
 
     @Override public String getStepName() { return "BoundedWorkflow"; }
     @Override public int getOrder() { return 49; }
@@ -51,6 +53,7 @@ public class BoundedWorkflowStep implements PipelineStep {
         EffectiveCapabilityProfile effective = GovernedActionInvocationSupport.effectiveProfile(registry, context, orchestration);
         var invoker = new DefaultGovernedActionInvocationService(registry);
         var authority = execution.authority();
+        var pinnedTargets = new LinkedHashMap<String, ActionTargetRef>();
         var actions = new BoundedWorkflowRunner.Actions() {
             public void verifyAuthority(BoundedWorkflowRunner.Request request) {
                 authority.verify(request);
@@ -89,6 +92,13 @@ public class BoundedWorkflowStep implements PipelineStep {
                 var actionContext = new ActionContext(dispatchContext, context, parameters);
                 var outcome = invoker.invoke(GovernedActionInvocationSupport.invocation(step.action(), parameters,
                     actionContext, registry, ActionConfirmationState.NOT_CONFIRMED, List.of()));
+                if (authority.conversationalConfirmation() && outcome.executed() && outcome.actionResult() != null
+                    && outcome.actionResult().getPinnedTargets() != null) {
+                    for (var target : outcome.actionResult().getPinnedTargets()) {
+                        if (target != null && pinnedTargets.size() < 100)
+                            pinnedTargets.putIfAbsent((target.vectorSpace() == null ? "" : target.vectorSpace()) + "\u0000" + target.id(), target);
+                    }
+                }
                 WorkflowCheckpoint.Effect effect = switch (outcome.status()) {
                     case EXECUTED -> WorkflowCheckpoint.Effect.EXECUTED;
                     case CONFIRMATION_REQUIRED -> WorkflowCheckpoint.Effect.CONFIRMATION_REQUIRED;
@@ -170,13 +180,32 @@ public class BoundedWorkflowStep implements PipelineStep {
                             || call.getLastFailure().type() == StructuredJsonFailureType.EMPTY_RESPONSE);
                 throw new WorkflowAllowance.Stop("WORKFLOW_PLANNING_UNAVAILABLE");
             }
-            return call.getValue();
+            var decision = call.getValue();
+            if (authority.conversationalConfirmation() && decision.type() == BoundedWorkflowRunner.DecisionType.COMPLETE
+                && (decision.message() == null || decision.message().isBlank()))
+                throw new BoundedWorkflowRunner.PlanningFinding("WORKFLOW_CUSTOMER_ANSWER_REQUIRED",
+                    "COMPLETE needs a nonblank message containing the customer-facing answer supported by approved observations and history.", null, false);
+            return decision;
         };
         var result = authority.resumeConfirmedReceipt()
             ? runner.resumeConfirmed(execution.request(), execution.policy(), planner, actions)
             : authority.resumeGoal() && execution.policy().goalMode()
                 ? runner.resumeGoal(execution.request(), execution.policy(), planner, actions)
                 : runner.run(execution.request(), execution.policy(), planner, actions);
+        while (authority.continueWithinRequest() && result.state() == WorkflowCheckpoint.State.YIELDED) {
+            // The SDK still owns all planning/recovery. Active-turn hosts need no
+            // second scheduler, and durable hosts retain their existing worker path.
+            var eligible = result.goal() == null ? null : result.goal().nextEligibleAt();
+            if (eligible != null && eligible.isAfter(java.time.Instant.now())) {
+                try { Thread.sleep(Math.max(1, java.time.Duration.between(java.time.Instant.now(), eligible).toMillis())); }
+                catch (InterruptedException cancelled) {
+                    Thread.currentThread().interrupt(); throw new WorkflowAllowance.Stop("WORKFLOW_CANCELLED");
+                }
+            }
+            if (!java.time.Instant.now().isBefore(execution.request().deadline())) break;
+            authority.verify(execution.request());
+            result = runner.run(execution.request(), execution.policy(), planner, actions);
+        }
         var data = new LinkedHashMap<String, Object>();
         data.put("workId", result.workId()); data.put("state", result.state().name());
         if (result.stopCode() != null) data.put("stopCode", result.stopCode());
@@ -199,14 +228,53 @@ public class BoundedWorkflowStep implements PipelineStep {
             case CONFIRMATION_REQUIRED -> OrchestrationResultType.CONFIRMATION_REQUIRED;
             default -> OrchestrationResultType.ERROR;
         };
+        if (authority.conversationalConfirmation() && result.state() == WorkflowCheckpoint.State.COMPLETE
+            && result.steps().stream().anyMatch(step -> step.write() && step.effect() == WorkflowCheckpoint.Effect.EXECUTED))
+            type = OrchestrationResultType.ACTION_EXECUTED;
+        var responseData = new LinkedHashMap<String, Object>(authority.responseData(result));
+        responseData.put("workflow", data);
         var response = OrchestrationResult.builder().type(type).success(result.state() == WorkflowCheckpoint.State.COMPLETE)
-            .message(result.message()).data(Map.of("workflow", data)).errorCode(result.stopCode()).build();
+            .message(result.message()).data(responseData).errorCode(result.stopCode())
+            .internalPinnedTargets(List.copyOf(pinnedTargets.values())).build();
+        if (authority.conversationalConfirmation() && result.state() == WorkflowCheckpoint.State.NEEDS_INPUT
+            && (result.message() == null || result.message().isBlank()) && !result.questions().isEmpty())
+            response.setMessage(String.join("\n", result.questions()));
+        if (authority.conversationalConfirmation() && !result.steps().isEmpty()) {
+            var last = result.steps().getLast();
+            var metadata = registry.findMetadata(last.action()).orElse(null);
+            if (last.effect() == WorkflowCheckpoint.Effect.REJECTED && "ACTION_NOT_ALLOWED".equals(last.code())
+                && metadata != null && !metadata.isAnonymousAllowed() && new ActionContext(orchestration, context).isAnonymous()) {
+                response.setErrorCode(ai.fabric.intent.orchestration.auth.AuthenticationRequirement.ERROR_CODE);
+                responseData.put(ai.fabric.intent.orchestration.auth.AuthenticationRequirement.DATA_KEY,
+                    ai.fabric.intent.orchestration.auth.AuthenticationRequirement.forAction(last.action()));
+            }
+        }
         if (result.state() == WorkflowCheckpoint.State.CONFIRMATION_REQUIRED) {
             var step = result.steps().getLast();
             var dispatchContext = orchestration.toBuilder().workflowOperationId(step.operationId()).build();
             var metadata = registry.findMetadata(step.action()).orElseThrow();
             var parameters = ActionRuntimeContextParamSupport.resolveConfiguredParameters(metadata, step.parameters(), dispatchContext, context);
-            response.setActionProposalCandidate(new ActionProposalCandidate(step.action(), parameters, new ActionContext(dispatchContext, context)));
+            var actionContext = new ActionContext(dispatchContext, context, parameters);
+            if (authority.conversationalConfirmation()) {
+                var pendingStore = pendingActions == null ? null : pendingActions.getIfAvailable();
+                if (pendingStore == null || !orchestration.hasConversation())
+                    throw new IllegalStateException("WORKFLOW_CONVERSATIONAL_CONFIRMATION_UNAVAILABLE");
+                var handler = registry.findHandler(step.action()).orElseThrow();
+                String confirmation = handler.getConfirmationMessage(parameters, actionContext);
+                if (confirmation == null || confirmation.isBlank()) confirmation = "Confirm this action?";
+                var resolved = new java.util.LinkedHashSet<String>();
+                if (metadata.getParameterSchemas() != null) metadata.getParameterSchemas().forEach((name, schema) -> {
+                    if (schema != null && schema.getResolveFrom() != null
+                        && "RUNTIME_CONTEXT".equalsIgnoreCase(String.valueOf(schema.getResolveFrom().get("source")))
+                        && parameters.containsKey(name)) resolved.add(name);
+                });
+                ai.fabric.intent.orchestration.conversation.ConversationStateStoreAccess.pushPending(pendingStore, context,
+                    new PendingAction(step.action(), parameters, confirmation, java.time.Instant.now(), Map.of(), resolved));
+                responseData.put("action", step.action()); responseData.put("confirmationRequired", true);
+                responseData.put("confirmationMessage", confirmation);
+                responseData.put("providedParameters", ActionMetadataVisibilitySupport.publicProvidedParameters(metadata, parameters));
+                response.setMessage(confirmation);
+            } else response.setActionProposalCandidate(new ActionProposalCandidate(step.action(), parameters, actionContext));
         }
         return context.terminate(response);
     }

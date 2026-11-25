@@ -19,6 +19,9 @@ import java.util.Map;
 @ConfigurationProperties(prefix = "ai.orchestration")
 public class OrchestrationProperties {
 
+    @jakarta.validation.Valid
+    private ConversationalAutonomyProperties autonomy = new ConversationalAutonomyProperties();
+
     /**
      * Optimization profile that provides default orchestration behavior.
      */

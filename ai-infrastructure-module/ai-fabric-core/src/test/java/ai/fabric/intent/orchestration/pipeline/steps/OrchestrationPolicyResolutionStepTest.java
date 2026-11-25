@@ -19,6 +19,27 @@ import static org.assertj.core.api.Assertions.assertThat;
 @DisplayName("OrchestrationPolicyResolutionStep")
 class OrchestrationPolicyResolutionStepTest {
 
+    @Test void autonomousChoiceUsesTheSamePublishedModeWithoutChangingTheExecutionChoice() {
+        var settings = new OrchestrationProperties(); settings.getAutonomy().setEnabled(true);
+        settings.setDefaultMode("executor");
+        settings.getModes().put("executor", new OrchestrationProperties.ModeOverrides());
+        var step = new OrchestrationPolicyResolutionStep(settings);
+        for (String choice : List.of("autonomous", "standard")) {
+            var output = step.process(PipelineContext.from("Help", OrchestrationContext.forUser("owner").toBuilder().mode(choice).build()));
+            assertThat(output.isShouldTerminate()).isFalse();
+            assertThat(output.getOrchestrationPolicy().mode()).isEqualTo("executor");
+            assertThat(output.getOrchestrationContext().getMode()).isEqualTo(choice);
+        }
+    }
+
+    @Test void disabledAutonomyDoesNotAdmitAnUnsupportedMode() {
+        var settings = new OrchestrationProperties(); settings.setStrictModeRouting(true);
+        var output = new OrchestrationPolicyResolutionStep(settings).process(PipelineContext.from("Help",
+            OrchestrationContext.forUser("owner").toBuilder().mode("autonomous").build()));
+        assertThat(output.isShouldTerminate()).isTrue();
+        assertThat(output.getIntentResult().getMessage()).contains("Unsupported mode");
+    }
+
     @Nested
     @DisplayName("metadata")
     class Metadata {

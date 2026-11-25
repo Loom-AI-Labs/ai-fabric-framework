@@ -19,6 +19,11 @@ For bounded read/write assistance and completion feedback, read
 declared execution outcomes using actual receipts; they do not choose actions
 or classify the wording of the model's answer.
 
+For opt-in autonomy on ordinary customer conversations, read
+`docs/guides/conversational-autonomy.md`. It uses the same goal runner with an
+explicit active-request journal; it does not grant private authoring authority,
+replace a durable workflow host or promise restart recovery.
+
 | User asks for | Read first | Then read |
 | --- | --- | --- |
 | "What can AI Fabric unlock in this app?" | `docs/llm-context/AI_FABRIC_OPPORTUNITY_SCANNER.md` | `docs/llm-context/AI_FABRIC_CAPABILITY_MAP.md`, `docs/getting-started/12-real-apps-map.md` |

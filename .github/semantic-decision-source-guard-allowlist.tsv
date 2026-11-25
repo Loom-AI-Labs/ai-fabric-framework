@@ -1,4 +1,5 @@
 # path<TAB>required line marker<TAB>owner<TAB>reason
+ai-infrastructure-module/ai-fabric-core/src/main/java/ai/fabric/intent/orchestration/pipeline/steps/AutonomyKnowledgeAction.java	profile.effectiveVectorSpaces().contains(text)	conversational-autonomy	Exact membership of the caller-authorized source identifier set; no prose matching or semantic routing.
 ai-infrastructure-module/ai-fabric-core/src/main/java/ai/fabric/intent/RelationshipQueryHintPrefix.java	Pattern.compile("^\\s*(relationship_query|	relationship-query	Deferred explicit command grammar; not natural-language inference.
 ai-infrastructure-module/ai-fabric-core/src/main/java/ai/fabric/intent/IntentExtractionValidator.java	trimmedOriginal.regionMatches(true, 0, "relationship_query:"	relationship-query	Deferred explicit command grammar validation.
 ai-infrastructure-module/ai-fabric-core/src/main/java/ai/fabric/intent/IntentExtractionValidator.java	trimmedOriginal.regionMatches(true, 0, "relationship query:"	relationship-query	Deferred explicit command grammar validation.

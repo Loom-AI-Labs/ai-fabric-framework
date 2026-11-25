@@ -2,9 +2,13 @@ package ai.fabric.intent.orchestration.workflow;
 
 import java.util.Optional;
 
-/** Implement with protected durable state and atomic compare-and-set; no in-memory write fallback. */
+/**
+ * Protected execution state with atomic compare-and-set. Durable hosts require a
+ * durable implementation; active-request hosts may explicitly use a local journal,
+ * never as a fallback for failed durable storage.
+ */
 public interface WorkflowCheckpointStore {
-    /** Verify the host execution's durable lease; concurrent workers must not dispatch. */
+    /** Verify the host execution's lease or active-turn guard before dispatch. */
     void verifyLease(String workId);
     Optional<WorkflowCheckpoint> find(String workId);
     boolean create(WorkflowCheckpoint initial);

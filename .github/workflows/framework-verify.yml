@@ -65,6 +65,14 @@ jobs:
           docker --version
           docker info | head -5
 
+      - name: Pin consumer checks to this Framework version
+        env:
+          MAVEN_ARGS: -B --no-transfer-progress
+        run: |
+          version="$(mvn -q -f ai-infrastructure-module/pom.xml help:evaluate -Dexpression=project.version -DforceStdout | tail -n1)"
+          echo "AI_FABRIC_VERSION=${version}" >> "$GITHUB_ENV"
+          echo "MAVEN_ARGS=-B -V --no-transfer-progress -Dai-fabric.version=${version}" >> "$GITHUB_ENV"
+
       - name: Build, test, and install framework reactor
         run: |
           mvn ${MAVEN_ARGS} -f ai-infrastructure-module/pom.xml \

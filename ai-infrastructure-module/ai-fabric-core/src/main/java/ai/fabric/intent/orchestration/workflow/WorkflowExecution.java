@@ -41,6 +41,12 @@ public record WorkflowExecution(BoundedWorkflowRunner.Request request, WorkflowP
         return WorkflowModelCallScope.open(allowance);
     }
     public interface Authority {
+        /** Explicit active-request host; durable goal hosts keep scheduler-owned continuation. */
+        default boolean continueWithinRequest() { return false; }
+        /** Approved public result projection; never raw receiver output or execution credentials. */
+        default Map<String, Object> responseData(WorkflowCheckpoint checkpoint) { return Map.of(); }
+        /** Normal conversational confirmation remains in the existing pending-action lifecycle. */
+        default boolean conversationalConfirmation() { return false; }
         /** Set only following an authenticated goal Resume control; never from model input. */
         default boolean resumeGoal() { return false; }
         /** Current verified directive revision/references; never a new authority grant or replacement root input. */
