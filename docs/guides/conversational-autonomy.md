@@ -1,5 +1,13 @@
 # Conversational autonomy
 
+The production candidate is 0.8.72. Version 0.8.71 introduced this host, but a
+later regression check found that its execution aliases could replace an
+explicitly configured mode with the default mode's policy. From 0.8.72, existing
+named mode policies take precedence, including case-insensitive names. The
+`standard` and `autonomous` execution aliases reuse the default policy only when
+no configured mode already owns that name. Action and retrieval restrictions are
+never widened just to choose an execution style.
+
 An ordinary application can opt into the Framework goal runner without creating
 a private authoring service, a second endpoint or an application-owned model loop.
 The integration runs after security, access, policy and conversation enrichment,

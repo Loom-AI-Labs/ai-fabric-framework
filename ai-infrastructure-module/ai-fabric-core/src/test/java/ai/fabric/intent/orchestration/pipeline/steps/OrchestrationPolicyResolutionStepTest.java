@@ -40,6 +40,33 @@ class OrchestrationPolicyResolutionStepTest {
         assertThat(output.getIntentResult().getMessage()).contains("Unsupported mode");
     }
 
+    @Test void conversationalChoicesPreserveExplicitNamedModeRestrictions() {
+        for (String choice : List.of("autonomous", "standard", "AuToNoMoUs", "StAnDaRd")) {
+            var settings = new OrchestrationProperties(); settings.getAutonomy().setEnabled(true);
+            settings.setDefaultMode("executor"); settings.setStrictModeRouting(true);
+            settings.getModes().put("executor", new OrchestrationProperties.ModeOverrides());
+            var restricted = new OrchestrationProperties.ModeOverrides();
+            restricted.setActionsEnabled(false); restricted.setRetrievalEnabled(false);
+            settings.getModes().put(choice.toUpperCase(java.util.Locale.ROOT), restricted);
+            var registry = org.mockito.Mockito.mock(ai.fabric.intent.action.AIActionRegistry.class);
+            org.mockito.Mockito.when(registry.getAllMetadata()).thenReturn(List.of(
+                ai.fabric.intent.action.AIActionMetaData.builder().name("any_read").accessMode(ai.fabric.intent.action.ActionAccessMode.READ).build(),
+                ai.fabric.intent.action.AIActionMetaData.builder().name("any_write").accessMode(ai.fabric.intent.action.ActionAccessMode.WRITE_ONLY).build()));
+            var step = new OrchestrationPolicyResolutionStep(settings);
+            org.springframework.test.util.ReflectionTestUtils.setField(step, "actionRegistry", registry);
+
+            var output = step.process(PipelineContext.from("Help",
+                OrchestrationContext.forUser("owner").toBuilder().mode(choice).build()));
+
+            assertThat(output.isShouldTerminate()).isFalse();
+            assertThat(output.getOrchestrationPolicy().mode()).isEqualTo(choice.toLowerCase(java.util.Locale.ROOT));
+            assertThat(output.getOrchestrationPolicy().capabilities().actionsEnabled()).isFalse();
+            assertThat(output.getOrchestrationPolicy().capabilities().retrievalEnabled()).isFalse();
+            assertThat(output.getEffectiveCapabilityProfile().canExecuteReadAction("any_read")).isFalse();
+            assertThat(output.getEffectiveCapabilityProfile().canProposeWriteAction("any_write")).isFalse();
+        }
+    }
+
     @Nested
     @DisplayName("metadata")
     class Metadata {

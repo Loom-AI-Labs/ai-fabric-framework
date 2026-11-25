@@ -80,11 +80,12 @@ public class OrchestrationPolicyResolutionStep implements PipelineStep {
         String normalizedPosition = normalizeKey(requestedPosition);
         String normalizedRequestedMode = normalizeKey(requestedMode);
 
-        // An exact published execution-mode choice reuses the normal mode's
-        // capabilities; it never creates a broader action or source policy.
+        // Execution aliases apply only when no explicitly configured mode owns the name.
+        // Published mode restrictions remain authoritative regardless of execution style.
         boolean autonomyChoice = orchestrationProperties != null && orchestrationProperties.getAutonomy() != null
             && orchestrationProperties.getAutonomy().isEnabled()
-            && ("autonomous".equals(normalizedRequestedMode) || "standard".equals(normalizedRequestedMode));
+            && ("autonomous".equals(normalizedRequestedMode) || "standard".equals(normalizedRequestedMode))
+            && lookupCaseInsensitive(orchestrationProperties.getModes(), normalizedRequestedMode) == null;
         if (autonomyChoice) {
             normalizedRequestedMode = normalizeKey(orchestrationProperties.getDefaultMode());
         }
